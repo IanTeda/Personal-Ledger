@@ -32,6 +32,7 @@ use lib_domain as domain;
 
 //-- RPC Library modules
 use crate::categories::proto;
+use crate::error::{RpcError, RpcResult};
 
 /// Activate a category by ID.
 ///
@@ -69,7 +70,7 @@ use crate::categories::proto;
 pub async fn activate_category(
     service: &super::CategoriesService,
     request: tonic::Request<proto::CategoryActivateRequest>,
-) -> Result<tonic::Response<proto::CategoryActivateResponse>, tonic::Status> {
+) -> RpcResult<tonic::Response<proto::CategoryActivateResponse>> {
     // Extract the inner request
     let activate_request = request.into_inner();
 
@@ -77,23 +78,14 @@ pub async fn activate_category(
     let category_id = match activate_request.id.parse::<domain::RowID>() {
         Ok(id) => id,
         Err(_) => {
-            return Err(tonic::Status::invalid_argument("Invalid category ID format"));
+            return Err(RpcError::InvalidArgument(format!("Could not parse the Category ID '{}' into a UUIDv7", activate_request.id)));
         }
     };
-
+    
     tracing::debug!(category_id = %category_id, "Parsed category id");
 
     // Update the category's active status to true
-    let updated_category = match database::Categories::update_active_status(category_id, true, service.database_ref()).await {
-        Ok(category) => category,
-        Err(database::DatabaseError::NotFound(_)) => {
-            return Err(tonic::Status::not_found(format!("Category with ID '{}' not found", activate_request.id)));
-        }
-        Err(db_error) => {
-            tracing::error!("Failed to activate category {}: {}", activate_request.id, db_error);
-            return Err(tonic::Status::internal("Failed to activate category"));
-        }
-    };
+    let updated_category = database::Categories::update_active_status(category_id, true, service.database_ref()).await?;
 
     // Convert to RPC category and return response
     let rpc_category: proto::Category = updated_category.into();
@@ -379,7 +371,7 @@ mod tests {
             let result = activate_category(&service, request).await;
             assert!(result.is_err());
             let status = result.unwrap_err();
-            assert_eq!(status.code(), tonic::Code::NotFound);
+            assert!(matches!(status, RpcError::InvalidArgument(_)));
         }
     }
 

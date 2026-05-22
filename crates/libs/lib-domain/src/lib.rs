@@ -25,6 +25,8 @@
 //!
 //! This domain layer is designed for SQLite-backed persistence and does not reference Postgres or other database engines. All type mappings and invariants are implemented for SQLite compatibility.
 
+// TODO: Add domain error tyep
+
 /// Database row identifier type using time-ordered UUID v7.
 ///
 /// [`RowID`] provides unique, sortable identifiers that maintain chronological

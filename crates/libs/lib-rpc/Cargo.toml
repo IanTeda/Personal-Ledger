@@ -9,6 +9,7 @@ lib_database = { path = "../../../crates/libs/lib-database" }
 lib_domain = { path = "../../../crates/libs/lib-domain" }
 
 ## -- Workspace Shared Dependencies --
+chrono = { workspace = true }
 sqlx = { workspace = true }
 tonic = { workspace = true }
 thiserror = { workspace = true }

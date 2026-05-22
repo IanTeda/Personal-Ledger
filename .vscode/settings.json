@@ -35,5 +35,8 @@
     "subsec",
     "thiserror",
     "upserted"
-  ]
+  ],
+  "protobuf.externalLinter.enabled": true,
+  "protobuf.externalLinter.linter": "protolint",
+  "protobuf.externalLinter.protolintPath": "/usr/local/bin/protolint"
 }

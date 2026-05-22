@@ -17,7 +17,7 @@
 #![allow(unused)] // For development only
 
 mod categories;
-mod error;
+pub(crate) mod error;
 mod generated;
 mod utilities;
 
