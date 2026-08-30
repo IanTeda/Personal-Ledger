@@ -39,11 +39,15 @@
   <ol>
     <li><a href="#about-the-project">About The Project</a></li>
     <li><a href="#includes">Project Includes</a></li>
+    <li><a href="#getting-started">Getting Started</a></li>
     <li>
-      <a href="#getting-started">Getting Started</a>
+      <a href="#developing-with-this-repo">Developing With This Repo</a>
       <ul>
         <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
+        <li><a href="#building-and-running">Building and Running</a></li>
+        <li><a href="#testing-linting-and-formatting">Testing, Linting and Formatting</a></li>
+        <li><a href="#documentation">Documentation</a></li>
+        <li><a href="#agent-assisted-development">Agent-Assisted Development</a></li>
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
@@ -96,11 +100,18 @@ I have tried to keep the tech stack with Rust, because that is what I would like
 <!-- GETTING STARTED -->
 ## Getting Started
 
-At the moment Personal Ledger is under development, so no Getting Started or Prerequisites are available.
+At the moment Personal Ledger is under development, so there is no end-user installation yet — the backend server only wires up a `Ping` utility RPC. If you want to build, run or contribute to the code, see [Developing With This Repo](#developing-with-this-repo) below.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- DEVELOPING WITH THIS REPO -->
+## Developing With This Repo
+
+Personal Ledger is a Rust Cargo workspace. This section covers what you need to build, test and run it locally.
 
 ### Prerequisites
 
-Toolchain versions (Rust, protoc, mdBook, cargo-make, sqlx-cli, cargo-watch, cargo-audit) are pinned in `mise.toml` and managed with [mise](https://mise.jdx.dev/). Install mise, then install the pinned tools for this repo:
+Toolchain and dev-tool versions (Rust, protoc, mdBook, cargo-make, sqlx-cli, cargo-watch, cargo-audit) are pinned in `mise.toml` at the workspace root and managed by [mise](https://mise.jdx.dev/). Install mise, then install the pinned tools for this repo:
 
 ```sh
 curl https://mise.run | sh
@@ -109,11 +120,55 @@ mise trust
 mise install
 ```
 
-### Installation
+`mise`'s shell/dir activation will also install the pinned tools automatically when you `cd` into the repo. Without this step, tools like `protoc` or `cargo-make` won't be on your `PATH`.
+
+### Building and Running
+
+Most day-to-day work is plain `cargo` run against the workspace or a specific package:
 
 ```sh
+# Build the whole workspace
 cargo build
+
+# Build just the server binary
+cargo build --package server --bin server
+
+# Run the server (reads config, initialises telemetry — currently does nothing else)
+cargo run --package server
 ```
+
+Building `lib-rpc` requires a system `protoc` (protobuf compiler), provided via `mise.toml`. `tonic_prost_build` regenerates `crates/libs/lib-rpc/src/generated/*.rs` from the `.proto` files on every build; the generated files are checked in but should be treated as build output, not hand-edited.
+
+> **Note:** `crates/libs/lib-database` exists on disk but is *not* currently a workspace member — it's mid-development and not yet wired into `server`. Build/test it directly with `cargo build --package lib_database`, or add it back to `[workspace].members` if you're integrating it.
+
+### Testing, Linting and Formatting
+
+```sh
+# Test the whole workspace
+cargo test
+
+# Test a single crate
+cargo test --package lib_config
+
+# Lint and format
+cargo clippy
+cargo fmt
+```
+
+### Documentation
+
+Docs are built with mdBook and rustdoc via `cargo-make`:
+
+```sh
+cargo make docs-build     # docs-rustdoc + docs-mdbook
+cargo make docs-serve     # serves mdBook on :8001
+```
+
+### Agent-Assisted Development
+
+This repo is set up to work with AI coding agents (like [Claude Code](https://claude.com/claude-code)). Repository conventions for agents live in [`CLAUDE.md`](CLAUDE.md), and project-specific skills live under [`.claude/skills/`](.claude/skills/) (rustdoc conventions, tracing/log-level conventions, and unit-test patterns).
+
+The agent development workflow (grilling out an idea, writing a spec, splitting it into tickets, implementing with TDD and code review) follows [Matt Pocock's Claude Code skills](https://github.com/mattpocock/skills) — worth a read as a reference for how contributions here are expected to move from idea to shipped code.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 

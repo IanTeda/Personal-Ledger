@@ -36,8 +36,6 @@ cargo make docs-serve     # serves mdBook on :8001
 
 Building `lib_rpc` requires a system `protoc` (protobuf compiler) — provided via `mise.toml`. `tonic_prost_build` regenerates `crates/libs/lib-rpc/src/generated/*.rs` from the `.proto` files on every build; the generated files are checked in but should be treated as build output, not hand-edited.
 
-The devcontainer (`.devcontainer/devcontainer.json`) is the reference dev environment: a plain Debian base image plus PostgreSQL 18, SQLite, grpcurl and Node system features, with `postCreateCommand` installing mise and running `mise install` to pull Rust, protoc, mdBook, `cargo-make`, `cargo-watch`, `cargo-audit` and `sqlx-cli` per `mise.toml`.
-
 ## Workspace layout
 
 Cargo workspace members (`Cargo.toml`): `crates/server`, `crates/libs/lib-config`, `crates/libs/lib-telemetry`, `crates/libs/lib-rpc`.
