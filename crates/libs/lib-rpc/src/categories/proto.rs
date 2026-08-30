@@ -4,7 +4,7 @@
 //!
 //! This module provides re-exports of generated protobuf types and gRPC clients/servers
 //! for the categories service. It handles all CRUD operations for financial categories
-//! used in organizing transactions and accounts in the personal ledger system.
+//! used in organising transactions and accounts in the personal ledger system.
 //!
 //! ## Services
 //!
@@ -16,7 +16,7 @@
 //! Core message types include:
 //! - `Category`: The main category struct with all fields
 //! - `CategoryTypes`: Enum defining category types (Asset, Expense, etc.)
-//! - Request/Response types for all operations (Create, Get, Update, Delete, List, etc.)
+//! - `Request/Response` types for all operations (Create, Get, Update, Delete, List, etc.)
 //! - `CategoriesServiceClient`: gRPC client for connecting to categories service
 //! - `CategoriesService`: Server trait for implementing categories service
 //! - `CategoriesServiceServer`: Server implementation for categories service

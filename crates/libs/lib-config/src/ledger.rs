@@ -27,15 +27,35 @@
 //! let telemetry = config.telemetry_config();
 //! println!("Telemetry level: {:?}", telemetry.telemetry_level());
 //!
+//! // Access database configuration
+//! let database = config.database_config();
+//! println!("Database URL: {}", database.url());
+//!
 //! // Load with explicit config file
 //! use std::path::Path;
 //! let config_path = Path::new("custom.conf");
 //! let config = LedgerConfig::parse(Some(config_path)).expect("Failed to load config");
 //! ```
+//!
+//! ## Configuration File Example
+//!
+//! ```ini
+//! [telemetry]
+//! telemetry_level = "debug"
+//!
+//! [database]
+//! url = "sqlite:./personal-ledger.db"
+//! max_connections = 10
+//! min_connections = 1
+//! acquire_timeout_seconds = 30
+//! idle_timeout_seconds = 600
+//! max_lifetime_seconds = 1800
+//! ```
 
 use std::path::{Path, PathBuf};
 
 use config::Config;
+use lib_database as database;
 use lib_telemetry as telemetry;
 
 /// Application name used for configuration directories and environment variables.
@@ -62,6 +82,9 @@ const ENV_PREFIX: &str = "PERSONAL_LEDGER";
 pub struct LedgerConfig {
     #[serde(alias = "Telemetry")]
     pub telemetry: telemetry::TelemetryConfig,
+
+    #[serde(alias = "Database")]
+    pub database: database::DatabaseConfig,
 }
 
 impl LedgerConfig {
@@ -121,6 +144,11 @@ impl LedgerConfig {
             "telemetry.telemetry_level",
             default_telemetry_level.to_string(),
         )?;
+
+        // Add database defaults
+        for (key, value) in database::DatabaseConfig::default_config_values() {
+            config_builder = config_builder.set_default(key, value)?;
+        }
 
         //-- helper: read INI file and normalise section headers to lowercase
         let normalise_ini = |p: &Path| -> super::ConfigResult<String> {
@@ -303,6 +331,11 @@ impl LedgerConfig {
     pub fn telemetry_config(&self) -> &lib_telemetry::TelemetryConfig {
         &self.telemetry
     }
+
+    /// Get the database configuration.
+    pub fn database_config(&self) -> &lib_database::DatabaseConfig {
+        &self.database
+    }
 }
 
 #[cfg(test)]
@@ -329,6 +362,20 @@ mod tests {
         assert_eq!(
             telemetry.telemetry_level(),
             config.telemetry.telemetry_level()
+        );
+    }
+
+    #[test]
+    fn database_config_returns_database_reference() {
+        let config = LedgerConfig::default();
+        let database = config.database_config();
+        assert_eq!(
+            database.url(),
+            config.database.url()
+        );
+        assert_eq!(
+            database.max_connections(),
+            config.database.max_connections()
         );
     }
 
@@ -382,6 +429,15 @@ mod tests {
             config.telemetry.telemetry_level(),
             telemetry::TelemetryConfig::default().telemetry_level()
         );
+        // Should have default database config
+        assert_eq!(
+            config.database.url(),
+            database::DatabaseConfig::default().url()
+        );
+        assert_eq!(
+            config.database.max_connections(),
+            database::DatabaseConfig::default().max_connections()
+        );
 
         // Restore original directory
         std::env::set_current_dir(original_cwd).unwrap();
@@ -397,6 +453,10 @@ mod tests {
         r#"
         [telemetry]
         telemetry_level = "debug"
+
+        [database]
+        url = "sqlite:test.db"
+        max_connections = 20
         "#;
         fs::write(&config_file, config_content).unwrap();
 
@@ -407,6 +467,8 @@ mod tests {
             config.telemetry.telemetry_level(),
             telemetry::TelemetryLevels::DEBUG
         );
+        assert_eq!(config.database.url(), "sqlite:test.db");
+        assert_eq!(config.database.max_connections(), 20);
     }
 
     #[test]
@@ -428,6 +490,9 @@ mod tests {
         r#"
         [telemetry]
         telemetry_level = "info"
+
+        [database]
+        url = "sqlite:custom.db"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
@@ -441,6 +506,7 @@ mod tests {
             config.telemetry.telemetry_level(),
             telemetry::TelemetryLevels::INFO
         );
+        assert_eq!(config.database.url(), "sqlite:custom.db");
     }
 
     #[test]
@@ -448,10 +514,10 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_file = temp_dir.path().join("invalid.conf");
 
-        // Create invalid INI content
+        // Create invalid INI content (malformed)
         let config_content = 
         r#"
-        [telemetry]
+        [telemetry
         telemetry_level = "debug"
         "#; // Missing closing bracket
         fs::write(&config_file, config_content).unwrap();
@@ -491,6 +557,9 @@ mod tests {
         r#"
         [Telemetry]
         telemetry_level = "warn"
+
+        [Database]
+        max_connections = 5
         "#;
         fs::write(&cwd_config_file, cwd_content).unwrap();
 
@@ -500,6 +569,9 @@ mod tests {
         r#"
         [Telemetry]
         telemetry_level = "debug"
+
+        [Database]
+        max_connections = 15
         "#;
         fs::write(&explicit_file, explicit_content).unwrap();
 
@@ -514,6 +586,7 @@ mod tests {
             config.telemetry.telemetry_level(),
             telemetry::TelemetryLevels::DEBUG
         );
+        assert_eq!(config.database.max_connections(), 15);
 
         env::set_current_dir(original_cwd).unwrap();
     }

@@ -528,7 +528,6 @@ impl RowID {
     /// let mock_id = RowID::mock();
     /// assert_eq!(mock_id.as_uuid().get_version_num(), 7);
     /// ```
-    #[cfg(test)]
     pub fn mock() -> Self {
         use chrono::{DateTime, Utc};
         use fake::faker::chrono::en::DateTimeAfter;

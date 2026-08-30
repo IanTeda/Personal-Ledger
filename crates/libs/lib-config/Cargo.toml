@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-
 ## -- Internal Dependencies --
+lib_database = { path = "../../../crates/libs/lib-database" }
 lib_telemetry = { path = "../../../crates/libs/lib-telemetry" }
 
-## -- Workspace Dependencies --
+## -- Workspace Shared Dependencies --
 serde = { workspace = true }
 thiserror = { workspace = true }
 

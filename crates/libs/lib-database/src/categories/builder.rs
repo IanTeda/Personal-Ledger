@@ -1,47 +1,28 @@
 //! # Category Builder
 //!
-//! Provides a fluent API for constructing [`Category`](crate::database::categories::Category)
-//! records. The builder enforces the presence of mandatory fields while providing
-//! sensible defaults for optional values. This is particularly useful for tests,
-//! fixtures, and data seeding utilities where creating category rows should be
-//! ergonomic and explicit.
+//! Provides a fluent API for constructing [`Categories`] records. The builder enforces
+//! the presence of mandatory fields while providing sensible defaults for optional values.
+//! This is particularly useful for tests, fixtures, and data seeding utilities where
+//! creating category rows should be ergonomic and explicit.
 
-#![allow(unused)] // For development only
+use super::Categories;
+use crate::DatabaseError;
 
-use crate::{database, domain};
-
-
-/// Errors emitted by [`CategoryBuilder::build`] when required data is missing.
-#[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum CategoryBuilderError {
-	/// The category name was not provided.
-	#[error("category name is required")]
-	Name,
-
-	/// The category type was not provided.
-	#[error("category type is required")]
-	CategoryType,
-
-	/// The category code was not provided.
-	#[error("category code is required")]
-	Code,
-}
-
-/// Fluent builder for [`Category`](crate::database::categories::Category) rows.
+/// Fluent builder for [`Categories`] rows.
 ///
 /// The builder collects optional pieces of data and ensures required values are
-/// supplied before constructing a fully-fledged [`Category`]. Where appropriate,
+/// supplied before constructing a fully-fledged [`Categories`]. Where appropriate,
 /// defaults are injected—such as marking the category as active or generating a
 /// deterministic code derived from the persisted identifier.
 #[derive(Debug, Default, Clone)]
 pub struct CategoriesBuilder {
-	id: Option<domain::RowID>,
+	id: Option<lib_domain::RowID>,
 	code: Option<String>,
 	name: Option<String>,
 	description: Option<String>,
-	url_slug: Option<domain::UrlSlug>,
-	category_type: Option<domain::CategoryTypes>,
-	color: Option<domain::HexColor>,
+	url_slug: Option<lib_domain::UrlSlug>,
+	category_type: Option<lib_domain::CategoryTypes>,
+	color: Option<lib_domain::HexColor>,
 	icon: Option<String>,
 	is_active: Option<bool>,
 	created_on: Option<chrono::DateTime<chrono::Utc>>,
@@ -57,8 +38,15 @@ impl CategoriesBuilder {
 
 	/// Use an existing [`RowID`] for the category.
 	#[must_use]
-	pub fn with_id(mut self, id: domain::RowID) -> Self {
+	pub fn with_id(mut self, id: lib_domain::RowID) -> Self {
 		self.id = Some(id);
+		self
+	}
+
+	/// Provide an optional [`RowID`] for the category.
+	#[must_use]
+	pub fn with_id_opt(mut self, id: Option<lib_domain::RowID>) -> Self {
+		self.id = id;
 		self
 	}
 
@@ -99,35 +87,35 @@ impl CategoriesBuilder {
 
 	/// Use a pre-computed URL slug.
 	#[must_use]
-	pub fn with_url_slug(mut self, url_slug: domain::UrlSlug) -> Self {
+	pub fn with_url_slug(mut self, url_slug: lib_domain::UrlSlug) -> Self {
 		self.url_slug = Some(url_slug);
 		self
 	}
 
 	/// Provide an optional URL slug.
 	#[must_use]
-	pub fn with_url_slug_opt(mut self, url_slug: Option<domain::UrlSlug>) -> Self {
+	pub fn with_url_slug_opt(mut self, url_slug: Option<lib_domain::UrlSlug>) -> Self {
 		self.url_slug = url_slug;
 		self
 	}
 
 	/// Assign the accounting category type.
 	#[must_use]
-	pub fn with_category_type(mut self, category_type: domain::CategoryTypes) -> Self {
+	pub fn with_category_type(mut self, category_type: lib_domain::CategoryTypes) -> Self {
 		self.category_type = Some(category_type);
 		self
 	}
 
 	/// Set an optional colour.
 	#[must_use]
-	pub fn with_color(mut self, color: domain::HexColor) -> Self {
+	pub fn with_color(mut self, color: lib_domain::HexColor) -> Self {
 		self.color = Some(color);
 		self
 	}
 
 	/// Provide an optional colour value.
 	#[must_use]
-	pub fn with_color_opt(mut self, color: Option<domain::HexColor>) -> Self {
+	pub fn with_color_opt(mut self, color: Option<lib_domain::HexColor>) -> Self {
 		self.color = color;
 		self
 	}
@@ -187,23 +175,23 @@ impl CategoriesBuilder {
 		self.updated_on = updated_on;
 		self
 	}
-	/// Build the [`Category`], returning an error when required fields are missing.
-	pub fn build(self) -> Result<database::Categories, CategoryBuilderError> {
+	/// Build the [`Categories`], returning an error when required fields are missing.
+	pub fn build(self) -> crate::DatabaseResult<Categories> {
 		let name = self
 			.name
-			.ok_or(CategoryBuilderError::Name)?;
+			.ok_or(DatabaseError::CategoryBuilder("category name is required but was not set".to_string()))?;
 		let category_type = self
 			.category_type
-			.ok_or(CategoryBuilderError::CategoryType)?;
+			.ok_or(DatabaseError::CategoryBuilder("category type is required but was not set".to_string()))?;
 		let code = self
 			.code
-			.ok_or(CategoryBuilderError::Code)?;
+			.ok_or(DatabaseError::CategoryBuilder("category code is required but was not set".to_string()))?;
 
 	  let id = self.id.unwrap_or_default();
 		let url_slug = self.url_slug;
 		let now = chrono::Utc::now();
 
-		Ok(database::Categories {
+		Ok(Categories {
 			id,
 			code,
 			name,
@@ -217,19 +205,56 @@ impl CategoriesBuilder {
 			updated_on: self.updated_on.unwrap_or(now),
 		})
 	}
+
+	/// Build the [`Categories`] with sensible defaults for all fields, useful for tests and fixtures.
+	///
+	/// This method provides defaults for required fields if not set, optimising for quick construction
+	/// in non-production scenarios. It generates a new ID, uses a default code and name, and sets
+	/// other fields to reasonable defaults.
+	///
+	/// # Examples
+	/// ```
+	/// use lib_database::categories::CategoriesBuilder;
+	///
+	/// let category = CategoriesBuilder::new().build_with_defaults();
+	/// assert!(!category.name.is_empty());
+	/// ```
+	pub fn build_with_defaults(self) -> Categories {
+		let name = self.name.unwrap_or_else(|| "Default Category".to_string());
+		let category_type = self.category_type.unwrap_or(lib_domain::CategoryTypes::Expense);
+		let code = self.code.unwrap_or_else(|| "DEF.001".to_string());
+
+		let id = self.id.unwrap_or_default();
+		let url_slug = self.url_slug;
+		let now = chrono::Utc::now();
+
+		Categories {
+			id,
+			code,
+			name,
+			description: self.description,
+			url_slug,
+			category_type,
+			color: self.color,
+			icon: self.icon,
+			is_active: self.is_active.unwrap_or(true),
+			created_on: self.created_on.unwrap_or(now),
+			updated_on: self.updated_on.unwrap_or(now),
+		}
+	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::domain::{CategoryTypes, HexColor, UrlSlug};
+	use lib_domain::{CategoryTypes, HexColor, UrlSlug};
 	
 	#[test]
 	fn build_requires_name() {
 		let result = CategoriesBuilder::new()
 			.with_category_type(CategoryTypes::Expense)
 			.build();
-		assert_eq!(result.unwrap_err(), CategoryBuilderError::Name);
+		assert_eq!(result.unwrap_err(), DatabaseError::CategoryBuilder("category name is required but was not set".to_string()));
 	}
 
 	#[test]
@@ -237,7 +262,7 @@ mod tests {
 		let result = CategoriesBuilder::new().with_name("Travel").build();
 		assert_eq!(
 			result.unwrap_err(),
-			CategoryBuilderError::CategoryType
+			DatabaseError::CategoryBuilder("category type is required but was not set".to_string())
 		);
 	}
 
@@ -247,7 +272,7 @@ mod tests {
 			.with_name("Travel")
 			.with_category_type(CategoryTypes::Expense)
 			.build();
-		assert_eq!(result.unwrap_err(), CategoryBuilderError::Code);
+		assert_eq!(result.unwrap_err(), DatabaseError::CategoryBuilder("category code is required but was not set".to_string()));
 	}
 
 	#[test]
@@ -273,7 +298,7 @@ mod tests {
 		let slug = UrlSlug::parse("custom-slug").unwrap();
 
 		let category = CategoriesBuilder::new()
-			.with_id(domain::RowID::new())
+			.with_id(lib_domain::RowID::new())
 			.with_name("Utilities")
 			.with_category_type(CategoryTypes::Expense)
 			.with_code("UTIL.001")
@@ -319,5 +344,28 @@ mod tests {
 		assert!(category.color.is_none());
 		assert!(category.url_slug.is_none()); // not generated from name
 		assert!(category.is_active); // default restored
+	}
+
+	#[test]
+	fn build_with_defaults_works() {
+		let category = CategoriesBuilder::new().build_with_defaults();
+		assert_eq!(category.name, "Default Category");
+		assert_eq!(category.code, "DEF.001");
+		assert_eq!(category.category_type, CategoryTypes::Expense);
+		assert!(category.is_active);
+	}
+
+	#[test]
+	fn with_id_opt_sets_none() {
+		let category = CategoriesBuilder::new()
+			.with_id(lib_domain::RowID::new())
+			.with_id_opt(None)
+			.with_name("Test")
+			.with_category_type(CategoryTypes::Expense)
+			.with_code("TEST.001")
+			.build()
+			.expect("build should succeed");
+
+		assert_eq!(category.id, lib_domain::RowID::default());
 	}
 }

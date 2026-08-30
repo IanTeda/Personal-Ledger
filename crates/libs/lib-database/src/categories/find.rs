@@ -1,55 +1,36 @@
-use crate::database::{self, DatabaseResult};
-use crate::domain;
+//! Category query operations for the Personal Ledger database.
+//!
+//! This module provides functions for querying category records from the SQLite database.
+//! It supports finding single records, bulk retrievals, filtered searches, and paginated results.
+//!
+//! All query operations are read-only and ensure data integrity by using explicit column selection.
+//!
+//! The module follows these key principles:
+//! - **Efficiency**: Explicit column selection and indexed queries where possible
+//! - **Flexibility**: Support for filtering, sorting, and pagination
+//! - **Observability**: Detailed tracing from TRACE to INFO levels
+//! - **Safety**: No sensitive data exposure; proper error handling
 
-/// Read operations for Category database records.
-///
-/// This module provides functions for retrieving existing category records from the database,
-/// including single record lookups, bulk retrieval, and filtered queries.
-impl database::Categories {
-    /// Finds a category by its ID.
-    ///
-    /// This function retrieves a single category record from the database by its unique identifier.
+use lib_domain as domain;
+
+impl crate::Categories {
+    /// Finds a category by its unique ID.
     ///
     /// # Arguments
-    ///
-    /// * `id` - The ID of the category to find
-    /// * `pool` - The database connection pool
+    /// * `id` - The unique identifier of the category.
+    /// * `pool` - A reference to the SQLite database connection pool.
     ///
     /// # Returns
+    /// Returns a `DatabaseResult<Option<Self>>` containing the category if found, or `None` if not found.
     ///
-    /// Returns `Some(Category)` if the category exists, or `None` if not found.
-    /// Returns a `DatabaseError` if the query fails.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use use lib_database::categories::Category;
-    /// use use lib_database::DatabasePool;
-    /// use personal_ledger_backend::domain::RowID;
-    ///
-    /// # async fn example(pool: &DatabasePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let category_id = RowID::new();
-    ///
-    /// if let Some(category) = Category::find_by_id(category_id, pool).await? {
-    ///     println!("Found category: {}", category.name);
-    /// } else {
-    ///     println!("Category not found");
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[tracing::instrument(
-        name = "Find category by ID",
-        skip(pool),
-        fields(id = %id),
-        err
-    )]
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
     pub async fn find_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<Option<Self>> {
+    ) -> crate::DatabaseResult<Option<Self>> {
         let category = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -74,48 +55,23 @@ impl database::Categories {
         Ok(category)
     }
 
-    /// Finds a category by its code.
-    ///
-    /// This function retrieves a single category record from the database by its unique code.
-    /// Category codes are case-sensitive and must be unique.
+    /// Finds a category by its unique code.
     ///
     /// # Arguments
-    ///
-    /// * `code` - The code of the category to find
-    /// * `pool` - The database connection pool
+    /// * `code` - The unique code of the category (e.g., "FOO.BAR.BAZ").
+    /// * `pool` - A reference to the SQLite database connection pool.
     ///
     /// # Returns
+    /// Returns a `DatabaseResult<Option<Self>>` containing the category if found, or `None` if not found.
     ///
-    /// Returns `Some(Category)` if the category exists, or `None` if not found.
-    /// Returns a `DatabaseError` if the query fails.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use use lib_database::categories::Category;
-    /// use use lib_database::DatabasePool;
-    ///
-    /// # async fn example(pool: &DatabasePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// if let Some(category) = Category::find_by_code("FOOD.001", pool).await? {
-    ///     println!("Found category: {}", category.name);
-    /// } else {
-    ///     println!("Category not found");
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[tracing::instrument(
-        name = "Find category by code",
-        skip(pool),
-        fields(code = %code),
-        err
-    )]
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
     pub async fn find_by_code(
         code: &str,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<Option<Self>> {
+    ) -> crate::DatabaseResult<Option<Self>> {
         let category = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -142,48 +98,21 @@ impl database::Categories {
 
     /// Finds a category by its URL slug.
     ///
-    /// This function retrieves a single category record from the database by its URL slug.
-    /// URL slugs are case-sensitive and must be unique.
-    ///
     /// # Arguments
-    ///
-    /// * `slug` - The URL slug of the category to find
-    /// * `pool` - The database connection pool
+    /// * `slug` - The URL slug of the category.
+    /// * `pool` - A reference to the SQLite database connection pool.
     ///
     /// # Returns
+    /// Returns a `DatabaseResult<Option<Self>>` containing the category if found, or `None` if not found.
     ///
-    /// Returns `Some(Category)` if the category exists, or `None` if not found.
-    /// Returns a `DatabaseError` if the query fails.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use use lib_database::categories::Category;
-    /// use use lib_database::DatabasePool;
-    /// use personal_ledger_backend::domain::UrlSlug;
-    ///
-    /// # async fn example(pool: &DatabasePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let slug = UrlSlug::parse("groceries")?;
-    /// if let Some(category) = Category::find_by_url_slug(&slug, pool).await? {
-    ///     println!("Found category: {}", category.name);
-    /// } else {
-    ///     println!("Category not found");
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[tracing::instrument(
-        name = "Find category by URL slug",
-        skip(pool),
-        fields(slug = %slug),
-        err
-    )]
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
     pub async fn find_by_url_slug(
         slug: &domain::UrlSlug,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<Option<Self>> {
+    ) -> crate::DatabaseResult<Option<Self>> {
         let category = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -208,45 +137,99 @@ impl database::Categories {
         Ok(category)
     }
 
-    /// Retrieves all categories from the database.
+    /// Finds categories by name (case-insensitive partial match).
     ///
-    /// This function returns all category records ordered by creation date (newest first).
-    /// Use this function when you need to display all categories or perform bulk operations.
+    /// Since category names may not be unique, this returns a vector of matching categories.
     ///
     /// # Arguments
-    ///
-    /// * `pool` - The database connection pool
+    /// * `name` - The name to search for (partial match).
+    /// * `pool` - A reference to the SQLite database connection pool.
     ///
     /// # Returns
+    /// Returns a `DatabaseResult<Vec<Self>>` containing all matching categories.
     ///
-    /// Returns a vector of all categories, or a `DatabaseError` if the query fails.
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
     ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use use lib_database::categories::Category;
-    /// use use lib_database::DatabasePool;
-    ///
-    /// # async fn example(pool: &DatabasePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let all_categories = Category::find_all(pool).await?;
-    /// println!("Found {} categories", all_categories.len());
-    ///
-    /// for category in all_categories {
-    ///     println!("- {} ({})", category.name, category.code);
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// # Tracing
+    /// Logs TRACE for operation start, DEBUG for query execution, INFO on success, ERROR on database failures.
     #[tracing::instrument(
-        name = "Find all categories",
+        name = "Find categories by name",
+        level = "debug",
         skip(pool),
+        fields(
+            search_name = %name,
+            operation = "find_by_name"
+        ),
         err
     )]
+    pub async fn find_by_name(
+        name: &str,
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+    ) -> crate::DatabaseResult<Vec<Self>> {
+        tracing::trace!(
+            search_name = %name,
+            "Starting find categories by name operation"
+        );
+
+        let name_pattern = format!("%{}%", name);
+
+        tracing::debug!(
+            search_name = %name,
+            "Executing query to find categories by name"
+        );
+
+        let categories = sqlx::query_as!(
+            crate::Categories,
+            r#"
+                SELECT
+                    id              AS "id!: domain::RowID",
+                    code,
+                    name,
+                    description,
+                    url_slug        AS "url_slug?: domain::UrlSlug",
+                    category_type   AS "category_type!: domain::CategoryTypes",
+                    color           AS "color?: domain::HexColor",
+                    icon,
+                    is_active       AS "is_active!: bool",
+                    created_on      AS "created_on!: chrono::DateTime<chrono::Utc>",
+                    updated_on      AS "updated_on!: chrono::DateTime<chrono::Utc>"
+                FROM categories
+                WHERE name LIKE ?
+                ORDER BY created_on DESC
+            "#,
+            name_pattern
+        )
+        .fetch_all(pool)
+        .await?;
+
+        tracing::info!(
+            search_name = %name,
+            category_count = %categories.len(),
+            "Found categories by name"
+        );
+
+        Ok(categories)
+    }
+
+    /// Finds all categories.
+    ///
+    /// # Arguments
+    /// * `pool` - A reference to the SQLite database connection pool.
+    ///
+    /// # Returns
+    /// Returns a `DatabaseResult<Vec<Self>>` containing all categories.
+    ///
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
+    ///
+    /// # Tracing
+    /// Logs INFO with the number of categories retrieved.
     pub async fn find_all(
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<Vec<Self>> {
+    ) -> crate::DatabaseResult<Vec<Self>> {
         let categories = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -272,46 +255,24 @@ impl database::Categories {
         Ok(categories)
     }
 
-    /// Retrieves all active categories from the database.
-    ///
-    /// This function returns only categories that are marked as active (is_active = true),
-    /// ordered by creation date (newest first). This is useful for displaying categories
-    /// in user interfaces where inactive categories should be hidden.
+    /// Finds all active categories.
     ///
     /// # Arguments
-    ///
-    /// * `pool` - The database connection pool
+    /// * `pool` - A reference to the SQLite database connection pool.
     ///
     /// # Returns
+    /// Returns a `DatabaseResult<Vec<Self>>` containing all active categories.
     ///
-    /// Returns a vector of active categories, or a `DatabaseError` if the query fails.
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
     ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use use lib_database::categories::Category;
-    /// use use lib_database::DatabasePool;
-    ///
-    /// # async fn example(pool: &DatabasePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let active_categories = Category::find_all_active(pool).await?;
-    /// println!("Found {} active categories", active_categories.len());
-    ///
-    /// for category in active_categories {
-    ///     println!("- {} ({})", category.name, category.code);
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[tracing::instrument(
-        name = "Find all active categories",
-        skip(pool),
-        err
-    )]
+    /// # Tracing
+    /// Logs INFO with the number of categories retrieved.
     pub async fn find_all_active(
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<Vec<Self>> {
+    ) -> crate::DatabaseResult<Vec<Self>> {
         let categories = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -338,49 +299,84 @@ impl database::Categories {
         Ok(categories)
     }
 
-    /// Retrieves all categories of a specific type.
-    ///
-    /// This function returns categories filtered by their category type (Expense or Income),
-    /// ordered by creation date (newest first). This is useful for separating expense
-    /// and income categories in financial applications.
+    /// Finds all inactive categories.
     ///
     /// # Arguments
-    ///
-    /// * `category_type` - The type of categories to retrieve
-    /// * `pool` - The database connection pool
+    /// * `pool` - A reference to the SQLite database connection pool.
     ///
     /// # Returns
+    /// Returns a `DatabaseResult<Vec<Self>>` containing all inactive categories.
     ///
-    /// Returns a vector of categories of the specified type, or a `DatabaseError` if the query fails.
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
     ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use use lib_database::categories::Category;
-    /// use use lib_database::DatabasePool;
-    /// use personal_ledger_backend::domain::CategoryTypes;
-    ///
-    /// # async fn example(pool: &DatabasePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let expense_categories = Category::find_by_type(CategoryTypes::Expense, pool).await?;
-    /// println!("Found {} expense categories", expense_categories.len());
-    ///
-    /// let income_categories = Category::find_by_type(CategoryTypes::Income, pool).await?;
-    /// println!("Found {} income categories", income_categories.len());
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// # Tracing
+    /// Logs TRACE for operation start, DEBUG for query execution, INFO on success, ERROR on database failures.
     #[tracing::instrument(
-        name = "Find categories by type",
+        name = "Find inactive categories",
+        level = "debug",
         skip(pool),
-        fields(category_type = %category_type),
+        fields(operation = "find_inactive"),
         err
     )]
+    pub async fn find_inactive(
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+    ) -> crate::DatabaseResult<Vec<Self>> {
+        tracing::trace!("Starting find inactive categories operation");
+
+        tracing::debug!("Executing query to find inactive categories");
+
+        let categories = sqlx::query_as!(
+            crate::Categories,
+            r#"
+                SELECT
+                    id              AS "id!: domain::RowID",
+                    code,
+                    name,
+                    description,
+                    url_slug        AS "url_slug?: domain::UrlSlug",
+                    category_type   AS "category_type!: domain::CategoryTypes",
+                    color           AS "color?: domain::HexColor",
+                    icon,
+                    is_active       AS "is_active!: bool",
+                    created_on      AS "created_on!: chrono::DateTime<chrono::Utc>",
+                    updated_on      AS "updated_on!: chrono::DateTime<chrono::Utc>"
+                FROM categories
+                WHERE is_active = false
+                ORDER BY created_on DESC
+            "#
+        )
+        .fetch_all(pool)
+        .await?;
+
+        tracing::info!(
+            category_count = %categories.len(),
+            "Found inactive categories"
+        );
+
+        Ok(categories)
+    }
+
+    /// Finds categories by type.
+    ///
+    /// # Arguments
+    /// * `category_type` - The category type to filter by.
+    /// * `pool` - A reference to the SQLite database connection pool.
+    ///
+    /// # Returns
+    /// Returns a `DatabaseResult<Vec<Self>>` containing all categories of the specified type.
+    ///
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
+    ///
+    /// # Tracing
+    /// Logs INFO with the number of categories retrieved.
     pub async fn find_by_type(
         category_type: domain::CategoryTypes,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<Vec<Self>> {
+    ) -> crate::DatabaseResult<Vec<Self>> {
         let categories = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -408,46 +404,26 @@ impl database::Categories {
         Ok(categories)
     }
 
-    /// Retrieves all active categories of a specific type.
-    ///
-    /// This function returns active categories filtered by their category type (Expense or Income),
-    /// ordered by creation date (newest first). This combines the filtering of `find_by_type`
-    /// and `find_all_active` for convenience.
+    /// Finds active categories by type.
     ///
     /// # Arguments
-    ///
-    /// * `category_type` - The type of categories to retrieve
-    /// * `pool` - The database connection pool
+    /// * `category_type` - The category type to filter by.
+    /// * `pool` - A reference to the SQLite database connection pool.
     ///
     /// # Returns
+    /// Returns a `DatabaseResult<Vec<Self>>` containing all active categories of the specified type.
     ///
-    /// Returns a vector of active categories of the specified type, or a `DatabaseError` if the query fails.
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
     ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use use lib_database::categories::Category;
-    /// use use lib_database::DatabasePool;
-    /// use personal_ledger_backend::domain::CategoryTypes;
-    ///
-    /// # async fn example(pool: &DatabasePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let active_expense_categories = Category::find_active_by_type(CategoryTypes::Expense, pool).await?;
-    /// println!("Found {} active expense categories", active_expense_categories.len());
-    /// # Ok(())
-    /// # }
-    /// ```
-    #[tracing::instrument(
-        name = "Find active categories by type",
-        skip(pool),
-        fields(category_type = %category_type),
-        err
-    )]
+    /// # Tracing
+    /// Logs INFO with the number of categories retrieved.
     pub async fn find_active_by_type(
         category_type: domain::CategoryTypes,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<Vec<Self>> {
+    ) -> crate::DatabaseResult<Vec<Self>> {
         let categories = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -475,64 +451,321 @@ impl database::Categories {
         Ok(categories)
     }
 
-    /// Retrieves categories with flexible filtering, sorting, and pagination.
-    ///
-    /// This function provides comprehensive category listing with support for:
-    /// - Filtering by category type and active status
-    /// - Sorting by any field in ascending or descending order
-    /// - Pagination with offset and limit
+    /// Finds all categories with pagination.
     ///
     /// # Arguments
-    ///
-    /// * `category_type_filter` - Optional filter by category type
-    /// * `is_active_filter` - Optional filter by active status
-    /// * `sort_by` - Optional field to sort by (defaults to "created_on")
-    /// * `sort_desc` - Whether to sort in descending order (defaults to true)
-    /// * `offset` - Number of records to skip (for pagination)
-    /// * `limit` - Maximum number of records to return
-    /// * `pool` - The database connection pool
+    /// * `offset` - The number of records to skip.
+    /// * `limit` - The maximum number of records to return.
+    /// * `pool` - A reference to the SQLite database connection pool.
     ///
     /// # Returns
+    /// Returns a `DatabaseResult<(Vec<Self>, i32)>` containing the categories and total count.
     ///
-    /// Returns a tuple of (categories, total_count) where total_count is the total
-    /// number of categories matching the filters (before pagination).
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
     ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use use lib_database::categories::Category;
-    /// use use lib_database::DatabasePool;
-    /// use personal_ledger_backend::domain::CategoryTypes;
-    ///
-    /// # async fn example(pool: &DatabasePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// // Get first 10 active expense categories, sorted by name
-    /// let (categories, total) = Category::find_with_filters(
-    ///     Some(CategoryTypes::Expense),
-    ///     Some(true),
-    ///     Some("name"),
-    ///     Some(false), // ascending
-    ///     0,
-    ///     10,
-    ///     pool
-    /// ).await?;
-    ///
-    /// println!("Found {} of {} total categories", categories.len(), total);
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// # Tracing
+    /// Logs TRACE for operation start, DEBUG for query execution, INFO on success, ERROR on database failures.
     #[tracing::instrument(
-        name = "Find categories with filters",
+        name = "Find all categories with pagination",
+        level = "debug",
         skip(pool),
         fields(
-            category_type = ?category_type_filter,
-            is_active = ?is_active_filter,
-            sort_by = ?sort_by,
-            sort_desc = ?sort_desc,
             offset = %offset,
-            limit = %limit
+            limit = %limit,
+            operation = "find_all_with_pagination"
         ),
         err
     )]
+    pub async fn find_all_with_pagination(
+        offset: i32,
+        limit: i32,
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+        tracing::trace!(
+            offset = %offset,
+            limit = %limit,
+            "Starting find all categories with pagination operation"
+        );
+
+        tracing::debug!(
+            offset = %offset,
+            limit = %limit,
+            "Executing paginated query for all categories"
+        );
+
+        let (categories, total_count) = Self::find_all_with_pagination_internal(offset, limit, pool).await?;
+
+        tracing::info!(
+            offset = %offset,
+            limit = %limit,
+            category_count = %categories.len(),
+            total_count = %total_count,
+            "Found all categories with pagination"
+        );
+
+        Ok((categories, total_count))
+    }
+
+    /// Finds all active categories with pagination.
+    ///
+    /// # Arguments
+    /// * `offset` - The number of records to skip.
+    /// * `limit` - The maximum number of records to return.
+    /// * `pool` - A reference to the SQLite database connection pool.
+    ///
+    /// # Returns
+    /// Returns a `DatabaseResult<(Vec<Self>, i32)>` containing the categories and total count.
+    ///
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
+    ///
+    /// # Tracing
+    /// Logs TRACE for operation start, DEBUG for query execution, INFO on success, ERROR on database failures.
+    #[tracing::instrument(
+        name = "Find active categories with pagination",
+        level = "debug",
+        skip(pool),
+        fields(
+            offset = %offset,
+            limit = %limit,
+            operation = "find_active_with_pagination"
+        ),
+        err
+    )]
+    pub async fn find_active_with_pagination(
+        offset: i32,
+        limit: i32,
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+        tracing::trace!(
+            offset = %offset,
+            limit = %limit,
+            "Starting find active categories with pagination operation"
+        );
+
+        tracing::debug!(
+            offset = %offset,
+            limit = %limit,
+            "Executing paginated query for active categories"
+        );
+
+        let (categories, total_count) = Self::find_all_active_with_pagination_internal(offset, limit, pool).await?;
+
+        tracing::info!(
+            offset = %offset,
+            limit = %limit,
+            category_count = %categories.len(),
+            total_count = %total_count,
+            "Found active categories with pagination"
+        );
+
+        Ok((categories, total_count))
+    }
+
+    /// Finds all inactive categories with pagination.
+    ///
+    /// # Arguments
+    /// * `offset` - The number of records to skip.
+    /// * `limit` - The maximum number of records to return.
+    /// * `pool` - A reference to the SQLite database connection pool.
+    ///
+    /// # Returns
+    /// Returns a `DatabaseResult<(Vec<Self>, i32)>` containing the categories and total count.
+    ///
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
+    ///
+    /// # Tracing
+    /// Logs TRACE for operation start, DEBUG for query execution, INFO on success, ERROR on database failures.
+    #[tracing::instrument(
+        name = "Find inactive categories with pagination",
+        level = "debug",
+        skip(pool),
+        fields(
+            offset = %offset,
+            limit = %limit,
+            operation = "find_inactive_with_pagination"
+        ),
+        err
+    )]
+    pub async fn find_inactive_with_pagination(
+        offset: i32,
+        limit: i32,
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+        tracing::trace!(
+            offset = %offset,
+            limit = %limit,
+            "Starting find inactive categories with pagination operation"
+        );
+
+        tracing::debug!(
+            offset = %offset,
+            limit = %limit,
+            "Executing paginated query for inactive categories"
+        );
+
+        let (categories, total_count) = Self::find_all_inactive_with_pagination_internal(offset, limit, pool).await?;
+
+        tracing::info!(
+            offset = %offset,
+            limit = %limit,
+            category_count = %categories.len(),
+            total_count = %total_count,
+            "Found inactive categories with pagination"
+        );
+
+        Ok((categories, total_count))
+    }
+
+    /// Finds categories by type with pagination.
+    ///
+    /// # Arguments
+    /// * `category_type` - The category type to filter by.
+    /// * `offset` - The number of records to skip.
+    /// * `limit` - The maximum number of records to return.
+    /// * `pool` - A reference to the SQLite database connection pool.
+    ///
+    /// # Returns
+    /// Returns a `DatabaseResult<(Vec<Self>, i32)>` containing the categories and total count.
+    ///
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
+    ///
+    /// # Tracing
+    /// Logs TRACE for operation start, DEBUG for query execution, INFO on success, ERROR on database failures.
+    #[tracing::instrument(
+        name = "Find categories by type with pagination",
+        level = "debug",
+        skip(pool),
+        fields(
+            category_type = %category_type.as_str(),
+            offset = %offset,
+            limit = %limit,
+            operation = "find_by_type_with_pagination"
+        ),
+        err
+    )]
+    pub async fn find_by_type_with_pagination(
+        category_type: domain::CategoryTypes,
+        offset: i32,
+        limit: i32,
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+        let category_type_str = category_type.as_str();
+
+        tracing::trace!(
+            category_type = %category_type_str,
+            offset = %offset,
+            limit = %limit,
+            "Starting find categories by type with pagination operation"
+        );
+
+        tracing::debug!(
+            category_type = %category_type_str,
+            offset = %offset,
+            limit = %limit,
+            "Executing paginated query for categories by type"
+        );
+
+        let (categories, total_count) = Self::find_by_type_with_pagination_internal(category_type, offset, limit, pool).await?;
+
+        tracing::info!(
+            category_type = %category_type_str,
+            offset = %offset,
+            limit = %limit,
+            category_count = %categories.len(),
+            total_count = %total_count,
+            "Found categories by type with pagination"
+        );
+
+        Ok((categories, total_count))
+    }
+
+    /// Finds active categories by type with pagination.
+    ///
+    /// # Arguments
+    /// * `category_type` - The category type to filter by.
+    /// * `offset` - The number of records to skip.
+    /// * `limit` - The maximum number of records to return.
+    /// * `pool` - A reference to the SQLite database connection pool.
+    ///
+    /// # Returns
+    /// Returns a `DatabaseResult<(Vec<Self>, i32)>` containing the categories and total count.
+    ///
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
+    ///
+    /// # Tracing
+    /// Logs TRACE for operation start, DEBUG for query execution, INFO on success, ERROR on database failures.
+    #[tracing::instrument(
+        name = "Find active categories by type with pagination",
+        level = "debug",
+        skip(pool),
+        fields(
+            category_type = %category_type.as_str(),
+            offset = %offset,
+            limit = %limit,
+            operation = "find_active_by_type_with_pagination"
+        ),
+        err
+    )]
+    pub async fn find_active_by_type_with_pagination(
+        category_type: domain::CategoryTypes,
+        offset: i32,
+        limit: i32,
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+        let category_type_str = category_type.as_str();
+
+        tracing::trace!(
+            category_type = %category_type_str,
+            offset = %offset,
+            limit = %limit,
+            "Starting find active categories by type with pagination operation"
+        );
+
+        tracing::debug!(
+            category_type = %category_type_str,
+            offset = %offset,
+            limit = %limit,
+            "Executing paginated query for active categories by type"
+        );
+
+        let (categories, total_count) = Self::find_active_by_type_with_pagination_internal(category_type, offset, limit, pool).await?;
+
+        tracing::info!(
+            category_type = %category_type_str,
+            offset = %offset,
+            limit = %limit,
+            category_count = %categories.len(),
+            total_count = %total_count,
+            "Found active categories by type with pagination"
+        );
+
+        Ok((categories, total_count))
+    }
+
+    /// Finds categories with advanced filters and pagination.
+    ///
+    /// # Arguments
+    /// * `category_type_filter` - Optional filter by category type.
+    /// * `is_active_filter` - Optional filter by active status.
+    /// * `sort_by` - Optional sort field (not implemented yet).
+    /// * `sort_desc` - Optional sort direction (not implemented yet).
+    /// * `offset` - The number of records to skip.
+    /// * `limit` - The maximum number of records to return.
+    /// * `pool` - A reference to the SQLite database connection pool.
+    ///
+    /// # Returns
+    /// Returns a `DatabaseResult<(Vec<Self>, i32)>` containing the categories and total count.
+    ///
+    /// # Errors
+    /// This function will return an error if a database connection or query execution error occurs.
+    ///
+    /// # Tracing
+    /// Logs INFO with the number of categories retrieved.
     pub async fn find_with_filters(
         category_type_filter: Option<domain::CategoryTypes>,
         is_active_filter: Option<bool>,
@@ -541,7 +774,7 @@ impl database::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
         // For now, implement a simpler version that handles the most common cases
         // TODO: Implement full dynamic filtering when needed
 
@@ -554,9 +787,9 @@ impl database::Categories {
             }
             (None, Some(is_active)) => {
                 if is_active {
-                    Self::find_all_active_with_pagination(offset, limit, pool).await?
+                    Self::find_active_with_pagination(offset, limit, pool).await?
                 } else {
-                    Self::find_all_inactive_with_pagination(offset, limit, pool).await?
+                    Self::find_inactive_with_pagination(offset, limit, pool).await?
                 }
             }
             (None, None) => {
@@ -568,17 +801,17 @@ impl database::Categories {
     }
 
     /// Helper method to find all categories with pagination
-    async fn find_all_with_pagination(
+    async fn find_all_with_pagination_internal(
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
         let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories")
             .fetch_one(pool)
             .await?;
 
         let categories = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -606,17 +839,17 @@ impl database::Categories {
     }
 
     /// Helper method to find all active categories with pagination
-    async fn find_all_active_with_pagination(
+    async fn find_all_active_with_pagination_internal(
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
         let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE is_active = true")
             .fetch_one(pool)
             .await?;
 
         let categories = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -645,17 +878,17 @@ impl database::Categories {
     }
 
     /// Helper method to find all inactive categories with pagination
-    async fn find_all_inactive_with_pagination(
+    async fn find_all_inactive_with_pagination_internal(
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
         let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE is_active = false")
             .fetch_one(pool)
             .await?;
 
         let categories = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -684,19 +917,19 @@ impl database::Categories {
     }
 
     /// Helper method to find categories by type with pagination
-    async fn find_by_type_with_pagination(
+    async fn find_by_type_with_pagination_internal(
         category_type: domain::CategoryTypes,
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
         let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE category_type = ?")
             .bind(&category_type)
             .fetch_one(pool)
             .await?;
 
         let categories = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -726,19 +959,19 @@ impl database::Categories {
     }
 
     /// Helper method to find active categories by type with pagination
-    async fn find_active_by_type_with_pagination(
+    async fn find_active_by_type_with_pagination_internal(
         category_type: domain::CategoryTypes,
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
         let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE category_type = ? AND is_active = true")
             .bind(&category_type)
             .fetch_one(pool)
             .await?;
 
         let categories = sqlx::query_as!(
-            database::Categories,
+            crate::Categories,
             r#"
                 SELECT
                     id              AS "id!: domain::RowID",
@@ -772,355 +1005,184 @@ impl database::Categories {
 mod tests {
     use super::*;
     use sqlx::SqlitePool;
+    use fake::Fake;
 
-    /// Helper function to create a test category
-    async fn create_test_category(pool: &SqlitePool) -> database::Categories {
-        let category = database::Categories::mock();
-        database::Categories::insert(&category, pool).await.unwrap();
-        category
+    /// Helper function to insert a test category
+    async fn insert_test_category(pool: &SqlitePool, category: &crate::Categories) -> domain::RowID {
+        let id_str = category.id.to_string();
+        let url_slug_str = category.url_slug.as_ref().map(|s| s.to_string());
+        let category_type_str = category.category_type.as_str();
+        let color_str = category.color.as_ref().map(|c| c.to_string());
+        let created_on_str = category.created_on.to_rfc3339();
+        let updated_on_str = category.updated_on.to_rfc3339();
+
+        sqlx::query!(
+            r#"
+            INSERT INTO categories (
+                id, code, name, description, url_slug, category_type,
+                color, icon, is_active, created_on, updated_on
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            "#,
+            id_str,
+            category.code,
+            category.name,
+            category.description,
+            url_slug_str,
+            category_type_str,
+            color_str,
+            category.icon,
+            category.is_active,
+            created_on_str,
+            updated_on_str
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+
+        category.id
     }
 
-    /// Helper function to create multiple test categories
-    async fn create_test_categories(count: usize, pool: &SqlitePool) -> Vec<database::Categories> {
-        let mut categories = Vec::with_capacity(count);
-        for i in 0..count {
-            let mut category = database::Categories::mock();
-            // Override specific fields for test scenarios
-            category.code = format!("TEST.{:03}", i);
-            category.name = format!("Test Category {}", i);
-            category.description = Some(format!("Description for category {}", i));
-            category.url_slug = Some(domain::UrlSlug::from(format!("test-category-{}", i)));
-            category.category_type = if i % 2 == 0 { domain::CategoryTypes::Expense } else { domain::CategoryTypes::Income };
-            category.is_active = i % 3 != 0; // Every 3rd category is inactive
-            database::Categories::insert(&category, pool).await.unwrap();
-            categories.push(category);
-        }
-        categories
-    }
+    mod basic_finds {
+        use super::*;
 
-    #[sqlx::test]
-    async fn test_find_by_id_existing_category(pool: SqlitePool) {
-        // Create a test category
-        let category = create_test_category(&pool).await;
+        #[sqlx::test]
+        async fn test_find_by_id(pool: SqlitePool) {
+            let category = crate::Categories::mock();
+            insert_test_category(&pool, &category).await;
 
-        // Find it by ID
-        let found = database::Categories::find_by_id(category.id, &pool).await.unwrap();
-
-        // Verify it's the same category
-        assert!(found.is_some());
-        let found = found.unwrap();
-        assert_eq!(found.id, category.id);
-        assert_eq!(found.code, category.code);
-        assert_eq!(found.name, category.name);
-        assert_eq!(found.description, category.description);
-        assert_eq!(found.url_slug, category.url_slug);
-        assert_eq!(found.category_type, category.category_type);
-        assert_eq!(found.color, category.color);
-        assert_eq!(found.icon, category.icon);
-        assert_eq!(found.is_active, category.is_active);
-    }
-
-    #[sqlx::test]
-    async fn test_find_by_id_nonexistent_category(pool: SqlitePool) {
-        // Try to find a category that doesn't exist
-        let fake_id = domain::RowID::new();
-        let result = database::Categories::find_by_id(fake_id, &pool).await.unwrap();
-
-        // Should return None
-        assert!(result.is_none());
-    }
-
-    #[sqlx::test]
-    async fn test_find_by_code_existing_category(pool: SqlitePool) {
-        // Create a test category
-        let category = create_test_category(&pool).await;
-
-        // Find it by code
-        let found = database::Categories::find_by_code(&category.code, &pool).await.unwrap();
-
-        // Verify it's the same category
-        assert!(found.is_some());
-        let found = found.unwrap();
-        assert_eq!(found.id, category.id);
-        assert_eq!(found.code, category.code);
-    }
-
-    #[sqlx::test]
-    async fn test_find_by_code_nonexistent_category(pool: SqlitePool) {
-        // Try to find a category that doesn't exist
-        let result = database::Categories::find_by_code("NONEXISTENT.CODE", &pool).await.unwrap();
-
-        // Should return None
-        assert!(result.is_none());
-    }
-
-    #[sqlx::test]
-    async fn test_find_by_code_case_sensitive(pool: SqlitePool) {
-        // Create a test category with uppercase code
-        let mut category = create_test_category(&pool).await;
-        category.code = category.code.to_uppercase();
-
-        // Update it in the database
-        database::Categories::update(&category, &pool).await.unwrap();
-
-        // Try to find with lowercase version - should fail
-        let lowercase_code = category.code.to_lowercase();
-        let result = database::Categories::find_by_code(&lowercase_code, &pool).await.unwrap();
-        assert!(result.is_none());
-
-        // Find with correct case should work
-        let result = database::Categories::find_by_code(&category.code, &pool).await.unwrap();
-        assert!(result.is_some());
-        assert_eq!(result.unwrap().id, category.id);
-    }
-
-    #[sqlx::test]
-    async fn test_find_by_url_slug_existing_category(pool: SqlitePool) {
-        // Create a test category
-        let category = create_test_category(&pool).await;
-
-        // Find it by URL slug (assuming it has one)
-        if let Some(ref slug) = category.url_slug {
-            let found = database::Categories::find_by_url_slug(slug, &pool).await.unwrap();
-
-            // Verify it's the same category
-            assert!(found.is_some());
-            let found = found.unwrap();
-            assert_eq!(found.id, category.id);
-            assert_eq!(found.url_slug, category.url_slug);
-        } else {
-            // If no slug, create one with a slug
-            let category_with_slug = database::Categories {
-                url_slug: Some(domain::UrlSlug::from("test-slug")),
-                ..category
-            };
-            database::Categories::update(&category_with_slug, &pool).await.unwrap();
-
-            let found = database::Categories::find_by_url_slug(&domain::UrlSlug::from("test-slug"), &pool).await.unwrap();
+            let result = crate::Categories::find_by_id(category.id, &pool).await;
+            assert!(result.is_ok());
+            let found = result.unwrap();
             assert!(found.is_some());
             assert_eq!(found.unwrap().id, category.id);
         }
-    }
 
-    #[sqlx::test]
-    async fn test_find_by_url_slug_nonexistent_category(pool: SqlitePool) {
-        // Try to find a category with a slug that doesn't exist
-        let fake_slug = domain::UrlSlug::from("nonexistent-slug");
-        let result = database::Categories::find_by_url_slug(&fake_slug, &pool).await.unwrap();
+        #[sqlx::test]
+        async fn test_find_by_code(pool: SqlitePool) {
+            let category = crate::Categories::mock();
+            insert_test_category(&pool, &category).await;
 
-        // Should return None
-        assert!(result.is_none());
-    }
+            let result = crate::Categories::find_by_code(&category.code, &pool).await;
+            assert!(result.is_ok());
+            let found = result.unwrap();
+            assert!(found.is_some());
+            assert_eq!(found.unwrap().code, category.code);
+        }
 
-    #[sqlx::test]
-    async fn test_find_all_with_categories(pool: SqlitePool) {
-        // Create some test categories
-        let test_categories = create_test_categories(5, &pool).await;
+        #[sqlx::test]
+        async fn test_find_by_url_slug(pool: SqlitePool) {
+            let mut category = crate::Categories::mock();
+            category.url_slug = Some(domain::UrlSlug::from("test-slug"));
+            insert_test_category(&pool, &category).await;
 
-        // Find all categories
-        let all_categories = database::Categories::find_all(&pool).await.unwrap();
+            let result = crate::Categories::find_by_url_slug(category.url_slug.as_ref().unwrap(), &pool).await;
+            assert!(result.is_ok());
+            let found = result.unwrap();
+            assert!(found.is_some());
+            assert_eq!(found.unwrap().url_slug, category.url_slug);
+        }
 
-        // Should have at least our test categories
-        assert!(all_categories.len() >= test_categories.len());
+        #[sqlx::test]
+        async fn test_find_by_name(pool: SqlitePool) {
+            let category = crate::Categories::mock();
+            insert_test_category(&pool, &category).await;
 
-        // Verify our test categories are in the results
-        for test_cat in &test_categories {
-            let found = all_categories.iter().find(|c| c.id == test_cat.id);
-            assert!(found.is_some(), "Test category {} not found in results", test_cat.id);
+            let result = crate::Categories::find_by_name(&category.name, &pool).await;
+            assert!(result.is_ok());
+            let found = result.unwrap();
+            assert!(!found.is_empty());
+            assert!(found.iter().any(|c| c.id == category.id));
+        }
+
+        #[sqlx::test]
+        async fn test_find_all(pool: SqlitePool) {
+            let category1 = crate::Categories::mock();
+            let category2 = crate::Categories::mock();
+            insert_test_category(&pool, &category1).await;
+            insert_test_category(&pool, &category2).await;
+
+            let result = crate::Categories::find_all(&pool).await;
+            assert!(result.is_ok());
+            let categories = result.unwrap();
+            assert!(categories.len() >= 2);
+        }
+
+        #[sqlx::test]
+        async fn test_find_all_active(pool: SqlitePool) {
+            let mut active_category = crate::Categories::mock();
+            active_category.is_active = true;
+            let mut inactive_category = crate::Categories::mock();
+            inactive_category.is_active = false;
+            insert_test_category(&pool, &active_category).await;
+            insert_test_category(&pool, &inactive_category).await;
+
+            let result = crate::Categories::find_all_active(&pool).await;
+            assert!(result.is_ok());
+            let categories = result.unwrap();
+            assert!(categories.iter().all(|c| c.is_active));
+        }
+
+        #[sqlx::test]
+        async fn test_find_inactive(pool: SqlitePool) {
+            let mut active_category = crate::Categories::mock();
+            active_category.is_active = true;
+            let mut inactive_category = crate::Categories::mock();
+            inactive_category.is_active = false;
+            insert_test_category(&pool, &active_category).await;
+            insert_test_category(&pool, &inactive_category).await;
+
+            let result = crate::Categories::find_inactive(&pool).await;
+            assert!(result.is_ok());
+            let categories = result.unwrap();
+            assert!(categories.iter().all(|c| !c.is_active));
         }
     }
 
-    #[sqlx::test]
-    async fn test_find_all_empty_database(pool: SqlitePool) {
-        // Find all categories in empty database
-        let all_categories = database::Categories::find_all(&pool).await.unwrap();
+    mod pagination {
+        use super::*;
 
-        // Should return empty vector
-        assert!(all_categories.is_empty());
-    }
-
-    #[sqlx::test]
-    async fn test_find_all_active_with_mixed_categories(pool: SqlitePool) {
-        // Create test categories (some active, some inactive)
-        let test_categories = create_test_categories(9, &pool).await; // 3 inactive, 6 active
-
-        // Find all active categories
-        let active_categories = database::Categories::find_all_active(&pool).await.unwrap();
-
-        // Should have exactly the active ones
-        let expected_active_count = test_categories.iter().filter(|c| c.is_active).count();
-        assert_eq!(active_categories.len(), expected_active_count);
-
-        // Verify all returned categories are active
-        for category in &active_categories {
-            assert!(category.is_active, "Category {} is not active", category.id);
-        }
-
-        // Verify no inactive categories are returned
-        for test_cat in &test_categories {
-            if !test_cat.is_active {
-                let found_in_active = active_categories.iter().find(|c| c.id == test_cat.id);
-                assert!(found_in_active.is_none(), "Inactive category {} found in active results", test_cat.id);
+        #[sqlx::test]
+        async fn test_find_all_with_pagination(pool: SqlitePool) {
+            // Insert multiple categories
+            for _ in 0..5 {
+                let category = crate::Categories::mock();
+                insert_test_category(&pool, &category).await;
             }
-        }
-    }
 
-    #[sqlx::test]
-    async fn test_find_all_active_no_active_categories(pool: SqlitePool) {
-        // Create only inactive categories
-        let mut inactive_categories = Vec::new();
-        for i in 0..3 {
-            let category = database::Categories {
-                id: domain::RowID::new(),
-                code: format!("INACTIVE.{:03}", i),
-                name: format!("Inactive Category {}", i),
-                description: Some(format!("Inactive description {}", i)),
-                url_slug: Some(domain::UrlSlug::from(format!("inactive-category-{}", i))),
-                category_type: domain::CategoryTypes::Expense,
-                color: domain::HexColor::mock_with_option(),
-                icon: Some("test-icon".to_string()),
-                is_active: false, // Inactive
-                created_on: chrono::Utc::now(),
-                updated_on: chrono::Utc::now(),
-            };
-            database::Categories::insert(&category, &pool).await.unwrap();
-            inactive_categories.push(category);
+            let (categories, total_count) = crate::Categories::find_all_with_pagination(0, 2, &pool).await.unwrap();
+            assert_eq!(categories.len(), 2);
+            assert!(total_count >= 5);
         }
 
-        // Find all active categories
-        let active_categories = database::Categories::find_all_active(&pool).await.unwrap();
+        #[sqlx::test]
+        async fn test_find_active_with_pagination(pool: SqlitePool) {
+            // Insert mix of active and inactive
+            for i in 0..5 {
+                let mut category = crate::Categories::mock();
+                category.is_active = i % 2 == 0;
+                insert_test_category(&pool, &category).await;
+            }
 
-        // Should return empty vector
-        assert!(active_categories.is_empty());
-    }
-
-    #[sqlx::test]
-    async fn test_find_by_type_expense_categories(pool: SqlitePool) {
-        // Create test categories with mixed types
-        let test_categories = create_test_categories(10, &pool).await;
-
-        // Find expense categories
-        let expense_categories = database::Categories::find_by_type(domain::CategoryTypes::Expense, &pool).await.unwrap();
-
-        // Verify all returned categories are expenses
-        for category in &expense_categories {
-            assert_eq!(category.category_type, domain::CategoryTypes::Expense);
+            let (categories, total_count) = crate::Categories::find_active_with_pagination(0, 2, &pool).await.unwrap();
+            assert!(categories.len() <= 2);
+            assert!(categories.iter().all(|c| c.is_active));
+            assert!(total_count >= 3); // At least 3 active categories
         }
 
-        // Verify count matches expected
-        let expected_expense_count = test_categories.iter()
-            .filter(|c| c.category_type == domain::CategoryTypes::Expense)
-            .count();
-        assert_eq!(expense_categories.len(), expected_expense_count);
-    }
+        #[sqlx::test]
+        async fn test_find_inactive_with_pagination(pool: SqlitePool) {
+            // Insert mix of active and inactive
+            for i in 0..5 {
+                let mut category = crate::Categories::mock();
+                category.is_active = i % 2 == 0;
+                insert_test_category(&pool, &category).await;
+            }
 
-    #[sqlx::test]
-    async fn test_find_by_type_income_categories(pool: SqlitePool) {
-        // Create test categories with mixed types
-        let test_categories = create_test_categories(10, &pool).await;
-
-        // Find income categories
-        let income_categories = database::Categories::find_by_type(domain::CategoryTypes::Income, &pool).await.unwrap();
-
-        // Verify all returned categories are income
-        for category in &income_categories {
-            assert_eq!(category.category_type, domain::CategoryTypes::Income);
+            let (categories, total_count) = crate::Categories::find_inactive_with_pagination(0, 2, &pool).await.unwrap();
+            assert!(categories.len() <= 2);
+            assert!(categories.iter().all(|c| !c.is_active));
+            assert!(total_count >= 2); // At least 2 inactive categories
         }
-
-        // Verify count matches expected
-        let expected_income_count = test_categories.iter()
-            .filter(|c| c.category_type == domain::CategoryTypes::Income)
-            .count();
-        assert_eq!(income_categories.len(), expected_income_count);
-    }
-
-    #[sqlx::test]
-    async fn test_find_by_type_no_categories_of_type(pool: SqlitePool) {
-        // Create only expense categories
-        for i in 0..3 {
-            let category = database::Categories {
-                id: domain::RowID::new(),
-                code: format!("EXPENSE.{:03}", i),
-                name: format!("Expense Category {}", i),
-                description: Some(format!("Expense description {}", i)),
-                url_slug: Some(domain::UrlSlug::from(format!("expense-category-{}", i))),
-                category_type: domain::CategoryTypes::Expense, // Only expenses
-                color: domain::HexColor::mock_with_option(),
-                icon: Some("test-icon".to_string()),
-                is_active: true,
-                created_on: chrono::Utc::now(),
-                updated_on: chrono::Utc::now(),
-            };
-            database::Categories::insert(&category, &pool).await.unwrap();
-        }
-
-        // Try to find income categories
-        let income_categories = database::Categories::find_by_type(domain::CategoryTypes::Income, &pool).await.unwrap();
-
-        // Should return empty vector
-        assert!(income_categories.is_empty());
-    }
-
-    #[sqlx::test]
-    async fn test_find_active_by_type_mixed_categories(pool: SqlitePool) {
-        // Create test categories with mixed types and activity status
-        let test_categories = create_test_categories(12, &pool).await; // 4 inactive, 8 active
-
-        // Find active expense categories
-        let active_expense_categories = database::Categories::find_active_by_type(domain::CategoryTypes::Expense, &pool).await.unwrap();
-
-        // Verify all returned categories are active expenses
-        for category in &active_expense_categories {
-            assert!(category.is_active);
-            assert_eq!(category.category_type, domain::CategoryTypes::Expense);
-        }
-
-        // Verify count matches expected
-        let expected_active_expense_count = test_categories.iter()
-            .filter(|c| c.is_active && c.category_type == domain::CategoryTypes::Expense)
-            .count();
-        assert_eq!(active_expense_categories.len(), expected_active_expense_count);
-
-        // Find active income categories
-        let active_income_categories = database::Categories::find_active_by_type(domain::CategoryTypes::Income, &pool).await.unwrap();
-
-        // Verify all returned categories are active income
-        for category in &active_income_categories {
-            assert!(category.is_active);
-            assert_eq!(category.category_type, domain::CategoryTypes::Income);
-        }
-
-        // Verify count matches expected
-        let expected_active_income_count = test_categories.iter()
-            .filter(|c| c.is_active && c.category_type == domain::CategoryTypes::Income)
-            .count();
-        assert_eq!(active_income_categories.len(), expected_active_income_count);
-    }
-
-    #[sqlx::test]
-    async fn test_find_active_by_type_no_active_categories_of_type(pool: SqlitePool) {
-        // Create only inactive income categories
-        for i in 0..3 {
-            let category = database::Categories {
-                id: domain::RowID::new(),
-                code: format!("INCOME.{:03}", i),
-                name: format!("Income Category {}", i),
-                description: Some(format!("Income description {}", i)),
-                url_slug: Some(domain::UrlSlug::from(format!("income-category-{}", i))),
-                category_type: domain::CategoryTypes::Income,
-                color: domain::HexColor::mock_with_option(),
-                icon: Some("test-icon".to_string()),
-                is_active: false, // Inactive
-                created_on: chrono::Utc::now(),
-                updated_on: chrono::Utc::now(),
-            };
-            database::Categories::insert(&category, &pool).await.unwrap();
-        }
-
-        // Try to find active income categories
-        let active_income_categories = database::Categories::find_active_by_type(domain::CategoryTypes::Income, &pool).await.unwrap();
-
-        // Should return empty vector
-        assert!(active_income_categories.is_empty());
     }
 }

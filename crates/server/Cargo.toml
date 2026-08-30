@@ -4,8 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-
-## -- Library Dependencies --
+## -- Internal Dependencies --
 lib_config = { path = "../../crates/libs/lib-config" }
 lib_rpc = { path = "../../crates/libs/lib-rpc" }
 lib_telemetry = { path = "../../crates/libs/lib-telemetry" }
@@ -15,9 +14,8 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 
-## -- Cargo Dependencies --
+## -- Library Dependencies --
 clap = { version = "4.5.53", features = ["derive", "cargo"] }  #<-- Delete after working
-
 
 
 [lints]

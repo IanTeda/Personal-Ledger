@@ -1,7 +1,7 @@
 #-- .gitignore
 
-# This file is starting `.gitignore`. This file specifies files and folders for git 
-# to not track. It ignores all files of certian patters, with the exclusion of certian
+# This file is starting `.gitignore`. This file specifies files and folders for git
+# to not track. It ignores all files of certain patters, with the exclusion of certain
 # files.
 # To find out more about `.gitignore` check out https://git-scm.com/docs/gitignore
 
@@ -9,14 +9,17 @@
 # ----------------------------[ DOT FILES ]------------------------------------
 # By Default, ignore all dot files `.*`, except for those with `!`
 .*
-!.gitignore
+# Claude AI config
+!.claude
+# Github workflows
 !.github
-!.devcontainer
-!.vscode
-!.gitmodules
+# Git ignore config
+!.gitignore
+# Needed for Github Dockerfile actions workflows
+!.sqlx
 
 
-# ---------------------------[ UNDERSCOE FILES ]--------------------------------
+# ---------------------------[ UNDERSCORE FILES ]--------------------------------
 # By default, ignore all underscore files `_*`, except for those with `!`
 _*
 
@@ -145,7 +148,9 @@ dist
 dist-ssr
 *.local
 
-# -----------------------------[ MDBOOK ]------------------------------
+# -----------------------------[ MISE ]------------------------------
 
-docs/.rustdoc
-docs/.book
+# Personal tool-version / env overrides layered on top of mise.toml
+mise.local.toml
+.mise.local.toml
+

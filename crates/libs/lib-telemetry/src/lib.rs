@@ -1,3 +1,5 @@
+//TODO: Add log file export
+
 mod config;
 mod error;
 mod init;

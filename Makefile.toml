@@ -7,13 +7,14 @@ description = "Build the backend binary"
 command = "cargo"
 args = ["build", "--package", "backend", "--bin", "backend", "--release"]
 
+
 # -------------------------------[MD BOOK]-------------------------------------
 
 [tasks.docs-rustdoc]
 description = "Build Rust docs (with RUSTDOCFLAGS to set asset root)"
 env = { RUSTDOCFLAGS = "-Z unstable-options --static-root-path /rust-docs" }
 command = "sh"
-args = ["-c", "cargo +nightly doc --no-deps --target-dir docs/rustdoc"]
+args = ["-c", "cargo +nightly doc --no-deps --target-dir target/rustdoc"]
 
 [tasks.docs-mdbook]
 description = "Build mdBook documentation"
@@ -30,3 +31,58 @@ install_crate = "mdbook"
 description = "Serve mdBook documentation on port 8001"
 command = "mdbook"
 args = ["serve", "--port", "8001"]
+
+
+# -------------------------------[DATABASE]------------------------------------
+
+## Drop Database
+## $ cargo make db-drop
+[tasks.db-drop]
+workspace = false
+install_crate = "sqlx-cli"
+command = "sqlx"
+args = ["database", "drop", "-y"]
+
+## Create Database
+## $ cargo make db-create
+[tasks.db-create]
+workspace = false
+install_crate = "sqlx-cli"
+command = "sqlx"
+args = ["database", "create"]
+
+## Migrate database
+## $ cargo make db-migrate
+[tasks.db-migrate]
+workspace = false
+install_crate = "sqlx-cli"
+command = "sqlx"
+args = ["migrate", "run", "--source", "crates/libs/lib-database/migrations"]
+
+## Prepare database (generate)
+## $ cargo make db-prepare-generate
+[tasks.db-prepare-generate]
+workspace = false
+install_crate = "sqlx-cli"
+command = "sh"
+args = ["-c", "cd crates/libs/lib-database && DATABASE_URL=\"sqlite:/home/ian/Workspaces/personal-ledger/.personal-ledger-dev.db\" cargo sqlx prepare"]
+
+## Check the prepared queries to confirm everything is there. Should be run after db-prepare-generate
+## $ cargo make db-prepare-check
+[tasks.db-prepare-check]
+workspace = false
+install_crate = "sqlx-cli"
+command = "sh"
+args = ["-c", "cd crates/libs/lib-database && DATABASE_URL=\"sqlite:/home/ian/Workspaces/personal-ledger/.personal-ledger-dev.db\" cargo sqlx prepare --check"]
+
+# Run Database tasks.
+# $ cargo make db
+[tasks.db]
+workspace = false
+dependencies = [
+    "db-drop",
+    "db-create",
+    "db-migrate",
+    "db-prepare-generate",
+    "db-prepare-check",
+]

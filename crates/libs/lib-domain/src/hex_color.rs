@@ -121,7 +121,6 @@ impl HexColor {
     }
 
     /// Generates a random colour for testing scenarios.
-    #[cfg(test)]
     pub fn mock() -> Self {
         use fake::Fake;
         use fake::faker::color::en::HexColor as FakeHex;
@@ -131,7 +130,6 @@ impl HexColor {
     }
 
     // Generate a random option colour or None for testing scenarios.
-    #[cfg(test)]
     pub fn mock_with_option() -> Option<Self> {
         use fake::Fake;
         use fake::faker::boolean::en::Boolean;

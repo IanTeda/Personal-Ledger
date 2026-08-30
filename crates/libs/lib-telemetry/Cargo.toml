@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+## -- Internal Dependencies --
 
 #-- Workspace Dependencies --
 serde = { workspace = true }
+sqlx = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
@@ -14,7 +16,6 @@ tracing = { workspace = true }
 config = { version = "0.15.16"}
 tracing-log = { version = "0.2.0" }
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "std"] }
-
 
 [dev-dependencies]
 serde_json = { workspace = true }

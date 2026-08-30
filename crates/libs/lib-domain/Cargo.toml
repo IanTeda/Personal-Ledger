@@ -5,25 +5,19 @@ edition = "2024"
 
 
 [dependencies]
+## -- Internal Dependencies --
+# lib_rpc = { path = "../../../crates/libs/lib-rpc" }
 
-lib_rpc = { path = "../../crates/lib-rpc" }
-
+## -- Workspace Shared Dependencies --
 chrono = { workspace = true }
 serde = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
 
-
-[dev-dependencies]
-## Use `fake` as a dev-dependency for tests and examples. We declare the
-## version and features locally here instead of inheriting from the
-## workspace to avoid manifest parsing issues when `fake` is only listed
-## under `workspace.dev-dependencies` in the top-level manifest.
+## -- Library Dependencies --
 fake = { workspace = true }
 serde_json = { workspace = true }
-
-
 
 [lints]
 workspace = true

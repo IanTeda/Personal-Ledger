@@ -2,7 +2,7 @@
 title = "Personal Ledger Documentation"
 authors = ["Ian Teda"]
 description = "Documentation for the Personal Ledger."
-src = "docs/src"
+src = "docs"
 language = "en"
 text-direction = "ltr"
 
@@ -10,9 +10,9 @@ text-direction = "ltr"
 edition = "2021"  # Github Pages currently requires 2021 edition for mdBook
 
 [build]
-build-dir = "docs/.book/"
+build-dir = "target/mdbook"
 create-missing = false
-extra-watch-dirs = ["docs/src"] 
+extra-watch-dirs = ["README.md"]
 
 
 [output.html]

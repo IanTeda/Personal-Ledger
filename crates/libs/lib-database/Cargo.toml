@@ -3,14 +3,25 @@ name = "lib_database"
 version = "0.1.0"
 edition = "2024"
 
+[package.metadata.sqlx]
+migrations = "migrations"
+
 
 [dependencies]
-sqlx = { workspace = true }
-tokio = { workspace = true }
-thiserror = { workspace = true }
+## -- Internal Dependencies --
+lib_domain = { path = "../../../crates/libs/lib-domain" }
+
+## -- Workspace Shared Dependencies --
 chrono = { workspace = true }
-uuid = { workspace = true }
+serde = { workspace = true }
+sqlx = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
 tracing = { workspace = true }
+uuid = { workspace = true }
+
+## -- Library Dependencies --
+
 
 
 [dev-dependencies]
@@ -19,6 +30,7 @@ tracing = { workspace = true }
 ## workspace to avoid manifest parsing issues when `fake` is only listed
 ## under `workspace.dev-dependencies` in the top-level manifest.
 fake = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true
