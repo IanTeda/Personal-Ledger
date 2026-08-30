@@ -19,7 +19,7 @@
 <br />
 <div align="center">
     <a href="https://github.com/IanTeda/personal-ledger">
-        <img src="https://github.com/IanTeda/personal-ledger/raw/develop/docs/src/images/logo.png" alt="Logo" width="80" height="80">
+        <img src="https://github.com/IanTeda/personal-ledger/raw/develop/docs/images/logo.png" alt="Logo" width="80" height="80">
     </a>
     <h3 align="center">Personal Ledger</h3>
     <p align="center">
@@ -272,4 +272,4 @@ Below is a list of similar applications that you might prefer to use:
 [issues-url]: https://github.com/IanTeda/personal-ledger/issues
 [license-shield]: https://img.shields.io/github/license/IanTeda/personal-ledger.svg?style=for-the-badge
 [license-url]: https://github.com/IanTeda/personal-ledger/blob/master/LICENSE.txt
-[product-screenshot]: https://github.com/IanTeda/personal-ledger/raw/develop/docs/src/images/screenshot.png
+[product-screenshot]: https://github.com/IanTeda/personal-ledger/raw/develop/docs/images/screenshot.png

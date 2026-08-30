@@ -199,7 +199,7 @@ max_lifetime_seconds = 3600
 # Section names are case-insensitive (e.g., [Telemetry] or [telemetry] both work).
 # Values should be quoted strings where appropriate.
 #
-# For more information, see the documentation at docs/src/configuration.md
+# For more information, see the documentation at docs/configuration.md
 
 [Telemetry]
 # Logging level for telemetry output

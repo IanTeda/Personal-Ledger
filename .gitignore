@@ -154,7 +154,3 @@ dist-ssr
 mise.local.toml
 .mise.local.toml
 
-# -----------------------------[ MDBOOK ]------------------------------
-
-docs/.rustdoc
-docs/.book

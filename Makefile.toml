@@ -14,7 +14,7 @@ args = ["build", "--package", "backend", "--bin", "backend", "--release"]
 description = "Build Rust docs (with RUSTDOCFLAGS to set asset root)"
 env = { RUSTDOCFLAGS = "-Z unstable-options --static-root-path /rust-docs" }
 command = "sh"
-args = ["-c", "cargo +nightly doc --no-deps --target-dir docs/rustdoc"]
+args = ["-c", "cargo +nightly doc --no-deps --target-dir target/rustdoc"]
 
 [tasks.docs-mdbook]
 description = "Build mdBook documentation"
