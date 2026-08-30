@@ -5,9 +5,15 @@ edition = "2024"
 
 [dependencies]
 ## -- Internal Dependencies --
+lib_database = { path = "../../../crates/libs/lib-database" }
+lib_domain = { path = "../../../crates/libs/lib-domain" }
 
 ## -- Workspace Shared Dependencies --
+chrono = { workspace = true }
+sqlx = { workspace = true }
 tonic = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
 
 ## -- Library Dependencies --
 prost = { version = "0.14.1" }
@@ -16,3 +22,8 @@ tonic-prost = { version = "0.14.2" }
 
 [build-dependencies]
 tonic-prost-build = { version = "0.14.2" }
+
+[dev-dependencies]
+fake = { workspace = true }
+chrono = { workspace = true }
+rand = "0.8"

@@ -6,7 +6,7 @@ edition = "2024"
 
 [dependencies]
 ## -- Internal Dependencies --
-lib_rpc = { path = "../../../crates/libs/lib-rpc" }
+# lib_rpc = { path = "../../../crates/libs/lib-rpc" }
 
 ## -- Workspace Shared Dependencies --
 chrono = { workspace = true }

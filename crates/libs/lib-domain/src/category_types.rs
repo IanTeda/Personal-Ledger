@@ -170,51 +170,6 @@ impl CategoryTypes {
         all_types[random_index].clone()
     }
 
-    /// Convert this CategoryTypes to the corresponding RPC CategoryType enum value as i32.
-    ///
-    /// This method provides a clean way to convert domain types to RPC types
-    /// for use in gRPC service implementations.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_domain::CategoryTypes;
-    ///
-    /// let domain_type = CategoryTypes::Asset;
-    /// let rpc_type_value = domain_type.to_rpc_i32();
-    /// // rpc_type_value will be the i32 value of the corresponding rpc::CategoryType
-    /// ```
-    pub fn to_rpc_i32(&self) -> i32 {
-        match self {
-            CategoryTypes::Asset => lib_rpc::CategoryTypes::Asset as i32,
-            CategoryTypes::Equity => lib_rpc::CategoryTypes::Equity as i32,
-            CategoryTypes::Expense => lib_rpc::CategoryTypes::Expense as i32,
-            CategoryTypes::Income => lib_rpc::CategoryTypes::Income as i32,
-            CategoryTypes::Liability => lib_rpc::CategoryTypes::Liability as i32,
-        }
-    }
-
-    /// Convert from the protobuf i32 enum value to CategoryTypes.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_domain::CategoryTypes;
-    ///
-    /// let asset = CategoryTypes::from_rpc_i32(lib_rpc::CategoryTypes::Asset as i32).unwrap();
-    /// assert_eq!(asset, CategoryTypes::Asset);
-    /// ```
-    pub fn from_rpc_i32(value: i32) -> Result<Self, String> {
-        match value {
-            x if x == lib_rpc::CategoryTypes::Asset as i32 => Ok(CategoryTypes::Asset),
-            x if x == lib_rpc::CategoryTypes::Equity as i32 => Ok(CategoryTypes::Equity),
-            x if x == lib_rpc::CategoryTypes::Expense as i32 => Ok(CategoryTypes::Expense),
-            x if x == lib_rpc::CategoryTypes::Income as i32 => Ok(CategoryTypes::Income),
-            x if x == lib_rpc::CategoryTypes::Liability as i32 => Ok(CategoryTypes::Liability),
-            _ => Err(format!("Invalid category type value: {}", value)),
-        }
-    }
-
     /// Returns true if this category type represents an asset.
     ///
     /// # Examples
@@ -283,6 +238,45 @@ impl CategoryTypes {
     /// ```
     pub fn is_equity(&self) -> bool {
         matches!(self, CategoryTypes::Equity)
+    }
+
+    /// Converts an i32 value from the RPC layer into a CategoryTypes enum.
+    ///
+    /// This method maps the integer values used in the gRPC protobuf definitions
+    /// to the corresponding domain enum variants. It returns an error if the
+    /// value does not correspond to a valid category type.
+    ///
+    /// The mapping is based on the protobuf enum order:
+    /// - 1: Asset
+    /// - 2: Equity
+    /// - 3: Expense
+    /// - 4: Income
+    /// - 5: Liability
+    ///
+    /// # Errors
+    ///
+    /// Returns a `String` error message if the provided i32 value is not valid.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use lib_domain::CategoryTypes;
+    ///
+    /// let asset = CategoryTypes::from_rpc_i32(1).unwrap();
+    /// assert_eq!(asset, CategoryTypes::Asset);
+    ///
+    /// let invalid = CategoryTypes::from_rpc_i32(0);
+    /// assert!(invalid.is_err());
+    /// ```
+    pub fn from_rpc_i32(value: i32) -> Result<Self, String> {
+        match value {
+            1 => Ok(CategoryTypes::Asset),
+            2 => Ok(CategoryTypes::Equity),
+            3 => Ok(CategoryTypes::Expense),
+            4 => Ok(CategoryTypes::Income),
+            5 => Ok(CategoryTypes::Liability),
+            _ => Err(format!("Invalid category type value: {}", value)),
+        }
     }
 }
 
@@ -509,26 +503,18 @@ mod tests {
     }
 
     #[test]
-    fn test_to_rpc_i32() {
-        // Test conversion to RPC i32 values
-        assert_eq!(CategoryTypes::Asset.to_rpc_i32(), lib_rpc::CategoryTypes::Asset as i32);
-        assert_eq!(CategoryTypes::Equity.to_rpc_i32(), lib_rpc::CategoryTypes::Equity as i32);
-        assert_eq!(CategoryTypes::Expense.to_rpc_i32(), lib_rpc::CategoryTypes::Expense as i32);
-        assert_eq!(CategoryTypes::Income.to_rpc_i32(), lib_rpc::CategoryTypes::Income as i32);
-        assert_eq!(CategoryTypes::Liability.to_rpc_i32(), lib_rpc::CategoryTypes::Liability as i32);
+    fn test_from_rpc_i32_valid() {
+        assert_eq!(CategoryTypes::from_rpc_i32(1), Ok(CategoryTypes::Asset));
+        assert_eq!(CategoryTypes::from_rpc_i32(2), Ok(CategoryTypes::Equity));
+        assert_eq!(CategoryTypes::from_rpc_i32(3), Ok(CategoryTypes::Expense));
+        assert_eq!(CategoryTypes::from_rpc_i32(4), Ok(CategoryTypes::Income));
+        assert_eq!(CategoryTypes::from_rpc_i32(5), Ok(CategoryTypes::Liability));
     }
 
     #[test]
-    fn test_from_rpc_i32() {
-        // Test conversion from RPC i32 values
-        assert_eq!(CategoryTypes::from_rpc_i32(lib_rpc::CategoryTypes::Asset as i32), Ok(CategoryTypes::Asset));
-        assert_eq!(CategoryTypes::from_rpc_i32(lib_rpc::CategoryTypes::Equity as i32), Ok(CategoryTypes::Equity));
-        assert_eq!(CategoryTypes::from_rpc_i32(lib_rpc::CategoryTypes::Expense as i32), Ok(CategoryTypes::Expense));
-        assert_eq!(CategoryTypes::from_rpc_i32(lib_rpc::CategoryTypes::Income as i32), Ok(CategoryTypes::Income));
-        assert_eq!(CategoryTypes::from_rpc_i32(lib_rpc::CategoryTypes::Liability as i32), Ok(CategoryTypes::Liability));
-
-        // Invalid values should return an error
-        assert!(CategoryTypes::from_rpc_i32(-1).is_err());
+    fn test_from_rpc_i32_invalid() {
+        assert!(CategoryTypes::from_rpc_i32(0).is_err()); // UNSPECIFIED
+        assert!(CategoryTypes::from_rpc_i32(6).is_err());
         assert!(CategoryTypes::from_rpc_i32(999).is_err());
     }
 }

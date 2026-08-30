@@ -31,7 +31,7 @@ resolver = "3"
 # relative path here, e.g., "crates/new-crate"
 # members = ["crates/backend","crates/lib-config", "crates/lib-domain", "crates/lib-rpc"]
 members = [
-  "./crates/server",
+  # "./crates/server",
   "./crates/libs/lib-config",
   "./crates/libs/lib-database",
   "./crates/libs/lib-telemetry",
