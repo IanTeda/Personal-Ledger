@@ -100,18 +100,19 @@ At the moment Personal Ledger is under development, so no Getting Started or Pre
 
 ### Prerequisites
 
-To get started with Personal Ledger run the following commands.
+Toolchain versions (Rust, protoc, mdBook, cargo-make, sqlx-cli, cargo-watch, cargo-audit) are pinned in `mise.toml` and managed with [mise](https://mise.jdx.dev/). Install mise, then install the pinned tools for this repo:
 
 ```sh
-$
+curl https://mise.run | sh
+cd personal-ledger
+mise trust
+mise install
 ```
 
 ### Installation
 
-To install Personal Ledger run the follwing commands.
-
 ```sh
-$
+cargo build
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
