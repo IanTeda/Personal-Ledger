@@ -1,6 +1,6 @@
 Product Requirements Document
 Product Name: Personal Ledger
-Version: v0.0.1 (Draft — Feasibility Scope)
+Version: v0.0.1 (Draft — End-State Requirements Pool; active cycle scope defined in §2.1)
 Date: 30 August 2026
 Author: Ian Teda
 
@@ -17,6 +17,7 @@ Personal Ledger aims to provide users with an intuitive, user-friendly interface
 Creating a market for paid personal finance tools is challenging because most individuals interested in tracking their finances are unlikely to pay a $100 annual subscription fee. As a result, personal finance tools often pivot toward business finance tools, since businesses are generally willing to spend significantly more than individuals on monitoring and tracking their finances. 
 
 This means personal finance tools often have to be free, which limits active development and features. I have tried many personal finance tools and found them outdated, unappealing, or based on a tracking model I do not necessarily agree with or want to use because it lacks a particular feature or aspect.
+
 Personal Ledger aims to bridge the gap by providing a self-hosted, local-first ledger that lets the owner fully control and own their data. 
 
 ## 1.3 Target Audience
@@ -31,9 +32,9 @@ The overarching goals and objectives describe the product's ultimate end state. 
 
 - __Desktop App:__ A desktop native app that works across Linux, macOS, and Windows.
 - __TUI App:__ A text-based TUI for a keyboard-focused native app that works across Linux, macOS and Windows.
-- __Web App:__ A web-focused app that can be hosted on homelabs. It should include a sync function for the native apps
+- __Web App:__ A web-focused app that can be hosted on homelabs. It should act as the sync server for the native apps
 - __Local Offline First:__ Provide a self-hosted, offline, local-first ledger for tracking expenses, investments, and assets without a cloud dependency or subscription.
-- __Multiple Operating Systems and Devices:__ Support multiple operating systems and devices with a backend server to sync across devices.
+- __Multiple Operating Systems and Devices:__ Support multiple operating systems and devices, each holding its own local-first data store, reconciled via a sync server when devices come online.
 - __Transactions:__ Model transactions against accounts, payees and categories using the five standard accounting categories (asset, liability, equity, income, expense) to classify transactions, without requiring double-entry bookkeeping.
 - __Understand Spending:__ Users interested in gaining insight and understanding their spending habits now and over time to make informed decisions.
 - __Track Against Budget:__ Users interested in tracking spending against a target budget to achieve financial goals.
@@ -44,14 +45,14 @@ The overarching goals and objectives describe the product's ultimate end state. 
 
 ## 2. Scope
 
-Four development cycles are planned for this product, each with its own Git branch within the repository. Each cycle has overarching aims, limitations and objectives that are described below:
+Four development cycles are planned for this product, each with its own Git branch within the repository; a later cycle's branch supersedes the requirements captured in an earlier one as work is folded forward. Each cycle has overarching aims, limitations and objectives that are described below:
 
 - __Feasibility (v0.0.1):__ This phase will focus on demonstrating the underlying approach and technologies and their suitability in achieving the desired outcomes.
 - __Concept (v0.1.0):__ This phase will aim to develop a minimum viable product that demonstrates use cases and functionality.
 - __Development (v1.0.0):__ This phase will expand functionality and improve the user experience. At the same time, it will refine the code and security aspects.
 - __Fixes & Features (v1.0.1):__ This phase will address any lessons learnt and pain points in using the tool. It will also add features and functionality to enhance the tool's usefulness.
-- 
-For now, the Product Requirements are limited to the Feasibility Development Cycle and will be expanded as we complete one cycle and move into the next.
+
+Sections 3–6 hold the product's ultimate end-state requirements — the full functional and non-functional scope across all four cycles, not what any single cycle delivers. As each cycle is scoped, the Functional Requirements (§3) relevant to it are moved out of that pool and into that cycle's own subsection below (e.g. §2.2), keeping their original FR ID for traceability. Non-Functional Requirements, Dependencies, and Assumptions & Constraints (§4–6) remain global across all cycles rather than being moved. Items still listed in §3 have not yet been assigned to a cycle.
 
 ## 2.1. Feasibility Cycle (v0.0.1)
 
@@ -62,14 +63,12 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 - Investigate and research Rust desktop GUI libraries.
 - Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
 - Demonstrate that tables work in the desktop app across platforms.
-- Research the best and most efficient way to store and calculate running Balances.
 
 ### TUI App:
 
 - Investigate and research Rust TUI libraries.
 - Demonstrate that line, doughnut, candle stick and divergent graphs work in the TUI app across platforms, as they are a key requirement for visually representing spending, etc.
 - Demonstrate that tables work in the TUI app across platforms.
-- Research the best and most efficient way to store and calculate running Balances.
 
 ### Web App:
 
@@ -78,7 +77,18 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 - Demonstrate that tables work in the web app across platforms.
 - Demonstrate Docker Compose deployment.
 - Demonstrate systemd deployment.
-- Demonstrate Frontend and Backend as one binary.
+- Demonstrate Frontend and Sync Server as one binary.
+
+### Local Data:
+
+- Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI, Web App) can hold and operate against independently, without requiring a network connection.
+- Research the best and most efficient way to store and calculate running Balances.
+
+### Sync:
+
+- Investigate and research approaches for reconciling independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
+- Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server.
+- Demonstrate the Web App instance acting as the always-on sync hub that Desktop/TUI clients sync through.
 
 ### 2.2. Concept Cycle (v0.1.0)
 
@@ -93,6 +103,8 @@ This will be defined before starting the development cycle.
 This will be defined before starting the concept development cycle.
 
 ## 3. Functional Requirements
+
+The requirements below describe the product's ultimate end state across all development cycles (§2). They are not all in scope for any single cycle; as each cycle (§2.2–2.4) is scoped, its relevant items are moved out of this section and into that cycle's own requirements list above, keeping their original FR ID. Items still listed here have not yet been assigned to a cycle.
 
 ### Units
 
@@ -152,7 +164,8 @@ This will be defined before starting the concept development cycle.
 
 ### Platform
 
-- __FR.39:__ The system shall expose all of the above via versioned gRPC services.
+- __FR.39:__ The system shall expose Category, Account, Transaction, Budget, and Balance Check operations (FR.4–FR.38) via a local embedded library API (`lib-database`/`lib-domain`), called in-process by each client (Desktop, TUI, Web App) against its own local SQLite store.
+- __FR.39a:__ The sync server shall expose a versioned gRPC sync protocol for reconciling a client's local ledger data with other devices — pushing and pulling change sets rather than exposing full CRUD — and each client shall be able to operate entirely offline against its local store between syncs.
 - __FR.40:__ The system shall support layered configuration (defaults, system, user, executable-directory, working-directory, explicit path, environment variables).
 - __FR.41:__ The system shall emit structured, level-configurable tracing output.
 
@@ -161,9 +174,10 @@ This will be defined before starting the concept development cycle.
 - __NFR.1 Reliability (priority):__ Transaction creation, update, and deletion must keep an account's running Balance consistent with its recorded transactions, even on partial failure (no orphaned balance updates). A Balance Check CSV import is atomic: a malformed row aborts the whole import rather than partially applying it. Database migrations must be safe to re-run.
 - __NFR.2 Security & Privacy (priority):__ All data is stored locally in SQLite; no data leaves the device by default. No `unsafe` code anywhere in the workspace (lint-enforced). Any secrets are wrapped in `secrecy::Secret` so they cannot leak into logs or traces.
 - __NFR.3 Performance:__ Category, account, transaction, budget, and Balance Check CRUD, and the balance, category-total, payee-total, budget-vs-actual, and balance-check-variance reports, should respond quickly for typical personal-ledger data volumes (thousands, not millions, of transactions).
-- __NFR.4 Usability (API-level):__ Since V1 has no UI, the gRPC API itself must be the primary usability surface: errors are structured (via `thiserror`) rather than raw SQL or library errors, so a future client can present them meaningfully.
+- __NFR.4 Usability (API-level):__ Since V1 has no UI, the local library API (`lib-database`) is the primary usability surface: errors are structured (via `thiserror`) rather than raw SQL or library errors, so a future client can present them meaningfully. The sync server's gRPC protocol (FR.39a) is a separate, narrower surface for device reconciliation, not the general-purpose API.
 - __NFR.5 Maintainability:__ Each entity's persistence logic is split into separate `find`/`insert`/`update`/`delete`/`builder`/`model` files, following the existing `categories/` convention in `lib-database`. SQL queries list explicit columns; no `SELECT *`.
 - __NFR.6 Compatibility:__ The apps builds and runs on Linux, macOS, and Windows — anywhere the pinned Rust toolchain, `protoc`, and SQLite are available.
+- __NFR.7 (placeholder):__ GUI-framework dependencies and any UI-specific NFRs (e.g. rendering performance, offline/sync UX consistency) are TBD, to be added when the Desktop, TUI, and Web App cycles are scoped.
 
 ## 5. Dependencies
 
@@ -172,6 +186,7 @@ This will be defined before starting the concept development cycle.
 - SQLite as the embedded database engine (no external database server required for V1).
 - A decision will need to be made on the best time crate, as chrono is deprecated.
 - `cargo-make`, mdBook, and rustdoc for documentation builds.
+- GUI-framework dependencies (Desktop/TUI/Web) and any additional sync-protocol client dependencies are TBD, to be added once their respective cycles are scoped.
 
 ## 6. Assumptions and Constraints
 
@@ -196,3 +211,9 @@ This will be defined before starting the concept development cycle.
 - __Cross-Unit conversion:__ V1 keeps every Account and Transaction in one fixed Unit with no conversion between Units (see `CONTEXT.md` — Unit); multi-Unit rollups/conversion are a future consideration.
 - __Payee normalisation:__ V1 matches payees by exact free text only (see Constraints); fuzzy/normalised payee matching is a future consideration.
 - __Double-entry accounting:__ Personal Ledger deliberately uses single-entry Transactions in V1 (see [ADR-0001](docs/adr/0001-single-entry-not-double-entry.md)); revisiting this for audit-grade, structurally-balanced accounting is a future consideration should the need arise.
+- __Desktop, TUI & Web UI:__ The concrete UI/UX for each client app (§1.4) is not yet detailed as Functional Requirements; deferred until each respective cycle is scoped.
+- __Multi-device sync protocol:__ End-state Functional Requirements for the sync server's protocol beyond FR.39a's placeholder are deferred until a sync-focused cycle is scoped (see FR.39a, §2.1 Sync).
+- __Conflict resolution strategy:__ The approach for reconciling conflicting offline edits across devices (e.g. last-write-wins, CRDT, manual merge) is not yet decided; to be resolved alongside multi-device sync.
+- __Personal Investors:__ Tracking buy-in costs, capital gains, returns, and tax implications for investments (see §1.4) is a future consideration with no Functional Requirements defined yet.
+- __Personal Loan:__ Tracking progress paying down a loan (see §1.4) is a future consideration with no Functional Requirements defined yet.
+- __Personal Inventory:__ Tracking assets and household inventory (see §1.4) is a future consideration with no Functional Requirements defined yet.
