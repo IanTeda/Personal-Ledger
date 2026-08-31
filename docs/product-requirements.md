@@ -1,0 +1,198 @@
+Product Requirements Document
+Product Name: Personal Ledger
+Version: v0.0.1 (Draft — Feasibility Scope)
+Date: 30 August 2026
+Author: Ian Teda
+
+This document owns the product vision, scope, and requirements. Domain vocabulary (precise definitions of terms like "ledger", "category", "account") is defined in `CONTEXT.md`. This PRD references domain terms without formally defining them.
+
+# 1. Introduction
+
+## 1.1 Product Vision
+
+Personal Ledger aims to provide users with an intuitive, user-friendly interface that offers insights into their spending habits and their investment and asset position. By presenting information clearly and concisely, users can effectively track and monitor their overall financial health, make informed decisions, and ultimately achieve their personal financial goals without handing their financial data to a third party.
+
+## 1.2 Problem Statement
+
+Creating a market for paid personal finance tools is challenging because most individuals interested in tracking their finances are unlikely to pay a $100 annual subscription fee. As a result, personal finance tools often pivot toward business finance tools, since businesses are generally willing to spend significantly more than individuals on monitoring and tracking their finances. 
+
+This means personal finance tools often have to be free, which limits active development and features. I have tried many personal finance tools and found them outdated, unappealing, or based on a tracking model I do not necessarily agree with or want to use because it lacks a particular feature or aspect.
+Personal Ledger aims to bridge the gap by providing a self-hosted, local-first ledger that lets the owner fully control and own their data. 
+
+## 1.3 Target Audience
+
+Personal Ledger v0.0.1 targets a single usage persona, but future development cycles will expand this to couples, families, and groups.
+Individuals: Individuals who are looking to track and understand their personal financial position
+Family, Couples & Groups: People with shared finances looking to understand together and set goals and targets. This is out of scope for v0.0.1 (see [Future Considerations](#7-future-considerations--roadmap)).
+
+## 1.4 Goals & Objectives
+
+The overarching goals and objectives describe the product's ultimate end state. These will be targeted in various degrees across the development cycle or phase. These goals and objectives include the following:
+
+- __Desktop App:__ A desktop native app that works across Linux, macOS, and Windows.
+- __TUI App:__ A text-based TUI for a keyboard-focused native app that works across Linux, macOS and Windows.
+- __Web App:__ A web-focused app that can be hosted on homelabs. It should include a sync function for the native apps
+- __Local Offline First:__ Provide a self-hosted, offline, local-first ledger for tracking expenses, investments, and assets without a cloud dependency or subscription.
+- __Multiple Operating Systems and Devices:__ Support multiple operating systems and devices with a backend server to sync across devices.
+- __Transactions:__ Model transactions against accounts, payees and categories using the five standard accounting categories (asset, liability, equity, income, expense) to classify transactions, without requiring double-entry bookkeeping.
+- __Understand Spending:__ Users interested in gaining insight and understanding their spending habits now and over time to make informed decisions.
+- __Track Against Budget:__ Users interested in tracking spending against a target budget to achieve financial goals.
+- __Reconcile Accounts:__ Users can verify their accounts and transactions against reality through reconciliation of account ledgers.
+- __Personal Investors:__ Users who need to track personal investments, understand buy-in costs, capital gains, returns, and tax implications.
+- __Personal Loan:__ Users who want to track the progress of paying down a loan.
+- __Personal Inventory:__ Users who wish to track their assets and inventory, such as household goods.
+
+## 2. Scope
+
+Four development cycles are planned for this product, each with its own Git branch within the repository. Each cycle has overarching aims, limitations and objectives that are described below:
+
+- __Feasibility (v0.0.1):__ This phase will focus on demonstrating the underlying approach and technologies and their suitability in achieving the desired outcomes.
+- __Concept (v0.1.0):__ This phase will aim to develop a minimum viable product that demonstrates use cases and functionality.
+- __Development (v1.0.0):__ This phase will expand functionality and improve the user experience. At the same time, it will refine the code and security aspects.
+- __Fixes & Features (v1.0.1):__ This phase will address any lessons learnt and pain points in using the tool. It will also add features and functionality to enhance the tool's usefulness.
+- 
+For now, the Product Requirements are limited to the Feasibility Development Cycle and will be expanded as we complete one cycle and move into the next.
+
+## 2.1. Feasibility Cycle (v0.0.1)
+
+The feasibility cycle demonstrates the underlying technologies and approach, specifically:
+
+### Desktop App:
+
+- Investigate and research Rust desktop GUI libraries.
+- Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
+- Demonstrate that tables work in the desktop app across platforms.
+- Research the best and most efficient way to store and calculate running Balances.
+
+### TUI App:
+
+- Investigate and research Rust TUI libraries.
+- Demonstrate that line, doughnut, candle stick and divergent graphs work in the TUI app across platforms, as they are a key requirement for visually representing spending, etc.
+- Demonstrate that tables work in the TUI app across platforms.
+- Research the best and most efficient way to store and calculate running Balances.
+
+### Web App:
+
+- Investigate and research web GUI libraries.
+- Demonstrate that line, doughnut, candle stick and divergent graphs work in the web app across platforms, as they are a key requirement for visually representing spending, etc.
+- Demonstrate that tables work in the web app across platforms.
+- Demonstrate Docker Compose deployment.
+- Demonstrate systemd deployment.
+- Demonstrate Frontend and Backend as one binary.
+
+### 2.2. Concept Cycle (v0.1.0)
+
+This will be defined before starting the concept cycle.
+
+### 2.3. Development Cycle (v1.0.0)
+
+This will be defined before starting the development cycle.
+
+### 2.4. Fixes & Features Cycle (v1.0.1)
+
+This will be defined before starting the concept development cycle.
+
+## 3. Functional Requirements
+
+### Units
+
+- __FR.1:__ The system shall allow for multiple different Units like currencies, crypto, stocks, equities, precious metals, etc.
+- __FR.2:__ When a transaction is between different Units, it should include an exchange rate.
+- __FR.3:__ Unit prices will be stored locally as part of a transaction exchange and every week to avoid excessive granularity. If more granularity is needed, it can be queried from the internet dynamically.
+
+### Categories
+
+- __FR.4:__ The system shall allow creating a category with a code, name, optional description, optional URL slug, one of the five accounting types, optional colour, and optional icon.
+- __FR.5:__ The system shall allow retrieving a category by ID, by code, or by slug.
+- __FR.6:__ The system shall allow listing categories with pagination, filtering by type and/or active status, and sorting.
+- __FR.7:__ The system shall allow partially updating a category via a field mask.
+
+### Accounts
+
+- __FR.8:__ The system shall allow deleting a category, individually or in batch.
+- __FR.9:__ The system shall allow activating and deactivating a category.
+- __FR.10:__ The system shall allow creating an account with a name, a type (Cash, Bank, Credit Card, Investment, or Loan), a Unit it's denominated in (fixed at creation), and a starting balance in that Unit.
+- __FR.11:__ The system shall allow retrieving an account by id.
+- __FR.12:__ The system shall allow listing accounts with pagination and filtering by type and/or active status.
+- __FR.13:__ The system shall allow updating an account's name, type, or active status.
+- __FR.14:__ The system shall allow deleting an account. On deleting an account, there will be an option to transfer all the transactions under an account to another account.
+- __FR.15:__ The system shall allow the merging of two accounts into one.
+- __FR.16:__ The system shall allow creating a single-entry transaction with a UUIDv7, date, an amount, exactly one Category, exactly one account, an optional payee (free text), an optional description, optional ID, a Transaction Status (Open, Cleared, or Reconciled — defaulting to Open), and an independent Flagged marker (defaulting to unset), and shall update the linked account's running Balance accordingly.
+- __FR.17:__ The system shall allow retrieving a transaction by id.
+- __FR.18:__ The system shall allow listing transactions with pagination, filtering by account, Category, payee (exact match), Transaction Status, Flagged state, and/or date range, and sorting.
+- __FR.19:__ The system shall allow updating a transaction — including its Transaction Status and Flagged marker, each settable independently of the other — and shall adjust the affected account balance(s) accordingly, including moving a transaction between accounts that share the same Unit (moving it to an account with a different Unit is rejected — see Constraints). Status and Flagged changes are always explicit user actions; the system never infers or auto-applies them. A Reconciled transaction's other fields cannot be updated until its Transaction Status is first moved back to Open or Cleared (see Constraints).
+- __FR.20:__ The system shall allow deleting a transaction, and shall reverse its effect on the linked account's Balance.
+- __FR.21:__ The UUIDv7 will be used to determine the transaction creation date.
+
+### Budgets
+
+- __FR.22:__ The system shall have different types of budgeting methods including line item, envelope & reverse budgeting. The feature set of budgeting types will need to be researched and decided on later.
+- __FR.23:__ The system shall allow creating a budget with exactly one Category, a limit amount, a Unit it's denominated in, and a recurring period (weekly, monthly, quarterly, or yearly).
+- __FR.24:__ The system shall allow retrieving a budget by ID.
+- __FR.25:__ The system shall allow listing budgets with pagination and filtering by Category and/or active status.
+- __FR.26:__ The system shall allow updating a budget's limit amount, period, or active status.
+- __FR.27:__ The system shall allow deleting a budget.
+
+### Balance Checks
+
+- __FR.28:__ The system shall allow creating a Balance Check with exactly one account, a date, and an asserted balance amount in that account's Unit, entered manually.
+- __FR.29:__ The system shall allow retrieving a Balance Check by id.
+- __FR.30:__ The system shall allow listing Balance Checks with pagination and filtering by account and/or date range.
+- __FR.31:__ The system shall allow updating a Balance Check's date or asserted balance amount.
+- __FR.32:__ The system shall allow deleting a Balance Check.
+- __FR.33:__ The system shall allow importing Balance Checks for one account from a CSV file containing a date column and a balance column, creating one Balance Check per row; a malformed row shall abort the entire import rather than partially applying it.
+
+### Reporting
+
+- __FR.34:__ The system shall report the current Balance of a given account, or of all accounts, each expressed in its own Unit (no cross-Unit aggregation).
+- __FR.35:__ The system shall report the sum of transaction amounts per Category over a given date range, scoped to a single Unit (or account) at a time.
+- __FR.36:__ The system shall report the sum of transaction amounts per payee over a given date range, scoped to a single Unit (or account) at a time, matching payees by exact text (see Constraints — no payee normalisation in V1).
+- __FR.37:__ The system shall report, for a given budget, the limit amount, the actual spending in its Category and Unit for the current period, and the amount remaining (or the amount over, if exceeded).
+- __FR.38:__ The system shall report, for a given Balance Check, the difference between its asserted amount and its account's computed Balance as of that date.
+
+### Platform
+
+- __FR.39:__ The system shall expose all of the above via versioned gRPC services.
+- __FR.40:__ The system shall support layered configuration (defaults, system, user, executable-directory, working-directory, explicit path, environment variables).
+- __FR.41:__ The system shall emit structured, level-configurable tracing output.
+
+## 4. Non-Functional Requirements
+
+- __NFR.1 Reliability (priority):__ Transaction creation, update, and deletion must keep an account's running Balance consistent with its recorded transactions, even on partial failure (no orphaned balance updates). A Balance Check CSV import is atomic: a malformed row aborts the whole import rather than partially applying it. Database migrations must be safe to re-run.
+- __NFR.2 Security & Privacy (priority):__ All data is stored locally in SQLite; no data leaves the device by default. No `unsafe` code anywhere in the workspace (lint-enforced). Any secrets are wrapped in `secrecy::Secret` so they cannot leak into logs or traces.
+- __NFR.3 Performance:__ Category, account, transaction, budget, and Balance Check CRUD, and the balance, category-total, payee-total, budget-vs-actual, and balance-check-variance reports, should respond quickly for typical personal-ledger data volumes (thousands, not millions, of transactions).
+- __NFR.4 Usability (API-level):__ Since V1 has no UI, the gRPC API itself must be the primary usability surface: errors are structured (via `thiserror`) rather than raw SQL or library errors, so a future client can present them meaningfully.
+- __NFR.5 Maintainability:__ Each entity's persistence logic is split into separate `find`/`insert`/`update`/`delete`/`builder`/`model` files, following the existing `categories/` convention in `lib-database`. SQL queries list explicit columns; no `SELECT *`.
+- __NFR.6 Compatibility:__ The apps builds and runs on Linux, macOS, and Windows — anywhere the pinned Rust toolchain, `protoc`, and SQLite are available.
+
+## 5. Dependencies
+
+- Rust toolchain, `protoc`, and other dev tools pinned in `mise.toml`.
+- Core crates: `tonic` (gRPC), `sqlx` (SQLite persistence), `serde`, `tracing`, `thiserror`, `uuid` (v7), `chrono`, `secrecy`, and a CSV-parsing crate (e.g. `csv`) for Balance Check import.
+- SQLite as the embedded database engine (no external database server required for V1).
+- A decision will need to be made on the best time crate, as chrono is deprecated.
+- `cargo-make`, mdBook, and rustdoc for documentation builds.
+
+## 6. Assumptions and Constraints
+
+### 6.1 Assumptions
+
+- The user trusts their own machine/network to hold their financial data; V1 relies on OS/filesystem-level protection rather than application-level encryption-at-rest.
+
+### 6.2 Constraints
+
+- No `unsafe` code anywhere in the workspace (lint-enforced, see root `Cargo.toml`).
+- Each Account's Unit is fixed at creation; a Transaction's amount is always measured in its Account's Unit, and a Transaction may only be moved to another Account sharing that same Unit.
+- A Balance Check's CSV import reads exactly a date column and a balance column for one Account; it does not import Transactions, categories, or payees.
+- Transaction Status (Open, Cleared, Reconciled) and Flagged are both set manually by the user; the system never automatically matches a Transaction to a Balance Check or infers a status change. Flagged is independent of Transaction Status — a Transaction may be Flagged in any status, including Reconciled.
+- A Reconciled Transaction's other fields (amount, Category, account, payee, description, date) cannot be updated until its Transaction Status is first moved back to Open or Cleared; the Status and Flagged fields themselves remain independently settable at any time.
+- SQL queries must list explicit columns; no `SELECT *`.
+- Secrets must be wrapped in `secrecy::Secret`.
+
+## 7. Future Considerations & Roadmap
+
+- __Shared ledgers:__ Support for Family, Couples & Groups sharing a single ledger (see §1.3) — out of scope for v0.0.1, which targets a single individual.
+- __Institution:__ Associating an Account with the financial Institution that holds it (e.g. a bank) is deferred past V1; no Institution entity, field, or CRUD exists in this cycle.
+- __Cross-Unit conversion:__ V1 keeps every Account and Transaction in one fixed Unit with no conversion between Units (see `CONTEXT.md` — Unit); multi-Unit rollups/conversion are a future consideration.
+- __Payee normalisation:__ V1 matches payees by exact free text only (see Constraints); fuzzy/normalised payee matching is a future consideration.
+- __Double-entry accounting:__ Personal Ledger deliberately uses single-entry Transactions in V1 (see [ADR-0001](docs/adr/0001-single-entry-not-double-entry.md)); revisiting this for audit-grade, structurally-balanced accounting is a future consideration should the need arise.
