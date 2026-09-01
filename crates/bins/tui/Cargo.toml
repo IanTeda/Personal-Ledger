@@ -20,15 +20,19 @@ tokio = { workspace = true }
 [lints]
 workspace = true
 
-# cargo-packager config for the Linux AppImage build (ticket #21, FC-TUI-004).
-# AppImage is the only Linux format produced -- see ADR-0004
-# (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md): a `.deb`
-# conventionally wants root (Debian Policy), in tension with NFR.2, while
-# AppImage runs with no installation step and no root at all.
+# cargo-packager config for the Linux AppImage (ticket #21) and macOS dmg
+# (ticket #20) builds, FC-TUI-004. See ADR-0004
+# (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md): no `.deb`
+# (conventionally wants root per Debian Policy, in tension with NFR.2) --
+# AppImage on Linux and a dmg on macOS instead, neither needing root or an
+# installation step. No code signing this cycle (ADR-0004). Each format is a
+# no-op on the "wrong" OS -- `cargo packager` just warns and skips it, so
+# both entries are safe to list together for every platform's CI leg.
 [package.metadata.packager]
 product-name = "Personal Ledger TUI"
 identifier = "au.id.teda.personal-ledger.tui"
-formats = ["appimage"]
-# Placeholder only -- a plain square, no branding yet. AppImage packaging
-# requires a square icon; swap for real artwork when the app has any.
+formats = ["appimage", "dmg"]
+# Placeholder only -- a plain square, no branding yet. Both AppImage and
+# macOS app-bundle packaging require a square icon; swap for real artwork
+# when the app has any.
 icons = ["icons/icon-256.png"]

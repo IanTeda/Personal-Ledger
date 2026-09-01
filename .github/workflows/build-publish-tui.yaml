@@ -1,8 +1,6 @@
-# .github/workflows/ci.yaml
+# .github/workflows/build-publish-tui.yaml
 #
-# Cross-platform build/test matrix (Linux, macOS, Windows), added to prove the
-# TUI feasibility work (docs/product-requirements.md FC-TUI-002/003/004) runs
-# identically everywhere without manual multi-machine testing. See the "TUI
+# Cross-platform build/test matrix (Linux, macOS, Windows). See the "TUI
 # App feasibility" Wayfinder map (issue #7) and ticket #13.
 #
 # Scoped to `crates/bins/tui`, not the whole workspace -- but as of ticket #22
@@ -13,7 +11,7 @@
 # unrelated to the TUI and out of this map's scope -- widen once that's fixed
 # elsewhere, or once a later ticket needs the wider build.
 
-name: CI
+name: Build and Publish TUI
 
 on:
   push:
@@ -53,16 +51,24 @@ jobs:
       # (tickets #14-18/#22) -- this is the "where possible runs" half of FC-TUI-004,
       # proving the compiled binary actually launches on each OS. CI runners provide no
       # real TTY, so raw-mode terminal setup fails immediately by design (confirmed
-      # locally: `Os { code: 6, .. "No such device or address" }`). On Linux we simulate
-      # a TTY via `script` and send `q` to confirm the binary genuinely starts and quits
-      # cleanly; macOS/Windows still run the bare binary as before -- their own
-      # TTY-simulation approach is for tickets #20/#19 to work out.
+      # locally on Linux: `Os { code: 6, .. "No such device or address" }`). Linux and
+      # macOS each simulate a TTY via their own `script` (different flag syntax: GNU
+      # util-linux's `-c` on Linux vs. BSD's positional command on macOS) and send `q` to
+      # confirm the binary genuinely starts and quits cleanly; Windows still runs the bare
+      # binary -- its own TTY-simulation approach is for ticket #19 to work out.
       - name: Run tui (smoke test, Linux)
         if: runner.os == 'Linux'
         run: echo q | script -qec "cargo run --locked --package tui" /dev/null
 
-      - name: Run tui (smoke test, macOS/Windows)
-        if: runner.os != 'Linux'
+      # Unverified from this repo's Linux dev sandbox -- there's no macOS toolchain
+      # available here, so this is genuinely first-tested on a real macos-15 runner, not
+      # "verified elsewhere and copied in" the way the Linux step above was.
+      - name: Run tui (smoke test, macOS)
+        if: runner.os == 'macOS'
+        run: echo q | script -q /dev/null cargo run --locked --package tui
+
+      - name: Run tui (smoke test, Windows)
+        if: runner.os == 'Windows'
         run: cargo run --locked --package tui
 
       # Linux-only: packages tui as a non-root AppImage per ADR-0004
@@ -86,3 +92,38 @@ jobs:
           echo "Running as: $(whoami) (uid $(id -u))"
           [ "$(id -u)" -ne 0 ]
           echo q | script -qec "$appimage --appimage-extract-and-run" /dev/null
+
+      # macOS-only: packages tui as a .dmg per ADR-0004, no code signing this cycle. See
+      # ticket #20. Entirely unverified locally -- there's no macOS toolchain in this
+      # repo's dev sandbox, so unlike the Linux AppImage steps above, none of this has
+      # been rehearsed; it's first-tested for real when this runs on macos-15. Uploads the
+      # dmg as a workflow artifact so it can be downloaded and tried on a real Mac.
+      - name: Install cargo-packager (macOS)
+        if: runner.os == 'macOS'
+        run: cargo install cargo-packager --locked
+
+      - name: Package tui as dmg (macOS)
+        if: runner.os == 'macOS'
+        run: cargo packager --release --formats dmg --manifest-path crates/bins/tui/Cargo.toml
+
+      - name: Verify dmg mounts and app runs non-root (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          dmg=$(find target/release -maxdepth 1 -name '*.dmg')
+          echo "Running as: $(whoami) (uid $(id -u))"
+          [ "$(id -u)" -ne 0 ]
+          mount_point=$(hdiutil attach "$dmg" -nobrowse -readonly | tail -1 | awk '{print $NF}')
+          app=$(find "$mount_point" -maxdepth 1 -name '*.app')
+          binary=$(find "$app/Contents/MacOS" -type f | head -1)
+          echo q | script -q /dev/null "$binary"
+          hdiutil detach "$mount_point"
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload dmg artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-tui-macos-dmg
+          path: target/release/*.dmg
+          if-no-files-found: error
