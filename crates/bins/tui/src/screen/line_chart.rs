@@ -49,6 +49,10 @@ impl Screen for LineChartScreen {
         // Static dummy data — nothing to react to yet.
     }
 
+    fn title(&self) -> &'static str {
+        "Line Chart"
+    }
+
     fn view(&self, frame: &mut Frame, area: Rect) {
         let min_balance = self
             .points
@@ -69,10 +73,7 @@ impl Screen for LineChartScreen {
             .data(&self.points);
 
         let chart = Chart::new(vec![dataset])
-            .block(
-                Block::bordered()
-                    .title(" Line chart demo — FC-TUI-002 (dummy data, press q to quit) "),
-            )
+            .block(Block::bordered().title(" Line chart demo — FC-TUI-002 (dummy data) "))
             .x_axis(
                 Axis::default()
                     .title("Day")

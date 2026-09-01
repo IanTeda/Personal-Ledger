@@ -2,6 +2,7 @@
 //! Elm/Component architecture (`docs/adr/0003-hybrid-tea-component-tui-architecture.md`).
 //! `App` owns which screen is active; each screen owns its own state and renders itself.
 
+pub mod doughnut_chart;
 pub mod line_chart;
 
 use ratatui::{Frame, layout::Rect};
@@ -15,4 +16,7 @@ pub trait Screen {
 
     /// Renders the screen into the given area of the frame.
     fn view(&self, frame: &mut Frame, area: Rect);
+
+    /// Short name shown in the app's tab bar.
+    fn title(&self) -> &'static str;
 }

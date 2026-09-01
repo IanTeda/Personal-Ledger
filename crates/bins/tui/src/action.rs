@@ -13,4 +13,8 @@ pub enum Action {
     Tick,
     /// The user asked to quit (`q` or `Esc`).
     Quit,
+    /// The user asked to switch to the next screen (`Tab`).
+    NextScreen,
+    /// The user asked to switch to the previous screen (`Shift`+`Tab`).
+    PrevScreen,
 }
