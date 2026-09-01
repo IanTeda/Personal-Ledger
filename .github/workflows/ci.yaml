@@ -1,0 +1,57 @@
+# .github/workflows/ci.yaml
+#
+# Cross-platform build/test matrix (Linux, macOS, Windows), added to prove the
+# TUI feasibility work (docs/product-requirements.md FC-TUI-002/003/004) runs
+# identically everywhere without manual multi-machine testing. See the "TUI
+# App feasibility" Wayfinder map (issue #7) and ticket #13.
+#
+# Scoped to `crates/bins/tui` for now, not the whole workspace: `lib_database`
+# (an active workspace member, pulled in transitively by `lib_config`/
+# `lib_rpc`, hence by `crates/bins/server`) currently fails `cargo build` --
+# even with `SQLX_OFFLINE=true` -- because its checked-in `.sqlx` query cache
+# is stale relative to its current queries. That's a pre-existing issue
+# unrelated to the TUI (see ticket #8's resolution comment); widen this
+# workflow's `--package`/`--workspace` scope once it's fixed, or once a later
+# ticket (e.g. FC-TUI-005) needs the wider build.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # https://github.com/actions/checkout
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Installs the pinned Rust toolchain from mise.toml identically on all
+      # three runner OSes, so CI uses exactly what a local `mise install`
+      # would.
+      # https://github.com/jdx/mise-action
+      - name: Install mise-pinned toolchain
+        uses: jdx/mise-action@v4
+
+      - name: Build tui
+        run: cargo build --locked --package tui
+
+      - name: Test tui
+        run: cargo test --locked --package tui
+
+      # Empty scaffold today (`fn main() {}`), but this is the "where
+      # possible runs" half of FC-TUI-004: proves the compiled binary
+      # actually launches on each OS, not just that it compiles.
+      - name: Run tui (smoke test)
+        run: cargo run --locked --package tui
