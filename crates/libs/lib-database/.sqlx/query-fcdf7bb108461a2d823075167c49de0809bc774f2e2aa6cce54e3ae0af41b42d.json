@@ -1,10 +1,10 @@
 {
   "db_name": "SQLite",
-  "query": "\n                SELECT\n                    id              AS \"id!: domain::RowID\",\n                    code,\n                    name,\n                    description,\n                    url_slug        AS \"url_slug?: domain::UrlSlug\",\n                    category_type   AS \"category_type!: domain::CategoryTypes\",\n                    color           AS \"color?: domain::HexColor\",\n                    icon,\n                    is_active       AS \"is_active!: bool\",\n                    created_on      AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on      AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM categories\n                WHERE id = ?\n            ",
+  "query": "\n                SELECT\n                    id              AS \"id!: lib_domain::RowID\",\n                    code,\n                    name,\n                    description,\n                    url_slug        AS \"url_slug?: lib_domain::UrlSlug\",\n                    category_type   AS \"category_type!: lib_domain::CategoryTypes\",\n                    color           AS \"color?: lib_domain::HexColor\",\n                    icon,\n                    is_active       AS \"is_active!: bool\",\n                    created_on      AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on      AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM categories\n                WHERE id = ?\n            ",
   "describe": {
     "columns": [
       {
-        "name": "id!: domain::RowID",
+        "name": "id!: lib_domain::RowID",
         "ordinal": 0,
         "type_info": "Null"
       },
@@ -24,17 +24,17 @@
         "type_info": "Text"
       },
       {
-        "name": "url_slug?: domain::UrlSlug",
+        "name": "url_slug?: lib_domain::UrlSlug",
         "ordinal": 4,
         "type_info": "Text"
       },
       {
-        "name": "category_type!: domain::CategoryTypes",
+        "name": "category_type!: lib_domain::CategoryTypes",
         "ordinal": 5,
         "type_info": "Text"
       },
       {
-        "name": "color?: domain::HexColor",
+        "name": "color?: lib_domain::HexColor",
         "ordinal": 6,
         "type_info": "Text"
       },
@@ -76,5 +76,5 @@
       false
     ]
   },
-  "hash": "992da607e6a6947f973e33dbbb006004f2cd1204206c67959da896bd45c12bb2"
+  "hash": "fcdf7bb108461a2d823075167c49de0809bc774f2e2aa6cce54e3ae0af41b42d"
 }

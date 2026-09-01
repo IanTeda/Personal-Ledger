@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n                SELECT\n                    id              AS \"id!: domain::RowID\",\n                    code,\n                    name,\n                    description,\n                    url_slug        AS \"url_slug?: domain::UrlSlug\",\n                    category_type   AS \"category_type!: domain::CategoryTypes\",\n                    color           AS \"color?: domain::HexColor\",\n                    icon,\n                    is_active       AS \"is_active!: bool\",\n                    created_on      AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on      AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM categories\n                WHERE id = ?\n            ",
+  "query": "\n                SELECT\n                    id              AS \"id!: domain::RowID\",\n                    code,\n                    name,\n                    description,\n                    url_slug        AS \"url_slug?: domain::UrlSlug\",\n                    category_type   AS \"category_type!: domain::CategoryTypes\",\n                    color           AS \"color?: domain::HexColor\",\n                    icon,\n                    is_active       AS \"is_active!: bool\",\n                    created_on      AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on      AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM categories\n                ORDER BY created_on DESC\n            ",
   "describe": {
     "columns": [
       {
@@ -60,7 +60,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       true,
@@ -76,5 +76,5 @@
       false
     ]
   },
-  "hash": "992da607e6a6947f973e33dbbb006004f2cd1204206c67959da896bd45c12bb2"
+  "hash": "254f0f4f3b2114e8161855b5f5040c2bec50be22a0ae56c56a4a8f993fbc6745"
 }

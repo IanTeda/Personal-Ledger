@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                DELETE FROM categories\n                WHERE is_active = false\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "ac1c41e8b198e2cb06d1e96b921cadc406e7d3bee57a22ff4c48d9f91ca222ae"
+}

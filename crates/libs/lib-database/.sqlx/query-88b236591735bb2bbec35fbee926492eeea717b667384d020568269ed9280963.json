@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                UPDATE categories\n                SET is_active = ?, updated_on = strftime('%Y-%m-%dT%H:%M:%fZ','now')\n                WHERE id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "88b236591735bb2bbec35fbee926492eeea717b667384d020568269ed9280963"
+}
