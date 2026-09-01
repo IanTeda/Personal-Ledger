@@ -22,6 +22,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # Pinned (not "latest") so the cache key below is stable and meaningful --
+  # bump this deliberately, not implicitly on cargo-packager's next release.
+  CARGO_PACKAGER_VERSION: "0.11.8"
+
 jobs:
   build-test:
     strategy:
@@ -29,6 +34,13 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
+    # Safety net: the Windows smoke test hung indefinitely on the first real run of this
+    # workflow (confirmed: 16+ min with no sign of returning, no timeout anywhere to stop
+    # it short of GitHub's 6-hour default) -- crossterm's Windows console backend doesn't
+    # fail-fast without a real TTY the way Unix raw-mode does, so a stdin-piped `q` never
+    # reaches it. Fixed at the step level too (see below); this bounds the whole job in
+    # case something else hangs the same way.
+    timeout-minutes: 30
     steps:
       # https://github.com/actions/checkout
       - name: Checkout repository
@@ -50,14 +62,16 @@ jobs:
       # Was an empty scaffold at ticket #13; now an interactive multi-screen demo
       # (tickets #14-18/#22) -- this is the "where possible runs" half of FC-TUI-004,
       # proving the compiled binary actually launches on each OS. CI runners provide no
-      # real TTY, so raw-mode terminal setup fails immediately by design (confirmed
+      # real TTY, so raw-mode terminal setup fails immediately by design on Unix (confirmed
       # locally on Linux: `Os { code: 6, .. "No such device or address" }`). Linux and
       # macOS each simulate a TTY via their own `script` (different flag syntax: GNU
       # util-linux's `-c` on Linux vs. BSD's positional command on macOS) and send `q` to
-      # confirm the binary genuinely starts and quits cleanly; Windows still runs the bare
-      # binary -- its own TTY-simulation approach is for ticket #19 to work out.
+      # confirm the binary genuinely starts and quits cleanly. `timeout-minutes` on every
+      # leg here is a deliberate, confirmed-necessary safety net, not defensive padding --
+      # see the Windows step below.
       - name: Run tui (smoke test, Linux)
         if: runner.os == 'Linux'
+        timeout-minutes: 3
         run: echo q | script -qec "cargo run --locked --package tui" /dev/null
 
       # Unverified from this repo's Linux dev sandbox -- there's no macOS toolchain
@@ -65,19 +79,62 @@ jobs:
       # "verified elsewhere and copied in" the way the Linux step above was.
       - name: Run tui (smoke test, macOS)
         if: runner.os == 'macOS'
+        timeout-minutes: 3
         run: echo q | script -q /dev/null cargo run --locked --package tui
 
+      # Unlike Unix, Windows' console backend doesn't fail-fast without a real TTY --
+      # confirmed for real: a bare `cargo run` here hung indefinitely (16+ min, still
+      # running) on the first CI run of this workflow, because piped stdin never reaches
+      # crossterm's Win32 console reader the way it does a Unix pty. Rather than fight
+      # Windows keystroke injection (SendKeys etc. -- unreliable against a headless
+      # runner's console focus), just prove the binary launches: start it, give it a few
+      # seconds, then kill it -- bounded by construction, not just by the timeout below.
+      # Genuinely unverified: no Windows environment available to test this against.
       - name: Run tui (smoke test, Windows)
         if: runner.os == 'Windows'
-        run: cargo run --locked --package tui
+        timeout-minutes: 3
+        run: |
+          $proc = Start-Process -FilePath "target\debug\tui.exe" -PassThru -NoNewWindow
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited) {
+            if ($proc.ExitCode -ne 0) {
+              Write-Error "tui exited early with code $($proc.ExitCode)"
+              exit 1
+            }
+          } else {
+            Stop-Process -Id $proc.Id -Force
+          }
+
+      # `cargo packager --release` expects target/release/tui to already exist and copies
+      # it into the bundle -- it does not build it itself. The "Build tui" step above only
+      # builds debug (no --release flag), so without this step packaging fails with
+      # "Failed to copy file from .../target/release/tui ... No such file or directory"
+      # (confirmed for real on the first feasibility-branch CI run, ubuntu-24.04 leg).
+      - name: Build tui (release)
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        run: cargo build --locked --release --package tui
+
+      # cargo-packager ships no prebuilt release binaries (its GitHub releases carry no
+      # binary assets) and isn't in taiki-e/install-action's supported-tools list either,
+      # so there's no download-a-binary shortcut -- and `cargo install` is never cached by
+      # GitHub Actions automatically. Caching the compiled binary explicitly, keyed to the
+      # pinned CARGO_PACKAGER_VERSION above, means it only compiles from source once per OS
+      # and every later run restores it instead of rebuilding (~1-2 min saved per run).
+      - name: Cache cargo-packager
+        id: cache-cargo-packager
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-packager
+          key: cargo-packager-${{ runner.os }}-${{ env.CARGO_PACKAGER_VERSION }}
 
       # Linux-only: packages tui as a non-root AppImage per ADR-0004
       # (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md) and confirms it
       # actually runs -- proving FC-TUI-004's Linux non-root requirement end-to-end, not
       # just that `cargo packager` exits 0. See ticket #21.
       - name: Install cargo-packager (Linux)
-        if: runner.os == 'Linux'
-        run: cargo install cargo-packager --locked
+        if: runner.os == 'Linux' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
 
       - name: Package tui as AppImage (Linux)
         if: runner.os == 'Linux'
@@ -99,8 +156,8 @@ jobs:
       # been rehearsed; it's first-tested for real when this runs on macos-15. Uploads the
       # dmg as a workflow artifact so it can be downloaded and tried on a real Mac.
       - name: Install cargo-packager (macOS)
-        if: runner.os == 'macOS'
-        run: cargo install cargo-packager --locked
+        if: runner.os == 'macOS' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
 
       - name: Package tui as dmg (macOS)
         if: runner.os == 'macOS'
