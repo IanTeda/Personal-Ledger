@@ -6,6 +6,7 @@ pub mod candlestick_chart;
 pub mod divergent_chart;
 pub mod doughnut_chart;
 pub mod line_chart;
+pub mod table;
 
 use ratatui::{Frame, layout::Rect};
 
