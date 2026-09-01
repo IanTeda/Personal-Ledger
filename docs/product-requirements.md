@@ -60,39 +60,40 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 
 ### Desktop App:
 
-- __FC-01:__ Investigate and research Rust desktop GUI libraries.
-- __FC-02:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
-- __FC-03:__ Demonstrate that tables work in the desktop app across platforms.
-- __FC-04:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
+- __FC-DESKTOP-001:__ Investigate and research Rust desktop GUI libraries.
+- __FC-DESKTOP-002:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
+- __FC-DESKTOP-003:__ Demonstrate that tables work in the desktop app across platforms.
+- __FC-DESKTOP-004:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
 
 ### TUI App:
 
-- __FC-05:__ Investigate and research Rust TUI libraries.
-- __FC-06:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the TUI app across platforms, as they are a key requirement for visually representing spending, etc.
-- __FC-07:__ Demonstrate that tables work in the TUI app across platforms.
-- __FC-08:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
+- __FC-TUI-001:__ Investigate and research Rust TUI libraries, and lock the choice in an ADR.
+- __FC-TUI-002:__ Demonstrate that line, doughnut, candle stick and divergent graphs each work in the TUI app across platforms, using dummy data — one demonstration per chart type.
+- __FC-TUI-003:__ Demonstrate that tables work in the TUI app across platforms.
+- __FC-TUI-004:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux — a portable single executable on Windows (no installer, no elevation), and a real user-scope installer/package on macOS (`.dmg`/`.app`) and Linux (`.deb` and/or AppImage). Research and lock the packaging tool choice (e.g. `cargo-dist`, `cargo-packager`) in an ADR before building the per-OS packages.
+- __FC-TUI-005:__ Demonstrate the TUI app operating end-to-end against the embedded SQLite persistence layer (`lib-database`/`lib-domain`, see FC-DATA-001) with real (not dummy) data, proving the local-first architecture works through a real client.
 
 ### Web App:
 
-- __FC-09:__ Investigate and research web GUI libraries.
-- __FC-10:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the web app across platforms, as they are a key requirement for visually representing spending, etc.
-- __FC-11:__ Demonstrate that tables work in the web app across platforms.
-- __FC-12:__ Demonstrate compiling, installing and running as a non-root user (container `USER` / systemd `User=`) across Windows, macOS and Linux.
-- __FC-13:__ Demonstrate Dockerfile compile across platforms.
-- __FC-14:__ Demonstrate docker Compose deployment.
-- __FC-15:__ Demonstrate systemd deployment.
-- __FC-16:__ Demonstrate Frontend and Sync Server as one binary.
+- __FC-WEB-001:__ Investigate and research web GUI libraries.
+- __FC-WEB-002:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the web app across platforms, as they are a key requirement for visually representing spending, etc.
+- __FC-WEB-003:__ Demonstrate that tables work in the web app across platforms.
+- __FC-WEB-004:__ Demonstrate compiling, installing and running as a non-root user (container `USER` / systemd `User=`) across Windows, macOS and Linux.
+- __FC-WEB-005:__ Demonstrate Dockerfile compile across platforms.
+- __FC-WEB-006:__ Demonstrate docker Compose deployment.
+- __FC-WEB-007:__ Demonstrate systemd deployment.
+- __FC-WEB-008:__ Demonstrate Frontend and Sync Server as one binary.
 
 ### Local Data:
 
-- __FC-17:__ Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI, Web App) can hold and operate against independently, without requiring a network connection.
-- __FC-18:__ Research the best and most efficient way to store and calculate running Balances.
+- __FC-DATA-001:__ Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI, Web App) can hold and operate against independently, without requiring a network connection.
+- __FC-DATA-002:__ Research the best and most efficient way to store and calculate running Balances.
 
 ### Sync:
 
-- __FC-19:__ Investigate and research approaches for reconciling independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
-- __FC-20:__ Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server.
-- __FC-21:__ Demonstrate the Web App instance acting as the always-on sync hub that Desktop/TUI clients sync through.
+- __FC-SYNC-001:__ Investigate and research approaches for reconciling independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
+- __FC-SYNC-002:__ Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server.
+- __FC-SYNC-003:__ Demonstrate the Web App instance acting as the always-on sync hub that Desktop/TUI clients sync through.
 
 ### 2.2. Concept Cycle (v0.1.0)
 
