@@ -111,7 +111,6 @@ jobs:
       # "Failed to copy file from .../target/release/tui ... No such file or directory"
       # (confirmed for real on the first feasibility-branch CI run, ubuntu-24.04 leg).
       - name: Build tui (release)
-        if: runner.os == 'Linux' || runner.os == 'macOS'
         run: cargo build --locked --release --package tui
 
       # cargo-packager ships no prebuilt release binaries (its GitHub releases carry no
@@ -191,4 +190,49 @@ jobs:
         with:
           name: personal-ledger-tui-macos-dmg
           path: target/release/*.dmg
+          if-no-files-found: error
+
+      # Windows-only: packages tui as a portable zip per ADR-0004
+      # (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md) -- no packaging tool
+      # needed, since the raw release binary already *is* portable (no installer, no
+      # elevation); zipping it is just for convenient distribution. See ticket #19.
+      # Entirely unverified locally -- no Windows environment available in this repo's dev
+      # sandbox, so (like tickets #20/#21) this is first-tested for real on windows-2025.
+      - name: Package tui as portable zip (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path target\release\tui.exe -DestinationPath target\release\tui-windows-portable.zip
+
+      - name: Verify portable exe runs without elevation (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: |
+          Expand-Archive -Path target\release\tui-windows-portable.zip -DestinationPath target\release\portable-check -Force
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+          $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          Write-Host "Running as: $($identity.Name) (Administrator: $isAdmin)"
+          if ($isAdmin) {
+            Write-Error "This check must not run elevated"
+            exit 1
+          }
+          # Bounded launch-and-kill, same rationale as the Windows smoke test above: prove
+          # the binary launches without needing to fight Windows keystroke injection.
+          $proc = Start-Process -FilePath "target\release\portable-check\tui.exe" -PassThru -NoNewWindow
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited) {
+            if ($proc.ExitCode -ne 0) {
+              Write-Error "tui exited early with code $($proc.ExitCode)"
+              exit 1
+            }
+          } else {
+            Stop-Process -Id $proc.Id -Force
+          }
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload portable zip artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-tui-windows-portable
+          path: target/release/tui-windows-portable.zip
           if-no-files-found: error
