@@ -3,6 +3,7 @@
 //! `App` owns which screen is active; each screen owns its own state and renders itself.
 
 pub mod candlestick_chart;
+pub mod divergent_chart;
 pub mod doughnut_chart;
 pub mod line_chart;
 

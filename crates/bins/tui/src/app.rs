@@ -17,8 +17,8 @@ use crate::{
     action::Action,
     event::{Event, EventHandler},
     screen::{
-        Screen, candlestick_chart::CandlestickChartScreen, doughnut_chart::DoughnutChartScreen,
-        line_chart::LineChartScreen,
+        Screen, candlestick_chart::CandlestickChartScreen, divergent_chart::DivergentChartScreen,
+        doughnut_chart::DoughnutChartScreen, line_chart::LineChartScreen,
     },
     tui::Tui,
 };
@@ -40,6 +40,7 @@ impl App {
             Box::new(LineChartScreen::new()),
             Box::new(DoughnutChartScreen::new()),
             Box::new(CandlestickChartScreen::new()),
+            Box::new(DivergentChartScreen::new()),
         ];
         Self {
             screens,
