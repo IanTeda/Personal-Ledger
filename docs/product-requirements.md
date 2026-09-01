@@ -60,47 +60,50 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 
 ### Desktop App:
 
-- Investigate and research Rust desktop GUI libraries.
-- Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
-- Demonstrate that tables work in the desktop app across platforms.
+- __FC-01:__ Investigate and research Rust desktop GUI libraries.
+- __FC-02:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
+- __FC-03:__ Demonstrate that tables work in the desktop app across platforms.
+- __FC-04:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
 
 ### TUI App:
 
-- Investigate and research Rust TUI libraries.
-- Demonstrate that line, doughnut, candle stick and divergent graphs work in the TUI app across platforms, as they are a key requirement for visually representing spending, etc.
-- Demonstrate that tables work in the TUI app across platforms.
+- __FC-05:__ Investigate and research Rust TUI libraries.
+- __FC-02:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
+- __FC-03:__ Demonstrate that tables work in the desktop app across platforms.
+- __FC-04:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
 
 ### Web App:
 
-- Investigate and research web GUI libraries.
-- Demonstrate that line, doughnut, candle stick and divergent graphs work in the web app across platforms, as they are a key requirement for visually representing spending, etc.
-- Demonstrate that tables work in the web app across platforms.
-- Demonstrate Docker Compose deployment.
-- Demonstrate systemd deployment.
-- Demonstrate Frontend and Sync Server as one binary.
+- __FC-06:__ Investigate and research web GUI libraries.
+- __FC-02:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
+- __FC-03:__ Demonstrate that tables work in the desktop app across platforms.
+- __FC-04:__ Demonstrate compiling, installing and running across Windows, macOS and Linux
+- __FC-07:__ Demonstrate Dockerfile compile across platforms and docker Compose deployment.
+- __FC-08:__ Demonstrate systemd deployment.
+- __FC-09:__ Demonstrate Frontend and Sync Server as one binary.
 
 ### Local Data:
 
-- Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI, Web App) can hold and operate against independently, without requiring a network connection.
-- Research the best and most efficient way to store and calculate running Balances.
+- __FC-10:__ Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI, Web App) can hold and operate against independently, without requiring a network connection.
+- __FC-11:__ Research the best and most efficient way to store and calculate running Balances.
 
 ### Sync:
 
-- Investigate and research approaches for reconciling independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
-- Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server.
-- Demonstrate the Web App instance acting as the always-on sync hub that Desktop/TUI clients sync through.
+- __FC-12:__ Investigate and research approaches for reconciling independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
+- __FC-13:__ Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server.
+- __FC-14:__ Demonstrate the Web App instance acting as the always-on sync hub that Desktop/TUI clients sync through.
 
 ### 2.2. Concept Cycle (v0.1.0)
 
-This will be defined before starting the concept cycle.
+- __CC-01:__ This will be defined before starting the concept cycle.
 
 ### 2.3. Development Cycle (v1.0.0)
 
-This will be defined before starting the development cycle.
+- __DC-01:__ This will be defined before starting the development cycle.
 
 ### 2.4. Fixes & Features Cycle (v1.0.1)
 
-This will be defined before starting the concept development cycle.
+- __FFC-01:__ This will be defined before starting the concept development cycle.
 
 ## 3. Functional Requirements
 
