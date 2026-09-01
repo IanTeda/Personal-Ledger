@@ -49,8 +49,40 @@ jobs:
       - name: Test tui
         run: cargo test --locked --package tui
 
-      # Empty scaffold today (`fn main() {}`), but this is the "where
-      # possible runs" half of FC-TUI-004: proves the compiled binary
-      # actually launches on each OS, not just that it compiles.
-      - name: Run tui (smoke test)
+      # Was an empty scaffold at ticket #13; now an interactive multi-screen demo
+      # (tickets #14-18/#22) -- this is the "where possible runs" half of FC-TUI-004,
+      # proving the compiled binary actually launches on each OS. CI runners provide no
+      # real TTY, so raw-mode terminal setup fails immediately by design (confirmed
+      # locally: `Os { code: 6, .. "No such device or address" }`). On Linux we simulate
+      # a TTY via `script` and send `q` to confirm the binary genuinely starts and quits
+      # cleanly; macOS/Windows still run the bare binary as before -- their own
+      # TTY-simulation approach is for tickets #20/#19 to work out.
+      - name: Run tui (smoke test, Linux)
+        if: runner.os == 'Linux'
+        run: echo q | script -qec "cargo run --locked --package tui" /dev/null
+
+      - name: Run tui (smoke test, macOS/Windows)
+        if: runner.os != 'Linux'
         run: cargo run --locked --package tui
+
+      # Linux-only: packages tui as a non-root AppImage per ADR-0004
+      # (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md) and confirms it
+      # actually runs -- proving FC-TUI-004's Linux non-root requirement end-to-end, not
+      # just that `cargo packager` exits 0. See ticket #21.
+      - name: Install cargo-packager (Linux)
+        if: runner.os == 'Linux'
+        run: cargo install cargo-packager --locked
+
+      - name: Package tui as AppImage (Linux)
+        if: runner.os == 'Linux'
+        run: cargo packager --release --formats appimage --manifest-path crates/bins/tui/Cargo.toml
+
+      - name: Verify AppImage runs non-root (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          appimage=$(find target/release -maxdepth 1 -name '*.AppImage')
+          chmod +x "$appimage"
+          echo "Running as: $(whoami) (uid $(id -u))"
+          [ "$(id -u)" -ne 0 ]
+          echo q | script -qec "$appimage --appimage-extract-and-run" /dev/null
