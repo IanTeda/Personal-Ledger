@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chandelier = { workspace = true }
 crossterm = { workspace = true }
 futures-util = { workspace = true }
 ratatui = { workspace = true }

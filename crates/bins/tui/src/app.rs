@@ -16,7 +16,10 @@ use ratatui::{
 use crate::{
     action::Action,
     event::{Event, EventHandler},
-    screen::{Screen, doughnut_chart::DoughnutChartScreen, line_chart::LineChartScreen},
+    screen::{
+        Screen, candlestick_chart::CandlestickChartScreen, doughnut_chart::DoughnutChartScreen,
+        line_chart::LineChartScreen,
+    },
     tui::Tui,
 };
 
@@ -36,6 +39,7 @@ impl App {
         let screens: Vec<Box<dyn Screen>> = vec![
             Box::new(LineChartScreen::new()),
             Box::new(DoughnutChartScreen::new()),
+            Box::new(CandlestickChartScreen::new()),
         ];
         Self {
             screens,

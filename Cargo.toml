@@ -45,6 +45,7 @@ members = [
 # Common workspace dev dependencies can also be defined here. Then added to the dev-dependencies
 # section of member crates as: fake = { workspace = true }
 [workspace.dependencies]
+chandelier = { version = "0.4.0" }
 chrono = { version = "0.4.42", features = ["serde", "clock"] }
 clap = { version = "4.5.53", features = ["derive", "cargo"] }
 crossterm = { version = "0.29.0", features = ["event-stream"] }

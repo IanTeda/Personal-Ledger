@@ -2,6 +2,7 @@
 //! Elm/Component architecture (`docs/adr/0003-hybrid-tea-component-tui-architecture.md`).
 //! `App` owns which screen is active; each screen owns its own state and renders itself.
 
+pub mod candlestick_chart;
 pub mod doughnut_chart;
 pub mod line_chart;
 
