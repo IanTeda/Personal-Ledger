@@ -5,9 +5,9 @@ edition = "2024"
 
 [dependencies]
 ## -- Internal Dependencies --
-lib_config = { path = "../../crates/libs/lib-config" }
-lib_rpc = { path = "../../crates/libs/lib-rpc" }
-lib_telemetry = { path = "../../crates/libs/lib-telemetry" }
+lib_config = { path = "../../libs/lib-config" }
+lib_rpc = { path = "../../libs/lib-rpc" }
+lib_telemetry = { path = "../../libs/lib-telemetry" }
 
 ## -- Workspace Dependencies -- 
 tracing = { workspace = true }
