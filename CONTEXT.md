@@ -25,9 +25,28 @@ sharing that same Unit (see `docs/product-requirements.md`, Constraints).
 _Avoid_: Commodity, Currency, asset class, exchange rate, conversion.
 
 **Ledger**:
-The complete set of Accounts, Categories, and Transactions owned by one self-hoster,
-persisted in a single SQLite database.
+The complete set of Accounts, Categories, and Transactions owned by one self-hoster —
+a logical whole, physically replicated as a full local SQLite database on each Client
+and reconciled between them by the Sync Server.
 _Avoid_: Book, journal.
+
+**Client**:
+An app instance that holds its own full local copy of the Ledger and can create, read,
+update, and delete against it entirely offline — Desktop, TUI, or Web App. The Web App
+instance additionally plays the Sync Server role (see below); that is a role it takes
+on, not a fourth, architecturally distinct component.
+_Avoid_: Device, backend — "device" conflates the physical machine with the app
+instance running on it; "backend" implied a single authoritative server, which no
+longer describes the architecture.
+
+**Sync Server**:
+The role the Web App instance plays in reconciling each Client's local Ledger copy
+with the others — pushing and pulling change sets, not exposing full CRUD. Not a
+separate deployable component; it is what the Web App does in addition to being a
+Client itself.
+_Avoid_: Backend, server — "backend" is avoided across this glossary now that Clients
+hold their own local data directly rather than depending on a central server for
+reads/writes.
 
 **Institution**:
 The financial institution (e.g. a bank) that holds an Account — not modelled as an

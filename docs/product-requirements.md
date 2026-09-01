@@ -52,7 +52,7 @@ Four development cycles are planned for this product, each with its own Git bran
 - __Development (v1.0.0):__ This phase will expand functionality and improve the user experience. At the same time, it will refine the code and security aspects.
 - __Fixes & Features (v1.0.1):__ This phase will address any lessons learnt and pain points in using the tool. It will also add features and functionality to enhance the tool's usefulness.
 
-Sections 3–6 hold the product's ultimate end-state requirements — the full functional and non-functional scope across all four cycles, not what any single cycle delivers. As each cycle is scoped, the Functional Requirements (§3) relevant to it are moved out of that pool and into that cycle's own subsection below (e.g. §2.2), keeping their original FR ID for traceability. Non-Functional Requirements, Dependencies, and Assumptions & Constraints (§4–6) remain global across all cycles rather than being moved. Items still listed in §3 have not yet been assigned to a cycle.
+Sections 3–6 hold the product's ultimate end-state requirements — the full functional and non-functional scope across all four cycles, not what any single cycle delivers. As each cycle is scoped, the Functional Requirements (§3) relevant to it are moved out of that pool and into that cycle's own subsection below (e.g. §2.2), keeping their original FR ID for traceability. Non-Functional Requirements, Dependencies, and Assumptions & Constraints (§4–6) remain global across all cycles rather than being moved. Items still listed in §3 have not yet been assigned to a cycle. Each cycle subsection can therefore hold two kinds of items: FR.* requirements moved in from §3, and items native to that cycle's own investigation/delivery work (e.g. FC-* in §2.1) — the two ID namespaces coexist rather than one replacing the other.
 
 ## 2.1. Feasibility Cycle (v0.0.1)
 
@@ -68,42 +68,43 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 ### TUI App:
 
 - __FC-05:__ Investigate and research Rust TUI libraries.
-- __FC-02:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
-- __FC-03:__ Demonstrate that tables work in the desktop app across platforms.
-- __FC-04:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
+- __FC-06:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the TUI app across platforms, as they are a key requirement for visually representing spending, etc.
+- __FC-07:__ Demonstrate that tables work in the TUI app across platforms.
+- __FC-08:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
 
 ### Web App:
 
-- __FC-06:__ Investigate and research web GUI libraries.
-- __FC-02:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
-- __FC-03:__ Demonstrate that tables work in the desktop app across platforms.
-- __FC-04:__ Demonstrate compiling, installing and running across Windows, macOS and Linux
-- __FC-07:__ Demonstrate Dockerfile compile across platforms and docker Compose deployment.
-- __FC-08:__ Demonstrate systemd deployment.
-- __FC-09:__ Demonstrate Frontend and Sync Server as one binary.
+- __FC-09:__ Investigate and research web GUI libraries.
+- __FC-10:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the web app across platforms, as they are a key requirement for visually representing spending, etc.
+- __FC-11:__ Demonstrate that tables work in the web app across platforms.
+- __FC-12:__ Demonstrate compiling, installing and running as a non-root user (container `USER` / systemd `User=`) across Windows, macOS and Linux.
+- __FC-13:__ Demonstrate Dockerfile compile across platforms.
+- __FC-14:__ Demonstrate docker Compose deployment.
+- __FC-15:__ Demonstrate systemd deployment.
+- __FC-16:__ Demonstrate Frontend and Sync Server as one binary.
 
 ### Local Data:
 
-- __FC-10:__ Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI, Web App) can hold and operate against independently, without requiring a network connection.
-- __FC-11:__ Research the best and most efficient way to store and calculate running Balances.
+- __FC-17:__ Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI, Web App) can hold and operate against independently, without requiring a network connection.
+- __FC-18:__ Research the best and most efficient way to store and calculate running Balances.
 
 ### Sync:
 
-- __FC-12:__ Investigate and research approaches for reconciling independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
-- __FC-13:__ Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server.
-- __FC-14:__ Demonstrate the Web App instance acting as the always-on sync hub that Desktop/TUI clients sync through.
+- __FC-19:__ Investigate and research approaches for reconciling independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
+- __FC-20:__ Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server.
+- __FC-21:__ Demonstrate the Web App instance acting as the always-on sync hub that Desktop/TUI clients sync through.
 
 ### 2.2. Concept Cycle (v0.1.0)
 
-- __CC-01:__ This will be defined before starting the concept cycle.
+This will be defined before starting the concept cycle.
 
 ### 2.3. Development Cycle (v1.0.0)
 
-- __DC-01:__ This will be defined before starting the development cycle.
+This will be defined before starting the development cycle.
 
 ### 2.4. Fixes & Features Cycle (v1.0.1)
 
-- __FFC-01:__ This will be defined before starting the concept development cycle.
+This will be defined before starting the concept development cycle.
 
 ## 3. Functional Requirements
 
@@ -175,7 +176,7 @@ The requirements below describe the product's ultimate end state across all deve
 ## 4. Non-Functional Requirements
 
 - __NFR.1 Reliability (priority):__ Transaction creation, update, and deletion must keep an account's running Balance consistent with its recorded transactions, even on partial failure (no orphaned balance updates). A Balance Check CSV import is atomic: a malformed row aborts the whole import rather than partially applying it. Database migrations must be safe to re-run.
-- __NFR.2 Security & Privacy (priority):__ All data is stored locally in SQLite; no data leaves the device by default. No `unsafe` code anywhere in the workspace (lint-enforced). Any secrets are wrapped in `secrecy::Secret` so they cannot leak into logs or traces.
+- __NFR.2 Security & Privacy (priority):__ All data is stored locally in SQLite; no data leaves the device by default. The app never requires root/administrator privileges to run. No `unsafe` code anywhere in the workspace (lint-enforced). Any secrets are wrapped in `secrecy::Secret` so they cannot leak into logs or traces.
 - __NFR.3 Performance:__ Category, account, transaction, budget, and Balance Check CRUD, and the balance, category-total, payee-total, budget-vs-actual, and balance-check-variance reports, should respond quickly for typical personal-ledger data volumes (thousands, not millions, of transactions).
 - __NFR.4 Usability (API-level):__ Since V1 has no UI, the local library API (`lib-database`) is the primary usability surface: errors are structured (via `thiserror`) rather than raw SQL or library errors, so a future client can present them meaningfully. The sync server's gRPC protocol (FR.39a) is a separate, narrower surface for device reconciliation, not the general-purpose API.
 - __NFR.5 Maintainability:__ Each entity's persistence logic is split into separate `find`/`insert`/`update`/`delete`/`builder`/`model` files, following the existing `categories/` convention in `lib-database`. SQL queries list explicit columns; no `SELECT *`.
