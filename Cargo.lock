@@ -3544,9 +3544,13 @@ name = "tui"
 version = "0.1.0"
 dependencies = [
  "chandelier",
+ "chrono",
  "crossterm",
  "futures-util",
+ "lib_database",
+ "lib_domain",
  "ratatui",
+ "sqlx",
  "tokio",
 ]
 

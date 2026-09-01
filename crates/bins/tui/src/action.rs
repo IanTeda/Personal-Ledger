@@ -7,7 +7,7 @@
 
 /// A message the application reacts to, however it originated (keyboard input, a periodic
 /// tick, or a background task reporting a result).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Action {
     /// A periodic tick, driving redraws even without input (e.g. for future animated charts).
     Tick,
@@ -17,4 +17,8 @@ pub enum Action {
     NextScreen,
     /// The user asked to switch to the previous screen (`Shift`+`Tab`).
     PrevScreen,
+    /// The embedded-SQLite feasibility demo (FC-TUI-005) finished loading real category data.
+    CategoriesLoaded(Vec<lib_database::Categories>),
+    /// The embedded-SQLite feasibility demo (FC-TUI-005) failed to load real category data.
+    CategoriesLoadFailed(String),
 }

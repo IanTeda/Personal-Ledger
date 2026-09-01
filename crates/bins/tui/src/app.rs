@@ -12,13 +12,15 @@ use ratatui::{
     text::{Line, Span},
     widgets::Paragraph,
 };
+use tokio::sync::mpsc;
 
 use crate::{
     action::Action,
     event::{Event, EventHandler},
     screen::{
-        Screen, candlestick_chart::CandlestickChartScreen, divergent_chart::DivergentChartScreen,
-        doughnut_chart::DoughnutChartScreen, line_chart::LineChartScreen, table::TableScreen,
+        Screen, candlestick_chart::CandlestickChartScreen, categories::CategoriesScreen,
+        divergent_chart::DivergentChartScreen, doughnut_chart::DoughnutChartScreen,
+        line_chart::LineChartScreen, table::TableScreen,
     },
     tui::Tui,
 };
@@ -31,22 +33,34 @@ pub struct App {
     screens: Vec<Box<dyn Screen>>,
     current: usize,
     should_quit: bool,
+    /// Where background tasks spawned by a screen's `init()` (e.g. the SQLite feasibility
+    /// demo's load) report their results back as an [`Action`].
+    action_rx: mpsc::UnboundedReceiver<Action>,
 }
 
 impl App {
-    /// Creates the app with every demo screen registered, starting on the first.
+    /// Creates the app with every demo screen registered, starting on the first, and gives
+    /// each screen a chance to kick off any background work via `init()`.
     pub fn new() -> Self {
-        let screens: Vec<Box<dyn Screen>> = vec![
+        let (action_tx, action_rx) = mpsc::unbounded_channel();
+
+        let mut screens: Vec<Box<dyn Screen>> = vec![
             Box::new(LineChartScreen::new()),
             Box::new(DoughnutChartScreen::new()),
             Box::new(CandlestickChartScreen::new()),
             Box::new(DivergentChartScreen::new()),
             Box::new(TableScreen::new()),
+            Box::new(CategoriesScreen::new()),
         ];
+        for screen in &mut screens {
+            screen.init(action_tx.clone());
+        }
+
         Self {
             screens,
             current: 0,
             should_quit: false,
+            action_rx,
         }
     }
 
@@ -57,10 +71,15 @@ impl App {
 
         tui.draw(|frame| self.draw(frame))?;
 
-        while let Some(event) = events.next().await {
-            if let Some(action) = Self::map_event(event) {
-                self.update(action);
-            }
+        loop {
+            let action = tokio::select! {
+                event = events.next() => match event.and_then(Self::map_event) {
+                    Some(action) => action,
+                    None => continue,
+                },
+                Some(action) = self.action_rx.recv() => action,
+            };
+            self.update(action);
             if self.should_quit {
                 break;
             }
@@ -92,6 +111,13 @@ impl App {
                 self.current = (self.current + self.screens.len() - 1) % self.screens.len();
             }
             Action::Tick => self.screens[self.current].update(&action),
+            // A background load can finish while any screen is active, and other screens
+            // ignore it via their `update`'s default `_ => {}` arm.
+            Action::CategoriesLoaded(_) | Action::CategoriesLoadFailed(_) => {
+                for screen in &mut self.screens {
+                    screen.update(&action);
+                }
+            }
         }
     }
 
@@ -142,8 +168,11 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn renders_every_screen_without_panicking() {
+    // `App::new()` calls each screen's `init()`, and `CategoriesScreen::init()` spawns a
+    // background task via `tokio::spawn` — that needs an active runtime, hence `tokio::test`
+    // rather than a plain `#[test]`.
+    #[tokio::test]
+    async fn renders_every_screen_without_panicking() {
         let mut app = App::new();
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
