@@ -5,14 +5,13 @@
 # identically everywhere without manual multi-machine testing. See the "TUI
 # App feasibility" Wayfinder map (issue #7) and ticket #13.
 #
-# Scoped to `crates/bins/tui` for now, not the whole workspace: `lib_database`
-# (an active workspace member, pulled in transitively by `lib_config`/
-# `lib_rpc`, hence by `crates/bins/server`) currently fails `cargo build` --
-# even with `SQLX_OFFLINE=true` -- because its checked-in `.sqlx` query cache
-# is stale relative to its current queries. That's a pre-existing issue
-# unrelated to the TUI (see ticket #8's resolution comment); widen this
-# workflow's `--package`/`--workspace` scope once it's fixed, or once a later
-# ticket (e.g. FC-TUI-005) needs the wider build.
+# Scoped to `crates/bins/tui`, not the whole workspace -- but as of ticket #22
+# (FC-TUI-005) `tui` depends on `lib_database`/`lib_domain` directly, so its
+# `.sqlx` query cache (regenerated in that ticket, including test targets) is
+# already exercised by the steps below. Widening further to `--workspace`
+# still isn't safe: `lib_rpc` has its own stale `.sqlx` test-target cache,
+# unrelated to the TUI and out of this map's scope -- widen once that's fixed
+# elsewhere, or once a later ticket needs the wider build.
 
 name: CI
 
