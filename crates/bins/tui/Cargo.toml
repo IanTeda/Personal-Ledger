@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+crossterm = { workspace = true }
+futures-util = { workspace = true }
+ratatui = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true
