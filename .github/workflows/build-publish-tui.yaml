@@ -165,12 +165,20 @@ jobs:
 
       - name: Verify dmg mounts and app runs non-root (macOS)
         if: runner.os == 'macOS'
+        timeout-minutes: 3
         run: |
           set -euo pipefail
           dmg=$(find target/release -maxdepth 1 -name '*.dmg')
           echo "Running as: $(whoami) (uid $(id -u))"
           [ "$(id -u)" -ne 0 ]
-          mount_point=$(hdiutil attach "$dmg" -nobrowse -readonly | tail -1 | awk '{print $NF}')
+          # Confirmed for real: parsing `hdiutil attach`'s human-readable table output via
+          # `awk '{print $NF}'` breaks when the volume name has spaces (ours does --
+          # product-name is "Personal Ledger TUI") -- it silently grabbed just the last
+          # word ("TUI") instead of the full mount path, so `find` failed with
+          # "TUI: No such file or directory". Pass -mountpoint explicitly instead so
+          # there's no output to parse at all.
+          mount_point="/tmp/tui-dmg-mount"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_point"
           app=$(find "$mount_point" -maxdepth 1 -name '*.app')
           binary=$(find "$app/Contents/MacOS" -type f | head -1)
           echo q | script -q /dev/null "$binary"
