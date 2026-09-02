@@ -10,7 +10,7 @@ and a live view against a real embedded SQLite store.
 From the repo root:
 
 ```sh
-cargo run --package tui
+cargo run --package bin_tui
 ```
 
 Keybindings: `Tab` / `Shift+Tab` to switch screens, `q` or `Esc` to quit.
@@ -32,7 +32,7 @@ and no root at all (see the ADR for why).
 2. Build and package, from the repo root:
 
    ```sh
-   cargo packager --release --formats appimage --manifest-path crates/bins/tui/Cargo.toml
+   cargo packager --release --formats appimage --manifest-path crates/bins/bin_tui/Cargo.toml
    ```
 
    This produces `target/release/tui_0.1.0_x86_64.AppImage` (version number tracks the
@@ -52,6 +52,6 @@ and no root at all (see the ADR for why).
    ./target/release/tui_0.1.0_x86_64.AppImage --appimage-extract-and-run
    ```
 
-`crates/bins/tui/icons/icon-256.png` is a placeholder (a plain coloured square, no branding) —
+`crates/bins/bin_tui/icons/icon-256.png` is a placeholder (a plain coloured square, no branding) —
 AppImage packaging requires a square icon to exist; swap it for real artwork whenever the app
 gets any.

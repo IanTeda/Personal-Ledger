@@ -3,7 +3,7 @@
 # Cross-platform build/test matrix (Linux, macOS, Windows). See the "TUI
 # App feasibility" Wayfinder map (issue #7) and ticket #13.
 #
-# Scoped to `crates/bins/tui`, not the whole workspace -- but as of ticket #22
+# Scoped to `crates/bins/bin_tui`, not the whole workspace -- but as of ticket #22
 # (FC-TUI-005) `tui` depends on `lib_database`/`lib_domain` directly, so its
 # `.sqlx` query cache (regenerated in that ticket, including test targets) is
 # already exercised by the steps below. Widening further to `--workspace`
@@ -54,10 +54,10 @@ jobs:
         uses: jdx/mise-action@v4
 
       - name: Build tui
-        run: cargo build --locked --package tui
+        run: cargo build --locked --package bin_tui
 
       - name: Test tui
-        run: cargo test --locked --package tui
+        run: cargo test --locked --package bin_tui
 
       # Was an empty scaffold at ticket #13; now an interactive multi-screen demo
       # (tickets #14-18/#22) -- this is the "where possible runs" half of FC-TUI-004,
@@ -72,7 +72,7 @@ jobs:
       - name: Run tui (smoke test, Linux)
         if: runner.os == 'Linux'
         timeout-minutes: 3
-        run: echo q | script -qec "cargo run --locked --package tui" /dev/null
+        run: echo q | script -qec "cargo run --locked --package bin_tui" /dev/null
 
       # Unverified from this repo's Linux dev sandbox -- there's no macOS toolchain
       # available here, so this is genuinely first-tested on a real macos-15 runner, not
@@ -80,7 +80,7 @@ jobs:
       - name: Run tui (smoke test, macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 3
-        run: echo q | script -q /dev/null cargo run --locked --package tui
+        run: echo q | script -q /dev/null cargo run --locked --package bin_tui
 
       # Unlike Unix, Windows' console backend doesn't fail-fast without a real TTY --
       # confirmed for real: a bare `cargo run` here hung indefinitely (16+ min, still
@@ -111,7 +111,7 @@ jobs:
       # "Failed to copy file from .../target/release/tui ... No such file or directory"
       # (confirmed for real on the first feasibility-branch CI run, ubuntu-24.04 leg).
       - name: Build tui (release)
-        run: cargo build --locked --release --package tui
+        run: cargo build --locked --release --package bin_tui
 
       # cargo-packager ships no prebuilt release binaries (its GitHub releases carry no
       # binary assets) and isn't in taiki-e/install-action's supported-tools list either,
@@ -137,7 +137,7 @@ jobs:
 
       - name: Package tui as AppImage (Linux)
         if: runner.os == 'Linux'
-        run: cargo packager --release --formats appimage --manifest-path crates/bins/tui/Cargo.toml
+        run: cargo packager --release --formats appimage --manifest-path crates/bins/bin_tui/Cargo.toml
 
       - name: Verify AppImage runs non-root (Linux)
         if: runner.os == 'Linux'
@@ -169,7 +169,7 @@ jobs:
 
       - name: Package tui as dmg (macOS)
         if: runner.os == 'macOS'
-        run: cargo packager --release --formats dmg --manifest-path crates/bins/tui/Cargo.toml
+        run: cargo packager --release --formats dmg --manifest-path crates/bins/bin_tui/Cargo.toml
 
       - name: Verify dmg mounts and app runs non-root (macOS)
         if: runner.os == 'macOS'

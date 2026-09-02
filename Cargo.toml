@@ -32,7 +32,7 @@ resolver = "3"
 # members = ["crates/backend","crates/lib-config", "crates/lib-domain", "crates/lib-rpc"]
 members = [
   # "./crates/bins/server",
-  "./crates/bins/tui",
+  "./crates/bins/bin_tui",
   "./crates/libs/lib-config",
   "./crates/libs/lib-database",
   "./crates/libs/lib-telemetry",
