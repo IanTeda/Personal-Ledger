@@ -149,6 +149,15 @@ jobs:
           [ "$(id -u)" -ne 0 ]
           echo q | script -qec "$appimage --appimage-extract-and-run" /dev/null
 
+      # https://github.com/actions/upload-artifact
+      - name: Upload AppImage artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-tui-linux-appimage
+          path: target/release/*.AppImage
+          if-no-files-found: error
+
       # macOS-only: packages tui as a .dmg per ADR-0004, no code signing this cycle. See
       # ticket #20. Entirely unverified locally -- there's no macOS toolchain in this
       # repo's dev sandbox, so unlike the Linux AppImage steps above, none of this has
