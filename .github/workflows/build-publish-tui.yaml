@@ -1,7 +1,17 @@
 # .github/workflows/build-publish-tui.yaml
 #
-# Cross-platform build/test matrix (Linux, macOS, Windows). See the "TUI
-# App feasibility" Wayfinder map (issue #7) and ticket #13.
+# Cross-platform build/test/package matrix (Linux, macOS, Windows). See the
+# "TUI App feasibility" Wayfinder map (issue #7) and ticket #13.
+#
+# Triggered when a GitHub Release is published -- packaging on every push was
+# expensive (each run rebuilds the full dependency tree + packages all three
+# OSes from scratch, ~6-30 min depending on cache state) and most pushes don't
+# need it. A `workflow_dispatch` entry lets you re-run the exact same
+# build/test/package/verify pipeline on demand for testing -- see the
+# "Attach ... to release" steps below, which only fire for an actual release
+# event; a workflow_dispatch run still uploads each artifact to the run itself
+# (Actions tab), it just never touches a GitHub Release. Matches the trigger
+# pattern already used in build-publish-documentation.yaml.
 #
 # Scoped to `crates/bins/bin-tui`, not the whole workspace -- but as of ticket #22
 # (FC-TUI-005) `tui` depends on `lib_database`/`lib_domain` directly, so its
@@ -14,13 +24,18 @@
 name: Build and Publish TUI
 
 on:
-  push:
-  pull_request:
+  release:
+    types: [created]
   workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+# contents: write is needed only by the "Attach ... to release" steps below
+# (gh release upload); everything else only reads the repo.
+permissions:
+  contents: write
 
 env:
   # Pinned (not "latest") so the cache key below is stable and meaningful --
@@ -158,6 +173,14 @@ jobs:
           path: target/release/*.AppImage
           if-no-files-found: error
 
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach AppImage to release (Linux)
+        if: runner.os == 'Linux' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.AppImage --clobber
+
       # macOS-only: packages tui as a .dmg per ADR-0004, no code signing this cycle. See
       # ticket #20. Entirely unverified locally -- there's no macOS toolchain in this
       # repo's dev sandbox, so unlike the Linux AppImage steps above, none of this has
@@ -200,6 +223,14 @@ jobs:
           name: personal-ledger-tui-macos-dmg
           path: target/release/*.dmg
           if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach dmg to release (macOS)
+        if: runner.os == 'macOS' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.dmg --clobber
 
       # Windows-only: packages tui as a portable zip per ADR-0004
       # (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md) -- no packaging tool
@@ -250,3 +281,11 @@ jobs:
           name: personal-ledger-tui-windows-portable
           path: target/release/tui-windows-portable.zip
           if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach portable zip to release (Windows)
+        if: runner.os == 'Windows' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/tui-windows-portable.zip --clobber
