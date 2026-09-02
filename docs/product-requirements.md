@@ -97,7 +97,11 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 
 ### 2.2. Concept Cycle (v0.1.0)
 
-This will be defined before starting the concept cycle.
+- __CC-ALL-001:__ Ensure all dependencies are up-to-date and cross-compilation is enabled and compiles on all platforms.
+- __CC-ALL-002:__ Remove depreciated Chrono crate and ensure cross compilation of new package.
+- __CC-ALL-003:__ Refactor lib_domain into lib_core for shared domain logic and modules.
+- __CC-ALL-004:__ Build out configuration layer. Including configuration file parsing, environment variable support and command line argument support.
+- __CC-ALL-005:__ Build authentication layer. Username and password is defined in configuratoin
 
 ### 2.3. Development Cycle (v1.0.0)
 
