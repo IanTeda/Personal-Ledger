@@ -1,0 +1,144 @@
+# .github/workflows/build-publish-desktop.yaml
+#
+# Cross-platform build/test matrix (Linux, macOS, Windows) for `bin-desktop`. See the
+# "Desktop App feasibility" Wayfinder map (issue #23) and ticket #33.
+#
+# Mirrors build-publish-tui.yaml's shape and trigger (release + workflow_dispatch, not
+# every push -- packaging on every push was expensive there, and the same reasoning
+# applies here) so the per-OS packaging steps (issues #34-36) can be added to these same
+# jobs later without a trigger change, the same way build-publish-tui.yaml grew
+# incrementally across tickets #13/#19/#20/#21 rather than being rewritten each time.
+#
+# Scoped to `crates/bins/bin-desktop`, not the whole workspace -- same reasoning as
+# build-publish-tui.yaml: `lib_rpc` has its own stale `.sqlx` test-target cache unrelated
+# to this map, and `bin-desktop` has no `lib_database`/`lib_domain` dependency yet (that's
+# FC-DESKTOP's own real-data ticket, issue #37) so there's nothing to widen for yet.
+
+name: Build and Publish Desktop
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      # https://github.com/actions/checkout
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Installs the pinned Rust toolchain from mise.toml identically on all three
+      # runner OSes, so CI uses exactly what a local `mise install` would.
+      # https://github.com/jdx/mise-action
+      - name: Install mise-pinned toolchain
+        uses: jdx/mise-action@v4
+
+      # GPUI (ADR-0007) renders via Metal on macOS and DirectX on Windows -- both already
+      # present on GitHub-hosted runners -- but on Linux it needs real windowing/graphics
+      # dev headers that TUI's crossterm never touched. This list is scoped down from
+      # Zed's own much larger script/linux install list (which also covers Zed-specific
+      # features -- git, TLS, audio, screen-sharing -- bin-desktop doesn't have) to just
+      # what GPUI's rendering/windowing stack itself needs: X11/Wayland/xkbcommon headers,
+      # fontconfig, and Vulkan (via blade-graphics) with Mesa's software rasteriser
+      # (lavapipe, shipped in mesa-vulkan-drivers) as the fallback on a runner with no
+      # real GPU. Unverified -- this is the first time this workspace has needed a real
+      # GPU rendering stack in CI, so the exact package list may need adjusting based on
+      # the first real run here, the same way build-publish-tui.yaml's own steps were
+      # tuned against real CI failures rather than guessed right first time.
+      - name: Install Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang cmake lld \
+            libfontconfig-dev \
+            libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools \
+            xvfb
+
+      - name: Build desktop
+        run: cargo build --locked --package bin_desktop
+
+      - name: Test desktop
+        run: cargo test --locked --package bin_desktop
+
+      # Linux CI runners are headless (no real display server), unlike the TUI's terminal
+      # smoke test which just needed a simulated TTY -- GPUI needs an actual X11/Wayland
+      # display to open a window against, so this runs under Xvfb (a virtual X server;
+      # GPUI's platform layer falls back to its X11 backend when no Wayland compositor is
+      # present, the same way it would on a real Linux desktop without Wayland). Bounded
+      # launch-and-kill rather than a graceful quit keystroke, since unlike the TUI there's
+      # no stdin-driven quit action wired up yet -- same rationale as the TUI workflow's
+      # Windows leg (see below), just applied to every OS here because a GUI app has no
+      # single portable "send it a quit key via piped stdin" mechanism the way a terminal
+      # app does.
+      - name: Run desktop (smoke test, Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          xvfb-run --auto-servernum target/debug/desktop &
+          pid=$!
+          sleep 8
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || status=$?
+            echo "desktop exited early with status ${status:-unknown}"
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+
+      # macos-15 runners have a real (if virtual) desktop session, so this should open a
+      # genuine window via GPUI's Metal backend without needing Xvfb's Linux-only
+      # workaround -- but like the TUI's own macOS steps, this is genuinely unverified from
+      # this repo's Linux dev sandbox; first-tested for real on a macos-15 runner.
+      - name: Run desktop (smoke test, macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          ./target/debug/desktop &
+          pid=$!
+          sleep 5
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || status=$?
+            echo "desktop exited early with status ${status:-unknown}"
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+
+      # windows-2025 runners similarly have a real desktop session for GPUI's DirectX
+      # backend. Bounded launch-and-kill, same shape as the TUI workflow's own Windows
+      # smoke test (crossterm's Win32 console reader never saw piped stdin there; a GUI
+      # app has the same "no portable quit-via-stdin" problem, just for a different
+      # underlying reason) -- genuinely unverified, no Windows environment available in
+      # this repo's dev sandbox.
+      - name: Run desktop (smoke test, Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: |
+          $proc = Start-Process -FilePath "target\debug\desktop.exe" -PassThru -NoNewWindow
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited) {
+            if ($proc.ExitCode -ne 0) {
+              Write-Error "desktop exited early with code $($proc.ExitCode)"
+              exit 1
+            }
+          } else {
+            Stop-Process -Id $proc.Id -Force
+          }
