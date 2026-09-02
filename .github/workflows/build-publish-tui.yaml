@@ -235,9 +235,9 @@ jobs:
       # Windows-only: packages tui as a portable zip per ADR-0004
       # (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md) -- no packaging tool
       # needed, since the raw release binary already *is* portable (no installer, no
-      # elevation); zipping it is just for convenient distribution. See ticket #19.
-      # Entirely unverified locally -- no Windows environment available in this repo's dev
-      # sandbox, so (like tickets #20/#21) this is first-tested for real on windows-2025.
+      # elevation); zipping it is for a normal-feeling download, not because it's required
+      # (a bare unsigned .exe download reads as more alarming to an end user than a .zip
+      # does). See ticket #19.
       - name: Package tui as portable zip (Windows)
         if: runner.os == 'Windows'
         run: Compress-Archive -Path target\release\tui.exe -DestinationPath target\release\tui-windows-portable.zip
@@ -245,16 +245,17 @@ jobs:
       - name: Verify portable exe launches (Windows)
         if: runner.os == 'Windows'
         timeout-minutes: 3
+        # Entirely unverified locally -- no Windows environment available in this repo's dev
+        # sandbox, so (like tickets #20/#21) this is first-tested for real on windows-2025.
         run: |
-          Expand-Archive -Path target\release\tui-windows-portable.zip -DestinationPath target\release\portable-check -Force
           # Confirmed for real: GitHub's windows-2025 runner executes job steps with an
           # Administrator-capable token by default, so `IsInRole(Administrator)` is true
           # here regardless of the packaged binary -- that's a property of the CI runner,
           # not of tui.exe. NFR.2 ("never requires root/administrator") is actually about
           # whether the exe *demands* elevation (an embedded manifest requesting
           # requireAdministrator, or Windows' installer-name heuristics) -- tui.exe has
-          # neither, and the fact it already built/zipped/launches at all confirms nothing
-          # about it needs elevation to run. Report the runner's own privilege level for
+          # neither, and the fact it already built/launches at all confirms nothing about
+          # it needs elevation to run. Report the runner's own privilege level for
           # visibility only; don't fail the build over it.
           $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
           $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -262,7 +263,7 @@ jobs:
           Write-Host "Running as: $($identity.Name) (runner's own token is Administrator: $isAdmin -- not a property of tui.exe)"
           # Bounded launch-and-kill, same rationale as the Windows smoke test above: prove
           # the binary launches without needing to fight Windows keystroke injection.
-          $proc = Start-Process -FilePath "target\release\portable-check\tui.exe" -PassThru -NoNewWindow
+          $proc = Start-Process -FilePath "target\release\tui.exe" -PassThru -NoNewWindow
           Start-Sleep -Seconds 5
           if ($proc.HasExited) {
             if ($proc.ExitCode -ne 0) {
@@ -273,17 +274,26 @@ jobs:
             Stop-Process -Id $proc.Id -Force
           }
 
+      # `actions/upload-artifact` always wraps whatever it's given in its own zip for
+      # download from the Actions tab -- uploading our already-zipped tui-windows-portable.zip
+      # there produced a zip-in-a-zip when downloaded (confirmed for real by Ian). Uploading
+      # the raw .exe here instead means exactly one zip layer for this path (Actions' own,
+      # unavoidable one); the actual release download (below) is a real GitHub Release asset,
+      # which isn't auto-zipped, so *that* one uses the zip on purpose -- see the "Package tui
+      # as portable zip" step's comment for why.
       # https://github.com/actions/upload-artifact
-      - name: Upload portable zip artifact (Windows)
+      - name: Upload portable exe artifact (Windows)
         if: runner.os == 'Windows'
         uses: actions/upload-artifact@v7
         with:
           name: personal-ledger-tui-windows-portable
-          path: target/release/tui-windows-portable.zip
+          path: target/release/tui.exe
           if-no-files-found: error
 
       # Only for an actual release publish -- a workflow_dispatch test run stops at the
-      # workflow-run artifact above and never touches the release.
+      # workflow-run artifact above and never touches the release. Uploads the zip (not the
+      # raw exe) here, since a Release asset isn't auto-wrapped by GitHub the way the
+      # workflow-run artifact above is.
       - name: Attach portable zip to release (Windows)
         if: runner.os == 'Windows' && github.event_name == 'release'
         env:
