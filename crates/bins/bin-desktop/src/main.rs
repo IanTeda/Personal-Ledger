@@ -21,13 +21,14 @@
 //! chart (ADR-0002).
 
 use gpui::{
-    App, Application, Bounds, Context, Pixels, SharedString, Window, WindowBounds, WindowOptions,
-    canvas, div, fill, point, prelude::*, px, size,
+    App, Application, Bounds, Context, Entity, Pixels, SharedString, Window, WindowBounds,
+    WindowOptions, canvas, div, fill, point, prelude::*, px, size,
 };
 use gpui_component::{
     ActiveTheme,
     chart::{CandlestickChart, LineChart, PieChart},
     tab::{Tab, TabBar},
+    table::{Column, Table, TableDelegate, TableState},
 };
 
 /// A single dummy monthly-spend data point, standing in for a real transaction-total
@@ -188,6 +189,140 @@ fn divergent_bar_bounds(bounds: Bounds<Pixels>, amount: f64, max_abs: f64) -> Bo
     }
 }
 
+/// One dummy row, in the shape of a Personal Ledger Transaction (see FR.16 in
+/// `docs/product-requirements.md`): a date, payee, category, amount, and Transaction
+/// Status. Same data as the TUI cycle's own table demo
+/// (`crates/bins/bin-tui/src/screen/table.rs`).
+struct Transaction {
+    date: SharedString,
+    payee: SharedString,
+    category: SharedString,
+    amount: f64,
+    status: SharedString,
+}
+
+/// Dummy transaction rows spanning every Transaction Status (Open, Cleared, Reconciled)
+/// and both income and expense amounts.
+fn dummy_transactions() -> Vec<Transaction> {
+    [
+        (
+            "2026-08-01",
+            "Employer Pty Ltd",
+            "Salary",
+            3_200.00,
+            "Reconciled",
+        ),
+        (
+            "2026-08-02",
+            "Woolworths",
+            "Groceries",
+            -84.32,
+            "Reconciled",
+        ),
+        ("2026-08-04", "Landlord", "Rent", -1_200.00, "Reconciled"),
+        (
+            "2026-08-07",
+            "Energy Australia",
+            "Utilities",
+            -145.60,
+            "Cleared",
+        ),
+        ("2026-08-10", "Woolworths", "Groceries", -62.15, "Cleared"),
+        ("2026-08-12", "Netflix", "Entertainment", -22.99, "Cleared"),
+        (
+            "2026-08-14",
+            "Opal Transport",
+            "Transport",
+            -38.40,
+            "Cleared",
+        ),
+        ("2026-08-15", "Employer Pty Ltd", "Salary", 3_200.00, "Open"),
+        ("2026-08-17", "Coles", "Groceries", -71.88, "Open"),
+        (
+            "2026-08-19",
+            "Unknown transfer",
+            "Uncategorised",
+            -250.00,
+            "Open",
+        ),
+    ]
+    .into_iter()
+    .map(|(date, payee, category, amount, status)| Transaction {
+        date: date.into(),
+        payee: payee.into(),
+        category: category.into(),
+        amount,
+        status: status.into(),
+    })
+    .collect()
+}
+
+/// `gpui-component`'s `TableDelegate` for the dummy transaction table.
+struct TransactionTableDelegate {
+    columns: Vec<Column>,
+    transactions: Vec<Transaction>,
+}
+
+impl TransactionTableDelegate {
+    fn new(transactions: Vec<Transaction>) -> Self {
+        let columns = vec![
+            Column::new("date", "Date").width(px(100.0)),
+            Column::new("payee", "Payee").width(px(180.0)),
+            Column::new("category", "Category").width(px(140.0)),
+            Column::new("amount", "Amount")
+                .width(px(100.0))
+                .text_right(),
+            Column::new("status", "Status").width(px(110.0)),
+        ];
+        Self {
+            columns,
+            transactions,
+        }
+    }
+}
+
+impl TableDelegate for TransactionTableDelegate {
+    fn columns_count(&self, _cx: &App) -> usize {
+        self.columns.len()
+    }
+
+    fn rows_count(&self, _cx: &App) -> usize {
+        self.transactions.len()
+    }
+
+    fn column(&self, col_ix: usize, _cx: &App) -> &Column {
+        &self.columns[col_ix]
+    }
+
+    fn render_td(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<TableState<Self>>,
+    ) -> impl IntoElement {
+        let transaction = &self.transactions[row_ix];
+        match col_ix {
+            0 => div().child(transaction.date.clone()).into_any_element(),
+            1 => div().child(transaction.payee.clone()).into_any_element(),
+            2 => div().child(transaction.category.clone()).into_any_element(),
+            3 => {
+                let color = if transaction.amount >= 0.0 {
+                    cx.theme().success
+                } else {
+                    cx.theme().danger
+                };
+                div()
+                    .text_right()
+                    .text_color(color)
+                    .child(format!("{:.2}", transaction.amount))
+                    .into_any_element()
+            }
+            _ => div().child(transaction.status.clone()).into_any_element(),
+        }
+    }
+}
+
 /// Which demo screen is currently shown.
 #[derive(Clone, Copy, PartialEq)]
 enum Screen {
@@ -195,14 +330,16 @@ enum Screen {
     Doughnut,
     Candlestick,
     Divergent,
+    Table,
 }
 
 impl Screen {
-    const ALL: [Screen; 4] = [
+    const ALL: [Screen; 5] = [
         Screen::Line,
         Screen::Doughnut,
         Screen::Candlestick,
         Screen::Divergent,
+        Screen::Table,
     ];
 
     fn index(self) -> usize {
@@ -215,6 +352,7 @@ impl Screen {
             Screen::Doughnut => "Doughnut Chart",
             Screen::Candlestick => "Candlestick Chart",
             Screen::Divergent => "Divergent Chart",
+            Screen::Table => "Table",
         }
     }
 }
@@ -226,6 +364,7 @@ struct DesktopApp {
     categories: Vec<CategorySpend>,
     candles: Vec<Candle>,
     variances: Vec<Variance>,
+    table_state: Entity<TableState<TransactionTableDelegate>>,
 }
 
 impl Render for DesktopApp {
@@ -358,6 +497,11 @@ impl Render for DesktopApp {
                     }))
                     .into_any_element()
             }
+            Screen::Table => div()
+                .h(px(400.0))
+                .w_full()
+                .child(Table::new(&self.table_state).stripe(true))
+                .into_any_element(),
         };
 
         div()
@@ -446,13 +590,23 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
             },
-            |_window, cx| {
-                cx.new(|_cx| DesktopApp {
-                    screen: Screen::Line,
-                    spend: dummy_spend(),
-                    categories: dummy_categories(),
-                    candles: dummy_candles(),
-                    variances: dummy_variances(),
+            |window, cx| {
+                cx.new(|cx| {
+                    let table_state = cx.new(|state_cx| {
+                        TableState::new(
+                            TransactionTableDelegate::new(dummy_transactions()),
+                            window,
+                            state_cx,
+                        )
+                    });
+                    DesktopApp {
+                        screen: Screen::Line,
+                        spend: dummy_spend(),
+                        categories: dummy_categories(),
+                        candles: dummy_candles(),
+                        variances: dummy_variances(),
+                        table_state,
+                    }
                 })
             },
         )
