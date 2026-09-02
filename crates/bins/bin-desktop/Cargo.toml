@@ -30,6 +30,16 @@ formats = ["nsis", "dmg", "appimage"]
 # Placeholder only -- a plain square, no branding yet, same as bin-tui's own icon.
 icons = ["icons/icon-256.png"]
 
+# Explicit, not auto-detected: `--manifest-path` does NOT scope cargo-packager's binary
+# discovery to this crate -- confirmed for real on CI, it tried to bundle `tui.exe` (from
+# the sibling bin-tui crate) despite being pointed at this Cargo.toml, because the
+# workspace now has two `[[bin]]` targets and cargo-packager resolves across the whole
+# workspace rather than just the manifest it was given. Naming the binary here explicitly
+# is what actually scopes it.
+[[package.metadata.packager.binaries]]
+path = "desktop"
+main = true
+
 # `currentUser` is NSIS's documented default install mode already (no elevation, no
 # Administrator prompt) -- set explicitly so the non-root intent (NFR.2) is visible in the
 # config itself, not just relied on implicitly. Field is `installer_mode` (or
