@@ -232,6 +232,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.dmg --clobber
 
+      # Renames the Windows release binary for a friendlier end-user-facing filename --
+      # everywhere else (cargo run/build, the Linux AppImage's internal binary, the macOS
+      # .app bundle's binary) still uses the plain `tui` name Cargo's [[bin]] override
+      # produces; this is a CI-only rename of the Windows distributable specifically, per
+      # Ian, "for now" -- revisit if/when this needs a more permanent naming decision.
+      - name: Rename Windows binary for distribution
+        if: runner.os == 'Windows'
+        run: Rename-Item -Path target\release\tui.exe -NewName personal-ledger-tui.exe
+
       # Windows-only: packages tui as a portable zip per ADR-0004
       # (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md) -- no packaging tool
       # needed, since the raw release binary already *is* portable (no installer, no
@@ -240,7 +249,7 @@ jobs:
       # does). See ticket #19.
       - name: Package tui as portable zip (Windows)
         if: runner.os == 'Windows'
-        run: Compress-Archive -Path target\release\tui.exe -DestinationPath target\release\tui-windows-portable.zip
+        run: Compress-Archive -Path target\release\personal-ledger-tui.exe -DestinationPath target\release\tui-windows-portable.zip
 
       - name: Verify portable exe launches (Windows)
         if: runner.os == 'Windows'
@@ -251,19 +260,19 @@ jobs:
           # Confirmed for real: GitHub's windows-2025 runner executes job steps with an
           # Administrator-capable token by default, so `IsInRole(Administrator)` is true
           # here regardless of the packaged binary -- that's a property of the CI runner,
-          # not of tui.exe. NFR.2 ("never requires root/administrator") is actually about
-          # whether the exe *demands* elevation (an embedded manifest requesting
-          # requireAdministrator, or Windows' installer-name heuristics) -- tui.exe has
-          # neither, and the fact it already built/launches at all confirms nothing about
-          # it needs elevation to run. Report the runner's own privilege level for
-          # visibility only; don't fail the build over it.
+          # not of the binary itself. NFR.2 ("never requires root/administrator") is
+          # actually about whether the exe *demands* elevation (an embedded manifest
+          # requesting requireAdministrator, or Windows' installer-name heuristics) -- it
+          # has neither, and the fact it already built/renamed/launches at all confirms
+          # nothing about it needs elevation to run. Report the runner's own privilege
+          # level for visibility only; don't fail the build over it.
           $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
           $principal = New-Object Security.Principal.WindowsPrincipal($identity)
           $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-          Write-Host "Running as: $($identity.Name) (runner's own token is Administrator: $isAdmin -- not a property of tui.exe)"
+          Write-Host "Running as: $($identity.Name) (runner's own token is Administrator: $isAdmin -- not a property of the exe)"
           # Bounded launch-and-kill, same rationale as the Windows smoke test above: prove
           # the binary launches without needing to fight Windows keystroke injection.
-          $proc = Start-Process -FilePath "target\release\tui.exe" -PassThru -NoNewWindow
+          $proc = Start-Process -FilePath "target\release\personal-ledger-tui.exe" -PassThru -NoNewWindow
           Start-Sleep -Seconds 5
           if ($proc.HasExited) {
             if ($proc.ExitCode -ne 0) {
@@ -287,7 +296,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: personal-ledger-tui-windows-portable
-          path: target/release/tui.exe
+          path: target/release/personal-ledger-tui.exe
           if-no-files-found: error
 
       # Only for an actual release publish -- a workflow_dispatch test run stops at the
