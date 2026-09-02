@@ -175,12 +175,22 @@ jobs:
         run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
 
       # Windows-only: packages desktop as a non-elevated NSIS installer per ADR-0008
-      # (docs/adr/0008-cargo-packager-for-desktop.md) -- `install_mode = "currentUser"` is
-      # set explicitly in crates/bins/bin-desktop/Cargo.toml's
+      # (docs/adr/0008-cargo-packager-for-desktop.md) -- `installer_mode = "currentUser"`
+      # is set explicitly in crates/bins/bin-desktop/Cargo.toml's
       # [package.metadata.packager.nsis] section. See ticket #34.
+      #
+      # `--packages bin_desktop` is required, not optional -- confirmed for real on CI:
+      # `--manifest-path` only tells `cargo metadata` where to resolve the workspace from,
+      # it does NOT scope which package(s) get packaged. cargo-packager's own source
+      # (crates/packager/src/cli/config.rs, load_configs_from_cargo_workspace) iterates
+      # every workspace package with a [package.metadata.packager] table and packages all
+      # of them unless `--packages` filters it down -- so without this flag, running this
+      # from a workspace that also has bin-tui's own packager config tries to bundle
+      # tui.exe too, which this job never builds. `bin_desktop` here is the Cargo package
+      # name (`bin_desktop`), not the binary name (`desktop`) or product name.
       - name: Package desktop as NSIS installer (Windows)
         if: runner.os == 'Windows'
-        run: cargo packager --release --formats nsis --manifest-path crates/bins/bin-desktop/Cargo.toml
+        run: cargo packager --release --formats nsis --packages bin_desktop --manifest-path crates/bins/bin-desktop/Cargo.toml
 
       # Confirms the installer actually installs non-interactively (NSIS's standard `/S`
       # silent flag) without requiring elevation -- a `currentUser`-mode installer that

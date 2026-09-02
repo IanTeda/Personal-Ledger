@@ -150,9 +150,15 @@ jobs:
         if: runner.os == 'Linux' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
         run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
 
+      # `--packages bin_tui` is required, not optional, now that bin-desktop also has its
+      # own [package.metadata.packager] table (ticket #34): cargo-packager packages every
+      # workspace member with one unless `--packages` filters it down, regardless of
+      # `--manifest-path` -- confirmed for real on CI while adding bin-desktop's own
+      # packaging. Without this flag, this step would also try to bundle bin-desktop's
+      # `desktop`/`desktop.exe`, which this job never builds.
       - name: Package tui as AppImage (Linux)
         if: runner.os == 'Linux'
-        run: cargo packager --release --formats appimage --manifest-path crates/bins/bin-tui/Cargo.toml
+        run: cargo packager --release --formats appimage --packages bin_tui --manifest-path crates/bins/bin-tui/Cargo.toml
 
       - name: Verify AppImage runs non-root (Linux)
         if: runner.os == 'Linux'
@@ -190,9 +196,10 @@ jobs:
         if: runner.os == 'macOS' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
         run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
 
+      # `--packages bin_tui` required for the same reason as the AppImage step above.
       - name: Package tui as dmg (macOS)
         if: runner.os == 'macOS'
-        run: cargo packager --release --formats dmg --manifest-path crates/bins/bin-tui/Cargo.toml
+        run: cargo packager --release --formats dmg --packages bin_tui --manifest-path crates/bins/bin-tui/Cargo.toml
 
       - name: Verify dmg mounts and app runs non-root (macOS)
         if: runner.os == 'macOS'

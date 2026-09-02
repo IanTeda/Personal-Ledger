@@ -44,11 +44,12 @@ formats = ["appimage", "dmg"]
 # when the app has any.
 icons = ["icons/icon-256.png"]
 
-# Explicit, not auto-detected: `--manifest-path` does NOT scope cargo-packager's binary
-# discovery to this crate -- confirmed for real on CI (see bin-desktop's own Cargo.toml,
-# ticket #34) when a second workspace binary (`desktop`) started making cargo-packager's
-# workspace-wide binary resolution ambiguous. Naming the binary here explicitly is what
-# actually scopes it, now that `bin-tui` is no longer the workspace's only binary crate.
+# Not strictly required now that build-publish-tui.yaml's CI invocation passes `--packages
+# bin_tui` (the real fix -- cargo-packager packages every workspace member with a
+# [package.metadata.packager] table unless `--packages` filters it down, confirmed for
+# real on CI while adding bin-desktop's own packaging, ticket #34), but kept explicit
+# anyway: with two `[[bin]]` targets now in the workspace, auto-detection is one less
+# thing to trust.
 [[package.metadata.packager.binaries]]
 path = "tui"
 main = true
