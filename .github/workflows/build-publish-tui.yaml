@@ -3,7 +3,7 @@
 # Cross-platform build/test matrix (Linux, macOS, Windows). See the "TUI
 # App feasibility" Wayfinder map (issue #7) and ticket #13.
 #
-# Scoped to `crates/bins/bin_tui`, not the whole workspace -- but as of ticket #22
+# Scoped to `crates/bins/bin-tui`, not the whole workspace -- but as of ticket #22
 # (FC-TUI-005) `tui` depends on `lib_database`/`lib_domain` directly, so its
 # `.sqlx` query cache (regenerated in that ticket, including test targets) is
 # already exercised by the steps below. Widening further to `--workspace`
@@ -137,7 +137,7 @@ jobs:
 
       - name: Package tui as AppImage (Linux)
         if: runner.os == 'Linux'
-        run: cargo packager --release --formats appimage --manifest-path crates/bins/bin_tui/Cargo.toml
+        run: cargo packager --release --formats appimage --manifest-path crates/bins/bin-tui/Cargo.toml
 
       - name: Verify AppImage runs non-root (Linux)
         if: runner.os == 'Linux'
@@ -169,7 +169,7 @@ jobs:
 
       - name: Package tui as dmg (macOS)
         if: runner.os == 'macOS'
-        run: cargo packager --release --formats dmg --manifest-path crates/bins/bin_tui/Cargo.toml
+        run: cargo packager --release --formats dmg --manifest-path crates/bins/bin-tui/Cargo.toml
 
       - name: Verify dmg mounts and app runs non-root (macOS)
         if: runner.os == 'macOS'
