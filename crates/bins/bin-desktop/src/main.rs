@@ -18,7 +18,7 @@ use gpui::{
 };
 use gpui_component::{
     ActiveTheme,
-    chart::{LineChart, PieChart},
+    chart::{CandlestickChart, LineChart, PieChart},
     tab::{Tab, TabBar},
 };
 
@@ -77,11 +77,74 @@ fn dummy_categories() -> Vec<CategorySpend> {
     .collect()
 }
 
+/// A single dummy daily OHLC price point, standing in for a real investment's price
+/// history (see the "Personal Investors" future consideration in
+/// `docs/product-requirements.md`).
+struct Candle {
+    date: SharedString,
+    open: f64,
+    high: f64,
+    low: f64,
+    close: f64,
+}
+
+/// Dummy daily OHLC series -- a small deterministic random walk, for the candlestick
+/// chart demo. Mirrors the TUI cycle's own candlestick demo data shape
+/// (`crates/bins/bin-tui/src/screen/candlestick_chart.rs`).
+fn dummy_candles() -> Vec<Candle> {
+    const DAY_COUNT: usize = 30;
+
+    let mut price = 100.0_f64;
+    // A tiny xorshift PRNG: deterministic across runs/platforms, no `rand` dependency
+    // needed for a feasibility demo.
+    let mut seed: u64 = 42;
+    let mut random_delta = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        (seed % 400) as f64 / 100.0 - 2.0
+    };
+
+    (1..=DAY_COUNT)
+        .map(|day| {
+            let open = price;
+            let close = (open + random_delta()).max(1.0);
+            let high = open.max(close) + random_delta().abs();
+            let low = (open.min(close) - random_delta().abs()).max(0.5);
+            price = close;
+            Candle {
+                date: format!("Day {day}").into(),
+                open,
+                high,
+                low,
+                close,
+            }
+        })
+        .collect()
+}
+
 /// Which demo screen is currently shown.
 #[derive(Clone, Copy, PartialEq)]
 enum Screen {
     Line,
     Doughnut,
+    Candlestick,
+}
+
+impl Screen {
+    const ALL: [Screen; 3] = [Screen::Line, Screen::Doughnut, Screen::Candlestick];
+
+    fn index(self) -> usize {
+        Self::ALL.iter().position(|screen| *screen == self).unwrap()
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Screen::Line => "Line Chart",
+            Screen::Doughnut => "Doughnut Chart",
+            Screen::Candlestick => "Candlestick Chart",
+        }
+    }
 }
 
 /// Root view: a `TabBar` switching between the chart demo screens.
@@ -89,16 +152,14 @@ struct DesktopApp {
     screen: Screen,
     spend: Vec<SpendPoint>,
     categories: Vec<CategorySpend>,
+    candles: Vec<Candle>,
 }
 
 impl Render for DesktopApp {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let entity = cx.entity();
         let screen = self.screen;
-        let selected_index = match screen {
-            Screen::Line => 0,
-            Screen::Doughnut => 1,
-        };
+        let selected_index = screen.index();
 
         let chart_colors = [
             cx.theme().chart_1,
@@ -141,6 +202,27 @@ impl Render for DesktopApp {
                     .outer_radius(100.0),
                 )
                 .into_any_element(),
+            Screen::Candlestick => div()
+                .h(px(400.0))
+                .w_full()
+                .child(
+                    CandlestickChart::new(self.candles.iter().map(|candle| {
+                        (
+                            candle.date.clone(),
+                            candle.open,
+                            candle.high,
+                            candle.low,
+                            candle.close,
+                        )
+                    }))
+                    .x(|(date, ..)| date.clone())
+                    .open(|(_, open, ..)| *open)
+                    .high(|(_, _, high, ..)| *high)
+                    .low(|(_, _, _, low, _)| *low)
+                    .close(|(_, _, _, _, close)| *close)
+                    .tick_margin(4),
+                )
+                .into_any_element(),
         };
 
         div()
@@ -151,15 +233,14 @@ impl Render for DesktopApp {
             .text_color(cx.theme().foreground)
             .child(
                 TabBar::new("screens")
-                    .child(Tab::new().label("Line Chart"))
-                    .child(Tab::new().label("Doughnut Chart"))
+                    .children(
+                        Screen::ALL
+                            .iter()
+                            .map(|screen| Tab::new().label(screen.label())),
+                    )
                     .selected_index(selected_index)
                     .on_click(move |index, _window, cx| {
-                        let next = if *index == 0 {
-                            Screen::Line
-                        } else {
-                            Screen::Doughnut
-                        };
+                        let next = Screen::ALL[*index];
                         entity.update(cx, |this, cx| {
                             this.screen = next;
                             cx.notify();
@@ -185,6 +266,7 @@ fn main() {
                     screen: Screen::Line,
                     spend: dummy_spend(),
                     categories: dummy_categories(),
+                    candles: dummy_candles(),
                 })
             },
         )
