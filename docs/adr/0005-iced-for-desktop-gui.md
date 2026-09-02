@@ -1,5 +1,9 @@
 # `iced` for the Desktop GUI framework
 
+> **Superseded by [ADR-0007](0007-gpui-for-desktop-gui.md).** After this ADR was recorded, Ian
+> requested `GPUI` be used instead; the reasoning below is kept as the historical record of
+> why `iced` was chosen at the time, not as the current decision.
+
 The Desktop App feasibility cycle (`docs/product-requirements.md` FC-DESKTOP-001) needs a
 Rust desktop GUI framework that can render line, doughnut, candlestick, and divergent charts
 plus tables, working across Linux, macOS, and Windows. A primary-source survey (see
