@@ -17,3 +17,21 @@ gpui-component = { workspace = true }
 
 [lints]
 workspace = true
+
+# cargo-packager config for the Windows NSIS installer (ticket #34), FC-DESKTOP-004. See
+# ADR-0008 (docs/adr/0008-cargo-packager-for-desktop.md): the same tool as the TUI
+# (ADR-0004), all three formats from one config -- Linux AppImage and macOS dmg entries are
+# already here too, ready for tickets #35/#36. Each format is a no-op on the "wrong" OS, so
+# listing all three is safe on every platform's CI leg.
+[package.metadata.packager]
+product-name = "Personal Ledger Desktop"
+identifier = "au.id.teda.personal-ledger.desktop"
+formats = ["nsis", "dmg", "appimage"]
+# Placeholder only -- a plain square, no branding yet, same as bin-tui's own icon.
+icons = ["icons/icon-256.png"]
+
+# `currentUser` is NSIS's documented default install mode already (no elevation, no
+# Administrator prompt) -- set explicitly so the non-root intent (NFR.2) is visible in the
+# config itself, not just relied on implicitly.
+[package.metadata.packager.nsis]
+install_mode = "currentUser"

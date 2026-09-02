@@ -25,8 +25,15 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# contents: write is needed only by the "Attach ... to release" step below (gh release
+# upload); everything else only reads the repo.
 permissions:
   contents: write
+
+env:
+  # Pinned (not "latest") so the cache key below is stable and meaningful -- same version
+  # already pinned by build-publish-tui.yaml, bump both together deliberately.
+  CARGO_PACKAGER_VERSION: "0.11.8"
 
 jobs:
   build-test:
@@ -142,3 +149,98 @@ jobs:
           } else {
             Stop-Process -Id $proc.Id -Force
           }
+
+      # `cargo packager --release` expects target/release/desktop(.exe) to already exist and
+      # copies it into the bundle -- it does not build it itself. Same reason the TUI
+      # workflow has its own separate "Build tui (release)" step.
+      - name: Build desktop (release)
+        run: cargo build --locked --release --package bin_desktop
+
+      # cargo-packager ships no prebuilt binaries and isn't in taiki-e/install-action's
+      # supported-tools list, so there's no download-a-binary shortcut -- same reasoning as
+      # the TUI workflow's own cache step, just widened to include Windows here since,
+      # unlike the TUI (hand-rolled zip on Windows, ADR-0004), the Desktop app uses
+      # cargo-packager on all three OSes (ADR-0008).
+      - name: Cache cargo-packager
+        id: cache-cargo-packager
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/cargo-packager
+            ~/.cargo/bin/cargo-packager.exe
+          key: cargo-packager-${{ runner.os }}-${{ env.CARGO_PACKAGER_VERSION }}
+
+      - name: Install cargo-packager (Windows)
+        if: runner.os == 'Windows' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
+
+      # Windows-only: packages desktop as a non-elevated NSIS installer per ADR-0008
+      # (docs/adr/0008-cargo-packager-for-desktop.md) -- `install_mode = "currentUser"` is
+      # set explicitly in crates/bins/bin-desktop/Cargo.toml's
+      # [package.metadata.packager.nsis] section. See ticket #34.
+      - name: Package desktop as NSIS installer (Windows)
+        if: runner.os == 'Windows'
+        run: cargo packager --release --formats nsis --manifest-path crates/bins/bin-desktop/Cargo.toml
+
+      # Confirms the installer actually installs non-interactively (NSIS's standard `/S`
+      # silent flag) without requiring elevation -- a `currentUser`-mode installer that
+      # needed Administrator would either prompt (impossible non-interactively, so the
+      # silent install would hang/fail) or write outside the user's own profile, which the
+      # explicit install directory below would surface. Then launches the installed exe and
+      # confirms it starts and stays running, same bounded launch-and-kill as the smoke test
+      # above. Genuinely unverified -- first tested for real on windows-2025, same as every
+      # other "Verify ... (Windows)" step in this repo's workflows so far.
+      - name: Verify NSIS installer runs non-root (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: |
+          $installer = Get-ChildItem -Path target\release -Filter *-setup.exe -Recurse | Select-Object -First 1
+          if (-not $installer) {
+            Write-Host "No *-setup.exe found under target\release; full listing:"
+            Get-ChildItem -Path target\release -Recurse | Select-Object FullName
+            Write-Error "NSIS installer not found"
+            exit 1
+          }
+          Write-Host "Installer: $($installer.FullName)"
+
+          $installDir = "$env:LOCALAPPDATA\Programs\Personal Ledger Desktop"
+          Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$installDir" -Wait -NoNewWindow
+
+          $exe = Get-ChildItem -Path $installDir -Filter *.exe -Recurse | Select-Object -First 1
+          if (-not $exe) {
+            Write-Host "No .exe found under $installDir after install; full listing:"
+            Get-ChildItem -Path $installDir -Recurse | Select-Object FullName
+            Write-Error "Installed executable not found -- install did not land in the expected non-root user directory"
+            exit 1
+          }
+          Write-Host "Installed to: $($exe.FullName)"
+
+          $proc = Start-Process -FilePath $exe.FullName -PassThru -NoNewWindow
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited) {
+            if ($proc.ExitCode -ne 0) {
+              Write-Error "installed desktop.exe exited early with code $($proc.ExitCode)"
+              exit 1
+            }
+          } else {
+            Stop-Process -Id $proc.Id -Force
+          }
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload NSIS installer artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-desktop-windows-nsis
+          path: target/release/**/*-setup.exe
+          if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach NSIS installer to release (Windows)
+        if: runner.os == 'Windows' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $installer = Get-ChildItem -Path target\release -Filter *-setup.exe -Recurse | Select-Object -First 1
+          gh release upload "${{ github.event.release.tag_name }}" $installer.FullName --clobber
