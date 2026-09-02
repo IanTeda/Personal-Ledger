@@ -32,6 +32,11 @@ icons = ["icons/icon-256.png"]
 
 # `currentUser` is NSIS's documented default install mode already (no elevation, no
 # Administrator prompt) -- set explicitly so the non-root intent (NFR.2) is visible in the
-# config itself, not just relied on implicitly.
+# config itself, not just relied on implicitly. Field is `installer_mode` (or
+# `installerMode`), not `install_mode` -- docs.rs's NsisConfig page shows the Rust builder
+# method `install_mode()`, but that's not the same name as the serde field cargo-packager
+# actually deserialises from Cargo.toml -- confirmed for real on the first CI run, which
+# rejected `install_mode` and listed `installer_mode`/`installerMode` as the accepted
+# spellings.
 [package.metadata.packager.nsis]
-install_mode = "currentUser"
+installer_mode = "currentUser"
