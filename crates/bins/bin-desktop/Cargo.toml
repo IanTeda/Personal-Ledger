@@ -1,0 +1,19 @@
+[package]
+name = "bin_desktop"
+version = "0.1.0"
+edition = "2024"
+
+# Package name is bin_desktop (matching the lib_* convention for library crates), but the
+# compiled binary itself stays named `desktop` -- end users running the packaged app shouldn't
+# see the bin_ prefix; it's a codebase-navigation convention, not a user-facing one.
+[[bin]]
+name = "desktop"
+path = "src/main.rs"
+
+[dependencies]
+## -- Workspace Dependencies --
+gpui = { workspace = true }
+gpui-component = { workspace = true }
+
+[lints]
+workspace = true

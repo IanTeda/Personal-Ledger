@@ -32,6 +32,7 @@ resolver = "3"
 # members = ["crates/backend","crates/lib-config", "crates/lib-domain", "crates/lib-rpc"]
 members = [
   # "./crates/bins/server",
+  "./crates/bins/bin-desktop",
   "./crates/bins/bin-tui",
   "./crates/libs/lib-config",
   "./crates/libs/lib-database",
@@ -62,6 +63,8 @@ fake = { version = "4.4.0", features = [
 futures-util = { version = "0.3.34", default-features = false, features = [
   "std",
 ] }
+gpui = { version = "0.2.2" }
+gpui-component = { version = "0.5.1" }
 ratatui = { version = "0.30.2" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
