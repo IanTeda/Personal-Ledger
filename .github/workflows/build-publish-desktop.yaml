@@ -20,11 +20,6 @@ on:
   release:
     types: [created]
   workflow_dispatch:
-  # TEMPORARY, remove after the first run: workflow_dispatch can't target a workflow
-  # that's never run and isn't on the default branch yet, so this bootstraps GitHub's
-  # registration of it. Drop this trigger once the first run completes.
-  push:
-    branches: [feasibility]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
