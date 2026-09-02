@@ -11,10 +11,18 @@
 //! Multiple screens are switched via `gpui-component`'s own `TabBar`, following the
 //! precedent set by the TUI map: the second screen (doughnut) is where tab navigation
 //! was introduced there too.
+//!
+//! The divergent (diverging bar) chart is the one type `gpui-component` doesn't cover --
+//! its `BarChart` always anchors bars to the bottom of the plot area rather than a
+//! zero-value baseline, so negative values don't diverge from a centre line. No crate for
+//! this chart type was found for any framework surveyed (see
+//! `docs/research/desktop-gui-frameworks.md`), so it's hand-rolled directly on `gpui`'s own
+//! `canvas()`/`paint_quad`, the same fallback the TUI cycle used for its own divergent
+//! chart (ADR-0002).
 
 use gpui::{
-    App, Application, Bounds, Context, SharedString, Window, WindowBounds, WindowOptions, div,
-    prelude::*, px, size,
+    App, Application, Bounds, Context, Pixels, SharedString, Window, WindowBounds, WindowOptions,
+    canvas, div, fill, point, prelude::*, px, size,
 };
 use gpui_component::{
     ActiveTheme,
@@ -123,16 +131,79 @@ fn dummy_candles() -> Vec<Candle> {
         .collect()
 }
 
+/// One category's dummy budget-vs-actual variance: positive is under budget, negative is
+/// over budget (see FR.37 in `docs/product-requirements.md`).
+struct Variance {
+    label: SharedString,
+    amount: f64,
+}
+
+/// Dummy budget-variance data -- a mix of under- and over-budget categories, so both bar
+/// directions are demonstrated. Same data as the TUI cycle's own divergent chart demo
+/// (`crates/bins/bin-tui/src/screen/divergent_chart.rs`).
+fn dummy_variances() -> Vec<Variance> {
+    [
+        ("Groceries", -45.0),
+        ("Rent", 5.0),
+        ("Transport", 30.0),
+        ("Entertainment", -15.0),
+        ("Utilities", 60.0),
+    ]
+    .into_iter()
+    .map(|(label, amount)| Variance {
+        label: label.into(),
+        amount,
+    })
+    .collect()
+}
+
+/// Computes the diverging bar's rectangle within `bounds`, given `amount` and `max_abs`
+/// (the largest `|amount|` across all rows, for consistent scaling across the chart).
+/// Positive amounts extend right from the vertical centre line; negative amounts extend
+/// left. Pure and display-independent so the scaling maths can be unit tested without a
+/// live GPUI window.
+fn divergent_bar_bounds(bounds: Bounds<Pixels>, amount: f64, max_abs: f64) -> Bounds<Pixels> {
+    let width = f32::from(bounds.size.width);
+    let height = f32::from(bounds.size.height);
+    let origin_x = f32::from(bounds.origin.x);
+    let origin_y = f32::from(bounds.origin.y);
+    let center_x = origin_x + width / 2.0;
+    let half_width = width / 2.0;
+
+    let fraction = if max_abs > 0.0 {
+        (amount.abs() / max_abs) as f32
+    } else {
+        0.0
+    };
+    let bar_width = half_width * fraction;
+    let bar_x = if amount >= 0.0 {
+        center_x
+    } else {
+        center_x - bar_width
+    };
+
+    Bounds {
+        origin: point(px(bar_x), px(origin_y)),
+        size: size(px(bar_width), px(height)),
+    }
+}
+
 /// Which demo screen is currently shown.
 #[derive(Clone, Copy, PartialEq)]
 enum Screen {
     Line,
     Doughnut,
     Candlestick,
+    Divergent,
 }
 
 impl Screen {
-    const ALL: [Screen; 3] = [Screen::Line, Screen::Doughnut, Screen::Candlestick];
+    const ALL: [Screen; 4] = [
+        Screen::Line,
+        Screen::Doughnut,
+        Screen::Candlestick,
+        Screen::Divergent,
+    ];
 
     fn index(self) -> usize {
         Self::ALL.iter().position(|screen| *screen == self).unwrap()
@@ -143,6 +214,7 @@ impl Screen {
             Screen::Line => "Line Chart",
             Screen::Doughnut => "Doughnut Chart",
             Screen::Candlestick => "Candlestick Chart",
+            Screen::Divergent => "Divergent Chart",
         }
     }
 }
@@ -153,6 +225,7 @@ struct DesktopApp {
     spend: Vec<SpendPoint>,
     categories: Vec<CategorySpend>,
     candles: Vec<Candle>,
+    variances: Vec<Variance>,
 }
 
 impl Render for DesktopApp {
@@ -223,6 +296,68 @@ impl Render for DesktopApp {
                     .tick_margin(4),
                 )
                 .into_any_element(),
+            Screen::Divergent => {
+                let max_abs = self
+                    .variances
+                    .iter()
+                    .map(|variance| variance.amount.abs())
+                    .fold(0.0_f64, f64::max)
+                    .max(1.0);
+                let success = cx.theme().success;
+                let danger = cx.theme().danger;
+                let zero_line_color = cx.theme().border;
+
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .w_full()
+                    .children(self.variances.iter().map(|variance| {
+                        let amount = variance.amount;
+                        let bar_color = if amount >= 0.0 { success } else { danger };
+                        let sign = if amount >= 0.0 { "+" } else { "" };
+
+                        div()
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap_2()
+                            .h(px(32.0))
+                            .child(div().w(px(140.0)).child(variance.label.clone()))
+                            .child(
+                                div().flex_1().h_full().child(
+                                    canvas(
+                                        move |bounds, _window, _cx| {
+                                            divergent_bar_bounds(bounds, amount, max_abs)
+                                        },
+                                        move |row_bounds, bar_bounds, window, _cx| {
+                                            let center_x = f32::from(row_bounds.origin.x)
+                                                + f32::from(row_bounds.size.width) / 2.0;
+                                            window.paint_quad(fill(
+                                                Bounds {
+                                                    origin: point(
+                                                        px(center_x - 1.0),
+                                                        row_bounds.origin.y,
+                                                    ),
+                                                    size: size(px(2.0), row_bounds.size.height),
+                                                },
+                                                zero_line_color,
+                                            ));
+                                            window.paint_quad(fill(bar_bounds, bar_color));
+                                        },
+                                    )
+                                    .size_full(),
+                                ),
+                            )
+                            .child(
+                                div()
+                                    .w(px(60.0))
+                                    .text_color(bar_color)
+                                    .child(format!("{sign}{amount:.0}")),
+                            )
+                    }))
+                    .into_any_element()
+            }
         };
 
         div()
@@ -251,6 +386,56 @@ impl Render for DesktopApp {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bounds(width: f32, height: f32) -> Bounds<Pixels> {
+        Bounds {
+            origin: point(px(10.0), px(20.0)),
+            size: size(px(width), px(height)),
+        }
+    }
+
+    #[test]
+    fn zero_amount_has_no_width() {
+        let bar = divergent_bar_bounds(bounds(400.0, 32.0), 0.0, 60.0);
+        assert_eq!(f32::from(bar.size.width), 0.0);
+    }
+
+    #[test]
+    fn positive_amount_extends_right_from_centre() {
+        let bounds = bounds(400.0, 32.0);
+        let bar = divergent_bar_bounds(bounds, 30.0, 60.0);
+        let center_x = f32::from(bounds.origin.x) + f32::from(bounds.size.width) / 2.0;
+
+        assert_eq!(f32::from(bar.origin.x), center_x);
+        // Half the max, so half of the half-width available on the positive side.
+        assert_eq!(
+            f32::from(bar.size.width),
+            f32::from(bounds.size.width) / 4.0
+        );
+    }
+
+    #[test]
+    fn negative_amount_extends_left_from_centre() {
+        let bounds = bounds(400.0, 32.0);
+        let bar = divergent_bar_bounds(bounds, -60.0, 60.0);
+        let center_x = f32::from(bounds.origin.x) + f32::from(bounds.size.width) / 2.0;
+        let half_width = f32::from(bounds.size.width) / 2.0;
+
+        // The largest magnitude fills the whole half-width, ending exactly at centre.
+        assert_eq!(f32::from(bar.size.width), half_width);
+        assert_eq!(f32::from(bar.origin.x), center_x - half_width);
+    }
+
+    #[test]
+    fn zero_max_abs_produces_no_bar() {
+        let bar = divergent_bar_bounds(bounds(400.0, 32.0), 0.0, 0.0);
+        assert_eq!(f32::from(bar.size.width), 0.0);
+    }
+}
+
 fn main() {
     Application::new().run(|cx: &mut App| {
         gpui_component::init(cx);
@@ -267,6 +452,7 @@ fn main() {
                     spend: dummy_spend(),
                     categories: dummy_categories(),
                     candles: dummy_candles(),
+                    variances: dummy_variances(),
                 })
             },
         )
