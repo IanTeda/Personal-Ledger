@@ -19,6 +19,17 @@
 //! `docs/research/desktop-gui-frameworks.md`), so it's hand-rolled directly on `gpui`'s own
 //! `canvas()`/`paint_quad`, the same fallback the TUI cycle used for its own divergent
 //! chart (ADR-0002).
+//!
+//! The final screen, Live Categories, demonstrates the app operating against a real
+//! embedded SQLite store (`lib-database`/`lib-domain`), not dummy data -- FC-DESKTOP's own
+//! real-data ticket (#37), reusing the connect/migrate/seed/read pattern the TUI's own
+//! live-data demo established (`crates/bins/bin-tui/src/screen/categories.rs`, FC-TUI-005).
+//! `lib-database` is built on `sqlx`'s Tokio runtime feature, but `GPUI`'s own executor is
+//! `smol`-based (see `gpui`'s `Cargo.toml`), so `main` runs under `#[tokio::main]` and hands
+//! a `tokio::runtime::Handle` down to the load task -- `Handle::spawn` runs the actual
+//! database work on a real Tokio worker thread, and the result crosses back to `GPUI`'s own
+//! executor over a `tokio::sync::oneshot` channel (a plain future, needing no Tokio runtime
+//! context itself to await).
 
 use gpui::{
     App, Application, Bounds, Context, Entity, Pixels, SharedString, Window, WindowBounds,
@@ -323,6 +334,99 @@ impl TableDelegate for TransactionTableDelegate {
     }
 }
 
+/// The Live Categories demo's own SQLite file, in the OS temp directory so `cargo run`
+/// never leaves a stray file in the repo working directory (it's also `.gitignore`d
+/// regardless, via `*.sqlite`) -- separate from the TUI's own demo file
+/// (`personal-ledger-tui-feasibility-demo.sqlite`) so the two binaries' feasibility demos
+/// don't share (and potentially race on) a single store.
+fn live_categories_database_url() -> String {
+    let path: std::path::PathBuf =
+        std::env::temp_dir().join("personal-ledger-desktop-feasibility-demo.sqlite");
+    format!("sqlite://{}?mode=rwc", path.display())
+}
+
+/// What the Live Categories screen currently knows about the real SQLite data.
+enum LiveCategoriesStatus {
+    Loading,
+    Loaded(Vec<lib_database::Categories>),
+    Failed(String),
+}
+
+/// Connects to the demo database, applies `lib-database`'s own migrations, seeds one
+/// category if the store is empty (a real write), then reads every category back (a real
+/// read) -- proving the embedded-SQLite path works end-to-end through a real client, not a
+/// mock, the same proof the TUI's own live-data demo established for FC-TUI-005.
+async fn load_live_categories() -> lib_database::DatabaseResult<Vec<lib_database::Categories>> {
+    load_live_categories_from(live_categories_database_url()).await
+}
+
+/// Same as [`load_live_categories`], against an explicit database URL -- split out so
+/// tests can point it at an isolated, throwaway SQLite file instead of the shared demo one.
+async fn load_live_categories_from(
+    url: String,
+) -> lib_database::DatabaseResult<Vec<lib_database::Categories>> {
+    let config = lib_database::DatabaseConfig {
+        url,
+        ..lib_database::DatabaseConfig::default()
+    };
+    let connection = lib_database::DatabaseConnection::new(config).await?;
+    let pool = connection.pool();
+
+    sqlx::migrate!("../../libs/lib-database/migrations")
+        .run(pool)
+        .await?;
+
+    if lib_database::Categories::find_all(pool).await?.is_empty() {
+        let seed = lib_database::Categories {
+            id: lib_domain::RowID::new(),
+            code: "DEM.SEE.D01".to_string(),
+            name: "Demo Seed Category".to_string(),
+            description: Some(
+                "Inserted by the Desktop app's embedded-SQLite feasibility demo (FC-DESKTOP real-data demo)"
+                    .to_string(),
+            ),
+            url_slug: Some(lib_domain::UrlSlug::from("demo-seed-category")),
+            category_type: lib_domain::CategoryTypes::Expense,
+            color: Some(lib_domain::HexColor::from_rgb(0x4a, 0x9e, 0xd6)),
+            icon: None,
+            is_active: true,
+            created_on: chrono::Utc::now(),
+            updated_on: chrono::Utc::now(),
+        };
+        seed.insert(pool).await?;
+    }
+
+    lib_database::Categories::find_all(pool).await
+}
+
+/// Kicks off the Live Categories load as a detached `GPUI` task: bridges over to the given
+/// Tokio runtime handle for the actual `sqlx`/`lib-database` work (see the module doc for
+/// why), then reports the result back onto `DesktopApp`'s own entity state via `GPUI`'s
+/// executor once the `oneshot` channel resolves.
+fn spawn_live_categories_load(cx: &mut Context<DesktopApp>, tokio_handle: tokio::runtime::Handle) {
+    cx.spawn(async move |this, cx| {
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio_handle.spawn(async move {
+            let _ = tx.send(load_live_categories().await);
+        });
+
+        let status = match rx.await {
+            Ok(Ok(categories)) => LiveCategoriesStatus::Loaded(categories),
+            Ok(Err(err)) => LiveCategoriesStatus::Failed(err.to_string()),
+            Err(_) => LiveCategoriesStatus::Failed(
+                "embedded SQLite load task ended unexpectedly".to_string(),
+            ),
+        };
+
+        this.update(cx, |view, cx| {
+            view.live_categories = status;
+            cx.notify();
+        })
+        .ok();
+    })
+    .detach();
+}
+
 /// Which demo screen is currently shown.
 #[derive(Clone, Copy, PartialEq)]
 enum Screen {
@@ -331,15 +435,17 @@ enum Screen {
     Candlestick,
     Divergent,
     Table,
+    LiveCategories,
 }
 
 impl Screen {
-    const ALL: [Screen; 5] = [
+    const ALL: [Screen; 6] = [
         Screen::Line,
         Screen::Doughnut,
         Screen::Candlestick,
         Screen::Divergent,
         Screen::Table,
+        Screen::LiveCategories,
     ];
 
     fn index(self) -> usize {
@@ -353,6 +459,7 @@ impl Screen {
             Screen::Candlestick => "Candlestick Chart",
             Screen::Divergent => "Divergent Chart",
             Screen::Table => "Table",
+            Screen::LiveCategories => "Live Categories (SQLite)",
         }
     }
 }
@@ -365,6 +472,7 @@ struct DesktopApp {
     candles: Vec<Candle>,
     variances: Vec<Variance>,
     table_state: Entity<TableState<TransactionTableDelegate>>,
+    live_categories: LiveCategoriesStatus,
 }
 
 impl Render for DesktopApp {
@@ -502,6 +610,54 @@ impl Render for DesktopApp {
                 .w_full()
                 .child(Table::new(&self.table_state).stripe(true))
                 .into_any_element(),
+            Screen::LiveCategories => {
+                let muted = cx.theme().muted_foreground;
+                match &self.live_categories {
+                    LiveCategoriesStatus::Loading => div()
+                        .child("Connecting to embedded SQLite store...")
+                        .into_any_element(),
+                    LiveCategoriesStatus::Failed(message) => div()
+                        .text_color(cx.theme().danger)
+                        .child(format!("Failed to load: {message}"))
+                        .into_any_element(),
+                    LiveCategoriesStatus::Loaded(categories) => div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .w_full()
+                        .child(div().text_color(muted).child(format!(
+                            "{} categor{} from the embedded SQLite store",
+                            categories.len(),
+                            if categories.len() == 1 { "y" } else { "ies" }
+                        )))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_row()
+                                .gap_4()
+                                .text_color(muted)
+                                .child(div().w(px(140.0)).child("Code"))
+                                .child(div().w(px(220.0)).child("Name"))
+                                .child(div().w(px(100.0)).child("Type"))
+                                .child(div().w(px(80.0)).child("Active")),
+                        )
+                        .children(categories.iter().map(|category| {
+                            div()
+                                .flex()
+                                .flex_row()
+                                .gap_4()
+                                .child(div().w(px(140.0)).child(category.code.clone()))
+                                .child(div().w(px(220.0)).child(category.name.clone()))
+                                .child(div().w(px(100.0)).child(category.category_type.as_str()))
+                                .child(div().w(px(80.0)).child(if category.is_active {
+                                    "yes"
+                                } else {
+                                    "no"
+                                }))
+                        }))
+                        .into_any_element(),
+                }
+            }
         };
 
         div()
@@ -578,10 +734,56 @@ mod tests {
         let bar = divergent_bar_bounds(bounds(400.0, 32.0), 0.0, 0.0);
         assert_eq!(f32::from(bar.size.width), 0.0);
     }
+
+    /// Exercises the real embedded-SQLite path end-to-end against an isolated, throwaway
+    /// database file: connect, migrate (a write), seed-if-empty (a write), and read back --
+    /// proving FC-DESKTOP's real-data ticket against actual `lib-database`/`lib-domain`
+    /// code, not a mock. Runs `load_live_categories_from` twice against the same file to
+    /// confirm the seed step is idempotent. Mirrors the TUI's own equivalent test
+    /// (`crates/bins/bin-tui/src/screen/categories.rs`).
+    #[tokio::test]
+    async fn load_live_categories_from_seeds_once_and_reads_back() {
+        let path = std::env::temp_dir().join(format!(
+            "personal-ledger-desktop-test-{}.sqlite",
+            lib_domain::RowID::new()
+        ));
+        let url = format!("sqlite://{}?mode=rwc", path.display());
+
+        let first = load_live_categories_from(url.clone())
+            .await
+            .expect("first load should connect, migrate, seed, and read successfully");
+        assert_eq!(
+            first.len(),
+            1,
+            "a fresh database should be seeded with one category"
+        );
+        assert_eq!(first[0].code, "DEM.SEE.D01");
+
+        let second = load_live_categories_from(url)
+            .await
+            .expect("second load should connect and read successfully");
+        assert_eq!(
+            second.len(),
+            1,
+            "loading an already-seeded database should not re-seed"
+        );
+        assert_eq!(second[0].id, first[0].id);
+
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
-fn main() {
-    Application::new().run(|cx: &mut App| {
+// `#[tokio::main]` so a real Tokio runtime exists for the Live Categories screen's
+// `lib-database`/`sqlx` work to run on -- see the module doc for why `GPUI`'s own
+// (`smol`-based) executor can't run it directly. `Application::run` below is still a plain
+// synchronous, blocking call (GPUI owns the native event loop until the app quits); running
+// it un-awaited inside this async fn body just means it executes on Tokio's `block_on`
+// thread rather than a worker thread, which is exactly where the main/UI thread needs to be.
+#[tokio::main]
+async fn main() {
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    Application::new().run(move |cx: &mut App| {
         gpui_component::init(cx);
 
         let bounds = Bounds::centered(None, size(px(800.0), px(500.0)), cx);
@@ -590,7 +792,7 @@ fn main() {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
             },
-            |window, cx| {
+            move |window, cx| {
                 cx.new(|cx| {
                     let table_state = cx.new(|state_cx| {
                         TableState::new(
@@ -599,6 +801,7 @@ fn main() {
                             state_cx,
                         )
                     });
+                    spawn_live_categories_load(cx, tokio_handle.clone());
                     DesktopApp {
                         screen: Screen::Line,
                         spend: dummy_spend(),
@@ -606,6 +809,7 @@ fn main() {
                         candles: dummy_candles(),
                         variances: dummy_variances(),
                         table_state,
+                        live_categories: LiveCategoriesStatus::Loading,
                     }
                 })
             },

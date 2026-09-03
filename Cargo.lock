@@ -605,8 +605,13 @@ dependencies = [
 name = "bin_desktop"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "gpui",
  "gpui-component",
+ "lib_database",
+ "lib_domain",
+ "sqlx",
+ "tokio",
 ]
 
 [[package]]

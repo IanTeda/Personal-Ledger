@@ -11,9 +11,16 @@ name = "desktop"
 path = "src/main.rs"
 
 [dependencies]
+## -- Internal Dependencies --
+lib_database = { path = "../../libs/lib-database" }
+lib_domain = { path = "../../libs/lib-domain" }
+
 ## -- Workspace Dependencies --
+chrono = { workspace = true }
 gpui = { workspace = true }
 gpui-component = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
 
 [lints]
 workspace = true

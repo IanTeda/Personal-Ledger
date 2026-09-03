@@ -11,8 +11,10 @@
 #
 # Scoped to `crates/bins/bin-desktop`, not the whole workspace -- same reasoning as
 # build-publish-tui.yaml: `lib_rpc` has its own stale `.sqlx` test-target cache unrelated
-# to this map, and `bin-desktop` has no `lib_database`/`lib_domain` dependency yet (that's
-# FC-DESKTOP's own real-data ticket, issue #37) so there's nothing to widen for yet.
+# to this map. `bin-desktop` gained a real `lib_database`/`lib_domain` dependency for its
+# own real-data ticket (issue #37) -- `sqlx`'s compile-time query macros resolve against
+# `lib-database`'s checked-in `.sqlx` offline cache automatically (no `DATABASE_URL`/
+# `SQLX_OFFLINE` needed here), same as building `bin_tui` already relied on.
 
 name: Build and Publish Desktop
 
