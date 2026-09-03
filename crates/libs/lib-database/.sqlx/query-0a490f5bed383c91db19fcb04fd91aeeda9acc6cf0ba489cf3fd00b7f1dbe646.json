@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                        SELECT\n                            id           AS \"id!: domain::RowID\",\n                            table_name,\n                            row_id       AS \"row_id!: domain::RowID\",\n                            field_name,\n                            value,\n                            hlc          AS \"hlc!: domain::HybridLogicalClock\",\n                            client_id    AS \"client_id!: domain::RowID\",\n                            version,\n                            created_on   AS \"created_on!: chrono::DateTime<chrono::Utc>\"\n                        FROM change_sets\n                        ORDER BY id ASC\n                        LIMIT ?\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "table_name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "row_id!: domain::RowID",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "field_name",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "value",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "hlc!: domain::HybridLogicalClock",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "client_id!: domain::RowID",
+        "ordinal": 6,
+        "type_info": "Null"
+      },
+      {
+        "name": "version",
+        "ordinal": 7,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0a490f5bed383c91db19fcb04fd91aeeda9acc6cf0ba489cf3fd00b7f1dbe646"
+}

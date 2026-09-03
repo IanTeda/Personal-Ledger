@@ -92,6 +92,13 @@ pub enum DatabaseError {
     #[error("Error building category: {0}")]
     CategoryBuilder(String),
 
+    /// Change Set Builder Error
+    ///
+    /// Occurs when constructing a Change Set fails due to invalid input or missing
+    /// required fields.
+    #[error("Error building Change Set: {0}")]
+    ChangeSetBuilder(String),
+
     /// Connection error
     ///
     /// Represents failures in establishing or maintaining database connections,
@@ -186,8 +193,12 @@ impl PartialEq for DatabaseError {
         match (self, other) {
             (DatabaseError::CategoryBuilder(a), DatabaseError::CategoryBuilder(b)) => a == b,
             (DatabaseError::Connection(a), DatabaseError::Connection(b)) => a == b,
-            (DatabaseError::Sqlx(a), DatabaseError::Sqlx(b)) => format!("{:?}", a) == format!("{:?}", b),
-            (DatabaseError::Migration(a), DatabaseError::Migration(b)) => format!("{:?}", a) == format!("{:?}", b),
+            (DatabaseError::Sqlx(a), DatabaseError::Sqlx(b)) => {
+                format!("{:?}", a) == format!("{:?}", b)
+            }
+            (DatabaseError::Migration(a), DatabaseError::Migration(b)) => {
+                format!("{:?}", a) == format!("{:?}", b)
+            }
             (DatabaseError::Validation(a), DatabaseError::Validation(b)) => a == b,
             (DatabaseError::NotFound(a), DatabaseError::NotFound(b)) => a == b,
             (DatabaseError::Generic(a), DatabaseError::Generic(b)) => a == b,
@@ -213,7 +224,8 @@ mod tests {
         assert!(err_result.is_err());
         assert!(matches!(err_result, Err(DatabaseError::Validation(_))));
 
-        let cb_result: DatabaseResult<i32> = Err(DatabaseError::CategoryBuilder("test".to_string()));
+        let cb_result: DatabaseResult<i32> =
+            Err(DatabaseError::CategoryBuilder("test".to_string()));
         assert!(cb_result.is_err());
         assert!(matches!(cb_result, Err(DatabaseError::CategoryBuilder(_))));
     }
@@ -260,16 +272,24 @@ mod tests {
     fn test_database_error_display() {
         let conn_msg: String = fake::faker::lorem::en::Sentence(3..10).fake();
         let conn_err = DatabaseError::Connection(conn_msg.clone());
-        assert_eq!(format!("{}", conn_err), format!("Error connecting to the database: {}", conn_msg));
+        assert_eq!(
+            format!("{}", conn_err),
+            format!("Error connecting to the database: {}", conn_msg)
+        );
 
         let cb_msg: String = fake::faker::lorem::en::Sentence(3..10).fake();
         let cb_err = DatabaseError::CategoryBuilder(cb_msg.clone());
-        assert_eq!(format!("{}", cb_err), format!("Error building category: {}", cb_msg));
+        assert_eq!(
+            format!("{}", cb_err),
+            format!("Error building category: {}", cb_msg)
+        );
 
         let sqlx_err = DatabaseError::Sqlx(sqlx::Error::RowNotFound);
         assert!(format!("{}", sqlx_err).contains("Database error:"));
 
-        let migrate_err = DatabaseError::Migration(sqlx::migrate::MigrateError::Execute(sqlx::Error::RowNotFound));
+        let migrate_err = DatabaseError::Migration(sqlx::migrate::MigrateError::Execute(
+            sqlx::Error::RowNotFound,
+        ));
         assert!(format!("{}", migrate_err).contains("Database migration error:"));
 
         let val_msg: String = fake::faker::lorem::en::Sentence(3..10).fake();
@@ -278,11 +298,17 @@ mod tests {
 
         let not_found_msg: String = fake::faker::lorem::en::Sentence(3..10).fake();
         let not_found_err = DatabaseError::NotFound(not_found_msg.clone());
-        assert_eq!(format!("{}", not_found_err), format!("Not found: {}", not_found_msg));
+        assert_eq!(
+            format!("{}", not_found_err),
+            format!("Not found: {}", not_found_msg)
+        );
 
         let other_msg: String = fake::faker::lorem::en::Sentence(3..10).fake();
         let other_err = DatabaseError::Generic(other_msg.clone());
-        assert_eq!(format!("{}", other_err), format!("Other database error: {}", other_msg));
+        assert_eq!(
+            format!("{}", other_err),
+            format!("Other database error: {}", other_msg)
+        );
     }
 
     #[test]
@@ -340,8 +366,12 @@ mod tests {
         assert_eq!(sqlx_err1, sqlx_err2);
 
         // Test Migration errors
-        let migrate_err1 = DatabaseError::Migration(sqlx::migrate::MigrateError::Execute(sqlx::Error::RowNotFound));
-        let migrate_err2 = DatabaseError::Migration(sqlx::migrate::MigrateError::Execute(sqlx::Error::RowNotFound));
+        let migrate_err1 = DatabaseError::Migration(sqlx::migrate::MigrateError::Execute(
+            sqlx::Error::RowNotFound,
+        ));
+        let migrate_err2 = DatabaseError::Migration(sqlx::migrate::MigrateError::Execute(
+            sqlx::Error::RowNotFound,
+        ));
         assert_eq!(migrate_err1, migrate_err2);
     }
 
@@ -373,7 +403,10 @@ mod tests {
         for _ in 0..20 {
             let msg: String = fake::faker::lorem::en::Sentence(3..10).fake();
             let err = DatabaseError::CategoryBuilder(msg.clone());
-            assert_eq!(format!("{}", err), format!("Error building category: {}", msg));
+            assert_eq!(
+                format!("{}", err),
+                format!("Error building category: {}", msg)
+            );
             assert!(matches!(err, DatabaseError::CategoryBuilder(_)));
         }
     }
@@ -387,7 +420,10 @@ mod tests {
         // Test with very long string
         let long_msg = "a".repeat(1000);
         let long_err = DatabaseError::Connection(long_msg.clone());
-        assert_eq!(format!("{}", long_err), format!("Error connecting to the database: {}", long_msg));
+        assert_eq!(
+            format!("{}", long_err),
+            format!("Error connecting to the database: {}", long_msg)
+        );
 
         // Test CategoryBuilder with empty string
         let cb_empty_err = DatabaseError::CategoryBuilder("".to_string());
@@ -395,7 +431,9 @@ mod tests {
 
         // Test CategoryBuilder with very long string
         let cb_long_err = DatabaseError::CategoryBuilder(long_msg.clone());
-        assert_eq!(format!("{}", cb_long_err), format!("Error building category: {}", long_msg));
+        assert_eq!(
+            format!("{}", cb_long_err),
+            format!("Error building category: {}", long_msg)
+        );
     }
 }
-

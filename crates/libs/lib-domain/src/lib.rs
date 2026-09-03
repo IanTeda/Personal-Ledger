@@ -63,3 +63,11 @@ mod hex_color;
 /// theming, categorisation, and any feature that requires precise colour
 /// handling across the application.
 pub use hex_color::{HexColor, HexColorError};
+
+mod hybrid_logical_clock;
+/// Hybrid Logical Clock timestamp type used for Change Set conflict resolution.
+///
+/// [`HybridLogicalClock`] pairs physical time with a monotonic logical counter, and
+/// [`HlcClock`] mints strictly increasing values of it for one Client or the Sync
+/// Server -- see [ADR-0009](https://github.com/IanTeda/Personal-Ledger/blob/feasibility/docs/adr/0009-lww-sqlite-change-set-log.md).
+pub use hybrid_logical_clock::{HlcClock, HybridLogicalClock, HybridLogicalClockError};

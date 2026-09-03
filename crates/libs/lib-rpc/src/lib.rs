@@ -19,10 +19,14 @@
 mod categories;
 pub(crate) mod error;
 mod generated;
+mod sync;
 mod utilities;
 
 // Re-export categories module to maintain flat API
 pub use categories::*;
+
+// Re-export sync module to maintain flat API
+pub use sync::*;
 
 // Re-export utilities module to maintain flat API
 pub use utilities::*;

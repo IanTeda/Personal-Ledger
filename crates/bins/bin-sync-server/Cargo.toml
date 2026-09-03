@@ -14,13 +14,24 @@ path = "src/main.rs"
 [dependencies]
 ## -- Internal Dependencies --
 lib_config = { path = "../../libs/lib-config" }
+lib_database = { path = "../../libs/lib-database" }
 lib_rpc = { path = "../../libs/lib-rpc" }
 lib_telemetry = { path = "../../libs/lib-telemetry" }
 
 ## -- Workspace Dependencies --
+sqlx = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
+
+[dev-dependencies]
+## -- Internal Dependencies --
+lib_domain = { path = "../../libs/lib-domain" }
+
+## -- Workspace Dependencies --
+chrono = { workspace = true }
+tempfile = "3.10.1"
+tokio-stream = { version = "0.1.19", features = ["net"] }
 
 [lints]
 workspace = true

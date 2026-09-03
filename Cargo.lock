@@ -618,10 +618,16 @@ dependencies = [
 name = "bin_sync_server"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "lib_config",
+ "lib_database",
+ "lib_domain",
  "lib_rpc",
  "lib_telemetry",
+ "sqlx",
+ "tempfile",
  "tokio",
+ "tokio-stream",
  "tonic",
  "tracing",
 ]

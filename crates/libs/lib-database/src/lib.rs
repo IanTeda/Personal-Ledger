@@ -75,7 +75,11 @@
 
 /// Database entity categories for organising financial records.
 mod categories;
-pub use categories::{Categories};
+pub use categories::Categories;
+
+/// The Sync Server's durable Change Set log (ADR-0009).
+pub mod change_sets;
+pub use change_sets::ChangeSet;
 
 mod config;
 /// Database configuration settings for connection pool management.
