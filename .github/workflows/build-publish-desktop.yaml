@@ -254,3 +254,71 @@ jobs:
         run: |
           $installer = Get-ChildItem -Path target\release -Filter *-setup.exe -Recurse | Select-Object -First 1
           gh release upload "${{ github.event.release.tag_name }}" $installer.FullName --clobber
+
+      - name: Install cargo-packager (macOS)
+        if: runner.os == 'macOS' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
+
+      # macOS-only: packages desktop as a .dmg per ADR-0008, no code signing this cycle
+      # (same as the TUI, ADR-0004). `--packages bin_desktop` required for the same reason
+      # as the Windows step above. See ticket #35.
+      - name: Package desktop as dmg (macOS)
+        if: runner.os == 'macOS'
+        run: cargo packager --release --formats dmg --packages bin_desktop --manifest-path crates/bins/bin-desktop/Cargo.toml
+
+      # Mounts the dmg, launches the bundled app, and confirms it stays running -- proving
+      # FC-DESKTOP-004's macOS non-root requirement end-to-end, not just that
+      # `cargo packager` exits 0. Passes `-mountpoint` explicitly rather than parsing
+      # `hdiutil attach`'s human-readable output: the TUI's own dmg step
+      # (build-publish-tui.yaml) hit a real bug there when the product name has spaces
+      # ("Personal Ledger TUI") -- naive `awk '{print $NF}'` parsing silently grabbed only
+      # the last word instead of the full mount path. "Personal Ledger Desktop" has the
+      # same space, so applying that fix from the start rather than rediscovering it.
+      # Bounded launch-and-kill (not the TUI's piped-quit-keystroke trick, which needs a
+      # terminal app) -- same shape as this workflow's other smoke tests. Genuinely
+      # unverified locally -- no macOS environment in this repo's dev sandbox, first
+      # tested for real on macos-15, same as every "Verify ... (macOS)" step so far.
+      - name: Verify dmg mounts and app runs non-root (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          dmg=$(find target/release -maxdepth 1 -name '*.dmg')
+          echo "Running as: $(whoami) (uid $(id -u))"
+          [ "$(id -u)" -ne 0 ]
+
+          mount_point="/tmp/desktop-dmg-mount"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_point"
+          app=$(find "$mount_point" -maxdepth 1 -name '*.app')
+          binary=$(find "$app/Contents/MacOS" -type f | head -1)
+          echo "App binary: $binary"
+
+          "$binary" &
+          pid=$!
+          sleep 5
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || status=$?
+            hdiutil detach "$mount_point" || true
+            echo "desktop exited early with status ${status:-unknown}"
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+          hdiutil detach "$mount_point"
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload dmg artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-desktop-macos-dmg
+          path: target/release/*.dmg
+          if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach dmg to release (macOS)
+        if: runner.os == 'macOS' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.dmg --clobber
