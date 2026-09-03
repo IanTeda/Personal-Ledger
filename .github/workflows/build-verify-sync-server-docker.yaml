@@ -77,6 +77,7 @@ jobs:
       - name: Build image (${{ matrix.platform }})
         run: |
           docker buildx build \
+            --file Dockerfile.sync-server \
             --platform ${{ matrix.platform }} \
             --tag sync-server:test \
             --load \

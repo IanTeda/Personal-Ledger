@@ -1,8 +1,9 @@
 # Docker Compose deployment for the Sync Server (FC-SYNC-006).
 #
-# `docker compose up -d` builds the image from the repo-root Dockerfile (see its own
-# header comment for why the build context is the whole workspace) and runs it with a
-# named volume for its durable Change Set log, so the store survives `docker compose
+# `docker compose up -d` builds the image from Dockerfile.sync-server (see its own
+# header comment for why the build context is still the whole workspace even though
+# the Dockerfile itself is named for this one service) and runs it with a named
+# volume for its durable Change Set log, so the store survives `docker compose
 # restart`/`down` + `up` (as opposed to `down -v`, which does remove the volume --
 # that's an explicit, deliberate action, not an accidental data-loss path).
 #
@@ -15,6 +16,7 @@ services:
   sync-server:
     build:
       context: .
+      dockerfile: Dockerfile.sync-server
     image: personal-ledger-sync-server:local
     restart: unless-stopped
     ports:
