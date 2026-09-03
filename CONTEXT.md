@@ -53,10 +53,14 @@ to share an English word with it.
 
 **Change Set**:
 The unit of data the Sync Server pushes and pulls between Clients to propagate one
-Client's local edits to the others. Its exact shape and granularity is undecided —
-Sync Server feasibility work (`docs/product-requirements.md`, FC-SYNC-001) locks it.
+Client's local edits to the others, at field granularity: a stable Change Set ID
+(`RowID`), the target table/row/field identifiers, the new value, a Hybrid-Logical-Clock
+timestamp, the originating Client's stable ID, and a version/parent-version field held
+for a future CRDT or manual-merge upgrade path. Conflicting Change Sets to the same
+field are resolved last-write-wins by that timestamp, tie-broken by Client ID — see
+[ADR-0009](docs/adr/0009-lww-sqlite-change-set-log.md).
 _Avoid_: Diff, patch, delta — those are implementation-neutral synonyms; Change Set is
-this glossary's canonical term so usage stays consistent as the concrete shape lands.
+this glossary's canonical term.
 
 **Institution**:
 The financial institution (e.g. a bank) that holds an Account — not modelled as an

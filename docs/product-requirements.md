@@ -193,7 +193,7 @@ The requirements below describe the product's ultimate end state across all deve
 
 - Rust toolchain, `protoc`, and other dev tools pinned in `mise.toml`.
 - Core crates: `tonic` (gRPC), `sqlx` (SQLite persistence), `serde`, `tracing`, `thiserror`, `uuid` (v7), `chrono`, `secrecy`, and a CSV-parsing crate (e.g. `csv`) for Balance Check import.
-- SQLite as the embedded database engine for each Client (no external database server required for V1); the Sync Server's own change-set store is TBD, to be decided as part of FC-SYNC-001.
+- SQLite as the embedded database engine for each Client (no external database server required for V1); the Sync Server's own Change Set log also uses SQLite via `sqlx`, reusing `lib-database`'s conventions (see [ADR-0009](docs/adr/0009-lww-sqlite-change-set-log.md)).
 - A decision will need to be made on the best time crate, as chrono is deprecated.
 - `cargo-make`, mdBook, and rustdoc for documentation builds.
 - Docker (or another OCI-compatible container runtime) to build and run the Sync Server.
@@ -225,8 +225,7 @@ The requirements below describe the product's ultimate end state across all deve
 - __Double-entry accounting:__ Personal Ledger deliberately uses single-entry Transactions in V1 (see [ADR-0001](docs/adr/0001-single-entry-not-double-entry.md)); revisiting this for audit-grade, structurally-balanced accounting is a future consideration should the need arise.
 - __Desktop & TUI UI:__ The concrete UI/UX for each client app (§1.4) is not yet detailed as Functional Requirements; deferred until each respective cycle is scoped.
 - __Multi-device sync protocol:__ End-state Functional Requirements for the sync server's protocol beyond FR.39a's placeholder are deferred until a sync-focused cycle is scoped (see FR.39a, §2.1 Sync).
-- __Conflict resolution strategy:__ The approach for merging conflicting offline edits across devices (e.g. last-write-wins, CRDT, manual merge) is not yet decided; to be resolved alongside multi-device sync.
-- __Change-set log retention:__ Whether/how the Sync Server prunes its durable change-set log (e.g. once all known Clients have acked a change) versus keeping it indefinitely is not yet decided; to be resolved alongside multi-device sync.
+- __Change Set log retention:__ Every Change Set is kept indefinitely for this cycle — deliberately not decided, since a feasibility demo on one self-hoster's own small device fleet doesn't yet produce the usage/volume data a pruning policy would need to design against (see [ADR-0009](docs/adr/0009-lww-sqlite-change-set-log.md)); revisit once a later cycle has that data.
 - __Personal Investors:__ Tracking buy-in costs, capital gains, returns, and tax implications for investments (see §1.4) is a future consideration with no Functional Requirements defined yet.
 - __Personal Loan:__ Tracking progress paying down a loan (see §1.4) is a future consideration with no Functional Requirements defined yet.
 - __Personal Inventory:__ Tracking assets and household inventory (see §1.4) is a future consideration with no Functional Requirements defined yet.
