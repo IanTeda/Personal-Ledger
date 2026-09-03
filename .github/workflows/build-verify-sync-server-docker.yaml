@@ -88,15 +88,25 @@ jobs:
           # Give the container a moment to bind its port before the checks below poll it.
           sleep 2
 
-      # Confirms the running process isn't root (NFR.2), not just that the Dockerfile's
-      # USER directive is present -- mirrors build-publish-tui.yaml's own
-      # `[ "$(id -u)" -ne 0 ]` non-root proof for the packaged AppImage/dmg.
-      - name: Verify container runs as non-root
+      # Confirms the *running sync-server process* isn't root (NFR.2) -- not a plain
+      # `docker exec ... id -u`, which would report the exec session's own default
+      # user (root, per the image's PUID/PGID entrypoint design in docker-entrypoint.sh:
+      # the container starts as root so it can chown /data and drop privileges via
+      # setpriv, so a fresh `docker exec` without --user inherits that root context
+      # too, regardless of what the actual PID 1 process dropped to). `docker top`
+      # reports the real per-process UID from the host's view instead, mirroring
+      # build-publish-tui.yaml's own `[ "$(id -u)" -ne 0 ]` non-root proof for the
+      # packaged AppImage/dmg, adapted for a process running inside a container rather
+      # than directly on the runner.
+      - name: Verify the sync-server process runs as non-root
         run: |
           set -euo pipefail
-          uid=$(docker exec sync-server-test id -u)
-          echo "Container process uid: $uid"
-          [ "$uid" -ne 0 ]
+          docker top sync-server-test -eo pid,user,comm
+          uid=$(docker top sync-server-test -eo user,comm | awk '$2 == "sync-server" { print $1 }')
+          echo "sync-server process uid: $uid"
+          [ -n "$uid" ]
+          [ "$uid" != "0" ]
+          [ "$uid" != "root" ]
 
       # grpcurl needs either server reflection (not registered on UtilitiesService) or
       # the .proto file directly -- same proto-file-driven approach ticket #41 already

@@ -44,10 +44,12 @@ RUN cargo build --release --locked --package bin_sync_server --bin sync-server
 # is needed here.
 FROM debian:bookworm-slim AS runtime
 
-# Non-root by construction (NFR.2: "the app never requires root/administrator
-# privileges to run"), a fixed high UID/GID rather than a dynamically allocated one so
-# the numeric ID is stable across rebuilds (relevant once #49 adds a persistent volume
-# and its host-side ownership needs to match).
+# Baseline non-root account (NFR.2: "the app never requires root/administrator
+# privileges to run"), a fixed high UID/GID as the default. docker-entrypoint.sh
+# reshapes this account at container start to match the operator-supplied PUID/PGID
+# env vars (falling back to these same defaults when unset), so the *running* process
+# is always non-root even though the image itself starts as root to do that
+# adjustment -- see the entrypoint script's own comment for why.
 RUN groupadd --system --gid 10001 syncserver \
     && useradd --system --uid 10001 --gid syncserver --no-create-home --shell /usr/sbin/nologin syncserver
 
@@ -58,14 +60,29 @@ RUN groupadd --system --gid 10001 syncserver \
 # required config/env, since SQLite's driver needs the file to already exist unless
 # the URL carries "?mode=rwc" (which the built-in default does not). This also sets up
 # the mount point #49's persistent volume will use later; this ticket doesn't wire that
-# up itself.
+# up itself. Ownership is (re)applied by docker-entrypoint.sh on every start, since a
+# bind-mounted host directory here would otherwise keep whatever ownership it already
+# has, not what's set at build time.
 WORKDIR /data
 RUN touch /data/personal-ledger.sqlite \
     && chown -R syncserver:syncserver /data
 
 COPY --from=builder /workspace/target/release/sync-server /usr/local/bin/sync-server
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-USER syncserver
+# PUID/PGID: the runtime-configurable UID/GID docker-entrypoint.sh applies to the
+# syncserver account before dropping privileges -- the same convention linuxserver.io
+# images use, so a self-hoster can match the container's user to whatever UID already
+# owns their host-side volume mount (relevant once #49 adds one) without an image
+# rebuild. Declared here (rather than left implicit) so `docker inspect`/`--env-file`
+# tooling can discover them.
+ENV PUID=10001
+ENV PGID=10001
 EXPOSE 50051
 
-ENTRYPOINT ["/usr/local/bin/sync-server"]
+# Stays root at the container level so the entrypoint can adjust syncserver's
+# UID/GID and fix up /data's ownership before dropping privileges -- see
+# docker-entrypoint.sh. The actual Sync Server process it execs into is never root.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["/usr/local/bin/sync-server"]
