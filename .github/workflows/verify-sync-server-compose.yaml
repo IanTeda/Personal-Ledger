@@ -1,0 +1,150 @@
+# .github/workflows/verify-sync-server-compose.yaml
+#
+# Proves FC-SYNC-006: a `docker compose up` deployment of the Sync Server persists its
+# durable Change Set store across a container restart (not just a fresh `docker run`,
+# which #48's workflow already covers), and confirms it still runs as a non-root user
+# under Compose specifically. See the "Sync Server feasibility" Wayfinder map (issue
+# #40) and ticket #49.
+#
+# Single job, no arch matrix -- #48 already proved the image itself builds/runs
+# correctly on both linux/amd64 and linux/arm64; this workflow is about Compose's
+# deployment mechanics (the named volume, the restart), which aren't
+# architecture-specific, so one native amd64 runner is enough to demonstrate them.
+#
+# Same trigger/concurrency/permissions shape as build-verify-sync-server-docker.yaml.
+
+name: Verify Sync Server Docker Compose Deployment
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+  # TEMPORARY, remove after the first run: workflow_dispatch can't target a workflow
+  # that's never run and isn't on the default branch yet, so this bootstraps GitHub's
+  # registration of it. Drop this trigger once the first run completes.
+  push:
+    branches: [feasibility]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify-compose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      # https://github.com/actions/checkout
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Build image
+        run: docker compose build
+
+      - name: Start deployment
+        run: |
+          docker compose up -d
+          # Give the container a moment to bootstrap the account and bind its port
+          # before the checks below poll it.
+          sleep 3
+
+      # First start on a fresh named volume: the account doesn't exist yet, so
+      # main.rs's bootstrap_account logs its "No account provisioned yet" warning
+      # (see crates/bins/bin-sync-server/src/main.rs) -- captured here as the
+      # baseline this ticket's actual persistence proof (below) needs to contrast
+      # against.
+      - name: Show initial logs
+        run: |
+          docker compose logs sync-server
+          docker compose logs sync-server | grep -q "No account provisioned yet"
+          docker compose logs sync-server | grep -q "listening on"
+
+      # Same `docker top` approach build-verify-sync-server-docker.yaml uses (and the
+      # same `pid`-must-be-in-the-format-list fix that run's first attempt needed) --
+      # confirms the actual running process, not just a fresh `docker compose exec`'s
+      # own default (root) context.
+      - name: Verify container runs as non-root
+        run: |
+          set -euo pipefail
+          container_id=$(docker compose ps -q sync-server)
+          docker top "$container_id" -eo pid,user,comm
+          uid=$(docker top "$container_id" -eo pid,user,comm | awk '$3 == "sync-server" { print $2 }')
+          echo "sync-server process uid: $uid"
+          [ -n "$uid" ]
+          [ "$uid" != "0" ]
+          [ "$uid" != "root" ]
+
+      - name: Install grpcurl
+        run: go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+
+      - name: Verify Ping over gRPC
+        run: |
+          set -euo pipefail
+          response=$("$(go env GOPATH)/bin/grpcurl" \
+            -plaintext \
+            -import-path crates/libs/lib-rpc/proto \
+            -proto personal-ledger/v001/utilities.proto \
+            localhost:50051 \
+            personal_ledger.utilities.v001.UtilitiesService/Ping)
+          echo "$response"
+          echo "$response" | grep -q "Pong"
+
+      # The actual FC-SYNC-006 proof: restart the container (not `down -v`, which
+      # would remove the volume) and confirm the durable store survived -- if the
+      # account persisted, main.rs's bootstrap_account finds it already exists and
+      # skips re-provisioning, so its warning does NOT appear again in the logs
+      # emitted since the restart. `--since` scopes the log check to only what's been
+      # written after the restart, so it can't accidentally match the initial boot's
+      # own (expected) warning from the "Show initial logs" step above.
+      - name: Restart deployment
+        run: |
+          restart_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "RESTART_TIME=$restart_time" >> "$GITHUB_ENV"
+          docker compose restart sync-server
+          sleep 3
+
+      - name: Verify the account persisted across the restart
+        run: |
+          set -euo pipefail
+          docker compose logs --since "$RESTART_TIME" sync-server
+          docker compose logs --since "$RESTART_TIME" sync-server | grep -q "listening on"
+          if docker compose logs --since "$RESTART_TIME" sync-server | grep -q "No account provisioned yet"; then
+            echo "::error::Account was re-bootstrapped after restart -- the persistent volume did not survive"
+            exit 1
+          fi
+
+      - name: Verify container still runs as non-root after restart
+        run: |
+          set -euo pipefail
+          container_id=$(docker compose ps -q sync-server)
+          uid=$(docker top "$container_id" -eo pid,user,comm | awk '$3 == "sync-server" { print $2 }')
+          echo "sync-server process uid after restart: $uid"
+          [ -n "$uid" ]
+          [ "$uid" != "0" ]
+          [ "$uid" != "root" ]
+
+      - name: Verify Ping over gRPC after restart
+        run: |
+          set -euo pipefail
+          response=$("$(go env GOPATH)/bin/grpcurl" \
+            -plaintext \
+            -import-path crates/libs/lib-rpc/proto \
+            -proto personal-ledger/v001/utilities.proto \
+            localhost:50051 \
+            personal_ledger.utilities.v001.UtilitiesService/Ping)
+          echo "$response"
+          echo "$response" | grep -q "Pong"
+
+      - name: Show final logs
+        if: always()
+        run: docker compose logs sync-server || true
+
+      # `-v` here is deliberate cleanup for this ephemeral CI run, not a statement
+      # about the default operator workflow -- a real deployment would just use
+      # `docker compose down` (no `-v`) to keep the volume.
+      - name: Tear down deployment
+        if: always()
+        run: docker compose down -v || true
