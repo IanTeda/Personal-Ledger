@@ -27,7 +27,7 @@ _Avoid_: Commodity, Currency, asset class, exchange rate, conversion.
 **Ledger**:
 The complete set of Accounts, Categories, and Transactions owned by one self-hoster —
 a logical whole, physically replicated as a full local SQLite database on each Client
-and reconciled between them by the Sync Server.
+and synced between them by the Sync Server.
 _Avoid_: Book, journal.
 
 **Client**:
@@ -38,15 +38,25 @@ instance running on it; "backend" implied a single authoritative server, which n
 longer describes the architecture.
 
 **Sync Server**:
-A separate deployable component — a headless service, not a Client — that reconciles
-each Client's local Ledger copy with the others by pushing and pulling change sets,
-not exposing full CRUD. It maintains its own durable store of change sets (not a full
+A separate deployable component — a headless service, not a Client — that syncs each
+Client's local Ledger copy with the others by pushing and pulling Change Sets, not
+exposing full CRUD. It maintains its own durable store of Change Sets (not a full
 Ledger copy) so a Client that has been offline can catch up without both peers being
 online simultaneously.
-_Avoid_: Backend, Web App — "backend" is avoided across this glossary now that Clients
-hold their own local data directly rather than depending on a central server for
-reads/writes; "Web App" was an earlier, now-abandoned design where this role rode
-along on a browser-facing Client instead of being its own component.
+_Avoid_: Backend, Web App, reconcile/reconciliation — "backend" is avoided across this
+glossary now that Clients hold their own local data directly rather than depending on
+a central server for reads/writes; "Web App" was an earlier, now-abandoned design
+where this role rode along on a browser-facing Client instead of being its own
+component; "reconcile" is reserved for Transaction Status's reconciliation workflow
+(see below) — the Sync Server *syncs* Ledger copies, a different concept that happens
+to share an English word with it.
+
+**Change Set**:
+The unit of data the Sync Server pushes and pulls between Clients to propagate one
+Client's local edits to the others. Its exact shape and granularity is undecided —
+Sync Server feasibility work (`docs/product-requirements.md`, FC-SYNC-001) locks it.
+_Avoid_: Diff, patch, delta — those are implementation-neutral synonyms; Change Set is
+this glossary's canonical term so usage stays consistent as the concrete shape lands.
 
 **Institution**:
 The financial institution (e.g. a bank) that holds an Account — not modelled as an

@@ -34,7 +34,7 @@ The overarching goals and objectives describe the product's ultimate end state. 
 - __TUI App:__ A text-based TUI for a keyboard-focused native app that works across Linux, macOS and Windows.
 - __Sync Server App:__ A headless service, deployable via Docker on a homelab, that acts as the always-on sync hub for the native (Desktop/TUI) apps.
 - __Local Offline First:__ Provide a self-hosted, offline, local-first ledger for tracking expenses, investments, and assets without a cloud dependency or subscription.
-- __Multiple Operating Systems and Devices:__ Support multiple operating systems and devices, each holding its own local-first data store, reconciled via a sync server when devices come online.
+- __Multiple Operating Systems and Devices:__ Support multiple operating systems and devices, each holding its own local-first data store, synced via a sync server when devices come online.
 - __Transactions:__ Model transactions against accounts, payees and categories using the five standard accounting categories (asset, liability, equity, income, expense) to classify transactions, without requiring double-entry bookkeeping.
 - __Understand Spending:__ Users interested in gaining insight and understanding their spending habits now and over time to make informed decisions.
 - __Track Against Budget:__ Users interested in tracking spending against a target budget to achieve financial goals.
@@ -75,7 +75,7 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 
 ### Sync Server App:
 
-- __FC-SYNC-001:__ Investigate and research approaches for reconciling independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
+- __FC-SYNC-001:__ Investigate and research approaches for syncing independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
 - __FC-SYNC-002:__ Investigate and research authentication mechanisms (e.g. OAuth2, JWT, etc.) and implement a secure auth flow for the sync server and client.
 - __FC-SYNC-003:__ Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server, including a Client that was offline catching up on changes queued while it was down.
 - __FC-SYNC-004:__ Demonstrate the Sync Server instance acting as the always-on sync hub that Desktop/TUI clients sync through.
@@ -173,7 +173,7 @@ The requirements below describe the product's ultimate end state across all deve
 ### Platform
 
 - __FR.39:__ The system shall expose Category, Account, Transaction, Budget, and Balance Check operations (FR.4–FR.38) via a local embedded library API (`lib-database`/`lib-domain`), called in-process by each client (Desktop, TUI) against its own local SQLite store.
-- __FR.39a:__ The sync server shall expose a versioned gRPC sync protocol for reconciling a client's local ledger data with other devices — pushing and pulling change sets rather than exposing full CRUD — and each client shall be able to operate entirely offline against its local store between syncs. The Sync Server persists a durable log of change sets so a Client that has been offline can catch up without both peers being online simultaneously.
+- __FR.39a:__ The sync server shall expose a versioned gRPC sync protocol for syncing a client's local ledger data with other devices — pushing and pulling change sets rather than exposing full CRUD — and each client shall be able to operate entirely offline against its local store between syncs. The Sync Server persists a durable log of change sets so a Client that has been offline can catch up without both peers being online simultaneously.
 - __FR.40:__ The system shall support layered configuration (defaults, system, user, executable-directory, working-directory, explicit path, environment variables).
 - __FR.41:__ The system shall emit structured, level-configurable tracing output.
 
@@ -182,7 +182,7 @@ The requirements below describe the product's ultimate end state across all deve
 - __NFR.1 Reliability (priority):__ Transaction creation, update, and deletion must keep an account's running Balance consistent with its recorded transactions, even on partial failure (no orphaned balance updates). A Balance Check CSV import is atomic: a malformed row aborts the whole import rather than partially applying it. Database migrations must be safe to re-run.
 - __NFR.2 Security & Privacy (priority):__ All data is stored locally in SQLite; no data leaves the device by default. The app never requires root/administrator privileges to run. No `unsafe` code anywhere in the workspace (lint-enforced). Any secrets are wrapped in `secrecy::Secret` so they cannot leak into logs or traces.
 - __NFR.3 Performance:__ Category, account, transaction, budget, and Balance Check CRUD, and the balance, category-total, payee-total, budget-vs-actual, and balance-check-variance reports, should respond quickly for typical personal-ledger data volumes (thousands, not millions, of transactions).
-- __NFR.4 Usability (API-level):__ Since V1 has no UI, the local library API (`lib-database`) is the primary usability surface: errors are structured (via `thiserror`) rather than raw SQL or library errors, so a future client can present them meaningfully. The sync server's gRPC protocol (FR.39a) is a separate, narrower surface for device reconciliation, not the general-purpose API.
+- __NFR.4 Usability (API-level):__ Since V1 has no UI, the local library API (`lib-database`) is the primary usability surface: errors are structured (via `thiserror`) rather than raw SQL or library errors, so a future client can present them meaningfully. The sync server's gRPC protocol (FR.39a) is a separate, narrower surface for device sync, not the general-purpose API.
 - __NFR.5 Maintainability:__ Each entity's persistence logic is split into separate `find`/`insert`/`update`/`delete`/`builder`/`model` files, following the existing `categories/` convention in `lib-database`. SQL queries list explicit columns; no `SELECT *`.
 - __NFR.6a Compatibility (Desktop/TUI):__ The Desktop and TUI apps build and run natively on Linux, macOS, and Windows — anywhere the pinned Rust toolchain, `protoc`, and SQLite are available.
 - __NFR.6b Compatibility (Sync Server):__ The Sync Server ships as a multi-arch (amd64/arm64) Docker image and runs on any Docker host — Linux, macOS, or Windows — without requiring a native build on the host OS.
@@ -225,7 +225,7 @@ The requirements below describe the product's ultimate end state across all deve
 - __Double-entry accounting:__ Personal Ledger deliberately uses single-entry Transactions in V1 (see [ADR-0001](docs/adr/0001-single-entry-not-double-entry.md)); revisiting this for audit-grade, structurally-balanced accounting is a future consideration should the need arise.
 - __Desktop & TUI UI:__ The concrete UI/UX for each client app (§1.4) is not yet detailed as Functional Requirements; deferred until each respective cycle is scoped.
 - __Multi-device sync protocol:__ End-state Functional Requirements for the sync server's protocol beyond FR.39a's placeholder are deferred until a sync-focused cycle is scoped (see FR.39a, §2.1 Sync).
-- __Conflict resolution strategy:__ The approach for reconciling conflicting offline edits across devices (e.g. last-write-wins, CRDT, manual merge) is not yet decided; to be resolved alongside multi-device sync.
+- __Conflict resolution strategy:__ The approach for merging conflicting offline edits across devices (e.g. last-write-wins, CRDT, manual merge) is not yet decided; to be resolved alongside multi-device sync.
 - __Change-set log retention:__ Whether/how the Sync Server prunes its durable change-set log (e.g. once all known Clients have acked a change) versus keeping it indefinitely is not yet decided; to be resolved alongside multi-device sync.
 - __Personal Investors:__ Tracking buy-in costs, capital gains, returns, and tax implications for investments (see §1.4) is a future consideration with no Functional Requirements defined yet.
 - __Personal Loan:__ Tracking progress paying down a loan (see §1.4) is a future consideration with no Functional Requirements defined yet.
