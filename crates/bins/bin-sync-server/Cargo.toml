@@ -1,0 +1,26 @@
+[package]
+name = "bin_sync_server"
+version = "0.1.0"
+edition = "2024"
+
+# Package name is bin_sync_server (matching the lib_* convention for library crates), but
+# the compiled binary itself stays named `sync-server` -- end users shouldn't see the
+# bin_ prefix; it's a codebase-navigation convention, not a user-facing one. Matches the
+# bin-tui -> tui / bin-desktop -> desktop pattern.
+[[bin]]
+name = "sync-server"
+path = "src/main.rs"
+
+[dependencies]
+## -- Internal Dependencies --
+lib_config = { path = "../../libs/lib-config" }
+lib_rpc = { path = "../../libs/lib-rpc" }
+lib_telemetry = { path = "../../libs/lib-telemetry" }
+
+## -- Workspace Dependencies --
+tracing = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+
+[lints]
+workspace = true
