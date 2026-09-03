@@ -1,0 +1,58 @@
+[package]
+name = "bin_sync_server"
+version = "0.1.0"
+edition = "2024"
+
+# Package name is bin_sync_server (matching the lib_* convention for library crates), but
+# the compiled binary itself stays named `sync-server` -- end users shouldn't see the
+# bin_ prefix; it's a codebase-navigation convention, not a user-facing one. Matches the
+# bin-tui -> tui / bin-desktop -> desktop pattern.
+[[bin]]
+name = "sync-server"
+path = "src/main.rs"
+
+# A thin lib target exists purely so integration tests (tests/*.rs) can reach modules
+# like `auth` that a pure binary crate would otherwise keep private to main.rs -- see
+# src/lib.rs. main.rs stays the actual entry point and duplicates `mod auth;` against
+# the same src/auth/ directory (compiled once per target, standard Cargo behaviour).
+[lib]
+name = "bin_sync_server"
+path = "src/lib.rs"
+
+[dependencies]
+## -- Internal Dependencies --
+lib_config = { path = "../../libs/lib-config" }
+lib_database = { path = "../../libs/lib-database" }
+lib_domain = { path = "../../libs/lib-domain" }
+lib_rpc = { path = "../../libs/lib-rpc" }
+lib_telemetry = { path = "../../libs/lib-telemetry" }
+
+## -- Workspace Dependencies --
+argon2 = { workspace = true }
+axum = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+jsonwebtoken = { workspace = true }
+rand = { workspace = true }
+secrecy = { workspace = true }
+serde = { workspace = true }
+serde_urlencoded = { workspace = true }
+sha2 = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+tonic = { workspace = true }
+
+[dev-dependencies]
+## -- Workspace Dependencies --
+serde_json = { workspace = true }
+tempfile = "3.10.1"
+tokio-stream = { version = "0.1.19", features = ["net"] }
+
+reqwest = { version = "0.12", default-features = false, features = [
+  "json",
+  "rustls-tls",
+] }
+
+[lints]
+workspace = true

@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id              AS \"id!: domain::RowID\",\n                    code,\n                    name,\n                    description,\n                    url_slug        AS \"url_slug?: domain::UrlSlug\",\n                    category_type   AS \"category_type!: domain::CategoryTypes\",\n                    color           AS \"color?: domain::HexColor\",\n                    icon,\n                    is_active       AS \"is_active!: bool\",\n                    created_on      AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on      AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM categories\n                WHERE is_active = true\n                ORDER BY created_on DESC\n                LIMIT ? OFFSET ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "code",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "url_slug?: domain::UrlSlug",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_type!: domain::CategoryTypes",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "color?: domain::HexColor",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "icon",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_active!: bool",
+        "ordinal": 8,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "881d12b2a38f9a342b3b315ba9834a21d35aa403496240e0d354c6dbf7c4f55e"
+}

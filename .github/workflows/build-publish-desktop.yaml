@@ -1,0 +1,395 @@
+# .github/workflows/build-publish-desktop.yaml
+#
+# Cross-platform build/test matrix (Linux, macOS, Windows) for `bin-desktop`. See the
+# "Desktop App feasibility" Wayfinder map (issue #23) and ticket #33.
+#
+# Mirrors build-publish-tui.yaml's shape and trigger (release + workflow_dispatch, not
+# every push -- packaging on every push was expensive there, and the same reasoning
+# applies here) so the per-OS packaging steps (issues #34-36) can be added to these same
+# jobs later without a trigger change, the same way build-publish-tui.yaml grew
+# incrementally across tickets #13/#19/#20/#21 rather than being rewritten each time.
+#
+# Scoped to `crates/bins/bin-desktop`, not the whole workspace -- same reasoning as
+# build-publish-tui.yaml: `lib_rpc` has its own stale `.sqlx` test-target cache unrelated
+# to this map. `bin-desktop` gained a real `lib_database`/`lib_domain` dependency for its
+# own real-data ticket (issue #37) -- `sqlx`'s compile-time query macros resolve against
+# `lib-database`'s checked-in `.sqlx` offline cache automatically (no `DATABASE_URL`/
+# `SQLX_OFFLINE` needed here), same as building `bin_tui` already relied on.
+
+name: Build and Publish Desktop
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# contents: write is needed only by the "Attach ... to release" step below (gh release
+# upload); everything else only reads the repo.
+permissions:
+  contents: write
+
+env:
+  # Pinned (not "latest") so the cache key below is stable and meaningful -- same version
+  # already pinned by build-publish-tui.yaml, bump both together deliberately.
+  CARGO_PACKAGER_VERSION: "0.11.8"
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      # https://github.com/actions/checkout
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Installs the pinned Rust toolchain from mise.toml identically on all three
+      # runner OSes, so CI uses exactly what a local `mise install` would.
+      # https://github.com/jdx/mise-action
+      - name: Install mise-pinned toolchain
+        uses: jdx/mise-action@v4
+
+      # GPUI (ADR-0007) renders via Metal on macOS and DirectX on Windows -- both already
+      # present on GitHub-hosted runners -- but on Linux it needs real windowing/graphics
+      # dev headers that TUI's crossterm never touched. This list is scoped down from
+      # Zed's own much larger script/linux install list (which also covers Zed-specific
+      # features -- git, TLS, audio, screen-sharing -- bin-desktop doesn't have) to just
+      # what GPUI's rendering/windowing stack itself needs: X11/Wayland/xkbcommon headers,
+      # fontconfig, and Vulkan (via blade-graphics) with Mesa's software rasteriser
+      # (lavapipe, shipped in mesa-vulkan-drivers) as the fallback on a runner with no
+      # real GPU. Unverified -- this is the first time this workspace has needed a real
+      # GPU rendering stack in CI, so the exact package list may need adjusting based on
+      # the first real run here, the same way build-publish-tui.yaml's own steps were
+      # tuned against real CI failures rather than guessed right first time.
+      - name: Install Linux GUI dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang cmake lld \
+            libfontconfig-dev \
+            libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev \
+            libvulkan1 mesa-vulkan-drivers vulkan-tools \
+            xvfb
+
+      - name: Build desktop
+        run: cargo build --locked --package bin_desktop
+
+      - name: Test desktop
+        run: cargo test --locked --package bin_desktop
+
+      # Linux CI runners are headless (no real display server), unlike the TUI's terminal
+      # smoke test which just needed a simulated TTY -- GPUI needs an actual X11/Wayland
+      # display to open a window against, so this runs under Xvfb (a virtual X server;
+      # GPUI's platform layer falls back to its X11 backend when no Wayland compositor is
+      # present, the same way it would on a real Linux desktop without Wayland). Bounded
+      # launch-and-kill rather than a graceful quit keystroke, since unlike the TUI there's
+      # no stdin-driven quit action wired up yet -- same rationale as the TUI workflow's
+      # Windows leg (see below), just applied to every OS here because a GUI app has no
+      # single portable "send it a quit key via piped stdin" mechanism the way a terminal
+      # app does.
+      - name: Run desktop (smoke test, Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          xvfb-run --auto-servernum target/debug/desktop &
+          pid=$!
+          sleep 8
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || status=$?
+            echo "desktop exited early with status ${status:-unknown}"
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+
+      # macos-15 runners have a real (if virtual) desktop session, so this should open a
+      # genuine window via GPUI's Metal backend without needing Xvfb's Linux-only
+      # workaround -- but like the TUI's own macOS steps, this is genuinely unverified from
+      # this repo's Linux dev sandbox; first-tested for real on a macos-15 runner.
+      - name: Run desktop (smoke test, macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          ./target/debug/desktop &
+          pid=$!
+          sleep 5
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || status=$?
+            echo "desktop exited early with status ${status:-unknown}"
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+
+      # windows-2025 runners similarly have a real desktop session for GPUI's DirectX
+      # backend. Bounded launch-and-kill, same shape as the TUI workflow's own Windows
+      # smoke test (crossterm's Win32 console reader never saw piped stdin there; a GUI
+      # app has the same "no portable quit-via-stdin" problem, just for a different
+      # underlying reason) -- genuinely unverified, no Windows environment available in
+      # this repo's dev sandbox.
+      - name: Run desktop (smoke test, Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: |
+          $proc = Start-Process -FilePath "target\debug\desktop.exe" -PassThru -NoNewWindow
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited) {
+            if ($proc.ExitCode -ne 0) {
+              Write-Error "desktop exited early with code $($proc.ExitCode)"
+              exit 1
+            }
+          } else {
+            Stop-Process -Id $proc.Id -Force
+          }
+
+      # `cargo packager --release` expects target/release/desktop(.exe) to already exist and
+      # copies it into the bundle -- it does not build it itself. Same reason the TUI
+      # workflow has its own separate "Build tui (release)" step.
+      - name: Build desktop (release)
+        run: cargo build --locked --release --package bin_desktop
+
+      # cargo-packager ships no prebuilt binaries and isn't in taiki-e/install-action's
+      # supported-tools list, so there's no download-a-binary shortcut -- same reasoning as
+      # the TUI workflow's own cache step, just widened to include Windows here since,
+      # unlike the TUI (hand-rolled zip on Windows, ADR-0004), the Desktop app uses
+      # cargo-packager on all three OSes (ADR-0008).
+      - name: Cache cargo-packager
+        id: cache-cargo-packager
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/cargo-packager
+            ~/.cargo/bin/cargo-packager.exe
+          key: cargo-packager-${{ runner.os }}-${{ env.CARGO_PACKAGER_VERSION }}
+
+      - name: Install cargo-packager (Windows)
+        if: runner.os == 'Windows' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
+
+      # Windows-only: packages desktop as a non-elevated NSIS installer per ADR-0008
+      # (docs/adr/0008-cargo-packager-for-desktop.md) -- `installer_mode = "currentUser"`
+      # is set explicitly in crates/bins/bin-desktop/Cargo.toml's
+      # [package.metadata.packager.nsis] section. See ticket #34.
+      #
+      # `--packages bin_desktop` is required, not optional -- confirmed for real on CI:
+      # `--manifest-path` only tells `cargo metadata` where to resolve the workspace from,
+      # it does NOT scope which package(s) get packaged. cargo-packager's own source
+      # (crates/packager/src/cli/config.rs, load_configs_from_cargo_workspace) iterates
+      # every workspace package with a [package.metadata.packager] table and packages all
+      # of them unless `--packages` filters it down -- so without this flag, running this
+      # from a workspace that also has bin-tui's own packager config tries to bundle
+      # tui.exe too, which this job never builds. `bin_desktop` here is the Cargo package
+      # name (`bin_desktop`), not the binary name (`desktop`) or product name.
+      - name: Package desktop as NSIS installer (Windows)
+        if: runner.os == 'Windows'
+        run: cargo packager --release --formats nsis --packages bin_desktop --manifest-path crates/bins/bin-desktop/Cargo.toml
+
+      # Confirms the installer actually installs non-interactively (NSIS's standard `/S`
+      # silent flag) without requiring elevation -- a `currentUser`-mode installer that
+      # needed Administrator would either prompt (impossible non-interactively, so the
+      # silent install would hang/fail) or write outside the user's own profile, which the
+      # explicit install directory below would surface. Then launches the installed exe and
+      # confirms it starts and stays running, same bounded launch-and-kill as the smoke test
+      # above. Genuinely unverified -- first tested for real on windows-2025, same as every
+      # other "Verify ... (Windows)" step in this repo's workflows so far.
+      - name: Verify NSIS installer runs non-root (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: |
+          $installer = Get-ChildItem -Path target\release -Filter *-setup.exe -Recurse | Select-Object -First 1
+          if (-not $installer) {
+            Write-Host "No *-setup.exe found under target\release; full listing:"
+            Get-ChildItem -Path target\release -Recurse | Select-Object FullName
+            Write-Error "NSIS installer not found"
+            exit 1
+          }
+          Write-Host "Installer: $($installer.FullName)"
+
+          $installDir = "$env:LOCALAPPDATA\Programs\Personal Ledger Desktop"
+          Start-Process -FilePath $installer.FullName -ArgumentList "/S", "/D=$installDir" -Wait -NoNewWindow
+
+          $exe = Get-ChildItem -Path $installDir -Filter *.exe -Recurse | Select-Object -First 1
+          if (-not $exe) {
+            Write-Host "No .exe found under $installDir after install; full listing:"
+            Get-ChildItem -Path $installDir -Recurse | Select-Object FullName
+            Write-Error "Installed executable not found -- install did not land in the expected non-root user directory"
+            exit 1
+          }
+          Write-Host "Installed to: $($exe.FullName)"
+
+          $proc = Start-Process -FilePath $exe.FullName -PassThru -NoNewWindow
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited) {
+            if ($proc.ExitCode -ne 0) {
+              Write-Error "installed desktop.exe exited early with code $($proc.ExitCode)"
+              exit 1
+            }
+          } else {
+            Stop-Process -Id $proc.Id -Force
+          }
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload NSIS installer artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-desktop-windows-nsis
+          path: target/release/**/*-setup.exe
+          if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach NSIS installer to release (Windows)
+        if: runner.os == 'Windows' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $installer = Get-ChildItem -Path target\release -Filter *-setup.exe -Recurse | Select-Object -First 1
+          gh release upload "${{ github.event.release.tag_name }}" $installer.FullName --clobber
+
+      - name: Install cargo-packager (macOS)
+        if: runner.os == 'macOS' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
+
+      # macOS-only: packages desktop as a .dmg per ADR-0008, no code signing this cycle
+      # (same as the TUI, ADR-0004). `--packages bin_desktop` required for the same reason
+      # as the Windows step above. See ticket #35.
+      - name: Package desktop as dmg (macOS)
+        if: runner.os == 'macOS'
+        run: cargo packager --release --formats dmg --packages bin_desktop --manifest-path crates/bins/bin-desktop/Cargo.toml
+
+      # Mounts the dmg, launches the bundled app, and confirms it stays running -- proving
+      # FC-DESKTOP-004's macOS non-root requirement end-to-end, not just that
+      # `cargo packager` exits 0. Passes `-mountpoint` explicitly rather than parsing
+      # `hdiutil attach`'s human-readable output: the TUI's own dmg step
+      # (build-publish-tui.yaml) hit a real bug there when the product name has spaces
+      # ("Personal Ledger TUI") -- naive `awk '{print $NF}'` parsing silently grabbed only
+      # the last word instead of the full mount path. "Personal Ledger Desktop" has the
+      # same space, so applying that fix from the start rather than rediscovering it.
+      # Bounded launch-and-kill (not the TUI's piped-quit-keystroke trick, which needs a
+      # terminal app) -- same shape as this workflow's other smoke tests. Genuinely
+      # unverified locally -- no macOS environment in this repo's dev sandbox, first
+      # tested for real on macos-15, same as every "Verify ... (macOS)" step so far.
+      - name: Verify dmg mounts and app runs non-root (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          dmg=$(find target/release -maxdepth 1 -name '*.dmg')
+          echo "Running as: $(whoami) (uid $(id -u))"
+          [ "$(id -u)" -ne 0 ]
+
+          mount_point="/tmp/desktop-dmg-mount"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_point"
+          app=$(find "$mount_point" -maxdepth 1 -name '*.app')
+          binary=$(find "$app/Contents/MacOS" -type f | head -1)
+          echo "App binary: $binary"
+
+          "$binary" &
+          pid=$!
+          sleep 5
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || status=$?
+            hdiutil detach "$mount_point" || true
+            echo "desktop exited early with status ${status:-unknown}"
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+          hdiutil detach "$mount_point"
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload dmg artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-desktop-macos-dmg
+          path: target/release/*.dmg
+          if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach dmg to release (macOS)
+        if: runner.os == 'macOS' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.dmg --clobber
+
+      - name: Install cargo-packager (Linux)
+        if: runner.os == 'Linux' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
+
+      # Linux-only: packages desktop as a non-root AppImage per ADR-0008
+      # (docs/adr/0008-cargo-packager-for-desktop.md), same tool/format as the TUI
+      # (ADR-0004). `--packages bin_desktop` required for the same reason as the
+      # Windows/macOS packaging steps above. See ticket #36.
+      #
+      # `NO_STRIP=1`: confirmed for real locally (Arch/Omarchy, binutils 2.47) --
+      # linuxdeploy (bundled inside cargo-packager, pinned build from 2024-07-26) bundles
+      # GPUI's transitive X11/xkbcommon system libraries into the AppDir and tries to strip
+      # them; its vendored `strip` doesn't understand the `.relr.dyn` RELR-relocation
+      # section newer binutils emits by default, and the whole build_appimage.sh script
+      # aborts. ubuntu-24.04's own binutils predates that default so this runner shouldn't
+      # hit it, but the env var is a one-line, harmless (slightly-larger AppImage, no
+      # functional difference -- verified the un-stripped AppImage launches and runs fine
+      # locally) guard against toolchain drift rather than a fix for an observed CI failure.
+      - name: Package desktop as AppImage (Linux)
+        if: runner.os == 'Linux'
+        env:
+          NO_STRIP: "1"
+        run: cargo packager --release --formats appimage --packages bin_desktop --manifest-path crates/bins/bin-desktop/Cargo.toml
+
+      # Confirms the AppImage actually runs non-root -- proving FC-DESKTOP-004's Linux
+      # requirement end-to-end, not just that `cargo packager` exits 0.
+      # `--appimage-extract-and-run` because GitHub-hosted runners have no FUSE, same as
+      # the TUI's own AppImage verify step. Runs under xvfb-run for the same reason as the
+      # earlier Linux smoke-test step above -- a GUI app needs a real X11/Wayland display,
+      # unlike the TUI's terminal app. Bounded launch-and-kill, not the TUI's own
+      # piped-quit-keystroke trick (`script -qec ... /dev/null`), since a GUI app has no
+      # stdin-driven quit action -- same rationale as this workflow's other smoke tests.
+      - name: Verify AppImage runs non-root (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          appimage=$(find target/release -maxdepth 1 -name '*.AppImage')
+          chmod +x "$appimage"
+          echo "Running as: $(whoami) (uid $(id -u))"
+          [ "$(id -u)" -ne 0 ]
+          xvfb-run --auto-servernum "$appimage" --appimage-extract-and-run &
+          pid=$!
+          sleep 8
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || status=$?
+            echo "AppImage exited early with status ${status:-unknown}"
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload AppImage artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-desktop-linux-appimage
+          path: target/release/*.AppImage
+          if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach AppImage to release (Linux)
+        if: runner.os == 'Linux' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.AppImage --clobber

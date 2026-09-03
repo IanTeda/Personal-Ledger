@@ -17,6 +17,8 @@
 !.gitignore
 # Needed for Github Dockerfile actions workflows
 !.sqlx
+# Needed so the Sync Server's Docker build context trimming actually ships (#48)
+!.dockerignore
 
 
 # ---------------------------[ UNDERSCORE FILES ]--------------------------------

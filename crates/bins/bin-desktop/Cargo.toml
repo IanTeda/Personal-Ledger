@@ -1,0 +1,57 @@
+[package]
+name = "bin_desktop"
+version = "0.1.0"
+edition = "2024"
+
+# Package name is bin_desktop (matching the lib_* convention for library crates), but the
+# compiled binary itself stays named `desktop` -- end users running the packaged app shouldn't
+# see the bin_ prefix; it's a codebase-navigation convention, not a user-facing one.
+[[bin]]
+name = "desktop"
+path = "src/main.rs"
+
+[dependencies]
+## -- Internal Dependencies --
+lib_database = { path = "../../libs/lib-database" }
+lib_domain = { path = "../../libs/lib-domain" }
+
+## -- Workspace Dependencies --
+chrono = { workspace = true }
+gpui = { workspace = true }
+gpui-component = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true
+
+# cargo-packager config for all three installer formats, FC-DESKTOP-004. See ADR-0008
+# (docs/adr/0008-cargo-packager-for-desktop.md): the same tool as the TUI (ADR-0004), all
+# three formats from one config -- Windows NSIS (ticket #34), macOS dmg (ticket #35), Linux
+# AppImage (ticket #36). Each format is a no-op on the "wrong" OS, so listing all three is
+# safe on every platform's CI leg.
+[package.metadata.packager]
+product-name = "Personal Ledger Desktop"
+identifier = "au.id.teda.personal-ledger.desktop"
+formats = ["nsis", "dmg", "appimage"]
+# Placeholder only -- a plain square, no branding yet, same as bin-tui's own icon.
+icons = ["icons/icon-256.png"]
+
+# Not strictly required now that the CI invocation passes `--packages bin_desktop` (the
+# real fix for cargo-packager trying to bundle bin-tui's `tui.exe` -- see the CI workflow's
+# comment on the packaging step for the full explanation), but kept explicit anyway: with
+# two `[[bin]]` targets now in the workspace, auto-detection is one less thing to trust.
+[[package.metadata.packager.binaries]]
+path = "desktop"
+main = true
+
+# `currentUser` is NSIS's documented default install mode already (no elevation, no
+# Administrator prompt) -- set explicitly so the non-root intent (NFR.2) is visible in the
+# config itself, not just relied on implicitly. Field is `installer_mode` (or
+# `installerMode`), not `install_mode` -- docs.rs's NsisConfig page shows the Rust builder
+# method `install_mode()`, but that's not the same name as the serde field cargo-packager
+# actually deserialises from Cargo.toml -- confirmed for real on the first CI run, which
+# rejected `install_mode` and listed `installer_mode`/`installerMode` as the accepted
+# spellings.
+[package.metadata.packager.nsis]
+installer_mode = "currentUser"

@@ -1,0 +1,343 @@
+# .github/workflows/build-publish-sync-server.yaml
+#
+# Consolidates what were two separate workflows (#48's multi-arch image build+verify,
+# #49's Compose deployment+persistence verify) into one, now that both tickets are
+# done -- see the "Sync Server feasibility" Wayfinder map (issue #40). Also adds real
+# publishing to GitHub Container Registry on a release, matching
+# build-publish-tui.yaml/build-publish-desktop.yaml's actual behaviour (they attach
+# real release artifacts too) rather than the earlier build-verify-only scope.
+#
+# Three jobs:
+#   - build-verify: matrix over linux/amd64 (ubuntu-24.04) and linux/arm64
+#     (ubuntu-24.04-arm), each building *natively* (no QEMU) -- same reasoning
+#     build-publish-tui.yaml already applied by using real macOS/Windows runners
+#     instead of cross-compiling from Linux. Builds, runs, and verifies each image
+#     (non-root, a real grpcurl Ping call) before ever considering publishing it. On a
+#     release, and only after that verification passes, also pushes a per-architecture
+#     tag to GHCR (verify-then-publish ordering, not the other way around).
+#   - publish-manifest: release-only, needs both build-verify legs to have pushed their
+#     per-arch tag; combines them into one multi-arch manifest via `docker buildx
+#     imagetools create` so `docker pull ghcr.io/.../personal-ledger-sync-server:latest`
+#     resolves to the right architecture automatically.
+#   - verify-compose: single amd64 runner (Compose's persistent-volume/restart
+#     mechanics aren't architecture-specific, so one runner demonstrates them) --
+#     `docker compose up`, confirm non-root, confirm Ping, `docker compose restart`,
+#     confirm the account survived (the actual FC-SYNC-006 proof) and both checks
+#     still pass afterward. Independent of the other two jobs: the example compose
+#     file itself has no `build:` section (it's a standalone, pull-from-GHCR example),
+#     so this job builds *this commit's* Dockerfile and tags it to match the compose
+#     file's `image:` reference first, so `docker compose up` uses that local build
+#     rather than actually pulling whatever's already published.
+#
+# Triggered the same way build-publish-tui.yaml is: a GitHub Release (packaging on
+# every push is expensive and most pushes don't need it), plus workflow_dispatch to
+# re-run build+verify on demand -- workflow_dispatch runs never publish (see each
+# publish step's own `if: github.event_name == 'release'`), matching how the other two
+# binaries' workflows gate their own release-only publish steps.
+
+name: Build and Publish Sync Server
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/ianteda/personal-ledger-sync-server
+
+jobs:
+  build-verify:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runs-on: ubuntu-24.04
+            arch: amd64
+          - platform: linux/arm64
+            runs-on: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runs-on }}
+    # A from-scratch Rust release build (no layer cache yet) inside Docker can run
+    # 10-20+ min; bounded generously rather than left uncapped, same rationale
+    # build-publish-tui.yaml gives its own per-job timeout.
+    timeout-minutes: 40
+    # packages: write is only exercised by the release-gated push step below;
+    # workflow_dispatch runs never reach it, so they only ever use contents: read.
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      # https://github.com/actions/checkout
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # https://github.com/docker/setup-buildx-action
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Builds for this leg's own native architecture only (matrix.platform), loaded
+      # into the local Docker daemon so it can actually be run and verified below --
+      # `--load` only supports a single platform at a time, which is exactly what each
+      # matrix leg needs.
+      - name: Build image (${{ matrix.platform }})
+        run: |
+          docker buildx build \
+            --file Dockerfile.sync-server \
+            --platform ${{ matrix.platform }} \
+            --tag sync-server:test \
+            --load \
+            .
+
+      - name: Run image
+        run: |
+          docker run -d --name sync-server-test -p 50051:50051 sync-server:test
+          # Give the container a moment to bind its port before the checks below poll it.
+          sleep 2
+
+      # Confirms the *running sync-server process* isn't root (NFR.2) -- not a plain
+      # `docker exec ... id -u`, which would report the exec session's own default
+      # user (root, per the image's PUID/PGID entrypoint design in
+      # docker-entrypoint.sync-server.sh: the container starts as root so it can chown
+      # /data and drop privileges via setpriv, so a fresh `docker exec` without --user
+      # inherits that root context too, regardless of what the actual PID 1 process
+      # dropped to). `docker top` reports the real per-process UID from the host's view
+      # instead, mirroring build-publish-tui.yaml's own `[ "$(id -u)" -ne 0 ]` non-root
+      # proof for the packaged AppImage/dmg, adapted for a process running inside a
+      # container rather than directly on the runner.
+      - name: Verify the sync-server process runs as non-root
+        run: |
+          set -euo pipefail
+          docker top sync-server-test -eo pid,user,comm
+          # `pid` must be included in the -eo format even though it's unused below --
+          # confirmed for real on the first CI run of this workflow: omitting it makes
+          # the Docker daemon fail the whole `docker top` call with "Couldn't find PID
+          # field in ps output", it's not just cosmetically absent from the columns.
+          uid=$(docker top sync-server-test -eo pid,user,comm | awk '$3 == "sync-server" { print $2 }')
+          echo "sync-server process uid: $uid"
+          [ -n "$uid" ]
+          [ "$uid" != "0" ]
+          [ "$uid" != "root" ]
+
+      # grpcurl needs either server reflection (not registered on UtilitiesService) or
+      # the .proto file directly -- same proto-file-driven approach ticket #41 already
+      # used to verify Ping end-to-end. `go install` works identically on both matrix
+      # legs without hardcoding a per-arch release-binary URL; Go ships preinstalled on
+      # GitHub-hosted Ubuntu runners (amd64 and arm64 alike).
+      - name: Install grpcurl
+        run: go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+
+      - name: Verify Ping over gRPC
+        run: |
+          set -euo pipefail
+          response=$("$(go env GOPATH)/bin/grpcurl" \
+            -plaintext \
+            -import-path crates/libs/lib-rpc/proto \
+            -proto personal-ledger/v001/utilities.proto \
+            localhost:50051 \
+            personal_ledger.utilities.v001.UtilitiesService/Ping)
+          echo "$response"
+          echo "$response" | grep -q "Pong"
+
+      # Always useful for diagnosing a failed run; cheap to print unconditionally.
+      - name: Show container logs
+        if: always()
+        run: docker logs sync-server-test || true
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f sync-server-test || true
+
+      # Everything above must pass before this point -- verify-then-publish, not the
+      # other way around. Rebuilds with --push instead of --load; buildx's local cache
+      # (same builder instance, same Dockerfile/context) makes this fast, not a second
+      # from-scratch compile, since nothing changed since the --load build above.
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'release'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push per-architecture image (${{ matrix.platform }})
+        if: github.event_name == 'release'
+        run: |
+          docker buildx build \
+            --file Dockerfile.sync-server \
+            --platform ${{ matrix.platform }} \
+            --tag "$IMAGE_NAME:${{ github.event.release.tag_name }}-${{ matrix.arch }}" \
+            --push \
+            .
+
+  # Combines the two per-arch tags build-verify just pushed into one multi-arch
+  # manifest, so `docker pull` without an explicit --platform resolves to the right
+  # architecture automatically. `imagetools create` only manipulates registry
+  # manifests (no rebuild, no local Docker daemon involvement), so this doesn't need
+  # buildx's --load/--push distinction at all.
+  publish-manifest:
+    needs: build-verify
+    if: github.event_name == 'release'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        run: |
+          docker buildx imagetools create \
+            --tag "$IMAGE_NAME:${{ github.event.release.tag_name }}" \
+            --tag "$IMAGE_NAME:latest" \
+            "$IMAGE_NAME:${{ github.event.release.tag_name }}-amd64" \
+            "$IMAGE_NAME:${{ github.event.release.tag_name }}-arm64"
+
+  verify-compose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    # example/compose.sync-server.yaml lives in example/, not the repo root (it reads
+    # as a deployment example, not the canonical way to run the workspace) --
+    # COMPOSE_FILE lets every bare `docker compose ...` call below find it without
+    # repeating `-f` on each step.
+    env:
+      COMPOSE_FILE: example/compose.sync-server.yaml
+    steps:
+      # https://github.com/actions/checkout
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # https://github.com/docker/setup-buildx-action
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The compose file itself has no `build:` section any more -- it's a
+      # standalone, pull-from-GHCR example a self-hoster can run without cloning this
+      # repo (see the compose file's own header comment). To verify *this commit's*
+      # Dockerfile rather than whatever's already published, build it here and tag it
+      # exactly as the compose file's `image:` reference -- `docker compose up` below
+      # then finds that tag already cached locally and uses it directly, without
+      # attempting to pull.
+      - name: Build image, tagged to match the compose file's image reference
+        run: |
+          docker buildx build \
+            --file Dockerfile.sync-server \
+            --tag "$IMAGE_NAME:latest" \
+            --load \
+            .
+
+      - name: Start deployment
+        run: |
+          docker compose up -d
+          # Give the container a moment to bootstrap the account and bind its port
+          # before the checks below poll it.
+          sleep 3
+
+      # First start on a fresh named volume: the account doesn't exist yet, so
+      # main.rs's bootstrap_account logs its "No account provisioned yet" warning
+      # (see crates/bins/bin-sync-server/src/main.rs) -- captured here as the
+      # baseline this ticket's actual persistence proof (below) needs to contrast
+      # against.
+      - name: Show initial logs
+        run: |
+          docker compose logs sync-server
+          docker compose logs sync-server | grep -q "No account provisioned yet"
+          docker compose logs sync-server | grep -q "listening on"
+
+      # Same `docker top` approach the build-verify job above uses (and the same
+      # pid-must-be-in-the-format-list fix that workflow's first attempt needed) --
+      # confirms the actual running process, not just a fresh `docker compose exec`'s
+      # own default (root) context.
+      - name: Verify container runs as non-root
+        run: |
+          set -euo pipefail
+          container_id=$(docker compose ps -q sync-server)
+          docker top "$container_id" -eo pid,user,comm
+          uid=$(docker top "$container_id" -eo pid,user,comm | awk '$3 == "sync-server" { print $2 }')
+          echo "sync-server process uid: $uid"
+          [ -n "$uid" ]
+          [ "$uid" != "0" ]
+          [ "$uid" != "root" ]
+
+      - name: Install grpcurl
+        run: go install github.com/fullstorydev/grpcurl/cmd/grpcurl@latest
+
+      - name: Verify Ping over gRPC
+        run: |
+          set -euo pipefail
+          response=$("$(go env GOPATH)/bin/grpcurl" \
+            -plaintext \
+            -import-path crates/libs/lib-rpc/proto \
+            -proto personal-ledger/v001/utilities.proto \
+            localhost:50051 \
+            personal_ledger.utilities.v001.UtilitiesService/Ping)
+          echo "$response"
+          echo "$response" | grep -q "Pong"
+
+      # The actual FC-SYNC-006 proof: restart the container (not `down -v`, which
+      # would remove the volume) and confirm the durable store survived -- if the
+      # account persisted, main.rs's bootstrap_account finds it already exists and
+      # skips re-provisioning, so its warning does NOT appear again in the logs
+      # emitted since the restart. `--since` scopes the log check to only what's been
+      # written after the restart, so it can't accidentally match the initial boot's
+      # own (expected) warning from the "Show initial logs" step above.
+      - name: Restart deployment
+        run: |
+          restart_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "RESTART_TIME=$restart_time" >> "$GITHUB_ENV"
+          docker compose restart sync-server
+          sleep 3
+
+      - name: Verify the account persisted across the restart
+        run: |
+          set -euo pipefail
+          docker compose logs --since "$RESTART_TIME" sync-server
+          docker compose logs --since "$RESTART_TIME" sync-server | grep -q "listening on"
+          if docker compose logs --since "$RESTART_TIME" sync-server | grep -q "No account provisioned yet"; then
+            echo "::error::Account was re-bootstrapped after restart -- the persistent volume did not survive"
+            exit 1
+          fi
+
+      - name: Verify container still runs as non-root after restart
+        run: |
+          set -euo pipefail
+          container_id=$(docker compose ps -q sync-server)
+          uid=$(docker top "$container_id" -eo pid,user,comm | awk '$3 == "sync-server" { print $2 }')
+          echo "sync-server process uid after restart: $uid"
+          [ -n "$uid" ]
+          [ "$uid" != "0" ]
+          [ "$uid" != "root" ]
+
+      - name: Verify Ping over gRPC after restart
+        run: |
+          set -euo pipefail
+          response=$("$(go env GOPATH)/bin/grpcurl" \
+            -plaintext \
+            -import-path crates/libs/lib-rpc/proto \
+            -proto personal-ledger/v001/utilities.proto \
+            localhost:50051 \
+            personal_ledger.utilities.v001.UtilitiesService/Ping)
+          echo "$response"
+          echo "$response" | grep -q "Pong"
+
+      - name: Show final logs
+        if: always()
+        run: docker compose logs sync-server || true
+
+      # `-v` here is deliberate cleanup for this ephemeral CI run, not a statement
+      # about the default operator workflow -- a real deployment would just use
+      # `docker compose down` (no `-v`) to keep the volume.
+      - name: Tear down deployment
+        if: always()
+        run: docker compose down -v || true

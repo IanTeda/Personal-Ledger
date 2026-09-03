@@ -15,10 +15,10 @@ Build tooling uses `cargo-make` (`Makefile.toml`) for a few tasks, but most day-
 ```sh
 # Build / check
 cargo build                                   # whole workspace
-cargo build --package server --bin server     # just the server binary
+cargo build --package bin_sync_server --bin sync-server   # just the Sync Server binary
 
-# Run the server (reads config, initialises telemetry, currently does nothing else)
-cargo run --package server
+# Run the Sync Server (reads config, initialises telemetry, serves the stub Ping RPC)
+cargo run --package bin_sync_server
 
 # Test
 cargo test                                    # whole workspace
@@ -38,18 +38,21 @@ Building `lib_rpc` requires a system `protoc` (protobuf compiler) — provided v
 
 ## Workspace layout
 
-Cargo workspace members (`Cargo.toml`): `crates/server`, `crates/libs/lib-config`, `crates/libs/lib-telemetry`, `crates/libs/lib-rpc`.
+Binary crates live under `crates/bins/`, library crates under `crates/libs/`. Bin crates should be prefixed with `bin-` and library crates should be prefixed with `lib-`. Cargo workspace members (`Cargo.toml`): `crates/bins/*` and `crates/libs/*`.
 
-**`crates/libs/lib-database` exists on disk but is *not* currently a workspace member** — it's mid-development and not yet wired into `server`. Don't assume `cargo build`/`cargo test` at the workspace root exercises it; build/test it directly with `cargo build --package lib_database` etc., or add it back to `[workspace].members` if you're integrating it.
+**`crates/bins/bin-sync-server`** (package `bin_sync_server`, binary `sync-server`) is the Sync Server — an active workspace member as of the [Sync Server feasibility](https://github.com/IanTeda/Personal-Ledger/issues/40) Wayfinder map. It wires a minimal `tonic` gRPC serve loop around `lib_rpc`'s stub `Ping` RPC; the real sync protocol, auth, and Docker packaging are still in progress (see that map's open tickets) — treat anything beyond the `Ping` RPC as not yet built.
 
-- **`crates/server`** — the binary. Thin `main.rs`: parses config via `lib_config`, initialises `lib_telemetry`, and (when wired up) would serve the `lib_rpc` gRPC services over `tonic`. The actual `Server::builder()...serve()` call and RPC service impl in `main.rs` are currently commented out — treat anything there as in-progress scaffolding, not a working server, unless you've re-enabled it.
+**`crates/libs/lib-database` is an active workspace member but currently fails `cargo build`/`cargo check` at the workspace root** without a live `DATABASE_URL` (or `SQLX_OFFLINE=true` against its checked-in `.sqlx` cache) for `sqlx`'s compile-time query macros — see the `sqlx-prepare`/`sqlx-prepare-check` tasks in the root `Makefile.toml` for the expected `DATABASE_URL`.
+
+- **`crates/bins/bin-sync-server`** — the Sync Server binary (package `bin_sync_server`, compiled binary `sync-server`, matching the `bin-tui`/`bin-desktop` naming convention). Thin `main.rs`: parses config via `lib_config`, initialises `lib_telemetry`, and serves the `lib_rpc` gRPC services (currently just the stub `Ping` RPC) over `tonic` on a hardcoded placeholder address. The real sync protocol, durable Change Set log, and auth are not yet built — see the [Sync Server feasibility](https://github.com/IanTeda/Personal-Ledger/issues/40) Wayfinder map.
+- **`crates/bins/bin-tui`** — package name `bin_tui`, but the compiled binary is `tui` (see its `[[bin]]` override) — end users shouldn't see the `bin_` prefix, it's a codebase-navigation convention only. Six screens from the "TUI App feasibility" Wayfinder map (GitHub issue #7, closed): line/doughnut/candlestick/divergent chart demos, a table demo (all dummy data), and a live screen against real `lib-database` data. Packaged non-root for all three OSes (Linux AppImage, macOS dmg, Windows portable zip) via `.github/workflows/build-publish-tui.yaml`; see `crates/bins/bin-tui/README.md`.
 - **`crates/libs/lib-config`** — layered configuration loader (`LedgerConfig::parse`). INI format via the `config` crate. Precedence, lowest to highest: built-in defaults → system config (`/etc/personal-ledger/...`) → user config (XDG/platform config dir) → executable-directory config → CWD `./config/personal-ledger.conf` → explicit path passed to `parse()` → environment variables (`PERSONAL_LEDGER_*`, double-underscore nesting, e.g. `PERSONAL_LEDGER_TELEMETRY__TELEMETRY_LEVEL`). Section headers are lower-cased before parsing so `[Telemetry]`/`[telemetry]` are equivalent. See `docs/configuration.md`.
-- **`crates/libs/lib-telemetry`** — `tracing`-based telemetry setup and `TelemetryConfig`/`TelemetryLevels`, consumed by both `lib_config` (for the `[telemetry]` config section) and `server` (for `telemetry::init`).
+- **`crates/libs/lib-telemetry`** — `tracing`-based telemetry setup and `TelemetryConfig`/`TelemetryLevels`, consumed by both `lib_config` (for the `[telemetry]` config section) and `bin_sync_server` (for `telemetry::init`).
 - **`crates/libs/lib-rpc`** — proto definitions (`proto/personal-ledger/v001/*.proto`) and tonic-generated gRPC client/server code (`src/generated/`), re-exported through `categories.rs` / `utilities.rs` as a flat API. Proto package versioning is `personal_ledger.<service>.v001`.
 - **`crates/libs/lib-domain`** — pure business/domain types with no I/O: `RowID` (UUIDv7-based), `CategoryTypes` (accounting categories: assets/liabilities/income/expenses/equity), `UrlSlug`, `HexColor`. Designed for SQLite-backed persistence specifically (no Postgres assumptions in the domain types), despite `sqlx`'s Postgres feature being enabled at the workspace level.
-- **`crates/libs/lib-database`** (not a workspace member yet) — SQLx-based persistence layer. `DatabasePool` wraps connection pooling; `categories/` splits CRUD into separate `find.rs`/`insert.rs`/`update.rs`/`delete.rs`/`builder.rs`/`model.rs` files per entity — follow this split (rather than one big repository file) when adding new persisted entities.
+- **`crates/libs/lib-database`** — SQLx-based persistence layer. `DatabasePool` wraps connection pooling; `categories/` splits CRUD into separate `find.rs`/`insert.rs`/`update.rs`/`delete.rs`/`builder.rs`/`model.rs` files per entity — follow this split (rather than one big repository file) when adding new persisted entities.
 
-Planned-but-not-yet-present binaries/crates mentioned in `docs/directories-files.md` and `README.md` (desktop, TUI, web/Leptos frontend) don't exist yet — don't assume they're there.
+Planned-but-not-yet-present binaries/crates mentioned in `docs/directories-files.md` and `README.md` (desktop, web/Leptos frontend) don't exist yet — don't assume they're there.
 
 ## Conventions
 

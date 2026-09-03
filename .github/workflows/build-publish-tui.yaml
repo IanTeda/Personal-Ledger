@@ -1,0 +1,317 @@
+# .github/workflows/build-publish-tui.yaml
+#
+# Cross-platform build/test/package matrix (Linux, macOS, Windows). See the
+# "TUI App feasibility" Wayfinder map (issue #7) and ticket #13.
+#
+# Triggered when a GitHub Release is published -- packaging on every push was
+# expensive (each run rebuilds the full dependency tree + packages all three
+# OSes from scratch, ~6-30 min depending on cache state) and most pushes don't
+# need it. A `workflow_dispatch` entry lets you re-run the exact same
+# build/test/package/verify pipeline on demand for testing -- see the
+# "Attach ... to release" steps below, which only fire for an actual release
+# event; a workflow_dispatch run still uploads each artifact to the run itself
+# (Actions tab), it just never touches a GitHub Release. Matches the trigger
+# pattern already used in build-publish-documentation.yaml.
+#
+# Scoped to `crates/bins/bin-tui`, not the whole workspace -- but as of ticket #22
+# (FC-TUI-005) `tui` depends on `lib_database`/`lib_domain` directly, so its
+# `.sqlx` query cache (regenerated in that ticket, including test targets) is
+# already exercised by the steps below. Widening further to `--workspace`
+# still isn't safe: `lib_rpc` has its own stale `.sqlx` test-target cache,
+# unrelated to the TUI and out of this map's scope -- widen once that's fixed
+# elsewhere, or once a later ticket needs the wider build.
+
+name: Build and Publish TUI
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# contents: write is needed only by the "Attach ... to release" steps below
+# (gh release upload); everything else only reads the repo.
+permissions:
+  contents: write
+
+env:
+  # Pinned (not "latest") so the cache key below is stable and meaningful --
+  # bump this deliberately, not implicitly on cargo-packager's next release.
+  CARGO_PACKAGER_VERSION: "0.11.8"
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    # Safety net: the Windows smoke test hung indefinitely on the first real run of this
+    # workflow (confirmed: 16+ min with no sign of returning, no timeout anywhere to stop
+    # it short of GitHub's 6-hour default) -- crossterm's Windows console backend doesn't
+    # fail-fast without a real TTY the way Unix raw-mode does, so a stdin-piped `q` never
+    # reaches it. Fixed at the step level too (see below); this bounds the whole job in
+    # case something else hangs the same way.
+    timeout-minutes: 30
+    steps:
+      # https://github.com/actions/checkout
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      # Installs the pinned Rust toolchain from mise.toml identically on all
+      # three runner OSes, so CI uses exactly what a local `mise install`
+      # would.
+      # https://github.com/jdx/mise-action
+      - name: Install mise-pinned toolchain
+        uses: jdx/mise-action@v4
+
+      - name: Build tui
+        run: cargo build --locked --package bin_tui
+
+      - name: Test tui
+        run: cargo test --locked --package bin_tui
+
+      # Was an empty scaffold at ticket #13; now an interactive multi-screen demo
+      # (tickets #14-18/#22) -- this is the "where possible runs" half of FC-TUI-004,
+      # proving the compiled binary actually launches on each OS. CI runners provide no
+      # real TTY, so raw-mode terminal setup fails immediately by design on Unix (confirmed
+      # locally on Linux: `Os { code: 6, .. "No such device or address" }`). Linux and
+      # macOS each simulate a TTY via their own `script` (different flag syntax: GNU
+      # util-linux's `-c` on Linux vs. BSD's positional command on macOS) and send `q` to
+      # confirm the binary genuinely starts and quits cleanly. `timeout-minutes` on every
+      # leg here is a deliberate, confirmed-necessary safety net, not defensive padding --
+      # see the Windows step below.
+      - name: Run tui (smoke test, Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: echo q | script -qec "cargo run --locked --package bin_tui" /dev/null
+
+      # Unverified from this repo's Linux dev sandbox -- there's no macOS toolchain
+      # available here, so this is genuinely first-tested on a real macos-15 runner, not
+      # "verified elsewhere and copied in" the way the Linux step above was.
+      - name: Run tui (smoke test, macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 3
+        run: echo q | script -q /dev/null cargo run --locked --package bin_tui
+
+      # Unlike Unix, Windows' console backend doesn't fail-fast without a real TTY --
+      # confirmed for real: a bare `cargo run` here hung indefinitely (16+ min, still
+      # running) on the first CI run of this workflow, because piped stdin never reaches
+      # crossterm's Win32 console reader the way it does a Unix pty. Rather than fight
+      # Windows keystroke injection (SendKeys etc. -- unreliable against a headless
+      # runner's console focus), just prove the binary launches: start it, give it a few
+      # seconds, then kill it -- bounded by construction, not just by the timeout below.
+      # Genuinely unverified: no Windows environment available to test this against.
+      - name: Run tui (smoke test, Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        run: |
+          $proc = Start-Process -FilePath "target\debug\tui.exe" -PassThru -NoNewWindow
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited) {
+            if ($proc.ExitCode -ne 0) {
+              Write-Error "tui exited early with code $($proc.ExitCode)"
+              exit 1
+            }
+          } else {
+            Stop-Process -Id $proc.Id -Force
+          }
+
+      # `cargo packager --release` expects target/release/tui to already exist and copies
+      # it into the bundle -- it does not build it itself. The "Build tui" step above only
+      # builds debug (no --release flag), so without this step packaging fails with
+      # "Failed to copy file from .../target/release/tui ... No such file or directory"
+      # (confirmed for real on the first feasibility-branch CI run, ubuntu-24.04 leg).
+      - name: Build tui (release)
+        run: cargo build --locked --release --package bin_tui
+
+      # cargo-packager ships no prebuilt release binaries (its GitHub releases carry no
+      # binary assets) and isn't in taiki-e/install-action's supported-tools list either,
+      # so there's no download-a-binary shortcut -- and `cargo install` is never cached by
+      # GitHub Actions automatically. Caching the compiled binary explicitly, keyed to the
+      # pinned CARGO_PACKAGER_VERSION above, means it only compiles from source once per OS
+      # and every later run restores it instead of rebuilding (~1-2 min saved per run).
+      - name: Cache cargo-packager
+        id: cache-cargo-packager
+        if: runner.os == 'Linux' || runner.os == 'macOS'
+        uses: actions/cache@v6
+        with:
+          path: ~/.cargo/bin/cargo-packager
+          key: cargo-packager-${{ runner.os }}-${{ env.CARGO_PACKAGER_VERSION }}
+
+      # Linux-only: packages tui as a non-root AppImage per ADR-0004
+      # (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md) and confirms it
+      # actually runs -- proving FC-TUI-004's Linux non-root requirement end-to-end, not
+      # just that `cargo packager` exits 0. See ticket #21.
+      - name: Install cargo-packager (Linux)
+        if: runner.os == 'Linux' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
+
+      # `--packages bin_tui` is required, not optional, now that bin-desktop also has its
+      # own [package.metadata.packager] table (ticket #34): cargo-packager packages every
+      # workspace member with one unless `--packages` filters it down, regardless of
+      # `--manifest-path` -- confirmed for real on CI while adding bin-desktop's own
+      # packaging. Without this flag, this step would also try to bundle bin-desktop's
+      # `desktop`/`desktop.exe`, which this job never builds.
+      - name: Package tui as AppImage (Linux)
+        if: runner.os == 'Linux'
+        run: cargo packager --release --formats appimage --packages bin_tui --manifest-path crates/bins/bin-tui/Cargo.toml
+
+      - name: Verify AppImage runs non-root (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          appimage=$(find target/release -maxdepth 1 -name '*.AppImage')
+          chmod +x "$appimage"
+          echo "Running as: $(whoami) (uid $(id -u))"
+          [ "$(id -u)" -ne 0 ]
+          echo q | script -qec "$appimage --appimage-extract-and-run" /dev/null
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload AppImage artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-tui-linux-appimage
+          path: target/release/*.AppImage
+          if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach AppImage to release (Linux)
+        if: runner.os == 'Linux' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.AppImage --clobber
+
+      # macOS-only: packages tui as a .dmg per ADR-0004, no code signing this cycle. See
+      # ticket #20. Entirely unverified locally -- there's no macOS toolchain in this
+      # repo's dev sandbox, so unlike the Linux AppImage steps above, none of this has
+      # been rehearsed; it's first-tested for real when this runs on macos-15. Uploads the
+      # dmg as a workflow artifact so it can be downloaded and tried on a real Mac.
+      - name: Install cargo-packager (macOS)
+        if: runner.os == 'macOS' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
+
+      # `--packages bin_tui` required for the same reason as the AppImage step above.
+      - name: Package tui as dmg (macOS)
+        if: runner.os == 'macOS'
+        run: cargo packager --release --formats dmg --packages bin_tui --manifest-path crates/bins/bin-tui/Cargo.toml
+
+      - name: Verify dmg mounts and app runs non-root (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          dmg=$(find target/release -maxdepth 1 -name '*.dmg')
+          echo "Running as: $(whoami) (uid $(id -u))"
+          [ "$(id -u)" -ne 0 ]
+          # Confirmed for real: parsing `hdiutil attach`'s human-readable table output via
+          # `awk '{print $NF}'` breaks when the volume name has spaces (ours does --
+          # product-name is "Personal Ledger TUI") -- it silently grabbed just the last
+          # word ("TUI") instead of the full mount path, so `find` failed with
+          # "TUI: No such file or directory". Pass -mountpoint explicitly instead so
+          # there's no output to parse at all.
+          mount_point="/tmp/tui-dmg-mount"
+          hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_point"
+          app=$(find "$mount_point" -maxdepth 1 -name '*.app')
+          binary=$(find "$app/Contents/MacOS" -type f | head -1)
+          echo q | script -q /dev/null "$binary"
+          hdiutil detach "$mount_point"
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload dmg artifact (macOS)
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-tui-macos-dmg
+          path: target/release/*.dmg
+          if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach dmg to release (macOS)
+        if: runner.os == 'macOS' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.dmg --clobber
+
+      # Renames the Windows release binary for a friendlier end-user-facing filename --
+      # everywhere else (cargo run/build, the Linux AppImage's internal binary, the macOS
+      # .app bundle's binary) still uses the plain `tui` name Cargo's [[bin]] override
+      # produces; this is a CI-only rename of the Windows distributable specifically, per
+      # Ian, "for now" -- revisit if/when this needs a more permanent naming decision.
+      - name: Rename Windows binary for distribution
+        if: runner.os == 'Windows'
+        run: Rename-Item -Path target\release\tui.exe -NewName personal-ledger-tui.exe
+
+      # Windows-only: packages tui as a portable zip per ADR-0004
+      # (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md) -- no packaging tool
+      # needed, since the raw release binary already *is* portable (no installer, no
+      # elevation); zipping it is for a normal-feeling download, not because it's required
+      # (a bare unsigned .exe download reads as more alarming to an end user than a .zip
+      # does). See ticket #19.
+      - name: Package tui as portable zip (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path target\release\personal-ledger-tui.exe -DestinationPath target\release\tui-windows-portable.zip
+
+      - name: Verify portable exe launches (Windows)
+        if: runner.os == 'Windows'
+        timeout-minutes: 3
+        # Entirely unverified locally -- no Windows environment available in this repo's dev
+        # sandbox, so (like tickets #20/#21) this is first-tested for real on windows-2025.
+        run: |
+          # Confirmed for real: GitHub's windows-2025 runner executes job steps with an
+          # Administrator-capable token by default, so `IsInRole(Administrator)` is true
+          # here regardless of the packaged binary -- that's a property of the CI runner,
+          # not of the binary itself. NFR.2 ("never requires root/administrator") is
+          # actually about whether the exe *demands* elevation (an embedded manifest
+          # requesting requireAdministrator, or Windows' installer-name heuristics) -- it
+          # has neither, and the fact it already built/renamed/launches at all confirms
+          # nothing about it needs elevation to run. Report the runner's own privilege
+          # level for visibility only; don't fail the build over it.
+          $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+          $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          Write-Host "Running as: $($identity.Name) (runner's own token is Administrator: $isAdmin -- not a property of the exe)"
+          # Bounded launch-and-kill, same rationale as the Windows smoke test above: prove
+          # the binary launches without needing to fight Windows keystroke injection.
+          $proc = Start-Process -FilePath "target\release\personal-ledger-tui.exe" -PassThru -NoNewWindow
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited) {
+            if ($proc.ExitCode -ne 0) {
+              Write-Error "tui exited early with code $($proc.ExitCode)"
+              exit 1
+            }
+          } else {
+            Stop-Process -Id $proc.Id -Force
+          }
+
+      # `actions/upload-artifact` always wraps whatever it's given in its own zip for
+      # download from the Actions tab -- uploading our already-zipped tui-windows-portable.zip
+      # there produced a zip-in-a-zip when downloaded (confirmed for real by Ian). Uploading
+      # the raw .exe here instead means exactly one zip layer for this path (Actions' own,
+      # unavoidable one); the actual release download (below) is a real GitHub Release asset,
+      # which isn't auto-zipped, so *that* one uses the zip on purpose -- see the "Package tui
+      # as portable zip" step's comment for why.
+      # https://github.com/actions/upload-artifact
+      - name: Upload portable exe artifact (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-tui-windows-portable
+          path: target/release/personal-ledger-tui.exe
+          if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release. Uploads the zip (not the
+      # raw exe) here, since a Release asset isn't auto-wrapped by GitHub the way the
+      # workflow-run artifact above is.
+      - name: Attach portable zip to release (Windows)
+        if: runner.os == 'Windows' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/tui-windows-portable.zip --clobber

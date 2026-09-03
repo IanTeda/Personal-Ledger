@@ -1,0 +1,80 @@
+//-- ./proto/sync.proto
+
+// Sync service protocol buffer definitions for the Personal Ledger.
+// This file defines the RPC API a Client uses to push and pull Change Sets
+// through the Sync Server -- see ADR-0009 for the Change Set schema this mirrors.
+// The Sync Server does not expose full Ledger CRUD; only Change Set push/pull.
+
+syntax = "proto3";
+
+package personal_ledger.sync.v001;
+
+// A single field-level edit, propagated between Clients via the Sync Server's
+// durable Change Set log. Mirrors `lib_database::ChangeSet`.
+message ChangeSet {
+  // Stable, time-ordered identifier for this Change Set (RowID/UUIDv7). Also the
+  // Sync Server's pull cursor.
+  string id = 1;
+
+  // The target table this Change Set applies to (e.g. "categories").
+  string table_name = 2;
+
+  // The target row's identifier within table_name.
+  string row_id = 3;
+
+  // The target column within the row.
+  string field_name = 4;
+
+  // The field's new value, serialised as text. Unset represents SQL NULL.
+  optional string value = 5;
+
+  // The Hybrid Logical Clock timestamp this edit was made at (ADR-0009), in its
+  // canonical `<RFC 3339 timestamp>:<logical counter>` form.
+  string hlc = 6;
+
+  // The stable identifier of the Client that produced this Change Set.
+  string client_id = 7;
+
+  // Version/parent-version placeholder for a future CRDT or manual-merge upgrade path.
+  int64 version = 8;
+}
+
+
+// Request to push one or more Change Sets to the Sync Server.
+message PushRequest {
+  repeated ChangeSet change_sets = 1;
+}
+
+
+// Response confirming how many Change Sets were accepted into the durable log.
+message PushResponse {
+  int32 accepted_count = 1;
+}
+
+
+// Request to pull Change Sets from the Sync Server since a given cursor.
+message PullRequest {
+  // The last Change Set ID this Client has already applied. Unset pulls from the
+  // start of the log -- a Client's first sync, including catching up on every
+  // Change Set queued while it was offline.
+  optional string since_id = 1;
+
+  // The maximum number of Change Sets to return in this call.
+  int32 limit = 2;
+}
+
+
+// Response containing the pulled Change Sets, oldest first.
+message PullResponse {
+  repeated ChangeSet change_sets = 1;
+}
+
+
+// gRPC service for pushing and pulling Change Sets through the Sync Server.
+service SyncService {
+  // Push one or more Change Sets into the Sync Server's durable Change Set log.
+  rpc Push(PushRequest) returns (PushResponse);
+
+  // Pull Change Sets from the Sync Server's durable Change Set log since a cursor.
+  rpc Pull(PullRequest) returns (PullResponse);
+}

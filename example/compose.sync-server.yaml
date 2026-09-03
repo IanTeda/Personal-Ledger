@@ -1,0 +1,43 @@
+# Docker Compose deployment for the Sync Server (FC-SYNC-006).
+#
+# Standalone: this one file is all you need -- pulls the pre-built multi-arch image
+# from GHCR rather than building from source, so unlike earlier versions of this file
+# you don't need to clone the whole repo or run this from anywhere in particular. If
+# you'd rather build from source yourself, see docs/deployment.md's "Building the
+# image yourself" section and point `image:` below at your own local tag instead.
+#
+# `docker compose up -d` runs it with a named volume for its durable Change Set log,
+# so the store survives `docker compose restart`/`down` + `up` (as opposed to
+# `down -v`, which does remove the volume -- that's an explicit, deliberate action,
+# not an accidental data-loss path).
+#
+# PUID/PGID: override via a `.env` file or the shell environment (e.g. `PUID=1000
+# PGID=1000 docker compose up -d`) to match whatever UID already owns
+# sync-server-data if you're inspecting it from the host -- see docker-entrypoint.sync-server.sh.
+# Left unset here, they fall back to the image's own baked-in default (10001/10001).
+
+# Explicit, rather than defaulting to this file's containing directory name
+# ("example") -- that would otherwise prefix every resource Compose creates
+# (container, volume) with "example_" instead of something recognisable.
+name: personal-ledger-sync-server
+
+services:
+  sync-server:
+    # ":latest" tracks the most recent GitHub Release. Pin to a specific release tag
+    # (e.g. ":v0.0.1-sync-server-ci-test") instead if you want a reproducible,
+    # non-moving deployment.
+    image: ghcr.io/ianteda/personal-ledger-sync-server:latest
+    restart: unless-stopped
+    ports:
+      - "50051:50051"
+    environment:
+      PUID: ${PUID:-10001}
+      PGID: ${PGID:-10001}
+    volumes:
+      - sync-server-data:/data
+
+volumes:
+  # Named (not bind-mounted): on first run, Docker seeds it from the image's own
+  # /data contents -- including the pre-created empty SQLite file docker-entrypoint.sync-server.sh
+  # and the Dockerfile already rely on -- so no extra init step is needed here.
+  sync-server-data:

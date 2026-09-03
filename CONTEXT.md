@@ -27,26 +27,45 @@ _Avoid_: Commodity, Currency, asset class, exchange rate, conversion.
 **Ledger**:
 The complete set of Accounts, Categories, and Transactions owned by one self-hoster —
 a logical whole, physically replicated as a full local SQLite database on each Client
-and reconciled between them by the Sync Server.
+and synced between them by the Sync Server.
 _Avoid_: Book, journal.
 
 **Client**:
 An app instance that holds its own full local copy of the Ledger and can create, read,
-update, and delete against it entirely offline — Desktop, TUI, or Web App. The Web App
-instance additionally plays the Sync Server role (see below); that is a role it takes
-on, not a fourth, architecturally distinct component.
+update, and delete against it entirely offline — Desktop or TUI.
 _Avoid_: Device, backend — "device" conflates the physical machine with the app
 instance running on it; "backend" implied a single authoritative server, which no
 longer describes the architecture.
 
 **Sync Server**:
-The role the Web App instance plays in reconciling each Client's local Ledger copy
-with the others — pushing and pulling change sets, not exposing full CRUD. Not a
-separate deployable component; it is what the Web App does in addition to being a
-Client itself.
-_Avoid_: Backend, server — "backend" is avoided across this glossary now that Clients
-hold their own local data directly rather than depending on a central server for
-reads/writes.
+A separate deployable component — a headless service, not a Client — that syncs each
+Client's local Ledger copy with the others by pushing and pulling Change Sets, not
+exposing full CRUD. It maintains its own durable store of Change Sets (not a full
+Ledger copy) so a Client that has been offline can catch up without both peers being
+online simultaneously. It also acts as its own OAuth2 authorization server for its
+Clients: a Client authenticates via a one-time browser login (Authorization Code +
+PKCE over a loopback redirect), then calls the sync gRPC API with a bearer token,
+never holding a persistent username/password itself — see
+[ADR-0010](docs/adr/0010-oauth2-pkce-native-app-auth.md).
+_Avoid_: Backend, Web App, reconcile/reconciliation — "backend" is avoided across this
+glossary now that Clients hold their own local data directly rather than depending on
+a central server for reads/writes; "Web App" was an earlier, now-abandoned design
+where this role rode along on a browser-facing Client instead of being its own
+component; "reconcile" is reserved for Transaction Status's reconciliation workflow
+(see below) — the Sync Server *syncs* Ledger copies, a different concept that happens
+to share an English word with it.
+
+**Change Set**:
+The unit of data the Sync Server pushes and pulls between Clients to propagate one
+Client's local edits to the others, at field granularity: a stable Change Set ID
+(`RowID`, UUIDv7-based), the target table/row/field identifiers, the new value, a
+Hybrid-Logical-Clock timestamp, the originating Client's stable ID, and a
+version/parent-version field held for a future CRDT or manual-merge upgrade path.
+Conflicting Change Sets to the same field are resolved last-write-wins by that
+timestamp, tie-broken by Client ID — see
+[ADR-0009](docs/adr/0009-lww-sqlite-change-set-log.md).
+_Avoid_: Diff, patch, delta — those are implementation-neutral synonyms; Change Set is
+this glossary's canonical term.
 
 **Institution**:
 The financial institution (e.g. a bank) that holds an Account — not modelled as an

@@ -1,7 +1,7 @@
 Product Requirements Document
 Product Name: Personal Ledger
 Version: v0.0.1 (Draft — End-State Requirements Pool; active cycle scope defined in §2.1)
-Date: 30 August 2026
+Date: 3 September 2026
 Author: Ian Teda
 
 This document owns the product vision, scope, and requirements. Domain vocabulary (precise definitions of terms like "ledger", "category", "account") is defined in `CONTEXT.md`. This PRD references domain terms without formally defining them.
@@ -32,9 +32,9 @@ The overarching goals and objectives describe the product's ultimate end state. 
 
 - __Desktop App:__ A desktop native app that works across Linux, macOS, and Windows.
 - __TUI App:__ A text-based TUI for a keyboard-focused native app that works across Linux, macOS and Windows.
-- __Web App:__ A web-focused app that can be hosted on homelabs. It should act as the sync server for the native apps
+- __Sync Server App:__ A headless service, deployable via Docker on a homelab, that acts as the always-on sync hub for the native (Desktop/TUI) apps.
 - __Local Offline First:__ Provide a self-hosted, offline, local-first ledger for tracking expenses, investments, and assets without a cloud dependency or subscription.
-- __Multiple Operating Systems and Devices:__ Support multiple operating systems and devices, each holding its own local-first data store, reconciled via a sync server when devices come online.
+- __Multiple Operating Systems and Devices:__ Support multiple operating systems and devices, each holding its own local-first data store, synced via a sync server when devices come online.
 - __Transactions:__ Model transactions against accounts, payees and categories using the five standard accounting categories (asset, liability, equity, income, expense) to classify transactions, without requiring double-entry bookkeeping.
 - __Understand Spending:__ Users interested in gaining insight and understanding their spending habits now and over time to make informed decisions.
 - __Track Against Budget:__ Users interested in tracking spending against a target budget to achieve financial goals.
@@ -60,47 +60,51 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 
 ### Desktop App:
 
-- __FC-01:__ Investigate and research Rust desktop GUI libraries.
-- __FC-02:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
-- __FC-03:__ Demonstrate that tables work in the desktop app across platforms.
-- __FC-04:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
+- __FC-DESKTOP-001:__ Investigate and research Rust desktop GUI libraries.
+- __FC-DESKTOP-002:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
+- __FC-DESKTOP-003:__ Demonstrate that tables work in the desktop app across platforms.
+- __FC-DESKTOP-004:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
 
 ### TUI App:
 
-- __FC-05:__ Investigate and research Rust TUI libraries.
-- __FC-06:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the TUI app across platforms, as they are a key requirement for visually representing spending, etc.
-- __FC-07:__ Demonstrate that tables work in the TUI app across platforms.
-- __FC-08:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
+- __FC-TUI-001:__ Investigate and research Rust TUI libraries, and lock the choice in an ADR.
+- __FC-TUI-002:__ Demonstrate that line, doughnut, candle stick and divergent graphs each work in the TUI app across platforms, using dummy data — one demonstration per chart type.
+- __FC-TUI-003:__ Demonstrate that tables work in the TUI app across platforms.
+- __FC-TUI-004:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux — a portable single executable on Windows (no installer, no elevation), and a real user-scope installer/package on macOS (`.dmg`/`.app`) and Linux (`.deb` and/or AppImage). Research and lock the packaging tool choice (e.g. `cargo-dist`, `cargo-packager`) in an ADR before building the per-OS packages.
+- __FC-TUI-005:__ Demonstrate the TUI app operating end-to-end against the embedded SQLite persistence layer (`lib-database`/`lib-domain`, see FC-DATA-001) with real (not dummy) data, proving the local-first architecture works through a real client.
 
-### Web App:
+### Sync Server App:
 
-- __FC-09:__ Investigate and research web GUI libraries.
-- __FC-10:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the web app across platforms, as they are a key requirement for visually representing spending, etc.
-- __FC-11:__ Demonstrate that tables work in the web app across platforms.
-- __FC-12:__ Demonstrate compiling, installing and running as a non-root user (container `USER` / systemd `User=`) across Windows, macOS and Linux.
-- __FC-13:__ Demonstrate Dockerfile compile across platforms.
-- __FC-14:__ Demonstrate docker Compose deployment.
-- __FC-15:__ Demonstrate systemd deployment.
-- __FC-16:__ Demonstrate Frontend and Sync Server as one binary.
+- __FC-SYNC-001:__ Investigate and research approaches for syncing independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
+- __FC-SYNC-002:__ Investigate and research authentication mechanisms (e.g. OAuth2, JWT, etc.) and implement a secure auth flow for the sync server and client.
+- __FC-SYNC-003:__ Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server, including a Client that was offline catching up on changes queued while it was down.
+- __FC-SYNC-004:__ Demonstrate the Sync Server instance acting as the always-on sync hub that Desktop/TUI clients sync through.
+- __FC-SYNC-005:__ Demonstrate the Sync Server's Dockerfile builds a multi-arch image (linux/amd64, linux/arm64) that runs correctly on each architecture.
+- __FC-SYNC-006:__ Demonstrate docker Compose deployment with a persistent volume for the Sync Server's own durable store, surviving a container restart, and confirm the container runs as a non-root user.
+- __FC-SYNC-007:__ Demonstrate auth functionality.
 
 ### Local Data:
 
-- __FC-17:__ Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI, Web App) can hold and operate against independently, without requiring a network connection.
-- __FC-18:__ Research the best and most efficient way to store and calculate running Balances.
-
-### Sync:
-
-- __FC-19:__ Investigate and research approaches for reconciling independent local SQLite copies across devices (e.g. last-write-wins vs. CRDT vs. manual merge).
-- __FC-20:__ Demonstrate basic push/pull sync of ledger changes between two local SQLite instances via the sync server.
-- __FC-21:__ Demonstrate the Web App instance acting as the always-on sync hub that Desktop/TUI clients sync through.
+- __FC-DATA-001:__ Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI) can hold and operate against independently, without requiring a network connection.
+- __FC-DATA-002:__ Research the best and most efficient way to store and calculate running Balances.
 
 ### 2.2. Concept Cycle (v0.1.0)
 
-This will be defined before starting the concept cycle.
+- __CC-ALL-001:__ Ensure all dependencies are up-to-date and cross-compilation is enabled and compiles on all platforms.
+- __CC-ALL-002:__ Remove depreciated Chrono crate and ensure cross compilation of new package.
+- __CC-ALL-003:__ Refactor lib_domain into lib_core for shared domain logic and modules.
+- __CC-ALL-004:__ Review, research and grill the workspace code architecture and structure for best practice, readability and maintainability.
+- __CC-ALL-005:__ Research and agree on hierarchy of configuration sources and what takes precedence (e.g. file, environment variables, command line arguments). Build out configuration layer. Build out configuration lib crate.
+- __CC-ALL-006:__ Review the telementry lib crate and decide on telemetry implementation. Confirm telemetry implementation is compatible across binaries and with cross-compilation.
+- __CC-ALL-007:__ Build authentication lib crate. Username and password is defined in configuration.
+- __CC-ALL-008:__ Review the database lib crate and decide on database implementation. Confirm database implementation is compatible across binaries and with cross-compilation.
+
 
 ### 2.3. Development Cycle (v1.0.0)
 
 This will be defined before starting the development cycle.
+
+- __DC-ALL-001:__ Password string in the configuration file should be an encrypted string. On loading the app, if the string is plain text, it should be encrypted and saved to the configuration file before starting the app.
 
 ### 2.4. Fixes & Features Cycle (v1.0.1)
 
@@ -168,8 +172,8 @@ The requirements below describe the product's ultimate end state across all deve
 
 ### Platform
 
-- __FR.39:__ The system shall expose Category, Account, Transaction, Budget, and Balance Check operations (FR.4–FR.38) via a local embedded library API (`lib-database`/`lib-domain`), called in-process by each client (Desktop, TUI, Web App) against its own local SQLite store.
-- __FR.39a:__ The sync server shall expose a versioned gRPC sync protocol for reconciling a client's local ledger data with other devices — pushing and pulling change sets rather than exposing full CRUD — and each client shall be able to operate entirely offline against its local store between syncs.
+- __FR.39:__ The system shall expose Category, Account, Transaction, Budget, and Balance Check operations (FR.4–FR.38) via a local embedded library API (`lib-database`/`lib-domain`), called in-process by each client (Desktop, TUI) against its own local SQLite store.
+- __FR.39a:__ The sync server shall expose a versioned gRPC sync protocol for syncing a client's local ledger data with other devices — pushing and pulling change sets rather than exposing full CRUD — and each client shall be able to operate entirely offline against its local store between syncs. The Sync Server persists a durable log of change sets so a Client that has been offline can catch up without both peers being online simultaneously.
 - __FR.40:__ The system shall support layered configuration (defaults, system, user, executable-directory, working-directory, explicit path, environment variables).
 - __FR.41:__ The system shall emit structured, level-configurable tracing output.
 
@@ -178,25 +182,29 @@ The requirements below describe the product's ultimate end state across all deve
 - __NFR.1 Reliability (priority):__ Transaction creation, update, and deletion must keep an account's running Balance consistent with its recorded transactions, even on partial failure (no orphaned balance updates). A Balance Check CSV import is atomic: a malformed row aborts the whole import rather than partially applying it. Database migrations must be safe to re-run.
 - __NFR.2 Security & Privacy (priority):__ All data is stored locally in SQLite; no data leaves the device by default. The app never requires root/administrator privileges to run. No `unsafe` code anywhere in the workspace (lint-enforced). Any secrets are wrapped in `secrecy::Secret` so they cannot leak into logs or traces.
 - __NFR.3 Performance:__ Category, account, transaction, budget, and Balance Check CRUD, and the balance, category-total, payee-total, budget-vs-actual, and balance-check-variance reports, should respond quickly for typical personal-ledger data volumes (thousands, not millions, of transactions).
-- __NFR.4 Usability (API-level):__ Since V1 has no UI, the local library API (`lib-database`) is the primary usability surface: errors are structured (via `thiserror`) rather than raw SQL or library errors, so a future client can present them meaningfully. The sync server's gRPC protocol (FR.39a) is a separate, narrower surface for device reconciliation, not the general-purpose API.
+- __NFR.4 Usability (API-level):__ Since V1 has no UI, the local library API (`lib-database`) is the primary usability surface: errors are structured (via `thiserror`) rather than raw SQL or library errors, so a future client can present them meaningfully. The sync server's gRPC protocol (FR.39a) is a separate, narrower surface for device sync, not the general-purpose API.
 - __NFR.5 Maintainability:__ Each entity's persistence logic is split into separate `find`/`insert`/`update`/`delete`/`builder`/`model` files, following the existing `categories/` convention in `lib-database`. SQL queries list explicit columns; no `SELECT *`.
-- __NFR.6 Compatibility:__ The apps builds and runs on Linux, macOS, and Windows — anywhere the pinned Rust toolchain, `protoc`, and SQLite are available.
-- __NFR.7 (placeholder):__ GUI-framework dependencies and any UI-specific NFRs (e.g. rendering performance, offline/sync UX consistency) are TBD, to be added when the Desktop, TUI, and Web App cycles are scoped.
+- __NFR.6a Compatibility (Desktop/TUI):__ The Desktop and TUI apps build and run natively on Linux, macOS, and Windows — anywhere the pinned Rust toolchain, `protoc`, and SQLite are available.
+- __NFR.6b Compatibility (Sync Server):__ The Sync Server ships as a multi-arch (amd64/arm64) Docker image and runs on any Docker host — Linux, macOS, or Windows — without requiring a native build on the host OS.
+- __NFR.7 (placeholder):__ GUI-framework dependencies and any UI-specific NFRs (e.g. rendering performance, offline/sync UX consistency) are TBD, to be added when the Desktop and TUI cycles are scoped.
+- __NFR.8 (placeholder):__ Sync Server-specific NFRs (change-set log durability, container security posture, backup/restore) are TBD, to be added when the Sync feasibility cycle work (§2.1 FC-SYNC-*) concludes.
 
 ## 5. Dependencies
 
 - Rust toolchain, `protoc`, and other dev tools pinned in `mise.toml`.
 - Core crates: `tonic` (gRPC), `sqlx` (SQLite persistence), `serde`, `tracing`, `thiserror`, `uuid` (v7), `chrono`, `secrecy`, and a CSV-parsing crate (e.g. `csv`) for Balance Check import.
-- SQLite as the embedded database engine (no external database server required for V1).
+- SQLite as the embedded database engine for each Client (no external database server required for V1); the Sync Server's own Change Set log also uses SQLite via `sqlx`, reusing `lib-database`'s conventions (see [ADR-0009](docs/adr/0009-lww-sqlite-change-set-log.md)).
 - A decision will need to be made on the best time crate, as chrono is deprecated.
 - `cargo-make`, mdBook, and rustdoc for documentation builds.
-- GUI-framework dependencies (Desktop/TUI/Web) and any additional sync-protocol client dependencies are TBD, to be added once their respective cycles are scoped.
+- Docker (or another OCI-compatible container runtime) to build and run the Sync Server.
+- GUI-framework dependencies (Desktop/TUI) and any additional sync-protocol client dependencies are TBD, to be added once their respective cycles are scoped.
 
 ## 6. Assumptions and Constraints
 
 ### 6.1 Assumptions
 
 - The user trusts their own machine/network to hold their financial data; V1 relies on OS/filesystem-level protection rather than application-level encryption-at-rest.
+- The Sync Server is assumed to run within the user's own trusted network (e.g. a homelab), not exposed directly to the public internet; authentication (FC-SYNC-002/007) protects against other devices on that trusted network, not against a hostile network.
 
 ### 6.2 Constraints
 
@@ -215,9 +223,9 @@ The requirements below describe the product's ultimate end state across all deve
 - __Cross-Unit conversion:__ V1 keeps every Account and Transaction in one fixed Unit with no conversion between Units (see `CONTEXT.md` — Unit); multi-Unit rollups/conversion are a future consideration.
 - __Payee normalisation:__ V1 matches payees by exact free text only (see Constraints); fuzzy/normalised payee matching is a future consideration.
 - __Double-entry accounting:__ Personal Ledger deliberately uses single-entry Transactions in V1 (see [ADR-0001](docs/adr/0001-single-entry-not-double-entry.md)); revisiting this for audit-grade, structurally-balanced accounting is a future consideration should the need arise.
-- __Desktop, TUI & Web UI:__ The concrete UI/UX for each client app (§1.4) is not yet detailed as Functional Requirements; deferred until each respective cycle is scoped.
+- __Desktop & TUI UI:__ The concrete UI/UX for each client app (§1.4) is not yet detailed as Functional Requirements; deferred until each respective cycle is scoped.
 - __Multi-device sync protocol:__ End-state Functional Requirements for the sync server's protocol beyond FR.39a's placeholder are deferred until a sync-focused cycle is scoped (see FR.39a, §2.1 Sync).
-- __Conflict resolution strategy:__ The approach for reconciling conflicting offline edits across devices (e.g. last-write-wins, CRDT, manual merge) is not yet decided; to be resolved alongside multi-device sync.
+- __Change Set log retention:__ Every Change Set is kept indefinitely for this cycle — deliberately not decided, since a feasibility demo on one self-hoster's own small device fleet doesn't yet produce the usage/volume data a pruning policy would need to design against (see [ADR-0009](docs/adr/0009-lww-sqlite-change-set-log.md)); revisit once a later cycle has that data.
 - __Personal Investors:__ Tracking buy-in costs, capital gains, returns, and tax implications for investments (see §1.4) is a future consideration with no Functional Requirements defined yet.
 - __Personal Loan:__ Tracking progress paying down a loan (see §1.4) is a future consideration with no Functional Requirements defined yet.
 - __Personal Inventory:__ Tracking assets and household inventory (see §1.4) is a future consideration with no Functional Requirements defined yet.

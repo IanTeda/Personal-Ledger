@@ -6,7 +6,7 @@
       {
         "name": "id!: domain::RowID",
         "ordinal": 0,
-        "type_info": "Text"
+        "type_info": "Null"
       },
       {
         "name": "code",
@@ -51,19 +51,19 @@
       {
         "name": "created_on!: chrono::DateTime<chrono::Utc>",
         "ordinal": 9,
-        "type_info": "Datetime"
+        "type_info": "Text"
       },
       {
         "name": "updated_on!: chrono::DateTime<chrono::Utc>",
         "ordinal": 10,
-        "type_info": "Datetime"
+        "type_info": "Text"
       }
     ],
     "parameters": {
       "Right": 1
     },
     "nullable": [
-      false,
+      true,
       false,
       false,
       true,

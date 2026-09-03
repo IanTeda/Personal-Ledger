@@ -1,0 +1,15 @@
+[tasks.sync-server-run]
+description = "Run the Sync Server binary"
+command = "cargo"
+args = ["run", "--package", "bin_sync_server", "--bin", "sync-server"]
+
+
+[tasks.sync-server-build]
+description = "Build the Sync Server binary"
+command = "cargo"
+args = ["build", "--package", "bin_sync_server", "--bin", "sync-server", "--release"]
+
+[tasks.docs-serve]
+description = "No-op for the Sync Server (docs-serve is workspace-level)"
+command = "echo"
+args = ["bin_sync_server: docs-serve not applicable"]

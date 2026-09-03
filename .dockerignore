@@ -1,0 +1,26 @@
+# Docker build context exclusions -- see Dockerfile's own comment on why the context
+# is the repo root (Cargo workspace resolution needs every member's Cargo.toml
+# present). Everything under crates/ is kept; this only trims non-source cruft that
+# would otherwise bloat the context upload with no effect on the build.
+
+target/
+.git/
+.github/
+
+# Local dev tooling, not needed inside the build context
+.mise.toml
+mise.toml
+.direnv/
+
+# Docs and non-build metadata
+docs/
+*.md
+LICENSE*
+
+# Editor/OS noise
+.vscode/
+.idea/
+.DS_Store
+
+# Claude Code / agent scratch state, never relevant to a container build
+.claude/

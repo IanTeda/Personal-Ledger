@@ -1,0 +1,55 @@
+[package]
+name = "bin_tui"
+version = "0.1.0"
+edition = "2024"
+
+# Package name is bin_tui (matching the lib_* convention for library crates), but the
+# compiled binary itself stays named `tui` -- end users running the packaged app shouldn't
+# see the bin_ prefix; it's a codebase-navigation convention, not a user-facing one.
+[[bin]]
+name = "tui"
+path = "src/main.rs"
+
+[dependencies]
+## -- Internal Dependencies --
+lib_database = { path = "../../libs/lib-database" }
+lib_domain = { path = "../../libs/lib-domain" }
+
+## -- Workspace Dependencies --
+chandelier = { workspace = true }
+chrono = { workspace = true }
+crossterm = { workspace = true }
+futures-util = { workspace = true }
+ratatui = { workspace = true }
+sqlx = { workspace = true }
+tokio = { workspace = true }
+
+[lints]
+workspace = true
+
+# cargo-packager config for the Linux AppImage (ticket #21) and macOS dmg
+# (ticket #20) builds, FC-TUI-004. See ADR-0004
+# (docs/adr/0004-cargo-packager-plus-hand-rolled-windows-zip.md): no `.deb`
+# (conventionally wants root per Debian Policy, in tension with NFR.2) --
+# AppImage on Linux and a dmg on macOS instead, neither needing root or an
+# installation step. No code signing this cycle (ADR-0004). Each format is a
+# no-op on the "wrong" OS -- `cargo packager` just warns and skips it, so
+# both entries are safe to list together for every platform's CI leg.
+[package.metadata.packager]
+product-name = "Personal Ledger TUI"
+identifier = "au.id.teda.personal-ledger.tui"
+formats = ["appimage", "dmg"]
+# Placeholder only -- a plain square, no branding yet. Both AppImage and
+# macOS app-bundle packaging require a square icon; swap for real artwork
+# when the app has any.
+icons = ["icons/icon-256.png"]
+
+# Not strictly required now that build-publish-tui.yaml's CI invocation passes `--packages
+# bin_tui` (the real fix -- cargo-packager packages every workspace member with a
+# [package.metadata.packager] table unless `--packages` filters it down, confirmed for
+# real on CI while adding bin-desktop's own packaging, ticket #34), but kept explicit
+# anyway: with two `[[bin]]` targets now in the workspace, auto-detection is one less
+# thing to trust.
+[[package.metadata.packager.binaries]]
+path = "tui"
+main = true
