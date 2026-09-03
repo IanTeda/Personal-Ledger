@@ -18,11 +18,11 @@ gpui-component = { workspace = true }
 [lints]
 workspace = true
 
-# cargo-packager config for the Windows NSIS installer (ticket #34), FC-DESKTOP-004. See
-# ADR-0008 (docs/adr/0008-cargo-packager-for-desktop.md): the same tool as the TUI
-# (ADR-0004), all three formats from one config -- Linux AppImage and macOS dmg entries are
-# already here too, ready for tickets #35/#36. Each format is a no-op on the "wrong" OS, so
-# listing all three is safe on every platform's CI leg.
+# cargo-packager config for all three installer formats, FC-DESKTOP-004. See ADR-0008
+# (docs/adr/0008-cargo-packager-for-desktop.md): the same tool as the TUI (ADR-0004), all
+# three formats from one config -- Windows NSIS (ticket #34), macOS dmg (ticket #35), Linux
+# AppImage (ticket #36). Each format is a no-op on the "wrong" OS, so listing all three is
+# safe on every platform's CI leg.
 [package.metadata.packager]
 product-name = "Personal Ledger Desktop"
 identifier = "au.id.teda.personal-ledger.desktop"

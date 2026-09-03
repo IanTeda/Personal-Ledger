@@ -322,3 +322,72 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.dmg --clobber
+
+      - name: Install cargo-packager (Linux)
+        if: runner.os == 'Linux' && steps.cache-cargo-packager.outputs.cache-hit != 'true'
+        run: cargo install cargo-packager --locked --version ${{ env.CARGO_PACKAGER_VERSION }}
+
+      # Linux-only: packages desktop as a non-root AppImage per ADR-0008
+      # (docs/adr/0008-cargo-packager-for-desktop.md), same tool/format as the TUI
+      # (ADR-0004). `--packages bin_desktop` required for the same reason as the
+      # Windows/macOS packaging steps above. See ticket #36.
+      #
+      # `NO_STRIP=1`: confirmed for real locally (Arch/Omarchy, binutils 2.47) --
+      # linuxdeploy (bundled inside cargo-packager, pinned build from 2024-07-26) bundles
+      # GPUI's transitive X11/xkbcommon system libraries into the AppDir and tries to strip
+      # them; its vendored `strip` doesn't understand the `.relr.dyn` RELR-relocation
+      # section newer binutils emits by default, and the whole build_appimage.sh script
+      # aborts. ubuntu-24.04's own binutils predates that default so this runner shouldn't
+      # hit it, but the env var is a one-line, harmless (slightly-larger AppImage, no
+      # functional difference -- verified the un-stripped AppImage launches and runs fine
+      # locally) guard against toolchain drift rather than a fix for an observed CI failure.
+      - name: Package desktop as AppImage (Linux)
+        if: runner.os == 'Linux'
+        env:
+          NO_STRIP: "1"
+        run: cargo packager --release --formats appimage --packages bin_desktop --manifest-path crates/bins/bin-desktop/Cargo.toml
+
+      # Confirms the AppImage actually runs non-root -- proving FC-DESKTOP-004's Linux
+      # requirement end-to-end, not just that `cargo packager` exits 0.
+      # `--appimage-extract-and-run` because GitHub-hosted runners have no FUSE, same as
+      # the TUI's own AppImage verify step. Runs under xvfb-run for the same reason as the
+      # earlier Linux smoke-test step above -- a GUI app needs a real X11/Wayland display,
+      # unlike the TUI's terminal app. Bounded launch-and-kill, not the TUI's own
+      # piped-quit-keystroke trick (`script -qec ... /dev/null`), since a GUI app has no
+      # stdin-driven quit action -- same rationale as this workflow's other smoke tests.
+      - name: Verify AppImage runs non-root (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          appimage=$(find target/release -maxdepth 1 -name '*.AppImage')
+          chmod +x "$appimage"
+          echo "Running as: $(whoami) (uid $(id -u))"
+          [ "$(id -u)" -ne 0 ]
+          xvfb-run --auto-servernum "$appimage" --appimage-extract-and-run &
+          pid=$!
+          sleep 8
+          if ! kill -0 "$pid" 2>/dev/null; then
+            wait "$pid" || status=$?
+            echo "AppImage exited early with status ${status:-unknown}"
+            exit 1
+          fi
+          kill "$pid"
+          wait "$pid" 2>/dev/null || true
+
+      # https://github.com/actions/upload-artifact
+      - name: Upload AppImage artifact (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: personal-ledger-desktop-linux-appimage
+          path: target/release/*.AppImage
+          if-no-files-found: error
+
+      # Only for an actual release publish -- a workflow_dispatch test run stops at the
+      # workflow-run artifact above and never touches the release.
+      - name: Attach AppImage to release (Linux)
+        if: runner.os == 'Linux' && github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" target/release/*.AppImage --clobber
