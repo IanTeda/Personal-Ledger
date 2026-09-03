@@ -62,15 +62,14 @@ docker run -e PUID=1000 -e PGID=1000 ...
 
 ## Quick start
 
-The example deployment lives at [`example/compose.sync-server.yaml`](https://github.com/IanTeda/Personal-Ledger/blob/feasibility/example/compose.sync-server.yaml) — it's an example, not the only way to run this, but it's the recommended starting point. Run it from the **repo root** (not from inside `example/`), since the image still needs the whole Cargo workspace as its build context:
+The example deployment lives at [`example/compose.sync-server.yaml`](https://github.com/IanTeda/Personal-Ledger/blob/feasibility/example/compose.sync-server.yaml) — it's an example, not the only way to run this, but it's the recommended starting point. It's standalone: it pulls the pre-built multi-arch image from GHCR, so you don't need to clone the repo or run it from any particular directory — just download the one file and start it:
 
 ```sh
-git clone https://github.com/IanTeda/Personal-Ledger.git
-cd Personal-Ledger
-docker compose -f example/compose.sync-server.yaml up -d
+curl -O https://raw.githubusercontent.com/IanTeda/Personal-Ledger/feasibility/example/compose.sync-server.yaml
+docker compose -f compose.sync-server.yaml up -d
 ```
 
-This builds the image locally, starts the Sync Server on port `50051`, and creates a named volume (`sync-server-data`) for its durable store — seeded from the image's own pre-created (empty) database file on first run, so there's no separate init step.
+This pulls `ghcr.io/ianteda/personal-ledger-sync-server:latest`, starts the Sync Server on port `50051`, and creates a named volume (`sync-server-data`) for its durable store — seeded from the image's own pre-created (empty) database file on first run, so there's no separate init step.
 
 Confirm it's actually serving requests (matches how this repo's own CI verifies it):
 
@@ -85,12 +84,12 @@ grpcurl -plaintext \
 To override the non-root `PUID`/`PGID` (see above), either export them before running Compose or drop them in a `.env` file next to the compose file:
 
 ```sh
-PUID=1000 PGID=1000 docker compose -f example/compose.sync-server.yaml up -d
+PUID=1000 PGID=1000 docker compose -f compose.sync-server.yaml up -d
 ```
 
 ### Stopping and restarting
 
-`docker compose -f example/compose.sync-server.yaml restart` (or `down` followed by `up -d` again) keeps the named volume, so the durable store — including the bootstrapped account — survives. Only `down -v` removes it; that's a deliberate, explicit action, not something that happens by accident.
+`docker compose -f compose.sync-server.yaml restart` (or `down` followed by `up -d` again) keeps the named volume, so the durable store — including the bootstrapped account — survives. Only `down -v` removes it; that's a deliberate, explicit action, not something that happens by accident.
 
 ## Building the image yourself
 

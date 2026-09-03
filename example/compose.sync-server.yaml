@@ -1,16 +1,15 @@
 # Docker Compose deployment for the Sync Server (FC-SYNC-006).
 #
-# This file lives in example/ (not the repo root) so it reads as a deployment
-# *example*, not the canonical way to run the workspace -- but `build.context` below
-# still points at the repo root (".." from here), not this directory: Dockerfile.sync-
-# server needs the whole Cargo workspace as its build context (see its own header
-# comment for why), so run `docker compose -f example/compose.sync-server.yaml <cmd>`
-# from the repo root, not `cd example && docker compose <cmd>`.
+# Standalone: this one file is all you need -- pulls the pre-built multi-arch image
+# from GHCR rather than building from source, so unlike earlier versions of this file
+# you don't need to clone the whole repo or run this from anywhere in particular. If
+# you'd rather build from source yourself, see docs/deployment.md's "Building the
+# image yourself" section and point `image:` below at your own local tag instead.
 #
-# `docker compose up -d` builds the image and runs it with a named volume for its
-# durable Change Set log, so the store survives `docker compose restart`/`down` + `up`
-# (as opposed to `down -v`, which does remove the volume -- that's an explicit,
-# deliberate action, not an accidental data-loss path).
+# `docker compose up -d` runs it with a named volume for its durable Change Set log,
+# so the store survives `docker compose restart`/`down` + `up` (as opposed to
+# `down -v`, which does remove the volume -- that's an explicit, deliberate action,
+# not an accidental data-loss path).
 #
 # PUID/PGID: override via a `.env` file or the shell environment (e.g. `PUID=1000
 # PGID=1000 docker compose up -d`) to match whatever UID already owns
@@ -24,10 +23,10 @@ name: personal-ledger-sync-server
 
 services:
   sync-server:
-    build:
-      context: ..
-      dockerfile: Dockerfile.sync-server
-    image: personal-ledger-sync-server:local
+    # ":latest" tracks the most recent GitHub Release. Pin to a specific release tag
+    # (e.g. ":v0.0.1-sync-server-ci-test") instead if you want a reproducible,
+    # non-moving deployment.
+    image: ghcr.io/ianteda/personal-ledger-sync-server:latest
     restart: unless-stopped
     ports:
       - "50051:50051"

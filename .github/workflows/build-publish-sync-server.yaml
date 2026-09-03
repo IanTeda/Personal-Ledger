@@ -23,8 +23,11 @@
 #     mechanics aren't architecture-specific, so one runner demonstrates them) --
 #     `docker compose up`, confirm non-root, confirm Ping, `docker compose restart`,
 #     confirm the account survived (the actual FC-SYNC-006 proof) and both checks
-#     still pass afterward. Independent of the other two jobs (builds its own image
-#     locally via `docker compose build`, not from GHCR).
+#     still pass afterward. Independent of the other two jobs: the example compose
+#     file itself has no `build:` section (it's a standalone, pull-from-GHCR example),
+#     so this job builds *this commit's* Dockerfile and tags it to match the compose
+#     file's `image:` reference first, so `docker compose up` uses that local build
+#     rather than actually pulling whatever's already published.
 #
 # Triggered the same way build-publish-tui.yaml is: a GitHub Release (packaging on
 # every push is expensive and most pushes don't need it), plus workflow_dispatch to
@@ -207,9 +210,7 @@ jobs:
     # example/compose.sync-server.yaml lives in example/, not the repo root (it reads
     # as a deployment example, not the canonical way to run the workspace) --
     # COMPOSE_FILE lets every bare `docker compose ...` call below find it without
-    # repeating `-f` on each step, while still running from the repo root (needed so
-    # the compose file's own `build.context: ..` resolves back to the whole Cargo
-    # workspace).
+    # repeating `-f` on each step.
     env:
       COMPOSE_FILE: example/compose.sync-server.yaml
     steps:
@@ -217,8 +218,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Build image
-        run: docker compose build
+      # https://github.com/docker/setup-buildx-action
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # The compose file itself has no `build:` section any more -- it's a
+      # standalone, pull-from-GHCR example a self-hoster can run without cloning this
+      # repo (see the compose file's own header comment). To verify *this commit's*
+      # Dockerfile rather than whatever's already published, build it here and tag it
+      # exactly as the compose file's `image:` reference -- `docker compose up` below
+      # then finds that tag already cached locally and uses it directly, without
+      # attempting to pull.
+      - name: Build image, tagged to match the compose file's image reference
+        run: |
+          docker buildx build \
+            --file Dockerfile.sync-server \
+            --tag "$IMAGE_NAME:latest" \
+            --load \
+            .
 
       - name: Start deployment
         run: |
