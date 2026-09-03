@@ -107,7 +107,11 @@ jobs:
         run: |
           set -euo pipefail
           docker top sync-server-test -eo pid,user,comm
-          uid=$(docker top sync-server-test -eo user,comm | awk '$2 == "sync-server" { print $1 }')
+          # `pid` must be included in the -eo format even though it's unused below --
+          # confirmed for real on the first CI run of this workflow: omitting it makes
+          # the Docker daemon fail the whole `docker top` call with "Couldn't find PID
+          # field in ps output", it's not just cosmetically absent from the columns.
+          uid=$(docker top sync-server-test -eo pid,user,comm | awk '$3 == "sync-server" { print $2 }')
           echo "sync-server process uid: $uid"
           [ -n "$uid" ]
           [ "$uid" != "0" ]
