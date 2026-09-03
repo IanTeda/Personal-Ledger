@@ -42,7 +42,11 @@ A separate deployable component — a headless service, not a Client — that sy
 Client's local Ledger copy with the others by pushing and pulling Change Sets, not
 exposing full CRUD. It maintains its own durable store of Change Sets (not a full
 Ledger copy) so a Client that has been offline can catch up without both peers being
-online simultaneously.
+online simultaneously. It also acts as its own OAuth2 authorization server for its
+Clients: a Client authenticates via a one-time browser login (Authorization Code +
+PKCE over a loopback redirect), then calls the sync gRPC API with a bearer token,
+never holding a persistent username/password itself — see
+[ADR-0010](docs/adr/0010-oauth2-pkce-native-app-auth.md).
 _Avoid_: Backend, Web App, reconcile/reconciliation — "backend" is avoided across this
 glossary now that Clients hold their own local data directly rather than depending on
 a central server for reads/writes; "Web App" was an earlier, now-abandoned design
