@@ -30,6 +30,13 @@ on:
   release:
     types: [created]
   workflow_dispatch:
+  # TEMPORARY, remove after the first run: gh/GitHub's workflow_dispatch-by-name
+  # lookup has proven flaky for this workflow specifically on this non-default branch
+  # (worked right after earlier bootstraps, then started 404ing again with no file
+  # change in between) -- bootstrapping via a real push event sidesteps that lookup
+  # entirely. Drop this trigger once the run completes.
+  push:
+    branches: [feasibility]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
