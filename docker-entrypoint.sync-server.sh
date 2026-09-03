@@ -1,5 +1,5 @@
 #!/bin/sh
-# docker-entrypoint.sh -- runs as root (the image's default), adjusts the baked-in
+# docker-entrypoint.sync-server.sh -- runs as root (the image's default), adjusts the baked-in
 # `syncserver` account to match the operator-supplied PUID/PGID (the same runtime
 # env-var convention linuxserver.io images use), fixes up ownership of the durable
 # store at /data, then drops privileges via `setpriv` before exec'ing the real Sync

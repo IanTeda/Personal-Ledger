@@ -91,7 +91,7 @@ jobs:
 
       # Confirms the *running sync-server process* isn't root (NFR.2) -- not a plain
       # `docker exec ... id -u`, which would report the exec session's own default
-      # user (root, per the image's PUID/PGID entrypoint design in docker-entrypoint.sh:
+      # user (root, per the image's PUID/PGID entrypoint design in docker-entrypoint.sync-server.sh:
       # the container starts as root so it can chown /data and drop privileges via
       # setpriv, so a fresh `docker exec` without --user inherits that root context
       # too, regardless of what the actual PID 1 process dropped to). `docker top`

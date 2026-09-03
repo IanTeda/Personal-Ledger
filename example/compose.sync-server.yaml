@@ -14,7 +14,7 @@
 #
 # PUID/PGID: override via a `.env` file or the shell environment (e.g. `PUID=1000
 # PGID=1000 docker compose up -d`) to match whatever UID already owns
-# sync-server-data if you're inspecting it from the host -- see docker-entrypoint.sh.
+# sync-server-data if you're inspecting it from the host -- see docker-entrypoint.sync-server.sh.
 # Left unset here, they fall back to the image's own baked-in default (10001/10001).
 
 # Explicit, rather than defaulting to this file's containing directory name
@@ -39,6 +39,6 @@ services:
 
 volumes:
   # Named (not bind-mounted): on first run, Docker seeds it from the image's own
-  # /data contents -- including the pre-created empty SQLite file docker-entrypoint.sh
+  # /data contents -- including the pre-created empty SQLite file docker-entrypoint.sync-server.sh
   # and the Dockerfile already rely on -- so no extra init step is needed here.
   sync-server-data:
