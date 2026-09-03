@@ -99,10 +99,11 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 - __CC-ALL-001:__ Ensure all dependencies are up-to-date and cross-compilation is enabled and compiles on all platforms.
 - __CC-ALL-002:__ Remove depreciated Chrono crate and ensure cross compilation of new package.
 - __CC-ALL-003:__ Refactor lib_domain into lib_core for shared domain logic and modules.
-- __CC-ALL-004:__ Research and agree on hierarchy of configuration sources and what takes precedence (e.g. file, environment variables, command line arguments). Build out configuration layer. Build out configuration lib crate.
-- __CC-ALL-005:__ Review the telementry lib crate and decide on telemetry implementation. Confirm telemetry implementation is compatible across binaries and with cross-compilation.
-- __CC-ALL-006:__ Build authentication lib crate. Username and password is defined in configuration.
-- __CC-ALL-007:__ Review the database lib crate and decide on database implementation. Confirm database implementation is compatible across binaries and with cross-compilation.
+- __CC-ALL-004:__ Review, research and grill the workspace code architecture and structure for best practice, readability and maintainability.
+- __CC-ALL-005:__ Research and agree on hierarchy of configuration sources and what takes precedence (e.g. file, environment variables, command line arguments). Build out configuration layer. Build out configuration lib crate.
+- __CC-ALL-006:__ Review the telementry lib crate and decide on telemetry implementation. Confirm telemetry implementation is compatible across binaries and with cross-compilation.
+- __CC-ALL-007:__ Build authentication lib crate. Username and password is defined in configuration.
+- __CC-ALL-008:__ Review the database lib crate and decide on database implementation. Confirm database implementation is compatible across binaries and with cross-compilation.
 
 
 ### 2.3. Development Cycle (v1.0.0)
