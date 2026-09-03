@@ -32,21 +32,21 @@ _Avoid_: Book, journal.
 
 **Client**:
 An app instance that holds its own full local copy of the Ledger and can create, read,
-update, and delete against it entirely offline — Desktop, TUI, or Web App. The Web App
-instance additionally plays the Sync Server role (see below); that is a role it takes
-on, not a fourth, architecturally distinct component.
+update, and delete against it entirely offline — Desktop or TUI.
 _Avoid_: Device, backend — "device" conflates the physical machine with the app
 instance running on it; "backend" implied a single authoritative server, which no
 longer describes the architecture.
 
 **Sync Server**:
-The role the Web App instance plays in reconciling each Client's local Ledger copy
-with the others — pushing and pulling change sets, not exposing full CRUD. Not a
-separate deployable component; it is what the Web App does in addition to being a
-Client itself.
-_Avoid_: Backend, server — "backend" is avoided across this glossary now that Clients
+A separate deployable component — a headless service, not a Client — that reconciles
+each Client's local Ledger copy with the others by pushing and pulling change sets,
+not exposing full CRUD. It maintains its own durable store of change sets (not a full
+Ledger copy) so a Client that has been offline can catch up without both peers being
+online simultaneously.
+_Avoid_: Backend, Web App — "backend" is avoided across this glossary now that Clients
 hold their own local data directly rather than depending on a central server for
-reads/writes.
+reads/writes; "Web App" was an earlier, now-abandoned design where this role rode
+along on a browser-facing Client instead of being its own component.
 
 **Institution**:
 The financial institution (e.g. a bank) that holds an Account — not modelled as an
