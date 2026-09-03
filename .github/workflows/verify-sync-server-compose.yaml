@@ -31,6 +31,13 @@ jobs:
   verify-compose:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    # example/compose.sync-server.yaml lives in example/, not the repo root (it reads
+    # as a deployment example, not the canonical way to run the workspace) -- COMPOSE_FILE
+    # lets every bare `docker compose ...` call below find it without repeating `-f` on
+    # each step, while still running from the repo root (needed so the compose file's
+    # own `build.context: ..` resolves back to the whole Cargo workspace).
+    env:
+      COMPOSE_FILE: example/compose.sync-server.yaml
     steps:
       # https://github.com/actions/checkout
       - name: Checkout repository
