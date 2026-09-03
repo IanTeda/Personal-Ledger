@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id                   AS \"id!: domain::RowID\",\n                    username,\n                    password_hash,\n                    refresh_token_hash,\n                    created_on           AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on           AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM accounts\n                LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "username",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "password_hash",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "refresh_token_hash",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "07776860e885ebf4edb69d5da6b6d09cfc89e5886a475be674974914a4465681"
+}

@@ -99,6 +99,13 @@ pub enum DatabaseError {
     #[error("Error building Change Set: {0}")]
     ChangeSetBuilder(String),
 
+    /// Account Builder Error
+    ///
+    /// Occurs when constructing an account fails due to invalid input or missing
+    /// required fields.
+    #[error("Error building account: {0}")]
+    AccountBuilder(String),
+
     /// Connection error
     ///
     /// Represents failures in establishing or maintaining database connections,

@@ -16,25 +16,32 @@
 //!
 //! Scoped to this ticket's Non-goals: Change Set construction/application here is a
 //! demo-only helper limited to the `categories` table's known columns, not a generic
-//! change-data-capture or arbitrary-table sync engine. Auth (ADR-0010) is out of scope
-//! -- these gRPC calls are unauthenticated, per issue #46/#50's ticket boundary.
+//! change-data-capture or arbitrary-table sync engine.
+//!
+//! `SyncService` sits behind the auth interceptor (#50, ADR-0010) -- this test mints
+//! an access token directly via `bin_sync_server::auth::jwt::issue_access_token`
+//! rather than driving the full HTTP OAuth2/PKCE dance (that's `tests/auth_flow.rs`'s
+//! job); this test's actual subject is push/pull, not auth.
 
 use std::sync::Arc;
 
+use bin_sync_server::auth;
 use lib_database::{ChangeSet, DatabaseConfig, DatabaseConnection};
 use lib_domain::{HlcClock, RowID};
 use lib_rpc::{
     ChangeSet as ProtoChangeSet, PullRequest, PushRequest, SyncService, SyncServiceClient,
     SyncServiceServer, UtilitiesService, UtilitiesServiceServer,
 };
+use secrecy::SecretString;
 use sqlx::SqlitePool;
 use tonic::transport::Server;
 
 /// Start the Sync Server (both `SyncService` and `UtilitiesService`, matching
 /// `main.rs`) bound to an OS-assigned ephemeral port, backed by a fresh SQLite file at
-/// `db_path`. Returns the bound address; the server runs in a background task for the
-/// lifetime of the test process.
-async fn spawn_sync_server(db_path: &std::path::Path) -> std::net::SocketAddr {
+/// `db_path`. `SyncService` is behind the same auth interceptor `main.rs` wires up.
+/// Returns the bound address and the JWT signing key (so the test can mint its own
+/// access tokens); the server runs in a background task for the test's lifetime.
+async fn spawn_sync_server(db_path: &std::path::Path) -> (std::net::SocketAddr, SecretString) {
     let connection = DatabaseConnection::new(DatabaseConfig {
         url: format!("sqlite://{}?mode=rwc", db_path.display()),
         ..DatabaseConfig::default()
@@ -55,17 +62,34 @@ async fn spawn_sync_server(db_path: &std::path::Path) -> std::net::SocketAddr {
         .expect("bound listener has a local address");
     let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
-    let sync_service = SyncService::new(Arc::new(pool));
+    let signing_key_material = "test-only-signing-key-not-for-production".to_string();
+    let interceptor_key = SecretString::from(signing_key_material.clone());
+    let test_key = SecretString::from(signing_key_material);
+
+    let sync_service = SyncServiceServer::with_interceptor(
+        SyncService::new(Arc::new(pool)),
+        auth::interceptor::AuthInterceptor::new(interceptor_key),
+    );
     tokio::spawn(async move {
         Server::builder()
             .add_service(UtilitiesServiceServer::new(UtilitiesService::default()))
-            .add_service(SyncServiceServer::new(sync_service))
+            .add_service(sync_service)
             .serve_with_incoming(incoming)
             .await
             .expect("Sync Server should serve without error");
     });
 
-    addr
+    (addr, test_key)
+}
+
+/// Attach a bearer access token to an outgoing gRPC request.
+fn bearer_request<T>(message: T, access_token: &str) -> tonic::Request<T> {
+    let mut request = tonic::Request::new(message);
+    let value = format!("Bearer {access_token}")
+        .parse()
+        .expect("bearer header value should be valid ASCII");
+    request.metadata_mut().insert("authorization", value);
+    request
 }
 
 /// Set up a Client's own local SQLite Ledger copy -- migrated with `lib-database`'s
@@ -213,13 +237,19 @@ fn new_demo_category(code: &str, name: &str) -> lib_database::Categories {
 #[tokio::test]
 async fn push_pull_sync_with_offline_catch_up() {
     let temp_dir = tempfile::tempdir().expect("should create a scratch tempdir");
-    let server_addr = spawn_sync_server(&temp_dir.path().join("sync-server.db")).await;
+    let (server_addr, signing_key) =
+        spawn_sync_server(&temp_dir.path().join("sync-server.db")).await;
     let client_a_pool = client_pool(&temp_dir.path().join("client-a.db")).await;
     let client_b_pool = client_pool(&temp_dir.path().join("client-b.db")).await;
 
     let mut client = SyncServiceClient::connect(format!("http://{server_addr}"))
         .await
         .expect("should connect to the running Sync Server");
+
+    // Any valid, signed access token authorises calls -- this test's subject is
+    // push/pull, not who's allowed to call it (see tests/auth_flow.rs for that).
+    let access_token = auth::jwt::issue_access_token(RowID::new(), &signing_key)
+        .expect("should be able to issue a test access token");
 
     let client_a_id = RowID::new();
     let mut client_a_clock = HlcClock::new();
@@ -231,13 +261,16 @@ async fn push_pull_sync_with_offline_catch_up() {
     let change_sets_one =
         categories_row_to_change_sets(&category_one, client_a_id, &mut client_a_clock);
     let push_response = client
-        .push(PushRequest {
-            change_sets: change_sets_one
-                .iter()
-                .cloned()
-                .map(ProtoChangeSet::from)
-                .collect(),
-        })
+        .push(bearer_request(
+            PushRequest {
+                change_sets: change_sets_one
+                    .iter()
+                    .cloned()
+                    .map(ProtoChangeSet::from)
+                    .collect(),
+            },
+            &access_token,
+        ))
         .await
         .expect("first push should succeed")
         .into_inner();
@@ -251,22 +284,28 @@ async fn push_pull_sync_with_offline_catch_up() {
     let change_sets_two =
         categories_row_to_change_sets(&category_two, client_a_id, &mut client_a_clock);
     client
-        .push(PushRequest {
-            change_sets: change_sets_two
-                .iter()
-                .cloned()
-                .map(ProtoChangeSet::from)
-                .collect(),
-        })
+        .push(bearer_request(
+            PushRequest {
+                change_sets: change_sets_two
+                    .iter()
+                    .cloned()
+                    .map(ProtoChangeSet::from)
+                    .collect(),
+            },
+            &access_token,
+        ))
         .await
         .expect("second push should succeed");
 
     // -- Client B connects for the first time and pulls everything in one call --
     let pull_response = client
-        .pull(PullRequest {
-            since_id: None,
-            limit: 100,
-        })
+        .pull(bearer_request(
+            PullRequest {
+                since_id: None,
+                limit: 100,
+            },
+            &access_token,
+        ))
         .await
         .expect("pull should succeed")
         .into_inner();

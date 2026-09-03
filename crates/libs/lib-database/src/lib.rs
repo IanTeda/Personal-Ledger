@@ -77,6 +77,10 @@
 mod categories;
 pub use categories::Categories;
 
+/// The Sync Server's own auth user store (ADR-0010).
+pub mod accounts;
+pub use accounts::Account;
+
 /// The Sync Server's durable Change Set log (ADR-0009).
 pub mod change_sets;
 pub use change_sets::ChangeSet;
