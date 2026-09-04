@@ -780,7 +780,11 @@ mod tests {
 // it un-awaited inside this async fn body just means it executes on Tokio's `block_on`
 // thread rather than a worker thread, which is exactly where the main/UI thread needs to be.
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = lib_config::LedgerConfig::parse(None)?;
+    let telemetry_level = Some(&config.telemetry_config().telemetry_level());
+    lib_telemetry::init(telemetry_level)?;
+
     let tokio_handle = tokio::runtime::Handle::current();
 
     Application::new().run(move |cx: &mut App| {
@@ -817,4 +821,6 @@ async fn main() {
         .unwrap();
         cx.activate(true);
     });
+
+    Ok(())
 }

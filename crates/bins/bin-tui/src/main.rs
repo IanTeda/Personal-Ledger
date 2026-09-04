@@ -11,6 +11,12 @@ mod tui;
 use app::App;
 
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
-    App::new().run().await
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = lib_config::LedgerConfig::parse(None)?;
+    let telemetry_level = Some(&config.telemetry_config().telemetry_level());
+    lib_telemetry::init(telemetry_level)?;
+
+    App::new().run().await?;
+
+    Ok(())
 }

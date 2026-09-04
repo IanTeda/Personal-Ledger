@@ -12,8 +12,10 @@ path = "src/main.rs"
 
 [dependencies]
 ## -- Internal Dependencies --
+lib_config = { path = "../../libs/lib-config" }
 lib_database = { path = "../../libs/lib-database" }
 lib_domain = { path = "../../libs/lib-domain" }
+lib_telemetry = { path = "../../libs/lib-telemetry" }
 
 ## -- Workspace Dependencies --
 chrono = { workspace = true }
