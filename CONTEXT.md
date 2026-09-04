@@ -37,6 +37,25 @@ _Avoid_: Device, backend — "device" conflates the physical machine with the ap
 instance running on it; "backend" implied a single authoritative server, which no
 longer describes the architecture.
 
+**Preference**:
+A user-editable runtime setting that changes how a Client behaves — distinct from
+Configuration (see below), which is deployment-time and edited outside the running app.
+Each Preference is individually either Ledger-scoped (stored in `lib-database`, synced
+via Change Sets like other Ledger data — e.g. default Unit for new Accounts) or
+Client-scoped (stored locally, never synced — e.g. colour theme, keybinding layout);
+which kind a given Preference is gets decided as it's defined, in CC-TUI-001/
+CC-DESKTOP-001 (`docs/product-requirements.md`).
+_Avoid_: Configuration, setting — "Configuration" is reserved for `lib-config`'s layered,
+deployment-time config (files/env vars, see `docs/configuration.md`); a Preference is
+edited by the user from inside a running Client instead.
+
+**Configuration**:
+Deployment-time settings loaded by `lib-config` before or as a Client/the Sync Server
+starts — defaults, system/user/executable-directory/working-directory files, an explicit
+path, or environment variables, in that precedence order (see `docs/configuration.md`).
+Not user-editable from inside a running app — see Preference, above, for that.
+_Avoid_: Preference, setting.
+
 **Sync Server**:
 A separate deployable component — a headless service, not a Client — that syncs each
 Client's local Ledger copy with the others by pushing and pulling Change Sets, not

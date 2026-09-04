@@ -90,14 +90,48 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 
 ### 2.2. Concept Cycle (v0.1.0)
 
+#### 2.2.1 All
+
+Implement these requirements to bring the TUI, Desktop and Sync up to functionality
+
 - __CC-ALL-001:__ Ensure all dependencies are up-to-date and cross-compilation is enabled and compiles on all platforms.
-- __CC-ALL-002:__ Remove depreciated Chrono crate and ensure cross compilation of new package.
-- __CC-ALL-003:__ Refactor lib_domain into lib_core for shared domain logic and modules.
+- __CC-ALL-002:__ Refactor lib_domain into lib_core (mechanical rename — no new shared responsibilities identified beyond today's lib_domain scope; revisit if real shared logic emerges once CC-TUI-005+/CC-DESKTOP-005+ build real CRUD).
+- __CC-ALL-003:__ Research depreciated Chrono crate and replace it, ensuring cross-compilation is supported.
 - __CC-ALL-004:__ Review, research and grill the workspace code architecture and structure for best practice, readability and maintainability.
-- __CC-ALL-005:__ Research and agree on hierarchy of configuration sources and what takes precedence (e.g. file, environment variables, command line arguments). Build out configuration layer. Build out configuration lib crate.
-- __CC-ALL-006:__ Review the telementry lib crate and decide on telemetry implementation. Confirm telemetry implementation is compatible across binaries and with cross-compilation.
-- __CC-ALL-007:__ Build authentication lib crate. Username and password is defined in configuration.
-- __CC-ALL-008:__ Review the database lib crate and decide on database implementation. Confirm database implementation is compatible across binaries and with cross-compilation.
+- __CC-ALL-006:__ Wire `lib_telemetry::init` into `bin-tui` and `bin-desktop` (already done for `bin-sync-server`); confirm telemetry implementation is compatible across binaries and with cross-compilation.
+- __CC-ALL-007:__ Research and decide on SQLite encryption-at-rest (see `docs/research/sqlite-encryption.md`); the choice of SQLite itself is already settled (§5 Dependencies, `lib-database`).
+
+#### 2.2.2 TUI App:
+
+- __CC-TUI-001:__ Research and decide on screens and user flows for the TUI app. How are we going to do applicatoin settings?
+- __CC-TUI-002:__ Build out a TUI app using the TUI framework.
+- __CC-TUI-003:__ Research and decide on keybinding and navigation/workflow for the TUI app.
+- __CC-TUI-004:__ Research and decide on the TUI app's data model and persistence layer.
+- __CC-TUI-005:__ Build out the units funcationality.
+- __CC-TUI-007:__ Build out the payee functionality.
+- __CC-TUI-006:__ Build out the categories functionality.
+- __CC-TUI-008:__ Build out the accounts functionality.
+- __CC-TUI-009:__ Build out the transaction functionality.
+- __CC-TUI-010:__ Build out the budgeting functionality using line-item budgeting only (matching `CONTEXT.md`'s existing Budget definition — a cap on one Category, not a full allocation); envelope and reverse budgeting are deferred to Future Considerations (§7).
+- __CC-TUI-011:__ Build out the reporting functionality.
+- __CC-TUI-012:__ Build out the CSV import/export functionality.
+
+#### 2.2.3 Desktop App:
+
+Mirrors §2.2.2, built in parallel with the TUI cycle rather than sequenced after it — both clients share `lib-database`/`lib-domain`, and `bin-desktop` already has a feasibility-cycle scaffold (GPUI, ADR-0007/0008) as mature as `bin-tui`'s.
+
+- __CC-DESKTOP-001:__ Research and decide on screens and user flows for the Desktop app, including how the Preference model from CC-TUI-001 is shared or diverges for Desktop (see `CONTEXT.md` — Preference).
+- __CC-DESKTOP-002:__ Replace the feasibility cycle's dummy-data chart/table demo (`bin-desktop/src/main.rs`) with live screens backed by `lib-database`.
+- __CC-DESKTOP-003:__ Research and decide on navigation/workflow (menus, keyboard shortcuts) for the Desktop app.
+- __CC-DESKTOP-004:__ Reuse the TUI's data model and persistence layer decision (CC-TUI-004) — no separate research needed unless Desktop surfaces a real gap.
+- __CC-DESKTOP-005:__ Build out the units functionality.
+- __CC-DESKTOP-006:__ Build out the categories functionality.
+- __CC-DESKTOP-007:__ Build out the payee functionality.
+- __CC-DESKTOP-008:__ Build out the accounts functionality.
+- __CC-DESKTOP-009:__ Build out the transaction functionality.
+- __CC-DESKTOP-010:__ Build out the budgeting functionality (line-item only — see CC-TUI-010).
+- __CC-DESKTOP-011:__ Build out the reporting functionality.
+- __CC-DESKTOP-012:__ Build out the CSV import/export functionality.
 
 
 ### 2.3. Development Cycle (v1.0.0)
@@ -146,7 +180,7 @@ The requirements below describe the product's ultimate end state across all deve
 
 ### Budgets
 
-- __FR.22:__ The system shall have different types of budgeting methods including line item, envelope & reverse budgeting. The feature set of budgeting types will need to be researched and decided on later.
+- __FR.22:__ The system shall support line item budgeting (see CC-TUI-010/CC-DESKTOP-010 for the concept cycle's scoping of this to line-item only). Envelope and reverse budgeting are future considerations (§7).
 - __FR.23:__ The system shall allow creating a budget with exactly one Category, a limit amount, a Unit it's denominated in, and a recurring period (weekly, monthly, quarterly, or yearly).
 - __FR.24:__ The system shall allow retrieving a budget by ID.
 - __FR.25:__ The system shall allow listing budgets with pagination and filtering by Category and/or active status.
@@ -226,6 +260,7 @@ The requirements below describe the product's ultimate end state across all deve
 - __Desktop & TUI UI:__ The concrete UI/UX for each client app (§1.4) is not yet detailed as Functional Requirements; deferred until each respective cycle is scoped.
 - __Multi-device sync protocol:__ End-state Functional Requirements for the sync server's protocol beyond FR.39a's placeholder are deferred until a sync-focused cycle is scoped (see FR.39a, §2.1 Sync).
 - __Change Set log retention:__ Every Change Set is kept indefinitely for this cycle — deliberately not decided, since a feasibility demo on one self-hoster's own small device fleet doesn't yet produce the usage/volume data a pruning policy would need to design against (see [ADR-0009](docs/adr/0009-lww-sqlite-change-set-log.md)); revisit once a later cycle has that data.
+- __Envelope & reverse budgeting:__ Personal Ledger's concept cycle (§2.2) scopes Budgets to line-item only (see CC-TUI-010, CC-DESKTOP-010, FR.22); envelope budgeting (allocating every dollar of income across categories) and reverse budgeting are deferred past V1.
 - __Personal Investors:__ Tracking buy-in costs, capital gains, returns, and tax implications for investments (see §1.4) is a future consideration with no Functional Requirements defined yet.
 - __Personal Loan:__ Tracking progress paying down a loan (see §1.4) is a future consideration with no Functional Requirements defined yet.
 - __Personal Inventory:__ Tracking assets and household inventory (see §1.4) is a future consideration with no Functional Requirements defined yet.
