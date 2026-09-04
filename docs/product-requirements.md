@@ -114,7 +114,8 @@ Implement these requirements to bring the TUI, Desktop and Sync up to functional
 - __CC-TUI-009:__ Build out the transaction functionality.
 - __CC-TUI-010:__ Build out the budgeting functionality using line-item budgeting only (matching `CONTEXT.md`'s existing Budget definition — a cap on one Category, not a full allocation); envelope and reverse budgeting are deferred to Future Considerations (§7).
 - __CC-TUI-011:__ Build out the reporting functionality.
-- __CC-TUI-012:__ Build out the CSV import/export functionality.
+- __CC-TUI-012:__ Build out the CSV import functionality (FR.33 — Balance Check import only; no CSV export is specified anywhere in the FR pool).
+- __CC-TUI-013:__ Build out the Balance Check functionality (FR.28–32) — added when charting the "TUI App concept" Wayfinder map; Balance Checks were missing from this list despite having their own FR section.
 
 #### 2.2.3 Desktop App:
 
