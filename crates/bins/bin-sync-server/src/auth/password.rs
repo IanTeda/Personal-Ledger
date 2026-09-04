@@ -1,6 +1,6 @@
 //! # Password hashing
 //!
-//! Argon2 hashing/verification for the Sync Server's single bootstrap account
+//! Argon2 hashing/verification for the Sync Server's single bootstrap sync user
 //! (ADR-0010). Plaintext passwords are only ever handled as [`secrecy::SecretString`]
 //! so they can't leak into logs or traces (`CLAUDE.md`'s `secrecy::Secret` convention).
 
@@ -8,7 +8,7 @@ use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use secrecy::{ExposeSecret, SecretString};
 
 /// Hash a plaintext password into its PHC string form, for storage in
-/// `accounts.password_hash`. A fresh random salt is generated internally per call.
+/// `sync_users.password_hash`. A fresh random salt is generated internally per call.
 ///
 /// # Errors
 /// Returns an error if Argon2 hashing fails (should not happen for well-formed input).

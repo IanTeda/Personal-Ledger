@@ -616,7 +616,7 @@ mod tests {
     mod single_deletions {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_existing_category(pool: SqlitePool) {
             let category = crate::Categories::mock();
             insert_test_category(&pool, &category).await;
@@ -629,7 +629,7 @@ mod tests {
             assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_nonexistent_category(pool: SqlitePool) {
             let category = crate::Categories::mock();
 
@@ -637,7 +637,7 @@ mod tests {
             assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_by_id(pool: SqlitePool) {
             let category = crate::Categories::mock();
             let id = insert_test_category(&pool, &category).await;
@@ -650,7 +650,7 @@ mod tests {
             assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_by_code(pool: SqlitePool) {
             let category = crate::Categories::mock();
             insert_test_category(&pool, &category).await;
@@ -663,7 +663,7 @@ mod tests {
             assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_by_url_slug(pool: SqlitePool) {
             let mut category = crate::Categories::mock();
             category.url_slug = Some(domain::UrlSlug::from("test-slug"));
@@ -678,7 +678,7 @@ mod tests {
         }
 
         /// Property-based test: Delete operations handle varied mock data
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_handles_various_category_configurations(pool: SqlitePool) {
             for i in 0..20 {
                 let mut category = crate::Categories::mock();
@@ -699,7 +699,7 @@ mod tests {
         }
 
         /// Edge case: Delete with empty or invalid codes/slugs
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_by_code_edge_cases(pool: SqlitePool) {
             // Non-existent code
             let result = crate::Categories::delete_by_code("NON.EXISTENT.CODE", &pool).await;
@@ -710,7 +710,7 @@ mod tests {
             assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_by_url_slug_edge_cases(pool: SqlitePool) {
             // Non-existent slug
             let slug = lib_core::UrlSlug::from("non-existent-slug");
@@ -722,7 +722,7 @@ mod tests {
     mod bulk_operations {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_many_by_id_success(pool: SqlitePool) {
             let mut categories = Vec::new();
             let mut ids = Vec::new();
@@ -744,7 +744,7 @@ mod tests {
             }
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_many_by_id_fails_on_nonexistent(pool: SqlitePool) {
             let category = crate::Categories::mock();
             let valid_id = insert_test_category(&pool, &category).await;
@@ -757,7 +757,7 @@ mod tests {
         }
 
         /// Edge case: Empty ID list
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_many_by_id_empty_list(pool: SqlitePool) {
             let ids: Vec<domain::RowID> = vec![];
             let result = crate::Categories::delete_many_by_id(&ids, &pool).await;
@@ -765,7 +765,7 @@ mod tests {
         }
 
         /// Property-based test: Bulk delete handles varied mock data atomically
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_many_by_id_randomised(pool: SqlitePool) {
             for i in 0..10 {
                 let count = (1..5).fake::<usize>(); // Random count 1-4
@@ -796,7 +796,7 @@ mod tests {
     mod bulk_deletions {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_inactive(pool: SqlitePool) {
             // Insert active and inactive categories
             let mut active_category = crate::Categories::mock();
@@ -815,7 +815,7 @@ mod tests {
             assert_eq!(deleted_count2, 0);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_all(pool: SqlitePool) {
             // Insert multiple categories
             for _ in 0..3 {
@@ -832,7 +832,7 @@ mod tests {
         }
 
         /// Property-based test: Delete inactive/all handle varied data
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_delete_inactive_randomised(pool: SqlitePool) {
             for i in 0..10 {
                 // Insert mix of active/inactive
@@ -868,7 +868,7 @@ mod tests {
         use super::*;
 
         /// Test that mock data passes basic validation rules
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_mock_data_validation(pool: SqlitePool) {
             for _ in 0..20 {
                 let category = crate::Categories::mock();

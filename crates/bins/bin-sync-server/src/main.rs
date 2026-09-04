@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_connection =
         lib_database::DatabaseConnection::new(config.database_config().clone()).await?;
     let database_pool = database_connection.into_pool();
-    sqlx::migrate!("../../libs/lib-database/migrations")
+    sqlx::migrate!("../../libs/lib-database/migrations/sync-server")
         .run(&database_pool)
         .await?;
     let database_pool = Arc::new(database_pool);
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // The JWT signing key is ephemeral, generated fresh in memory on every start (not
     // config-driven this cycle -- see ADR-0010/this ticket's Non-goals). Access tokens
     // are short-lived by design; the durable "stay logged in" property comes from the
-    // refresh token, which is persisted in `accounts.refresh_token_hash`, not this key.
+    // refresh token, which is persisted in `sync_users.refresh_token_hash`, not this key.
     let signing_key_material = generate_signing_key();
     let interceptor_key = SecretString::from(signing_key_material.clone());
     let auth_state = auth::AuthState {
@@ -86,20 +86,20 @@ fn generate_signing_key() -> String {
     URL_SAFE_NO_PAD.encode(bytes)
 }
 
-/// Create the single bootstrap account on first run, if the `accounts` table is empty.
+/// Create the single bootstrap sync user on first run, if the `sync_users` table is empty.
 async fn bootstrap_account(pool: &sqlx::SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    if lib_database::Account::find_only(pool).await?.is_some() {
+    if lib_database::SyncUser::find_only(pool).await?.is_some() {
         return Ok(());
     }
 
     tracing::warn!(
-        "No account provisioned yet -- bootstrapping the demo account '{BOOTSTRAP_USERNAME}'. \
+        "No sync user provisioned yet -- bootstrapping the demo account '{BOOTSTRAP_USERNAME}'. \
          This is a fixed feasibility-cycle default, not a real credential -- see main.rs's \
          bootstrap constants."
     );
 
     let password_hash = auth::hash_password(&SecretString::from(BOOTSTRAP_PASSWORD.to_string()))?;
-    let account = lib_database::Account {
+    let sync_user = lib_database::SyncUser {
         id: lib_core::RowID::new(),
         username: BOOTSTRAP_USERNAME.to_string(),
         password_hash,
@@ -107,7 +107,7 @@ async fn bootstrap_account(pool: &sqlx::SqlitePool) -> Result<(), Box<dyn std::e
         created_on: chrono::Utc::now(),
         updated_on: chrono::Utc::now(),
     };
-    account.insert(pool).await?;
+    sync_user.insert(pool).await?;
 
     Ok(())
 }

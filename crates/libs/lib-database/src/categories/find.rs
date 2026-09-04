@@ -1046,7 +1046,7 @@ mod tests {
     mod basic_finds {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_by_id(pool: SqlitePool) {
             let category = crate::Categories::mock();
             insert_test_category(&pool, &category).await;
@@ -1058,7 +1058,7 @@ mod tests {
             assert_eq!(found.unwrap().id, category.id);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_by_code(pool: SqlitePool) {
             let category = crate::Categories::mock();
             insert_test_category(&pool, &category).await;
@@ -1070,7 +1070,7 @@ mod tests {
             assert_eq!(found.unwrap().code, category.code);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_by_url_slug(pool: SqlitePool) {
             let mut category = crate::Categories::mock();
             category.url_slug = Some(domain::UrlSlug::from("test-slug"));
@@ -1083,7 +1083,7 @@ mod tests {
             assert_eq!(found.unwrap().url_slug, category.url_slug);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_by_name(pool: SqlitePool) {
             let category = crate::Categories::mock();
             insert_test_category(&pool, &category).await;
@@ -1095,7 +1095,7 @@ mod tests {
             assert!(found.iter().any(|c| c.id == category.id));
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_all(pool: SqlitePool) {
             let category1 = crate::Categories::mock();
             let category2 = crate::Categories::mock();
@@ -1108,7 +1108,7 @@ mod tests {
             assert!(categories.len() >= 2);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_all_active(pool: SqlitePool) {
             let mut active_category = crate::Categories::mock();
             active_category.is_active = true;
@@ -1123,7 +1123,7 @@ mod tests {
             assert!(categories.iter().all(|c| c.is_active));
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_inactive(pool: SqlitePool) {
             let mut active_category = crate::Categories::mock();
             active_category.is_active = true;
@@ -1142,7 +1142,7 @@ mod tests {
     mod pagination {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_all_with_pagination(pool: SqlitePool) {
             // Insert multiple categories
             for _ in 0..5 {
@@ -1155,7 +1155,7 @@ mod tests {
             assert!(total_count >= 5);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_active_with_pagination(pool: SqlitePool) {
             // Insert mix of active and inactive
             for i in 0..5 {
@@ -1170,7 +1170,7 @@ mod tests {
             assert!(total_count >= 3); // At least 3 active categories
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn test_find_inactive_with_pagination(pool: SqlitePool) {
             // Insert mix of active and inactive
             for i in 0..5 {

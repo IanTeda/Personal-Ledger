@@ -91,7 +91,7 @@ impl crate::ChangeSet {
 mod tests {
     use sqlx::SqlitePool;
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/sync-server")]
     async fn find_since_none_returns_everything_oldest_first(pool: SqlitePool) {
         let first = crate::ChangeSet::mock().insert(&pool).await.unwrap();
         let second = crate::ChangeSet::mock().insert(&pool).await.unwrap();
@@ -109,7 +109,7 @@ mod tests {
         assert!(first_pos < second_pos);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/sync-server")]
     async fn find_since_a_cursor_excludes_earlier_change_sets(pool: SqlitePool) {
         let first = crate::ChangeSet::mock().insert(&pool).await.unwrap();
         let second = crate::ChangeSet::mock().insert(&pool).await.unwrap();
@@ -122,7 +122,7 @@ mod tests {
         assert!(found.iter().any(|c| c.id == second.id));
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/sync-server")]
     async fn find_since_respects_the_limit(pool: SqlitePool) {
         for _ in 0..5 {
             crate::ChangeSet::mock().insert(&pool).await.unwrap();

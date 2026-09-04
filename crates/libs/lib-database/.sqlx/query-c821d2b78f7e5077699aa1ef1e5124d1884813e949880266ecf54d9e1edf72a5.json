@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO sync_users (id, username, password_hash, refresh_token_hash, created_on, updated_on)\n                VALUES (?, ?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "c821d2b78f7e5077699aa1ef1e5124d1884813e949880266ecf54d9e1edf72a5"
+}

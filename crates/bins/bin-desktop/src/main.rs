@@ -372,7 +372,7 @@ async fn load_live_categories_from(
     let connection = lib_database::DatabaseConnection::new(config).await?;
     let pool = connection.pool();
 
-    sqlx::migrate!("../../libs/lib-database/migrations")
+    sqlx::migrate!("../../libs/lib-database/migrations/client")
         .run(pool)
         .await?;
 

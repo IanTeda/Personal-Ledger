@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [package.metadata.sqlx]
-migrations = "migrations"
+migrations = "migrations/client"
 
 
 [dependencies]
@@ -12,6 +12,7 @@ migrations = "migrations"
 lib_core = { path = "../../../crates/libs/lib-core" }
 
 ## -- Workspace Shared Dependencies --
+bigdecimal = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 sqlx = { workspace = true }

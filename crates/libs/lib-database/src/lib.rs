@@ -12,7 +12,7 @@
 //! - **Configuration** ([`DatabaseConfig`]): Database connection settings and pool configuration
 //! - **Connections** ([`DatabaseConnection`]): High-level connection pool management
 //! - **Error Handling** ([`DatabaseError`], [`DatabaseResult`]): Domain-specific error types
-//! - **Data Models**: Domain-specific types for financial entities ([`Categories`], [`Account`], [`ChangeSet`])
+//! - **Data Models**: Domain-specific types for financial entities ([`Categories`], [`SyncUser`], [`ChangeSet`])
 //!
 //! ## Key Features
 //!
@@ -78,8 +78,8 @@ mod categories;
 pub use categories::Categories;
 
 /// The Sync Server's own auth user store (ADR-0010).
-pub mod accounts;
-pub use accounts::Account;
+pub mod sync_users;
+pub use sync_users::SyncUser;
 
 /// The Sync Server's durable Change Set log (ADR-0009).
 pub mod change_sets;

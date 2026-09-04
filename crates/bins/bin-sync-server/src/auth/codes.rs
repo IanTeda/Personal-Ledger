@@ -17,7 +17,7 @@ use rand::RngCore;
 pub struct AuthorizationCode {
     pub code_challenge: String,
     pub redirect_uri: String,
-    pub account_id: lib_core::RowID,
+    pub sync_user_id: lib_core::RowID,
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -36,13 +36,13 @@ impl CodeStore {
         Self::default()
     }
 
-    /// Mint a new authorization code for `account_id`, recording the PKCE
+    /// Mint a new authorization code for `sync_user_id`, recording the PKCE
     /// `code_challenge` and `redirect_uri` it was issued against.
     pub fn issue(
         &self,
         code_challenge: String,
         redirect_uri: String,
-        account_id: lib_core::RowID,
+        sync_user_id: lib_core::RowID,
     ) -> String {
         let mut bytes = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut bytes);
@@ -51,7 +51,7 @@ impl CodeStore {
         let entry = AuthorizationCode {
             code_challenge,
             redirect_uri,
-            account_id,
+            sync_user_id,
             expires_at: chrono::Utc::now() + chrono::Duration::seconds(CODE_TTL_SECONDS),
         };
 
@@ -87,17 +87,17 @@ mod tests {
     #[test]
     fn issue_then_redeem_returns_the_recorded_entry() {
         let store = CodeStore::new();
-        let account_id = lib_core::RowID::new();
+        let sync_user_id = lib_core::RowID::new();
 
         let code = store.issue(
             "challenge".to_string(),
             "http://127.0.0.1:1234/callback".to_string(),
-            account_id,
+            sync_user_id,
         );
         let entry = store.redeem(&code).unwrap();
 
         assert_eq!(entry.code_challenge, "challenge");
-        assert_eq!(entry.account_id, account_id);
+        assert_eq!(entry.sync_user_id, sync_user_id);
     }
 
     #[test]
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn redeem_rejects_an_expired_code() {
         let store = CodeStore::new();
-        let account_id = lib_core::RowID::new();
+        let sync_user_id = lib_core::RowID::new();
 
         // Insert directly with an already-past expiry, bypassing the normal 2-minute TTL.
         let code = "expired-code".to_string();
@@ -131,7 +131,7 @@ mod tests {
             AuthorizationCode {
                 code_challenge: "challenge".to_string(),
                 redirect_uri: "http://127.0.0.1:1234/callback".to_string(),
-                account_id,
+                sync_user_id,
                 expires_at: chrono::Utc::now() - chrono::Duration::seconds(1),
             },
         );

@@ -49,6 +49,7 @@ members = [
 argon2 = { version = "0.6.0" }
 axum = { version = "0.8.9" }
 base64 = { version = "0.22.1" }
+bigdecimal = { version = "0.4.10" }
 chandelier = { version = "0.4.0" }
 chrono = { version = "0.4.42", features = ["serde", "clock"] }
 clap = { version = "4.5.53", features = ["derive", "cargo"] }
@@ -80,6 +81,7 @@ serde_urlencoded = { version = "0.7.1" }
 sha2 = { version = "0.10" }
 sqlx = { version = "0.8.6", features = [
   "any",
+  "bigdecimal",
   "chrono",
   "derive",
   "macros",

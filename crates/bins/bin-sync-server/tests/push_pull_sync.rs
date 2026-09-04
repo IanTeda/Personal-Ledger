@@ -49,7 +49,7 @@ async fn spawn_sync_server(db_path: &std::path::Path) -> (std::net::SocketAddr, 
     .await
     .expect("Sync Server database connection should establish");
     let pool = connection.into_pool();
-    sqlx::migrate!("../../libs/lib-database/migrations")
+    sqlx::migrate!("../../libs/lib-database/migrations/sync-server")
         .run(&pool)
         .await
         .expect("Sync Server migrations should apply");
@@ -102,7 +102,7 @@ async fn client_pool(db_path: &std::path::Path) -> SqlitePool {
     .await
     .expect("Client database connection should establish");
     let pool = connection.into_pool();
-    sqlx::migrate!("../../libs/lib-database/migrations")
+    sqlx::migrate!("../../libs/lib-database/migrations/client")
         .run(&pool)
         .await
         .expect("Client migrations should apply");

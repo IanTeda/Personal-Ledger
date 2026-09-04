@@ -15,6 +15,6 @@ mod routes;
 pub use codes::CodeStore;
 pub use routes::{AuthState, routes};
 
-/// Hash passwords for the bootstrap account (Argon2). Verification is used internally
+/// Hash passwords for the bootstrap sync user (Argon2). Verification is used internally
 /// by [`routes`]'s `/authorize` handler via `super::password` directly.
 pub use password::hash_password;

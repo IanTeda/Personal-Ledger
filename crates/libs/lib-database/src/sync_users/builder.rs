@@ -1,14 +1,14 @@
-//! # Account Builder
+//! # SyncUser Builder
 //!
-//! Provides a fluent API for constructing [`Account`] records, mirroring
+//! Provides a fluent API for constructing [`SyncUser`] records, mirroring
 //! [`crate::categories::CategoriesBuilder`]'s shape.
 
-use super::Account;
+use super::SyncUser;
 use crate::DatabaseError;
 
-/// Fluent builder for [`Account`] rows.
+/// Fluent builder for [`SyncUser`] rows.
 #[derive(Debug, Default, Clone)]
-pub struct AccountBuilder {
+pub struct SyncUserBuilder {
     id: Option<lib_core::RowID>,
     username: Option<String>,
     password_hash: Option<String>,
@@ -17,21 +17,21 @@ pub struct AccountBuilder {
     updated_on: Option<chrono::DateTime<chrono::Utc>>,
 }
 
-impl AccountBuilder {
-    /// Start building a new account with no preset values.
+impl SyncUserBuilder {
+    /// Start building a new sync user with no preset values.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Use an existing [`RowID`](lib_core::RowID) for the account.
+    /// Use an existing [`RowID`](lib_core::RowID) for the sync user.
     #[must_use]
     pub fn with_id(mut self, id: lib_core::RowID) -> Self {
         self.id = Some(id);
         self
     }
 
-    /// Set the account's username.
+    /// Set the sync user's username.
     #[must_use]
     pub fn with_username(mut self, username: impl Into<String>) -> Self {
         self.username = Some(username.into());
@@ -72,16 +72,16 @@ impl AccountBuilder {
         self
     }
 
-    /// Build the [`Account`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<Account> {
-        let username = self.username.ok_or(DatabaseError::AccountBuilder(
+    /// Build the [`SyncUser`], returning an error when required fields are missing.
+    pub fn build(self) -> crate::DatabaseResult<SyncUser> {
+        let username = self.username.ok_or(DatabaseError::SyncUserBuilder(
             "username is required but was not set".to_string(),
         ))?;
-        let password_hash = self.password_hash.ok_or(DatabaseError::AccountBuilder(
+        let password_hash = self.password_hash.ok_or(DatabaseError::SyncUserBuilder(
             "password_hash is required but was not set".to_string(),
         ))?;
 
-        Ok(Account {
+        Ok(SyncUser {
             id: self.id.unwrap_or_default(),
             username,
             password_hash,

@@ -99,12 +99,12 @@ pub enum DatabaseError {
     #[error("Error building Change Set: {0}")]
     ChangeSetBuilder(String),
 
-    /// Account Builder Error
+    /// SyncUser Builder Error
     ///
-    /// Occurs when constructing an account fails due to invalid input or missing
+    /// Occurs when constructing a sync user fails due to invalid input or missing
     /// required fields.
-    #[error("Error building account: {0}")]
-    AccountBuilder(String),
+    #[error("Error building sync user: {0}")]
+    SyncUserBuilder(String),
 
     /// Connection error
     ///

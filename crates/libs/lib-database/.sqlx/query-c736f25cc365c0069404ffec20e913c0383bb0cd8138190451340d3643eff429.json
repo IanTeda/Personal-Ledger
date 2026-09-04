@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n                SELECT\n                    id                   AS \"id!: domain::RowID\",\n                    username,\n                    password_hash,\n                    refresh_token_hash,\n                    created_on           AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on           AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM accounts\n                WHERE username = ?\n            ",
+  "query": "\n                SELECT\n                    id                   AS \"id!: domain::RowID\",\n                    username,\n                    password_hash,\n                    refresh_token_hash,\n                    created_on           AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on           AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM sync_users\n                WHERE id = ?\n            ",
   "describe": {
     "columns": [
       {
@@ -46,5 +46,5 @@
       false
     ]
   },
-  "hash": "a853ffaa37914a31572208f6862a312da1d7e75828a1eacaa35a6d362fde860b"
+  "hash": "c736f25cc365c0069404ffec20e913c0383bb0cd8138190451340d3643eff429"
 }

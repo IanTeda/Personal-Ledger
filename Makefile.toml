@@ -51,13 +51,28 @@ install_crate = "sqlx-cli"
 command = "sqlx"
 args = ["database", "create"]
 
-## Migrate database
+## Migrate database -- applies BOTH the Client-Ledger and Sync-Server migration sets to
+## one shared dev database, since `cargo sqlx prepare` type-checks every query macro in
+## the crate (categories, sync_users, change_sets alike) against a single DATABASE_URL.
+## A real Client or Sync Server instance only ever runs its own set at runtime, via the
+## `sqlx::migrate!(...)` path embedded in that binary -- see `bin-tui`/`bin-desktop`
+## (`migrations/client`) vs `bin-sync-server` (`migrations/sync-server`).
 ## $ cargo make db-migrate
 [tasks.db-migrate]
 workspace = false
+dependencies = ["db-migrate-client", "db-migrate-sync-server"]
+
+[tasks.db-migrate-client]
+workspace = false
 install_crate = "sqlx-cli"
 command = "sqlx"
-args = ["migrate", "run", "--source", "crates/libs/lib-database/migrations"]
+args = ["migrate", "run", "--source", "crates/libs/lib-database/migrations/client"]
+
+[tasks.db-migrate-sync-server]
+workspace = false
+install_crate = "sqlx-cli"
+command = "sqlx"
+args = ["migrate", "run", "--source", "crates/libs/lib-database/migrations/sync-server"]
 
 ## Prepare database (generate)
 ## $ cargo make db-prepare-generate

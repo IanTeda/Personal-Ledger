@@ -131,26 +131,27 @@ async fn post_authorize(
             .into_response();
     }
 
-    let account = match lib_database::Account::find_by_username(&form.username, &state.pool).await {
-        Ok(Some(account)) => account,
-        Ok(None) => {
-            return (StatusCode::UNAUTHORIZED, "invalid username or password").into_response();
-        }
-        Err(e) => {
-            tracing::error!("Failed to look up account during login: {e}");
-            return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
-        }
-    };
+    let sync_user =
+        match lib_database::SyncUser::find_by_username(&form.username, &state.pool).await {
+            Ok(Some(sync_user)) => sync_user,
+            Ok(None) => {
+                return (StatusCode::UNAUTHORIZED, "invalid username or password").into_response();
+            }
+            Err(e) => {
+                tracing::error!("Failed to look up sync user during login: {e}");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "internal error").into_response();
+            }
+        };
 
     let password = SecretString::from(form.password.clone());
-    if !password::verify_password(&password, &account.password_hash) {
+    if !password::verify_password(&password, &sync_user.password_hash) {
         return (StatusCode::UNAUTHORIZED, "invalid username or password").into_response();
     }
 
     let code = state.codes.issue(
         params.code_challenge.clone(),
         params.redirect_uri.clone(),
-        account.id,
+        sync_user.id,
     );
 
     let mut location = format!("{}?code={code}", params.redirect_uri);
@@ -189,19 +190,19 @@ async fn post_token(
     State(state): State<AuthState>,
     Form(form): Form<TokenForm>,
 ) -> impl IntoResponse {
-    let account_id = match form.grant_type.as_str() {
+    let sync_user_id = match form.grant_type.as_str() {
         "authorization_code" => match redeem_authorization_code(&state, &form) {
-            Ok(account_id) => account_id,
+            Ok(sync_user_id) => sync_user_id,
             Err(response) => return response.into_response(),
         },
         "refresh_token" => match redeem_refresh_token(&state, &form).await {
-            Ok(account_id) => account_id,
+            Ok(sync_user_id) => sync_user_id,
             Err(response) => return response.into_response(),
         },
         _ => return (StatusCode::BAD_REQUEST, "unsupported grant_type").into_response(),
     };
 
-    issue_token_pair(&state, account_id).await
+    issue_token_pair(&state, sync_user_id).await
 }
 
 /// A small `Copy`-able error response, so the `Result::Err` variant these helpers
@@ -245,7 +246,7 @@ fn redeem_authorization_code(
         ));
     }
 
-    Ok(entry.account_id)
+    Ok(entry.sync_user_id)
 }
 
 async fn redeem_refresh_token(
@@ -257,30 +258,30 @@ async fn redeem_refresh_token(
         .as_deref()
         .ok_or((StatusCode::BAD_REQUEST, "missing refresh_token"))?;
 
-    let account = lib_database::Account::find_only(&state.pool)
+    let sync_user = lib_database::SyncUser::find_only(&state.pool)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to look up account during refresh: {e}");
+            tracing::error!("Failed to look up sync user during refresh: {e}");
             (StatusCode::INTERNAL_SERVER_ERROR, "internal error")
         })?
-        .ok_or((StatusCode::UNAUTHORIZED, "no account provisioned"))?;
+        .ok_or((StatusCode::UNAUTHORIZED, "no sync user provisioned"))?;
 
     let presented_hash = hash_token(refresh_token);
-    if account.refresh_token_hash.as_deref() != Some(presented_hash.as_str()) {
+    if sync_user.refresh_token_hash.as_deref() != Some(presented_hash.as_str()) {
         return Err((
             StatusCode::UNAUTHORIZED,
             "invalid or already-rotated refresh token",
         ));
     }
 
-    Ok(account.id)
+    Ok(sync_user.id)
 }
 
 async fn issue_token_pair(
     state: &AuthState,
-    account_id: lib_core::RowID,
+    sync_user_id: lib_core::RowID,
 ) -> axum::response::Response {
-    let access_token = match jwt::issue_access_token(account_id, &state.signing_key) {
+    let access_token = match jwt::issue_access_token(sync_user_id, &state.signing_key) {
         Ok(token) => token,
         Err(e) => {
             tracing::error!("Failed to issue access token: {e}");
@@ -290,8 +291,8 @@ async fn issue_token_pair(
 
     let refresh_token = random_token();
     let refresh_token_hash = hash_token(&refresh_token);
-    if let Err(e) = lib_database::Account::update_refresh_token_hash(
-        account_id,
+    if let Err(e) = lib_database::SyncUser::update_refresh_token_hash(
+        sync_user_id,
         Some(&refresh_token_hash),
         &state.pool,
     )

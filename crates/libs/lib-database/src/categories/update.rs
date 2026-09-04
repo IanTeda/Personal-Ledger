@@ -549,7 +549,7 @@ mod tests {
     mod single_update_tests {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_existing_category_successfully(pool: SqlitePool) {
             let original_category = Categories::mock();
 
@@ -570,7 +570,7 @@ mod tests {
             assert!(updated.updated_on >= original_category.updated_on);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_nonexistent_category_returns_not_found(pool: SqlitePool) {
             let category = Categories::mock();
 
@@ -587,7 +587,7 @@ mod tests {
             }
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_preserves_created_on_timestamp(pool: SqlitePool) {
             let original_category = Categories::mock();
 
@@ -602,7 +602,7 @@ mod tests {
             assert!(updated.updated_on > original_category.updated_on);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_with_various_optional_fields(pool: SqlitePool) {
             // Test multiple scenarios with different optional field combinations
             for _ in 0..10 {
@@ -625,7 +625,7 @@ mod tests {
     mod bulk_update_tests {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_many_empty_list_returns_empty_vec(pool: SqlitePool) {
             let empty_list: Vec<Categories> = vec![];
 
@@ -634,7 +634,7 @@ mod tests {
             assert_eq!(result.unwrap().len(), 0);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_many_successfully_updates_multiple_categories(pool: SqlitePool) {
             // Create and insert multiple categories
             let mut original_categories = Vec::new();
@@ -665,7 +665,7 @@ mod tests {
             }
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_many_fails_if_any_category_not_found(pool: SqlitePool) {
             // Create valid categories
             let mut valid_categories = Vec::new();
@@ -693,7 +693,7 @@ mod tests {
             }
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_many_is_atomic_on_failure(pool: SqlitePool) {
             // Insert some valid categories
             let mut valid_categories = Vec::new();
@@ -748,7 +748,7 @@ mod tests {
     mod active_status_tests {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_active_status_to_true(pool: SqlitePool) {
             // Create an inactive category
             let mut category = Categories::mock();
@@ -765,7 +765,7 @@ mod tests {
             assert!(updated.updated_on > category.updated_on);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_active_status_to_false(pool: SqlitePool) {
             // Create an active category
             let mut category = Categories::mock();
@@ -781,7 +781,7 @@ mod tests {
             assert!(!updated.is_active);
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_active_status_nonexistent_category(pool: SqlitePool) {
             let fake_id = domain::RowID::mock();
 
@@ -797,7 +797,7 @@ mod tests {
             }
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_active_status_preserves_other_fields(pool: SqlitePool) {
             let original = Categories::mock();
             insert_test_category(&pool, &original).await;
@@ -821,7 +821,7 @@ mod tests {
     mod property_based_tests {
         use super::*;
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_handles_various_category_configurations(pool: SqlitePool) {
             // Test with many different category configurations
             for i in 0..20 {
@@ -843,7 +843,7 @@ mod tests {
             }
         }
 
-        #[sqlx::test]
+        #[sqlx::test(migrations = "migrations/client")]
         async fn update_active_status_randomized_testing(pool: SqlitePool) {
             for i in 0..15 {
                 let mut original = Categories::mock();

@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use lib_database::{Account, DatabaseConfig, DatabaseConnection};
+use lib_database::{DatabaseConfig, DatabaseConnection, SyncUser};
 use lib_rpc::{
     PullRequest, SyncService, SyncServiceClient, SyncServiceServer, UtilitiesService,
     UtilitiesServiceServer,
@@ -30,7 +30,7 @@ const TEST_USERNAME: &str = "auth-flow-test-user";
 const TEST_PASSWORD: &str = "correct horse battery staple";
 
 /// Start the merged gRPC + auth HTTP Sync Server (mirroring `main.rs`'s "one
-/// listener, not two" shape) bound to an ephemeral port, with one bootstrap account
+/// listener, not two" shape) bound to an ephemeral port, with one bootstrap sync user
 /// seeded.
 async fn spawn_sync_server(db_path: &std::path::Path) -> std::net::SocketAddr {
     let connection = DatabaseConnection::new(DatabaseConfig {
@@ -40,7 +40,7 @@ async fn spawn_sync_server(db_path: &std::path::Path) -> std::net::SocketAddr {
     .await
     .expect("Sync Server database connection should establish");
     let pool = Arc::new(connection.into_pool());
-    sqlx::migrate!("../../libs/lib-database/migrations")
+    sqlx::migrate!("../../libs/lib-database/migrations/sync-server")
         .run(&*pool)
         .await
         .expect("Sync Server migrations should apply");
@@ -48,7 +48,7 @@ async fn spawn_sync_server(db_path: &std::path::Path) -> std::net::SocketAddr {
     let password_hash =
         bin_sync_server::auth::hash_password(&SecretString::from(TEST_PASSWORD.to_string()))
             .expect("test password should hash");
-    let account = Account {
+    let sync_user = SyncUser {
         id: lib_core::RowID::new(),
         username: TEST_USERNAME.to_string(),
         password_hash,
@@ -56,10 +56,10 @@ async fn spawn_sync_server(db_path: &std::path::Path) -> std::net::SocketAddr {
         created_on: chrono::Utc::now(),
         updated_on: chrono::Utc::now(),
     };
-    account
+    sync_user
         .insert(&pool)
         .await
-        .expect("bootstrap account should insert");
+        .expect("bootstrap sync user should insert");
 
     let signing_key_material = "test-only-signing-key-not-for-production".to_string();
     let interceptor_key = SecretString::from(signing_key_material.clone());

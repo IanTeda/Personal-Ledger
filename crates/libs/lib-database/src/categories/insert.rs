@@ -847,7 +847,7 @@ mod tests {
     /// - The category is inserted successfully
     /// - The returned category has the correct data
     /// - The category can be retrieved from the database
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_single_category_success(pool: SqlitePool) {
         let category = create_random_category();
 
@@ -905,7 +905,7 @@ mod tests {
     /// - All optional fields present
     /// - No optional fields
     /// - Mixed optional fields
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_categories_with_various_fields(pool: SqlitePool) {
         // Test with all fields
         let full_category = crate::Categories {
@@ -966,7 +966,7 @@ mod tests {
     ///
     /// Verifies that attempting to insert a category with an existing code
     /// results in an appropriate error.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_duplicate_code_fails(pool: SqlitePool) {
         let category1 = insert_test_category(&pool).await;
 
@@ -1000,7 +1000,7 @@ mod tests {
     /// - All categories are inserted successfully
     /// - The correct number of categories are returned
     /// - All categories exist in the database
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_many_success(pool: SqlitePool) {
         let categories = create_random_categories(5);
 
@@ -1024,7 +1024,7 @@ mod tests {
     /// Tests bulk insertion with empty input.
     ///
     /// Verifies that inserting an empty vector returns an empty vector.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_many_empty_input(pool: SqlitePool) {
         let categories: Vec<crate::Categories> = vec![];
 
@@ -1038,7 +1038,7 @@ mod tests {
     /// Tests bulk insertion with large number of categories.
     ///
     /// Tests the performance and reliability of bulk operations with many records.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_many_large_batch(pool: SqlitePool) {
         let categories = create_random_categories(20);
 
@@ -1053,7 +1053,7 @@ mod tests {
     ///
     /// Verifies that when some categories have duplicate codes,
     /// the operation continues and returns successfully inserted categories.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_many_with_some_duplicates(pool: SqlitePool) {
         let mut categories = create_random_categories(3);
 
@@ -1074,7 +1074,7 @@ mod tests {
     /// Tests upsert operation - insert case.
     ///
     /// Verifies that inserting a new category via upsert works correctly.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_or_update_insert_case(pool: SqlitePool) {
         let category = create_random_category();
 
@@ -1097,7 +1097,7 @@ mod tests {
     /// Tests upsert operation - update case.
     ///
     /// Verifies that updating an existing category via upsert works correctly.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_or_update_update_case(pool: SqlitePool) {
         // First insert a category
         let original = insert_test_category(&pool).await;
@@ -1129,7 +1129,7 @@ mod tests {
     /// Tests upsert operation multiple times on same category.
     ///
     /// Verifies that multiple upsert operations on the same category work correctly.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_or_update_multiple_updates(pool: SqlitePool) {
         let mut category = create_random_category();
 
@@ -1181,7 +1181,7 @@ mod tests {
     ///
     /// Verifies that all five category types (Asset, Liability, Income, Expense, Equity)
     /// can be inserted successfully.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_all_category_types(pool: SqlitePool) {
         let category_types = vec![
             CategoryTypes::Asset,
@@ -1219,7 +1219,7 @@ mod tests {
     /// Tests insertion with extreme field lengths.
     ///
     /// Verifies that categories with very long names and descriptions can be handled.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_with_long_fields(pool: SqlitePool) {
         let long_name = "A".repeat(200); // Very long name
         let long_description = Some("B".repeat(1000)); // Very long description
@@ -1249,7 +1249,7 @@ mod tests {
     /// Verifies that multiple concurrent insertions work correctly.
     /// This is a basic test - in a real scenario you'd use more sophisticated
     /// concurrency testing tools.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_concurrent_insertions(pool: SqlitePool) {
         let mut handles = vec![];
 
@@ -1281,7 +1281,7 @@ mod tests {
     /// Tests that insert operations maintain data integrity.
     ///
     /// Verifies that inserted data matches exactly what was provided.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_data_integrity_after_insert(pool: SqlitePool) {
         let original = create_random_category();
 
@@ -1306,7 +1306,7 @@ mod tests {
     /// Tests bulk insert data integrity.
     ///
     /// Verifies that all categories inserted in bulk maintain their data integrity.
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/client")]
     async fn test_bulk_insert_data_integrity(pool: SqlitePool) {
         let originals = create_random_categories(3);
 

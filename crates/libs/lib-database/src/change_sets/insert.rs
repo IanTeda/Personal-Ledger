@@ -100,7 +100,7 @@ impl crate::ChangeSet {
 mod tests {
     use sqlx::SqlitePool;
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/sync-server")]
     async fn insert_persists_and_reads_back_a_change_set(pool: SqlitePool) {
         let change_set = crate::ChangeSet::mock();
 
@@ -115,7 +115,7 @@ mod tests {
         assert_eq!(inserted.client_id, change_set.client_id);
     }
 
-    #[sqlx::test]
+    #[sqlx::test(migrations = "migrations/sync-server")]
     async fn insert_preserves_a_null_value(pool: SqlitePool) {
         let change_set = crate::change_sets::ChangeSetBuilder::new()
             .with_id(lib_core::RowID::mock())

@@ -14,7 +14,7 @@ pub const ACCESS_TOKEN_TTL_SECONDS: i64 = 5 * 60;
 /// JWT claims for a Sync Server access token.
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Claims {
-    /// The authenticated account's `RowID`, as a string.
+    /// The authenticated sync user's `RowID`, as a string.
     pub sub: String,
     /// Issued-at time (Unix seconds).
     pub iat: i64,
@@ -22,17 +22,17 @@ pub struct Claims {
     pub exp: i64,
 }
 
-/// Mint a signed access token for `account_id`.
+/// Mint a signed access token for `sync_user_id`.
 ///
 /// # Errors
 /// Returns an error if JWT encoding fails (should not happen for well-formed claims).
 pub fn issue_access_token(
-    account_id: lib_core::RowID,
+    sync_user_id: lib_core::RowID,
     signing_key: &SecretString,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     let now = chrono::Utc::now().timestamp();
     let claims = Claims {
-        sub: account_id.to_string(),
+        sub: sync_user_id.to_string(),
         iat: now,
         exp: now + ACCESS_TOKEN_TTL_SECONDS,
     };
@@ -69,13 +69,13 @@ mod tests {
 
     #[test]
     fn issue_and_verify_round_trip() {
-        let account_id = lib_core::RowID::new();
+        let sync_user_id = lib_core::RowID::new();
         let key = test_key();
 
-        let token = issue_access_token(account_id, &key).unwrap();
+        let token = issue_access_token(sync_user_id, &key).unwrap();
         let claims = verify_access_token(&token, &key).unwrap();
 
-        assert_eq!(claims.sub, account_id.to_string());
+        assert_eq!(claims.sub, sync_user_id.to_string());
     }
 
     #[test]
@@ -94,9 +94,9 @@ mod tests {
     #[test]
     fn verify_rejects_an_expired_token() {
         let key = test_key();
-        let account_id = lib_core::RowID::new();
+        let sync_user_id = lib_core::RowID::new();
         let claims = Claims {
-            sub: account_id.to_string(),
+            sub: sync_user_id.to_string(),
             iat: chrono::Utc::now().timestamp() - 600,
             exp: chrono::Utc::now().timestamp() - 300,
         };
