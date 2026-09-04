@@ -1,7 +1,8 @@
 //! The dashboard — the navigation hub "Decide TUI screen map and navigation shape" locked
 //! in. Every entity/report area is a push/pop drill-in reached from here; a live snapshot
-//! (Account balances, once Accounts exist — see issue #69) will eventually live above the
-//! menu, but starts honestly empty rather than faked from unrelated data.
+//! of Account starting balances lives above the menu, reusing `AccountsListScreen`'s own
+//! `AccountsLoaded`/`AccountsLoadFailed` actions rather than inventing dashboard-specific
+//! ones — it's the same "list every Account" query either screen needs.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -11,11 +12,19 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, List, ListItem, Paragraph},
 };
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::{
     action::{Action, InputMode},
+    db,
     screen::Screen,
 };
+
+enum Snapshot {
+    Loading,
+    Loaded(Vec<lib_database::Accounts>),
+    Failed(String),
+}
 
 /// One row of the dashboard's drill-in menu.
 struct Area {
@@ -43,8 +52,8 @@ fn areas() -> Vec<Area> {
         },
         Area {
             name: "Accounts",
-            action: None,
-            not_yet_built_hint: "Not built yet — see issue #69",
+            action: Some(Action::OpenAccounts),
+            not_yet_built_hint: "",
         },
         Area {
             name: "Transactions",
@@ -80,6 +89,7 @@ pub struct DashboardScreen {
     selected: usize,
     /// Set when the user tries to open a not-yet-built area; cleared on the next move.
     status: Option<&'static str>,
+    snapshot: Snapshot,
 }
 
 impl DashboardScreen {
@@ -88,6 +98,7 @@ impl DashboardScreen {
             areas: areas(),
             selected: 0,
             status: None,
+            snapshot: Snapshot::Loading,
         }
     }
 
@@ -106,6 +117,21 @@ impl Default for DashboardScreen {
 }
 
 impl Screen for DashboardScreen {
+    fn init(&mut self, action_tx: UnboundedSender<Action>) {
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                lib_database::Accounts::find_all(&pool).await
+            }
+            .await;
+            let action = match action {
+                Ok(accounts) => Action::AccountsLoaded(accounts),
+                Err(err) => Action::AccountsLoadFailed(err.to_string()),
+            };
+            let _ = action_tx.send(action);
+        });
+    }
+
     fn handle_key(&mut self, key: KeyEvent, _mode: InputMode) -> Option<Action> {
         match key.code {
             KeyCode::Up | KeyCode::Char('k') => {
@@ -130,7 +156,15 @@ impl Screen for DashboardScreen {
         }
     }
 
-    fn update(&mut self, _action: &Action) {}
+    fn update(&mut self, action: &Action) {
+        match action {
+            Action::AccountsLoaded(accounts) => self.snapshot = Snapshot::Loaded(accounts.clone()),
+            Action::AccountsLoadFailed(message) => {
+                self.snapshot = Snapshot::Failed(message.clone())
+            }
+            _ => {}
+        }
+    }
 
     fn title(&self) -> &'static str {
         "Dashboard"
@@ -146,9 +180,19 @@ impl Screen for DashboardScreen {
             ])
             .split(area);
 
-        let snapshot =
-            Paragraph::new("No Accounts yet — build Units then Accounts to see balances here.")
-                .block(Block::bordered().title(" Accounts "));
+        let snapshot_text = match &self.snapshot {
+            Snapshot::Loading => "Loading Accounts...".to_string(),
+            Snapshot::Failed(message) => format!("Failed to load Accounts: {message}"),
+            Snapshot::Loaded(accounts) if accounts.is_empty() => {
+                "No Accounts yet — create one to see its balance here.".to_string()
+            }
+            Snapshot::Loaded(accounts) => accounts
+                .iter()
+                .map(|account| format!("{}: {}", account.name, account.starting_balance))
+                .collect::<Vec<_>>()
+                .join("   "),
+        };
+        let snapshot = Paragraph::new(snapshot_text).block(Block::bordered().title(" Accounts "));
         frame.render_widget(snapshot, rows[0]);
 
         let items: Vec<ListItem> = self

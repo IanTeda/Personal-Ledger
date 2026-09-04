@@ -77,7 +77,7 @@
 
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
-use crate::{DatabaseError, DatabaseResult, DatabaseConfig};
+use crate::{DatabaseConfig, DatabaseError, DatabaseResult};
 
 /// Database connection wrapper providing high-level access to SQLite connection pools.
 ///
@@ -164,13 +164,32 @@ impl DatabaseConnection {
         let pool_options = SqlitePoolOptions::new()
             .max_connections(config.max_connections())
             .min_connections(config.min_connections())
-            .acquire_timeout(std::time::Duration::from_secs(config.acquire_timeout().num_seconds() as u64))
-            .idle_timeout(std::time::Duration::from_secs(config.idle_timeout_seconds as u64))
-            .max_lifetime(std::time::Duration::from_secs(config.max_lifetime_seconds as u64));
+            .acquire_timeout(std::time::Duration::from_secs(
+                config.acquire_timeout().num_seconds() as u64,
+            ))
+            .idle_timeout(std::time::Duration::from_secs(
+                config.idle_timeout_seconds as u64,
+            ))
+            .max_lifetime(std::time::Duration::from_secs(
+                config.max_lifetime_seconds as u64,
+            ))
+            // SQLite's foreign-key enforcement is a per-connection setting, not persisted in
+            // the database file -- every pooled connection needs it turned on explicitly, so
+            // a REFERENCES clause (accounts.unit_id -> units.id, and every FK after it)
+            // actually gets enforced rather than silently ignored.
+            .after_connect(|conn, _meta| {
+                Box::pin(async move {
+                    sqlx::query("PRAGMA foreign_keys = ON")
+                        .execute(conn)
+                        .await?;
+                    Ok(())
+                })
+            });
 
-        let pool = pool_options.connect(config.url()).await
-            .map_err(|e| DatabaseError::Connection(format!("Failed to connect to database pool: {}", e)))?;
-        
+        let pool = pool_options.connect(config.url()).await.map_err(|e| {
+            DatabaseError::Connection(format!("Failed to connect to database pool: {}", e))
+        })?;
+
         Ok(Self { pool })
     }
 
@@ -269,7 +288,7 @@ mod tests {
             url: "sqlite::memory:".to_string(),
             ..DatabaseConfig::default()
         };
-        
+
         // This should succeed with default config
         let result = DatabaseConnection::new(config).await;
         assert!(result.is_ok());
@@ -285,7 +304,7 @@ mod tests {
             idle_timeout_seconds: 60,
             max_lifetime_seconds: 300,
         };
-        
+
         // This should succeed with custom config
         let result = DatabaseConnection::new(config).await;
         assert!(result.is_ok());
@@ -325,9 +344,9 @@ mod tests {
             url: "sqlite::memory:".to_string(),
             ..DatabaseConfig::default()
         };
-        
+
         let connection = DatabaseConnection::new(config).await.unwrap();
-        
+
         // Test health_check() method
         let result = connection.health_check().await;
         assert!(result.is_ok());

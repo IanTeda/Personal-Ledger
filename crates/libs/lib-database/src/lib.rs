@@ -82,6 +82,11 @@ pub use categories::Categories;
 pub mod units;
 pub use units::Units;
 
+/// The domain Account entity — Cash/Bank/Credit Card/Investment/Loan (CC-TUI-008). Not the
+/// Sync Server's own auth credential; see `sync_users` for that.
+pub mod accounts;
+pub use accounts::Accounts;
+
 /// The Sync Server's own auth user store (ADR-0010).
 pub mod sync_users;
 pub use sync_users::SyncUser;

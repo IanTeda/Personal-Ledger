@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id                AS \"id!: domain::RowID\",\n                    name,\n                    account_type      AS \"account_type!: domain::AccountType\",\n                    unit_id           AS \"unit_id!: domain::RowID\",\n                    starting_balance  AS \"starting_balance!: domain::Money\",\n                    is_active,\n                    created_on        AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on        AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM accounts\n                ORDER BY name ASC\n                LIMIT ? OFFSET ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "account_type!: domain::AccountType",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "unit_id!: domain::RowID",
+        "ordinal": 3,
+        "type_info": "Null"
+      },
+      {
+        "name": "starting_balance!: domain::Money",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_active",
+        "ordinal": 5,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8fca508773357ef70dd6e88ec5dbbdcd11a745fd26c42d5be61badc76b95610c"
+}

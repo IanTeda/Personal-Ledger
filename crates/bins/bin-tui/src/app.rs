@@ -20,7 +20,8 @@ use crate::{
     action::{Action, InputMode},
     event::{Event, EventHandler},
     screen::{
-        Screen, categories_list::CategoriesListScreen, category_detail::CategoryDetailScreen,
+        Screen, account_detail::AccountDetailScreen, accounts_list::AccountsListScreen,
+        categories_list::CategoriesListScreen, category_detail::CategoryDetailScreen,
         dashboard::DashboardScreen, help::HelpScreen, settings::SettingsScreen,
         unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
     },
@@ -152,6 +153,13 @@ impl App {
             Action::OpenCategoryDetail(Some(category)) => {
                 self.push(Box::new(CategoryDetailScreen::new_edit(category)))
             }
+            Action::OpenAccounts => self.push(Box::new(AccountsListScreen::new())),
+            Action::OpenAccountDetail(None) => {
+                self.push(Box::new(AccountDetailScreen::new_create()))
+            }
+            Action::OpenAccountDetail(Some(account)) => {
+                self.push(Box::new(AccountDetailScreen::new_edit(account)))
+            }
             Action::NoOp => {}
             Action::Tick => self
                 .stack
@@ -159,7 +167,9 @@ impl App {
                 .expect("non-empty stack")
                 .update(&action),
             // A background load or delete can finish while any screen is active, and other
-            // screens ignore it via their `update`'s default `_ => {}` arm.
+            // screens ignore it via their `update`'s default `_ => {}` arm. `AccountsLoaded`/
+            // `AccountsLoadFailed` also feed the Dashboard's own live snapshot, not just an
+            // Accounts list screen if one happens to be on the stack too.
             Action::CategoriesLoaded(_)
             | Action::CategoriesLoadFailed(_)
             | Action::CategoryDeleted(_)
@@ -167,15 +177,22 @@ impl App {
             | Action::UnitsLoaded(_)
             | Action::UnitsLoadFailed(_)
             | Action::UnitDeleted(_)
-            | Action::UnitDeleteFailed(_) => {
+            | Action::UnitDeleteFailed(_)
+            | Action::AccountsLoaded(_)
+            | Action::AccountsLoadFailed(_)
+            | Action::AccountDeleted(_)
+            | Action::AccountDeleteFailed(_) => {
                 self.broadcast(&action);
             }
             // A successful save returns to whichever list screen the detail screen was
             // pushed from, after that list has absorbed the new/updated row.
             Action::UnitSaved(_) => self.broadcast_and_pop_detail(&action, "Unit"),
             Action::CategorySaved(_) => self.broadcast_and_pop_detail(&action, "Category"),
+            Action::AccountSaved(_) => self.broadcast_and_pop_detail(&action, "Account"),
             // A failed save stays on the detail screen so the user can fix and retry.
-            Action::UnitSaveFailed(_) | Action::CategorySaveFailed(_) => {
+            Action::UnitSaveFailed(_)
+            | Action::CategorySaveFailed(_)
+            | Action::AccountSaveFailed(_) => {
                 if let Some(screen) = self.stack.last_mut() {
                     screen.update(&action);
                 }
@@ -249,8 +266,11 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn renders_the_dashboard_without_panicking() {
+    // `App::new()` pushes the Dashboard, whose own `init()` now spawns a background Accounts
+    // load via `tokio::spawn` (for its live snapshot) — every test that constructs an `App`
+    // needs an active runtime, hence `#[tokio::test]` throughout this module.
+    #[tokio::test]
+    async fn renders_the_dashboard_without_panicking() {
         let app = App::new();
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
@@ -260,16 +280,16 @@ mod tests {
             .expect("drawing the dashboard should not error");
     }
 
-    #[test]
-    fn esc_at_the_dashboard_quits() {
+    #[tokio::test]
+    async fn esc_at_the_dashboard_quits() {
         let mut app = App::new();
         app.update(Action::Back);
         assert!(app.should_quit);
         assert_eq!(app.stack.len(), 1, "the Dashboard is never popped");
     }
 
-    #[test]
-    fn opening_and_backing_out_of_settings_returns_to_the_dashboard() {
+    #[tokio::test]
+    async fn opening_and_backing_out_of_settings_returns_to_the_dashboard() {
         let mut app = App::new();
         app.update(Action::OpenSettings);
         assert_eq!(app.stack.len(), 2);
@@ -280,8 +300,8 @@ mod tests {
         assert!(!app.should_quit);
     }
 
-    #[test]
-    fn help_does_not_stack_on_itself() {
+    #[tokio::test]
+    async fn help_does_not_stack_on_itself() {
         let mut app = App::new();
         app.update(Action::OpenHelp);
         app.update(Action::OpenHelp);
@@ -301,8 +321,6 @@ mod tests {
         assert!(!is_hard_quit(plain_c));
     }
 
-    // `UnitsListScreen::init()` spawns a background load via `tokio::spawn`, so these need
-    // an active runtime — unlike Settings/Help, whose `init()` is a no-op.
     #[tokio::test]
     async fn open_units_pushes_the_units_list_screen() {
         let mut app = App::new();
@@ -341,8 +359,8 @@ mod tests {
         assert_eq!(app.stack.last().unwrap().title(), "Units");
     }
 
-    #[test]
-    fn no_op_leaves_the_stack_untouched() {
+    #[tokio::test]
+    async fn no_op_leaves_the_stack_untouched() {
         let mut app = App::new();
         app.update(Action::NoOp);
         assert_eq!(app.stack.len(), 1);
@@ -387,5 +405,43 @@ mod tests {
 
         assert_eq!(app.stack.len(), 2);
         assert_eq!(app.stack.last().unwrap().title(), "Categories");
+    }
+
+    #[tokio::test]
+    async fn open_accounts_pushes_the_accounts_list_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenAccounts);
+        assert_eq!(app.stack.last().unwrap().title(), "Accounts");
+    }
+
+    #[tokio::test]
+    async fn open_account_detail_pushes_the_account_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenAccountDetail(None));
+        assert_eq!(app.stack.last().unwrap().title(), "Account");
+    }
+
+    #[tokio::test]
+    async fn account_saved_pops_back_from_the_detail_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenAccounts);
+        app.update(Action::OpenAccountDetail(None));
+        assert_eq!(app.stack.len(), 3);
+
+        let now = chrono::Utc::now();
+        let account = lib_database::Accounts {
+            id: lib_core::RowID::new(),
+            name: "Everyday Spending".to_string(),
+            account_type: lib_core::AccountType::Cash,
+            unit_id: lib_core::RowID::new(),
+            starting_balance: lib_core::Money::mock(),
+            is_active: true,
+            created_on: now,
+            updated_on: now,
+        };
+        app.update(Action::AccountSaved(account));
+
+        assert_eq!(app.stack.len(), 2);
+        assert_eq!(app.stack.last().unwrap().title(), "Accounts");
     }
 }

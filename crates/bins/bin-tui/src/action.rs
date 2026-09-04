@@ -45,6 +45,11 @@ pub enum Action {
     /// Push the Categories create/edit screen — `None` starts an empty (create) form, `Some`
     /// pre-fills it with an existing Category's fields (edit).
     OpenCategoryDetail(Option<lib_database::Categories>),
+    /// Push the Accounts list screen.
+    OpenAccounts,
+    /// Push the Accounts create/edit screen — `None` starts an empty (create) form, `Some`
+    /// pre-fills it with an existing Account's fields (edit).
+    OpenAccountDetail(Option<lib_database::Accounts>),
     /// A key was consumed by the active screen (e.g. appended to a text field) with nothing
     /// further for `App` to do — distinct from returning `None`, which would let the key
     /// fall through to the global `Esc`/`?` bindings.
@@ -74,4 +79,16 @@ pub enum Action {
     UnitDeleted(lib_core::RowID),
     /// The Units list screen failed to delete a Unit.
     UnitDeleteFailed(String),
+    /// The Accounts list screen finished loading every Account.
+    AccountsLoaded(Vec<lib_database::Accounts>),
+    /// The Accounts list screen failed to load Accounts.
+    AccountsLoadFailed(String),
+    /// The Accounts detail screen successfully saved (inserted or updated) an Account.
+    AccountSaved(lib_database::Accounts),
+    /// The Accounts detail screen failed to save an Account.
+    AccountSaveFailed(String),
+    /// The Accounts list screen successfully deleted an Account.
+    AccountDeleted(lib_core::RowID),
+    /// The Accounts list screen failed to delete an Account.
+    AccountDeleteFailed(String),
 }

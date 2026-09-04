@@ -51,6 +51,15 @@ pub use category_types::{CategoryTypes, CategoryTypesError};
 mod unit_kind;
 pub use unit_kind::{UnitKind, UnitKindError};
 
+/// The fixed classification an Account carries (Cash, Bank, Credit Card, Investment, Loan).
+mod account_type;
+pub use account_type::{AccountType, AccountTypeError};
+
+/// Exact-decimal money amounts (never `f64`), stored as text in SQLite -- `sqlx`'s own
+/// `bigdecimal` feature only covers Postgres' native `NUMERIC` type.
+mod money;
+pub use money::{Money, MoneyError};
+
 /// URL-safe slug type for human-readable, SEO-friendly identifiers.
 ///
 /// [`UrlSlug`] creates web-friendly identifiers from titles and names by

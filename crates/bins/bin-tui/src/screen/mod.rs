@@ -5,6 +5,8 @@
 //! ("Decide keybinding and navigation/workflow scheme") before `App` falls back to the
 //! small, truly-global key set (`Ctrl+C`, `Esc`).
 
+pub mod account_detail;
+pub mod accounts_list;
 pub mod candlestick_chart;
 pub mod categories_list;
 pub mod category_detail;

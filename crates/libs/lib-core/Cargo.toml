@@ -9,6 +9,7 @@ edition = "2024"
 # lib_rpc = { path = "../../../crates/libs/lib-rpc" }
 
 ## -- Workspace Shared Dependencies --
+bigdecimal = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
 sqlx = { workspace = true }

@@ -113,6 +113,13 @@ pub enum DatabaseError {
     #[error("Error building Unit: {0}")]
     UnitsBuilder(String),
 
+    /// Accounts Builder Error
+    ///
+    /// Occurs when constructing an Account fails due to invalid input or missing
+    /// required fields.
+    #[error("Error building Account: {0}")]
+    AccountsBuilder(String),
+
     /// Connection error
     ///
     /// Represents failures in establishing or maintaining database connections,
