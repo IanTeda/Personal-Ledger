@@ -38,8 +38,8 @@ fn areas() -> Vec<Area> {
         },
         Area {
             name: "Categories",
-            action: None,
-            not_yet_built_hint: "Not built yet — see issue #68",
+            action: Some(Action::OpenCategories),
+            not_yet_built_hint: "",
         },
         Area {
             name: "Accounts",

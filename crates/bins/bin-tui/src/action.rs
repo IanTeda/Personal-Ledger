@@ -40,14 +40,28 @@ pub enum Action {
     /// Push the Units create/edit screen — `None` starts an empty (create) form, `Some`
     /// pre-fills it with an existing Unit's fields (edit).
     OpenUnitDetail(Option<lib_database::Units>),
+    /// Push the Categories list screen.
+    OpenCategories,
+    /// Push the Categories create/edit screen — `None` starts an empty (create) form, `Some`
+    /// pre-fills it with an existing Category's fields (edit).
+    OpenCategoryDetail(Option<lib_database::Categories>),
     /// A key was consumed by the active screen (e.g. appended to a text field) with nothing
     /// further for `App` to do — distinct from returning `None`, which would let the key
     /// fall through to the global `Esc`/`?` bindings.
     NoOp,
-    /// The embedded-SQLite feasibility demo (FC-TUI-005) finished loading real category data.
+    /// The Categories list screen finished loading every Category (originally the
+    /// feasibility-cycle FC-TUI-005 demo's action; reused as-is for the real screen).
     CategoriesLoaded(Vec<lib_database::Categories>),
-    /// The embedded-SQLite feasibility demo (FC-TUI-005) failed to load real category data.
+    /// The Categories list screen failed to load Categories.
     CategoriesLoadFailed(String),
+    /// The Categories detail screen successfully saved (inserted or updated) a Category.
+    CategorySaved(lib_database::Categories),
+    /// The Categories detail screen failed to save a Category.
+    CategorySaveFailed(String),
+    /// The Categories list screen successfully deleted a Category.
+    CategoryDeleted(lib_core::RowID),
+    /// The Categories list screen failed to delete a Category.
+    CategoryDeleteFailed(String),
     /// The Units list screen finished loading every Unit.
     UnitsLoaded(Vec<lib_database::Units>),
     /// The Units list screen failed to load Units.

@@ -20,7 +20,8 @@ use crate::{
     action::{Action, InputMode},
     event::{Event, EventHandler},
     screen::{
-        Screen, dashboard::DashboardScreen, help::HelpScreen, settings::SettingsScreen,
+        Screen, categories_list::CategoriesListScreen, category_detail::CategoryDetailScreen,
+        dashboard::DashboardScreen, help::HelpScreen, settings::SettingsScreen,
         unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
     },
     tui::Tui,
@@ -144,35 +145,37 @@ impl App {
             Action::OpenUnitDetail(Some(unit)) => {
                 self.push(Box::new(UnitDetailScreen::new_edit(unit)))
             }
+            Action::OpenCategories => self.push(Box::new(CategoriesListScreen::new())),
+            Action::OpenCategoryDetail(None) => {
+                self.push(Box::new(CategoryDetailScreen::new_create()))
+            }
+            Action::OpenCategoryDetail(Some(category)) => {
+                self.push(Box::new(CategoryDetailScreen::new_edit(category)))
+            }
             Action::NoOp => {}
             Action::Tick => self
                 .stack
                 .last_mut()
                 .expect("non-empty stack")
                 .update(&action),
-            // A background load or save/delete can finish while any screen is active, and
-            // other screens ignore it via their `update`'s default `_ => {}` arm.
+            // A background load or delete can finish while any screen is active, and other
+            // screens ignore it via their `update`'s default `_ => {}` arm.
             Action::CategoriesLoaded(_)
             | Action::CategoriesLoadFailed(_)
+            | Action::CategoryDeleted(_)
+            | Action::CategoryDeleteFailed(_)
             | Action::UnitsLoaded(_)
             | Action::UnitsLoadFailed(_)
             | Action::UnitDeleted(_)
             | Action::UnitDeleteFailed(_) => {
-                for screen in &mut self.stack {
-                    screen.update(&action);
-                }
+                self.broadcast(&action);
             }
-            // A successful save on the Unit detail screen returns to whichever screen it
-            // was pushed from (the Units list), after that screen has absorbed the new row.
-            Action::UnitSaved(_) => {
-                for screen in &mut self.stack {
-                    screen.update(&action);
-                }
-                if self.stack.len() > 1 && self.stack.last().unwrap().title() == "Unit" {
-                    self.stack.pop();
-                }
-            }
-            Action::UnitSaveFailed(_) => {
+            // A successful save returns to whichever list screen the detail screen was
+            // pushed from, after that list has absorbed the new/updated row.
+            Action::UnitSaved(_) => self.broadcast_and_pop_detail(&action, "Unit"),
+            Action::CategorySaved(_) => self.broadcast_and_pop_detail(&action, "Category"),
+            // A failed save stays on the detail screen so the user can fix and retry.
+            Action::UnitSaveFailed(_) | Action::CategorySaveFailed(_) => {
                 if let Some(screen) = self.stack.last_mut() {
                     screen.update(&action);
                 }
@@ -185,6 +188,22 @@ impl App {
     fn push(&mut self, mut screen: Box<dyn Screen>) {
         screen.init(self.action_tx.clone());
         self.stack.push(screen);
+    }
+
+    /// Delivers an action to every screen on the stack.
+    fn broadcast(&mut self, action: &Action) {
+        for screen in &mut self.stack {
+            screen.update(action);
+        }
+    }
+
+    /// Broadcasts a successful save, then pops the stack if a detail screen with the given
+    /// title is on top — returning to whichever list screen pushed it.
+    fn broadcast_and_pop_detail(&mut self, action: &Action, detail_title: &str) {
+        self.broadcast(action);
+        if self.stack.len() > 1 && self.stack.last().unwrap().title() == detail_title {
+            self.stack.pop();
+        }
     }
 
     /// Renders a breadcrumb of the navigation stack and the active (top) screen.
@@ -327,5 +346,46 @@ mod tests {
         let mut app = App::new();
         app.update(Action::NoOp);
         assert_eq!(app.stack.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn open_categories_pushes_the_categories_list_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenCategories);
+        assert_eq!(app.stack.last().unwrap().title(), "Categories");
+    }
+
+    #[tokio::test]
+    async fn open_category_detail_pushes_the_category_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenCategoryDetail(None));
+        assert_eq!(app.stack.last().unwrap().title(), "Category");
+    }
+
+    #[tokio::test]
+    async fn category_saved_pops_back_from_the_detail_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenCategories);
+        app.update(Action::OpenCategoryDetail(None));
+        assert_eq!(app.stack.len(), 3);
+
+        let now = chrono::Utc::now();
+        let category = lib_database::Categories {
+            id: lib_core::RowID::new(),
+            code: "FOO.BAR.BAZ".to_string(),
+            name: "Groceries".to_string(),
+            description: None,
+            url_slug: None,
+            category_type: lib_core::CategoryTypes::Expense,
+            color: None,
+            icon: None,
+            is_active: true,
+            created_on: now,
+            updated_on: now,
+        };
+        app.update(Action::CategorySaved(category));
+
+        assert_eq!(app.stack.len(), 2);
+        assert_eq!(app.stack.last().unwrap().title(), "Categories");
     }
 }

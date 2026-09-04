@@ -6,7 +6,8 @@
 //! small, truly-global key set (`Ctrl+C`, `Esc`).
 
 pub mod candlestick_chart;
-pub mod categories;
+pub mod categories_list;
+pub mod category_detail;
 pub mod dashboard;
 pub mod divergent_chart;
 pub mod doughnut_chart;
