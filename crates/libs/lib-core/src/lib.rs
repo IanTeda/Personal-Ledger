@@ -44,6 +44,13 @@ pub use row_id::{RowID, RowIDError};
 mod category_types;
 pub use category_types::{CategoryTypes, CategoryTypesError};
 
+/// Descriptive grouping for a Unit (fiat, crypto, stock, precious metal, other).
+///
+/// [`UnitKind`] is display/grouping-only — Personal Ledger does not convert between
+/// Units in V1, so no kind is treated specially in any calculation.
+mod unit_kind;
+pub use unit_kind::{UnitKind, UnitKindError};
+
 /// URL-safe slug type for human-readable, SEO-friendly identifiers.
 ///
 /// [`UrlSlug`] creates web-friendly identifiers from titles and names by

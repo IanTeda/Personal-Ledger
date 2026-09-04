@@ -35,8 +35,29 @@ pub enum Action {
     OpenSettings,
     /// Push the Help screen, listing global keys plus the active screen's own.
     OpenHelp,
+    /// Push the Units list screen.
+    OpenUnits,
+    /// Push the Units create/edit screen — `None` starts an empty (create) form, `Some`
+    /// pre-fills it with an existing Unit's fields (edit).
+    OpenUnitDetail(Option<lib_database::Units>),
+    /// A key was consumed by the active screen (e.g. appended to a text field) with nothing
+    /// further for `App` to do — distinct from returning `None`, which would let the key
+    /// fall through to the global `Esc`/`?` bindings.
+    NoOp,
     /// The embedded-SQLite feasibility demo (FC-TUI-005) finished loading real category data.
     CategoriesLoaded(Vec<lib_database::Categories>),
     /// The embedded-SQLite feasibility demo (FC-TUI-005) failed to load real category data.
     CategoriesLoadFailed(String),
+    /// The Units list screen finished loading every Unit.
+    UnitsLoaded(Vec<lib_database::Units>),
+    /// The Units list screen failed to load Units.
+    UnitsLoadFailed(String),
+    /// The Units detail screen successfully saved (inserted or updated) a Unit.
+    UnitSaved(lib_database::Units),
+    /// The Units detail screen failed to save a Unit.
+    UnitSaveFailed(String),
+    /// The Units list screen successfully deleted a Unit.
+    UnitDeleted(lib_core::RowID),
+    /// The Units list screen failed to delete a Unit.
+    UnitDeleteFailed(String),
 }

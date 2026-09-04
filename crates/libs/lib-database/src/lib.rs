@@ -77,6 +77,11 @@
 mod categories;
 pub use categories::Categories;
 
+/// Currencies, cryptocurrencies, stocks, and other tradeable instruments Accounts and
+/// Transactions are denominated in (CC-TUI-005).
+pub mod units;
+pub use units::Units;
+
 /// The Sync Server's own auth user store (ADR-0010).
 pub mod sync_users;
 pub use sync_users::SyncUser;

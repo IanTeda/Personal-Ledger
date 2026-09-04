@@ -19,7 +19,10 @@ use tokio::sync::mpsc;
 use crate::{
     action::{Action, InputMode},
     event::{Event, EventHandler},
-    screen::{Screen, dashboard::DashboardScreen, help::HelpScreen, settings::SettingsScreen},
+    screen::{
+        Screen, dashboard::DashboardScreen, help::HelpScreen, settings::SettingsScreen,
+        unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
+    },
     tui::Tui,
 };
 
@@ -136,15 +139,41 @@ impl App {
                     self.push(Box::new(HelpScreen::new()));
                 }
             }
+            Action::OpenUnits => self.push(Box::new(UnitsListScreen::new())),
+            Action::OpenUnitDetail(None) => self.push(Box::new(UnitDetailScreen::new_create())),
+            Action::OpenUnitDetail(Some(unit)) => {
+                self.push(Box::new(UnitDetailScreen::new_edit(unit)))
+            }
+            Action::NoOp => {}
             Action::Tick => self
                 .stack
                 .last_mut()
                 .expect("non-empty stack")
                 .update(&action),
-            // A background load can finish while any screen is active, and other screens
-            // ignore it via their `update`'s default `_ => {}` arm.
-            Action::CategoriesLoaded(_) | Action::CategoriesLoadFailed(_) => {
+            // A background load or save/delete can finish while any screen is active, and
+            // other screens ignore it via their `update`'s default `_ => {}` arm.
+            Action::CategoriesLoaded(_)
+            | Action::CategoriesLoadFailed(_)
+            | Action::UnitsLoaded(_)
+            | Action::UnitsLoadFailed(_)
+            | Action::UnitDeleted(_)
+            | Action::UnitDeleteFailed(_) => {
                 for screen in &mut self.stack {
+                    screen.update(&action);
+                }
+            }
+            // A successful save on the Unit detail screen returns to whichever screen it
+            // was pushed from (the Units list), after that screen has absorbed the new row.
+            Action::UnitSaved(_) => {
+                for screen in &mut self.stack {
+                    screen.update(&action);
+                }
+                if self.stack.len() > 1 && self.stack.last().unwrap().title() == "Unit" {
+                    self.stack.pop();
+                }
+            }
+            Action::UnitSaveFailed(_) => {
+                if let Some(screen) = self.stack.last_mut() {
                     screen.update(&action);
                 }
             }
@@ -251,5 +280,52 @@ mod tests {
 
         let plain_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE);
         assert!(!is_hard_quit(plain_c));
+    }
+
+    // `UnitsListScreen::init()` spawns a background load via `tokio::spawn`, so these need
+    // an active runtime — unlike Settings/Help, whose `init()` is a no-op.
+    #[tokio::test]
+    async fn open_units_pushes_the_units_list_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenUnits);
+        assert_eq!(app.stack.last().unwrap().title(), "Units");
+    }
+
+    #[tokio::test]
+    async fn open_unit_detail_pushes_the_unit_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenUnitDetail(None));
+        assert_eq!(app.stack.last().unwrap().title(), "Unit");
+    }
+
+    #[tokio::test]
+    async fn unit_saved_pops_back_from_the_detail_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenUnits);
+        app.update(Action::OpenUnitDetail(None));
+        assert_eq!(app.stack.len(), 3);
+
+        let now = chrono::Utc::now();
+        let unit = lib_database::Units {
+            id: lib_core::RowID::new(),
+            code: "AUD".to_string(),
+            name: "Australian Dollar".to_string(),
+            unit_kind: lib_core::UnitKind::Fiat,
+            decimal_places: 2,
+            is_active: true,
+            created_on: now,
+            updated_on: now,
+        };
+        app.update(Action::UnitSaved(unit));
+
+        assert_eq!(app.stack.len(), 2);
+        assert_eq!(app.stack.last().unwrap().title(), "Units");
+    }
+
+    #[test]
+    fn no_op_leaves_the_stack_untouched() {
+        let mut app = App::new();
+        app.update(Action::NoOp);
+        assert_eq!(app.stack.len(), 1);
     }
 }

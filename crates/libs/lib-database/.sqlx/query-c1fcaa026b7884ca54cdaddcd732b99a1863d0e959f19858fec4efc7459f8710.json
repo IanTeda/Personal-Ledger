@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id             AS \"id!: domain::RowID\",\n                    code,\n                    name,\n                    unit_kind      AS \"unit_kind!: domain::UnitKind\",\n                    decimal_places,\n                    is_active,\n                    created_on     AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on     AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM units\n                ORDER BY code ASC\n                LIMIT ? OFFSET ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "code",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "name",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "unit_kind!: domain::UnitKind",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "decimal_places",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_active",
+        "ordinal": 5,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c1fcaa026b7884ca54cdaddcd732b99a1863d0e959f19858fec4efc7459f8710"
+}

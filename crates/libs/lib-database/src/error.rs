@@ -106,6 +106,13 @@ pub enum DatabaseError {
     #[error("Error building sync user: {0}")]
     SyncUserBuilder(String),
 
+    /// Units Builder Error
+    ///
+    /// Occurs when constructing a Unit fails due to invalid input or missing
+    /// required fields.
+    #[error("Error building Unit: {0}")]
+    UnitsBuilder(String),
+
     /// Connection error
     ///
     /// Represents failures in establishing or maintaining database connections,

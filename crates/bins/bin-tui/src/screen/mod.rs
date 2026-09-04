@@ -14,6 +14,8 @@ pub mod help;
 pub mod line_chart;
 pub mod settings;
 pub mod table;
+pub mod unit_detail;
+pub mod units_list;
 
 use crossterm::event::KeyEvent;
 use ratatui::{Frame, layout::Rect};

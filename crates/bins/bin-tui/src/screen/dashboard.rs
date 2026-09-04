@@ -33,8 +33,8 @@ fn areas() -> Vec<Area> {
     vec![
         Area {
             name: "Units",
-            action: None,
-            not_yet_built_hint: "Not built yet — see issue #67",
+            action: Some(Action::OpenUnits),
+            not_yet_built_hint: "",
         },
         Area {
             name: "Categories",
