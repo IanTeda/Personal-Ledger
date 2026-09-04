@@ -170,8 +170,8 @@ The requirements below describe the product's ultimate end state across all deve
 - __FR.11:__ The system shall allow retrieving an account by id.
 - __FR.12:__ The system shall allow listing accounts with pagination and filtering by type and/or active status.
 - __FR.13:__ The system shall allow updating an account's name, type, or active status.
-- __FR.14:__ The system shall allow deleting an account. On deleting an account, there will be an option to transfer all the transactions under an account to another account.
-- __FR.15:__ The system shall allow the merging of two accounts into one.
+- __FR.14:__ The system shall allow deleting an account. On deleting an account, there will be an option to transfer all the transactions under an account to another account. (CC-TUI-008 implements a bare delete only — the transfer option operates on Transaction rows, which don't exist until CC-TUI-009; deferred there.)
+- __FR.15:__ The system shall allow the merging of two accounts into one. (Deferred to CC-TUI-009 alongside FR.14's transfer option, for the same reason — there's nothing to merge until Transactions exist.)
 - __FR.16:__ The system shall allow creating a single-entry transaction with a UUIDv7, date, an amount, exactly one Category, exactly one account, an optional payee (free text), an optional description, optional ID, a Transaction Status (Open, Cleared, or Reconciled — defaulting to Open), and an independent Flagged marker (defaulting to unset), and shall update the linked account's running Balance accordingly.
 - __FR.17:__ The system shall allow retrieving a transaction by id.
 - __FR.18:__ The system shall allow listing transactions with pagination, filtering by account, Category, payee (exact match), Transaction Status, Flagged state, and/or date range, and sorting.
