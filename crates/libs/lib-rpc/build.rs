@@ -30,7 +30,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .compile_protos(
             &[
                 "proto/personal-ledger/v001/utilities.proto",
-                "proto/personal-ledger/v001/categories.proto",
                 "proto/personal-ledger/v001/sync.proto",
             ],
             &["proto/", "/usr/include"],

@@ -12,7 +12,7 @@
 //! - **Configuration** ([`DatabaseConfig`]): Database connection settings and pool configuration
 //! - **Connections** ([`DatabaseConnection`]): High-level connection pool management
 //! - **Error Handling** ([`DatabaseError`], [`DatabaseResult`]): Domain-specific error types
-//! - **Data Models**: Domain-specific types for financial entities (planned)
+//! - **Data Models**: Domain-specific types for financial entities ([`Categories`], [`Account`], [`ChangeSet`])
 //!
 //! ## Key Features
 //!
@@ -206,13 +206,3 @@ mod connection;
 ///
 /// See [`connection`] module for detailed API documentation.
 pub use connection::DatabaseConnection;
-
-// Future Development Notes:
-//
-// The following modules are planned for future implementation:
-//
-// - `pool`: Advanced connection pool wrapper with lifecycle management
-// - `categories`: Financial category domain models and validation
-// - Additional data models for transactions, accounts, and financial entities
-//
-// These will be implemented as the application requirements evolve.

@@ -25,8 +25,6 @@
 //!
 //! This domain layer is designed for SQLite-backed persistence and does not reference Postgres or other database engines. All type mappings and invariants are implemented for SQLite compatibility.
 
-// TODO: Add domain error tyep
-
 /// Database row identifier type using time-ordered UUID v7.
 ///
 /// [`RowID`] provides unique, sortable identifiers that maintain chronological
@@ -46,28 +44,28 @@ pub use row_id::{RowID, RowIDError};
 mod category_types;
 pub use category_types::{CategoryTypes, CategoryTypesError};
 
-mod url_slug;
 /// URL-safe slug type for human-readable, SEO-friendly identifiers.
 ///
 /// [`UrlSlug`] creates web-friendly identifiers from titles and names by
 /// converting them to lowercase, alphanumeric strings with hyphens. Used
 /// throughout the application for creating readable URLs and resource names
 /// that are both user-friendly and search engine optimized.
+mod url_slug;
 pub use url_slug::{UrlSlug, UrlSlugError};
 
-mod hex_color;
 /// Hexadecimal RGB colour type for validated colour values.
 ///
 /// [`HexColor`] guarantees colours remain in canonical `#RRGGBB` format while
 /// providing convenient access to individual RGB channels. Useful for
 /// theming, categorisation, and any feature that requires precise colour
 /// handling across the application.
+mod hex_color;
 pub use hex_color::{HexColor, HexColorError};
 
-mod hybrid_logical_clock;
 /// Hybrid Logical Clock timestamp type used for Change Set conflict resolution.
 ///
 /// [`HybridLogicalClock`] pairs physical time with a monotonic logical counter, and
 /// [`HlcClock`] mints strictly increasing values of it for one Client or the Sync
 /// Server -- see [ADR-0009](https://github.com/IanTeda/Personal-Ledger/blob/feasibility/docs/adr/0009-lww-sqlite-change-set-log.md).
+mod hybrid_logical_clock;
 pub use hybrid_logical_clock::{HlcClock, HybridLogicalClock, HybridLogicalClockError};
