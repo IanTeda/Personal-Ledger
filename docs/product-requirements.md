@@ -96,7 +96,7 @@ Implement these requirements to bring the TUI, Desktop and Sync up to functional
 
 - __CC-ALL-001:__ Ensure all dependencies are up-to-date and cross-compilation is enabled and compiles on all platforms.
 - __CC-ALL-002:__ Refactor lib_domain into lib_core (mechanical rename — no new shared responsibilities identified beyond today's lib_domain scope; revisit if real shared logic emerges once CC-TUI-005+/CC-DESKTOP-005+ build real CRUD).
-- __CC-ALL-003:__ Research depreciated Chrono crate and replace it, ensuring cross-compilation is supported.
+- __CC-ALL-003:__ ~~Research depreciated Chrono crate and replace it~~ — resolved: chrono is not deprecated (`0.4.45`, actively maintained, one old advisory fixed years ago); `jiff` was ruled out because `sqlx-sqlite` has no `jiff` feature. Keeping chrono, no ADR needed (status quo confirmed, not a real trade-off). See `docs/research/chrono-alternatives.md` (branch `research/chrono-alternatives`).
 - __CC-ALL-004:__ Review, research and grill the workspace code architecture and structure for best practice, readability and maintainability.
 - __CC-ALL-006:__ Wire `lib_telemetry::init` into `bin-tui` and `bin-desktop` (already done for `bin-sync-server`); confirm telemetry implementation is compatible across binaries and with cross-compilation.
 - __CC-ALL-007:__ Research and decide on SQLite encryption-at-rest (see `docs/research/sqlite-encryption.md`); the choice of SQLite itself is already settled (§5 Dependencies, `lib-database`).
