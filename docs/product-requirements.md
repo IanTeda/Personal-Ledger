@@ -99,7 +99,7 @@ Implement these requirements to bring the TUI, Desktop and Sync up to functional
 - __CC-ALL-003:__ ~~Research depreciated Chrono crate and replace it~~ — resolved: chrono is not deprecated (`0.4.45`, actively maintained, one old advisory fixed years ago); `jiff` was ruled out because `sqlx-sqlite` has no `jiff` feature. Keeping chrono, no ADR needed (status quo confirmed, not a real trade-off). See `docs/research/chrono-alternatives.md` (branch `research/chrono-alternatives`).
 - __CC-ALL-004:__ Review, research and grill the workspace code architecture and structure for best practice, readability and maintainability.
 - __CC-ALL-006:__ Wire `lib_telemetry::init` into `bin-tui` and `bin-desktop` (already done for `bin-sync-server`); confirm telemetry implementation is compatible across binaries and with cross-compilation.
-- __CC-ALL-007:__ Research and decide on SQLite encryption-at-rest (see `docs/research/sqlite-encryption.md`); the choice of SQLite itself is already settled (§5 Dependencies, `lib-database`).
+- __CC-ALL-007:__ ~~Research and decide on SQLite encryption-at-rest~~ — resolved: OS/filesystem-level encryption (LUKS/FileVault/BitLocker), not SQLCipher — see [ADR-0011](docs/adr/0011-os-level-encryption-not-sqlcipher.md). Confirms and formalises the existing §6.1 assumption; no code required this cycle.
 
 #### 2.2.2 TUI App:
 
@@ -214,7 +214,7 @@ The requirements below describe the product's ultimate end state across all deve
 ## 4. Non-Functional Requirements
 
 - __NFR.1 Reliability (priority):__ Transaction creation, update, and deletion must keep an account's running Balance consistent with its recorded transactions, even on partial failure (no orphaned balance updates). A Balance Check CSV import is atomic: a malformed row aborts the whole import rather than partially applying it. Database migrations must be safe to re-run.
-- __NFR.2 Security & Privacy (priority):__ All data is stored locally in SQLite; no data leaves the device by default. The app never requires root/administrator privileges to run. No `unsafe` code anywhere in the workspace (lint-enforced). Any secrets are wrapped in `secrecy::Secret` so they cannot leak into logs or traces.
+- __NFR.2 Security & Privacy (priority):__ All data is stored locally in SQLite; no data leaves the device by default. Encryption-at-rest relies on OS/filesystem-level encryption, not application-level cryptography — see §6.1 Assumptions and [ADR-0011](docs/adr/0011-os-level-encryption-not-sqlcipher.md). The app never requires root/administrator privileges to run. No `unsafe` code anywhere in the workspace (lint-enforced). Any secrets are wrapped in `secrecy::Secret` so they cannot leak into logs or traces.
 - __NFR.3 Performance:__ Category, account, transaction, budget, and Balance Check CRUD, and the balance, category-total, payee-total, budget-vs-actual, and balance-check-variance reports, should respond quickly for typical personal-ledger data volumes (thousands, not millions, of transactions).
 - __NFR.4 Usability (API-level):__ Since V1 has no UI, the local library API (`lib-database`) is the primary usability surface: errors are structured (via `thiserror`) rather than raw SQL or library errors, so a future client can present them meaningfully. The sync server's gRPC protocol (FR.39a) is a separate, narrower surface for device sync, not the general-purpose API.
 - __NFR.5 Maintainability:__ Each entity's persistence logic is split into separate `find`/`insert`/`update`/`delete`/`builder`/`model` files, following the existing `categories/` convention in `lib-database`. SQL queries list explicit columns; no `SELECT *`.
@@ -237,7 +237,7 @@ The requirements below describe the product's ultimate end state across all deve
 
 ### 6.1 Assumptions
 
-- The user trusts their own machine/network to hold their financial data; V1 relies on OS/filesystem-level protection rather than application-level encryption-at-rest.
+- The user trusts their own machine/network to hold their financial data; V1 relies on OS/filesystem-level protection rather than application-level encryption-at-rest — see [ADR-0011](docs/adr/0011-os-level-encryption-not-sqlcipher.md).
 - The Sync Server is assumed to run within the user's own trusted network (e.g. a homelab), not exposed directly to the public internet; authentication (FC-SYNC-002/007) protects against other devices on that trusted network, not against a hostile network.
 
 ### 6.2 Constraints
