@@ -107,7 +107,7 @@ Implement these requirements to bring the TUI, Desktop and Sync up to functional
 - __CC-TUI-002:__ Build out a TUI app using the TUI framework.
 - __CC-TUI-003:__ Research and decide on keybinding and navigation/workflow for the TUI app.
 - __CC-TUI-004:__ Research and decide on the TUI app's data model and persistence layer.
-- __CC-TUI-005:__ Build out the units funcationality.
+- __CC-TUI-005:__ Build out the units functionality.
 - __CC-TUI-007:__ Build out the payee functionality.
 - __CC-TUI-006:__ Build out the categories functionality.
 - __CC-TUI-008:__ Build out the accounts functionality.
@@ -152,8 +152,8 @@ The requirements below describe the product's ultimate end state across all deve
 ### Units
 
 - __FR.1:__ The system shall allow for multiple different Units like currencies, crypto, stocks, equities, precious metals, etc.
-- __FR.2:__ When a transaction is between different Units, it should include an exchange rate.
-- __FR.3:__ Unit prices will be stored locally as part of a transaction exchange and every week to avoid excessive granularity. If more granularity is needed, it can be queried from the internet dynamically.
+- ~~__FR.2:__ When a transaction is between different Units, it should include an exchange rate.~~ — superseded: cross-Unit transactions don't exist in V1 at all (see `CONTEXT.md`'s Unit entry and this document's Constraints/Future Considerations, "Cross-Unit conversion"). This FR predates that decision and was never reconciled with it; surfaced and struck while resolving CC-TUI-005 ("Build out Units functionality" Wayfinder ticket).
+- ~~__FR.3:__ Unit prices will be stored locally as part of a transaction exchange and every week to avoid excessive granularity. If more granularity is needed, it can be queried from the internet dynamically.~~ — superseded alongside FR.2, same reason: no cross-Unit exchange exists to price.
 
 ### Categories
 
