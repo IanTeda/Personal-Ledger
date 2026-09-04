@@ -5,6 +5,11 @@
 //! (`docs/adr/0002-ratatui-for-tui-charting.md`) this is fully custom — and deliberately
 //! minimal, a plain two-directional bar layout proving the mechanism rather than matching
 //! the eventual Concept-cycle's visual polish.
+//!
+//! Not wired into the real navigation ("Decide TUI screen map and navigation shape") yet —
+//! its widget is reused wired to real data once Reporting is built (issues #75-79).
+
+#![allow(dead_code)] // Reused by the Reporting build tickets, not yet wired into `App`.
 
 use ratatui::{
     Frame,

@@ -1,5 +1,10 @@
 //! The line chart feasibility demo (FC-TUI-002): renders synthetic account-balance data over
 //! time using ratatui's built-in `Chart` widget, proving line-chart rendering works.
+//!
+//! Not wired into the real navigation ("Decide TUI screen map and navigation shape") yet —
+//! its widget is reused wired to real data once Reporting is built (issues #75-79).
+
+#![allow(dead_code)] // Reused by the Reporting build tickets, not yet wired into `App`.
 
 use ratatui::{
     Frame,

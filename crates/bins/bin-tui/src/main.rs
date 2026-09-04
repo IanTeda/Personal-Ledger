@@ -1,9 +1,11 @@
-//! TUI feasibility demos entry point (see the "TUI App feasibility" Wayfinder map, GitHub
-//! issue #7). Currently shows the line chart demo (FC-TUI-002); later tickets add more
-//! screens to this same binary. Press `q` or `Esc` to quit.
+//! Personal Ledger TUI entry point. The Dashboard ("Decide TUI screen map and navigation
+//! shape") is the navigation hub every entity/report area drills into; see the "TUI App
+//! concept" Wayfinder map (issue #61) for the Concept-cycle build-out, and the closed "TUI
+//! App feasibility" map (issue #7) for the chart/table widgets it builds on.
 
 mod action;
 mod app;
+mod db;
 mod event;
 mod screen;
 mod tui;

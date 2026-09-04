@@ -4,8 +4,11 @@
 //! the same in-process path a client uses per FR.39. Runs the connect/migrate/seed/read
 //! sequence as a background task from `init()`, reporting back through the async action
 //! channel ADR-0003 (`docs/adr/0003-hybrid-tea-component-tui-architecture.md`) committed to.
+//!
+//! Not wired into the real navigation ("Decide TUI screen map and navigation shape") yet —
+//! its query logic and widget are reused for the real Categories screen (issue #68).
 
-use std::path::PathBuf;
+#![allow(dead_code)] // Reused by the Categories build ticket, not yet wired into `App`.
 
 use ratatui::{
     Frame,
@@ -15,14 +18,7 @@ use ratatui::{
 };
 use tokio::sync::mpsc::UnboundedSender;
 
-use crate::{action::Action, screen::Screen};
-
-/// The demo's own SQLite file, in the OS temp directory so `cargo run` never leaves a stray
-/// file in the repo working directory (it's also `.gitignore`d regardless, via `*.sqlite`).
-fn demo_database_url() -> String {
-    let path: PathBuf = std::env::temp_dir().join("personal-ledger-tui-feasibility-demo.sqlite");
-    format!("sqlite://{}?mode=rwc", path.display())
-}
+use crate::{action::Action, db, screen::Screen};
 
 /// What the screen currently knows about the real SQLite data.
 enum Status {
@@ -49,23 +45,15 @@ impl CategoriesScreen {
     /// (a real read) — proving the embedded-SQLite path works end-to-end through a real
     /// client, not a mock.
     async fn load() -> lib_database::DatabaseResult<Vec<lib_database::Categories>> {
-        Self::load_from(demo_database_url()).await
+        Self::load_from(db::connect().await?).await
     }
 
-    /// Same as [`Self::load`], against an explicit database URL — split out so tests can
+    /// Same as [`Self::load`], against an already-connected pool — split out so tests can
     /// point it at an isolated, throwaway SQLite file instead of the shared demo one.
-    async fn load_from(url: String) -> lib_database::DatabaseResult<Vec<lib_database::Categories>> {
-        let config = lib_database::DatabaseConfig {
-            url,
-            ..lib_database::DatabaseConfig::default()
-        };
-        let connection = lib_database::DatabaseConnection::new(config).await?;
-        let pool = connection.pool();
-
-        sqlx::migrate!("../../libs/lib-database/migrations/client")
-            .run(pool)
-            .await?;
-
+    async fn load_from(
+        pool: sqlx::SqlitePool,
+    ) -> lib_database::DatabaseResult<Vec<lib_database::Categories>> {
+        let pool = &pool;
         if lib_database::Categories::find_all(pool).await?.is_empty() {
             let seed = lib_database::Categories {
                 id: lib_core::RowID::new(),
@@ -218,9 +206,12 @@ mod tests {
         ));
         let url = format!("sqlite://{}?mode=rwc", path.display());
 
-        let first = CategoriesScreen::load_from(url.clone())
+        let first_pool = crate::db::connect_to(url.clone())
             .await
-            .expect("first load should connect, migrate, seed, and read successfully");
+            .expect("first connection should establish and migrate");
+        let first = CategoriesScreen::load_from(first_pool)
+            .await
+            .expect("first load should seed and read successfully");
         assert_eq!(
             first.len(),
             1,
@@ -228,9 +219,12 @@ mod tests {
         );
         assert_eq!(first[0].code, "DEM.SEE.D01");
 
-        let second = CategoriesScreen::load_from(url)
+        let second_pool = crate::db::connect_to(url)
             .await
-            .expect("second load should connect and read successfully");
+            .expect("second connection should establish and migrate");
+        let second = CategoriesScreen::load_from(second_pool)
+            .await
+            .expect("second load should read successfully");
         assert_eq!(
             second.len(),
             1,

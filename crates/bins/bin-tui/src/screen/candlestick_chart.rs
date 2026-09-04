@@ -3,6 +3,11 @@
 //! (`docs/adr/0002-ratatui-for-tui-charting.md`), this was prototyped first rather than
 //! building on `Canvas` directly — it resolved cleanly against our `ratatui` 0.30.2 and
 //! rendered correctly on the first attempt, so no custom fallback was needed.
+//!
+//! Not wired into the real navigation ("Decide TUI screen map and navigation shape") yet —
+//! its widget is reused wired to real data once Reporting is built (issues #75-79).
+
+#![allow(dead_code)] // Reused by the Reporting build tickets, not yet wired into `App`.
 
 use chandelier::{Candle, CandleSeries, CandlestickChart};
 use ratatui::{Frame, layout::Rect, widgets::Block};

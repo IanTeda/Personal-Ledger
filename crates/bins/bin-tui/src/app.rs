@@ -1,65 +1,60 @@
-//! The top-level application: owns terminal lifecycle, the async event loop, and which screen
-//! is active — the "Elm" half of ADR-0003's hybrid architecture
-//! (`docs/adr/0003-hybrid-tea-component-tui-architecture.md`).
+//! The top-level application: owns terminal lifecycle, the async event loop, and the
+//! navigation stack — the "Elm" half of ADR-0003's hybrid architecture
+//! (`docs/adr/0003-hybrid-tea-component-tui-architecture.md`). The Dashboard is the base of
+//! the stack ("Decide TUI screen map and navigation shape"); every other screen is pushed
+//! on top of it and popped back off, replacing the feasibility cycle's flat Tab-cycling.
 
 use std::time::Duration;
 
-use crossterm::event::KeyCode;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
+    style::{Color, Style},
+    text::Line,
     widgets::Paragraph,
 };
 use tokio::sync::mpsc;
 
 use crate::{
-    action::Action,
+    action::{Action, InputMode},
     event::{Event, EventHandler},
-    screen::{
-        Screen, candlestick_chart::CandlestickChartScreen, categories::CategoriesScreen,
-        divergent_chart::DivergentChartScreen, doughnut_chart::DoughnutChartScreen,
-        line_chart::LineChartScreen, table::TableScreen,
-    },
+    screen::{Screen, dashboard::DashboardScreen, help::HelpScreen, settings::SettingsScreen},
     tui::Tui,
 };
 
 /// How often an [`Action::Tick`] fires in the absence of input.
 const TICK_RATE: Duration = Duration::from_millis(250);
 
-/// Owns terminal lifecycle and the set of demo screens, and drives the async event loop.
+/// Owns terminal lifecycle and the navigation stack, and drives the async event loop.
 pub struct App {
-    screens: Vec<Box<dyn Screen>>,
-    current: usize,
+    /// The navigation stack: index 0 is always the Dashboard; the last entry is the active,
+    /// rendered-and-keyed screen. `Esc` pops it; popping the Dashboard itself quits instead.
+    stack: Vec<Box<dyn Screen>>,
+    /// Whether raw keys are currently interpreted as navigation shortcuts or literal text
+    /// entry — see [`InputMode`]. No screen in this skeleton switches it yet; the field
+    /// exists so `Screen::handle_key`'s signature is load-bearing from the start.
+    mode: InputMode,
     should_quit: bool,
-    /// Where background tasks spawned by a screen's `init()` (e.g. the SQLite feasibility
-    /// demo's load) report their results back as an [`Action`].
+    /// Where a screen's `init()` (e.g. a background load) reports results back as an
+    /// [`Action`].
+    action_tx: mpsc::UnboundedSender<Action>,
     action_rx: mpsc::UnboundedReceiver<Action>,
 }
 
 impl App {
-    /// Creates the app with every demo screen registered, starting on the first, and gives
-    /// each screen a chance to kick off any background work via `init()`.
+    /// Creates the app with the Dashboard as the sole, base screen.
     pub fn new() -> Self {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
 
-        let mut screens: Vec<Box<dyn Screen>> = vec![
-            Box::new(LineChartScreen::new()),
-            Box::new(DoughnutChartScreen::new()),
-            Box::new(CandlestickChartScreen::new()),
-            Box::new(DivergentChartScreen::new()),
-            Box::new(TableScreen::new()),
-            Box::new(CategoriesScreen::new()),
-        ];
-        for screen in &mut screens {
-            screen.init(action_tx.clone());
-        }
+        let mut dashboard: Box<dyn Screen> = Box::new(DashboardScreen::new());
+        dashboard.init(action_tx.clone());
 
         Self {
-            screens,
-            current: 0,
+            stack: vec![dashboard],
+            mode: InputMode::Navigation,
             should_quit: false,
+            action_tx,
             action_rx,
         }
     }
@@ -73,7 +68,7 @@ impl App {
 
         loop {
             let action = tokio::select! {
-                event = events.next() => match event.and_then(Self::map_event) {
+                event = events.next() => match event.and_then(|event| self.map_event(event)) {
                     Some(action) => action,
                     None => continue,
                 },
@@ -89,71 +84,109 @@ impl App {
         Ok(())
     }
 
-    /// Translates a raw terminal event into an [`Action`], if any.
-    fn map_event(event: Event) -> Option<Action> {
+    /// Translates a raw terminal event into an [`Action`]: the active screen gets first
+    /// refusal via `handle_key` before falling back to the small, truly-global key set.
+    fn map_event(&mut self, event: Event) -> Option<Action> {
         match event {
             Event::Tick => Some(Action::Tick),
-            Event::Key(key) => match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => Some(Action::Quit),
-                KeyCode::Tab => Some(Action::NextScreen),
-                KeyCode::BackTab => Some(Action::PrevScreen),
-                _ => None,
-            },
+            Event::Key(key) => {
+                if is_hard_quit(key) {
+                    return Some(Action::Quit);
+                }
+
+                let mode = self.mode;
+                if let Some(action) = self
+                    .stack
+                    .last_mut()
+                    .expect("navigation stack always has the Dashboard as its base")
+                    .handle_key(key, mode)
+                {
+                    return Some(action);
+                }
+
+                match key.code {
+                    KeyCode::Esc => Some(Action::Back),
+                    KeyCode::Char('?') => Some(Action::OpenHelp),
+                    _ => None,
+                }
+            }
         }
     }
 
-    /// Applies an [`Action`] to application and screen state.
+    /// Applies an [`Action`] to application and navigation-stack state.
     fn update(&mut self, action: Action) {
         match action {
             Action::Quit => self.should_quit = true,
-            Action::NextScreen => self.current = (self.current + 1) % self.screens.len(),
-            Action::PrevScreen => {
-                self.current = (self.current + self.screens.len() - 1) % self.screens.len();
+            Action::Back => {
+                if self.stack.len() > 1 {
+                    self.stack.pop();
+                } else {
+                    // Esc at the Dashboard, the base of the stack, quits the app.
+                    self.should_quit = true;
+                }
             }
-            Action::Tick => self.screens[self.current].update(&action),
+            Action::OpenSettings => self.push(Box::new(SettingsScreen::new())),
+            Action::OpenHelp => {
+                let already_on_help = self
+                    .stack
+                    .last()
+                    .map(|screen| screen.title() == "Help")
+                    .unwrap_or(false);
+                if !already_on_help {
+                    self.push(Box::new(HelpScreen::new()));
+                }
+            }
+            Action::Tick => self
+                .stack
+                .last_mut()
+                .expect("non-empty stack")
+                .update(&action),
             // A background load can finish while any screen is active, and other screens
             // ignore it via their `update`'s default `_ => {}` arm.
             Action::CategoriesLoaded(_) | Action::CategoriesLoadFailed(_) => {
-                for screen in &mut self.screens {
+                for screen in &mut self.stack {
                     screen.update(&action);
                 }
             }
         }
     }
 
-    /// Renders the tab bar and the active screen.
+    /// Pushes a screen onto the navigation stack, giving it a chance to kick off any
+    /// background work via `init()`.
+    fn push(&mut self, mut screen: Box<dyn Screen>) {
+        screen.init(self.action_tx.clone());
+        self.stack.push(screen);
+    }
+
+    /// Renders a breadcrumb of the navigation stack and the active (top) screen.
     fn draw(&self, frame: &mut Frame) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
             .split(frame.area());
 
-        let tabs: Vec<Span> = self
-            .screens
+        let breadcrumb = self
+            .stack
             .iter()
-            .enumerate()
-            .flat_map(|(index, screen)| {
-                let style = if index == self.current {
-                    Style::default()
-                        .fg(Color::Black)
-                        .bg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD)
-                } else {
-                    Style::default().fg(Color::Gray)
-                };
-                [
-                    Span::styled(format!(" {}: {} ", index + 1, screen.title()), style),
-                    Span::raw(" "),
-                ]
-            })
-            .chain(std::iter::once(Span::raw(
-                "— Tab/Shift+Tab: switch, q: quit",
-            )))
-            .collect();
-        frame.render_widget(Paragraph::new(Line::from(tabs)), rows[0]);
+            .map(|screen| screen.title())
+            .collect::<Vec<_>>()
+            .join(" > ");
+        frame.render_widget(
+            Paragraph::new(Line::from(breadcrumb)).style(Style::default().fg(Color::Gray)),
+            rows[0],
+        );
 
-        self.screens[self.current].view(frame, rows[1]);
+        self.stack
+            .last()
+            .expect("navigation stack always has the Dashboard as its base")
+            .view(frame, rows[1]);
     }
+}
+
+/// `Ctrl+C` — the one key that always quits immediately, regardless of the active screen or
+/// input mode.
+fn is_hard_quit(key: KeyEvent) -> bool {
+    key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('c'))
 }
 
 impl Default for App {
@@ -168,20 +201,55 @@ mod tests {
 
     use super::*;
 
-    // `App::new()` calls each screen's `init()`, and `CategoriesScreen::init()` spawns a
-    // background task via `tokio::spawn` — that needs an active runtime, hence `tokio::test`
-    // rather than a plain `#[test]`.
-    #[tokio::test]
-    async fn renders_every_screen_without_panicking() {
-        let mut app = App::new();
+    #[test]
+    fn renders_the_dashboard_without_panicking() {
+        let app = App::new();
         let backend = TestBackend::new(80, 24);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
 
-        for index in 0..app.screens.len() {
-            app.current = index;
-            terminal
-                .draw(|frame| app.draw(frame))
-                .expect("drawing the tab bar and active screen should not error");
-        }
+        terminal
+            .draw(|frame| app.draw(frame))
+            .expect("drawing the dashboard should not error");
+    }
+
+    #[test]
+    fn esc_at_the_dashboard_quits() {
+        let mut app = App::new();
+        app.update(Action::Back);
+        assert!(app.should_quit);
+        assert_eq!(app.stack.len(), 1, "the Dashboard is never popped");
+    }
+
+    #[test]
+    fn opening_and_backing_out_of_settings_returns_to_the_dashboard() {
+        let mut app = App::new();
+        app.update(Action::OpenSettings);
+        assert_eq!(app.stack.len(), 2);
+        assert_eq!(app.stack.last().unwrap().title(), "Settings");
+
+        app.update(Action::Back);
+        assert_eq!(app.stack.len(), 1);
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn help_does_not_stack_on_itself() {
+        let mut app = App::new();
+        app.update(Action::OpenHelp);
+        app.update(Action::OpenHelp);
+        assert_eq!(
+            app.stack.len(),
+            2,
+            "a second OpenHelp while on Help is a no-op"
+        );
+    }
+
+    #[test]
+    fn ctrl_c_is_recognised_as_a_hard_quit() {
+        let ctrl_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
+        assert!(is_hard_quit(ctrl_c));
+
+        let plain_c = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE);
+        assert!(!is_hard_quit(plain_c));
     }
 }

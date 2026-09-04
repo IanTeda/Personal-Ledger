@@ -1,5 +1,10 @@
 //! The table feasibility demo (FC-TUI-003): renders synthetic transaction rows via ratatui's
 //! built-in `Table` widget, proving table rendering works.
+//!
+//! Not wired into the real navigation ("Decide TUI screen map and navigation shape") yet —
+//! its widget is reused wired to real data once Transactions is built (issue #70).
+
+#![allow(dead_code)] // Reused by the Transactions build ticket, not yet wired into `App`.
 
 use ratatui::{
     Frame,

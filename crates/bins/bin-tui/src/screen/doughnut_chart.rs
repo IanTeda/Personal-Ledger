@@ -3,6 +3,11 @@
 //! drawing. No off-the-shelf ratatui crate produces an actual doughnut — `tui-piechart` is
 //! solid-pie only — so this is deliberately custom, per ADR-0002
 //! (`docs/adr/0002-ratatui-for-tui-charting.md`).
+//!
+//! Not wired into the real navigation ("Decide TUI screen map and navigation shape") yet —
+//! its widget is reused wired to real data once Reporting is built (issues #75-79).
+
+#![allow(dead_code)] // Reused by the Reporting build tickets, not yet wired into `App`.
 
 use std::f64::consts::PI;
 
