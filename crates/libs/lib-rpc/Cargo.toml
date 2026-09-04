@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 ## -- Internal Dependencies --
 lib_database = { path = "../../../crates/libs/lib-database" }
-lib_domain = { path = "../../../crates/libs/lib-domain" }
+lib_core = { path = "../../../crates/libs/lib-core" }
 
 ## -- Workspace Shared Dependencies --
 chrono = { workspace = true }

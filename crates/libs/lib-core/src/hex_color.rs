@@ -40,11 +40,11 @@ impl HexColor {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::HexColor;
+    /// use lib_core::HexColor;
     ///
     /// let colour = HexColor::parse("#ff8800")?;
     /// assert_eq!(colour.as_str(), "#FF8800");
-    /// # Ok::<(), lib_domain::HexColorError>(())
+    /// # Ok::<(), lib_core::HexColorError>(())
     /// ```
     pub fn parse<S: AsRef<str>>(input: S) -> Result<Self, HexColorError> {
         let input = input.as_ref().trim();
@@ -71,7 +71,7 @@ impl HexColor {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::HexColor;
+    /// use lib_core::HexColor;
     ///
     /// let colour = HexColor::from_rgb(255, 136, 0);
     /// assert_eq!(colour.as_str(), "#FF8800");

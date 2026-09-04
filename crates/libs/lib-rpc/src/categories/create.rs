@@ -35,7 +35,7 @@
 //! - Tracing is used for observability without impacting performance
 
 use lib_database as database;
-use lib_domain as domain;
+use lib_core as domain;
 
 use crate::categories::proto;
 use crate::error::{RpcError, RpcResult};

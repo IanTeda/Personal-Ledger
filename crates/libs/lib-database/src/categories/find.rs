@@ -11,7 +11,7 @@
 //! - **Observability**: Detailed tracing from TRACE to INFO levels
 //! - **Safety**: No sensitive data exposure; proper error handling
 
-use lib_domain as domain;
+use lib_core as domain;
 
 impl crate::Categories {
     /// Finds a category by its unique ID.

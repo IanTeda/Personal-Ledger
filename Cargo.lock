@@ -636,8 +636,8 @@ dependencies = [
  "gpui",
  "gpui-component",
  "lib_config",
+ "lib_core",
  "lib_database",
- "lib_domain",
  "lib_telemetry",
  "sqlx",
  "tokio",
@@ -653,8 +653,8 @@ dependencies = [
  "chrono",
  "jsonwebtoken",
  "lib_config",
+ "lib_core",
  "lib_database",
- "lib_domain",
  "lib_rpc",
  "lib_telemetry",
  "rand 0.8.8",
@@ -681,8 +681,8 @@ dependencies = [
  "crossterm",
  "futures-util",
  "lib_config",
+ "lib_core",
  "lib_database",
- "lib_domain",
  "lib_telemetry",
  "ratatui",
  "sqlx",
@@ -4044,12 +4044,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib_core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "fake",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "thiserror 2.0.20",
+ "uuid",
+]
+
+[[package]]
 name = "lib_database"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "fake",
- "lib_domain",
+ "lib_core",
  "serde",
  "serde_json",
  "sqlx",
@@ -4060,26 +4073,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "lib_domain"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "fake",
- "serde",
- "serde_json",
- "sqlx",
- "thiserror 2.0.20",
- "uuid",
-]
-
-[[package]]
 name = "lib_rpc"
 version = "0.1.0"
 dependencies = [
  "chrono",
  "fake",
+ "lib_core",
  "lib_database",
- "lib_domain",
  "prost",
  "prost-types",
  "rand 0.8.8",

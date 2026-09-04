@@ -3,7 +3,7 @@
 //! Provides database insertion for Change Set records -- how a Client's pushed edits,
 //! or the Sync Server's own record of them, land in the durable `change_sets` log.
 
-use lib_domain as domain;
+use lib_core as domain;
 
 impl crate::ChangeSet {
     /// Insert this Change Set into the durable log.
@@ -118,13 +118,13 @@ mod tests {
     #[sqlx::test]
     async fn insert_preserves_a_null_value(pool: SqlitePool) {
         let change_set = crate::change_sets::ChangeSetBuilder::new()
-            .with_id(lib_domain::RowID::mock())
+            .with_id(lib_core::RowID::mock())
             .with_table_name("categories")
-            .with_row_id(lib_domain::RowID::mock())
+            .with_row_id(lib_core::RowID::mock())
             .with_field_name("description")
             .with_value_opt(None)
-            .with_hlc(lib_domain::HybridLogicalClock::mock())
-            .with_client_id(lib_domain::RowID::mock())
+            .with_hlc(lib_core::HybridLogicalClock::mock())
+            .with_client_id(lib_core::RowID::mock())
             .build()
             .unwrap();
 

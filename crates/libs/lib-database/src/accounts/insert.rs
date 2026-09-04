@@ -3,7 +3,7 @@
 //! Provides database insertion for account records -- bootstrapping the Sync Server's
 //! single auth account on first run (ADR-0010).
 
-use lib_domain as domain;
+use lib_core as domain;
 
 impl crate::Account {
     /// Insert this account into the durable user store.
@@ -101,7 +101,7 @@ mod tests {
         account.insert(&pool).await.unwrap();
 
         let duplicate = crate::accounts::AccountBuilder::new()
-            .with_id(lib_domain::RowID::new())
+            .with_id(lib_core::RowID::new())
             .with_username(account.username.clone())
             .with_password_hash("$argon2id$v=19$m=19456,t=2,p=1$other$other".to_string())
             .build()

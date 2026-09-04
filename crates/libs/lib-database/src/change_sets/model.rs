@@ -10,7 +10,7 @@
 ///
 /// Maps directly to the `change_sets` table. Each row is one field-level edit: the
 /// target `table_name`/`row_id`/`field_name`, the new `value` (`None` means the field
-/// was set to NULL), the [`HybridLogicalClock`](lib_domain::HybridLogicalClock)
+/// was set to NULL), the [`HybridLogicalClock`](lib_core::HybridLogicalClock)
 /// timestamp used for last-write-wins comparison, the originating `client_id` for
 /// tie-breaking, and a `version` field held for a future CRDT/manual-merge upgrade path.
 #[derive(Debug, sqlx::FromRow, serde::Deserialize, serde::Serialize, PartialEq, Clone)]
@@ -18,13 +18,13 @@ pub struct ChangeSet {
     /// Stable, time-ordered identifier for this Change Set. Also the Sync Server's
     /// pull cursor: Clients pull every Change Set with an `id` greater than the last
     /// one they have already applied.
-    pub id: lib_domain::RowID,
+    pub id: lib_core::RowID,
 
     /// The target table this Change Set applies to (e.g. `"categories"`).
     pub table_name: String,
 
     /// The target row's identifier within `table_name`.
-    pub row_id: lib_domain::RowID,
+    pub row_id: lib_core::RowID,
 
     /// The target column within the row.
     pub field_name: String,
@@ -35,11 +35,11 @@ pub struct ChangeSet {
     /// The Hybrid Logical Clock timestamp this edit was made at, used for
     /// last-write-wins conflict resolution between Change Sets targeting the same
     /// `table_name`/`row_id`/`field_name`.
-    pub hlc: lib_domain::HybridLogicalClock,
+    pub hlc: lib_core::HybridLogicalClock,
 
     /// The stable identifier of the Client that produced this Change Set, used to
     /// tie-break Change Sets whose `hlc` values are otherwise equal.
-    pub client_id: lib_domain::RowID,
+    pub client_id: lib_core::RowID,
 
     /// Version/parent-version placeholder for a future CRDT or manual-merge upgrade
     /// path (ADR-0009). Not consumed by plain last-write-wins.
@@ -59,13 +59,13 @@ impl ChangeSet {
         use crate::change_sets::ChangeSetBuilder;
 
         ChangeSetBuilder::new()
-            .with_id(lib_domain::RowID::mock())
+            .with_id(lib_core::RowID::mock())
             .with_table_name(Self::generate_mock_table_name())
-            .with_row_id(lib_domain::RowID::mock())
+            .with_row_id(lib_core::RowID::mock())
             .with_field_name(Self::generate_mock_field_name())
             .with_value_opt(Self::generate_mock_value())
-            .with_hlc(lib_domain::HybridLogicalClock::mock())
-            .with_client_id(lib_domain::RowID::mock())
+            .with_hlc(lib_core::HybridLogicalClock::mock())
+            .with_client_id(lib_core::RowID::mock())
             .with_version_opt(Some(0))
             .with_created_on_opt(Some(chrono::Utc::now()))
             .build()

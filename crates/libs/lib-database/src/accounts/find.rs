@@ -4,7 +4,7 @@
 //! login (`find_by_username`), and fetching the single bootstrap account by whichever
 //! consumer just needs "the" account rather than a specific username (`find_only`).
 
-use lib_domain as domain;
+use lib_core as domain;
 
 impl crate::Account {
     /// Find an account by its unique username.

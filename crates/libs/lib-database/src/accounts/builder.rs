@@ -9,7 +9,7 @@ use crate::DatabaseError;
 /// Fluent builder for [`Account`] rows.
 #[derive(Debug, Default, Clone)]
 pub struct AccountBuilder {
-    id: Option<lib_domain::RowID>,
+    id: Option<lib_core::RowID>,
     username: Option<String>,
     password_hash: Option<String>,
     refresh_token_hash: Option<Option<String>>,
@@ -24,9 +24,9 @@ impl AccountBuilder {
         Self::default()
     }
 
-    /// Use an existing [`RowID`](lib_domain::RowID) for the account.
+    /// Use an existing [`RowID`](lib_core::RowID) for the account.
     #[must_use]
-    pub fn with_id(mut self, id: lib_domain::RowID) -> Self {
+    pub fn with_id(mut self, id: lib_core::RowID) -> Self {
         self.id = Some(id);
         self
     }

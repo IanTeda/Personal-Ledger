@@ -27,7 +27,7 @@ pub struct Claims {
 /// # Errors
 /// Returns an error if JWT encoding fails (should not happen for well-formed claims).
 pub fn issue_access_token(
-    account_id: lib_domain::RowID,
+    account_id: lib_core::RowID,
     signing_key: &SecretString,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     let now = chrono::Utc::now().timestamp();
@@ -69,7 +69,7 @@ mod tests {
 
     #[test]
     fn issue_and_verify_round_trip() {
-        let account_id = lib_domain::RowID::new();
+        let account_id = lib_core::RowID::new();
         let key = test_key();
 
         let token = issue_access_token(account_id, &key).unwrap();
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn verify_rejects_a_token_signed_with_a_different_key() {
-        let token = issue_access_token(lib_domain::RowID::new(), &test_key()).unwrap();
+        let token = issue_access_token(lib_core::RowID::new(), &test_key()).unwrap();
 
         let other_key = SecretString::from("a-completely-different-key".to_string());
         assert!(verify_access_token(&token, &other_key).is_err());
@@ -94,7 +94,7 @@ mod tests {
     #[test]
     fn verify_rejects_an_expired_token() {
         let key = test_key();
-        let account_id = lib_domain::RowID::new();
+        let account_id = lib_core::RowID::new();
         let claims = Claims {
             sub: account_id.to_string(),
             iat: chrono::Utc::now().timestamp() - 600,

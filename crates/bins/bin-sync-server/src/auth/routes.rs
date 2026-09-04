@@ -212,7 +212,7 @@ type TokenError = (StatusCode, &'static str);
 fn redeem_authorization_code(
     state: &AuthState,
     form: &TokenForm,
-) -> Result<lib_domain::RowID, TokenError> {
+) -> Result<lib_core::RowID, TokenError> {
     let code = form
         .code
         .as_deref()
@@ -251,7 +251,7 @@ fn redeem_authorization_code(
 async fn redeem_refresh_token(
     state: &AuthState,
     form: &TokenForm,
-) -> Result<lib_domain::RowID, TokenError> {
+) -> Result<lib_core::RowID, TokenError> {
     let refresh_token = form
         .refresh_token
         .as_deref()
@@ -278,7 +278,7 @@ async fn redeem_refresh_token(
 
 async fn issue_token_pair(
     state: &AuthState,
-    account_id: lib_domain::RowID,
+    account_id: lib_core::RowID,
 ) -> axum::response::Response {
     let access_token = match jwt::issue_access_token(account_id, &state.signing_key) {
         Ok(token) => token,

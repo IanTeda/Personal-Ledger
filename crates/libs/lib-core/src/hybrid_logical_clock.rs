@@ -13,7 +13,7 @@
 //! ## Examples
 //!
 //! ```rust
-//! use lib_domain::HlcClock;
+//! use lib_core::HlcClock;
 //!
 //! let mut clock = HlcClock::new();
 //! let first = clock.tick();
@@ -32,12 +32,12 @@
 /// # Examples
 ///
 /// ```rust
-/// use lib_domain::HybridLogicalClock;
+/// use lib_core::HybridLogicalClock;
 ///
 /// let a: HybridLogicalClock = "2026-01-01T00:00:00Z:0".parse()?;
 /// let b: HybridLogicalClock = "2026-01-01T00:00:00Z:1".parse()?;
 /// assert!(a < b);
-/// # Ok::<(), lib_domain::HybridLogicalClockError>(())
+/// # Ok::<(), lib_core::HybridLogicalClockError>(())
 /// ```
 #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HybridLogicalClock {

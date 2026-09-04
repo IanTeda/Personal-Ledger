@@ -21,7 +21,7 @@
 //! chart (ADR-0002).
 //!
 //! The final screen, Live Categories, demonstrates the app operating against a real
-//! embedded SQLite store (`lib-database`/`lib-domain`), not dummy data -- FC-DESKTOP's own
+//! embedded SQLite store (`lib-database`/`lib-core`), not dummy data -- FC-DESKTOP's own
 //! real-data ticket (#37), reusing the connect/migrate/seed/read pattern the TUI's own
 //! live-data demo established (`crates/bins/bin-tui/src/screen/categories.rs`, FC-TUI-005).
 //! `lib-database` is built on `sqlx`'s Tokio runtime feature, but `GPUI`'s own executor is
@@ -378,16 +378,16 @@ async fn load_live_categories_from(
 
     if lib_database::Categories::find_all(pool).await?.is_empty() {
         let seed = lib_database::Categories {
-            id: lib_domain::RowID::new(),
+            id: lib_core::RowID::new(),
             code: "DEM.SEE.D01".to_string(),
             name: "Demo Seed Category".to_string(),
             description: Some(
                 "Inserted by the Desktop app's embedded-SQLite feasibility demo (FC-DESKTOP real-data demo)"
                     .to_string(),
             ),
-            url_slug: Some(lib_domain::UrlSlug::from("demo-seed-category")),
-            category_type: lib_domain::CategoryTypes::Expense,
-            color: Some(lib_domain::HexColor::from_rgb(0x4a, 0x9e, 0xd6)),
+            url_slug: Some(lib_core::UrlSlug::from("demo-seed-category")),
+            category_type: lib_core::CategoryTypes::Expense,
+            color: Some(lib_core::HexColor::from_rgb(0x4a, 0x9e, 0xd6)),
             icon: None,
             is_active: true,
             created_on: chrono::Utc::now(),
@@ -737,7 +737,7 @@ mod tests {
 
     /// Exercises the real embedded-SQLite path end-to-end against an isolated, throwaway
     /// database file: connect, migrate (a write), seed-if-empty (a write), and read back --
-    /// proving FC-DESKTOP's real-data ticket against actual `lib-database`/`lib-domain`
+    /// proving FC-DESKTOP's real-data ticket against actual `lib-database`/`lib-core`
     /// code, not a mock. Runs `load_live_categories_from` twice against the same file to
     /// confirm the seed step is idempotent. Mirrors the TUI's own equivalent test
     /// (`crates/bins/bin-tui/src/screen/categories.rs`).
@@ -745,7 +745,7 @@ mod tests {
     async fn load_live_categories_from_seeds_once_and_reads_back() {
         let path = std::env::temp_dir().join(format!(
             "personal-ledger-desktop-test-{}.sqlite",
-            lib_domain::RowID::new()
+            lib_core::RowID::new()
         ));
         let url = format!("sqlite://{}?mode=rwc", path.display());
 

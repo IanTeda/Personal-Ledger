@@ -31,13 +31,13 @@
 //! // Create a category instance (typically from database query)
 //! # // This would normally come from sqlx::FromRow
 //! # let category = Categories {
-//! #     id: lib_domain::RowID::new(),
+//! #     id: lib_core::RowID::new(),
 //! #     code: "FOO.BAR.BAZ".to_string(),
 //! #     name: "Example Category".to_string(),
 //! #     description: Some("An example category".to_string()),
-//! #     url_slug: Some(lib_domain::UrlSlug::parse("example-category").unwrap()),
-//! #     category_type: lib_domain::CategoryTypes::Expense,
-//! #     color: Some(lib_domain::HexColor::parse("#FF5733").unwrap()),
+//! #     url_slug: Some(lib_core::UrlSlug::parse("example-category").unwrap()),
+//! #     category_type: lib_core::CategoryTypes::Expense,
+//! #     color: Some(lib_core::HexColor::parse("#FF5733").unwrap()),
 //! #     icon: Some("shopping-cart".to_string()),
 //! #     is_active: true,
 //! #     created_on: chrono::Utc::now(),
@@ -88,7 +88,7 @@ pub struct Categories {
     ///
     /// Uses UUID v7 for chronological ordering and global uniqueness.
     /// This field is the primary key in the database.
-    pub id: lib_domain::RowID,
+    pub id: lib_core::RowID,
 
     /// Structured alphanumeric code identifying the category.
     ///
@@ -114,19 +114,19 @@ pub struct Categories {
     /// Automatically generated from the category name, replacing spaces and
     /// special characters with hyphens and converting to lowercase.
     /// Used for RESTful URLs and frontend routing.
-    pub url_slug: Option<lib_domain::UrlSlug>,
+    pub url_slug: Option<lib_core::UrlSlug>,
 
     /// Accounting classification type.
     ///
     /// Determines how transactions in this category affect financial statements.
     /// Must be one of: Asset, Liability, Income, Expense, or Equity.
-    pub category_type: lib_domain::CategoryTypes,
+    pub category_type: lib_core::CategoryTypes,
 
     /// Optional hex color code for UI theming and visualisation.
     ///
     /// Stored in canonical `#RRGGBB` format. Used by frontend applications
     /// to provide visual distinction between categories.
-    pub color: Option<lib_domain::HexColor>,
+    pub color: Option<lib_core::HexColor>,
 
     /// Optional icon identifier for UI display.
     ///
@@ -187,13 +187,13 @@ impl Categories {
         use crate::categories::CategoriesBuilder;
 
         CategoriesBuilder::new()
-            .with_id(lib_domain::RowID::mock())
+            .with_id(lib_core::RowID::mock())
             .with_code_opt(Some(Self::generate_mock_code()))
             .with_name(Self::generate_mock_name())
             .with_description_opt(Self::generate_mock_description())
             .with_url_slug_opt(Self::generate_mock_url_slug())
-            .with_category_type(lib_domain::CategoryTypes::mock())
-            .with_color_opt(lib_domain::HexColor::mock_with_option())
+            .with_category_type(lib_core::CategoryTypes::mock())
+            .with_color_opt(lib_core::HexColor::mock_with_option())
             .with_icon_opt(Self::generate_mock_icon())
             .with_is_active_opt(Some(Self::generate_mock_is_active()))
             .with_created_on_opt(Some(chrono::Utc::now()))
@@ -280,8 +280,8 @@ impl Categories {
     /// Will always return `Some` since `UrlSlug::from` should succeed for
     /// generated lorem ipsum text.
     #[cfg(test)]
-    fn generate_mock_url_slug() -> Option<lib_domain::UrlSlug> {
-        Some(lib_domain::UrlSlug::from(Self::generate_mock_name()))
+    fn generate_mock_url_slug() -> Option<lib_core::UrlSlug> {
+        Some(lib_core::UrlSlug::from(Self::generate_mock_name()))
     }
 
     /// Generates a mock icon identifier with 50% probability.

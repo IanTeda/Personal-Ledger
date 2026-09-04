@@ -16,7 +16,7 @@
 //! ## Examples
 //!
 //! ```rust
-//! use lib_domain::RowID;
+//! use lib_core::RowID;
 //!
 //! // Create a new time-ordered identifier
 //! let id = RowID::new();
@@ -51,7 +51,7 @@
 /// # Examples
 ///
 /// ```rust
-/// use lib_domain::RowID;
+/// use lib_core::RowID;
 ///
 /// // Create a new RowID with current timestamp
 /// let id = RowID::new();
@@ -123,7 +123,7 @@ impl TryFrom<uuid::Uuid> for RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// // Valid v7 UUID
     /// let uuid = uuid::Uuid::now_v7();
@@ -132,7 +132,7 @@ impl TryFrom<uuid::Uuid> for RowID {
     /// // Invalid version will fail
     /// let uuid_v4 = uuid::Uuid::new_v4();
     /// assert!(RowID::try_from(uuid_v4).is_err());
-    /// # Ok::<(), lib_domain::RowIDError>(())
+    /// # Ok::<(), lib_core::RowIDError>(())
     /// ```
     fn try_from(uuid: uuid::Uuid) -> Result<Self, Self::Error> {
         if uuid.get_version_num() != 7 {
@@ -160,7 +160,7 @@ impl std::str::FromStr for RowID {
     ///
     /// ```rust
     /// use std::str::FromStr;
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// // Using parse()
     /// let id: RowID = "01800000-0000-7000-8000-000000000000".parse()?;
@@ -170,7 +170,7 @@ impl std::str::FromStr for RowID {
     ///
     /// // Invalid format fails
     /// assert!("not-a-uuid".parse::<RowID>().is_err());
-    /// # Ok::<(), lib_domain::RowIDError>(())
+    /// # Ok::<(), lib_core::RowIDError>(())
     /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let uuid = uuid::Uuid::parse_str(s).map_err(RowIDError::from)?;
@@ -216,7 +216,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id1 = RowID::new();
     /// let id2 = RowID::new();
@@ -241,7 +241,7 @@ impl RowID {
     ///
     /// ```rust
     /// use chrono::{DateTime, Utc};
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let timestamp = DateTime::parse_from_rfc3339("2023-01-01T00:00:00Z")
     ///     .unwrap()
@@ -266,7 +266,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id = RowID::new();
     /// let uuid = id.into_uuid();
@@ -284,7 +284,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id = RowID::new();
     /// let uuid_ref = id.as_uuid();
@@ -310,7 +310,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id = RowID::new();
     /// assert!(id.validate().is_ok());
@@ -331,7 +331,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id1 = RowID::new();
     /// let id2 = RowID::new();
@@ -353,7 +353,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id1 = RowID::new();
     /// let id2 = RowID::new();
@@ -375,7 +375,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id1 = RowID::new();
     /// let id2 = RowID::new();
@@ -402,7 +402,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id1 = RowID::new();
     /// let id2 = RowID::new();
@@ -429,7 +429,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id1 = RowID::new();
     /// let id2 = RowID::new();
@@ -454,7 +454,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id1 = RowID::new();
     /// let id2 = RowID::new();
@@ -478,7 +478,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id1 = RowID::new();
     /// std::thread::sleep(std::time::Duration::from_millis(1));
@@ -498,7 +498,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id1 = RowID::new();
     /// std::thread::sleep(std::time::Duration::from_millis(1));
@@ -523,7 +523,7 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let mock_id = RowID::mock();
     /// assert_eq!(mock_id.as_uuid().get_version_num(), 7);
@@ -566,7 +566,7 @@ impl RowID {
     ///
     /// ```rust
     /// use chrono::{DateTime, Utc};
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let timestamp = DateTime::parse_from_rfc3339("2023-01-01T00:00:00Z")
     ///     .unwrap()
@@ -602,7 +602,7 @@ impl RowID {
     ///
     /// ```rust
     /// use uuid::Uuid;
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let uuid = Uuid::now_v7();
     /// let id = RowID::from_uuid(uuid);
@@ -624,14 +624,14 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// // Using from_string
     /// let id = RowID::from_string("01800000-0000-7000-8000-000000000000")?;
     ///
     /// // Prefer using parse() for idiomatic code
     /// let id: RowID = "01800000-0000-7000-8000-000000000000".parse()?;
-    /// # Ok::<(), lib_domain::RowIDError>(())
+    /// # Ok::<(), lib_core::RowIDError>(())
     /// ```
     pub fn from_string(s: &str) -> Result<Self, RowIDError> {
         s.parse()
@@ -654,14 +654,14 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let id = RowID::from_i64(12345)?;
     /// assert_eq!(id.to_i64(), 12345);
     ///
     /// // Negative values are rejected
     /// assert!(RowID::from_i64(-1).is_err());
-    /// # Ok::<(), lib_domain::RowIDError>(())
+    /// # Ok::<(), lib_core::RowIDError>(())
     /// ```
     pub fn from_i64(id: i64) -> Result<Self, RowIDError> {
         if id < 0 {
@@ -688,13 +688,13 @@ impl RowID {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     ///
     /// let original_id = 12345i64;
     /// let row_id = RowID::from_i64(original_id)?;
     /// let extracted_id = row_id.to_i64();
     /// assert_eq!(original_id, extracted_id);
-    /// # Ok::<(), lib_domain::RowIDError>(())
+    /// # Ok::<(), lib_core::RowIDError>(())
     /// ```
     pub fn to_i64(&self) -> i64 {
         let uuid_bytes = self.0.as_bytes();

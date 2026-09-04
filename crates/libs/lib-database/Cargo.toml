@@ -9,7 +9,7 @@ migrations = "migrations"
 
 [dependencies]
 ## -- Internal Dependencies --
-lib_domain = { path = "../../../crates/libs/lib-domain" }
+lib_core = { path = "../../../crates/libs/lib-core" }
 
 ## -- Workspace Shared Dependencies --
 chrono = { workspace = true }

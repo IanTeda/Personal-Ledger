@@ -10,13 +10,13 @@ use crate::DatabaseError;
 /// Fluent builder for [`ChangeSet`] rows.
 #[derive(Debug, Default, Clone)]
 pub struct ChangeSetBuilder {
-    id: Option<lib_domain::RowID>,
+    id: Option<lib_core::RowID>,
     table_name: Option<String>,
-    row_id: Option<lib_domain::RowID>,
+    row_id: Option<lib_core::RowID>,
     field_name: Option<String>,
     value: Option<String>,
-    hlc: Option<lib_domain::HybridLogicalClock>,
-    client_id: Option<lib_domain::RowID>,
+    hlc: Option<lib_core::HybridLogicalClock>,
+    client_id: Option<lib_core::RowID>,
     version: Option<i64>,
     created_on: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -28,9 +28,9 @@ impl ChangeSetBuilder {
         Self::default()
     }
 
-    /// Use an existing [`RowID`](lib_domain::RowID) for the Change Set.
+    /// Use an existing [`RowID`](lib_core::RowID) for the Change Set.
     #[must_use]
-    pub fn with_id(mut self, id: lib_domain::RowID) -> Self {
+    pub fn with_id(mut self, id: lib_core::RowID) -> Self {
         self.id = Some(id);
         self
     }
@@ -44,7 +44,7 @@ impl ChangeSetBuilder {
 
     /// Set the target row's identifier.
     #[must_use]
-    pub fn with_row_id(mut self, row_id: lib_domain::RowID) -> Self {
+    pub fn with_row_id(mut self, row_id: lib_core::RowID) -> Self {
         self.row_id = Some(row_id);
         self
     }
@@ -65,14 +65,14 @@ impl ChangeSetBuilder {
 
     /// Set the Hybrid Logical Clock timestamp.
     #[must_use]
-    pub fn with_hlc(mut self, hlc: lib_domain::HybridLogicalClock) -> Self {
+    pub fn with_hlc(mut self, hlc: lib_core::HybridLogicalClock) -> Self {
         self.hlc = Some(hlc);
         self
     }
 
     /// Set the originating Client's stable identifier.
     #[must_use]
-    pub fn with_client_id(mut self, client_id: lib_domain::RowID) -> Self {
+    pub fn with_client_id(mut self, client_id: lib_core::RowID) -> Self {
         self.client_id = Some(client_id);
         self
     }

@@ -55,13 +55,13 @@
 //!
 //! // Single insert
 //! let category = Categories {
-//!     id: lib_domain::RowID::new(),
+//!     id: lib_core::RowID::new(),
 //!     code: "FOO.BAR.BAZ".to_string(),
 //!     name: "Example Category".to_string(),
 //!     description: Some("An example category".to_string()),
-//!     url_slug: Some(lib_domain::UrlSlug::parse("example-category").unwrap()),
-//!     category_type: lib_domain::CategoryTypes::Expense,
-//!     color: Some(lib_domain::HexColor::parse("#FF5733").unwrap()),
+//!     url_slug: Some(lib_core::UrlSlug::parse("example-category").unwrap()),
+//!     category_type: lib_core::CategoryTypes::Expense,
+//!     color: Some(lib_core::HexColor::parse("#FF5733").unwrap()),
 //!     icon: Some("shopping-cart".to_string()),
 //!     is_active: true,
 //!     created_on: chrono::Utc::now(),
@@ -72,12 +72,12 @@
 //! // Bulk insert
 //! let categories = vec![
 //!     Categories {
-//!         id: lib_domain::RowID::new(),
+//!         id: lib_core::RowID::new(),
 //!         code: "FOO.BAR.BAZ".to_string(),
 //!         name: "Category 1".to_string(),
 //!         description: None,
-//!         url_slug: Some(lib_domain::UrlSlug::parse("category-1").unwrap()),
-//!         category_type: lib_domain::CategoryTypes::Expense,
+//!         url_slug: Some(lib_core::UrlSlug::parse("category-1").unwrap()),
+//!         category_type: lib_core::CategoryTypes::Expense,
 //!         color: None,
 //!         icon: None,
 //!         is_active: true,
@@ -85,12 +85,12 @@
 //!         updated_on: chrono::Utc::now(),
 //!     },
 //!     Categories {
-//!         id: lib_domain::RowID::new(),
+//!         id: lib_core::RowID::new(),
 //!         code: "FOO.BAR.QUX".to_string(),
 //!         name: "Category 2".to_string(),
 //!         description: None,
-//!         url_slug: Some(lib_domain::UrlSlug::parse("category-2").unwrap()),
-//!         category_type: lib_domain::CategoryTypes::Income,
+//!         url_slug: Some(lib_core::UrlSlug::parse("category-2").unwrap()),
+//!         category_type: lib_core::CategoryTypes::Income,
 //!         color: None,
 //!         icon: None,
 //!         is_active: true,
@@ -107,7 +107,7 @@
 //! # }
 //! ```
 
-use lib_domain as domain;
+use lib_core as domain;
 
 impl crate::Categories {
     /// Inserts a new category into the database.
@@ -163,13 +163,13 @@ impl crate::Categories {
     ///
     /// // Create and insert a category
     /// let category = Categories {
-    ///     id: lib_domain::RowID::new(),
+    ///     id: lib_core::RowID::new(),
     ///     code: "FOO.BAR.BAZ".to_string(),
     ///     name: "Example Category".to_string(),
     ///     description: Some("An example category".to_string()),
-    ///     url_slug: Some(lib_domain::UrlSlug::parse("example-category").unwrap()),
-    ///     category_type: lib_domain::CategoryTypes::Expense,
-    ///     color: Some(lib_domain::HexColor::parse("#FF5733").unwrap()),
+    ///     url_slug: Some(lib_core::UrlSlug::parse("example-category").unwrap()),
+    ///     category_type: lib_core::CategoryTypes::Expense,
+    ///     color: Some(lib_core::HexColor::parse("#FF5733").unwrap()),
     ///     icon: Some("shopping-cart".to_string()),
     ///     is_active: true,
     ///     created_on: chrono::Utc::now(),
@@ -346,12 +346,12 @@ impl crate::Categories {
     /// // Create multiple categories
     /// let categories = vec![
     ///     Categories {
-    ///         id: lib_domain::RowID::new(),
+    ///         id: lib_core::RowID::new(),
     ///         code: "FOO.BAR.BAZ".to_string(),
     ///         name: "Category 1".to_string(),
     ///         description: None,
-    ///         url_slug: Some(lib_domain::UrlSlug::parse("category-1").unwrap()),
-    ///         category_type: lib_domain::CategoryTypes::Expense,
+    ///         url_slug: Some(lib_core::UrlSlug::parse("category-1").unwrap()),
+    ///         category_type: lib_core::CategoryTypes::Expense,
     ///         color: None,
     ///         icon: None,
     ///         is_active: true,
@@ -359,12 +359,12 @@ impl crate::Categories {
     ///         updated_on: chrono::Utc::now(),
     ///     },
     ///     Categories {
-    ///         id: lib_domain::RowID::new(),
+    ///         id: lib_core::RowID::new(),
     ///         code: "FOO.BAR.QUX".to_string(),
     ///         name: "Category 2".to_string(),
     ///         description: None,
-    ///         url_slug: Some(lib_domain::UrlSlug::parse("category-2").unwrap()),
-    ///         category_type: lib_domain::CategoryTypes::Income,
+    ///         url_slug: Some(lib_core::UrlSlug::parse("category-2").unwrap()),
+    ///         category_type: lib_core::CategoryTypes::Income,
     ///         color: None,
     ///         icon: None,
     ///         is_active: true,
@@ -372,12 +372,12 @@ impl crate::Categories {
     ///         updated_on: chrono::Utc::now(),
     ///     },
     ///     Categories {
-    ///         id: lib_domain::RowID::new(),
+    ///         id: lib_core::RowID::new(),
     ///         code: "FOO.BAR.QUUX".to_string(),
     ///         name: "Category 3".to_string(),
     ///         description: None,
-    ///         url_slug: Some(lib_domain::UrlSlug::parse("category-3").unwrap()),
-    ///         category_type: lib_domain::CategoryTypes::Asset,
+    ///         url_slug: Some(lib_core::UrlSlug::parse("category-3").unwrap()),
+    ///         category_type: lib_core::CategoryTypes::Asset,
     ///         color: None,
     ///         icon: None,
     ///         is_active: true,
@@ -590,13 +590,13 @@ impl crate::Categories {
     ///
     /// // Create a category
     /// let mut category = Categories {
-    ///     id: lib_domain::RowID::new(),
+    ///     id: lib_core::RowID::new(),
     ///     code: "FOO.BAR.BAZ".to_string(),
     ///     name: "Original Name".to_string(),
     ///     description: Some("An example category".to_string()),
-    ///     url_slug: Some(lib_domain::UrlSlug::parse("original-name").unwrap()),
-    ///     category_type: lib_domain::CategoryTypes::Expense,
-    ///     color: Some(lib_domain::HexColor::parse("#FF5733").unwrap()),
+    ///     url_slug: Some(lib_core::UrlSlug::parse("original-name").unwrap()),
+    ///     category_type: lib_core::CategoryTypes::Expense,
+    ///     color: Some(lib_core::HexColor::parse("#FF5733").unwrap()),
     ///     icon: Some("shopping-cart".to_string()),
     ///     is_active: true,
     ///     created_on: chrono::Utc::now(),
@@ -753,7 +753,7 @@ impl crate::Categories {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib_domain::{RowID, UrlSlug, HexColor, CategoryTypes};
+    use lib_core::{RowID, UrlSlug, HexColor, CategoryTypes};
     use sqlx::SqlitePool;
     use fake::Fake;
     use fake::faker::lorem::en::{Words, Sentence};
@@ -876,13 +876,13 @@ mod tests {
             crate::Categories,
             r#"
                 SELECT
-                    id              AS "id!: lib_domain::RowID",
+                    id              AS "id!: lib_core::RowID",
                     code,
                     name,
                     description,
-                    url_slug        AS "url_slug?: lib_domain::UrlSlug",
-                    category_type   AS "category_type!: lib_domain::CategoryTypes",
-                    color           AS "color?: lib_domain::HexColor",
+                    url_slug        AS "url_slug?: lib_core::UrlSlug",
+                    category_type   AS "category_type!: lib_core::CategoryTypes",
+                    color           AS "color?: lib_core::HexColor",
                     icon,
                     is_active       AS "is_active!: bool",
                     created_on      AS "created_on!: chrono::DateTime<chrono::Utc>",
@@ -1154,13 +1154,13 @@ mod tests {
             crate::Categories,
             r#"
                 SELECT
-                    id              AS "id!: lib_domain::RowID",
+                    id              AS "id!: lib_core::RowID",
                     code,
                     name,
                     description,
-                    url_slug        AS "url_slug?: lib_domain::UrlSlug",
-                    category_type   AS "category_type!: lib_domain::CategoryTypes",
-                    color           AS "color?: lib_domain::HexColor",
+                    url_slug        AS "url_slug?: lib_core::UrlSlug",
+                    category_type   AS "category_type!: lib_core::CategoryTypes",
+                    color           AS "color?: lib_core::HexColor",
                     icon,
                     is_active       AS "is_active!: bool",
                     created_on      AS "created_on!: chrono::DateTime<chrono::Utc>",

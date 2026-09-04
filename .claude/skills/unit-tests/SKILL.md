@@ -16,7 +16,7 @@ impl Category {
     #[cfg(test)]
     pub fn mock() -> Self {
         Self {
-            id: lib_domain::RowID::mock(),
+            id: lib_core::RowID::mock(),
             name: Self::generate_mock_name(),
             ..
         }

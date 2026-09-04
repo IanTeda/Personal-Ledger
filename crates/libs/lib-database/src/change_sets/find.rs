@@ -4,7 +4,7 @@
 //! Sync Server's pull cursor query: every Change Set after the last one a Client has
 //! already applied.
 
-use lib_domain as domain;
+use lib_core as domain;
 
 impl crate::ChangeSet {
     /// Find every Change Set with an `id` greater than `since_id`, oldest first, up to

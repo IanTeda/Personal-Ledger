@@ -71,7 +71,7 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 - __FC-TUI-002:__ Demonstrate that line, doughnut, candle stick and divergent graphs each work in the TUI app across platforms, using dummy data — one demonstration per chart type.
 - __FC-TUI-003:__ Demonstrate that tables work in the TUI app across platforms.
 - __FC-TUI-004:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux — a portable single executable on Windows (no installer, no elevation), and a real user-scope installer/package on macOS (`.dmg`/`.app`) and Linux (`.deb` and/or AppImage). Research and lock the packaging tool choice (e.g. `cargo-dist`, `cargo-packager`) in an ADR before building the per-OS packages.
-- __FC-TUI-005:__ Demonstrate the TUI app operating end-to-end against the embedded SQLite persistence layer (`lib-database`/`lib-domain`, see FC-DATA-001) with real (not dummy) data, proving the local-first architecture works through a real client.
+- __FC-TUI-005:__ Demonstrate the TUI app operating end-to-end against the embedded SQLite persistence layer (`lib-database`/`lib-core`, see FC-DATA-001) with real (not dummy) data, proving the local-first architecture works through a real client.
 
 ### Sync Server App:
 
@@ -85,7 +85,7 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 
 ### Local Data:
 
-- __FC-DATA-001:__ Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-domain`) that each client (Desktop, TUI) can hold and operate against independently, without requiring a network connection.
+- __FC-DATA-001:__ Demonstrate an embedded SQLite persistence layer (`lib-database`, `lib-core`) that each client (Desktop, TUI) can hold and operate against independently, without requiring a network connection.
 - __FC-DATA-002:__ Research the best and most efficient way to store and calculate running Balances.
 
 ### 2.2. Concept Cycle (v0.1.0)
@@ -95,7 +95,7 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 Implement these requirements to bring the TUI, Desktop and Sync up to functionality
 
 - __CC-ALL-001:__ Ensure all dependencies are up-to-date and cross-compilation is enabled and compiles on all platforms.
-- __CC-ALL-002:__ Refactor lib_domain into lib_core (mechanical rename — no new shared responsibilities identified beyond today's lib_domain scope; revisit if real shared logic emerges once CC-TUI-005+/CC-DESKTOP-005+ build real CRUD).
+- __CC-ALL-002:__ ~~Refactor lib_domain into lib_core~~ — resolved: mechanical rename done (`crates/libs/lib-domain` → `crates/libs/lib-core`, package `lib_domain` → `lib_core`, every dependent crate updated). No new shared responsibilities were folded in beyond the original `lib_domain` scope (`RowID`, `CategoryTypes`, `UrlSlug`, `HexColor`, `HybridLogicalClock`); revisit if real shared logic emerges once CC-TUI-005+/CC-DESKTOP-005+ build real CRUD.
 - __CC-ALL-003:__ ~~Research depreciated Chrono crate and replace it~~ — resolved: chrono is not deprecated (`0.4.45`, actively maintained, one old advisory fixed years ago); `jiff` was ruled out because `sqlx-sqlite` has no `jiff` feature. Keeping chrono, no ADR needed (status quo confirmed, not a real trade-off). See `docs/research/chrono-alternatives.md` (branch `research/chrono-alternatives`).
 - __CC-ALL-004:__ Review, research and grill the workspace code architecture and structure for best practice, readability and maintainability.
 - __CC-ALL-006:__ Wire `lib_telemetry::init` into `bin-tui` and `bin-desktop` (already done for `bin-sync-server`); confirm telemetry implementation is compatible across binaries and with cross-compilation.
@@ -118,7 +118,7 @@ Implement these requirements to bring the TUI, Desktop and Sync up to functional
 
 #### 2.2.3 Desktop App:
 
-Mirrors §2.2.2, built in parallel with the TUI cycle rather than sequenced after it — both clients share `lib-database`/`lib-domain`, and `bin-desktop` already has a feasibility-cycle scaffold (GPUI, ADR-0007/0008) as mature as `bin-tui`'s.
+Mirrors §2.2.2, built in parallel with the TUI cycle rather than sequenced after it — both clients share `lib-database`/`lib-core`, and `bin-desktop` already has a feasibility-cycle scaffold (GPUI, ADR-0007/0008) as mature as `bin-tui`'s.
 
 - __CC-DESKTOP-001:__ Research and decide on screens and user flows for the Desktop app, including how the Preference model from CC-TUI-001 is shared or diverges for Desktop (see `CONTEXT.md` — Preference).
 - __CC-DESKTOP-002:__ Replace the feasibility cycle's dummy-data chart/table demo (`bin-desktop/src/main.rs`) with live screens backed by `lib-database`.
@@ -206,7 +206,7 @@ The requirements below describe the product's ultimate end state across all deve
 
 ### Platform
 
-- __FR.39:__ The system shall expose Category, Account, Transaction, Budget, and Balance Check operations (FR.4–FR.38) via a local embedded library API (`lib-database`/`lib-domain`), called in-process by each client (Desktop, TUI) against its own local SQLite store.
+- __FR.39:__ The system shall expose Category, Account, Transaction, Budget, and Balance Check operations (FR.4–FR.38) via a local embedded library API (`lib-database`/`lib-core`), called in-process by each client (Desktop, TUI) against its own local SQLite store.
 - __FR.39a:__ The sync server shall expose a versioned gRPC sync protocol for syncing a client's local ledger data with other devices — pushing and pulling change sets rather than exposing full CRUD — and each client shall be able to operate entirely offline against its local store between syncs. The Sync Server persists a durable log of change sets so a Client that has been offline can catch up without both peers being online simultaneously.
 - __FR.40:__ The system shall support layered configuration (defaults, system, user, executable-directory, working-directory, explicit path, environment variables).
 - __FR.41:__ The system shall emit structured, level-configurable tracing output.

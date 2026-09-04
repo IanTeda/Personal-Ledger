@@ -4,7 +4,7 @@
 //! bootstrapped: its current refresh-token hash, rewritten on every rotation
 //! (ADR-0010) or cleared (`None`) on logout/invalidation.
 
-use lib_domain as domain;
+use lib_core as domain;
 
 impl crate::Account {
     /// Replace this account's stored refresh-token hash.
@@ -92,7 +92,7 @@ mod tests {
     #[sqlx::test]
     async fn update_refresh_token_hash_errors_when_account_missing(pool: SqlitePool) {
         let result =
-            crate::Account::update_refresh_token_hash(lib_domain::RowID::new(), Some("x"), &pool)
+            crate::Account::update_refresh_token_hash(lib_core::RowID::new(), Some("x"), &pool)
                 .await;
 
         assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));

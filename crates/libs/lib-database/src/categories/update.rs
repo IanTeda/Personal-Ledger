@@ -17,7 +17,7 @@
 //! - **Safety**: Comprehensive error handling without panics
 //! - **Observability**: Detailed tracing from TRACE to ERROR levels
 
-use lib_domain as domain;
+use lib_core as domain;
 
 impl crate::Categories {
     /// Updates an existing category in the database.
@@ -362,7 +362,7 @@ impl crate::Categories {
     /// # Examples
     /// ```rust,no_run
     /// use lib_database::Categories;
-    /// use lib_domain::RowID;
+    /// use lib_core::RowID;
     /// use sqlx::SqlitePool;
     ///
     /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
@@ -829,7 +829,7 @@ mod tests {
                 // Ensure unique identifiers for this test
                 original.code = format!("TEST{:03}.ABC.DEF", i);
                 original.name = format!("Test Category {}", i); // Ensure unique name
-                original.url_slug = Some(lib_domain::UrlSlug::from(format!("test-category-{}", i)));
+                original.url_slug = Some(lib_core::UrlSlug::from(format!("test-category-{}", i)));
 
                 insert_test_category(&pool, &original).await;
 
@@ -850,7 +850,7 @@ mod tests {
                 // Ensure unique identifiers for this test
                 original.code = format!("STATUS{:03}.ABC.DEF", i);
                 original.name = format!("Status Test Category {}", i); // Ensure unique name
-                original.url_slug = Some(lib_domain::UrlSlug::from(format!("status-test-category-{}", i)));
+                original.url_slug = Some(lib_core::UrlSlug::from(format!("status-test-category-{}", i)));
 
                 insert_test_category(&pool, &original).await;
 

@@ -15,12 +15,12 @@
 //! ## Example Usage
 //!
 //! ```rust
-//! use lib_domain::UrlSlug;
+//! use lib_core::UrlSlug;
 //!
 //! // Parse a title into a slug
 //! let slug = UrlSlug::parse("Hello World! How are you?")?;
 //! assert_eq!(slug.as_str(), "hello-world-how-are-you");
-//! # Ok::<(), lib_domain::UrlSlugError>(())
+//! # Ok::<(), lib_core::UrlSlugError>(())
 //! ```
 
 use std::fmt;
@@ -70,14 +70,14 @@ impl UrlSlug {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::UrlSlug;
+    /// use lib_core::UrlSlug;
     ///
     /// let slug = UrlSlug::parse("Hello World! How are you?")?;
     /// assert_eq!(slug.as_str(), "hello-world-how-are-you");
     ///
     /// let slug = UrlSlug::parse("valid-slug-123")?;
     /// assert_eq!(slug.as_str(), "valid-slug-123");
-    /// # Ok::<(), lib_domain::UrlSlugError>(())
+    /// # Ok::<(), lib_core::UrlSlugError>(())
     /// ```
     ///
     /// This replaces the previous `new` function and is the primary constructor for `UrlSlug`.
@@ -97,11 +97,11 @@ impl UrlSlug {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::UrlSlug;
+    /// use lib_core::UrlSlug;
     ///
     /// let slug = UrlSlug::parse("test-slug")?;
     /// assert_eq!(slug.as_str(), "test-slug");
-    /// # Ok::<(), lib_domain::UrlSlugError>(())
+    /// # Ok::<(), lib_core::UrlSlugError>(())
     /// ```
     pub fn as_str(&self) -> &str {
         &self.0
@@ -112,12 +112,12 @@ impl UrlSlug {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::UrlSlug;
+    /// use lib_core::UrlSlug;
     ///
     /// let slug = UrlSlug::parse("test-slug")?;
     /// let string = slug.into_string();
     /// assert_eq!(string, "test-slug");
-    /// # Ok::<(), lib_domain::UrlSlugError>(())
+    /// # Ok::<(), lib_core::UrlSlugError>(())
     /// ```
     pub fn into_string(self) -> String {
         self.0

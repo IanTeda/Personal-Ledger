@@ -17,7 +17,7 @@ use rand::RngCore;
 pub struct AuthorizationCode {
     pub code_challenge: String,
     pub redirect_uri: String,
-    pub account_id: lib_domain::RowID,
+    pub account_id: lib_core::RowID,
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -42,7 +42,7 @@ impl CodeStore {
         &self,
         code_challenge: String,
         redirect_uri: String,
-        account_id: lib_domain::RowID,
+        account_id: lib_core::RowID,
     ) -> String {
         let mut bytes = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut bytes);
@@ -87,7 +87,7 @@ mod tests {
     #[test]
     fn issue_then_redeem_returns_the_recorded_entry() {
         let store = CodeStore::new();
-        let account_id = lib_domain::RowID::new();
+        let account_id = lib_core::RowID::new();
 
         let code = store.issue(
             "challenge".to_string(),
@@ -106,7 +106,7 @@ mod tests {
         let code = store.issue(
             "challenge".to_string(),
             "http://127.0.0.1:1234/callback".to_string(),
-            lib_domain::RowID::new(),
+            lib_core::RowID::new(),
         );
 
         assert!(store.redeem(&code).is_some());
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn redeem_rejects_an_expired_code() {
         let store = CodeStore::new();
-        let account_id = lib_domain::RowID::new();
+        let account_id = lib_core::RowID::new();
 
         // Insert directly with an already-past expiry, bypassing the normal 2-minute TTL.
         let code = "expired-code".to_string();

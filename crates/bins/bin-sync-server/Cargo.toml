@@ -23,7 +23,7 @@ path = "src/lib.rs"
 ## -- Internal Dependencies --
 lib_config = { path = "../../libs/lib-config" }
 lib_database = { path = "../../libs/lib-database" }
-lib_domain = { path = "../../libs/lib-domain" }
+lib_core = { path = "../../libs/lib-core" }
 lib_rpc = { path = "../../libs/lib-rpc" }
 lib_telemetry = { path = "../../libs/lib-telemetry" }
 

@@ -13,7 +13,7 @@
 #[derive(Debug, sqlx::FromRow, serde::Deserialize, serde::Serialize, PartialEq, Clone)]
 pub struct Account {
     /// Unique time-ordered identifier for the account.
-    pub id: lib_domain::RowID,
+    pub id: lib_core::RowID,
 
     /// Unique username used to sign in via the `/authorize` login form.
     pub username: String,
@@ -44,9 +44,9 @@ impl Account {
         use fake::faker::lorem::en::Word;
 
         let now = chrono::Utc::now();
-        let username = format!("{}-{}", Word().fake::<String>(), lib_domain::RowID::new());
+        let username = format!("{}-{}", Word().fake::<String>(), lib_core::RowID::new());
         AccountBuilder::new()
-            .with_id(lib_domain::RowID::mock())
+            .with_id(lib_core::RowID::mock())
             .with_username(username)
             .with_password_hash("$argon2id$v=19$m=19456,t=2,p=1$mock$mock".to_string())
             .with_refresh_token_hash_opt(None)

@@ -13,7 +13,7 @@
 //! - **Observability**: Detailed tracing from TRACE to ERROR levels
 //! - **Security**: No sensitive data logged; operations are idempotent where possible
 
-use lib_domain as domain;
+use lib_core as domain;
 
 
 impl crate::Categories {
@@ -37,7 +37,7 @@ impl crate::Categories {
     /// # use sqlx::SqlitePool;
     /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
     /// let mut category = Categories::mock();
-    /// category.id = lib_domain::RowID::new();
+    /// category.id = lib_core::RowID::new();
     /// // Assume category is inserted first...
     /// category.delete(pool).await?;
     /// # Ok(())
@@ -117,7 +117,7 @@ impl crate::Categories {
     /// # Examples
     /// ```rust,no_run
     /// # use lib_database::Categories;
-    /// # use lib_domain::RowID;
+    /// # use lib_core::RowID;
     /// # use sqlx::SqlitePool;
     /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
     /// let category_id = RowID::from(123);
@@ -197,7 +197,7 @@ impl crate::Categories {
     /// # Examples
     /// ```rust,no_run
     /// # use lib_database::Categories;
-    /// # use lib_domain::RowID;
+    /// # use lib_core::RowID;
     /// # use sqlx::SqlitePool;
     /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
     /// let ids = vec![RowID::from(123), RowID::from(456)];
@@ -444,7 +444,7 @@ impl crate::Categories {
     /// # Examples
     /// ```rust,no_run
     /// # use lib_database::Categories;
-    /// # use lib_domain::UrlSlug;
+    /// # use lib_core::UrlSlug;
     /// # use sqlx::SqlitePool;
     /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
     /// let slug = UrlSlug::from("groceries");
@@ -685,7 +685,7 @@ mod tests {
                 // Ensure unique identifiers for this test
                 category.code = format!("DEL{:03}.TST.DEL", i);
                 category.name = format!("Test Category {}", i);
-                category.url_slug = Some(lib_domain::UrlSlug::from(format!("test-category-{}", i)));
+                category.url_slug = Some(lib_core::UrlSlug::from(format!("test-category-{}", i)));
                 insert_test_category(&pool, &category).await;
 
                 // Test delete by ID
@@ -713,7 +713,7 @@ mod tests {
         #[sqlx::test]
         async fn test_delete_by_url_slug_edge_cases(pool: SqlitePool) {
             // Non-existent slug
-            let slug = lib_domain::UrlSlug::from("non-existent-slug");
+            let slug = lib_core::UrlSlug::from("non-existent-slug");
             let result = crate::Categories::delete_by_url_slug(&slug, &pool).await;
             assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
         }
@@ -776,7 +776,7 @@ mod tests {
                     // Ensure unique identifiers for this test
                     category.code = format!("DEL{:03}.RND{:03}.TST", i, j);
                     category.name = format!("Test Category {} {}", i, j);
-                    category.url_slug = Some(lib_domain::UrlSlug::from(format!("test-category-{}-{}", i, j)));
+                    category.url_slug = Some(lib_core::UrlSlug::from(format!("test-category-{}-{}", i, j)));
                     let id = insert_test_category(&pool, &category).await;
                     ids.push(id);
                 }
@@ -845,7 +845,7 @@ mod tests {
                     // Ensure unique identifiers
                     category.code = format!("INA{:03}.RND{:03}.TST", i, j);
                     category.name = format!("Inactive Test {} {}", i, j);
-                    category.url_slug = Some(lib_domain::UrlSlug::from(format!("inactive-test-{}-{}", i, j)));
+                    category.url_slug = Some(lib_core::UrlSlug::from(format!("inactive-test-{}-{}", i, j)));
                     if category.is_active {
                         active_count += 1;
                     } else {

@@ -24,7 +24,7 @@
 //!
 //! ```rust,no_run
 //! use lib_database::categories::{Categories, CategoriesBuilder};
-//! use lib_domain::CategoryTypes;
+//! use lib_core::CategoryTypes;
 //!
 //! let category = CategoriesBuilder::new()
 //!     .with_name("Groceries")

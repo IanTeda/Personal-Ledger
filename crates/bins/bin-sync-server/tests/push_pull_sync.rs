@@ -26,8 +26,8 @@
 use std::sync::Arc;
 
 use bin_sync_server::auth;
+use lib_core::{HlcClock, RowID};
 use lib_database::{ChangeSet, DatabaseConfig, DatabaseConnection};
-use lib_domain::{HlcClock, RowID};
 use lib_rpc::{
     ChangeSet as ProtoChangeSet, PullRequest, PushRequest, SyncService, SyncServiceClient,
     SyncServiceServer, UtilitiesService, UtilitiesServiceServer,
@@ -225,7 +225,7 @@ fn new_demo_category(code: &str, name: &str) -> lib_database::Categories {
         name: name.to_string(),
         description: None,
         url_slug: None,
-        category_type: lib_domain::CategoryTypes::Expense,
+        category_type: lib_core::CategoryTypes::Expense,
         color: None,
         icon: None,
         is_active: true,

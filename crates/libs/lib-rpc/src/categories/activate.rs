@@ -24,11 +24,11 @@
 //! ## Notes
 //!
 //! - Uses Australian English in comments and documentation.
-//! - Relies on `lib_database` for persistence and `lib_domain` for types.
+//! - Relies on `lib_database` for persistence and `lib_core` for types.
 
 //-- Workspace library crates
 use lib_database as database;
-use lib_domain as domain;
+use lib_core as domain;
 
 //-- RPC Library modules
 use crate::categories::proto;
@@ -47,7 +47,7 @@ use crate::error::{RpcError, RpcResult};
 /// Returns a `tonic::Response` containing the [`proto::CategoryActivateResponse`](crates/libs/lib-rpc/src/categories/proto.rs) with the updated category on success.
 ///
 /// # Errors
-/// * Returns `tonic::Status::invalid_argument` if the category ID cannot be parsed as a [`domain::RowID`](crates/libs/lib-domain/src/lib.rs).
+/// * Returns `tonic::Status::invalid_argument` if the category ID cannot be parsed as a [`domain::RowID`](crates/libs/lib-core/src/lib.rs).
 /// * Returns `tonic::Status::not_found` if no category exists with the provided ID.
 /// * Returns `tonic::Status::internal` for unexpected database errors.
 ///
@@ -118,7 +118,7 @@ mod tests {
     use super::*;
     use fake::Fake;
     use fake::faker::boolean::en::Boolean;
-    use lib_domain::{RowID, UrlSlug, HexColor, CategoryTypes};
+    use lib_core::{RowID, UrlSlug, HexColor, CategoryTypes};
     use lib_database::Categories;
     use sqlx::SqlitePool;
     use chrono::Utc;
@@ -190,7 +190,7 @@ mod tests {
     /// * `category` - The category to insert.
     ///
     /// # Returns
-    /// The [`RowID`](crates/libs/lib-domain/src/lib.rs) of the inserted category.
+    /// The [`RowID`](crates/libs/lib-core/src/lib.rs) of the inserted category.
     ///
     /// # Panics
     /// Panics if database insertion fails.

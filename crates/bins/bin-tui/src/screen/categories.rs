@@ -1,5 +1,5 @@
 //! The embedded-SQLite feasibility demo (FC-TUI-005): connects the TUI to a real
-//! `lib-database`/`lib-domain`-backed SQLite store (not dummy data), seeding one category if
+//! `lib-database`/`lib-core`-backed SQLite store (not dummy data), seeding one category if
 //! the store is empty and then listing every category — a real write and a real read through
 //! the same in-process path a client uses per FR.39. Runs the connect/migrate/seed/read
 //! sequence as a background task from `init()`, reporting back through the async action
@@ -68,16 +68,16 @@ impl CategoriesScreen {
 
         if lib_database::Categories::find_all(pool).await?.is_empty() {
             let seed = lib_database::Categories {
-                id: lib_domain::RowID::new(),
+                id: lib_core::RowID::new(),
                 code: "DEM.SEE.D01".to_string(),
                 name: "Demo Seed Category".to_string(),
                 description: Some(
                     "Inserted by the TUI's embedded-SQLite feasibility demo (FC-TUI-005)"
                         .to_string(),
                 ),
-                url_slug: Some(lib_domain::UrlSlug::from("demo-seed-category")),
-                category_type: lib_domain::CategoryTypes::Expense,
-                color: Some(lib_domain::HexColor::from_rgb(0x4a, 0x9e, 0xd6)),
+                url_slug: Some(lib_core::UrlSlug::from("demo-seed-category")),
+                category_type: lib_core::CategoryTypes::Expense,
+                color: Some(lib_core::HexColor::from_rgb(0x4a, 0x9e, 0xd6)),
                 icon: None,
                 is_active: true,
                 created_on: chrono::Utc::now(),
@@ -192,12 +192,12 @@ mod tests {
     #[test]
     fn renders_loaded_without_panicking() {
         render(Status::Loaded(vec![lib_database::Categories {
-            id: lib_domain::RowID::new(),
+            id: lib_core::RowID::new(),
             code: "TES.TCO.DE1".to_string(),
             name: "Test Category".to_string(),
             description: None,
             url_slug: None,
-            category_type: lib_domain::CategoryTypes::Expense,
+            category_type: lib_core::CategoryTypes::Expense,
             color: None,
             icon: None,
             is_active: true,
@@ -208,13 +208,13 @@ mod tests {
 
     /// Exercises the real embedded-SQLite path end-to-end against an isolated, throwaway
     /// database file: connect, migrate (a write), seed-if-empty (a write), and read back —
-    /// proving FC-TUI-005 against actual `lib-database`/`lib-domain` code, not a mock. Runs
+    /// proving FC-TUI-005 against actual `lib-database`/`lib-core` code, not a mock. Runs
     /// `load_from` twice against the same file to confirm the seed step is idempotent.
     #[tokio::test]
     async fn load_from_seeds_once_and_reads_back() {
         let path = std::env::temp_dir().join(format!(
             "personal-ledger-tui-test-{}.sqlite",
-            lib_domain::RowID::new()
+            lib_core::RowID::new()
         ));
         let url = format!("sqlite://{}?mode=rwc", path.display());
 

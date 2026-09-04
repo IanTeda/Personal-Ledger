@@ -37,7 +37,7 @@ A standalone desktop applicatoin built with egui/tauri
 my-app/
 ├── Cargo.toml                  # Workspace root
 ├── crates/
-│   ├── lib-domain/                 # Pure business logic, no I/O
+│   ├── lib-core/                 # Pure business logic, no I/O
 │   │   ├── Cargo.toml
 │   │   └── src/lib.rs
 │   │

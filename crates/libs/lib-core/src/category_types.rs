@@ -24,7 +24,7 @@
 /// # Examples
 ///
 /// ```rust
-/// use lib_domain::CategoryTypes;
+/// use lib_core::CategoryTypes;
 ///
 /// let category = CategoryTypes::Asset;
 /// assert_eq!(category.as_str(), "asset");
@@ -84,7 +84,7 @@ impl std::str::FromStr for CategoryTypes {
     ///
     /// ```rust
     /// use std::str::FromStr;
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// let category = CategoryTypes::from_str("asset").unwrap();
     /// assert_eq!(category, CategoryTypes::Asset);
@@ -110,7 +110,7 @@ impl CategoryTypes {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// assert_eq!(CategoryTypes::Asset.as_str(), "asset");
     /// assert_eq!(CategoryTypes::Expense.as_str(), "expense");
@@ -132,7 +132,7 @@ impl CategoryTypes {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// let all_types = CategoryTypes::all();
     /// assert_eq!(all_types.len(), 5);
@@ -156,7 +156,7 @@ impl CategoryTypes {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// let random_type = CategoryTypes::mock();
     /// // random_type will be one of: Asset, Liability, Income, Expense, or Equity
@@ -175,7 +175,7 @@ impl CategoryTypes {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// assert!(CategoryTypes::Asset.is_asset());
     /// assert!(!CategoryTypes::Liability.is_asset());
@@ -189,7 +189,7 @@ impl CategoryTypes {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// assert!(CategoryTypes::Liability.is_liability());
     /// assert!(!CategoryTypes::Asset.is_liability());
@@ -203,7 +203,7 @@ impl CategoryTypes {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// assert!(CategoryTypes::Income.is_income());
     /// assert!(!CategoryTypes::Expense.is_income());
@@ -217,7 +217,7 @@ impl CategoryTypes {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// assert!(CategoryTypes::Expense.is_expense());
     /// assert!(!CategoryTypes::Income.is_expense());
@@ -231,7 +231,7 @@ impl CategoryTypes {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// assert!(CategoryTypes::Equity.is_equity());
     /// assert!(!CategoryTypes::Asset.is_equity());
@@ -260,7 +260,7 @@ impl CategoryTypes {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_domain::CategoryTypes;
+    /// use lib_core::CategoryTypes;
     ///
     /// let asset = CategoryTypes::from_rpc_i32(1).unwrap();
     /// assert_eq!(asset, CategoryTypes::Asset);

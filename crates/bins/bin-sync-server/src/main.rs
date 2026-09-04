@@ -100,7 +100,7 @@ async fn bootstrap_account(pool: &sqlx::SqlitePool) -> Result<(), Box<dyn std::e
 
     let password_hash = auth::hash_password(&SecretString::from(BOOTSTRAP_PASSWORD.to_string()))?;
     let account = lib_database::Account {
-        id: lib_domain::RowID::new(),
+        id: lib_core::RowID::new(),
         username: BOOTSTRAP_USERNAME.to_string(),
         password_hash,
         refresh_token_hash: None,

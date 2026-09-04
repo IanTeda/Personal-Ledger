@@ -49,7 +49,7 @@ async fn spawn_sync_server(db_path: &std::path::Path) -> std::net::SocketAddr {
         bin_sync_server::auth::hash_password(&SecretString::from(TEST_PASSWORD.to_string()))
             .expect("test password should hash");
     let account = Account {
-        id: lib_domain::RowID::new(),
+        id: lib_core::RowID::new(),
         username: TEST_USERNAME.to_string(),
         password_hash,
         refresh_token_hash: None,
