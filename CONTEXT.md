@@ -81,6 +81,20 @@ component; "reconcile" is reserved for Transaction Status's reconciliation workf
 (see below) — the Sync Server *syncs* Ledger copies, a different concept that happens
 to share an English word with it.
 
+**SyncUser**:
+The Sync Server's own bootstrap authentication credential — a username, an Argon2
+password hash, and the current refresh-token hash (if any active session), provisioned
+once at first run. Single-account this cycle (see
+[ADR-0010](docs/adr/0010-oauth2-pkce-native-app-auth.md)): there is exactly one SyncUser
+per Sync Server instance, not a per-human-user table. A SyncUser is not Ledger data — it
+never syncs via Change Sets, and it has no relationship to any Client's local Accounts,
+Categories, or Transactions.
+_Avoid_: Account — reserved for the domain Ledger entity (see below); a SyncUser
+authenticates *to* the Sync Server, an Account holds money *inside* the Ledger, and
+conflating the two was an earlier implementation mistake this term corrects. Also avoid
+User — too generic to convey that this is scoped to one Sync Server instance's own login,
+not a general concept of "a person using the software."
+
 **Change Set**:
 The unit of data the Sync Server pushes and pulls between Clients to propagate one
 Client's local edits to the others, at field granularity: a stable Change Set ID
