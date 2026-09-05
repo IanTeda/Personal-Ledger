@@ -76,6 +76,7 @@
 /// Database entity categories for organising financial records.
 mod categories;
 pub use categories::Categories;
+pub use categories::CategoryTotalScope;
 
 /// Currencies, cryptocurrencies, stocks, and other tradeable instruments Accounts and
 /// Transactions are denominated in (CC-TUI-005).

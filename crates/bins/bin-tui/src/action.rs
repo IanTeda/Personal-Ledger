@@ -192,4 +192,9 @@ pub enum Action {
     AccountBalancesLoaded(Vec<(lib_core::RowID, lib_core::Money)>),
     /// An Account Balance computation failed.
     AccountBalancesLoadFailed(String),
+    /// The Category-total report (FR.35) finished computing every active Category's signed
+    /// Transaction total for the current scope/date-range.
+    CategoryTotalsLoaded(Vec<(lib_core::RowID, lib_core::Money)>),
+    /// A Category-total computation failed.
+    CategoryTotalsLoadFailed(String),
 }
