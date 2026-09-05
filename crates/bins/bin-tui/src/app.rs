@@ -24,8 +24,9 @@ use crate::{
         balance_check_detail::BalanceCheckDetailScreen,
         balance_checks_list::BalanceChecksListScreen, budget_detail::BudgetDetailScreen,
         budgets_list::BudgetsListScreen, categories_list::CategoriesListScreen,
-        category_detail::CategoryDetailScreen, dashboard::DashboardScreen, help::HelpScreen,
-        payee_detail::PayeeDetailScreen, payees_list::PayeesListScreen, settings::SettingsScreen,
+        category_detail::CategoryDetailScreen, csv_import::CsvImportScreen,
+        dashboard::DashboardScreen, help::HelpScreen, payee_detail::PayeeDetailScreen,
+        payees_list::PayeesListScreen, settings::SettingsScreen,
         transaction_detail::TransactionDetailScreen, transactions_list::TransactionsListScreen,
         unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
     },
@@ -183,6 +184,7 @@ impl App {
             Action::OpenBalanceCheckDetail(Some(balance_check)) => {
                 self.push(Box::new(BalanceCheckDetailScreen::new_edit(balance_check)))
             }
+            Action::OpenCsvImport => self.push(Box::new(CsvImportScreen::new())),
             Action::OpenBudgets => self.push(Box::new(BudgetsListScreen::new())),
             Action::OpenBudgetDetail(None) => self.push(Box::new(BudgetDetailScreen::new_create())),
             Action::OpenBudgetDetail(Some(budget)) => {
@@ -224,6 +226,8 @@ impl App {
             | Action::BalanceChecksLoadFailed(_)
             | Action::BalanceCheckDeleted(_)
             | Action::BalanceCheckDeleteFailed(_)
+            | Action::BalanceChecksImported(_)
+            | Action::BalanceChecksImportFailed(_)
             | Action::BudgetsLoaded(_)
             | Action::BudgetsLoadFailed(_)
             | Action::BudgetProgressLoaded(_)
@@ -648,5 +652,36 @@ mod tests {
 
         assert_eq!(app.stack.len(), 2);
         assert_eq!(app.stack.last().unwrap().title(), "Budgets");
+    }
+
+    #[tokio::test]
+    async fn open_csv_import_pushes_the_csv_import_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenCsvImport);
+        assert_eq!(app.stack.last().unwrap().title(), "Import Balance Checks");
+    }
+
+    #[tokio::test]
+    async fn balance_checks_imported_does_not_pop_the_import_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenBalanceChecks);
+        app.update(Action::OpenCsvImport);
+        assert_eq!(app.stack.len(), 3);
+
+        let now = chrono::Utc::now();
+        let balance_check = lib_database::BalanceChecks {
+            id: lib_core::RowID::new(),
+            account_id: lib_core::RowID::new(),
+            date: now.date_naive(),
+            asserted_balance: lib_core::Money::mock(),
+            created_on: now,
+            updated_on: now,
+        };
+        app.update(Action::BalanceChecksImported(vec![balance_check]));
+
+        // Unlike a single-entity save, a CSV import stays on its screen so the user can see
+        // the success message (or run another import) rather than being popped immediately.
+        assert_eq!(app.stack.len(), 3);
+        assert_eq!(app.stack.last().unwrap().title(), "Import Balance Checks");
     }
 }

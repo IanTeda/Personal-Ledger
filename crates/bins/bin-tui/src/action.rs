@@ -65,6 +65,9 @@ pub enum Action {
     /// Push the Balance Checks create/edit screen — `None` starts an empty (create) form,
     /// `Some` pre-fills it with an existing Balance Check's fields (edit).
     OpenBalanceCheckDetail(Option<lib_database::BalanceChecks>),
+    /// Push the Balance Checks CSV import screen (FR.33, CC-TUI-012) — reached from the
+    /// Balance Checks list screen, not its own dashboard area.
+    OpenCsvImport,
     /// Push the Budgets list screen.
     OpenBudgets,
     /// Push the Budgets create/edit screen — `None` starts an empty (create) form, `Some`
@@ -155,6 +158,12 @@ pub enum Action {
     BalanceCheckDeleted(lib_core::RowID),
     /// The Balance Checks list screen failed to delete a Balance Check.
     BalanceCheckDeleteFailed(String),
+    /// The CSV import screen successfully imported one or more Balance Checks (FR.33) — the
+    /// whole file was valid and every row committed atomically.
+    BalanceChecksImported(Vec<lib_database::BalanceChecks>),
+    /// The CSV import screen failed to import — the whole file was rejected, nothing was
+    /// committed.
+    BalanceChecksImportFailed(String),
     /// The Budgets list screen finished loading every active Budget.
     BudgetsLoaded(Vec<lib_database::Budgets>),
     /// A Budget load failed.

@@ -164,6 +164,7 @@ impl Screen for BalanceChecksListScreen {
                 .cloned()
                 .map(|balance_check| Action::OpenBalanceCheckDetail(Some(balance_check))),
             KeyCode::Char('n') => Some(Action::OpenBalanceCheckDetail(None)),
+            KeyCode::Char('i') => Some(Action::OpenCsvImport),
             KeyCode::Char('d') if self.selected_id().is_some() => {
                 self.pending_delete = self.selected_id();
                 Some(Action::NoOp)
@@ -200,7 +201,20 @@ impl Screen for BalanceChecksListScreen {
                     balance_checks.retain(|b| b.id != *id);
                 }
             }
-            Action::BalanceCheckSaveFailed(message) | Action::BalanceCheckDeleteFailed(message) => {
+            Action::BalanceChecksImported(imported) => {
+                if let Status::Loaded(balance_checks) = &mut self.status {
+                    for saved in imported {
+                        match balance_checks.iter_mut().find(|b| b.id == saved.id) {
+                            Some(existing) => *existing = saved.clone(),
+                            None => balance_checks.push(saved.clone()),
+                        }
+                    }
+                    balance_checks.sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
+                }
+            }
+            Action::BalanceCheckSaveFailed(message)
+            | Action::BalanceCheckDeleteFailed(message)
+            | Action::BalanceChecksImportFailed(message) => {
                 self.error = Some(message.clone());
             }
             _ => {}
@@ -264,7 +278,7 @@ impl Screen for BalanceChecksListScreen {
         } else if let Some(error) = &self.error {
             format!("Error: {error}")
         } else {
-            "↑/k ↓/j: move  Enter: edit  n: new  d: delete  Esc: back".to_string()
+            "↑/k ↓/j: move  Enter: edit  n: new  i: import CSV  d: delete  Esc: back".to_string()
         };
         frame.render_widget(Paragraph::new(footer), rows[1]);
     }
@@ -328,6 +342,28 @@ mod tests {
             screen.handle_key(key(KeyCode::Char('n')), InputMode::Navigation),
             Some(Action::OpenBalanceCheckDetail(None))
         );
+    }
+
+    #[test]
+    fn i_opens_the_csv_import_screen() {
+        let mut screen = BalanceChecksListScreen::new();
+        assert_eq!(
+            screen.handle_key(key(KeyCode::Char('i')), InputMode::Navigation),
+            Some(Action::OpenCsvImport)
+        );
+    }
+
+    #[test]
+    fn balance_checks_imported_appends_to_the_loaded_list() {
+        let mut screen = BalanceChecksListScreen::new();
+        let existing = mock_balance_check(lib_core::RowID::new());
+        screen.update(&Action::BalanceChecksLoaded(vec![existing.clone()]));
+
+        let imported = mock_balance_check(lib_core::RowID::new());
+        screen.update(&Action::BalanceChecksImported(vec![imported.clone()]));
+
+        assert_eq!(screen.balance_checks().len(), 2);
+        assert!(screen.balance_checks().iter().any(|b| b.id == imported.id));
     }
 
     #[test]

@@ -14,6 +14,7 @@ pub mod budgets_list;
 pub mod candlestick_chart;
 pub mod categories_list;
 pub mod category_detail;
+pub mod csv_import;
 pub mod dashboard;
 pub mod divergent_chart;
 pub mod doughnut_chart;

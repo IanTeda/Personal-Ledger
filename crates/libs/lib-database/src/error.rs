@@ -155,6 +155,13 @@ pub enum DatabaseError {
     #[error("Category {0} is not an Expense Category; a Budget can only cap Expense spending")]
     BudgetCategoryNotExpense(String),
 
+    /// Balance Check CSV Import Error
+    ///
+    /// Occurs when a Balance Check CSV import's header or a row can't be parsed (FR.33) —
+    /// the whole import is aborted, never partially applied.
+    #[error("CSV import failed: {0}")]
+    CsvImport(String),
+
     /// Transaction Reconciled-Lock Error
     ///
     /// Occurs when `Transactions::update` is called against a Transaction whose current
@@ -274,6 +281,7 @@ impl PartialEq for DatabaseError {
                 DatabaseError::BudgetCategoryNotExpense(a),
                 DatabaseError::BudgetCategoryNotExpense(b),
             ) => a == b,
+            (DatabaseError::CsvImport(a), DatabaseError::CsvImport(b)) => a == b,
             (DatabaseError::Connection(a), DatabaseError::Connection(b)) => a == b,
             (DatabaseError::Sqlx(a), DatabaseError::Sqlx(b)) => {
                 format!("{:?}", a) == format!("{:?}", b)
