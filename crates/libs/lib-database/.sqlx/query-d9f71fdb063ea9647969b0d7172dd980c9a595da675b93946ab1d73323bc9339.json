@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id            AS \"id!: domain::RowID\",\n                    category_id   AS \"category_id!: domain::RowID\",\n                    unit_id       AS \"unit_id!: domain::RowID\",\n                    limit_amount  AS \"limit_amount!: domain::Money\",\n                    period        AS \"period!: domain::BudgetPeriod\",\n                    is_active,\n                    created_on    AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on    AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM budgets\n                WHERE is_active = TRUE\n                ORDER BY created_on ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "category_id!: domain::RowID",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "unit_id!: domain::RowID",
+        "ordinal": 2,
+        "type_info": "Null"
+      },
+      {
+        "name": "limit_amount!: domain::Money",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "period!: domain::BudgetPeriod",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_active",
+        "ordinal": 5,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 7,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d9f71fdb063ea9647969b0d7172dd980c9a595da675b93946ab1d73323bc9339"
+}

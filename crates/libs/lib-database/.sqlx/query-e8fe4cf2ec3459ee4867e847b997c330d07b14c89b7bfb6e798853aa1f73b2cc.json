@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO budgets (id, category_id, unit_id, limit_amount, period, is_active, created_on, updated_on)\n                VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "e8fe4cf2ec3459ee4867e847b997c330d07b14c89b7bfb6e798853aa1f73b2cc"
+}

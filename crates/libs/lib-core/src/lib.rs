@@ -64,6 +64,11 @@ pub use money::{Money, MoneyError};
 mod transaction_status;
 pub use transaction_status::{TransactionStatus, TransactionStatusError};
 
+/// How often a Budget's limit recurs (Weekly, Monthly, Quarterly, Yearly), and how to
+/// compute a period's calendar boundaries.
+mod budget_period;
+pub use budget_period::{BudgetPeriod, BudgetPeriodError};
+
 /// URL-safe slug type for human-readable, SEO-friendly identifiers.
 ///
 /// [`UrlSlug`] creates web-friendly identifiers from titles and names by

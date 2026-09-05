@@ -22,7 +22,8 @@ use crate::{
     screen::{
         Screen, account_detail::AccountDetailScreen, accounts_list::AccountsListScreen,
         balance_check_detail::BalanceCheckDetailScreen,
-        balance_checks_list::BalanceChecksListScreen, categories_list::CategoriesListScreen,
+        balance_checks_list::BalanceChecksListScreen, budget_detail::BudgetDetailScreen,
+        budgets_list::BudgetsListScreen, categories_list::CategoriesListScreen,
         category_detail::CategoryDetailScreen, dashboard::DashboardScreen, help::HelpScreen,
         payee_detail::PayeeDetailScreen, payees_list::PayeesListScreen, settings::SettingsScreen,
         transaction_detail::TransactionDetailScreen, transactions_list::TransactionsListScreen,
@@ -182,6 +183,11 @@ impl App {
             Action::OpenBalanceCheckDetail(Some(balance_check)) => {
                 self.push(Box::new(BalanceCheckDetailScreen::new_edit(balance_check)))
             }
+            Action::OpenBudgets => self.push(Box::new(BudgetsListScreen::new())),
+            Action::OpenBudgetDetail(None) => self.push(Box::new(BudgetDetailScreen::new_create())),
+            Action::OpenBudgetDetail(Some(budget)) => {
+                self.push(Box::new(BudgetDetailScreen::new_edit(budget)))
+            }
             Action::NoOp => {}
             Action::Tick => self
                 .stack
@@ -217,7 +223,13 @@ impl App {
             | Action::BalanceChecksLoaded(_)
             | Action::BalanceChecksLoadFailed(_)
             | Action::BalanceCheckDeleted(_)
-            | Action::BalanceCheckDeleteFailed(_) => {
+            | Action::BalanceCheckDeleteFailed(_)
+            | Action::BudgetsLoaded(_)
+            | Action::BudgetsLoadFailed(_)
+            | Action::BudgetProgressLoaded(_)
+            | Action::BudgetProgressLoadFailed(_)
+            | Action::BudgetDeleted(_)
+            | Action::BudgetDeleteFailed(_) => {
                 self.broadcast(&action);
             }
             // A successful save returns to whichever list screen the detail screen was
@@ -228,13 +240,15 @@ impl App {
             Action::TransactionSaved(_) => self.broadcast_and_pop_detail(&action, "Transaction"),
             Action::PayeeSaved(_) => self.broadcast_and_pop_detail(&action, "Payee"),
             Action::BalanceCheckSaved(_) => self.broadcast_and_pop_detail(&action, "Balance Check"),
+            Action::BudgetSaved(_) => self.broadcast_and_pop_detail(&action, "Budget"),
             // A failed save stays on the detail screen so the user can fix and retry.
             Action::UnitSaveFailed(_)
             | Action::CategorySaveFailed(_)
             | Action::AccountSaveFailed(_)
             | Action::TransactionSaveFailed(_)
             | Action::PayeeSaveFailed(_)
-            | Action::BalanceCheckSaveFailed(_) => {
+            | Action::BalanceCheckSaveFailed(_)
+            | Action::BudgetSaveFailed(_) => {
                 if let Some(screen) = self.stack.last_mut() {
                     screen.update(&action);
                 }
@@ -596,5 +610,43 @@ mod tests {
 
         assert_eq!(app.stack.len(), 2);
         assert_eq!(app.stack.last().unwrap().title(), "Balance Checks");
+    }
+
+    #[tokio::test]
+    async fn open_budgets_pushes_the_budgets_list_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenBudgets);
+        assert_eq!(app.stack.last().unwrap().title(), "Budgets");
+    }
+
+    #[tokio::test]
+    async fn open_budget_detail_pushes_the_budget_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenBudgetDetail(None));
+        assert_eq!(app.stack.last().unwrap().title(), "Budget");
+    }
+
+    #[tokio::test]
+    async fn budget_saved_pops_back_from_the_detail_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenBudgets);
+        app.update(Action::OpenBudgetDetail(None));
+        assert_eq!(app.stack.len(), 3);
+
+        let now = chrono::Utc::now();
+        let budget = lib_database::Budgets {
+            id: lib_core::RowID::new(),
+            category_id: lib_core::RowID::new(),
+            unit_id: lib_core::RowID::new(),
+            limit_amount: lib_core::Money::mock(),
+            period: lib_core::BudgetPeriod::Monthly,
+            is_active: true,
+            created_on: now,
+            updated_on: now,
+        };
+        app.update(Action::BudgetSaved(budget));
+
+        assert_eq!(app.stack.len(), 2);
+        assert_eq!(app.stack.last().unwrap().title(), "Budgets");
     }
 }

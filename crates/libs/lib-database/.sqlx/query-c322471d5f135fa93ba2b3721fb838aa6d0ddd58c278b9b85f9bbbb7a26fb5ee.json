@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE budgets SET is_active = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "c322471d5f135fa93ba2b3721fb838aa6d0ddd58c278b9b85f9bbbb7a26fb5ee"
+}

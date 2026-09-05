@@ -9,6 +9,8 @@ pub mod account_detail;
 pub mod accounts_list;
 pub mod balance_check_detail;
 pub mod balance_checks_list;
+pub mod budget_detail;
+pub mod budgets_list;
 pub mod candlestick_chart;
 pub mod categories_list;
 pub mod category_detail;

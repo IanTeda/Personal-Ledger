@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT t.amount AS \"amount!: domain::Money\"\n                FROM transactions t\n                JOIN accounts a ON t.account_id = a.id\n                WHERE t.category_id = ?\n                  AND a.unit_id = ?\n                  AND t.date >= ?\n                  AND t.date <= ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "amount!: domain::Money",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "e862dc9f6ab90eddb71ebed048e270999c5c5c89977b3eb2098fe5eec52e9a78"
+}

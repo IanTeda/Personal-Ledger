@@ -65,6 +65,11 @@ pub enum Action {
     /// Push the Balance Checks create/edit screen — `None` starts an empty (create) form,
     /// `Some` pre-fills it with an existing Balance Check's fields (edit).
     OpenBalanceCheckDetail(Option<lib_database::BalanceChecks>),
+    /// Push the Budgets list screen.
+    OpenBudgets,
+    /// Push the Budgets create/edit screen — `None` starts an empty (create) form, `Some`
+    /// pre-fills it with an existing Budget's fields (edit).
+    OpenBudgetDetail(Option<lib_database::Budgets>),
     /// A key was consumed by the active screen (e.g. appended to a text field) with nothing
     /// further for `App` to do — distinct from returning `None`, which would let the key
     /// fall through to the global `Esc`/`?` bindings.
@@ -150,4 +155,23 @@ pub enum Action {
     BalanceCheckDeleted(lib_core::RowID),
     /// The Balance Checks list screen failed to delete a Balance Check.
     BalanceCheckDeleteFailed(String),
+    /// The Budgets list screen finished loading every active Budget.
+    BudgetsLoaded(Vec<lib_database::Budgets>),
+    /// A Budget load failed.
+    BudgetsLoadFailed(String),
+    /// The Budgets list screen finished computing spend-so-far-vs-limit progress for one or
+    /// more Budgets (the initial load computes it for every Budget; a save recomputes it for
+    /// just the affected one).
+    BudgetProgressLoaded(Vec<(lib_core::RowID, lib_database::BudgetProgress)>),
+    /// A Budget progress computation failed — non-fatal, the list still shows Budgets
+    /// without a progress bar.
+    BudgetProgressLoadFailed(String),
+    /// The Budgets detail screen successfully saved (inserted or updated) a Budget.
+    BudgetSaved(lib_database::Budgets),
+    /// The Budgets detail screen failed to save a Budget.
+    BudgetSaveFailed(String),
+    /// The Budgets list screen successfully deleted a Budget.
+    BudgetDeleted(lib_core::RowID),
+    /// The Budgets list screen failed to delete a Budget.
+    BudgetDeleteFailed(String),
 }

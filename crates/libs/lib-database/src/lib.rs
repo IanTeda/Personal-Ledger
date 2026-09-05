@@ -104,6 +104,11 @@ pub use payee_aliases::PayeeAliases;
 pub mod balance_checks;
 pub use balance_checks::BalanceChecks;
 
+/// A cap on Transaction totals in one Expense Category over a recurring period (FR.22-27,
+/// CC-TUI-010).
+pub mod budgets;
+pub use budgets::{BudgetProgress, Budgets};
+
 /// The Sync Server's own auth user store (ADR-0010).
 pub mod sync_users;
 pub use sync_users::SyncUser;

@@ -141,6 +141,20 @@ pub enum DatabaseError {
     #[error("Error building Balance Check: {0}")]
     BalanceChecksBuilder(String),
 
+    /// Budgets Builder Error
+    ///
+    /// Occurs when constructing a Budget fails due to invalid input or missing required
+    /// fields.
+    #[error("Error building Budget: {0}")]
+    BudgetsBuilder(String),
+
+    /// Budget Non-Expense Category Error
+    ///
+    /// Occurs when `Budgets::insert` is called with a `category_id` that doesn't reference
+    /// an Expense-type Category — a Budget only has coherent meaning against spending.
+    #[error("Category {0} is not an Expense Category; a Budget can only cap Expense spending")]
+    BudgetCategoryNotExpense(String),
+
     /// Transaction Reconciled-Lock Error
     ///
     /// Occurs when `Transactions::update` is called against a Transaction whose current
@@ -255,6 +269,11 @@ impl PartialEq for DatabaseError {
             (DatabaseError::BalanceChecksBuilder(a), DatabaseError::BalanceChecksBuilder(b)) => {
                 a == b
             }
+            (DatabaseError::BudgetsBuilder(a), DatabaseError::BudgetsBuilder(b)) => a == b,
+            (
+                DatabaseError::BudgetCategoryNotExpense(a),
+                DatabaseError::BudgetCategoryNotExpense(b),
+            ) => a == b,
             (DatabaseError::Connection(a), DatabaseError::Connection(b)) => a == b,
             (DatabaseError::Sqlx(a), DatabaseError::Sqlx(b)) => {
                 format!("{:?}", a) == format!("{:?}", b)
