@@ -26,7 +26,7 @@ use crate::{
         budgets_list::BudgetsListScreen, categories_list::CategoriesListScreen,
         category_detail::CategoryDetailScreen, csv_import::CsvImportScreen,
         dashboard::DashboardScreen, help::HelpScreen, payee_detail::PayeeDetailScreen,
-        payees_list::PayeesListScreen, settings::SettingsScreen,
+        payees_list::PayeesListScreen, reports::ReportsScreen, settings::SettingsScreen,
         transaction_detail::TransactionDetailScreen, transactions_list::TransactionsListScreen,
         unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
     },
@@ -185,6 +185,7 @@ impl App {
                 self.push(Box::new(BalanceCheckDetailScreen::new_edit(balance_check)))
             }
             Action::OpenCsvImport => self.push(Box::new(CsvImportScreen::new())),
+            Action::OpenReports => self.push(Box::new(ReportsScreen::new())),
             Action::OpenBudgets => self.push(Box::new(BudgetsListScreen::new())),
             Action::OpenBudgetDetail(None) => self.push(Box::new(BudgetDetailScreen::new_create())),
             Action::OpenBudgetDetail(Some(budget)) => {
@@ -233,7 +234,9 @@ impl App {
             | Action::BudgetProgressLoaded(_)
             | Action::BudgetProgressLoadFailed(_)
             | Action::BudgetDeleted(_)
-            | Action::BudgetDeleteFailed(_) => {
+            | Action::BudgetDeleteFailed(_)
+            | Action::AccountBalancesLoaded(_)
+            | Action::AccountBalancesLoadFailed(_) => {
                 self.broadcast(&action);
             }
             // A successful save returns to whichever list screen the detail screen was
@@ -683,5 +686,12 @@ mod tests {
         // the success message (or run another import) rather than being popped immediately.
         assert_eq!(app.stack.len(), 3);
         assert_eq!(app.stack.last().unwrap().title(), "Import Balance Checks");
+    }
+
+    #[tokio::test]
+    async fn open_reports_pushes_the_reports_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenReports);
+        assert_eq!(app.stack.last().unwrap().title(), "Reports");
     }
 }

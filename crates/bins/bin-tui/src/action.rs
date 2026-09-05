@@ -68,6 +68,9 @@ pub enum Action {
     /// Push the Balance Checks CSV import screen (FR.33, CC-TUI-012) — reached from the
     /// Balance Checks list screen, not its own dashboard area.
     OpenCsvImport,
+    /// Push the Reports screen (FR.34-38, CC-TUI-011) — one screen with an internal picker
+    /// across every report type, not a separate area per report.
+    OpenReports,
     /// Push the Budgets list screen.
     OpenBudgets,
     /// Push the Budgets create/edit screen — `None` starts an empty (create) form, `Some`
@@ -183,4 +186,10 @@ pub enum Action {
     BudgetDeleted(lib_core::RowID),
     /// The Budgets list screen failed to delete a Budget.
     BudgetDeleteFailed(String),
+    /// The Account Balance report (FR.34) finished computing every listed Account's current
+    /// Balance — also reused by the Dashboard's own Account snapshot, the same "compute a
+    /// Balance per Account" query either needs.
+    AccountBalancesLoaded(Vec<(lib_core::RowID, lib_core::Money)>),
+    /// An Account Balance computation failed.
+    AccountBalancesLoadFailed(String),
 }

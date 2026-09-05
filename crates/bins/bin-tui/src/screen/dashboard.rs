@@ -1,8 +1,10 @@
 //! The dashboard — the navigation hub "Decide TUI screen map and navigation shape" locked
-//! in. Every entity/report area is a push/pop drill-in reached from here; a live snapshot
-//! of Account starting balances lives above the menu, reusing `AccountsListScreen`'s own
+//! in. Every entity/report area is a push/pop drill-in reached from here; a live snapshot of
+//! Accounts' current Balances lives above the menu, reusing `AccountsListScreen`'s own
 //! `AccountsLoaded`/`AccountsLoadFailed` actions rather than inventing dashboard-specific
-//! ones — it's the same "list every Account" query either screen needs.
+//! ones — it's the same "list every Account" query either screen needs. Each Balance is
+//! computed via `Accounts::balance` (FR.34) and delivered via `AccountBalancesLoaded`, the
+//! same action the Reports screen's Account Balance report uses.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -77,8 +79,8 @@ fn areas() -> Vec<Area> {
         },
         Area {
             name: "Reports",
-            action: None,
-            not_yet_built_hint: "Not built yet — see issues #75-79",
+            action: Some(Action::OpenReports),
+            not_yet_built_hint: "",
         },
         Area {
             name: "Settings",
@@ -95,6 +97,7 @@ pub struct DashboardScreen {
     /// Set when the user tries to open a not-yet-built area; cleared on the next move.
     status: Option<&'static str>,
     snapshot: Snapshot,
+    balances: Vec<(lib_core::RowID, lib_core::Money)>,
 }
 
 impl DashboardScreen {
@@ -104,7 +107,15 @@ impl DashboardScreen {
             selected: 0,
             status: None,
             snapshot: Snapshot::Loading,
+            balances: Vec::new(),
         }
+    }
+
+    fn balance_for(&self, id: lib_core::RowID) -> Option<&lib_core::Money> {
+        self.balances
+            .iter()
+            .find(|(aid, _)| *aid == id)
+            .map(|(_, balance)| balance)
     }
 
     fn move_selection(&mut self, delta: isize) {
@@ -123,6 +134,7 @@ impl Default for DashboardScreen {
 
 impl Screen for DashboardScreen {
     fn init(&mut self, action_tx: UnboundedSender<Action>) {
+        let accounts_tx = action_tx.clone();
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
@@ -132,6 +144,25 @@ impl Screen for DashboardScreen {
             let action = match action {
                 Ok(accounts) => Action::AccountsLoaded(accounts),
                 Err(err) => Action::AccountsLoadFailed(err.to_string()),
+            };
+            let _ = accounts_tx.send(action);
+        });
+
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                let accounts = lib_database::Accounts::find_all(&pool).await?;
+                let mut balances = Vec::with_capacity(accounts.len());
+                for account in accounts {
+                    let balance = account.balance(&pool).await?;
+                    balances.push((account.id, balance));
+                }
+                Ok::<_, lib_database::DatabaseError>(balances)
+            }
+            .await;
+            let action = match action {
+                Ok(balances) => Action::AccountBalancesLoaded(balances),
+                Err(err) => Action::AccountBalancesLoadFailed(err.to_string()),
             };
             let _ = action_tx.send(action);
         });
@@ -167,6 +198,14 @@ impl Screen for DashboardScreen {
             Action::AccountsLoadFailed(message) => {
                 self.snapshot = Snapshot::Failed(message.clone())
             }
+            Action::AccountBalancesLoaded(balances) => {
+                for (id, balance) in balances {
+                    match self.balances.iter_mut().find(|(aid, _)| aid == id) {
+                        Some((_, existing)) => *existing = balance.clone(),
+                        None => self.balances.push((*id, balance.clone())),
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -193,7 +232,13 @@ impl Screen for DashboardScreen {
             }
             Snapshot::Loaded(accounts) => accounts
                 .iter()
-                .map(|account| format!("{}: {}", account.name, account.starting_balance))
+                .map(|account| {
+                    let balance = self
+                        .balance_for(account.id)
+                        .map(|b| b.to_string())
+                        .unwrap_or_else(|| "…".to_string());
+                    format!("{}: {balance}", account.name)
+                })
                 .collect::<Vec<_>>()
                 .join("   "),
         };

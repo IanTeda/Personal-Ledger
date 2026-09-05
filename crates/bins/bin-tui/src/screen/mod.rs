@@ -22,6 +22,7 @@ pub mod help;
 pub mod line_chart;
 pub mod payee_detail;
 pub mod payees_list;
+pub mod reports;
 pub mod settings;
 pub mod table;
 pub mod transaction_detail;

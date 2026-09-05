@@ -12,9 +12,11 @@
 //! | [`find`](find) | Look up Accounts by id, list with pagination and filters |
 //! | [`update`](update) | Update an Account's details, or its active flag |
 //! | [`delete`](delete) | Delete an Account |
+//! | [`balance`](balance) | Compute an Account's current Balance (FR.34) |
 
 #![allow(unused)] // For development only
 
+mod balance;
 mod builder;
 mod delete;
 mod find;
