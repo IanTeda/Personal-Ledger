@@ -23,6 +23,7 @@ use crate::{
         Screen, account_detail::AccountDetailScreen, accounts_list::AccountsListScreen,
         categories_list::CategoriesListScreen, category_detail::CategoryDetailScreen,
         dashboard::DashboardScreen, help::HelpScreen, settings::SettingsScreen,
+        transaction_detail::TransactionDetailScreen, transactions_list::TransactionsListScreen,
         unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
     },
     tui::Tui,
@@ -160,6 +161,13 @@ impl App {
             Action::OpenAccountDetail(Some(account)) => {
                 self.push(Box::new(AccountDetailScreen::new_edit(account)))
             }
+            Action::OpenTransactions => self.push(Box::new(TransactionsListScreen::new())),
+            Action::OpenTransactionDetail(None) => {
+                self.push(Box::new(TransactionDetailScreen::new_create()))
+            }
+            Action::OpenTransactionDetail(Some(transaction)) => {
+                self.push(Box::new(TransactionDetailScreen::new_edit(transaction)))
+            }
             Action::NoOp => {}
             Action::Tick => self
                 .stack
@@ -181,7 +189,11 @@ impl App {
             | Action::AccountsLoaded(_)
             | Action::AccountsLoadFailed(_)
             | Action::AccountDeleted(_)
-            | Action::AccountDeleteFailed(_) => {
+            | Action::AccountDeleteFailed(_)
+            | Action::TransactionsLoaded(_)
+            | Action::TransactionsLoadFailed(_)
+            | Action::TransactionDeleted(_)
+            | Action::TransactionDeleteFailed(_) => {
                 self.broadcast(&action);
             }
             // A successful save returns to whichever list screen the detail screen was
@@ -189,10 +201,12 @@ impl App {
             Action::UnitSaved(_) => self.broadcast_and_pop_detail(&action, "Unit"),
             Action::CategorySaved(_) => self.broadcast_and_pop_detail(&action, "Category"),
             Action::AccountSaved(_) => self.broadcast_and_pop_detail(&action, "Account"),
+            Action::TransactionSaved(_) => self.broadcast_and_pop_detail(&action, "Transaction"),
             // A failed save stays on the detail screen so the user can fix and retry.
             Action::UnitSaveFailed(_)
             | Action::CategorySaveFailed(_)
-            | Action::AccountSaveFailed(_) => {
+            | Action::AccountSaveFailed(_)
+            | Action::TransactionSaveFailed(_) => {
                 if let Some(screen) = self.stack.last_mut() {
                     screen.update(&action);
                 }
@@ -443,5 +457,45 @@ mod tests {
 
         assert_eq!(app.stack.len(), 2);
         assert_eq!(app.stack.last().unwrap().title(), "Accounts");
+    }
+
+    #[tokio::test]
+    async fn open_transactions_pushes_the_transactions_list_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenTransactions);
+        assert_eq!(app.stack.last().unwrap().title(), "Transactions");
+    }
+
+    #[tokio::test]
+    async fn open_transaction_detail_pushes_the_transaction_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenTransactionDetail(None));
+        assert_eq!(app.stack.last().unwrap().title(), "Transaction");
+    }
+
+    #[tokio::test]
+    async fn transaction_saved_pops_back_from_the_detail_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenTransactions);
+        app.update(Action::OpenTransactionDetail(None));
+        assert_eq!(app.stack.len(), 3);
+
+        let now = chrono::Utc::now();
+        let transaction = lib_database::Transactions {
+            id: lib_core::RowID::new(),
+            date: now.date_naive(),
+            amount: lib_core::Money::mock(),
+            category_id: lib_core::RowID::new(),
+            account_id: lib_core::RowID::new(),
+            payee: None,
+            description: None,
+            status: lib_core::TransactionStatus::Open,
+            is_flagged: false,
+            updated_on: now,
+        };
+        app.update(Action::TransactionSaved(transaction));
+
+        assert_eq!(app.stack.len(), 2);
+        assert_eq!(app.stack.last().unwrap().title(), "Transactions");
     }
 }

@@ -17,6 +17,8 @@ pub mod help;
 pub mod line_chart;
 pub mod settings;
 pub mod table;
+pub mod transaction_detail;
+pub mod transactions_list;
 pub mod unit_detail;
 pub mod units_list;
 

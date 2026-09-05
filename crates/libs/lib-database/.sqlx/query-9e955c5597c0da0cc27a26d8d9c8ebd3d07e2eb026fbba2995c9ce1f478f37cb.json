@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id            AS \"id!: domain::RowID\",\n                    date          AS \"date!: chrono::NaiveDate\",\n                    amount        AS \"amount!: domain::Money\",\n                    category_id   AS \"category_id!: domain::RowID\",\n                    account_id    AS \"account_id!: domain::RowID\",\n                    payee,\n                    description,\n                    status        AS \"status!: domain::TransactionStatus\",\n                    is_flagged,\n                    updated_on    AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM transactions\n                ORDER BY date DESC, id DESC\n                LIMIT ? OFFSET ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "date!: chrono::NaiveDate",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "amount!: domain::Money",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "category_id!: domain::RowID",
+        "ordinal": 3,
+        "type_info": "Null"
+      },
+      {
+        "name": "account_id!: domain::RowID",
+        "ordinal": 4,
+        "type_info": "Null"
+      },
+      {
+        "name": "payee",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: domain::TransactionStatus",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_flagged",
+        "ordinal": 8,
+        "type_info": "Bool"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "9e955c5597c0da0cc27a26d8d9c8ebd3d07e2eb026fbba2995c9ce1f478f37cb"
+}

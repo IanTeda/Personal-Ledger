@@ -60,6 +60,10 @@ pub use account_type::{AccountType, AccountTypeError};
 mod money;
 pub use money::{Money, MoneyError};
 
+/// Where a Transaction sits in the reconciliation workflow (Open, Cleared, Reconciled).
+mod transaction_status;
+pub use transaction_status::{TransactionStatus, TransactionStatusError};
+
 /// URL-safe slug type for human-readable, SEO-friendly identifiers.
 ///
 /// [`UrlSlug`] creates web-friendly identifiers from titles and names by

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE transactions SET is_flagged = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "d15a8fc047bbef5cfd5a19ecd367c617ef97325bbc4cf91b02f272b791fd3263"
+}

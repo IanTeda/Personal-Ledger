@@ -57,8 +57,8 @@ fn areas() -> Vec<Area> {
         },
         Area {
             name: "Transactions",
-            action: None,
-            not_yet_built_hint: "Not built yet — see issue #70",
+            action: Some(Action::OpenTransactions),
+            not_yet_built_hint: "",
         },
         Area {
             name: "Balance Checks",

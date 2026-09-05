@@ -50,6 +50,11 @@ pub enum Action {
     /// Push the Accounts create/edit screen — `None` starts an empty (create) form, `Some`
     /// pre-fills it with an existing Account's fields (edit).
     OpenAccountDetail(Option<lib_database::Accounts>),
+    /// Push the Transactions list screen.
+    OpenTransactions,
+    /// Push the Transactions create/edit screen — `None` starts an empty (create) form,
+    /// `Some` pre-fills it with an existing Transaction's fields (edit).
+    OpenTransactionDetail(Option<lib_database::Transactions>),
     /// A key was consumed by the active screen (e.g. appended to a text field) with nothing
     /// further for `App` to do — distinct from returning `None`, which would let the key
     /// fall through to the global `Esc`/`?` bindings.
@@ -91,4 +96,17 @@ pub enum Action {
     AccountDeleted(lib_core::RowID),
     /// The Accounts list screen failed to delete an Account.
     AccountDeleteFailed(String),
+    /// The Transactions list screen finished loading every Transaction.
+    TransactionsLoaded(Vec<lib_database::Transactions>),
+    /// The Transactions list screen failed to load Transactions.
+    TransactionsLoadFailed(String),
+    /// The Transactions detail screen successfully saved (inserted, or updated one or more
+    /// of its fields) a Transaction.
+    TransactionSaved(lib_database::Transactions),
+    /// The Transactions detail screen failed to save a Transaction.
+    TransactionSaveFailed(String),
+    /// The Transactions list screen successfully deleted a Transaction.
+    TransactionDeleted(lib_core::RowID),
+    /// The Transactions list screen failed to delete a Transaction.
+    TransactionDeleteFailed(String),
 }

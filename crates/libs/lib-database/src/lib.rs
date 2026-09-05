@@ -87,6 +87,10 @@ pub use units::Units;
 pub mod accounts;
 pub use accounts::Accounts;
 
+/// Single-entry Transactions against exactly one Account and one Category (CC-TUI-009).
+pub mod transactions;
+pub use transactions::Transactions;
+
 /// The Sync Server's own auth user store (ADR-0010).
 pub mod sync_users;
 pub use sync_users::SyncUser;
