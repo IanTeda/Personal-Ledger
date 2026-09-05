@@ -100,6 +100,10 @@ pub use payees::Payees;
 pub mod payee_aliases;
 pub use payee_aliases::PayeeAliases;
 
+/// Point-in-time assertions of what an Account's Balance should be (FR.28-32, CC-TUI-013).
+pub mod balance_checks;
+pub use balance_checks::BalanceChecks;
+
 /// The Sync Server's own auth user store (ADR-0010).
 pub mod sync_users;
 pub use sync_users::SyncUser;

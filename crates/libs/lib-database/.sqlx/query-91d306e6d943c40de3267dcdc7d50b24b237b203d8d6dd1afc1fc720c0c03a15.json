@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO balance_checks (id, account_id, date, asserted_balance, created_on, updated_on)\n                VALUES (?, ?, ?, ?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "91d306e6d943c40de3267dcdc7d50b24b237b203d8d6dd1afc1fc720c0c03a15"
+}

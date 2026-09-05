@@ -63,6 +63,38 @@ impl crate::Accounts {
         Ok(accounts)
     }
 
+    /// List every active Account, ordered by name — a picker source (e.g. Balance Checks'
+    /// create form) for entities that shouldn't default to an inactive Account.
+    ///
+    /// # Errors
+    /// Returns an error if the query fails.
+    #[tracing::instrument(name = "Find all active Accounts: ", level = "debug", skip(pool))]
+    pub async fn find_all_active(
+        pool: &sqlx::Pool<sqlx::Sqlite>,
+    ) -> crate::DatabaseResult<Vec<Self>> {
+        let accounts = sqlx::query_as!(
+            crate::Accounts,
+            r#"
+                SELECT
+                    id                AS "id!: domain::RowID",
+                    name,
+                    account_type      AS "account_type!: domain::AccountType",
+                    unit_id           AS "unit_id!: domain::RowID",
+                    starting_balance  AS "starting_balance!: domain::Money",
+                    is_active,
+                    created_on        AS "created_on!: chrono::DateTime<chrono::Utc>",
+                    updated_on        AS "updated_on!: chrono::DateTime<chrono::Utc>"
+                FROM accounts
+                WHERE is_active = TRUE
+                ORDER BY name ASC
+            "#,
+        )
+        .fetch_all(pool)
+        .await?;
+
+        Ok(accounts)
+    }
+
     /// List Accounts with pagination, alongside the total (unpaginated) row count.
     ///
     /// # Errors
@@ -144,5 +176,20 @@ mod tests {
 
         assert_eq!(page.len(), 2);
         assert_eq!(total, 5);
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn find_all_active_excludes_inactive_accounts(pool: SqlitePool) {
+        let unit_id = seed_unit(&pool).await;
+        let active = crate::Accounts::mock(unit_id).insert(&pool).await.unwrap();
+        let inactive = crate::Accounts::mock(unit_id).insert(&pool).await.unwrap();
+        crate::Accounts::set_active(inactive.id, false, &pool)
+            .await
+            .unwrap();
+
+        let found = crate::Accounts::find_all_active(&pool).await.unwrap();
+
+        assert!(found.iter().any(|a| a.id == active.id));
+        assert!(!found.iter().any(|a| a.id == inactive.id));
     }
 }

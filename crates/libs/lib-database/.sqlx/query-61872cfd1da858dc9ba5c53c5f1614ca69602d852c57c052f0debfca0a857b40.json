@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id                AS \"id!: domain::RowID\",\n                    account_id        AS \"account_id!: domain::RowID\",\n                    date              AS \"date!: chrono::NaiveDate\",\n                    asserted_balance  AS \"asserted_balance!: domain::Money\",\n                    created_on        AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on        AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM balance_checks\n                ORDER BY date DESC, id DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "account_id!: domain::RowID",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "date!: chrono::NaiveDate",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "asserted_balance!: domain::Money",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 5,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "61872cfd1da858dc9ba5c53c5f1614ca69602d852c57c052f0debfca0a857b40"
+}

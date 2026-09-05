@@ -134,6 +134,13 @@ pub enum DatabaseError {
     #[error("Error building Payee: {0}")]
     PayeesBuilder(String),
 
+    /// Balance Checks Builder Error
+    ///
+    /// Occurs when constructing a Balance Check fails due to invalid input or missing
+    /// required fields.
+    #[error("Error building Balance Check: {0}")]
+    BalanceChecksBuilder(String),
+
     /// Transaction Reconciled-Lock Error
     ///
     /// Occurs when `Transactions::update` is called against a Transaction whose current
@@ -245,6 +252,9 @@ impl PartialEq for DatabaseError {
         match (self, other) {
             (DatabaseError::CategoryBuilder(a), DatabaseError::CategoryBuilder(b)) => a == b,
             (DatabaseError::PayeesBuilder(a), DatabaseError::PayeesBuilder(b)) => a == b,
+            (DatabaseError::BalanceChecksBuilder(a), DatabaseError::BalanceChecksBuilder(b)) => {
+                a == b
+            }
             (DatabaseError::Connection(a), DatabaseError::Connection(b)) => a == b,
             (DatabaseError::Sqlx(a), DatabaseError::Sqlx(b)) => {
                 format!("{:?}", a) == format!("{:?}", b)

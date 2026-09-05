@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                UPDATE balance_checks\n                SET date = ?, asserted_balance = ?\n                WHERE id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a308d3cdae100500ae035653c8d788262d8b89826ae6c0e4d66cc6b160a8041b"
+}

@@ -21,9 +21,10 @@ use crate::{
     event::{Event, EventHandler},
     screen::{
         Screen, account_detail::AccountDetailScreen, accounts_list::AccountsListScreen,
-        categories_list::CategoriesListScreen, category_detail::CategoryDetailScreen,
-        dashboard::DashboardScreen, help::HelpScreen, payee_detail::PayeeDetailScreen,
-        payees_list::PayeesListScreen, settings::SettingsScreen,
+        balance_check_detail::BalanceCheckDetailScreen,
+        balance_checks_list::BalanceChecksListScreen, categories_list::CategoriesListScreen,
+        category_detail::CategoryDetailScreen, dashboard::DashboardScreen, help::HelpScreen,
+        payee_detail::PayeeDetailScreen, payees_list::PayeesListScreen, settings::SettingsScreen,
         transaction_detail::TransactionDetailScreen, transactions_list::TransactionsListScreen,
         unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
     },
@@ -174,6 +175,13 @@ impl App {
             Action::OpenPayeeDetail(Some(payee)) => {
                 self.push(Box::new(PayeeDetailScreen::new_edit(payee)))
             }
+            Action::OpenBalanceChecks => self.push(Box::new(BalanceChecksListScreen::new())),
+            Action::OpenBalanceCheckDetail(None) => {
+                self.push(Box::new(BalanceCheckDetailScreen::new_create()))
+            }
+            Action::OpenBalanceCheckDetail(Some(balance_check)) => {
+                self.push(Box::new(BalanceCheckDetailScreen::new_edit(balance_check)))
+            }
             Action::NoOp => {}
             Action::Tick => self
                 .stack
@@ -205,7 +213,11 @@ impl App {
             | Action::PayeeDeleted(_)
             | Action::PayeeDeleteFailed(_)
             | Action::PayeeAliasesLoaded(_)
-            | Action::PayeeAliasesLoadFailed(_) => {
+            | Action::PayeeAliasesLoadFailed(_)
+            | Action::BalanceChecksLoaded(_)
+            | Action::BalanceChecksLoadFailed(_)
+            | Action::BalanceCheckDeleted(_)
+            | Action::BalanceCheckDeleteFailed(_) => {
                 self.broadcast(&action);
             }
             // A successful save returns to whichever list screen the detail screen was
@@ -215,12 +227,14 @@ impl App {
             Action::AccountSaved(_) => self.broadcast_and_pop_detail(&action, "Account"),
             Action::TransactionSaved(_) => self.broadcast_and_pop_detail(&action, "Transaction"),
             Action::PayeeSaved(_) => self.broadcast_and_pop_detail(&action, "Payee"),
+            Action::BalanceCheckSaved(_) => self.broadcast_and_pop_detail(&action, "Balance Check"),
             // A failed save stays on the detail screen so the user can fix and retry.
             Action::UnitSaveFailed(_)
             | Action::CategorySaveFailed(_)
             | Action::AccountSaveFailed(_)
             | Action::TransactionSaveFailed(_)
-            | Action::PayeeSaveFailed(_) => {
+            | Action::PayeeSaveFailed(_)
+            | Action::BalanceCheckSaveFailed(_) => {
                 if let Some(screen) = self.stack.last_mut() {
                     screen.update(&action);
                 }
@@ -546,5 +560,41 @@ mod tests {
 
         assert_eq!(app.stack.len(), 2);
         assert_eq!(app.stack.last().unwrap().title(), "Payees");
+    }
+
+    #[tokio::test]
+    async fn open_balance_checks_pushes_the_balance_checks_list_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenBalanceChecks);
+        assert_eq!(app.stack.last().unwrap().title(), "Balance Checks");
+    }
+
+    #[tokio::test]
+    async fn open_balance_check_detail_pushes_the_balance_check_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenBalanceCheckDetail(None));
+        assert_eq!(app.stack.last().unwrap().title(), "Balance Check");
+    }
+
+    #[tokio::test]
+    async fn balance_check_saved_pops_back_from_the_detail_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenBalanceChecks);
+        app.update(Action::OpenBalanceCheckDetail(None));
+        assert_eq!(app.stack.len(), 3);
+
+        let now = chrono::Utc::now();
+        let balance_check = lib_database::BalanceChecks {
+            id: lib_core::RowID::new(),
+            account_id: lib_core::RowID::new(),
+            date: now.date_naive(),
+            asserted_balance: lib_core::Money::mock(),
+            created_on: now,
+            updated_on: now,
+        };
+        app.update(Action::BalanceCheckSaved(balance_check));
+
+        assert_eq!(app.stack.len(), 2);
+        assert_eq!(app.stack.last().unwrap().title(), "Balance Checks");
     }
 }

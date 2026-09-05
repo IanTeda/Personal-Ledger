@@ -60,6 +60,11 @@ pub enum Action {
     /// Push the Payees create/rename screen — `None` starts an empty (create) form, `Some`
     /// pre-fills it with an existing Payee's fields (rename).
     OpenPayeeDetail(Option<lib_database::Payees>),
+    /// Push the Balance Checks list screen.
+    OpenBalanceChecks,
+    /// Push the Balance Checks create/edit screen — `None` starts an empty (create) form,
+    /// `Some` pre-fills it with an existing Balance Check's fields (edit).
+    OpenBalanceCheckDetail(Option<lib_database::BalanceChecks>),
     /// A key was consumed by the active screen (e.g. appended to a text field) with nothing
     /// further for `App` to do — distinct from returning `None`, which would let the key
     /// fall through to the global `Esc`/`?` bindings.
@@ -132,4 +137,17 @@ pub enum Action {
     PayeeAliasesLoaded(Vec<lib_database::PayeeAliases>),
     /// A Payee Alias load failed.
     PayeeAliasesLoadFailed(String),
+    /// The Balance Checks list screen finished loading every Balance Check.
+    BalanceChecksLoaded(Vec<lib_database::BalanceChecks>),
+    /// A Balance Check load failed.
+    BalanceChecksLoadFailed(String),
+    /// The Balance Checks detail screen successfully saved (inserted or updated) a Balance
+    /// Check.
+    BalanceCheckSaved(lib_database::BalanceChecks),
+    /// The Balance Checks detail screen failed to save a Balance Check.
+    BalanceCheckSaveFailed(String),
+    /// The Balance Checks list screen successfully deleted a Balance Check.
+    BalanceCheckDeleted(lib_core::RowID),
+    /// The Balance Checks list screen failed to delete a Balance Check.
+    BalanceCheckDeleteFailed(String),
 }
