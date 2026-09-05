@@ -127,12 +127,21 @@ pub enum DatabaseError {
     #[error("Error building Transaction: {0}")]
     TransactionsBuilder(String),
 
+    /// Payees Builder Error
+    ///
+    /// Occurs when constructing a Payee fails due to invalid input or missing required
+    /// fields.
+    #[error("Error building Payee: {0}")]
+    PayeesBuilder(String),
+
     /// Transaction Reconciled-Lock Error
     ///
     /// Occurs when `Transactions::update` is called against a Transaction whose current
     /// status is Reconciled — its other fields cannot change until the status is first
     /// moved back to Open or Cleared (see `CONTEXT.md`'s Transaction Status entry).
-    #[error("Transaction {0} is Reconciled; move it back to Open or Cleared before editing its other fields")]
+    #[error(
+        "Transaction {0} is Reconciled; move it back to Open or Cleared before editing its other fields"
+    )]
     TransactionReconciled(String),
 
     /// Transaction Cross-Unit Move Error
@@ -235,6 +244,7 @@ impl PartialEq for DatabaseError {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (DatabaseError::CategoryBuilder(a), DatabaseError::CategoryBuilder(b)) => a == b,
+            (DatabaseError::PayeesBuilder(a), DatabaseError::PayeesBuilder(b)) => a == b,
             (DatabaseError::Connection(a), DatabaseError::Connection(b)) => a == b,
             (DatabaseError::Sqlx(a), DatabaseError::Sqlx(b)) => {
                 format!("{:?}", a) == format!("{:?}", b)

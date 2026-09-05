@@ -187,7 +187,10 @@ impl CategoriesBuilder {
 			.code
 			.ok_or(DatabaseError::CategoryBuilder("category code is required but was not set".to_string()))?;
 
-	  let id = self.id.unwrap_or_default();
+	  // clippy's unwrap_or_default suggestion is WRONG here: RowID::default() is a nil
+	  // (version 0) UUID, not a usable row id -- RowID's Decode requires version 7.
+	  #[allow(clippy::unwrap_or_default)]
+	  let id = self.id.unwrap_or_else(lib_core::RowID::new);
 		let url_slug = self.url_slug;
 		let now = chrono::Utc::now();
 
@@ -224,7 +227,10 @@ impl CategoriesBuilder {
 		let category_type = self.category_type.unwrap_or(lib_core::CategoryTypes::Expense);
 		let code = self.code.unwrap_or_else(|| "DEF.001".to_string());
 
-		let id = self.id.unwrap_or_default();
+		// clippy's unwrap_or_default suggestion is WRONG here: RowID::default() is a nil
+		// (version 0) UUID, not a usable row id -- RowID's Decode requires version 7.
+		#[allow(clippy::unwrap_or_default)]
+		let id = self.id.unwrap_or_else(lib_core::RowID::new);
 		let url_slug = self.url_slug;
 		let now = chrono::Utc::now();
 
@@ -290,6 +296,10 @@ mod tests {
 		assert!(category.is_active);
 		assert!(category.created_on <= chrono::Utc::now());
 		assert!(category.updated_on <= chrono::Utc::now());
+		assert!(
+			category.id.validate().is_ok(),
+			"build() without an explicit id must generate a real (version 7) RowID, not RowID::default()'s nil UUID"
+		);
 	}
 
 	#[test]
@@ -366,6 +376,11 @@ mod tests {
 			.build()
 			.expect("build should succeed");
 
-		assert_eq!(category.id, lib_core::RowID::default());
+		// `RowID::default()` is a nil (version 0) UUID -- never a valid row id, since
+		// `RowID`'s `Decode` requires version 7. Clearing back to `None` must fall through
+		// to a freshly generated id, not that nil value (a real bug this test used to bake
+		// in as "expected").
+		assert!(category.id.validate().is_ok());
+		assert_ne!(category.id, lib_core::RowID::default());
 	}
 }

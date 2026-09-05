@@ -68,7 +68,15 @@ pub struct TransactionDetailScreen {
     categories: PickerStatus<lib_database::Categories>,
     account_id: Option<lib_core::RowID>,
     accounts: PickerStatus<lib_database::Accounts>,
+    /// The typed Payee name — resolved to a `payee_id` at save time via
+    /// `Payees::resolve_or_create`, reusing an existing (or aliased) Payee or auto-creating
+    /// a new one. Unlike Category/Account, Payee has no fixed Left/Right-cyclable set, so
+    /// this stays free text with suggestions rather than a picker over `payees`.
     payee: String,
+    payees: PickerStatus<lib_database::Payees>,
+    payee_aliases: Vec<lib_database::PayeeAliases>,
+    /// Which suggestion in `payee_suggestions()`'s current result is highlighted.
+    payee_suggestion_index: usize,
     description: String,
     status: lib_core::TransactionStatus,
     is_flagged: bool,
@@ -90,6 +98,9 @@ impl TransactionDetailScreen {
             account_id: None,
             accounts: PickerStatus::Loading,
             payee: String::new(),
+            payees: PickerStatus::Loading,
+            payee_aliases: Vec::new(),
+            payee_suggestion_index: 0,
             description: String::new(),
             status: lib_core::TransactionStatus::default(),
             is_flagged: false,
@@ -111,7 +122,12 @@ impl TransactionDetailScreen {
             categories: PickerStatus::Loading,
             account_id: Some(transaction.account_id),
             accounts: PickerStatus::Loading,
-            payee: transaction.payee.clone().unwrap_or_default(),
+            // Filled in once Payees load (`update`'s `PayeesLoaded` arm) — the name isn't
+            // known from `transaction.payee_id` alone.
+            payee: String::new(),
+            payees: PickerStatus::Loading,
+            payee_aliases: Vec::new(),
+            payee_suggestion_index: 0,
             description: transaction.description.clone().unwrap_or_default(),
             status: transaction.status.clone(),
             is_flagged: transaction.is_flagged,
@@ -213,6 +229,63 @@ impl TransactionDetailScreen {
         }
     }
 
+    /// Payees whose name case-insensitively starts with the typed buffer, plus any Payee
+    /// reached via an alias pattern match, deduplicated and capped at 5 — an empty buffer
+    /// shows the first 5 alphabetically instead.
+    fn payee_suggestions(&self) -> Vec<&lib_database::Payees> {
+        let PickerStatus::Loaded(payees) = &self.payees else {
+            return Vec::new();
+        };
+
+        let buffer = self.payee.trim();
+        let mut matches: Vec<&lib_database::Payees> = if buffer.is_empty() {
+            payees.iter().collect()
+        } else {
+            let lower = buffer.to_lowercase();
+            let mut matches: Vec<&lib_database::Payees> = payees
+                .iter()
+                .filter(|payee| payee.name.to_lowercase().starts_with(&lower))
+                .collect();
+
+            for alias in &self.payee_aliases {
+                let is_match = regex::Regex::new(&alias.pattern)
+                    .map(|regex| regex.is_match(buffer))
+                    .unwrap_or(false);
+                if is_match
+                    && let Some(payee) = payees.iter().find(|payee| payee.id == alias.payee_id)
+                    && !matches.iter().any(|existing| existing.id == payee.id)
+                {
+                    matches.push(payee);
+                }
+            }
+            matches
+        };
+
+        matches.sort_by(|a, b| a.name.cmp(&b.name));
+        matches.truncate(5);
+        matches
+    }
+
+    fn move_payee_suggestion(&mut self, delta: isize) {
+        let len = self.payee_suggestions().len();
+        if len == 0 {
+            return;
+        }
+        let next = (self.payee_suggestion_index as isize + delta).rem_euclid(len as isize);
+        self.payee_suggestion_index = next as usize;
+    }
+
+    fn accept_payee_suggestion(&mut self) {
+        let name = self
+            .payee_suggestions()
+            .get(self.payee_suggestion_index)
+            .map(|payee| payee.name.clone());
+        if let Some(name) = name {
+            self.payee = name;
+        }
+        self.payee_suggestion_index = 0;
+    }
+
     /// Validates the form and, if valid, spawns the async save; stores the validation error
     /// on `self.error` when the form isn't ready to submit.
     fn save(&mut self) {
@@ -243,11 +316,7 @@ impl TransactionDetailScreen {
             return;
         };
 
-        let payee = if self.payee.trim().is_empty() {
-            None
-        } else {
-            Some(self.payee.trim().to_string())
-        };
+        let payee_name = self.payee.trim().to_string();
         let description = if self.description.trim().is_empty() {
             None
         } else {
@@ -256,12 +325,18 @@ impl TransactionDetailScreen {
 
         let original = self.original.clone();
         let form = lib_database::Transactions {
-            id: self.editing_id.unwrap_or_default(),
+            // clippy's unwrap_or_default suggestion is WRONG here: RowID::default()
+            // is a nil (version 0) UUID, not a usable row id -- RowID's Decode requires
+            // version 7. RowID::new() must run for a brand-new (create-mode) row.
+            #[allow(clippy::unwrap_or_default)]
+            id: self.editing_id.unwrap_or_else(lib_core::RowID::new),
             date,
             amount,
             category_id,
             account_id,
-            payee,
+            // Resolved from `payee_name` inside `save_transaction`, once a pool is
+            // available — `Payees::resolve_or_create` is async.
+            payee_id: None,
             description,
             status: self.status.clone(),
             is_flagged: self.is_flagged,
@@ -269,7 +344,7 @@ impl TransactionDetailScreen {
         };
 
         tokio::spawn(async move {
-            let result = Self::save_transaction(form, original).await;
+            let result = Self::save_transaction(form, payee_name, original).await;
             let action = match result {
                 Ok(saved) => Action::TransactionSaved(saved),
                 Err(err) => Action::TransactionSaveFailed(err.to_string()),
@@ -283,10 +358,21 @@ impl TransactionDetailScreen {
     /// fields in the same submission is naturally allowed by `update`'s own current-status
     /// check, without this screen needing to duplicate that rule.
     async fn save_transaction(
-        form: lib_database::Transactions,
+        mut form: lib_database::Transactions,
+        payee_name: String,
         original: Option<lib_database::Transactions>,
     ) -> lib_database::DatabaseResult<lib_database::Transactions> {
         let pool = db::connect().await?;
+
+        form.payee_id = if payee_name.is_empty() {
+            None
+        } else {
+            Some(
+                lib_database::Payees::resolve_or_create(&payee_name, &pool)
+                    .await?
+                    .id,
+            )
+        };
 
         let Some(original) = original else {
             return form.insert(&pool).await;
@@ -307,7 +393,7 @@ impl TransactionDetailScreen {
             || form.amount != original.amount
             || form.category_id != original.category_id
             || form.account_id != original.account_id
-            || form.payee != original.payee
+            || form.payee_id != original.payee_id
             || form.description != original.description;
         if other_fields_changed {
             latest = form.update(&pool).await?;
@@ -345,6 +431,34 @@ impl Screen for TransactionDetailScreen {
                 Err(err) => Action::AccountsLoadFailed(err.to_string()),
             };
             let _ = accounts_tx.send(action);
+        });
+
+        let payees_tx = action_tx.clone();
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                lib_database::Payees::find_all_active(&pool).await
+            }
+            .await;
+            let action = match action {
+                Ok(payees) => Action::PayeesLoaded(payees),
+                Err(err) => Action::PayeesLoadFailed(err.to_string()),
+            };
+            let _ = payees_tx.send(action);
+        });
+
+        let payee_aliases_tx = action_tx.clone();
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                lib_database::PayeeAliases::find_all(&pool).await
+            }
+            .await;
+            let action = match action {
+                Ok(aliases) => Action::PayeeAliasesLoaded(aliases),
+                Err(err) => Action::PayeeAliasesLoadFailed(err.to_string()),
+            };
+            let _ = payee_aliases_tx.send(action);
         });
 
         self.action_tx = Some(action_tx);
@@ -396,9 +510,16 @@ impl Screen for TransactionDetailScreen {
                 _ => {}
             },
             Field::Payee => match key.code {
-                KeyCode::Char(c) => self.payee.push(c),
+                KeyCode::Down => self.move_payee_suggestion(1),
+                KeyCode::Up => self.move_payee_suggestion(-1),
+                KeyCode::Right => self.accept_payee_suggestion(),
+                KeyCode::Char(c) => {
+                    self.payee.push(c);
+                    self.payee_suggestion_index = 0;
+                }
                 KeyCode::Backspace => {
                     self.payee.pop();
+                    self.payee_suggestion_index = 0;
                 }
                 _ => {}
             },
@@ -447,6 +568,23 @@ impl Screen for TransactionDetailScreen {
             Action::AccountsLoadFailed(message) => {
                 self.accounts = PickerStatus::Failed(message.clone());
             }
+            Action::PayeesLoaded(payees) => {
+                if self.payee.is_empty()
+                    && let Some(payee_id) = self.original.as_ref().and_then(|t| t.payee_id)
+                    && let Some(payee) = payees.iter().find(|p| p.id == payee_id)
+                {
+                    self.payee = payee.name.clone();
+                }
+                self.payees = PickerStatus::Loaded(payees.clone());
+            }
+            Action::PayeesLoadFailed(message) => {
+                self.payees = PickerStatus::Failed(message.clone());
+            }
+            Action::PayeeAliasesLoaded(aliases) => {
+                self.payee_aliases = aliases.clone();
+            }
+            // Non-critical: suggestions just fall back to name-prefix matching only.
+            Action::PayeeAliasesLoadFailed(_) => {}
             Action::TransactionSaveFailed(message) => {
                 self.error = Some(message.clone());
             }
@@ -494,6 +632,29 @@ impl Screen for TransactionDetailScreen {
             Line::raw(""),
         ];
 
+        if self.focus == Field::Payee {
+            let suggestions = self.payee_suggestions();
+            if !suggestions.is_empty() {
+                let text = suggestions
+                    .iter()
+                    .enumerate()
+                    .map(|(index, payee)| {
+                        if index == self.payee_suggestion_index {
+                            format!("[{}]", payee.name)
+                        } else {
+                            payee.name.clone()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("  ");
+                lines.push(Line::styled(
+                    format!("  Payee suggestions (↓/↑ highlight, → accept): {text}"),
+                    Style::default().fg(Color::DarkGray),
+                ));
+                lines.push(Line::raw(""));
+            }
+        }
+
         if self.editing_id.is_some() && self.status == lib_core::TransactionStatus::Reconciled {
             lines.push(Line::styled(
                 "Reconciled — only Status/Flagged can change until this moves back to Open or Cleared.",
@@ -540,7 +701,7 @@ mod tests {
             amount: lib_core::Money::mock(),
             category_id: lib_core::RowID::new(),
             account_id: lib_core::RowID::new(),
-            payee: Some("Woolworths".to_string()),
+            payee_id: None,
             description: Some("Groceries".to_string()),
             status,
             is_flagged: false,
@@ -565,9 +726,84 @@ mod tests {
 
         assert_eq!(screen.editing_id, Some(transaction.id));
         assert_eq!(screen.date, transaction.date.to_string());
-        assert_eq!(screen.payee, "Woolworths");
         assert_eq!(screen.description, "Groceries");
         assert_eq!(screen.fields().len(), 8);
+    }
+
+    fn mock_payee(name: &str) -> lib_database::Payees {
+        let now = chrono::Utc::now();
+        lib_database::Payees {
+            id: lib_core::RowID::new(),
+            name: name.to_string(),
+            is_active: true,
+            created_on: now,
+            updated_on: now,
+        }
+    }
+
+    #[test]
+    fn payees_loaded_resolves_the_original_transactions_payee_name() {
+        let mut transaction = mock_transaction(lib_core::TransactionStatus::Open);
+        let payee = mock_payee("Woolworths");
+        transaction.payee_id = Some(payee.id);
+        let mut screen = TransactionDetailScreen::new_edit(transaction);
+
+        screen.update(&Action::PayeesLoaded(vec![payee]));
+
+        assert_eq!(screen.payee, "Woolworths");
+    }
+
+    #[test]
+    fn payee_suggestions_prefix_matches_case_insensitively() {
+        let mut screen = TransactionDetailScreen::new_create();
+        screen.update(&Action::PayeesLoaded(vec![
+            mock_payee("Woolworths"),
+            mock_payee("Kmart"),
+        ]));
+        screen.payee = "wool".to_string();
+
+        let suggestions: Vec<&str> = screen
+            .payee_suggestions()
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+
+        assert_eq!(suggestions, vec!["Woolworths"]);
+    }
+
+    #[test]
+    fn payee_suggestions_include_an_alias_match() {
+        let mut screen = TransactionDetailScreen::new_create();
+        let renamed = mock_payee("Kmart AU");
+        screen.update(&Action::PayeesLoaded(vec![renamed.clone()]));
+        screen.update(&Action::PayeeAliasesLoaded(vec![
+            lib_database::PayeeAliases {
+                id: lib_core::RowID::new(),
+                payee_id: renamed.id,
+                pattern: "(?i)^Kmart$".to_string(),
+            },
+        ]));
+        screen.payee = "Kmart".to_string();
+
+        let suggestions: Vec<&str> = screen
+            .payee_suggestions()
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect();
+
+        assert_eq!(suggestions, vec!["Kmart AU"]);
+    }
+
+    #[test]
+    fn accept_payee_suggestion_fills_the_buffer() {
+        let mut screen = TransactionDetailScreen::new_create();
+        screen.focus = Field::Payee;
+        screen.update(&Action::PayeesLoaded(vec![mock_payee("Woolworths")]));
+        screen.payee = "wool".to_string();
+
+        screen.accept_payee_suggestion();
+
+        assert_eq!(screen.payee, "Woolworths");
     }
 
     #[test]

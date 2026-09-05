@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n                SELECT\n                    id            AS \"id!: domain::RowID\",\n                    date          AS \"date!: chrono::NaiveDate\",\n                    amount        AS \"amount!: domain::Money\",\n                    category_id   AS \"category_id!: domain::RowID\",\n                    account_id    AS \"account_id!: domain::RowID\",\n                    payee,\n                    description,\n                    status        AS \"status!: domain::TransactionStatus\",\n                    is_flagged,\n                    updated_on    AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM transactions\n                ORDER BY date DESC, id DESC\n            ",
+  "query": "\n                SELECT\n                    id            AS \"id!: domain::RowID\",\n                    date          AS \"date!: chrono::NaiveDate\",\n                    amount        AS \"amount!: domain::Money\",\n                    category_id   AS \"category_id!: domain::RowID\",\n                    account_id    AS \"account_id!: domain::RowID\",\n                    payee_id      AS \"payee_id?: domain::RowID\",\n                    description,\n                    status        AS \"status!: domain::TransactionStatus\",\n                    is_flagged,\n                    updated_on    AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM transactions\n                ORDER BY date DESC, id DESC\n            ",
   "describe": {
     "columns": [
       {
@@ -29,9 +29,9 @@
         "type_info": "Null"
       },
       {
-        "name": "payee",
+        "name": "payee_id?: domain::RowID",
         "ordinal": 5,
-        "type_info": "Text"
+        "type_info": "Null"
       },
       {
         "name": "description",
@@ -70,5 +70,5 @@
       false
     ]
   },
-  "hash": "a8feab54d85369eaaa78298b937dc4b3b895b9239180660e2bc2947469cceccd"
+  "hash": "ab2fbbf29fbfed5a460a07c3014d9f73bc53add80b61f953c85a274029e10cb4"
 }

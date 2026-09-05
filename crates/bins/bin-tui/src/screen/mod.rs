@@ -15,6 +15,8 @@ pub mod divergent_chart;
 pub mod doughnut_chart;
 pub mod help;
 pub mod line_chart;
+pub mod payee_detail;
+pub mod payees_list;
 pub mod settings;
 pub mod table;
 pub mod transaction_detail;

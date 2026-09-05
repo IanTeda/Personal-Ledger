@@ -55,6 +55,11 @@ pub enum Action {
     /// Push the Transactions create/edit screen — `None` starts an empty (create) form,
     /// `Some` pre-fills it with an existing Transaction's fields (edit).
     OpenTransactionDetail(Option<lib_database::Transactions>),
+    /// Push the Payees list screen.
+    OpenPayees,
+    /// Push the Payees create/rename screen — `None` starts an empty (create) form, `Some`
+    /// pre-fills it with an existing Payee's fields (rename).
+    OpenPayeeDetail(Option<lib_database::Payees>),
     /// A key was consumed by the active screen (e.g. appended to a text field) with nothing
     /// further for `App` to do — distinct from returning `None`, which would let the key
     /// fall through to the global `Esc`/`?` bindings.
@@ -109,4 +114,22 @@ pub enum Action {
     TransactionDeleted(lib_core::RowID),
     /// The Transactions list screen failed to delete a Transaction.
     TransactionDeleteFailed(String),
+    /// The Payees list screen, or the Transactions detail screen's suggestion picker,
+    /// finished loading every active Payee.
+    PayeesLoaded(Vec<lib_database::Payees>),
+    /// A Payee load failed.
+    PayeesLoadFailed(String),
+    /// The Payees detail screen successfully saved (inserted, or renamed) a Payee.
+    PayeeSaved(lib_database::Payees),
+    /// The Payees detail screen failed to save a Payee.
+    PayeeSaveFailed(String),
+    /// The Payees list screen successfully deleted a Payee.
+    PayeeDeleted(lib_core::RowID),
+    /// The Payees list screen failed to delete a Payee.
+    PayeeDeleteFailed(String),
+    /// The Transactions detail screen's suggestion picker finished loading every Payee
+    /// Alias, used to resolve a renamed Payee from its old, typed name.
+    PayeeAliasesLoaded(Vec<lib_database::PayeeAliases>),
+    /// A Payee Alias load failed.
+    PayeeAliasesLoadFailed(String),
 }

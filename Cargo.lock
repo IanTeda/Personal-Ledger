@@ -687,6 +687,7 @@ dependencies = [
  "lib_database",
  "lib_telemetry",
  "ratatui",
+ "regex",
  "sqlx",
  "tokio",
 ]
@@ -4067,6 +4068,7 @@ dependencies = [
  "chrono",
  "fake",
  "lib_core",
+ "regex",
  "serde",
  "serde_json",
  "sqlx",

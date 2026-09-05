@@ -1,0 +1,32 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id        AS \"id!: domain::RowID\",\n                    payee_id  AS \"payee_id!: domain::RowID\",\n                    pattern\n                FROM payee_aliases\n                WHERE payee_id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "payee_id!: domain::RowID",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "pattern",
+        "ordinal": 2,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "c63000ad93efe599b055c455b7e19863a8396d5ac500f8c2e1c606e012ce14d7"
+}

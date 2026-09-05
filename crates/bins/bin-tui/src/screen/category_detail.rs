@@ -172,7 +172,11 @@ impl CategoryDetailScreen {
         };
 
         let category = lib_database::Categories {
-            id: self.editing_id.unwrap_or_default(),
+            // clippy's unwrap_or_default suggestion is WRONG here: RowID::default()
+            // is a nil (version 0) UUID, not a usable row id -- RowID's Decode requires
+            // version 7. RowID::new() must run for a brand-new (create-mode) row.
+            #[allow(clippy::unwrap_or_default)]
+            id: self.editing_id.unwrap_or_else(lib_core::RowID::new),
             code: self.code.trim().to_string(),
             name: self.name.trim().to_string(),
             description,

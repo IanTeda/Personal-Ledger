@@ -91,6 +91,15 @@ pub use accounts::Accounts;
 pub mod transactions;
 pub use transactions::Transactions;
 
+/// Who a Transaction's money moved to or from (CC-TUI-007), a first-class entity as of
+/// ADR-0012.
+pub mod payees;
+pub use payees::Payees;
+
+/// A Payee's former names, preserved by `Payees::rename` (ADR-0012).
+pub mod payee_aliases;
+pub use payee_aliases::PayeeAliases;
+
 /// The Sync Server's own auth user store (ADR-0010).
 pub mod sync_users;
 pub use sync_users::SyncUser;

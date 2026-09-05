@@ -82,7 +82,11 @@ impl SyncUserBuilder {
         ))?;
 
         Ok(SyncUser {
-            id: self.id.unwrap_or_default(),
+            // clippy's unwrap_or_default suggestion is WRONG here: RowID::default()
+            // is a nil (version 0) UUID, not a usable row id -- RowID's Decode requires
+            // version 7. RowID::new() must run whenever no id was explicitly provided.
+            #[allow(clippy::unwrap_or_default)]
+            id: self.id.unwrap_or_else(lib_core::RowID::new),
             username,
             password_hash,
             refresh_token_hash: self.refresh_token_hash.unwrap_or(None),

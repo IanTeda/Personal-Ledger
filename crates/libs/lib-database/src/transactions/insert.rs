@@ -18,7 +18,7 @@ impl crate::Transactions {
     pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
         let insert_result = sqlx::query!(
             r#"
-                INSERT INTO transactions (id, date, amount, category_id, account_id, payee, description, status, is_flagged, updated_on)
+                INSERT INTO transactions (id, date, amount, category_id, account_id, payee_id, description, status, is_flagged, updated_on)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             "#,
             self.id,
@@ -26,7 +26,7 @@ impl crate::Transactions {
             self.amount,
             self.category_id,
             self.account_id,
-            self.payee,
+            self.payee_id,
             self.description,
             self.status,
             self.is_flagged,
@@ -52,7 +52,10 @@ impl crate::Transactions {
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Transaction {} not found after insert", self.id))
+            crate::DatabaseError::NotFound(format!(
+                "Transaction {} not found after insert",
+                self.id
+            ))
         })
     }
 }
@@ -87,6 +90,9 @@ mod tests {
 
         let result = transaction.insert(&pool).await;
 
-        assert!(result.is_err(), "foreign_keys pragma should reject the unknown account_id");
+        assert!(
+            result.is_err(),
+            "foreign_keys pragma should reject the unknown account_id"
+        );
     }
 }

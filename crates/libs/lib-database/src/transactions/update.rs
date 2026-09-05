@@ -24,14 +24,19 @@ impl crate::Transactions {
         })?;
 
         if current.status == domain::TransactionStatus::Reconciled {
-            return Err(crate::DatabaseError::TransactionReconciled(self.id.to_string()));
+            return Err(crate::DatabaseError::TransactionReconciled(
+                self.id.to_string(),
+            ));
         }
 
         if self.account_id != current.account_id {
             let old_account = crate::Accounts::find_by_id(current.account_id, pool)
                 .await?
                 .ok_or_else(|| {
-                    crate::DatabaseError::NotFound(format!("Account {} not found", current.account_id))
+                    crate::DatabaseError::NotFound(format!(
+                        "Account {} not found",
+                        current.account_id
+                    ))
                 })?;
             let new_account = crate::Accounts::find_by_id(self.account_id, pool)
                 .await?
@@ -49,14 +54,14 @@ impl crate::Transactions {
         let result = sqlx::query!(
             r#"
                 UPDATE transactions
-                SET date = ?, amount = ?, category_id = ?, account_id = ?, payee = ?, description = ?
+                SET date = ?, amount = ?, category_id = ?, account_id = ?, payee_id = ?, description = ?
                 WHERE id = ?
             "#,
             self.date,
             self.amount,
             self.category_id,
             self.account_id,
-            self.payee,
+            self.payee_id,
             self.description,
             self.id
         )
@@ -71,7 +76,10 @@ impl crate::Transactions {
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Transaction {} not found after update", self.id))
+            crate::DatabaseError::NotFound(format!(
+                "Transaction {} not found after update",
+                self.id
+            ))
         })
     }
 
@@ -86,12 +94,18 @@ impl crate::Transactions {
         status: domain::TransactionStatus,
         pool: &sqlx::Pool<sqlx::Sqlite>,
     ) -> crate::DatabaseResult<Self> {
-        let result = sqlx::query!(r#"UPDATE transactions SET status = ? WHERE id = ?"#, status, id)
-            .execute(pool)
-            .await?;
+        let result = sqlx::query!(
+            r#"UPDATE transactions SET status = ? WHERE id = ?"#,
+            status,
+            id
+        )
+        .execute(pool)
+        .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!("Transaction {id} not found")));
+            return Err(crate::DatabaseError::NotFound(format!(
+                "Transaction {id} not found"
+            )));
         }
 
         Self::find_by_id(id, pool).await?.ok_or_else(|| {
@@ -119,7 +133,9 @@ impl crate::Transactions {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!("Transaction {id} not found")));
+            return Err(crate::DatabaseError::NotFound(format!(
+                "Transaction {id} not found"
+            )));
         }
 
         Self::find_by_id(id, pool).await?.ok_or_else(|| {
@@ -161,14 +177,21 @@ mod tests {
             .insert(&pool)
             .await
             .unwrap();
-        crate::Transactions::set_status(transaction.id, lib_core::TransactionStatus::Reconciled, &pool)
-            .await
-            .unwrap();
+        crate::Transactions::set_status(
+            transaction.id,
+            lib_core::TransactionStatus::Reconciled,
+            &pool,
+        )
+        .await
+        .unwrap();
 
         transaction.description = Some("Trying to sneak in a change".to_string());
         let result = transaction.update(&pool).await;
 
-        assert!(matches!(result, Err(crate::DatabaseError::TransactionReconciled(_))));
+        assert!(matches!(
+            result,
+            Err(crate::DatabaseError::TransactionReconciled(_))
+        ));
     }
 
     #[sqlx::test(migrations = "migrations/client")]
@@ -178,9 +201,13 @@ mod tests {
             .insert(&pool)
             .await
             .unwrap();
-        crate::Transactions::set_status(transaction.id, lib_core::TransactionStatus::Reconciled, &pool)
-            .await
-            .unwrap();
+        crate::Transactions::set_status(
+            transaction.id,
+            lib_core::TransactionStatus::Reconciled,
+            &pool,
+        )
+        .await
+        .unwrap();
 
         // Un-reconciling is how a locked Transaction gets unlocked again.
         let unlocked = crate::Transactions::set_status(
@@ -201,9 +228,13 @@ mod tests {
             .insert(&pool)
             .await
             .unwrap();
-        crate::Transactions::set_status(transaction.id, lib_core::TransactionStatus::Reconciled, &pool)
-            .await
-            .unwrap();
+        crate::Transactions::set_status(
+            transaction.id,
+            lib_core::TransactionStatus::Reconciled,
+            &pool,
+        )
+        .await
+        .unwrap();
 
         let flagged = crate::Transactions::set_flagged(transaction.id, true, &pool)
             .await
@@ -221,7 +252,10 @@ mod tests {
         let mut transaction = transaction.insert(&pool).await.unwrap();
 
         let other_unit = crate::Units::mock().insert(&pool).await.unwrap();
-        let other_account = crate::Accounts::mock(other_unit.id).insert(&pool).await.unwrap();
+        let other_account = crate::Accounts::mock(other_unit.id)
+            .insert(&pool)
+            .await
+            .unwrap();
         transaction.account_id = other_account.id;
 
         let result = transaction.update(&pool).await;

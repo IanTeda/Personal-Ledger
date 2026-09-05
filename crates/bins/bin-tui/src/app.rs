@@ -22,7 +22,8 @@ use crate::{
     screen::{
         Screen, account_detail::AccountDetailScreen, accounts_list::AccountsListScreen,
         categories_list::CategoriesListScreen, category_detail::CategoryDetailScreen,
-        dashboard::DashboardScreen, help::HelpScreen, settings::SettingsScreen,
+        dashboard::DashboardScreen, help::HelpScreen, payee_detail::PayeeDetailScreen,
+        payees_list::PayeesListScreen, settings::SettingsScreen,
         transaction_detail::TransactionDetailScreen, transactions_list::TransactionsListScreen,
         unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
     },
@@ -168,6 +169,11 @@ impl App {
             Action::OpenTransactionDetail(Some(transaction)) => {
                 self.push(Box::new(TransactionDetailScreen::new_edit(transaction)))
             }
+            Action::OpenPayees => self.push(Box::new(PayeesListScreen::new())),
+            Action::OpenPayeeDetail(None) => self.push(Box::new(PayeeDetailScreen::new_create())),
+            Action::OpenPayeeDetail(Some(payee)) => {
+                self.push(Box::new(PayeeDetailScreen::new_edit(payee)))
+            }
             Action::NoOp => {}
             Action::Tick => self
                 .stack
@@ -193,7 +199,13 @@ impl App {
             | Action::TransactionsLoaded(_)
             | Action::TransactionsLoadFailed(_)
             | Action::TransactionDeleted(_)
-            | Action::TransactionDeleteFailed(_) => {
+            | Action::TransactionDeleteFailed(_)
+            | Action::PayeesLoaded(_)
+            | Action::PayeesLoadFailed(_)
+            | Action::PayeeDeleted(_)
+            | Action::PayeeDeleteFailed(_)
+            | Action::PayeeAliasesLoaded(_)
+            | Action::PayeeAliasesLoadFailed(_) => {
                 self.broadcast(&action);
             }
             // A successful save returns to whichever list screen the detail screen was
@@ -202,11 +214,13 @@ impl App {
             Action::CategorySaved(_) => self.broadcast_and_pop_detail(&action, "Category"),
             Action::AccountSaved(_) => self.broadcast_and_pop_detail(&action, "Account"),
             Action::TransactionSaved(_) => self.broadcast_and_pop_detail(&action, "Transaction"),
+            Action::PayeeSaved(_) => self.broadcast_and_pop_detail(&action, "Payee"),
             // A failed save stays on the detail screen so the user can fix and retry.
             Action::UnitSaveFailed(_)
             | Action::CategorySaveFailed(_)
             | Action::AccountSaveFailed(_)
-            | Action::TransactionSaveFailed(_) => {
+            | Action::TransactionSaveFailed(_)
+            | Action::PayeeSaveFailed(_) => {
                 if let Some(screen) = self.stack.last_mut() {
                     screen.update(&action);
                 }
@@ -487,7 +501,7 @@ mod tests {
             amount: lib_core::Money::mock(),
             category_id: lib_core::RowID::new(),
             account_id: lib_core::RowID::new(),
-            payee: None,
+            payee_id: None,
             description: None,
             status: lib_core::TransactionStatus::Open,
             is_flagged: false,
@@ -497,5 +511,40 @@ mod tests {
 
         assert_eq!(app.stack.len(), 2);
         assert_eq!(app.stack.last().unwrap().title(), "Transactions");
+    }
+
+    #[tokio::test]
+    async fn open_payees_pushes_the_payees_list_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenPayees);
+        assert_eq!(app.stack.last().unwrap().title(), "Payees");
+    }
+
+    #[tokio::test]
+    async fn open_payee_detail_pushes_the_payee_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenPayeeDetail(None));
+        assert_eq!(app.stack.last().unwrap().title(), "Payee");
+    }
+
+    #[tokio::test]
+    async fn payee_saved_pops_back_from_the_detail_screen() {
+        let mut app = App::new();
+        app.update(Action::OpenPayees);
+        app.update(Action::OpenPayeeDetail(None));
+        assert_eq!(app.stack.len(), 3);
+
+        let now = chrono::Utc::now();
+        let payee = lib_database::Payees {
+            id: lib_core::RowID::new(),
+            name: "Woolworths".to_string(),
+            is_active: true,
+            created_on: now,
+            updated_on: now,
+        };
+        app.update(Action::PayeeSaved(payee));
+
+        assert_eq!(app.stack.len(), 2);
+        assert_eq!(app.stack.last().unwrap().title(), "Payees");
     }
 }

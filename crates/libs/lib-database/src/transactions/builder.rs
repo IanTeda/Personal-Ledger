@@ -14,7 +14,7 @@ pub struct TransactionsBuilder {
     amount: Option<lib_core::Money>,
     category_id: Option<lib_core::RowID>,
     account_id: Option<lib_core::RowID>,
-    payee: Option<Option<String>>,
+    payee_id: Option<Option<lib_core::RowID>>,
     description: Option<Option<String>>,
     status: Option<lib_core::TransactionStatus>,
     is_flagged: Option<bool>,
@@ -63,10 +63,10 @@ impl TransactionsBuilder {
         self
     }
 
-    /// Provide an optional Payee free-text label.
+    /// Provide an optional Payee.
     #[must_use]
-    pub fn with_payee_opt(mut self, payee: Option<String>) -> Self {
-        self.payee = Some(payee);
+    pub fn with_payee_id_opt(mut self, payee_id: Option<lib_core::RowID>) -> Self {
+        self.payee_id = Some(payee_id);
         self
     }
 
@@ -117,12 +117,16 @@ impl TransactionsBuilder {
         ))?;
 
         Ok(Transactions {
-            id: self.id.unwrap_or_default(),
+            // clippy's unwrap_or_default suggestion is WRONG here: RowID::default()
+            // is a nil (version 0) UUID, not a usable row id -- RowID's Decode requires
+            // version 7. RowID::new() must run whenever no id was explicitly provided.
+            #[allow(clippy::unwrap_or_default)]
+            id: self.id.unwrap_or_else(lib_core::RowID::new),
             date,
             amount,
             category_id,
             account_id,
-            payee: self.payee.unwrap_or(None),
+            payee_id: self.payee_id.unwrap_or(None),
             description: self.description.unwrap_or(None),
             status: self.status.unwrap_or_default(),
             is_flagged: self.is_flagged.unwrap_or(false),

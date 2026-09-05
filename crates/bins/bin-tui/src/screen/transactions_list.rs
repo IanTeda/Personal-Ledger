@@ -314,7 +314,7 @@ mod tests {
             amount: lib_core::Money::mock(),
             category_id: lib_core::RowID::new(),
             account_id: lib_core::RowID::new(),
-            payee: None,
+            payee_id: None,
             description: None,
             status: lib_core::TransactionStatus::Open,
             is_flagged: false,

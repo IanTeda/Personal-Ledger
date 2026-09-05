@@ -101,7 +101,11 @@ impl AccountsBuilder {
         ))?;
 
         Ok(Accounts {
-            id: self.id.unwrap_or_default(),
+            // clippy's unwrap_or_default suggestion is WRONG here: RowID::default()
+            // is a nil (version 0) UUID, not a usable row id -- RowID's Decode requires
+            // version 7. RowID::new() must run whenever no id was explicitly provided.
+            #[allow(clippy::unwrap_or_default)]
+            id: self.id.unwrap_or_else(lib_core::RowID::new),
             name,
             account_type: self.account_type.unwrap_or_default(),
             unit_id,

@@ -27,9 +27,10 @@ pub struct Transactions {
     /// The exactly-one Account this Transaction is posted against.
     pub account_id: lib_core::RowID,
 
-    /// Optional free-text label naming who the money moved to or from. Not a separate
-    /// entity in V1 — matched by exact text only (see `CONTEXT.md`'s Payee entry).
-    pub payee: Option<String>,
+    /// The optional Payee money moved to or from. A first-class entity as of ADR-0012 —
+    /// see `CONTEXT.md`'s Payee entry — resolved or auto-created from typed text at save
+    /// time, not stored as free text here.
+    pub payee_id: Option<lib_core::RowID>,
 
     /// Optional free-text note.
     pub description: Option<String>,
@@ -65,6 +66,7 @@ impl Transactions {
             .with_amount(lib_core::Money::mock())
             .with_category_id(category_id)
             .with_account_id(account_id)
+            .with_payee_id_opt(None)
             .with_description_opt(Some(description))
             .with_status(lib_core::TransactionStatus::mock())
             .with_is_flagged_opt(Some(false))

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO payee_aliases (id, payee_id, pattern) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "09f05328dcae8446d30d710be157e25fc3841dfc6561281bc70a0df8ec3f3fe2"
+}

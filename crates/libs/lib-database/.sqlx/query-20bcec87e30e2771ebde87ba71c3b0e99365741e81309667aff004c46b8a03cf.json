@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n                SELECT\n                    id            AS \"id!: domain::RowID\",\n                    date          AS \"date!: chrono::NaiveDate\",\n                    amount        AS \"amount!: domain::Money\",\n                    category_id   AS \"category_id!: domain::RowID\",\n                    account_id    AS \"account_id!: domain::RowID\",\n                    payee,\n                    description,\n                    status        AS \"status!: domain::TransactionStatus\",\n                    is_flagged,\n                    updated_on    AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM transactions\n                WHERE id = ?\n            ",
+  "query": "\n                SELECT\n                    id            AS \"id!: domain::RowID\",\n                    date          AS \"date!: chrono::NaiveDate\",\n                    amount        AS \"amount!: domain::Money\",\n                    category_id   AS \"category_id!: domain::RowID\",\n                    account_id    AS \"account_id!: domain::RowID\",\n                    payee_id      AS \"payee_id?: domain::RowID\",\n                    description,\n                    status        AS \"status!: domain::TransactionStatus\",\n                    is_flagged,\n                    updated_on    AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM transactions\n                ORDER BY date DESC, id DESC\n                LIMIT ? OFFSET ?\n            ",
   "describe": {
     "columns": [
       {
@@ -29,9 +29,9 @@
         "type_info": "Null"
       },
       {
-        "name": "payee",
+        "name": "payee_id?: domain::RowID",
         "ordinal": 5,
-        "type_info": "Text"
+        "type_info": "Null"
       },
       {
         "name": "description",
@@ -55,7 +55,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       true,
@@ -70,5 +70,5 @@
       false
     ]
   },
-  "hash": "286695fb9c3e8393a22b77cdd2d516b52c2e7d1860d160272fd8511497aecabf"
+  "hash": "20bcec87e30e2771ebde87ba71c3b0e99365741e81309667aff004c46b8a03cf"
 }

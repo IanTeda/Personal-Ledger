@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE payees SET is_active = ? WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "20658f748673a47495b395030f6d09aa932908e4bfaee3ee6f5f5b899fc76bef"
+}

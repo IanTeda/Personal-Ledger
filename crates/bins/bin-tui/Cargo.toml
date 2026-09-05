@@ -23,6 +23,7 @@ chrono = { workspace = true }
 crossterm = { workspace = true }
 futures-util = { workspace = true }
 ratatui = { workspace = true }
+regex = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 

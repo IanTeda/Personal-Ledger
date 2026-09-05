@@ -21,7 +21,7 @@ impl crate::Transactions {
                     amount        AS "amount!: domain::Money",
                     category_id   AS "category_id!: domain::RowID",
                     account_id    AS "account_id!: domain::RowID",
-                    payee,
+                    payee_id      AS "payee_id?: domain::RowID",
                     description,
                     status        AS "status!: domain::TransactionStatus",
                     is_flagged,
@@ -52,7 +52,7 @@ impl crate::Transactions {
                     amount        AS "amount!: domain::Money",
                     category_id   AS "category_id!: domain::RowID",
                     account_id    AS "account_id!: domain::RowID",
-                    payee,
+                    payee_id      AS "payee_id?: domain::RowID",
                     description,
                     status        AS "status!: domain::TransactionStatus",
                     is_flagged,
@@ -71,7 +71,11 @@ impl crate::Transactions {
     ///
     /// # Errors
     /// Returns an error if either query fails.
-    #[tracing::instrument(name = "Find Transactions with pagination: ", level = "debug", skip(pool))]
+    #[tracing::instrument(
+        name = "Find Transactions with pagination: ",
+        level = "debug",
+        skip(pool)
+    )]
     pub async fn find_all_with_pagination(
         offset: i64,
         limit: i64,
@@ -86,7 +90,7 @@ impl crate::Transactions {
                     amount        AS "amount!: domain::Money",
                     category_id   AS "category_id!: domain::RowID",
                     account_id    AS "account_id!: domain::RowID",
-                    payee,
+                    payee_id      AS "payee_id?: domain::RowID",
                     description,
                     status        AS "status!: domain::TransactionStatus",
                     is_flagged,

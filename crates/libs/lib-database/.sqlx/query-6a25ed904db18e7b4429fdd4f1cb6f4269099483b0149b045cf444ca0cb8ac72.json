@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id           AS \"id!: domain::RowID\",\n                    name,\n                    is_active,\n                    created_on   AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on   AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM payees\n                ORDER BY name ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_active",
+        "ordinal": 2,
+        "type_info": "Bool"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "6a25ed904db18e7b4429fdd4f1cb6f4269099483b0149b045cf444ca0cb8ac72"
+}
