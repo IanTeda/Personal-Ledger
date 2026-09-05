@@ -144,18 +144,36 @@ equity, income, or expense.
 _Avoid_: Account type.
 
 **Payee**:
-An optional free-text label on a Transaction naming the business, organisation, or
-individual its money moved to or from (e.g. "Woolworths", an employer), recorded so
-spending or income can be totalled by who it went to or came from. Not a separate
-entity in V1 — matched by exact text only, with no normalisation (see
-`docs/product-requirements.md`, Constraints).
+A canonical, user-visible name for the business, organisation, or individual money
+moved to or from on a Transaction (e.g. "Woolworths", an employer), recorded so
+spending or income can be totalled by who it went to or came from. Optional on a
+Transaction. A first-class entity as of
+[ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md) — a Transaction links to
+a Payee, rather than storing its name as free text — with its own lifecycle
+(`is_active`, no hard delete once referenced). A Payee not yet seen is auto-created the
+first time its name is entered on a Transaction; no separate manual "create a Payee"
+step is required, though one exists for consistency (see `docs/product-requirements.md`,
+Constraints).
 _Avoid_: Vendor, merchant, contact — those imply money only ever flows outward, whereas
 a Payee can be the source of a Transaction (e.g. an employer) as well as its
 destination.
 
+**Payee Alias**:
+A former name of a Payee, preserved automatically when the Payee is renamed so that
+typing the old name later still resolves to (and suggests) the current Payee — a
+Transaction already linked to that Payee shows its current name immediately, with
+nothing to bulk-update, since the link is by identity, not by stored text. Stored as a
+regex pattern to leave room for a future hand-authored pattern (e.g. matching several
+old variants at once), but in V1 a Payee Alias is only ever auto-generated, as an
+exact match on the prior name, by the rename that creates it — there is no manual
+alias-authoring UI yet. See
+[ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md).
+_Avoid_: Rename, history — a Payee Alias is the *record* a rename leaves behind, not
+the act of renaming itself.
+
 **Transaction**:
 A single-entry record of an amount moving against exactly one Account, exactly one
-Category, and an optional Payee, on a date, carrying a Transaction Status and,
+Category, and optionally one Payee, on a date, carrying a Transaction Status and,
 independently, a Flagged marker. Personal Ledger is deliberately single-entry, not
 double-entry (see
 [ADR-0001](docs/adr/0001-single-entry-not-double-entry.md)) — a Transaction is one row,
