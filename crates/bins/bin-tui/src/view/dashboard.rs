@@ -29,7 +29,7 @@ impl View for DashboardView {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3),
+                Constraint::Length(5),
                 Constraint::Length(8),
                 Constraint::Min(0),
                 Constraint::Length(3),

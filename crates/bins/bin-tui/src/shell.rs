@@ -58,8 +58,17 @@ impl Shell {
 
         loop {
             let action = tokio::select! {
-                event = events.next() => match event.and_then(|event| self.map_event(event)) {
-                    Some(action) => action,
+                event = events.next() => match event {
+                    // A resize can reveal rows the terminal emulator never had ratatui-drawn
+                    // content in; clear before the next draw rather than risk stray artifacts.
+                    Some(Event::Resize) => {
+                        tui.clear()?;
+                        continue;
+                    }
+                    Some(event) => match self.map_event(event) {
+                        Some(action) => action,
+                        None => continue,
+                    },
                     None => continue,
                 },
                 Some(action) = self.action_rx.recv() => action,
@@ -76,6 +85,8 @@ impl Shell {
 
     /// Translates a raw terminal event into an [`Action`]: the active view gets first
     /// refusal via `handle_key` before falling back to `Ctrl+C`, the one truly-global key.
+    /// `Event::Resize` never reaches here — `run` intercepts it directly to clear the
+    /// terminal, since that's a `Tui`-level concern with no `Action` of its own.
     fn map_event(&mut self, event: Event) -> Option<Action> {
         match event {
             Event::Tick => Some(Action::Tick),
@@ -85,6 +96,7 @@ impl Shell {
                 }
                 self.view.handle_key(key)
             }
+            Event::Resize => None,
         }
     }
 
@@ -108,6 +120,7 @@ impl Shell {
             ])
             .split(frame.area());
 
+        // Header Frame
         frame.render_widget(
             Paragraph::new(Line::from(format!(
                 " 📒 Personal Ledger | {} ",
@@ -117,8 +130,10 @@ impl Shell {
             rows[0],
         );
 
+        // Screen Frame / View
         self.view.view(frame, rows[1]);
 
+        // Footer Frame
         frame.render_widget(
             Paragraph::new(" : command · / search · ? help ")
                 .style(Style::default().bg(Color::Rgb(211, 211, 211))),
@@ -186,5 +201,14 @@ mod tests {
         assert_eq!(action, Action::Tick);
         shell.update(action);
         assert!(!shell.should_quit);
+    }
+
+    #[test]
+    fn resize_maps_to_no_action() {
+        // `run` intercepts `Event::Resize` directly to clear the terminal, before it would
+        // ever reach `map_event` — this just documents that `map_event` itself treats it as
+        // unmapped, keeping the match exhaustive without inventing a `Resize` action.
+        let mut shell = Shell::new();
+        assert_eq!(shell.map_event(Event::Resize), None);
     }
 }

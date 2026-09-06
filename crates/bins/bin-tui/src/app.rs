@@ -120,6 +120,9 @@ impl App {
                     _ => None,
                 }
             }
+            // `App` is disconnected from `main.rs` (ADR-0013) and never handles resize; this
+            // arm exists only so the shared `Event` enum stays exhaustive here.
+            Event::Resize => None,
         }
     }
 

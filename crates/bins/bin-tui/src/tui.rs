@@ -21,12 +21,17 @@ pub struct Tui {
 }
 
 impl Tui {
-    /// Enters raw mode and the alternate screen, ready to draw.
+    /// Enters raw mode and the alternate screen, ready to draw. Clears the screen before
+    /// returning — ratatui's diffing only ever overwrites cells it knows changed since its
+    /// *own* last draw, so without this, whatever the terminal emulator left in the alternate
+    /// screen buffer (leftover output, a resize revealing untouched rows) can show through
+    /// as stray artifacts until something else happens to redraw that exact cell.
     pub fn new() -> io::Result<Self> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
-        let terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+        let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
+        terminal.clear()?;
         Ok(Self { terminal })
     }
 
@@ -36,6 +41,13 @@ impl Tui {
         render: impl FnOnce(&mut ratatui::Frame),
     ) -> io::Result<ratatui::CompletedFrame<'_>> {
         self.terminal.draw(render)
+    }
+
+    /// Clears the terminal. Call this on a resize — the newly-revealed rows may still hold
+    /// whatever the terminal emulator had there before, and ratatui's diffing has no way to
+    /// know that without being told explicitly.
+    pub fn clear(&mut self) -> io::Result<()> {
+        self.terminal.clear()
     }
 }
 

@@ -16,6 +16,11 @@ pub enum Event {
     /// A key was pressed (crossterm also reports releases on some backends; those are
     /// filtered out before this variant is produced).
     Key(KeyEvent),
+    /// The terminal was resized. Carries no dimensions — the backend reports its own current
+    /// size on the next draw; this variant exists so `Shell` knows to clear the terminal
+    /// first, since newly-revealed rows may still hold whatever the terminal emulator had
+    /// there before, which ratatui's diffing won't otherwise know to overwrite.
+    Resize,
 }
 
 /// Runs a background task that multiplexes a tick interval and crossterm's input stream,
@@ -48,6 +53,11 @@ impl EventHandler {
                     match maybe_event {
                         Some(Ok(CrosstermEvent::Key(key))) if key.kind == KeyEventKind::Press => {
                             if sender.send(Event::Key(key)).is_err() {
+                                break;
+                            }
+                        }
+                        Some(Ok(CrosstermEvent::Resize(_, _))) => {
+                            if sender.send(Event::Resize).is_err() {
                                 break;
                             }
                         }
