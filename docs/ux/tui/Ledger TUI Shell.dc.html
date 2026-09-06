@@ -68,6 +68,10 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 .csw{position:absolute;left:50%;width:1px;background:#605d5d;transform:translateX(-50%)}
 .csb{position:absolute;left:1px;right:1px;border:1px solid #201e1d;background:#fff}
 .csb.d{background:#ec3013;border-color:#ec3013}
+.bt{position:relative;height:10px;background:#eae7e7;flex:1}
+.btf{position:absolute;left:0;top:0;bottom:0;background:#9b9797}
+.btf.ov{background:#ec3013}
+.btm{position:absolute;top:-3px;bottom:-3px;width:1px;background:#201e1d}
 .cmd{border-top:2px solid #201e1d;padding:3px 8px;font-size:11px;background:#f8f4f4}
 .cmd i{background:#ec3013;color:#fff;font-style:normal;padding:0 2px}
 .ovl{border:2px solid #201e1d;background:#fff;box-shadow:8px 8px 0 rgba(32,30,29,.14)}
@@ -87,22 +91,25 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 .dk .dnt>i{background:#161413}
 .dk .csb{border-color:#eae7e7;background:#161413}
 .dk .bp{background:#eae7e7}
+.dk .bt{background:#2c2928}
+.dk .btf{background:#605d5d}
+.dk .btm{background:#eae7e7}
 .dk .cmd{background:#201e1d;border-top-color:#605d5d}
 .dk .ovl{background:#161413;border-color:#eae7e7}
 .dk .lcb.g{border-top-color:#605d5d}
 </style></helmet>
 
-<section class="dv-turn {{ themeClass }}" id="t2">
-<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Personal Ledger TUI — chosen shell</span></div>
-<p class="dv-sub">Zero-chrome command shell: statusline, one full-bleed view, <code>:</code> as the only navigation — carrying the chart-led dashboard, with the four FC-06 widgets first and tables demoted to the "needs attention" list. Drawn at 96 × 30 cells. <b>2a</b> is the resting state, <b>2b</b> the same screen with the floating command window open.</p>
+<section class="dv-turn {{ themeClass }}" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Shell — resting state</span></div>
+<p class="dv-sub">The chosen direction: zero-chrome command shell. Status line, one full-bleed view, an idle <code>:</code> command line, keybind hints. The default view is the chart-led dashboard — the four FC-06 widgets first, tables demoted to the "needs attention" list. Drawn at 96 × 30 cells; every other screen re-hosts inside this frame.</p>
 
 <div class="dv-opts">
 
-<div class="dv-opt" id="2a">
-<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><span><b>Resting state.</b> Command line idle at the bottom; every widget is a jump target by name.</span></div>
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a><span><b>Resting state.</b> Command line idle at the bottom; every widget is a jump target by name.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px">
-  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; position</span><span>245 824 AUD &nbsp;·&nbsp; ✓ 14:02 &nbsp;·&nbsp; 2 sep 2026</span></div>
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; position</span><span>245 824 AUD &nbsp;·&nbsp; ✓ 14:02 &nbsp;·&nbsp; 21 sep 2026</span></div>
   <div class="pane" style="padding:10px 14px">
     <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:3px">
       <div><div class="lab">net position</div><div class="big" style="font-size:26px">$ 245 824.10</div></div>
@@ -113,7 +120,7 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
     <div style="display:flex;gap:14px;margin-top:5px">
       <div style="flex:1">
         <div class="hd">net worth &nbsp;·&nbsp; 18 months <span>line</span></div>
-        <div class="lc" style="height:96px">
+        <div class="lc" style="height:78px">
           <i class="lcb" style="height:30%"></i><i class="lcb" style="height:35%"></i><i class="lcb" style="height:33%"></i><i class="lcb" style="height:40%"></i><i class="lcb" style="height:46%"></i><i class="lcb" style="height:44%"></i><i class="lcb" style="height:50%"></i><i class="lcb" style="height:57%"></i><i class="lcb" style="height:53%"></i><i class="lcb" style="height:61%"></i><i class="lcb" style="height:67%"></i><i class="lcb" style="height:65%"></i><i class="lcb" style="height:73%"></i><i class="lcb" style="height:79%"></i><i class="lcb" style="height:76%"></i><i class="lcb" style="height:85%"></i><i class="lcb" style="height:91%"></i><i class="lcb" style="height:98%"></i>
         </div>
         <div class="row" style="grid-template-columns:1fr auto auto;gap:12px"><span class="mut">mar 25</span><span class="mut">sep 25</span><span class="mut">sep 26</span></div>
@@ -146,11 +153,12 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
         </div>
       </div>
       <div style="flex:1">
-        <div class="hd">budgets this period <span>sep · day 2/30</span></div>
-        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>groceries</span><span class="mut">██████████████░░░░░</span><span class="n mut">918 / 1 200</span></div>
-        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>dining</span><span class="neg">████████████████████</span><span class="n neg">412 / 300</span></div>
-        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>transport</span><span class="mut">███████████░░░░░░░░</span><span class="n mut">604 / 1 000</span></div>
-        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>utilities</span><span class="mut">█████████████░░░░░░</span><span class="n mut">512 / 750</span></div>
+        <div class="hd">budgets this period <span style="display:inline-flex;align-items:center;gap:5px">sep · day 21/30<span class="bt" style="width:40px;flex:none"><i class="btf" style="width:70%"></i><i class="btm" style="left:70%"></i></span>70% elapsed</span></div>
+        <div class="row" style="grid-template-columns:68px 1fr 88px;align-items:center"><span>groceries</span><span class="bt"><i class="btf" style="width:76%"></i><i class="btm" style="left:70%"></i></span><span class="n mut">918 / 1 200</span></div>
+        <div class="row" style="grid-template-columns:68px 1fr 88px;align-items:center"><span class="neg">dining</span><span class="bt"><i class="btf ov" style="width:100%"></i><i class="btm" style="left:70%"></i></span><span class="n neg">412 / 300</span></div>
+        <div class="row" style="grid-template-columns:68px 1fr 88px;align-items:center"><span>transport</span><span class="bt"><i class="btf" style="width:60%"></i><i class="btm" style="left:70%"></i></span><span class="n mut">604 / 1 000</span></div>
+        <div class="row" style="grid-template-columns:68px 1fr 88px;align-items:center"><span>utilities</span><span class="bt"><i class="btf" style="width:68%"></i><i class="btm" style="left:70%"></i></span><span class="n mut">512 / 750</span></div>
+        <div class="row" style="grid-template-columns:1fr"><span class="mut">│ = period progress &nbsp;·&nbsp; bar = spent / budget</span></div>
         <div class="hd tight">needs attention</div>
         <div class="row" style="grid-template-columns:1fr auto"><span>14 unreconciled transactions</span><span class="mut">:reconcile</span></div>
         <div class="row" style="grid-template-columns:1fr auto"><span class="neg">balance check variance −12.40</span><span class="mut">31 aug</span></div>
@@ -163,8 +171,111 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 </div>
 </div>
 
+</div>
+<p class="dv-next">Every screen below sits in this shell. Earlier shell explorations are kept as turn <a class="dv-oid" href="#t5">5</a>.</p>
+</section>
+
+<section class="dv-turn {{ themeClass }}" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">:help popup</span></div>
+<p class="dv-sub">A reference rather than a runner: search at the top, then every command as <code>:command &lt;binding&gt; description</code> grouped by noun, navigation first. Drawn from the same action registry that feeds the palette and the footer hints, so a new action appears here for free.</p>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><span><b>Resting.</b> Search empty, full list, navigation group first.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; help</span><span>HELP &nbsp;·&nbsp; 62 commands</span></div>
+  <div class="pane" style="padding:10px 14px;opacity:.3">
+    <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:3px">
+      <div><div class="lab">net position</div><div class="big" style="font-size:26px">$ 245 824.10</div></div>
+      <div style="padding-bottom:4px"><div class="lab">30 days</div><div style="font-weight:700">+ 1 268</div></div>
+    </div>
+    <div class="hd">net worth &nbsp;·&nbsp; 18 months</div>
+    <div class="lc" style="height:60px">
+      <i class="lcb" style="height:30%"></i><i class="lcb" style="height:35%"></i><i class="lcb" style="height:33%"></i><i class="lcb" style="height:40%"></i><i class="lcb" style="height:46%"></i><i class="lcb" style="height:44%"></i><i class="lcb" style="height:50%"></i><i class="lcb" style="height:57%"></i><i class="lcb" style="height:53%"></i><i class="lcb" style="height:61%"></i><i class="lcb" style="height:67%"></i><i class="lcb" style="height:65%"></i><i class="lcb" style="height:73%"></i><i class="lcb" style="height:79%"></i><i class="lcb" style="height:76%"></i><i class="lcb" style="height:85%"></i><i class="lcb" style="height:91%"></i><i class="lcb" style="height:98%"></i>
+    </div>
+  </div>
+  <div class="ovl" style="position:absolute;left:7%;right:7%;top:5%;padding:0;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;gap:12px;padding:4px 9px;border-bottom:2px solid #201e1d"><span>/ <span class="neg">▌</span><span class="mut">&nbsp;help — filter by command, binding or description</span></span><span class="mut">62 of 62</span></div>
+    <div style="padding:2px 0">
+      <div class="row" style="grid-template-columns:1fr;padding:1px 9px"><span class="mut" style="letter-spacing:.06em">NAVIGATE</span></div>
+      <div class="row sel" style="grid-template-columns:172px 58px 1fr;margin:0;padding:1px 9px"><span>:dashboard</span><span class="n">g d</span><span>financial position — the default view</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:account ledger &lt;name&gt;</span><span class="n mut">g l</span><span class="mut">transaction table for one account</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:account list</span><span class="n mut">g a</span><span class="mut">accounts and their balances</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:category list</span><span class="n mut">g c</span><span class="mut">categories and 30-day totals</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:unit list</span><span class="n mut">g u</span><span class="mut">units, details and weekly prices</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:budget list [period]</span><span class="n mut">g b</span><span class="mut">budgets vs actual for the period</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:report category [range]</span><span class="n mut">g r</span><span class="mut">spending report and charts</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:reconcile [account]</span><span class="n mut">g k</span><span class="mut">balance checks and clearing</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:txn recent</span><span class="n mut">g t</span><span class="mut">last 50 transactions, all accounts</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 9px 1px"><span class="mut" style="letter-spacing:.06em">TRANSACTIONS</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:txn new [account]</span><span class="n mut">a</span><span class="mut">add a transaction from anywhere</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:txn edit</span><span class="n mut">e</span><span class="mut">edit the highlighted transaction</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:txn delete</span><span class="n mut">d</span><span class="mut">delete — confirms by payee and amount</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span class="mut">:txn status &lt;state&gt;</span><span class="n mut">c R o</span><span class="mut">cleared · reconciled · reopen</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 9px 1px"><span class="mut" style="letter-spacing:.06em">UNITS &amp; PRICES</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span class="mut">:unit new &lt;code&gt; &lt;type&gt;</span><span class="n mut">n</span><span class="mut">add a unit — code is permanent</span></div>
+    </div>
+    <div style="padding:3px 9px;border-top:1px solid #d7d3d3">
+      <div class="row" style="grid-template-columns:1fr auto;padding:0"><span class="mut">showing 14 of 62 · <span class="k">j/k</span>scroll &nbsp;<span class="k">g</span>group jump</span><span class="mut">glyphs ○ open ◐ cleared ● reconciled ⚑ flagged</span></div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 9px;font-size:9.5px"><span><span class="k">/</span>search</span><span><span class="k">↑↓</span>select</span><span><span class="k">enter</span>run it</span><span><span class="k">y</span>copy command</span><span><span class="k">esc</span>close</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">?</span>toggle help</span><span class="mut"><span class="k" style="background:#9b9797">esc</span>close help window</span></div>
+</div>
+</div>
+</div>
+
 <div class="dv-opt" id="2b">
-<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a><span><b>Command open.</b> Floating fuzzy-find window over the dimmed dashboard — this is the whole navigation model.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a><span><b>Searching.</b> <code>bud</code> filters across command, binding and description; groups collapse to what matched.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; help</span><span>HELP &nbsp;·&nbsp; search</span></div>
+  <div class="pane" style="padding:10px 14px;opacity:.3">
+    <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:3px">
+      <div><div class="lab">net position</div><div class="big" style="font-size:26px">$ 245 824.10</div></div>
+      <div style="padding-bottom:4px"><div class="lab">30 days</div><div style="font-weight:700">+ 1 268</div></div>
+    </div>
+    <div class="hd">net worth &nbsp;·&nbsp; 18 months</div>
+    <div class="lc" style="height:60px">
+      <i class="lcb" style="height:30%"></i><i class="lcb" style="height:35%"></i><i class="lcb" style="height:33%"></i><i class="lcb" style="height:40%"></i><i class="lcb" style="height:46%"></i><i class="lcb" style="height:44%"></i><i class="lcb" style="height:50%"></i><i class="lcb" style="height:57%"></i><i class="lcb" style="height:53%"></i><i class="lcb" style="height:61%"></i><i class="lcb" style="height:67%"></i><i class="lcb" style="height:65%"></i><i class="lcb" style="height:73%"></i><i class="lcb" style="height:79%"></i><i class="lcb" style="height:76%"></i><i class="lcb" style="height:85%"></i><i class="lcb" style="height:91%"></i><i class="lcb" style="height:98%"></i>
+    </div>
+  </div>
+  <div class="ovl" style="position:absolute;left:7%;right:7%;top:5%;padding:0;display:flex;flex-direction:column">
+    <div style="display:flex;justify-content:space-between;gap:12px;padding:4px 9px;border-bottom:2px solid #201e1d"><span>/ bud<span class="neg">▌</span></span><span class="mut">6 of 62 · 2 groups</span></div>
+    <div style="padding:2px 0">
+      <div class="row" style="grid-template-columns:1fr;padding:1px 9px"><span class="mut" style="letter-spacing:.06em">NAVIGATE</span></div>
+      <div class="row sel" style="grid-template-columns:172px 58px 1fr;margin:0;padding:1px 9px"><span>:<b>bud</b>get list [period]</span><span class="n">g b</span><span>budgets vs actual for the period</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:report variance</span><span class="n mut">g r v</span><span class="mut"><b style="color:#201e1d">bud</b>get variance by category</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 9px 1px"><span class="mut" style="letter-spacing:.06em">BUDGETS</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:<b>bud</b>get new &lt;cat&gt; &lt;limit&gt;</span><span class="n mut">b n</span><span class="mut">start tracking a category</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:<b>bud</b>get edit &lt;cat&gt; [limit]</span><span class="n mut">b e</span><span class="mut">change the limit or period</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:<b>bud</b>get deactivate &lt;cat&gt;</span><span class="n mut">b x</span><span class="mut">stop tracking, keep history</span></div>
+      <div class="row" style="grid-template-columns:172px 58px 1fr;padding:1px 9px"><span>:<b>bud</b>get period &lt;len&gt;</span><span class="n mut">b p</span><span class="mut">weekly · monthly · quarterly · yearly</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:5px 9px 1px"><span class="mut">no matches in transactions, units, accounts, categories, reconcile, sync</span></div>
+    </div>
+    <div style="padding:3px 9px;border-top:1px solid #d7d3d3">
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">enter runs <b style="color:#201e1d">:budget list</b> — help closes and the view opens</span></div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 9px;font-size:9.5px"><span><span class="k">↑↓</span>select</span><span><span class="k">enter</span>run it</span><span><span class="k">y</span>copy command</span><span><span class="k">^u</span>clear search</span><span><span class="k">esc</span>close</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">?</span>toggle help</span><span class="mut"><span class="k" style="background:#9b9797">esc</span>close help window</span></div>
+</div>
+</div>
+</div>
+
+
+</div>
+<p class="dv-next">Try next: "add a keymap-only tab for motion keys" · "fold the help window into the handoff README"</p>
+</section>
+
+<section class="dv-turn {{ themeClass }}" id="t3">
+<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Command palette</span></div>
+<p class="dv-sub">A centred floating fuzzy-find window over the dimmed view — with no menus and no persistent nav, this is the whole navigation model. Matches anywhere in the string, shows action → effect → binding, and previews the resolved argument before you commit.</p>
+
+<div class="dv-opts"><div class="dv-opt" id="3a">
+<div class="dv-olabel"><a class="dv-oid" href="#3a">3a</a><span><b>Command open.</b> Floating fuzzy-find window over the dimmed dashboard — this is the whole navigation model.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px;position:relative">
   <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; position</span><span>COMMAND &nbsp;·&nbsp; 245 824 AUD &nbsp;·&nbsp; ✓ 14:02</span></div>
@@ -198,9 +309,9 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
         </div>
       </div>
       <div style="flex:1">
-        <div class="hd">budgets this period</div>
-        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>groceries</span><span class="mut">██████████████░░░░░</span><span class="n mut">918 / 1 200</span></div>
-        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>dining</span><span class="neg">████████████████████</span><span class="n neg">412 / 300</span></div>
+        <div class="hd">budgets this period <span>day 21/30</span></div>
+        <div class="row" style="grid-template-columns:68px 1fr 88px;align-items:center"><span>groceries</span><span class="bt"><i class="btf" style="width:76%"></i><i class="btm" style="left:70%"></i></span><span class="n mut">918 / 1 200</span></div>
+        <div class="row" style="grid-template-columns:68px 1fr 88px;align-items:center"><span class="neg">dining</span><span class="bt"><i class="btf ov" style="width:100%"></i><i class="btm" style="left:70%"></i></span><span class="n neg">412 / 300</span></div>
       </div>
     </div>
   </div>
@@ -226,8 +337,9 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 </div>
 </div>
 
+
 </div>
-<p class="dv-next">Implementation reference — see README.md beside this file. The remaining nine screens are wireframed separately and re-host inside this same shell.</p>
+<p class="dv-next">Try next: "show the argument-error state" · "history mode on ^r"</p>
 </section>
 
 </x-dc>

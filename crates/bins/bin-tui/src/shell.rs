@@ -1,7 +1,7 @@
 //! `Shell` — owns terminal lifecycle, the async event loop, and hosts one active `View`
 //! (ADR-0013, `docs/adr/0013-shell-view-replaces-breadcrumb-app-screen-nav.md`). Replaces the
 //! breadcrumb-stack `App` (`app.rs`, left compiling but disconnected from `main.rs`) for the
-//! shell chrome and dashboard being rebuilt against `docs/ux/shell/README.md`: a status line,
+//! shell chrome and dashboard being rebuilt against `docs/ux/tui/README.md`: a status line,
 //! one full-bleed view region, and a keybind hint bar — no breadcrumb, no navigation stack.
 
 use std::time::Duration;
@@ -109,7 +109,7 @@ impl Shell {
     }
 
     /// Renders the three-row shell chrome — status line, full-bleed view region, keybind
-    /// hint bar — around the active view, per `docs/ux/shell/README.md`.
+    /// hint bar — around the active view, per `docs/ux/tui/README.md`.
     fn draw(&self, frame: &mut Frame) {
         let rows = Layout::default()
             .direction(Direction::Vertical)

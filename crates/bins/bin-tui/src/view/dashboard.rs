@@ -1,6 +1,6 @@
 //! The Dashboard `View`, hosted by `Shell` (ADR-0013). Wireframe stage: labelled, bordered
 //! placeholder boxes matching the pane structure and proportions from
-//! `docs/ux/shell/README.md` §2a — net position and its 30-day delta / assets / liabilities
+//! `docs/ux/tui/README.md` §2a — net position and its 30-day delta / assets / liabilities
 //! trio (item 1, split across two boxes), net worth, income vs expense, where it went,
 //! budgets this period, needs attention — so the dashboard's overall layout can be checked
 //! and adjusted before any one region's real widget content is built out.
@@ -19,7 +19,7 @@ use tui_piechart::{PieChart, PieSlice, Resolution, symbols::PIE_CHAR_LIGHT};
 use crate::view::{Action, View};
 
 /// The theme's one accent colour — reserved for negatives, over-budget, variance, and
-/// Liabilities, per `docs/ux/shell/README.md`'s style table.
+/// Liabilities, per `docs/ux/tui/README.md`'s style table.
 const ACCENT: Color = Color::Red;
 
 /// The fake net position figure shown in the headline box, box-text rendered.
@@ -31,6 +31,23 @@ const BOX_CHAR_WIDTH: u16 = 4;
 
 /// Width of the month-abbreviation column in the income-vs-expense rows (e.g. `"sep "`).
 const MONTH_LABEL_WIDTH: u16 = 4;
+
+/// Width of the category-label column in the budget rows — wide enough for the longest fake
+/// category (`"subscriptions"`, 13 chars) plus a trailing space; `docs/ux/tui/README.md`
+/// suggests 12 cols, sized for shorter real category names.
+const BUDGET_LABEL_WIDTH: u16 = 14;
+
+/// Width of the `actual / limit` value column in the budget rows (e.g. `"1,200 / 1,200"`).
+const BUDGET_VALUE_WIDTH: u16 = 14;
+
+/// Width of the action column in the needs-attention rows — wide enough for the longest fake
+/// action (`":reconcile"`, 10 chars).
+const ATTENTION_ACTION_WIDTH: u16 = 10;
+
+/// Rows the needs-attention box always spends on non-item content: the heading, the rule
+/// below it, and the trailing "...more" row. Item rows (2-3 per `docs/ux/tui/README.md`)
+/// are added on top of this.
+const ATTENTION_FIXED_ROWS: u16 = 3;
 
 /// A trivial placeholder Dashboard `View`: labelled boxes proving the §2a pane layout.
 #[derive(Default)]
@@ -75,7 +92,7 @@ impl View for DashboardView {
 /// POSITION" label over the box-text figure) on the left, and the 30-day delta / assets /
 /// liabilities label-over-value trio, bottom-aligned to match, on the right. A terminal has
 /// no literal font size, so the box-text figure stands in for the handoff's "double-height
-/// or bold" net position treatment from `docs/ux/shell/README.md`.
+/// or bold" net position treatment from `docs/ux/tui/README.md`.
 fn render_headline(frame: &mut Frame, area: Rect) {
     let box_text_width = NET_POSITION.chars().count() as u16 * BOX_CHAR_WIDTH;
     let columns = Layout::default()
@@ -472,16 +489,24 @@ fn render_lower_band(frame: &mut Frame, area: Rect) {
 
     render_where_it_went(frame, columns[0], &fake_spending());
 
+    let attention_items = fake_attention_items();
+    let attention_height = ATTENTION_FIXED_ROWS + attention_items.len() as u16;
     let budgets_rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(5)])
+        .constraints([Constraint::Min(0), Constraint::Length(attention_height)])
+        .spacing(1)
         .split(columns[1]);
-    placeholder(frame, budgets_rows[0], " Budgets this period ");
-    placeholder(frame, budgets_rows[1], " Needs attention ");
+    render_budgets_this_period(
+        frame,
+        budgets_rows[0],
+        &fake_budgets(),
+        &fake_budget_period(),
+    );
+    render_needs_attention(frame, budgets_rows[1], &attention_items);
 }
 
 /// One category's fake 30-day spending share, feeding the pie chart. Largest first,
-/// "other" always last, per `docs/ux/shell/README.md`'s legend ordering.
+/// "other" always last, per `docs/ux/tui/README.md`'s legend ordering.
 struct SpendingSlice {
     category: &'static str,
     percent: f64,
@@ -532,7 +557,7 @@ fn render_where_it_went(frame: &mut Frame, area: Rect, slices: &[SpendingSlice])
 /// survey), shaded with `PIE_CHAR_LIGHT` (from the crate's `symbols_shades_bars` example) —
 /// this needs `Resolution::Standard`, since the crate's `Braille` mode builds its own dot-
 /// pattern glyphs and ignores `pie_char` entirely. The crate's own legend is switched off —
-/// `render_spending_legend` already matches `docs/ux/shell/README.md`'s exact
+/// `render_spending_legend` already matches `docs/ux/tui/README.md`'s exact
 /// `swatch category NN%` format (whole-number percentages), which the crate's built-in
 /// legend doesn't (it renders one decimal place).
 fn render_pie_chart(frame: &mut Frame, area: Rect, slices: &[SpendingSlice]) {
@@ -599,6 +624,341 @@ fn fake_spending() -> Vec<SpendingSlice> {
     ]
 }
 
+/// One category's fake current-period budget progress, feeding a budget row. Over budget
+/// when `actual` exceeds `limit`.
+struct BudgetCategory {
+    category: &'static str,
+    actual: f64,
+    limit: f64,
+}
+
+/// The current budget period's label and how far through it the period is — shared across
+/// every budget row so their `period_progress` ticks all land on the same column.
+struct BudgetPeriod {
+    /// e.g. `"SEP · DAY 21/30"`.
+    label: &'static str,
+    elapsed_percent: f64,
+}
+
+/// Item 5 — "Budgets this period": up to 5 category rows (label, ratio bar, `actual / limit`
+/// figures), largest-first with "other" last, matching the pie chart's legend ordering. Each
+/// bar fills by `actual / limit`, clamping full and flipping to the accent when over budget
+/// (`docs/ux/tui/README.md`'s over-budget rule). A `│` marks how far the period has
+/// elapsed at the same column across every bar, independent of that row's own fill.
+fn render_budgets_this_period(
+    frame: &mut Frame,
+    area: Rect,
+    budgets: &[BudgetCategory],
+    period: &BudgetPeriod,
+) {
+    // `budgets.len()` rows plus a 1-row gap between each.
+    let category_rows_height = (budgets.len() as u16) * 2 - 1;
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(category_rows_height),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .split(area);
+
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    let period_tag = format!("{} · {:.0}% ELAPSED", period.label, period.elapsed_percent);
+    let heading_columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(period_tag.chars().count() as u16),
+        ])
+        .split(rows[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled("BUDGETS THIS PERIOD", dim)),
+        heading_columns[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(period_tag, dim)).alignment(Alignment::Right),
+        heading_columns[1],
+    );
+    frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
+
+    let category_row_constraints: Vec<Constraint> =
+        budgets.iter().map(|_| Constraint::Length(1)).collect();
+    let category_rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(category_row_constraints)
+        .spacing(1)
+        .split(rows[2]);
+    let period_progress = period.elapsed_percent / 100.0;
+    for (budget, row) in budgets.iter().zip(category_rows.iter()) {
+        render_budget_row(frame, *row, budget, period_progress);
+    }
+
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            "│ = period progress · bar = actual / limit",
+            dim,
+        )),
+        rows[3],
+    );
+    // rows[4] is left blank — any leftover height falls below the caption.
+}
+
+/// One category's row: its label, a ratio bar, and the `actual / limit` figures right-aligned
+/// — both the bar's fill and the figures flip to the accent when over budget.
+fn render_budget_row(frame: &mut Frame, area: Rect, budget: &BudgetCategory, period_progress: f64) {
+    let is_over = budget.actual > budget.limit;
+    let figure_style = if is_over {
+        Style::default().fg(ACCENT)
+    } else {
+        Style::default()
+    };
+
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(BUDGET_LABEL_WIDTH),
+            Constraint::Min(0),
+            Constraint::Length(BUDGET_VALUE_WIDTH),
+        ])
+        .spacing(1)
+        .split(area);
+
+    frame.render_widget(
+        Paragraph::new(Span::styled(budget.category, figure_style)),
+        columns[0],
+    );
+    render_budget_bar(frame, columns[1], budget, period_progress, is_over);
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            format!(
+                "{} / {}",
+                format_thousands(budget.actual),
+                format_thousands(budget.limit)
+            ),
+            figure_style,
+        ))
+        .alignment(Alignment::Right),
+        columns[2],
+    );
+}
+
+/// The ratio bar: filled left-to-right by `actual / limit`, clamped at the bar's full width
+/// once over budget, in the accent when over budget and a neutral grey otherwise, with the
+/// remainder in a pale shade. A `│` overlays the bar at `period_progress`'s position
+/// regardless of the row's own fill, so every row's tick lines up on the same column.
+fn render_budget_bar(
+    frame: &mut Frame,
+    area: Rect,
+    budget: &BudgetCategory,
+    period_progress: f64,
+    is_over: bool,
+) {
+    let bar_width = area.width as usize;
+    if bar_width == 0 {
+        return;
+    }
+
+    let ratio = (budget.actual / budget.limit).min(1.0);
+    let fill_len = (ratio * bar_width as f64).round() as usize;
+    let tick_pos = ((period_progress * bar_width as f64).round() as usize).min(bar_width - 1);
+
+    let fill_color = if is_over { ACCENT } else { Color::Gray };
+    let spans: Vec<Span> = (0..bar_width)
+        .map(|column| {
+            if column == tick_pos {
+                Span::raw("│")
+            } else if column < fill_len {
+                Span::styled("█", Style::default().fg(fill_color))
+            } else {
+                Span::styled("░", Style::default().add_modifier(Modifier::DIM))
+            }
+        })
+        .collect();
+
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+/// Formats a whole-dollar amount with thousands separators, e.g. `1200.0` -> `"1,200"`.
+fn format_thousands(amount: f64) -> String {
+    let digits = (amount.round() as i64).to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, ch) in digits.chars().rev().enumerate() {
+        if index != 0 && index % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(ch);
+    }
+    grouped.chars().rev().collect()
+}
+
+/// The fake current-period budget progress behind the budget rows — largest-limit first,
+/// "other" last, echoing the pie chart legend's ordering. "dining" and "subscriptions" are
+/// deliberately over budget so the accent/over-budget styling has more than one row to
+/// render on.
+fn fake_budgets() -> Vec<BudgetCategory> {
+    vec![
+        BudgetCategory {
+            category: "groceries",
+            actual: 918.0,
+            limit: 1_200.0,
+        },
+        BudgetCategory {
+            category: "dining",
+            actual: 412.0,
+            limit: 300.0,
+        },
+        BudgetCategory {
+            category: "transport",
+            actual: 604.0,
+            limit: 1_000.0,
+        },
+        BudgetCategory {
+            category: "utilities",
+            actual: 512.0,
+            limit: 750.0,
+        },
+        BudgetCategory {
+            category: "housing",
+            actual: 1_450.0,
+            limit: 1_800.0,
+        },
+        BudgetCategory {
+            category: "subscriptions",
+            actual: 86.0,
+            limit: 75.0,
+        },
+        BudgetCategory {
+            category: "other",
+            actual: 240.0,
+            limit: 500.0,
+        },
+    ]
+}
+
+/// The fake current budget period — 70% of the way through September.
+fn fake_budget_period() -> BudgetPeriod {
+    BudgetPeriod {
+        label: "SEP · DAY 21/30",
+        elapsed_percent: 70.0,
+    }
+}
+
+/// One thing needing attention: a description, and the command (or context) that resolves
+/// it. `is_alert` flips the description to the accent, for items that are actively wrong
+/// (e.g. a balance-check variance) rather than merely outstanding (e.g. unreconciled
+/// transactions).
+struct AttentionItem {
+    description: &'static str,
+    action: &'static str,
+    is_alert: bool,
+}
+
+/// Item 6 — "Needs attention": 2-3 lines only, each naming the command (or context) that
+/// resolves it, right-aligned — deliberately not a table (`docs/ux/tui/README.md`). A
+/// trailing "...more" row hints at a fuller to-do list beyond what fits here.
+fn render_needs_attention(frame: &mut Frame, area: Rect, items: &[AttentionItem]) {
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(items.len() as u16),
+            Constraint::Length(1),
+            Constraint::Min(0),
+        ])
+        .split(area);
+
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    let heading_columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(7)])
+        .split(rows[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled("NEEDS ATTENTION", dim)),
+        heading_columns[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled("COMMAND", dim)).alignment(Alignment::Right),
+        heading_columns[1],
+    );
+    frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
+
+    let item_row_constraints: Vec<Constraint> =
+        items.iter().map(|_| Constraint::Length(1)).collect();
+    let item_rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(item_row_constraints)
+        .split(rows[2]);
+    for (item, row) in items.iter().zip(item_rows.iter()) {
+        let description_style = if item.is_alert {
+            Style::default().fg(ACCENT)
+        } else {
+            Style::default()
+        };
+        render_attention_row(
+            frame,
+            *row,
+            item.description,
+            description_style,
+            item.action,
+        );
+    }
+
+    render_attention_row(frame, rows[3], "...more", dim, ":to-do");
+    // rows[4] is left blank — any leftover height falls below the "more" row.
+}
+
+/// One row: a left-aligned description in `description_style`, and a right-aligned action
+/// naming the command (or context) that resolves it, muted — the description is the row's
+/// content, the action a quiet hint of how to resolve it.
+fn render_attention_row(
+    frame: &mut Frame,
+    area: Rect,
+    description: &str,
+    description_style: Style,
+    action: &str,
+) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(ATTENTION_ACTION_WIDTH),
+        ])
+        .spacing(1)
+        .split(area);
+
+    let action_style = Style::default().add_modifier(Modifier::DIM);
+
+    frame.render_widget(
+        Paragraph::new(Span::styled(description, description_style)),
+        columns[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(action, action_style)).alignment(Alignment::Right),
+        columns[1],
+    );
+}
+
+/// The fake needs-attention items — an unreconciled-transactions count paired with the
+/// command to clear it, and an over-variance balance check paired with the date it was
+/// flagged, per `docs/ux/tui/README.md`'s own examples.
+fn fake_attention_items() -> Vec<AttentionItem> {
+    vec![
+        AttentionItem {
+            description: "14 unreconciled transactions",
+            action: ":reconcile",
+            is_alert: false,
+        },
+        AttentionItem {
+            description: "balance check variance -12.40",
+            action: "31 aug",
+            is_alert: true,
+        },
+    ]
+}
+
 /// A bordered, titled box standing in for a region's real widget content.
 fn placeholder(frame: &mut Frame, area: Rect, title: &'static str) {
     frame.render_widget(
@@ -641,7 +1001,7 @@ mod tests {
 
     #[test]
     fn shows_all_seven_headline_regions() {
-        // The 96x30 minimum from `docs/ux/shell/README.md` doesn't leave enough height for
+        // The 96x30 minimum from `docs/ux/tui/README.md` doesn't leave enough height for
         // both the "Budgets this period" and "Needs attention" boxes once the latter grows
         // to 3 content lines — the same pre-existing space crunch as
         // `where_it_went_legend_shows_all_five_slices`, so this uses the same taller
@@ -674,9 +1034,9 @@ mod tests {
             "income vs expense box missing"
         );
         assert!(text.contains("WHERE IT WENT"), "pie chart box missing");
-        assert!(text.contains("Budgets this period"), "budgets box missing");
+        assert!(text.contains("BUDGETS THIS PERIOD"), "budgets box missing");
         assert!(
-            text.contains("Needs attention"),
+            text.contains("NEEDS ATTENTION"),
             "needs attention box missing"
         );
     }
@@ -824,7 +1184,7 @@ mod tests {
 
     #[test]
     fn where_it_went_legend_shows_all_five_slices() {
-        // The 96x30 minimum from `docs/ux/shell/README.md` doesn't leave enough height for
+        // The 96x30 minimum from `docs/ux/tui/README.md` doesn't leave enough height for
         // the full 5-row legend once the headline and trend band grow to their current
         // sizes, so this uses a taller backend to check the legend content itself is
         // correct, independent of that pre-existing space crunch.
@@ -854,6 +1214,190 @@ mod tests {
         ] {
             assert!(text.contains(category), "{category} row missing");
             assert!(text.contains(percent), "{category}'s percentage missing");
+        }
+    }
+
+    #[test]
+    fn budgets_this_period_shows_heading_and_all_seven_categories() {
+        // Rendered in isolation (calling the private render fn directly) rather than through
+        // the whole `DashboardView` — "groceries" and "other" both appear a second time in
+        // the pie chart's own legend at overlapping row indices, which would make a
+        // whole-screen text search ambiguous about which column it matched.
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        let budgets = fake_budgets();
+        let period = fake_budget_period();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_budgets_this_period(frame, area, &budgets, &period);
+            })
+            .expect("drawing budgets this period should not error");
+
+        let buffer = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+            text.push('\n');
+        }
+
+        assert!(text.contains("BUDGETS THIS PERIOD"), "heading missing");
+        assert!(text.contains("SEP · DAY 21/30"), "period label missing");
+        assert!(text.contains("70% ELAPSED"), "elapsed percentage missing");
+        assert!(
+            text.contains("│ = period progress · bar = actual / limit"),
+            "caption missing"
+        );
+
+        for (category, figures) in [
+            ("groceries", "918 / 1,200"),
+            ("dining", "412 / 300"),
+            ("transport", "604 / 1,000"),
+            ("utilities", "512 / 750"),
+            ("housing", "1,450 / 1,800"),
+            ("subscriptions", "86 / 75"),
+            ("other", "240 / 500"),
+        ] {
+            assert!(text.contains(category), "{category} row missing");
+            assert!(text.contains(figures), "{category}'s figures missing");
+        }
+    }
+
+    #[test]
+    fn budgets_this_period_flips_over_budget_category_to_the_accent() {
+        let backend = TestBackend::new(80, 20);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        let budgets = fake_budgets();
+        let period = fake_budget_period();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_budgets_this_period(frame, area, &budgets, &period);
+            })
+            .expect("drawing budgets this period should not error");
+
+        let buffer = terminal.backend().buffer();
+        let row_containing = |needle: &str| -> u16 {
+            (0..buffer.area.height)
+                .find(|&y| {
+                    let mut row = String::new();
+                    for x in 0..buffer.area.width {
+                        row.push_str(buffer[(x, y)].symbol());
+                    }
+                    row.contains(needle)
+                })
+                .unwrap_or_else(|| panic!("no row contains {needle:?}"))
+        };
+        let row_has_accent =
+            |y: u16| -> bool { (0..buffer.area.width).any(|x| buffer[(x, y)].fg == ACCENT) };
+
+        // "dining" and "subscriptions" are over budget and should flip to the accent;
+        // "groceries" is under budget and should not.
+        assert!(
+            row_has_accent(row_containing("dining")),
+            "over-budget row should use the accent"
+        );
+        assert!(
+            row_has_accent(row_containing("subscriptions")),
+            "over-budget row should use the accent"
+        );
+        assert!(
+            !row_has_accent(row_containing("groceries")),
+            "under-budget row should not use the accent"
+        );
+    }
+
+    #[test]
+    fn needs_attention_shows_heading_items_and_the_more_row() {
+        let backend = TestBackend::new(80, 10);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        let items = fake_attention_items();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_needs_attention(frame, area, &items);
+            })
+            .expect("drawing needs attention should not error");
+
+        let buffer = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+            text.push('\n');
+        }
+
+        assert!(text.contains("NEEDS ATTENTION"), "heading missing");
+        assert!(text.contains("COMMAND"), "command column heading missing");
+        assert!(
+            text.contains("14 unreconciled transactions"),
+            "unreconciled transactions row missing"
+        );
+        assert!(text.contains(":reconcile"), "reconcile action missing");
+        assert!(
+            text.contains("balance check variance -12.40"),
+            "balance variance row missing"
+        );
+        assert!(text.contains("31 aug"), "balance variance date missing");
+        assert!(text.contains("...more"), "more row missing");
+        assert!(text.contains(":to-do"), "to-do action missing");
+    }
+
+    #[test]
+    fn needs_attention_flips_alert_item_to_the_accent_and_dims_the_command_column() {
+        let backend = TestBackend::new(80, 10);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        let items = fake_attention_items();
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                render_needs_attention(frame, area, &items);
+            })
+            .expect("drawing needs attention should not error");
+
+        let buffer = terminal.backend().buffer();
+        let row_containing = |needle: &str| -> u16 {
+            (0..buffer.area.height)
+                .find(|&y| {
+                    let mut row = String::new();
+                    for x in 0..buffer.area.width {
+                        row.push_str(buffer[(x, y)].symbol());
+                    }
+                    row.contains(needle)
+                })
+                .unwrap_or_else(|| panic!("no row contains {needle:?}"))
+        };
+        let row_has_accent =
+            |y: u16| -> bool { (0..buffer.area.width).any(|x| buffer[(x, y)].fg == ACCENT) };
+        let cell_is_dim =
+            |x: u16, y: u16| -> bool { buffer[(x, y)].modifier.contains(Modifier::DIM) };
+        let row_ends_dim = |y: u16| -> bool {
+            (0..buffer.area.width)
+                .rev()
+                .find(|&x| buffer[(x, y)].symbol() != " ")
+                .is_some_and(|x| cell_is_dim(x, y))
+        };
+
+        // "balance check variance" is an alert item and should flip to the accent; the
+        // unreconciled-transactions row is not an alert and should not.
+        assert!(
+            row_has_accent(row_containing("balance check variance")),
+            "alert row should use the accent"
+        );
+        assert!(
+            !row_has_accent(row_containing("14 unreconciled")),
+            "non-alert row should not use the accent"
+        );
+        // The whole command column is muted, whether it's a command (":reconcile",
+        // ":to-do") or context (the "31 aug" date).
+        for needle in [":reconcile", "31 aug", ":to-do"] {
+            assert!(
+                row_ends_dim(row_containing(needle)),
+                "{needle}'s row should end with a dim command column"
+            );
         }
     }
 
