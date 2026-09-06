@@ -19,6 +19,7 @@ mod delete;
 mod find;
 mod insert;
 mod model;
+mod scope;
 mod update;
 
 /// Database row model representing a persisted Transaction.
@@ -27,3 +28,7 @@ pub use model::Transactions;
 /// Fluent builder for constructing [`Transactions`] instances.
 #[allow(unused)]
 pub use builder::TransactionsBuilder;
+
+/// What a per-entity totals report (Category-total, Payee-total, ...) scopes its
+/// Transaction query to.
+pub use scope::TransactionScope;

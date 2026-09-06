@@ -197,4 +197,9 @@ pub enum Action {
     CategoryTotalsLoaded(Vec<(lib_core::RowID, lib_core::Money)>),
     /// A Category-total computation failed.
     CategoryTotalsLoadFailed(String),
+    /// The Payee-total report (FR.36) finished computing the signed Transaction total for
+    /// every Payee with a matching Transaction in the current scope/date-range.
+    PayeeTotalsLoaded(Vec<(lib_core::RowID, lib_core::Money)>),
+    /// A Payee-total computation failed.
+    PayeeTotalsLoadFailed(String),
 }

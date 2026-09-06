@@ -9,15 +9,6 @@
 //! `SUM()` can't total correctly — the same approach `Budgets::current_progress` and
 //! `Accounts::balance` already use.
 
-/// What a Category-total report is scoped to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CategoryTotalScope {
-    /// Every Account denominated in this Unit.
-    Unit(lib_core::RowID),
-    /// This one Account only.
-    Account(lib_core::RowID),
-}
-
 impl crate::Categories {
     /// The signed Transaction total for every active Category, within `scope` and
     /// `[start, end]` (inclusive) — every active Category appears, even ones summing to
@@ -27,7 +18,7 @@ impl crate::Categories {
     /// Returns an error if the underlying queries fail.
     #[tracing::instrument(name = "Compute Category totals: ", level = "debug", skip(pool))]
     pub async fn totals(
-        scope: CategoryTotalScope,
+        scope: crate::TransactionScope,
         start: chrono::NaiveDate,
         end: chrono::NaiveDate,
         pool: &sqlx::Pool<sqlx::Sqlite>,
@@ -37,7 +28,7 @@ impl crate::Categories {
         let mut totals = Vec::with_capacity(categories.len());
         for category in categories {
             let amounts = match scope {
-                CategoryTotalScope::Unit(unit_id) => {
+                crate::TransactionScope::Unit(unit_id) => {
                     sqlx::query_scalar!(
                         r#"
                             SELECT t.amount AS "amount!: lib_core::Money"
@@ -56,7 +47,7 @@ impl crate::Categories {
                     .fetch_all(pool)
                     .await?
                 }
-                CategoryTotalScope::Account(account_id) => {
+                crate::TransactionScope::Account(account_id) => {
                     sqlx::query_scalar!(
                         r#"
                             SELECT amount AS "amount!: lib_core::Money"
@@ -117,7 +108,7 @@ mod tests {
         let (unit_id, _) = seed_unit_and_account(&pool).await;
 
         let totals = crate::Categories::totals(
-            crate::categories::CategoryTotalScope::Unit(unit_id),
+            crate::TransactionScope::Unit(unit_id),
             date(2026, 1, 1),
             date(2026, 1, 31),
             &pool,
@@ -146,7 +137,7 @@ mod tests {
         }
 
         let totals = crate::Categories::totals(
-            crate::categories::CategoryTotalScope::Unit(unit_id),
+            crate::TransactionScope::Unit(unit_id),
             date(2026, 1, 1),
             date(2026, 1, 31),
             &pool,
@@ -175,7 +166,7 @@ mod tests {
         transaction.insert(&pool).await.unwrap();
 
         let totals = crate::Categories::totals(
-            crate::categories::CategoryTotalScope::Unit(unit_id),
+            crate::TransactionScope::Unit(unit_id),
             date(2026, 1, 1),
             date(2026, 1, 31),
             &pool,
@@ -205,7 +196,7 @@ mod tests {
         transaction.insert(&pool).await.unwrap();
 
         let totals = crate::Categories::totals(
-            crate::categories::CategoryTotalScope::Account(account_id),
+            crate::TransactionScope::Account(account_id),
             date(2026, 1, 1),
             date(2026, 1, 31),
             &pool,

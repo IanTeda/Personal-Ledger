@@ -1,12 +1,16 @@
 //! The Reports screen (FR.34-38, CC-TUI-011) — one screen with an internal picker across
 //! every report type, per "Decide TUI screen map and navigation shape" (not a separate
-//! dashboard area per report). Account Balance (FR.34) and Category-total (FR.35) exist so
-//! far; tickets #77-79 each add their own [`ReportKind`] variant and rendering branch here.
+//! dashboard area per report). Account Balance (FR.34), Category-total (FR.35), and
+//! Payee-total (FR.36) exist so far; tickets #78-79 each add their own [`ReportKind`]
+//! variant and rendering branch here.
 //!
 //! `Field` unifies focus across the top-level report picker and each report's own inputs:
 //! `Field::ReportKind` is always first (Left/Right there changes which report is shown, via
-//! Tab to reach it), and a report with its own inputs (like Category-total) adds its fields
-//! after it — Tab cycles between all of them, Left/Right (or typing) acts on whichever is
+//! Tab to reach it). Category-total and Payee-total share one scope/date-range filter (the
+//! same Unit-or-Account-plus-date-range shape, per FR.35/36) rather than each tracking its
+//! own — switching between them keeps whatever scope/range is already entered, letting a
+//! user compare "which Category" against "which Payee" for the same range without
+//! re-entering it. Tab cycles all fields; Left/Right (or typing) acts on whichever is
 //! focused.
 
 use chrono::Datelike;
@@ -26,7 +30,7 @@ use crate::{
     screen::Screen,
 };
 
-/// Which report is currently selected. `#77-79` will each add a variant here.
+/// Which report is currently selected. `#78-79` will each add a variant here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReportKind {
     /// FR.34: the current Balance of every Account, each expressed in its own Unit.
@@ -34,15 +38,23 @@ enum ReportKind {
     /// FR.35: the signed Transaction total per Category, scoped to a Unit or Account, over
     /// a date range.
     CategoryTotal,
+    /// FR.36: the signed Transaction total per Payee, scoped to a Unit or Account, over a
+    /// date range — only Payees with a matching Transaction appear.
+    PayeeTotal,
 }
 
-const REPORT_KINDS: [ReportKind; 2] = [ReportKind::AccountBalance, ReportKind::CategoryTotal];
+const REPORT_KINDS: [ReportKind; 3] = [
+    ReportKind::AccountBalance,
+    ReportKind::CategoryTotal,
+    ReportKind::PayeeTotal,
+];
 
 impl ReportKind {
     fn title(&self) -> &'static str {
         match self {
             ReportKind::AccountBalance => "Account Balance",
             ReportKind::CategoryTotal => "Category Total",
+            ReportKind::PayeeTotal => "Payee Total",
         }
     }
 }
@@ -69,18 +81,15 @@ impl ScopeKind {
 enum Field {
     /// Always present, always first — Left/Right here changes `selected_report`.
     ReportKind,
-    /// Category-total only.
+    /// Category-total and Payee-total's shared scope/date filter.
     ScopeKind,
-    /// Category-total only.
     ScopeTarget,
-    /// Category-total only.
     DateFrom,
-    /// Category-total only.
     DateTo,
 }
 
 const ACCOUNT_BALANCE_FIELDS: [Field; 1] = [Field::ReportKind];
-const CATEGORY_TOTAL_FIELDS: [Field; 5] = [
+const SCOPE_DATE_FIELDS: [Field; 5] = [
     Field::ReportKind,
     Field::ScopeKind,
     Field::ScopeTarget,
@@ -101,15 +110,17 @@ pub struct ReportsScreen {
     accounts: AccountsStatus,
     units: Vec<lib_database::Units>,
     categories: Vec<lib_database::Categories>,
+    payees: Vec<lib_database::Payees>,
     balances: Vec<(lib_core::RowID, lib_core::Money)>,
 
-    // Category-total report state.
+    // Category-total and Payee-total's shared scope/date filter.
     scope_kind: ScopeKind,
     scope_unit_id: Option<lib_core::RowID>,
     scope_account_id: Option<lib_core::RowID>,
     date_from: String,
     date_to: String,
     category_totals: Vec<(lib_core::RowID, lib_core::Money)>,
+    payee_totals: Vec<(lib_core::RowID, lib_core::Money)>,
 
     error: Option<String>,
     action_tx: Option<UnboundedSender<Action>>,
@@ -126,6 +137,7 @@ impl ReportsScreen {
             accounts: AccountsStatus::Loading,
             units: Vec::new(),
             categories: Vec::new(),
+            payees: Vec::new(),
             balances: Vec::new(),
             scope_kind: ScopeKind::Unit,
             scope_unit_id: None,
@@ -133,6 +145,7 @@ impl ReportsScreen {
             date_from: month_start.to_string(),
             date_to: today.to_string(),
             category_totals: Vec::new(),
+            payee_totals: Vec::new(),
             error: None,
             action_tx: None,
         }
@@ -141,7 +154,7 @@ impl ReportsScreen {
     fn fields(&self) -> &'static [Field] {
         match self.selected_report {
             ReportKind::AccountBalance => &ACCOUNT_BALANCE_FIELDS,
-            ReportKind::CategoryTotal => &CATEGORY_TOTAL_FIELDS,
+            ReportKind::CategoryTotal | ReportKind::PayeeTotal => &SCOPE_DATE_FIELDS,
         }
     }
 
@@ -238,6 +251,14 @@ impl ReportsScreen {
             .unwrap_or("(unknown)")
     }
 
+    fn payee_name(&self, id: lib_core::RowID) -> &str {
+        self.payees
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.name.as_str())
+            .unwrap_or("(unknown)")
+    }
+
     fn balance_for(&self, id: lib_core::RowID) -> Option<&lib_core::Money> {
         self.balances
             .iter()
@@ -245,41 +266,55 @@ impl ReportsScreen {
             .map(|(_, balance)| balance)
     }
 
-    /// Runs the Category-total report with the currently entered scope/date range; stores a
-    /// validation error on `self.error` when the form isn't ready to submit.
-    fn run_category_total_report(&mut self) {
+    /// Parses the shared scope/date filter, storing a validation error on `self.error` (and
+    /// returning `None`) when the form isn't ready to submit.
+    fn parse_filter(
+        &mut self,
+    ) -> Option<(
+        chrono::NaiveDate,
+        chrono::NaiveDate,
+        lib_database::TransactionScope,
+    )> {
         let from: chrono::NaiveDate = match self.date_from.parse() {
             Ok(date) => date,
             Err(_) => {
                 self.error = Some("From date must be in YYYY-MM-DD format".to_string());
-                return;
+                return None;
             }
         };
         let to: chrono::NaiveDate = match self.date_to.parse() {
             Ok(date) => date,
             Err(_) => {
                 self.error = Some("To date must be in YYYY-MM-DD format".to_string());
-                return;
+                return None;
             }
         };
 
         let scope = match self.scope_kind {
             ScopeKind::Unit => match self.scope_unit_id {
-                Some(id) => lib_database::CategoryTotalScope::Unit(id),
+                Some(id) => lib_database::TransactionScope::Unit(id),
                 None => {
                     self.error = Some("Select a Unit".to_string());
-                    return;
+                    return None;
                 }
             },
             ScopeKind::Account => match self.scope_account_id {
-                Some(id) => lib_database::CategoryTotalScope::Account(id),
+                Some(id) => lib_database::TransactionScope::Account(id),
                 None => {
                     self.error = Some("Select an Account".to_string());
-                    return;
+                    return None;
                 }
             },
         };
 
+        Some((from, to, scope))
+    }
+
+    /// Runs the Category-total report with the currently entered scope/date range.
+    fn run_category_total_report(&mut self) {
+        let Some((from, to, scope)) = self.parse_filter() else {
+            return;
+        };
         let Some(action_tx) = self.action_tx.clone() else {
             return;
         };
@@ -293,6 +328,29 @@ impl ReportsScreen {
             let action = match action {
                 Ok(totals) => Action::CategoryTotalsLoaded(totals),
                 Err(err) => Action::CategoryTotalsLoadFailed(err.to_string()),
+            };
+            let _ = action_tx.send(action);
+        });
+    }
+
+    /// Runs the Payee-total report with the currently entered scope/date range.
+    fn run_payee_total_report(&mut self) {
+        let Some((from, to, scope)) = self.parse_filter() else {
+            return;
+        };
+        let Some(action_tx) = self.action_tx.clone() else {
+            return;
+        };
+
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                lib_database::Payees::totals(scope, from, to, &pool).await
+            }
+            .await;
+            let action = match action {
+                Ok(totals) => Action::PayeeTotalsLoaded(totals),
+                Err(err) => Action::PayeeTotalsLoadFailed(err.to_string()),
             };
             let _ = action_tx.send(action);
         });
@@ -349,6 +407,20 @@ impl Screen for ReportsScreen {
             let _ = categories_tx.send(action);
         });
 
+        let payees_tx = action_tx.clone();
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                lib_database::Payees::find_all(&pool).await
+            }
+            .await;
+            let action = match action {
+                Ok(payees) => Action::PayeesLoaded(payees),
+                Err(err) => Action::PayeesLoadFailed(err.to_string()),
+            };
+            let _ = payees_tx.send(action);
+        });
+
         let balances_tx = action_tx.clone();
         tokio::spawn(async move {
             let action = async {
@@ -384,6 +456,10 @@ impl Screen for ReportsScreen {
             }
             KeyCode::Enter if self.selected_report == ReportKind::CategoryTotal => {
                 self.run_category_total_report();
+                return Some(Action::NoOp);
+            }
+            KeyCode::Enter if self.selected_report == ReportKind::PayeeTotal => {
+                self.run_payee_total_report();
                 return Some(Action::NoOp);
             }
             _ => {}
@@ -459,6 +535,7 @@ impl Screen for ReportsScreen {
                 self.units = units.clone();
             }
             Action::CategoriesLoaded(categories) => self.categories = categories.clone(),
+            Action::PayeesLoaded(payees) => self.payees = payees.clone(),
             Action::AccountBalancesLoaded(balances) => {
                 for (id, balance) in balances {
                     match self.balances.iter_mut().find(|(aid, _)| aid == id) {
@@ -475,6 +552,16 @@ impl Screen for ReportsScreen {
                 self.category_totals = totals.clone();
             }
             Action::CategoryTotalsLoadFailed(message) => {
+                self.error = Some(message.clone());
+            }
+            Action::PayeeTotalsLoaded(totals) => {
+                self.error = None;
+                self.payee_totals = totals.clone();
+            }
+            Action::PayeeTotalsLoadFailed(message) => {
+                self.error = Some(message.clone());
+            }
+            Action::PayeesLoadFailed(message) => {
                 self.error = Some(message.clone());
             }
             _ => {}
@@ -514,7 +601,22 @@ impl Screen for ReportsScreen {
 
         match self.selected_report {
             ReportKind::AccountBalance => self.view_account_balance(frame, rows[1]),
-            ReportKind::CategoryTotal => self.view_category_total(frame, rows[1]),
+            ReportKind::CategoryTotal => self.view_scope_date_report(
+                frame,
+                rows[1],
+                " Category Total ",
+                "Category",
+                &self.category_totals,
+                |screen, id| screen.category_name(id),
+            ),
+            ReportKind::PayeeTotal => self.view_scope_date_report(
+                frame,
+                rows[1],
+                " Payee Total ",
+                "Payee",
+                &self.payee_totals,
+                |screen, id| screen.payee_name(id),
+            ),
         }
 
         let footer = if let Some(error) = &self.error {
@@ -524,7 +626,7 @@ impl Screen for ReportsScreen {
                 ReportKind::AccountBalance => {
                     "Tab: focus  ←/h →/l: change report  Esc: back".to_string()
                 }
-                ReportKind::CategoryTotal => {
+                ReportKind::CategoryTotal | ReportKind::PayeeTotal => {
                     "Tab: next field  ←/h →/l: change value  Enter: run report  Esc: back"
                         .to_string()
                 }
@@ -592,7 +694,18 @@ impl ReportsScreen {
         }
     }
 
-    fn view_category_total(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+    /// Shared rendering for Category-total and Payee-total: both are the same shape (a
+    /// scope/date filter, then a two-column name/total table), differing only in the title,
+    /// the entity-name column header, the results, and how to resolve an id to a name.
+    fn view_scope_date_report(
+        &self,
+        frame: &mut Frame,
+        area: ratatui::layout::Rect,
+        title: &str,
+        name_column: &str,
+        results: &[(lib_core::RowID, lib_core::Money)],
+        name_of: impl Fn(&Self, lib_core::RowID) -> &str,
+    ) {
         let sections = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(4), Constraint::Min(0)])
@@ -629,16 +742,16 @@ impl ReportsScreen {
         date_line.extend(field_spans("To", self.date_to.clone(), Field::DateTo));
 
         let inputs = Paragraph::new(vec![Line::from(scope_line), Line::from(date_line)])
-            .block(Block::bordered().title(" Category Total "));
+            .block(Block::bordered().title(title.to_string()));
         frame.render_widget(inputs, sections[0]);
 
-        let mut sorted = self.category_totals.clone();
+        let mut sorted = results.to_vec();
         sorted.sort_by(|a, b| b.1.0.cmp(&a.1.0));
 
-        let header = Row::new(["Category", "Total"]).style(Style::default().fg(Color::Yellow));
+        let header = Row::new([name_column, "Total"]).style(Style::default().fg(Color::Yellow));
         let table_rows = sorted.iter().map(|(id, total)| {
             Row::new([
-                Cell::from(self.category_name(*id).to_string()),
+                Cell::from(name_of(self, *id).to_string()),
                 Cell::from(total.to_string()),
             ])
         });
@@ -729,10 +842,14 @@ mod tests {
     }
 
     #[test]
-    fn cycling_report_moves_to_category_total_and_back() {
+    fn cycling_report_moves_through_category_total_and_payee_total_and_back() {
         let mut screen = ReportsScreen::new();
         screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
         assert_eq!(screen.selected_report, ReportKind::CategoryTotal);
+        render(&screen);
+
+        screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
+        assert_eq!(screen.selected_report, ReportKind::PayeeTotal);
         render(&screen);
 
         screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
@@ -830,5 +947,54 @@ mod tests {
     fn category_name_falls_back_when_unknown() {
         let screen = ReportsScreen::new();
         assert_eq!(screen.category_name(lib_core::RowID::new()), "(unknown)");
+    }
+
+    #[test]
+    fn payee_totals_loaded_populates_results() {
+        let mut screen = ReportsScreen::new();
+        let payee_id = lib_core::RowID::new();
+        screen.update(&Action::PayeeTotalsLoaded(vec![(
+            payee_id,
+            "10".parse().unwrap(),
+        )]));
+
+        assert_eq!(screen.payee_totals.len(), 1);
+        assert_eq!(screen.payee_totals[0].0, payee_id);
+    }
+
+    #[test]
+    fn payee_name_falls_back_when_unknown() {
+        let screen = ReportsScreen::new();
+        assert_eq!(screen.payee_name(lib_core::RowID::new()), "(unknown)");
+    }
+
+    #[test]
+    fn run_payee_total_report_rejects_an_invalid_date() {
+        let mut screen = ReportsScreen::new();
+        screen.action_tx = Some(tokio::sync::mpsc::unbounded_channel().0);
+        screen.date_from = "not-a-date".to_string();
+        screen.run_payee_total_report();
+        assert!(screen.error.is_some());
+    }
+
+    #[test]
+    fn run_payee_total_report_rejects_when_no_unit_is_selected() {
+        let mut screen = ReportsScreen::new();
+        screen.action_tx = Some(tokio::sync::mpsc::unbounded_channel().0);
+        screen.scope_unit_id = None;
+        screen.run_payee_total_report();
+        assert!(screen.error.is_some());
+    }
+
+    #[test]
+    fn renders_the_payee_total_report_without_panicking() {
+        let mut screen = ReportsScreen::new();
+        screen.selected_report = ReportKind::PayeeTotal;
+        let payee_id = lib_core::RowID::new();
+        screen.update(&Action::PayeeTotalsLoaded(vec![(
+            payee_id,
+            "10".parse().unwrap(),
+        )]));
+        render(&screen);
     }
 }

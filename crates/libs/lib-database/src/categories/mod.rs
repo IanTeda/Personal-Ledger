@@ -81,6 +81,3 @@ pub use model::Categories;
 /// See the builder module for implementation details.
 #[allow(unused)]
 pub use builder::CategoriesBuilder;
-
-/// What a Category-total report (FR.35) is scoped to: a Unit, or a single Account.
-pub use totals::CategoryTotalScope;

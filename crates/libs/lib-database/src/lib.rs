@@ -76,7 +76,6 @@
 /// Database entity categories for organising financial records.
 mod categories;
 pub use categories::Categories;
-pub use categories::CategoryTotalScope;
 
 /// Currencies, cryptocurrencies, stocks, and other tradeable instruments Accounts and
 /// Transactions are denominated in (CC-TUI-005).
@@ -90,7 +89,7 @@ pub use accounts::Accounts;
 
 /// Single-entry Transactions against exactly one Account and one Category (CC-TUI-009).
 pub mod transactions;
-pub use transactions::Transactions;
+pub use transactions::{TransactionScope, Transactions};
 
 /// Who a Transaction's money moved to or from (CC-TUI-007), a first-class entity as of
 /// ADR-0012.

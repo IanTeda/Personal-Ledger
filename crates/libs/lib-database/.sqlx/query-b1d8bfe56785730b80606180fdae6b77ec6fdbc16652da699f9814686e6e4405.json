@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                    SELECT t.payee_id AS \"payee_id!: lib_core::RowID\", t.amount AS \"amount!: lib_core::Money\"\n                    FROM transactions t\n                    JOIN accounts a ON t.account_id = a.id\n                    WHERE t.payee_id IS NOT NULL\n                      AND a.unit_id = ?\n                      AND t.date >= ?\n                      AND t.date <= ?\n                ",
+  "describe": {
+    "columns": [
+      {
+        "name": "payee_id!: lib_core::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "amount!: lib_core::Money",
+        "ordinal": 1,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "b1d8bfe56785730b80606180fdae6b77ec6fdbc16652da699f9814686e6e4405"
+}

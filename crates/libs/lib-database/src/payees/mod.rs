@@ -15,6 +15,7 @@
 //! | [`update`](update) | Rename a Payee (preserving a Payee Alias), or set its active flag |
 //! | [`delete`](delete) | Delete a Payee |
 //! | [`resolve`](resolve) | Resolve typed Payee text to a Payee, auto-creating if needed |
+//! | [`totals`](totals) | Compute the signed Transaction total per Payee (FR.36) |
 
 mod builder;
 mod delete;
@@ -22,6 +23,7 @@ mod find;
 mod insert;
 mod model;
 mod resolve;
+mod totals;
 mod update;
 
 /// Database row model representing a persisted Payee.
