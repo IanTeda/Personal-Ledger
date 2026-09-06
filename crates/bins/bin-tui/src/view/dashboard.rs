@@ -497,6 +497,7 @@ fn render_where_it_went(frame: &mut Frame, area: Rect, slices: &[SpendingSlice])
         .constraints([
             Constraint::Length(1),
             Constraint::Length(1),
+            Constraint::Length(1),
             Constraint::Min(0),
         ])
         .split(area);
@@ -515,12 +516,13 @@ fn render_where_it_went(frame: &mut Frame, area: Rect, slices: &[SpendingSlice])
         heading_columns[1],
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
+    // rows[2] is left blank — breathing space between the rule and the pie/legend body.
 
     let body_columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(45), Constraint::Min(0)])
         .spacing(3)
-        .split(rows[2]);
+        .split(rows[3]);
 
     render_pie_chart(frame, body_columns[0], slices);
     render_spending_legend(frame, body_columns[1], slices);

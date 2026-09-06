@@ -11,7 +11,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::Paragraph,
 };
 use tokio::sync::mpsc;
@@ -133,10 +133,19 @@ impl Shell {
         // Screen Frame / View
         self.view.view(frame, rows[1]);
 
-        // Footer Frame
+        // Footer Frame — each keybind's key is bolded to stand out from its label.
+        let key = Style::default().add_modifier(Modifier::BOLD);
+        let footer = Line::from(vec![
+            Span::raw(" "),
+            Span::styled(":", key),
+            Span::raw(" command · "),
+            Span::styled("/", key),
+            Span::raw(" search · "),
+            Span::styled("?", key),
+            Span::raw(" help "),
+        ]);
         frame.render_widget(
-            Paragraph::new(" : command · / search · ? help ")
-                .style(Style::default().bg(Color::Rgb(211, 211, 211))),
+            Paragraph::new(footer).style(Style::default().bg(Color::Rgb(211, 211, 211))),
             rows[2],
         );
     }
