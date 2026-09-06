@@ -103,4 +103,5 @@ tokio = { version = "1.48.0", features = ["full"] }
 tonic = { version = "0.14.2", features = ["transport", "codegen"] }
 tracing = { version = "0.1.43" }
 tui-box-text = { version = "0.3.4" }
+tui-piechart = { version = "1.0.2" }
 uuid = { version = "1.19.0", features = ["v7", "serde"] }

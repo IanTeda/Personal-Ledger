@@ -28,6 +28,7 @@ regex = { workspace = true }
 sqlx = { workspace = true }
 tokio = { workspace = true }
 tui-box-text = { workspace = true }
+tui-piechart = { workspace = true }
 
 [lints]
 workspace = true
