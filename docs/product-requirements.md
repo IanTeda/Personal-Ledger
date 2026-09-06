@@ -58,13 +58,6 @@ Sections 3–6 hold the product's ultimate end-state requirements — the full f
 
 The feasibility cycle demonstrates the underlying technologies and approach, specifically:
 
-### Desktop App:
-
-- __FC-DESKTOP-001:__ Investigate and research Rust desktop GUI libraries.
-- __FC-DESKTOP-002:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
-- __FC-DESKTOP-003:__ Demonstrate that tables work in the desktop app across platforms.
-- __FC-DESKTOP-004:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
-
 ### TUI App:
 
 - __FC-TUI-001:__ Investigate and research Rust TUI libraries, and lock the choice in an ADR.
@@ -72,6 +65,13 @@ The feasibility cycle demonstrates the underlying technologies and approach, spe
 - __FC-TUI-003:__ Demonstrate that tables work in the TUI app across platforms.
 - __FC-TUI-004:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux — a portable single executable on Windows (no installer, no elevation), and a real user-scope installer/package on macOS (`.dmg`/`.app`) and Linux (`.deb` and/or AppImage). Research and lock the packaging tool choice (e.g. `cargo-dist`, `cargo-packager`) in an ADR before building the per-OS packages.
 - __FC-TUI-005:__ Demonstrate the TUI app operating end-to-end against the embedded SQLite persistence layer (`lib-database`/`lib-core`, see FC-DATA-001) with real (not dummy) data, proving the local-first architecture works through a real client.
+
+### Desktop App:
+
+- __FC-DESKTOP-001:__ Investigate and research Rust desktop GUI libraries.
+- __FC-DESKTOP-002:__ Demonstrate that line, doughnut, candle stick and divergent graphs work in the desktop app across platforms, as they are a key requirement for visually representing spending, etc.
+- __FC-DESKTOP-003:__ Demonstrate that tables work in the desktop app across platforms.
+- __FC-DESKTOP-004:__ Demonstrate compiling, installing and running as non-root across Windows, macOS and Linux
 
 ### Sync Server App:
 

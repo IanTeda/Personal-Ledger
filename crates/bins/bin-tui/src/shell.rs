@@ -111,8 +111,11 @@ impl Shell {
             .split(frame.area());
 
         frame.render_widget(
-            Paragraph::new(Line::from(format!("ledger · {}", self.view.title())))
-                .style(Style::default().add_modifier(Modifier::REVERSED)),
+            Paragraph::new(Line::from(format!(
+                " 📒 Personal Ledger | {} ",
+                self.view.title()
+            )))
+            .style(Style::default().add_modifier(Modifier::REVERSED)),
             rows[0],
         );
 

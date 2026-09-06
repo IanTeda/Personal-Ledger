@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+body{margin:0;background:#f3f2f2;color:#201e1d;font-family:Archivo,system-ui,sans-serif}
+a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
+.dv-turn{padding:40px 44px 32px;border-bottom:2px solid rgba(32,30,29,.4);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+.dv-tid{font:700 10px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:#201e1d;color:#f3f2f2;text-decoration:none}
+.dv-tname{font:800 13px/1.2 Archivo,sans-serif;letter-spacing:-.01em}
+.dv-sub{font:400 11px/1.5 Archivo,sans-serif;color:#7d7979;margin:0 0 20px;max-width:78ch}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:700 10.5px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:rgba(32,30,29,.09);color:#201e1d;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.35 Archivo,sans-serif;color:#605d5d}
+.dv-olabel b{font-weight:800;color:#201e1d}
+.dv-card{max-width:100%;background:#fff;border:2px solid #201e1d;overflow:hidden}
+.dv-opt:target .dv-oid{background:#ec3013;color:#fff}
+.dv-next{margin:26px 0 0;font:400 11px/1.6 Archivo,sans-serif;color:#7d7979}
+.dv-rowhd{font:800 9.5px Archivo,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#7d7979;margin:34px 0 14px;padding-bottom:5px;border-bottom:2px solid rgba(32,30,29,.4)}
+/* ── terminal primitives ── */
+.t{background:#fff;color:#201e1d;font:400 11px/1.5 JetBrains Mono,ui-monospace,Menlo,monospace;display:flex;flex-direction:column}
+.tbar{display:flex;justify-content:space-between;gap:12px;background:#201e1d;color:#f3f2f2;padding:3px 8px;font-size:10px;letter-spacing:.03em}
+.tbar b{font-weight:700}
+.tabs{display:flex;gap:0;border-bottom:1px solid #bab6b6;font-size:10px;background:#f8f4f4}
+.tab{padding:3px 11px;color:#7d7979;border-right:1px solid #d7d3d3}
+.tab.on{background:#ec3013;color:#fff;font-weight:700}
+.tk{margin-top:auto;background:#eae7e7;border-top:1px solid #bab6b6;padding:3px 8px;font-size:10px;color:#605d5d;display:flex;gap:13px;flex-wrap:wrap}
+.k{background:#201e1d;color:#f3f2f2;padding:0 3px;margin-right:3px}
+.tbody{display:flex;min-height:0;flex:1}
+.sb{width:172px;flex:none;border-right:1px solid #bab6b6;padding:6px 8px}
+.pane{flex:1;min-width:0;padding:7px 9px}
+.pane+.pane{border-left:1px solid #bab6b6}
+.hd{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#7d7979;border-bottom:1px solid #d7d3d3;padding-bottom:2px;margin:0 0 5px;display:flex;justify-content:space-between}
+.hd.tight{margin-top:9px}
+.row{display:grid;gap:7px;padding:.5px 0;align-items:baseline}
+.sel{background:#201e1d;color:#f3f2f2;margin:0 -9px;padding:.5px 9px}
+.sel .mut,.sel .neg{color:#ffc4b8}
+.mut{color:#9b9797}.neg{color:#ec3013}.pos{color:#201e1d}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+.box{border:1px solid #bab6b6;padding:5px 7px}
+.box.foc{border:2px solid #ec3013;padding:4px 6px}
+.big{font:700 22px/1.1 JetBrains Mono,monospace;letter-spacing:-.02em}
+.cells{display:grid;gap:0;border:1px solid #bab6b6}
+.cells>div{padding:5px 7px;border-right:1px solid #d7d3d3}
+.cells>div:last-child{border-right:0}
+.lab{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#7d7979}
+.lc{display:flex;align-items:flex-end;gap:1px;height:66px;margin:4px 0 2px}
+.lcb{flex:1;border-top:2px solid #ec3013;min-height:2px}
+.lcb.g{border-top-color:#bab6b6}
+.dnt{width:88px;height:88px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center}
+.dnt>i{width:46px;height:46px;border-radius:50%;background:#fff;display:block}
+.sw{width:8px;height:8px;display:inline-block;margin-right:5px}
+.bn{background:#ec3013;height:9px;display:block}
+.bp{background:#201e1d;height:9px;display:block}
+.cs{display:flex;align-items:stretch;gap:3px;height:84px;margin:4px 0}
+.csc{position:relative;flex:1}
+.csw{position:absolute;left:50%;width:1px;background:#605d5d;transform:translateX(-50%)}
+.csb{position:absolute;left:1px;right:1px;border:1px solid #201e1d;background:#fff}
+.csb.d{background:#ec3013;border-color:#ec3013}
+.cmd{border-top:2px solid #201e1d;padding:3px 8px;font-size:11px;background:#f8f4f4}
+.cmd i{background:#ec3013;color:#fff;font-style:normal;padding:0 2px}
+.ovl{border:2px solid #201e1d;background:#fff;box-shadow:8px 8px 0 rgba(32,30,29,.14)}
+.note{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#ec3013}
+/* dark terminal variant */
+.dk .t{background:#161413;color:#eae7e7}
+.dk .dv-card,.dk.dv-card{border-color:#201e1d}
+.dk .tk{background:#201e1d;border-top-color:#444141;color:#9b9797}
+.dk .tabs{background:#201e1d;border-bottom-color:#444141}
+.dk .sb,.dk .pane+.pane{border-color:#444141}
+.dk .hd{border-bottom-color:#444141;color:#9b9797}
+.dk .box{border-color:#605d5d}
+.dk .sel{background:#eae7e7;color:#161413}
+.dk .sel .mut,.dk .sel .neg{color:#ae1800}
+.dk .mut{color:#7d7979}.dk .pos{color:#eae7e7}
+.dk .cells,.dk .cells>div{border-color:#444141}
+.dk .dnt>i{background:#161413}
+.dk .csb{border-color:#eae7e7;background:#161413}
+.dk .bp{background:#eae7e7}
+.dk .cmd{background:#201e1d;border-top-color:#605d5d}
+.dk .ovl{background:#161413;border-color:#eae7e7}
+.dk .lcb.g{border-top-color:#605d5d}
+</style></helmet>
+
+<section class="dv-turn {{ themeClass }}" id="t2">
+<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">Personal Ledger TUI — chosen shell</span></div>
+<p class="dv-sub">Zero-chrome command shell: statusline, one full-bleed view, <code>:</code> as the only navigation — carrying the chart-led dashboard, with the four FC-06 widgets first and tables demoted to the "needs attention" list. Drawn at 96 × 30 cells. <b>2a</b> is the resting state, <b>2b</b> the same screen with the floating command window open.</p>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="2a">
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><span><b>Resting state.</b> Command line idle at the bottom; every widget is a jump target by name.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; position</span><span>245 824 AUD &nbsp;·&nbsp; ✓ 14:02 &nbsp;·&nbsp; 2 sep 2026</span></div>
+  <div class="pane" style="padding:10px 14px">
+    <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:3px">
+      <div><div class="lab">net position</div><div class="big" style="font-size:26px">$ 245 824.10</div></div>
+      <div style="padding-bottom:4px"><div class="lab">30 days</div><div style="font-weight:700">+ 1 268 <span class="mut">(+0.5%)</span></div></div>
+      <div style="padding-bottom:4px"><div class="lab">assets</div><div style="font-weight:700">75 158</div></div>
+      <div style="padding-bottom:4px"><div class="lab">liabilities</div><div style="font-weight:700" class="neg">320 334</div></div>
+    </div>
+    <div style="display:flex;gap:14px;margin-top:5px">
+      <div style="flex:1">
+        <div class="hd">net worth &nbsp;·&nbsp; 18 months <span>line</span></div>
+        <div class="lc" style="height:96px">
+          <i class="lcb" style="height:30%"></i><i class="lcb" style="height:35%"></i><i class="lcb" style="height:33%"></i><i class="lcb" style="height:40%"></i><i class="lcb" style="height:46%"></i><i class="lcb" style="height:44%"></i><i class="lcb" style="height:50%"></i><i class="lcb" style="height:57%"></i><i class="lcb" style="height:53%"></i><i class="lcb" style="height:61%"></i><i class="lcb" style="height:67%"></i><i class="lcb" style="height:65%"></i><i class="lcb" style="height:73%"></i><i class="lcb" style="height:79%"></i><i class="lcb" style="height:76%"></i><i class="lcb" style="height:85%"></i><i class="lcb" style="height:91%"></i><i class="lcb" style="height:98%"></i>
+        </div>
+        <div class="row" style="grid-template-columns:1fr auto auto;gap:12px"><span class="mut">mar 25</span><span class="mut">sep 25</span><span class="mut">sep 26</span></div>
+      </div>
+      <div style="width:228px">
+        <div class="hd">income vs expense &nbsp;·&nbsp; 6m <span>divergent</span></div>
+        <div style="display:grid;grid-template-columns:30px 1fr 1fr;gap:4px 4px;align-items:center;margin-top:6px;font-size:10px">
+          <span class="mut">apr</span><div style="display:flex;justify-content:flex-end"><i class="bn" style="width:54%"></i></div><div><i class="bp" style="width:72%"></i></div>
+          <span class="mut">may</span><div style="display:flex;justify-content:flex-end"><i class="bn" style="width:71%"></i></div><div><i class="bp" style="width:70%"></i></div>
+          <span class="mut">jun</span><div style="display:flex;justify-content:flex-end"><i class="bn" style="width:48%"></i></div><div><i class="bp" style="width:74%"></i></div>
+          <span class="mut">jul</span><div style="display:flex;justify-content:flex-end"><i class="bn" style="width:62%"></i></div><div><i class="bp" style="width:71%"></i></div>
+          <span class="mut">aug</span><div style="display:flex;justify-content:flex-end"><i class="bn" style="width:86%"></i></div><div><i class="bp" style="width:73%"></i></div>
+          <span class="mut">sep</span><div style="display:flex;justify-content:flex-end"><i class="bn" style="width:41%"></i></div><div><i class="bp" style="width:69%"></i></div>
+          <span></span><span class="mut n">expense</span><span class="mut">income</span>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:14px;margin-top:8px">
+      <div style="width:246px">
+        <div class="hd">where it went &nbsp;·&nbsp; 30d <span>doughnut</span></div>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:6px">
+          <div class="dnt" style="width:78px;height:78px;background:conic-gradient(#ec3013 0 31%,#7c1405 31% 49%,#605d5d 49% 66%,#9b9797 66% 82%,#d7d3d3 82% 100%)"><i style="width:40px;height:40px"></i></div>
+          <div style="font-size:10px;line-height:1.7">
+            <div><span class="sw" style="background:#ec3013"></span>housing <b>31%</b></div>
+            <div><span class="sw" style="background:#7c1405"></span>groceries <b>18%</b></div>
+            <div><span class="sw" style="background:#605d5d"></span>transport <b>17%</b></div>
+            <div><span class="sw" style="background:#9b9797"></span>utilities <b>16%</b></div>
+            <div><span class="sw" style="background:#d7d3d3"></span>other <b>18%</b></div>
+          </div>
+        </div>
+      </div>
+      <div style="flex:1">
+        <div class="hd">budgets this period <span>sep · day 2/30</span></div>
+        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>groceries</span><span class="mut">██████████████░░░░░</span><span class="n mut">918 / 1 200</span></div>
+        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>dining</span><span class="neg">████████████████████</span><span class="n neg">412 / 300</span></div>
+        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>transport</span><span class="mut">███████████░░░░░░░░</span><span class="n mut">604 / 1 000</span></div>
+        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>utilities</span><span class="mut">█████████████░░░░░░</span><span class="n mut">512 / 750</span></div>
+        <div class="hd tight">needs attention</div>
+        <div class="row" style="grid-template-columns:1fr auto"><span>14 unreconciled transactions</span><span class="mut">:reconcile</span></div>
+        <div class="row" style="grid-template-columns:1fr auto"><span class="neg">balance check variance −12.40</span><span class="mut">31 aug</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="cmd">: <span class="mut">type a command — :account, :budget, :report, :reconcile</span></div>
+  <div class="tk"><span><span class="k">:</span>command</span><span><span class="k">/</span>search</span><span><span class="k">a</span>add txn</span><span><span class="k">?</span>help</span><span class="mut">no persistent nav — ↑ recalls history</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="2b">
+<div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a><span><b>Command open.</b> Floating fuzzy-find window over the dimmed dashboard — this is the whole navigation model.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; position</span><span>COMMAND &nbsp;·&nbsp; 245 824 AUD &nbsp;·&nbsp; ✓ 14:02</span></div>
+  <div class="pane" style="padding:10px 14px;opacity:.3">
+    <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:3px">
+      <div><div class="lab">net position</div><div class="big" style="font-size:26px">$ 245 824.10</div></div>
+      <div style="padding-bottom:4px"><div class="lab">30 days</div><div style="font-weight:700">+ 1 268</div></div>
+    </div>
+    <div style="display:flex;gap:14px;margin-top:5px">
+      <div style="flex:1">
+        <div class="hd">net worth &nbsp;·&nbsp; 18 months</div>
+        <div class="lc" style="height:80px">
+          <i class="lcb" style="height:30%"></i><i class="lcb" style="height:35%"></i><i class="lcb" style="height:33%"></i><i class="lcb" style="height:40%"></i><i class="lcb" style="height:46%"></i><i class="lcb" style="height:44%"></i><i class="lcb" style="height:50%"></i><i class="lcb" style="height:57%"></i><i class="lcb" style="height:53%"></i><i class="lcb" style="height:61%"></i><i class="lcb" style="height:67%"></i><i class="lcb" style="height:65%"></i><i class="lcb" style="height:73%"></i><i class="lcb" style="height:79%"></i><i class="lcb" style="height:76%"></i><i class="lcb" style="height:85%"></i><i class="lcb" style="height:91%"></i><i class="lcb" style="height:98%"></i>
+        </div>
+      </div>
+      <div style="width:228px">
+        <div class="hd">income vs expense &nbsp;·&nbsp; 6m</div>
+        <div style="display:grid;grid-template-columns:30px 1fr 1fr;gap:4px;align-items:center;margin-top:6px;font-size:10px">
+          <span class="mut">jul</span><div style="display:flex;justify-content:flex-end"><i class="bn" style="width:62%"></i></div><div><i class="bp" style="width:71%"></i></div>
+          <span class="mut">aug</span><div style="display:flex;justify-content:flex-end"><i class="bn" style="width:86%"></i></div><div><i class="bp" style="width:73%"></i></div>
+          <span class="mut">sep</span><div style="display:flex;justify-content:flex-end"><i class="bn" style="width:41%"></i></div><div><i class="bp" style="width:69%"></i></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:14px;margin-top:8px">
+      <div style="width:246px">
+        <div class="hd">where it went &nbsp;·&nbsp; 30d</div>
+        <div style="display:flex;gap:12px;align-items:center;margin-top:6px">
+          <div class="dnt" style="width:70px;height:70px;background:conic-gradient(#ec3013 0 31%,#7c1405 31% 49%,#605d5d 49% 66%,#9b9797 66% 82%,#d7d3d3 82% 100%)"><i style="width:36px;height:36px"></i></div>
+          <div style="font-size:10px;line-height:1.7"><div>housing 31%</div><div>groceries 18%</div><div>transport 17%</div></div>
+        </div>
+      </div>
+      <div style="flex:1">
+        <div class="hd">budgets this period</div>
+        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>groceries</span><span class="mut">██████████████░░░░░</span><span class="n mut">918 / 1 200</span></div>
+        <div class="row" style="grid-template-columns:74px 1fr 92px"><span>dining</span><span class="neg">████████████████████</span><span class="n neg">412 / 300</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="ovl" style="position:absolute;left:11%;right:11%;top:19%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:12px;padding:4px 9px;border-bottom:2px solid #201e1d"><span>&gt; bud<span class="neg">▌</span></span><span class="mut">7 of 62</span></div>
+    <div style="padding:4px 0">
+      <div class="row sel" style="grid-template-columns:1fr 96px 78px;margin:0;padding:1px 9px"><span><b>bud</b>get edit &lt;category&gt; [limit]</span><span>set limit</span><span class="n">b e</span></div>
+      <div class="row" style="grid-template-columns:1fr 96px 78px;padding:1px 9px"><span><b>bud</b>get list [period]</span><span class="mut">view period</span><span class="n mut">g b</span></div>
+      <div class="row" style="grid-template-columns:1fr 96px 78px;padding:1px 9px"><span><b>bud</b>get new &lt;category&gt; &lt;limit&gt;</span><span class="mut">create</span><span class="n mut">b n</span></div>
+      <div class="row" style="grid-template-columns:1fr 96px 78px;padding:1px 9px"><span><b>bud</b>get deactivate &lt;category&gt;</span><span class="mut">stop tracking</span><span class="n mut">b x</span></div>
+      <div class="row" style="grid-template-columns:1fr 96px 78px;padding:1px 9px"><span class="mut">report <b style="color:#201e1d">bud</b>get variance</span><span class="mut">report</span><span class="n mut">g r v</span></div>
+      <div class="row" style="grid-template-columns:1fr 96px 78px;padding:1px 9px"><span class="mut">category set <b style="color:#201e1d">bud</b>get…</span><span class="mut">edit</span><span class="n mut">c b</span></div>
+      <div class="row" style="grid-template-columns:1fr 96px 78px;padding:1px 9px"><span class="mut">sync <b style="color:#201e1d">bud</b>gets only</span><span class="mut">sync</span><span class="n mut">—</span></div>
+    </div>
+    <div style="padding:3px 9px;border-top:1px solid #d7d3d3">
+      <div class="row" style="grid-template-columns:1fr auto"><span class="mut">arg 1 <span class="neg">&lt;category&gt;</span> — dining · limit 300.00 · actual 412.00</span><span class="neg">over by 112.00</span></div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 9px;font-size:9.5px"><span><span class="k">↑↓</span>select</span><span><span class="k">tab</span>complete</span><span><span class="k">enter</span>run</span><span><span class="k">^r</span>history</span><span><span class="k">esc</span>close</span></div>
+  </div>
+  <div class="cmd" style="color:#9b9797">: <span class="mut">bud</span></div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">:</span>command</span><span class="mut"><span class="k" style="background:#9b9797">/</span>search</span><span class="mut"><span class="k" style="background:#9b9797">a</span>add txn</span><span class="mut"><span class="k" style="background:#9b9797">?</span>help</span><span class="mut"><span class="k" style="background:#9b9797">esc</span>close command window</span></div>
+</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Implementation reference — see README.md beside this file. The remaining nine screens are wireframed separately and re-host inside this same shell.</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;terminal&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;\&quot;light\&quot; | \&quot;dark\&quot;&quot;,&quot;section&quot;:&quot;Wireframe&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: (this.props.terminal ?? "light") === "dark" ? "dk" : "" };
+  }
+}
+</script>
+</body>
+</html>
