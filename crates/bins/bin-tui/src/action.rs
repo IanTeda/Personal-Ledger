@@ -202,4 +202,9 @@ pub enum Action {
     PayeeTotalsLoaded(Vec<(lib_core::RowID, lib_core::Money)>),
     /// A Payee-total computation failed.
     PayeeTotalsLoadFailed(String),
+    /// The Balance-check-variance report (FR.38) finished computing each Balance Check's
+    /// Account Balance as of that Check's own date.
+    BalanceCheckBalancesLoaded(Vec<(lib_core::RowID, lib_core::Money)>),
+    /// A Balance-check-variance computation failed.
+    BalanceCheckBalancesLoadFailed(String),
 }

@@ -240,7 +240,9 @@ impl App {
             | Action::CategoryTotalsLoaded(_)
             | Action::CategoryTotalsLoadFailed(_)
             | Action::PayeeTotalsLoaded(_)
-            | Action::PayeeTotalsLoadFailed(_) => {
+            | Action::PayeeTotalsLoadFailed(_)
+            | Action::BalanceCheckBalancesLoaded(_)
+            | Action::BalanceCheckBalancesLoadFailed(_) => {
                 self.broadcast(&action);
             }
             // A successful save returns to whichever list screen the detail screen was

@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT amount AS \"amount!: lib_core::Money\"\n                FROM transactions\n                WHERE account_id = ? AND date <= ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "amount!: lib_core::Money",
+        "ordinal": 0,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "72f260daa1a14a2cba8ab92680f88a829f808d703d69b1b16ce9a5c490f9a9df"
+}

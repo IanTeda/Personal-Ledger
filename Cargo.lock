@@ -678,6 +678,7 @@ dependencies = [
 name = "bin_tui"
 version = "0.1.0"
 dependencies = [
+ "bigdecimal",
  "chandelier",
  "chrono",
  "crossterm",

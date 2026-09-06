@@ -1,8 +1,8 @@
 //! The Reports screen (FR.34-38, CC-TUI-011) — one screen with an internal picker across
 //! every report type, per "Decide TUI screen map and navigation shape" (not a separate
-//! dashboard area per report). Account Balance (FR.34), Category-total (FR.35), Payee-total
-//! (FR.36), and Budget-vs-actual (FR.37) exist so far; ticket #79 adds its own [`ReportKind`]
-//! variant and rendering branch here.
+//! dashboard area per report). All five reports now exist: Account Balance (FR.34),
+//! Category-total (FR.35), Payee-total (FR.36), Budget-vs-actual (FR.37), and
+//! Balance-check-variance (FR.38).
 //!
 //! `Field` unifies focus across the top-level report picker and each report's own inputs:
 //! `Field::ReportKind` is always first (Left/Right there changes which report is shown, via
@@ -30,7 +30,7 @@ use crate::{
     screen::Screen,
 };
 
-/// Which report is currently selected. `#79` will add one more variant here.
+/// Which report is currently selected.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReportKind {
     /// FR.34: the current Balance of every Account, each expressed in its own Unit.
@@ -45,13 +45,18 @@ enum ReportKind {
     /// no filter, since a Budget already carries its own fixed Category/Unit scope and
     /// always tracks the current period (never a user-chosen range).
     BudgetVsActual,
+    /// FR.38: every Balance Check ever recorded (a historical audit trail, not just the
+    /// latest per Account) against its Account's Balance as of that Check's own date — no
+    /// filter, since a Balance Check already carries its own fixed Account and date.
+    BalanceCheckVariance,
 }
 
-const REPORT_KINDS: [ReportKind; 4] = [
+const REPORT_KINDS: [ReportKind; 5] = [
     ReportKind::AccountBalance,
     ReportKind::CategoryTotal,
     ReportKind::PayeeTotal,
     ReportKind::BudgetVsActual,
+    ReportKind::BalanceCheckVariance,
 ];
 
 impl ReportKind {
@@ -61,6 +66,7 @@ impl ReportKind {
             ReportKind::CategoryTotal => "Category Total",
             ReportKind::PayeeTotal => "Payee Total",
             ReportKind::BudgetVsActual => "Budget vs Actual",
+            ReportKind::BalanceCheckVariance => "Balance Check Variance",
         }
     }
 }
@@ -117,6 +123,12 @@ enum BudgetsStatus {
     Failed(String),
 }
 
+enum BalanceChecksStatus {
+    Loading,
+    Loaded(Vec<lib_database::BalanceChecks>),
+    Failed(String),
+}
+
 /// One screen, an internal picker across every report type.
 pub struct ReportsScreen {
     selected_report: ReportKind,
@@ -139,6 +151,10 @@ pub struct ReportsScreen {
     // Budget-vs-actual (FR.37) — no filter of its own, loads unconditionally.
     budgets: BudgetsStatus,
     budget_progress: Vec<(lib_core::RowID, lib_database::BudgetProgress)>,
+
+    // Balance-check-variance (FR.38) — no filter of its own, loads unconditionally.
+    balance_checks: BalanceChecksStatus,
+    balance_check_balances: Vec<(lib_core::RowID, lib_core::Money)>,
 
     error: Option<String>,
     action_tx: Option<UnboundedSender<Action>>,
@@ -165,6 +181,8 @@ impl ReportsScreen {
             category_totals: Vec::new(),
             budgets: BudgetsStatus::Loading,
             budget_progress: Vec::new(),
+            balance_checks: BalanceChecksStatus::Loading,
+            balance_check_balances: Vec::new(),
             payee_totals: Vec::new(),
             error: None,
             action_tx: None,
@@ -173,7 +191,9 @@ impl ReportsScreen {
 
     fn fields(&self) -> &'static [Field] {
         match self.selected_report {
-            ReportKind::AccountBalance | ReportKind::BudgetVsActual => &NO_FILTER_FIELDS,
+            ReportKind::AccountBalance
+            | ReportKind::BudgetVsActual
+            | ReportKind::BalanceCheckVariance => &NO_FILTER_FIELDS,
             ReportKind::CategoryTotal | ReportKind::PayeeTotal => &SCOPE_DATE_FIELDS,
         }
     }
@@ -279,6 +299,25 @@ impl ReportsScreen {
             .unwrap_or("(unknown)")
     }
 
+    fn account(&self, id: lib_core::RowID) -> Option<&lib_database::Accounts> {
+        match &self.accounts {
+            AccountsStatus::Loaded(accounts) => accounts.iter().find(|a| a.id == id),
+            _ => None,
+        }
+    }
+
+    fn account_name(&self, id: lib_core::RowID) -> &str {
+        self.account(id)
+            .map(|a| a.name.as_str())
+            .unwrap_or("(unknown)")
+    }
+
+    fn account_unit_code(&self, account_id: lib_core::RowID) -> &str {
+        self.account(account_id)
+            .map(|a| self.unit_code(a.unit_id))
+            .unwrap_or("?")
+    }
+
     fn balance_for(&self, id: lib_core::RowID) -> Option<&lib_core::Money> {
         self.balances
             .iter()
@@ -313,6 +352,46 @@ impl ReportsScreen {
             let action = match action {
                 Ok(progress) => Action::BudgetProgressLoaded(progress),
                 Err(err) => Action::BudgetProgressLoadFailed(err.to_string()),
+            };
+            let _ = action_tx.send(action);
+        });
+    }
+
+    fn balance_check_balance_for(&self, id: lib_core::RowID) -> Option<&lib_core::Money> {
+        self.balance_check_balances
+            .iter()
+            .find(|(bid, _)| *bid == id)
+            .map(|(_, balance)| balance)
+    }
+
+    /// Computes each given Balance Check's Account Balance as of that Check's own date, in
+    /// order, against one connection.
+    fn spawn_balance_check_balances_load(&self, checks: Vec<lib_database::BalanceChecks>) {
+        let Some(action_tx) = self.action_tx.clone() else {
+            return;
+        };
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                let mut results = Vec::with_capacity(checks.len());
+                for check in checks {
+                    let account = lib_database::Accounts::find_by_id(check.account_id, &pool)
+                        .await?
+                        .ok_or_else(|| {
+                            lib_database::DatabaseError::NotFound(format!(
+                                "Account {} not found for Balance Check {}",
+                                check.account_id, check.id
+                            ))
+                        })?;
+                    let balance = account.balance_as_of(check.date, &pool).await?;
+                    results.push((check.id, balance));
+                }
+                Ok::<_, lib_database::DatabaseError>(results)
+            }
+            .await;
+            let action = match action {
+                Ok(balances) => Action::BalanceCheckBalancesLoaded(balances),
+                Err(err) => Action::BalanceCheckBalancesLoadFailed(err.to_string()),
             };
             let _ = action_tx.send(action);
         });
@@ -507,6 +586,20 @@ impl Screen for ReportsScreen {
             let _ = budgets_tx.send(action);
         });
 
+        let balance_checks_tx = action_tx.clone();
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                lib_database::BalanceChecks::find_all(&pool).await
+            }
+            .await;
+            let action = match action {
+                Ok(checks) => Action::BalanceChecksLoaded(checks),
+                Err(err) => Action::BalanceChecksLoadFailed(err.to_string()),
+            };
+            let _ = balance_checks_tx.send(action);
+        });
+
         self.action_tx = Some(action_tx);
     }
 
@@ -648,6 +741,28 @@ impl Screen for ReportsScreen {
             Action::BudgetProgressLoadFailed(message) => {
                 self.error = Some(message.clone());
             }
+            Action::BalanceChecksLoaded(checks) => {
+                self.balance_checks = BalanceChecksStatus::Loaded(checks.clone());
+                self.spawn_balance_check_balances_load(checks.clone());
+            }
+            Action::BalanceChecksLoadFailed(message) => {
+                self.balance_checks = BalanceChecksStatus::Failed(message.clone());
+            }
+            Action::BalanceCheckBalancesLoaded(balances) => {
+                for (id, balance) in balances {
+                    match self
+                        .balance_check_balances
+                        .iter_mut()
+                        .find(|(bid, _)| bid == id)
+                    {
+                        Some((_, existing)) => *existing = balance.clone(),
+                        None => self.balance_check_balances.push((*id, balance.clone())),
+                    }
+                }
+            }
+            Action::BalanceCheckBalancesLoadFailed(message) => {
+                self.error = Some(message.clone());
+            }
             _ => {}
         }
     }
@@ -702,13 +817,16 @@ impl Screen for ReportsScreen {
                 |screen, id| screen.payee_name(id),
             ),
             ReportKind::BudgetVsActual => self.view_budget_vs_actual(frame, rows[1]),
+            ReportKind::BalanceCheckVariance => self.view_balance_check_variance(frame, rows[1]),
         }
 
         let footer = if let Some(error) = &self.error {
             format!("Error: {error}")
         } else {
             match self.selected_report {
-                ReportKind::AccountBalance | ReportKind::BudgetVsActual => {
+                ReportKind::AccountBalance
+                | ReportKind::BudgetVsActual
+                | ReportKind::BalanceCheckVariance => {
                     "Tab: focus  ←/h →/l: change report  Esc: back".to_string()
                 }
                 ReportKind::CategoryTotal | ReportKind::PayeeTotal => {
@@ -921,6 +1039,85 @@ impl ReportsScreen {
             }
         }
     }
+
+    /// FR.38: every Balance Check ever recorded (a historical audit trail, not just the
+    /// latest per Account) against its Account's Balance as of that Check's own date —
+    /// variance = asserted − computed, per FR.38's own wording — sorted by the size of the
+    /// discrepancy, biggest first. No filter to enter — a Balance Check already carries its
+    /// own fixed Account and date.
+    fn view_balance_check_variance(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        match &self.balance_checks {
+            BalanceChecksStatus::Loading => {
+                frame.render_widget(
+                    Paragraph::new("Loading Balance Checks...")
+                        .block(Block::bordered().title(" Balance Check Variance ")),
+                    area,
+                );
+            }
+            BalanceChecksStatus::Failed(message) => {
+                frame.render_widget(
+                    Paragraph::new(format!("Failed to load Balance Checks: {message}"))
+                        .style(Style::default().fg(Color::Red))
+                        .block(Block::bordered().title(" Balance Check Variance ")),
+                    area,
+                );
+            }
+            BalanceChecksStatus::Loaded(checks) => {
+                let variance_for = |check: &lib_database::BalanceChecks| {
+                    self.balance_check_balance_for(check.id)
+                        .map(|computed| &check.asserted_balance.0 - &computed.0)
+                };
+
+                let mut sorted: Vec<&lib_database::BalanceChecks> = checks.iter().collect();
+                sorted.sort_by(|a, b| {
+                    let a_magnitude = variance_for(a).map(|v| &v * &v);
+                    let b_magnitude = variance_for(b).map(|v| &v * &v);
+                    b_magnitude.cmp(&a_magnitude)
+                });
+
+                let header = Row::new([
+                    "Account", "Unit", "Date", "Asserted", "Computed", "Variance",
+                ])
+                .style(Style::default().fg(Color::Yellow));
+                let table_rows = sorted.iter().map(|check| {
+                    let computed = self.balance_check_balance_for(check.id);
+                    let computed_text = computed
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "…".to_string());
+                    let variance_text = variance_for(check)
+                        .map(|v| lib_core::Money::from(v).to_string())
+                        .unwrap_or_else(|| "…".to_string());
+                    let is_mismatch = variance_for(check).map(|v| v != 0).unwrap_or(false);
+                    let style = if is_mismatch {
+                        Style::default().fg(Color::Red)
+                    } else {
+                        Style::default()
+                    };
+                    Row::new([
+                        Cell::from(self.account_name(check.account_id).to_string()),
+                        Cell::from(self.account_unit_code(check.account_id).to_string()),
+                        Cell::from(check.date.to_string()),
+                        Cell::from(check.asserted_balance.to_string()),
+                        Cell::from(computed_text),
+                        Cell::from(variance_text),
+                    ])
+                    .style(style)
+                });
+                let widths = [
+                    Constraint::Length(18),
+                    Constraint::Length(6),
+                    Constraint::Length(12),
+                    Constraint::Length(12),
+                    Constraint::Length(12),
+                    Constraint::Length(12),
+                ];
+                let table = Table::new(table_rows, widths).header(header).block(
+                    Block::bordered().title(format!(" Balance Check Variance ({}) ", checks.len())),
+                );
+                frame.render_widget(table, area);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1014,6 +1211,10 @@ mod tests {
 
         screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
         assert_eq!(screen.selected_report, ReportKind::BudgetVsActual);
+        render(&screen);
+
+        screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
+        assert_eq!(screen.selected_report, ReportKind::BalanceCheckVariance);
         render(&screen);
 
         screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
@@ -1258,6 +1459,89 @@ mod tests {
         render(&screen);
 
         screen.update(&Action::BudgetsLoadFailed("connection refused".to_string()));
+        render(&screen);
+    }
+
+    fn mock_balance_check(account_id: lib_core::RowID) -> lib_database::BalanceChecks {
+        let now = chrono::Utc::now();
+        lib_database::BalanceChecks {
+            id: lib_core::RowID::new(),
+            account_id,
+            date: chrono::NaiveDate::from_ymd_opt(2026, 1, 15).unwrap(),
+            asserted_balance: "100".parse().unwrap(),
+            created_on: now,
+            updated_on: now,
+        }
+    }
+
+    #[test]
+    fn balance_checks_loaded_populates_results() {
+        let mut screen = ReportsScreen::new();
+        let check = mock_balance_check(lib_core::RowID::new());
+        screen.update(&Action::BalanceChecksLoaded(vec![check.clone()]));
+
+        match &screen.balance_checks {
+            BalanceChecksStatus::Loaded(checks) => assert_eq!(checks, &vec![check]),
+            _ => panic!("expected Loaded"),
+        }
+    }
+
+    #[test]
+    fn balance_checks_load_failed_sets_a_failed_status() {
+        let mut screen = ReportsScreen::new();
+        screen.update(&Action::BalanceChecksLoadFailed(
+            "connection refused".to_string(),
+        ));
+
+        assert!(matches!(
+            screen.balance_checks,
+            BalanceChecksStatus::Failed(_)
+        ));
+    }
+
+    #[test]
+    fn balance_check_balances_loaded_populates_the_lookup() {
+        let mut screen = ReportsScreen::new();
+        let check_id = lib_core::RowID::new();
+        screen.update(&Action::BalanceCheckBalancesLoaded(vec![(
+            check_id,
+            "95".parse().unwrap(),
+        )]));
+
+        assert_eq!(
+            screen.balance_check_balance_for(check_id),
+            Some(&"95".parse().unwrap())
+        );
+    }
+
+    #[test]
+    fn renders_the_balance_check_variance_report_sorted_by_magnitude_without_panicking() {
+        let mut screen = ReportsScreen::new();
+        screen.selected_report = ReportKind::BalanceCheckVariance;
+
+        let mismatched = mock_balance_check(lib_core::RowID::new());
+        let matched = mock_balance_check(lib_core::RowID::new());
+        screen.update(&Action::BalanceChecksLoaded(vec![
+            matched.clone(),
+            mismatched.clone(),
+        ]));
+        screen.update(&Action::BalanceCheckBalancesLoaded(vec![
+            (matched.id, "100".parse().unwrap()),
+            (mismatched.id, "40".parse().unwrap()),
+        ]));
+
+        render(&screen);
+    }
+
+    #[test]
+    fn renders_the_balance_check_variance_report_loading_and_failed_without_panicking() {
+        let mut screen = ReportsScreen::new();
+        screen.selected_report = ReportKind::BalanceCheckVariance;
+        render(&screen);
+
+        screen.update(&Action::BalanceChecksLoadFailed(
+            "connection refused".to_string(),
+        ));
         render(&screen);
     }
 }
