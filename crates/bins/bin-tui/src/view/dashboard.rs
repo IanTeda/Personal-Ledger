@@ -53,7 +53,6 @@ impl View for DashboardView {
                 Constraint::Length(1),
                 Constraint::Length(18),
                 Constraint::Min(0),
-                Constraint::Length(3),
             ])
             .split(area);
 
@@ -63,7 +62,6 @@ impl View for DashboardView {
         render_headline(frame, rows[1]);
         render_trend_band(frame, rows[3]);
         render_lower_band(frame, rows[4]);
-        placeholder(frame, rows[5], " Needs attention ");
     }
 
     fn title(&self) -> &'static str {
@@ -460,16 +458,23 @@ fn fake_income_vs_expense() -> Vec<MonthFlow> {
     ]
 }
 
-/// Items 4-5 — the doughnut and the budget gauges share the remaining band: the doughnut
-/// takes a fixed ~26 columns, budgets the rest.
+/// Items 4-6 — the doughnut, the budget gauges, and needs-attention share the remaining
+/// band: the doughnut takes 2/5 of the screen width; budgets and needs-attention split the
+/// rest vertically, needs-attention pinned to the bottom.
 fn render_lower_band(frame: &mut Frame, area: Rect) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(26), Constraint::Min(0)])
+        .constraints([Constraint::Percentage(40), Constraint::Min(0)])
         .split(area);
 
     placeholder(frame, columns[0], " Where it went · 30 days ");
-    placeholder(frame, columns[1], " Budgets this period ");
+
+    let budgets_rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .split(columns[1]);
+    placeholder(frame, budgets_rows[0], " Budgets this period ");
+    placeholder(frame, budgets_rows[1], " Needs attention ");
 }
 
 /// A bordered, titled box standing in for a region's real widget content.
