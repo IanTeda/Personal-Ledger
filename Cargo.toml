@@ -13,6 +13,11 @@
 # Forbid unsafe code across the workspace for safety
 unsafe_code = "forbid"
 
+# Allow unused (never-constructed/never-called) code, at low priority so a crate can still
+# opt back in locally. Needed while app.rs/screen/ (bin-tui) sit disconnected from main.rs
+# per ADR-0013, compiling but otherwise dead until each screen is migrated into view/.
+dead_code = { level = "allow", priority = -1 }
+
 # Allow unused code/variables during development, with low priority to allow overrides
 # For exploratory dev, comment out for commits
 # unused = { level = "allow", priority = -1 }
