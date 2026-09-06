@@ -1,7 +1,7 @@
 //! The Reports screen (FR.34-38, CC-TUI-011) — one screen with an internal picker across
 //! every report type, per "Decide TUI screen map and navigation shape" (not a separate
-//! dashboard area per report). Account Balance (FR.34), Category-total (FR.35), and
-//! Payee-total (FR.36) exist so far; tickets #78-79 each add their own [`ReportKind`]
+//! dashboard area per report). Account Balance (FR.34), Category-total (FR.35), Payee-total
+//! (FR.36), and Budget-vs-actual (FR.37) exist so far; ticket #79 adds its own [`ReportKind`]
 //! variant and rendering branch here.
 //!
 //! `Field` unifies focus across the top-level report picker and each report's own inputs:
@@ -30,7 +30,7 @@ use crate::{
     screen::Screen,
 };
 
-/// Which report is currently selected. `#78-79` will each add a variant here.
+/// Which report is currently selected. `#79` will add one more variant here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ReportKind {
     /// FR.34: the current Balance of every Account, each expressed in its own Unit.
@@ -41,12 +41,17 @@ enum ReportKind {
     /// FR.36: the signed Transaction total per Payee, scoped to a Unit or Account, over a
     /// date range — only Payees with a matching Transaction appear.
     PayeeTotal,
+    /// FR.37: every active Budget's limit vs. its actual spend for the current period —
+    /// no filter, since a Budget already carries its own fixed Category/Unit scope and
+    /// always tracks the current period (never a user-chosen range).
+    BudgetVsActual,
 }
 
-const REPORT_KINDS: [ReportKind; 3] = [
+const REPORT_KINDS: [ReportKind; 4] = [
     ReportKind::AccountBalance,
     ReportKind::CategoryTotal,
     ReportKind::PayeeTotal,
+    ReportKind::BudgetVsActual,
 ];
 
 impl ReportKind {
@@ -55,6 +60,7 @@ impl ReportKind {
             ReportKind::AccountBalance => "Account Balance",
             ReportKind::CategoryTotal => "Category Total",
             ReportKind::PayeeTotal => "Payee Total",
+            ReportKind::BudgetVsActual => "Budget vs Actual",
         }
     }
 }
@@ -88,7 +94,9 @@ enum Field {
     DateTo,
 }
 
-const ACCOUNT_BALANCE_FIELDS: [Field; 1] = [Field::ReportKind];
+/// Reports with no filter of their own — just the top-level report picker. Account Balance
+/// and Budget-vs-actual both load-and-render unconditionally on `init()`.
+const NO_FILTER_FIELDS: [Field; 1] = [Field::ReportKind];
 const SCOPE_DATE_FIELDS: [Field; 5] = [
     Field::ReportKind,
     Field::ScopeKind,
@@ -100,6 +108,12 @@ const SCOPE_DATE_FIELDS: [Field; 5] = [
 enum AccountsStatus {
     Loading,
     Loaded(Vec<lib_database::Accounts>),
+    Failed(String),
+}
+
+enum BudgetsStatus {
+    Loading,
+    Loaded(Vec<lib_database::Budgets>),
     Failed(String),
 }
 
@@ -121,6 +135,10 @@ pub struct ReportsScreen {
     date_to: String,
     category_totals: Vec<(lib_core::RowID, lib_core::Money)>,
     payee_totals: Vec<(lib_core::RowID, lib_core::Money)>,
+
+    // Budget-vs-actual (FR.37) — no filter of its own, loads unconditionally.
+    budgets: BudgetsStatus,
+    budget_progress: Vec<(lib_core::RowID, lib_database::BudgetProgress)>,
 
     error: Option<String>,
     action_tx: Option<UnboundedSender<Action>>,
@@ -145,6 +163,8 @@ impl ReportsScreen {
             date_from: month_start.to_string(),
             date_to: today.to_string(),
             category_totals: Vec::new(),
+            budgets: BudgetsStatus::Loading,
+            budget_progress: Vec::new(),
             payee_totals: Vec::new(),
             error: None,
             action_tx: None,
@@ -153,7 +173,7 @@ impl ReportsScreen {
 
     fn fields(&self) -> &'static [Field] {
         match self.selected_report {
-            ReportKind::AccountBalance => &ACCOUNT_BALANCE_FIELDS,
+            ReportKind::AccountBalance | ReportKind::BudgetVsActual => &NO_FILTER_FIELDS,
             ReportKind::CategoryTotal | ReportKind::PayeeTotal => &SCOPE_DATE_FIELDS,
         }
     }
@@ -264,6 +284,38 @@ impl ReportsScreen {
             .iter()
             .find(|(aid, _)| *aid == id)
             .map(|(_, balance)| balance)
+    }
+
+    fn budget_progress_for(&self, id: lib_core::RowID) -> Option<&lib_database::BudgetProgress> {
+        self.budget_progress
+            .iter()
+            .find(|(bid, _)| *bid == id)
+            .map(|(_, progress)| progress)
+    }
+
+    /// Computes progress for every given Budget, in order, against one connection — mirrors
+    /// `BudgetsListScreen::spawn_progress_load`.
+    fn spawn_budget_progress_load(&self, budgets: Vec<lib_database::Budgets>) {
+        let Some(action_tx) = self.action_tx.clone() else {
+            return;
+        };
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                let mut results = Vec::with_capacity(budgets.len());
+                for budget in budgets {
+                    let progress = budget.current_progress(&pool).await?;
+                    results.push((budget.id, progress));
+                }
+                Ok::<_, lib_database::DatabaseError>(results)
+            }
+            .await;
+            let action = match action {
+                Ok(progress) => Action::BudgetProgressLoaded(progress),
+                Err(err) => Action::BudgetProgressLoadFailed(err.to_string()),
+            };
+            let _ = action_tx.send(action);
+        });
     }
 
     /// Parses the shared scope/date filter, storing a validation error on `self.error` (and
@@ -441,6 +493,20 @@ impl Screen for ReportsScreen {
             let _ = balances_tx.send(action);
         });
 
+        let budgets_tx = action_tx.clone();
+        tokio::spawn(async move {
+            let action = async {
+                let pool = db::connect().await?;
+                lib_database::Budgets::find_all_active(&pool).await
+            }
+            .await;
+            let action = match action {
+                Ok(budgets) => Action::BudgetsLoaded(budgets),
+                Err(err) => Action::BudgetsLoadFailed(err.to_string()),
+            };
+            let _ = budgets_tx.send(action);
+        });
+
         self.action_tx = Some(action_tx);
     }
 
@@ -564,6 +630,24 @@ impl Screen for ReportsScreen {
             Action::PayeesLoadFailed(message) => {
                 self.error = Some(message.clone());
             }
+            Action::BudgetsLoaded(budgets) => {
+                self.budgets = BudgetsStatus::Loaded(budgets.clone());
+                self.spawn_budget_progress_load(budgets.clone());
+            }
+            Action::BudgetsLoadFailed(message) => {
+                self.budgets = BudgetsStatus::Failed(message.clone());
+            }
+            Action::BudgetProgressLoaded(progress) => {
+                for (id, new_progress) in progress {
+                    match self.budget_progress.iter_mut().find(|(pid, _)| pid == id) {
+                        Some((_, existing)) => *existing = new_progress.clone(),
+                        None => self.budget_progress.push((*id, new_progress.clone())),
+                    }
+                }
+            }
+            Action::BudgetProgressLoadFailed(message) => {
+                self.error = Some(message.clone());
+            }
             _ => {}
         }
     }
@@ -617,13 +701,14 @@ impl Screen for ReportsScreen {
                 &self.payee_totals,
                 |screen, id| screen.payee_name(id),
             ),
+            ReportKind::BudgetVsActual => self.view_budget_vs_actual(frame, rows[1]),
         }
 
         let footer = if let Some(error) = &self.error {
             format!("Error: {error}")
         } else {
             match self.selected_report {
-                ReportKind::AccountBalance => {
+                ReportKind::AccountBalance | ReportKind::BudgetVsActual => {
                     "Tab: focus  ←/h →/l: change report  Esc: back".to_string()
                 }
                 ReportKind::CategoryTotal | ReportKind::PayeeTotal => {
@@ -761,6 +846,81 @@ impl ReportsScreen {
             .block(Block::bordered().title(format!(" Results ({}) ", sorted.len())));
         frame.render_widget(table, sections[1]);
     }
+
+    /// FR.37: every active Budget's limit vs. its current-period spend, most urgent (closest
+    /// to or over its limit) first. No filter to enter — a Budget already carries its own
+    /// fixed Category/Unit scope and always tracks the current period.
+    fn view_budget_vs_actual(&self, frame: &mut Frame, area: ratatui::layout::Rect) {
+        match &self.budgets {
+            BudgetsStatus::Loading => {
+                frame.render_widget(
+                    Paragraph::new("Loading Budgets...")
+                        .block(Block::bordered().title(" Budget vs Actual ")),
+                    area,
+                );
+            }
+            BudgetsStatus::Failed(message) => {
+                frame.render_widget(
+                    Paragraph::new(format!("Failed to load Budgets: {message}"))
+                        .style(Style::default().fg(Color::Red))
+                        .block(Block::bordered().title(" Budget vs Actual ")),
+                    area,
+                );
+            }
+            BudgetsStatus::Loaded(budgets) => {
+                let mut sorted: Vec<&lib_database::Budgets> = budgets.iter().collect();
+                sorted.sort_by(|a, b| {
+                    let a_fraction = self
+                        .budget_progress_for(a.id)
+                        .map(|p| p.spend_fraction())
+                        .unwrap_or(0.0);
+                    let b_fraction = self
+                        .budget_progress_for(b.id)
+                        .map(|p| p.spend_fraction())
+                        .unwrap_or(0.0);
+                    b_fraction
+                        .partial_cmp(&a_fraction)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+
+                let header = Row::new(["Category", "Unit", "Limit", "Spent", "Remaining"])
+                    .style(Style::default().fg(Color::Yellow));
+                let table_rows = sorted.iter().map(|budget| {
+                    let progress = self.budget_progress_for(budget.id);
+                    let spent = progress
+                        .map(|p| p.spend.to_string())
+                        .unwrap_or_else(|| "…".to_string());
+                    let remaining = progress
+                        .map(|p| lib_core::Money::from(&p.limit_amount.0 - &p.spend.0).to_string())
+                        .unwrap_or_else(|| "…".to_string());
+                    let style = if progress.map(|p| p.is_ahead_of_pace()).unwrap_or(false) {
+                        Style::default().fg(Color::Red)
+                    } else {
+                        Style::default()
+                    };
+                    Row::new([
+                        Cell::from(self.category_name(budget.category_id).to_string()),
+                        Cell::from(self.unit_code(budget.unit_id).to_string()),
+                        Cell::from(budget.limit_amount.to_string()),
+                        Cell::from(spent),
+                        Cell::from(remaining),
+                    ])
+                    .style(style)
+                });
+                let widths = [
+                    Constraint::Length(20),
+                    Constraint::Length(6),
+                    Constraint::Length(12),
+                    Constraint::Length(12),
+                    Constraint::Length(12),
+                ];
+                let table = Table::new(table_rows, widths).header(header).block(
+                    Block::bordered().title(format!(" Budget vs Actual ({}) ", budgets.len())),
+                );
+                frame.render_widget(table, area);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -842,7 +1002,7 @@ mod tests {
     }
 
     #[test]
-    fn cycling_report_moves_through_category_total_and_payee_total_and_back() {
+    fn cycling_report_moves_through_every_kind_and_back() {
         let mut screen = ReportsScreen::new();
         screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
         assert_eq!(screen.selected_report, ReportKind::CategoryTotal);
@@ -850,6 +1010,10 @@ mod tests {
 
         screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
         assert_eq!(screen.selected_report, ReportKind::PayeeTotal);
+        render(&screen);
+
+        screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
+        assert_eq!(screen.selected_report, ReportKind::BudgetVsActual);
         render(&screen);
 
         screen.handle_key(key(KeyCode::Right), InputMode::Navigation);
@@ -995,6 +1159,105 @@ mod tests {
             payee_id,
             "10".parse().unwrap(),
         )]));
+        render(&screen);
+    }
+
+    fn mock_budget(
+        category_id: lib_core::RowID,
+        unit_id: lib_core::RowID,
+    ) -> lib_database::Budgets {
+        let now = chrono::Utc::now();
+        lib_database::Budgets {
+            id: lib_core::RowID::new(),
+            category_id,
+            unit_id,
+            limit_amount: lib_core::Money::mock(),
+            period: lib_core::BudgetPeriod::Monthly,
+            is_active: true,
+            created_on: now,
+            updated_on: now,
+        }
+    }
+
+    fn mock_progress(
+        spend: &str,
+        limit: &str,
+        today_fraction: f64,
+    ) -> lib_database::BudgetProgress {
+        lib_database::BudgetProgress {
+            spend: spend.parse().unwrap(),
+            limit_amount: limit.parse().unwrap(),
+            period_start: chrono::NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+            period_end: chrono::NaiveDate::from_ymd_opt(2026, 1, 31).unwrap(),
+            today_fraction,
+        }
+    }
+
+    #[test]
+    fn budgets_loaded_populates_results() {
+        let mut screen = ReportsScreen::new();
+        let budget = mock_budget(lib_core::RowID::new(), lib_core::RowID::new());
+        screen.update(&Action::BudgetsLoaded(vec![budget.clone()]));
+
+        match &screen.budgets {
+            BudgetsStatus::Loaded(budgets) => assert_eq!(budgets, &vec![budget]),
+            _ => panic!("expected Loaded"),
+        }
+    }
+
+    #[test]
+    fn budgets_load_failed_sets_a_failed_status() {
+        let mut screen = ReportsScreen::new();
+        screen.update(&Action::BudgetsLoadFailed("connection refused".to_string()));
+
+        assert!(matches!(screen.budgets, BudgetsStatus::Failed(_)));
+    }
+
+    #[test]
+    fn budget_progress_loaded_populates_the_lookup() {
+        let mut screen = ReportsScreen::new();
+        let budget_id = lib_core::RowID::new();
+        let progress = mock_progress("50", "100", 0.5);
+        screen.update(&Action::BudgetProgressLoaded(vec![(
+            budget_id,
+            progress.clone(),
+        )]));
+
+        assert_eq!(screen.budget_progress_for(budget_id), Some(&progress));
+    }
+
+    #[test]
+    fn renders_the_budget_vs_actual_report_sorted_by_urgency_without_panicking() {
+        let mut screen = ReportsScreen::new();
+        screen.selected_report = ReportKind::BudgetVsActual;
+
+        let over_budget = mock_budget(lib_core::RowID::new(), lib_core::RowID::new());
+        let under_budget = mock_budget(lib_core::RowID::new(), lib_core::RowID::new());
+        screen.update(&Action::BudgetsLoaded(vec![
+            under_budget.clone(),
+            over_budget.clone(),
+        ]));
+        screen.update(&Action::BudgetProgressLoaded(vec![
+            (under_budget.id, mock_progress("10", "100", 0.5)),
+            (over_budget.id, mock_progress("150", "100", 0.5)),
+        ]));
+
+        assert!(
+            screen
+                .budget_progress_for(over_budget.id)
+                .unwrap()
+                .is_ahead_of_pace()
+        );
+        render(&screen);
+    }
+
+    #[test]
+    fn renders_the_budget_vs_actual_report_loading_and_failed_without_panicking() {
+        let mut screen = ReportsScreen::new();
+        screen.selected_report = ReportKind::BudgetVsActual;
+        render(&screen);
+
+        screen.update(&Action::BudgetsLoadFailed("connection refused".to_string()));
         render(&screen);
     }
 }
