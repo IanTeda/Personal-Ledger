@@ -14,7 +14,7 @@ use ratatui::{
     widgets::{Axis, Block, Borders, Chart, Dataset, GraphType, Paragraph},
 };
 use tui_box_text::BoxChar;
-use tui_piechart::{PieChart, PieSlice, Resolution};
+use tui_piechart::{PieChart, PieSlice, Resolution, symbols::PIE_CHAR_LIGHT};
 
 use crate::view::{Action, View};
 
@@ -474,7 +474,7 @@ fn render_lower_band(frame: &mut Frame, area: Rect) {
 
     let budgets_rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(3)])
+        .constraints([Constraint::Min(0), Constraint::Length(5)])
         .split(columns[1]);
     placeholder(frame, budgets_rows[0], " Budgets this period ");
     placeholder(frame, budgets_rows[1], " Needs attention ");
@@ -527,10 +527,12 @@ fn render_where_it_went(frame: &mut Frame, area: Rect, slices: &[SpendingSlice])
 }
 
 /// Draws the pie itself via the `tui-piechart` crate (see GitHub issue #88's charting-library
-/// survey), at `Resolution::Braille` for a smoother ring than the crate's default one-dot-per-
-/// cell mode. The crate's own legend is switched off — `render_spending_legend` already
-/// matches `docs/ux/shell/README.md`'s exact `swatch category NN%` format (whole-number
-/// percentages), which the crate's built-in legend doesn't (it renders one decimal place).
+/// survey), shaded with `PIE_CHAR_LIGHT` (from the crate's `symbols_shades_bars` example) —
+/// this needs `Resolution::Standard`, since the crate's `Braille` mode builds its own dot-
+/// pattern glyphs and ignores `pie_char` entirely. The crate's own legend is switched off —
+/// `render_spending_legend` already matches `docs/ux/shell/README.md`'s exact
+/// `swatch category NN%` format (whole-number percentages), which the crate's built-in
+/// legend doesn't (it renders one decimal place).
 fn render_pie_chart(frame: &mut Frame, area: Rect, slices: &[SpendingSlice]) {
     let pie_slices: Vec<PieSlice> = slices
         .iter()
@@ -538,7 +540,8 @@ fn render_pie_chart(frame: &mut Frame, area: Rect, slices: &[SpendingSlice]) {
         .collect();
 
     let piechart = PieChart::new(pie_slices)
-        .resolution(Resolution::Braille)
+        .resolution(Resolution::Standard)
+        .pie_char(PIE_CHAR_LIGHT)
         .show_legend(false);
 
     frame.render_widget(piechart, area);
@@ -636,7 +639,27 @@ mod tests {
 
     #[test]
     fn shows_all_seven_headline_regions() {
-        let text = render(&DashboardView::new());
+        // The 96x30 minimum from `docs/ux/shell/README.md` doesn't leave enough height for
+        // both the "Budgets this period" and "Needs attention" boxes once the latter grows
+        // to 3 content lines — the same pre-existing space crunch as
+        // `where_it_went_legend_shows_all_five_slices`, so this uses the same taller
+        // backend.
+        let backend = TestBackend::new(96, 50);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| {
+                let area = frame.area();
+                DashboardView::new().view(frame, area);
+            })
+            .expect("drawing the dashboard should not error");
+        let buffer = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+            text.push('\n');
+        }
 
         assert!(text.contains("NET POSITION"), "net position box missing");
         assert!(
@@ -792,13 +815,9 @@ mod tests {
 
         assert!(text.contains("WHERE IT WENT · 30D"), "heading missing");
         assert!(text.contains("PIE CHART"), "pie chart tag missing");
-        // Braille cells `tui-piechart`'s `Resolution::Braille` mode draws the pie with —
-        // confirms the chart actually rendered, not just a bare heading.
-        assert!(
-            text.chars()
-                .any(|ch| ('\u{2800}'..='\u{28ff}').contains(&ch)),
-            "pie chart braille cells missing"
-        );
+        // `PIE_CHAR_LIGHT` cells the pie draws with — confirms the chart actually rendered,
+        // not just a bare heading.
+        assert!(text.contains('░'), "pie chart cells missing");
     }
 
     #[test]
