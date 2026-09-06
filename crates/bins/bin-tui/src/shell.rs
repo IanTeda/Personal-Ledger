@@ -2,8 +2,7 @@
 //! (ADR-0013, `docs/adr/0013-shell-view-replaces-breadcrumb-app-screen-nav.md`). Replaces the
 //! breadcrumb-stack `App` (`app.rs`, left compiling but disconnected from `main.rs`) for the
 //! shell chrome and dashboard being rebuilt against `docs/ux/shell/README.md`: a status line,
-//! one full-bleed view region, an idle command line, and a dim keybind hint bar — no
-//! breadcrumb, no navigation stack.
+//! one full-bleed view region, and a keybind hint bar — no breadcrumb, no navigation stack.
 
 use std::time::Duration;
 
@@ -11,7 +10,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::Line,
     widgets::Paragraph,
 };
@@ -97,15 +96,14 @@ impl Shell {
         }
     }
 
-    /// Renders the four-row shell chrome — status line, full-bleed view region, idle command
-    /// line, keybind hint bar — around the active view, per `docs/ux/shell/README.md`.
+    /// Renders the three-row shell chrome — status line, full-bleed view region, keybind
+    /// hint bar — around the active view, per `docs/ux/shell/README.md`.
     fn draw(&self, frame: &mut Frame) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
                 Constraint::Length(1),
                 Constraint::Min(0),
-                Constraint::Length(1),
                 Constraint::Length(1),
             ])
             .split(frame.area());
@@ -122,14 +120,9 @@ impl Shell {
         self.view.view(frame, rows[1]);
 
         frame.render_widget(
-            Paragraph::new(":").style(Style::default().add_modifier(Modifier::DIM)),
+            Paragraph::new(" : command · / search · ? help ")
+                .style(Style::default().bg(Color::Rgb(211, 211, 211))),
             rows[2],
-        );
-
-        frame.render_widget(
-            Paragraph::new(": command · / search · ? help")
-                .style(Style::default().add_modifier(Modifier::DIM)),
-            rows[3],
         );
     }
 }
@@ -152,7 +145,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn renders_the_four_row_shell_layout_without_panicking() {
+    fn renders_the_three_row_shell_layout_without_panicking() {
         let shell = Shell::new();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
