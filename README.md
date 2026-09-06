@@ -44,6 +44,7 @@
       <a href="#developing-with-this-repo">Developing With This Repo</a>
       <ul>
         <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#available-tasks-mise">Available Tasks (mise)</a></li>
         <li><a href="#building-and-running">Building and Running</a></li>
         <li><a href="#testing-linting-and-formatting">Testing, Linting and Formatting</a></li>
         <li><a href="#documentation">Documentation</a></li>
@@ -111,7 +112,7 @@ Personal Ledger is a Rust Cargo workspace. This section covers what you need to 
 
 ### Prerequisites
 
-Toolchain and dev-tool versions (Rust, protoc, mdBook, cargo-make, sqlx-cli, cargo-watch, cargo-audit) are pinned in `mise.toml` at the workspace root and managed by [mise](https://mise.jdx.dev/). Install mise, then install the pinned tools for this repo:
+Toolchain and dev-tool versions (Rust, protoc, mdBook, sqlx-cli, cargo-watch, cargo-audit) are pinned in `mise.toml` at the workspace root and managed by [mise](https://mise.jdx.dev/), which also defines the project's dev tasks (`mise tasks` to list them). Install mise, then install the pinned tools for this repo:
 
 ```sh
 curl https://mise.run | sh
@@ -120,7 +121,32 @@ mise trust
 mise install
 ```
 
-`mise`'s shell/dir activation will also install the pinned tools automatically when you `cd` into the repo. Without this step, tools like `protoc` or `cargo-make` won't be on your `PATH`.
+`mise`'s shell/dir activation will also install the pinned tools automatically when you `cd` into the repo. Without this step, tools like `protoc` or `sqlx-cli` won't be on your `PATH`.
+
+### Available Tasks (mise)
+
+Beyond pinning tool versions, `mise.toml` also defines this project's dev tasks — a replacement for the `cargo-make`/`Makefile.toml` setup this repo used previously. Run `mise tasks` at any time to list them with their descriptions straight from the config, or `mise run <task>` to run one:
+
+| Task                     | What it does                                                     |
+| ------------------------ | ----------------------------------------------------------------- |
+| `watch-tui`              | Rebuild and rerun the TUI on file changes                         |
+| `docs-rustdoc`           | Build Rust docs (rustdoc)                                         |
+| `docs-mdbook`            | Build mdBook documentation                                        |
+| `docs-build`             | Build all documentation (`docs-rustdoc` + `docs-mdbook`)           |
+| `docs-serve`             | Serve mdBook documentation on port 8001                           |
+| `db-drop`                | Drop the dev database                                             |
+| `db-create`              | Create the dev database                                           |
+| `db-migrate-client`      | Apply the Client-Ledger migrations                                |
+| `db-migrate-sync-server` | Apply the Sync Server migrations                                  |
+| `db-migrate`             | Apply both the Client-Ledger and Sync-Server migration sets        |
+| `db-prepare-generate`    | Regenerate the `sqlx` query cache for `lib-database`               |
+| `db-prepare-check`       | Check the `sqlx` query cache is up to date                        |
+| `db`                     | Reset the dev database from scratch: drop, create, migrate, then refresh the query cache |
+
+```sh
+mise run watch-tui   # rebuild + rerun the TUI on every save
+mise run db          # drop, recreate, migrate and refresh the local dev database
+```
 
 ### Building and Running
 
@@ -135,6 +161,9 @@ cargo build --package server --bin server
 
 # Run the server (reads config, initialises telemetry — currently does nothing else)
 cargo run --package server
+
+# Run the TUI, rebuilding and rerunning it on every file change
+mise run watch-tui
 ```
 
 Building `lib-rpc` requires a system `protoc` (protobuf compiler), provided via `mise.toml`. `tonic_prost_build` regenerates `crates/libs/lib-rpc/src/generated/*.rs` from the `.proto` files on every build; the generated files are checked in but should be treated as build output, not hand-edited.
@@ -157,11 +186,11 @@ cargo fmt
 
 ### Documentation
 
-Docs are built with mdBook and rustdoc via `cargo-make`:
+Docs are built with mdBook and rustdoc via `mise` tasks:
 
 ```sh
-cargo make docs-build     # docs-rustdoc + docs-mdbook
-cargo make docs-serve     # serves mdBook on :8001
+mise run docs-build     # docs-rustdoc + docs-mdbook
+mise run docs-serve     # serves mdBook on :8001
 ```
 
 ### Agent-Assisted Development

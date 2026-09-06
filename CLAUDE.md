@@ -8,9 +8,9 @@ Personal Ledger is a Rust Cargo workspace for a personal finance/accounting appl
 
 ## Commands
 
-Toolchain and dev-tool versions (Rust, protoc, mdBook, cargo-make, sqlx-cli, cargo-watch, cargo-audit) are pinned in `mise.toml` at the workspace root and managed by [mise](https://mise.jdx.dev/). Run `mise install` once per checkout (or let mise's shell/dir activation do it) before using `cargo`/`cargo make` — without it, tools like `protoc` or `cargo-make` won't be on `PATH`.
+Toolchain and dev-tool versions (Rust, protoc, mdBook, sqlx-cli, cargo-watch, cargo-audit) are pinned in `mise.toml` at the workspace root and managed by [mise](https://mise.jdx.dev/). Run `mise install` once per checkout (or let mise's shell/dir activation do it) before using `cargo` — without it, tools like `protoc` or `sqlx-cli` won't be on `PATH`.
 
-Build tooling uses `cargo-make` (`Makefile.toml`) for a few tasks, but most day-to-day work is plain `cargo` run against the workspace or a specific package.
+Build tooling uses `mise` tasks (defined in `mise.toml`; run `mise tasks` to list them) for a few tasks, but most day-to-day work is plain `cargo` run against the workspace or a specific package.
 
 ```sh
 # Build / check
@@ -19,6 +19,9 @@ cargo build --package bin_sync_server --bin sync-server   # just the Sync Server
 
 # Run the Sync Server (reads config, initialises telemetry, serves the stub Ping RPC)
 cargo run --package bin_sync_server
+
+# Run the TUI, rebuilding and rerunning on file changes
+mise run watch-tui
 
 # Test
 cargo test                                    # whole workspace
@@ -29,9 +32,9 @@ cargo test --package lib_config parse_with_explicit_config_file  # single test
 cargo clippy
 cargo fmt
 
-# Docs (mdBook + rustdoc), via cargo-make
-cargo make docs-build     # docs-rustdoc + docs-mdbook
-cargo make docs-serve     # serves mdBook on :8001
+# Docs (mdBook + rustdoc), via mise tasks
+mise run docs-build     # docs-rustdoc + docs-mdbook
+mise run docs-serve     # serves mdBook on :8001
 ```
 
 Building `lib_rpc` requires a system `protoc` (protobuf compiler) — provided via `mise.toml`. `tonic_prost_build` regenerates `crates/libs/lib-rpc/src/generated/*.rs` from the `.proto` files on every build; the generated files are checked in but should be treated as build output, not hand-edited.
@@ -42,7 +45,7 @@ Binary crates live under `crates/bins/`, library crates under `crates/libs/`. Bi
 
 **`crates/bins/bin-sync-server`** (package `bin_sync_server`, binary `sync-server`) is the Sync Server — an active workspace member as of the [Sync Server feasibility](https://github.com/IanTeda/Personal-Ledger/issues/40) Wayfinder map. It wires a minimal `tonic` gRPC serve loop around `lib_rpc`'s stub `Ping` RPC; the real sync protocol, auth, and Docker packaging are still in progress (see that map's open tickets) — treat anything beyond the `Ping` RPC as not yet built.
 
-**`crates/libs/lib-database` is an active workspace member but currently fails `cargo build`/`cargo check` at the workspace root** without a live `DATABASE_URL` (or `SQLX_OFFLINE=true` against its checked-in `.sqlx` cache) for `sqlx`'s compile-time query macros — see the `sqlx-prepare`/`sqlx-prepare-check` tasks in the root `Makefile.toml` for the expected `DATABASE_URL`.
+**`crates/libs/lib-database` is an active workspace member but currently fails `cargo build`/`cargo check` at the workspace root** without a live `DATABASE_URL` (or `SQLX_OFFLINE=true` against its checked-in `.sqlx` cache) for `sqlx`'s compile-time query macros — see the `db-prepare-generate`/`db-prepare-check` tasks in the root `mise.toml` for the expected `DATABASE_URL`.
 
 - **`crates/bins/bin-sync-server`** — the Sync Server binary (package `bin_sync_server`, compiled binary `sync-server`, matching the `bin-tui`/`bin-desktop` naming convention). Thin `main.rs`: parses config via `lib_config`, initialises `lib_telemetry`, and serves the `lib_rpc` gRPC services (currently just the stub `Ping` RPC) over `tonic` on a hardcoded placeholder address. The real sync protocol, durable Change Set log, and auth are not yet built — see the [Sync Server feasibility](https://github.com/IanTeda/Personal-Ledger/issues/40) Wayfinder map.
 - **`crates/bins/bin-tui`** — package name `bin_tui`, but the compiled binary is `tui` (see its `[[bin]]` override) — end users shouldn't see the `bin_` prefix, it's a codebase-navigation convention only. Six screens from the "TUI App feasibility" Wayfinder map (GitHub issue #7, closed): line/doughnut/candlestick/divergent chart demos, a table demo (all dummy data), and a live screen against real `lib-database` data. Packaged non-root for all three OSes (Linux AppImage, macOS dmg, Windows portable zip) via `.github/workflows/build-publish-tui.yaml`; see `crates/bins/bin-tui/README.md`.

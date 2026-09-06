@@ -1,14 +1,14 @@
 # mise configuration for Personal Ledger.
 #
-# Installs and pins the toolchain this workspace needs. Run `mise install`
-# (or just `cd` into the repo with mise's shell hook active) to fetch
-# everything listed below. See https://mise.jdx.dev/.
+# Installs and pins the toolchain this workspace needs, and defines the project's dev tasks
+# (moved here from the former `Makefile.toml`/cargo-make setup). Run `mise install` (or just
+# `cd` into the repo with mise's shell hook active) to fetch everything listed below, and
+# `mise tasks` to list the tasks. See https://mise.jdx.dev/.
 
 [tools]
 rust = { version = "1.98.0", components = "clippy,rustfmt" }
 protoc = "36.0"
 mdbook = "0.5.4"
-"cargo:cargo-make" = "0.37.24"
 "cargo:sqlx-cli" = "0.9.0"
 "cargo:cargo-watch" = "8.5.3"
 "cargo:cargo-audit" = "0.22.2"
@@ -16,3 +16,78 @@ mdbook = "0.5.4"
 [env]
 RUST_BACKTRACE = "1"
 CARGO_TERM_COLOR = "always"
+
+
+# -------------------------------[TUI DEVELOPMENT]------------------------------
+
+[tasks.watch-tui]
+description = "Rebuild and rerun the TUI on file changes"
+run = "cargo watch -c -x 'run --package bin_tui --bin tui'"
+
+
+# -------------------------------[MD BOOK]--------------------------------------
+
+[tasks.docs-rustdoc]
+description = "Build Rust docs (with RUSTDOCFLAGS to set asset root)"
+env = { RUSTDOCFLAGS = "-Z unstable-options --static-root-path /rust-docs" }
+run = "cargo +nightly doc --no-deps --target-dir target/rustdoc"
+
+[tasks.docs-mdbook]
+description = "Build mdBook documentation"
+run = "mdbook build"
+
+[tasks.docs-build]
+description = "Build all documentation (rustdoc + mdBook)"
+run = "mise run docs-rustdoc && mise run docs-mdbook"
+
+[tasks.docs-serve]
+description = "Serve mdBook documentation on port 8001"
+run = "mdbook serve --port 8001"
+
+
+# -------------------------------[DATABASE]-------------------------------------
+
+[tasks.db-drop]
+description = "Drop the dev database"
+run = "sqlx database drop -y"
+
+[tasks.db-create]
+description = "Create the dev database"
+run = "sqlx database create"
+
+# Migrate database -- applies BOTH the Client-Ledger and Sync-Server migration sets to one
+# shared dev database, since `cargo sqlx prepare` type-checks every query macro in the crate
+# (categories, sync_users, change_sets alike) against a single DATABASE_URL. A real Client or
+# Sync Server instance only ever runs its own set at runtime, via the `sqlx::migrate!(...)`
+# path embedded in that binary -- see `bin-tui`/`bin-desktop` (`migrations/client`) vs
+# `bin-sync-server` (`migrations/sync-server`).
+[tasks.db-migrate-client]
+description = "Apply the Client-Ledger migrations"
+run = "sqlx migrate run --source crates/libs/lib-database/migrations/client"
+
+[tasks.db-migrate-sync-server]
+description = "Apply the Sync Server migrations"
+run = "sqlx migrate run --source crates/libs/lib-database/migrations/sync-server"
+
+[tasks.db-migrate]
+description = "Apply both the Client-Ledger and Sync-Server migration sets"
+run = "mise run db-migrate-client && mise run db-migrate-sync-server"
+
+# DATABASE_URL points at a dev SQLite file inside the repo (`{{config_root}}` is the
+# directory containing this mise.toml) so these tasks work regardless of where the repo is
+# checked out; the file itself is gitignored (`*.db`).
+[tasks.db-prepare-generate]
+description = "Regenerate the .sqlx query cache for lib-database"
+dir = "crates/libs/lib-database"
+env = { DATABASE_URL = "sqlite:{{config_root}}/.personal-ledger-dev.db" }
+run = "cargo sqlx prepare"
+
+[tasks.db-prepare-check]
+description = "Check the .sqlx query cache is up to date (run after db-prepare-generate)"
+dir = "crates/libs/lib-database"
+env = { DATABASE_URL = "sqlite:{{config_root}}/.personal-ledger-dev.db" }
+run = "cargo sqlx prepare --check"
+
+[tasks.db]
+description = "Reset the dev database: drop, create, migrate, then refresh the sqlx query cache"
+run = "mise run db-drop && mise run db-create && mise run db-migrate && mise run db-prepare-generate && mise run db-prepare-check"

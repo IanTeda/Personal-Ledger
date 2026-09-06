@@ -47,7 +47,7 @@ jobs:
 
       # Only mdBook is needed to build the docs, so install just that
       # prebuilt binary rather than the full mise-pinned toolchain (Rust,
-      # protoc, cargo-make, sqlx-cli, ...), and without a third-party Action.
+      # protoc, sqlx-cli, ...), and without a third-party Action.
       # Version is read from mise.toml so the two stay in sync without
       # hardcoding it twice.
       - name: Install mdBook
