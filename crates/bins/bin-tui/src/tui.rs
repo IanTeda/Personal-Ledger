@@ -7,8 +7,12 @@
 use std::io::{self, Stdout};
 
 use crossterm::{
+    event::{KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags},
     execute,
-    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{
+        EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+        supports_keyboard_enhancement,
+    },
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
 
@@ -18,6 +22,9 @@ pub type Backend = CrosstermBackend<Stdout>;
 /// Owns the terminal for the lifetime of the app, restoring it on drop.
 pub struct Tui {
     terminal: Terminal<Backend>,
+    /// Whether the keyboard enhancement flags below were actually pushed, so `Drop` only
+    /// pops what it pushed.
+    keyboard_enhancement: bool,
 }
 
 impl Tui {
@@ -26,13 +33,37 @@ impl Tui {
     /// *own* last draw, so without this, whatever the terminal emulator left in the alternate
     /// screen buffer (leftover output, a resize revealing untouched rows) can show through
     /// as stray artifacts until something else happens to redraw that exact cell.
+    ///
+    /// Also opts into the Kitty keyboard protocol's `DISAMBIGUATE_ESCAPE_CODES`, when the
+    /// terminal supports it: legacy terminal encoding reduces `Ctrl+;` to the same control
+    /// code as `Esc` (both are `0x1B`), which is exactly the combination the command palette
+    /// (`Shell`) binds — without this, `Ctrl+;` is unreliable on terminals that don't speak
+    /// the enhanced protocol at all (a plain `xterm`, most Linux VTs, some multiplexer
+    /// configurations). `supports_keyboard_enhancement` probes the terminal first so nothing
+    /// is pushed where it wouldn't be understood.
+    ///
+    /// This doesn't request `REPORT_ALTERNATE_KEYS` — `shell::is_open_palette` doesn't care
+    /// whether `Shift` was also held (physically producing `:` rather than `;`), so there's
+    /// no need for the terminal to disambiguate that.
     pub fn new() -> io::Result<Self> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
+
+        let keyboard_enhancement = supports_keyboard_enhancement().unwrap_or(false);
+        if keyboard_enhancement {
+            execute!(
+                stdout,
+                PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+            )?;
+        }
+
         let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
         terminal.clear()?;
-        Ok(Self { terminal })
+        Ok(Self {
+            terminal,
+            keyboard_enhancement,
+        })
     }
 
     /// Draws one frame via the given closure.
@@ -54,7 +85,11 @@ impl Tui {
 impl Drop for Tui {
     fn drop(&mut self) {
         // Best-effort: a failure here shouldn't panic during unwind (e.g. on a prior panic),
-        // so errors are swallowed rather than propagated.
+        // so errors are swallowed rather than propagated. Reverse setup order: pop the
+        // keyboard flags (if pushed) while still in the alternate screen, then leave it.
+        if self.keyboard_enhancement {
+            let _ = execute!(io::stdout(), PopKeyboardEnhancementFlags);
+        }
         let _ = disable_raw_mode();
         let _ = execute!(io::stdout(), LeaveAlternateScreen);
     }

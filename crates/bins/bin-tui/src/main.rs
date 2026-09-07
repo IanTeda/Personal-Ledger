@@ -7,6 +7,7 @@
 
 mod action;
 mod app;
+mod command_palette;
 mod db;
 mod event;
 mod screen;

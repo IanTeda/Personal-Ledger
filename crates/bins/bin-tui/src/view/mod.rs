@@ -14,6 +14,12 @@ use tokio::sync::mpsc::UnboundedSender;
 /// A message `Shell` or the active `View` reacts to. Deliberately minimal for now — the full
 /// action registry the command window will dispatch through (ADR-0013) is later work; this
 /// only needs enough to drive the event loop and let a `View` react to a tick.
+///
+/// The `Palette*` variants drive `Shell`'s own command window (`crate::command_palette`)
+/// rather than the active `View` — they exist here because `Shell`'s event loop only redraws
+/// in response to an `Action`, and every `View::update` implementation ignores variants it
+/// doesn't care about, so adding shell-chrome messages alongside `Quit`/`Tick` costs a `View`
+/// nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
     /// A periodic tick, driving redraws even without input.
@@ -21,6 +27,18 @@ pub enum Action {
     /// `Ctrl+C` — the hard-quit safety net, recognised by `Shell` itself before any `View`
     /// sees the key.
     Quit,
+    /// `Ctrl+;` — opens the command palette overlay.
+    OpenPalette,
+    /// `Esc`, or `Ctrl+;` again — closes the command palette overlay.
+    ClosePalette,
+    /// A printable character typed while the palette is open, appended to its input buffer.
+    PaletteInput(char),
+    /// `Backspace` while the palette is open — removes the last character of its input.
+    PaletteBackspace,
+    /// `↑` while the palette is open — moves the selection up one candidate row.
+    PaletteMoveUp,
+    /// `↓` while the palette is open — moves the selection down one candidate row.
+    PaletteMoveDown,
 }
 
 /// The single view `Shell` hosts at a time.
