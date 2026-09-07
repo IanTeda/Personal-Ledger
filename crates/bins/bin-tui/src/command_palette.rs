@@ -11,7 +11,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, Clear, Widget},
 };
 
@@ -98,6 +98,12 @@ const DIM: Color = Color::DarkGray;
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table.
 const ACCENT: Color = Color::Red;
 
+/// A darker grey than `DIM` for the footer hint row's labels (`select`, `complete`, …) — an
+/// explicit RGB value rather than a named/indexed colour, since `DIM`'s `Color::DarkGray`
+/// (like `Color::Black` before it) renders however the user's terminal theme happens to remap
+/// that palette slot, which isn't reliably "dark" on every theme.
+const FOOTER_LABEL: Color = Color::Rgb(90, 90, 90);
+
 /// Reference terminal width `docs/ux/tui/README.md` draws its wireframes against — the
 /// palette's fixed width below is computed from this rather than from whatever terminal the
 /// user happens to be running, so opening the palette looks the same at 96 columns and at
@@ -156,6 +162,7 @@ impl CommandPalette {
         let content_rows = 2 // prompt row + rule
             + CANDIDATES.len() as u16
             + 1 // argument preview
+            + 1 // rule above the footer
             + 1; // footer hint row
         let popup = popup_rect(area, content_rows + 2 /* borders */);
 
@@ -172,24 +179,24 @@ impl CommandPalette {
                 Constraint::Length(CANDIDATES.len() as u16),
                 Constraint::Length(1),
                 Constraint::Length(1),
+                Constraint::Length(1),
             ])
             .split(inner);
 
+        let rule = || Line::from("─".repeat(inner.width as usize));
         frame.render_widget(self.prompt_line(inner.width), rows[0]);
-        frame.render_widget(Line::from("─".repeat(inner.width as usize)), rows[1]);
+        frame.render_widget(rule(), rows[1]);
         self.render_candidates(frame, rows[2]);
         frame.render_widget(argument_preview_line(inner.width), rows[3]);
-        frame.render_widget(
-            Line::from("↑↓ select · tab complete · enter run · ^r history · esc close")
-                .style(Style::default().fg(DIM)),
-            rows[4],
-        );
+        frame.render_widget(rule(), rows[4]);
+        frame.render_widget(footer_hint_line(), rows[5]);
     }
 
-    /// The prompt row: `> {input}▌` flush left, match count right-aligned, per §3a's
-    /// `> bud▌ ... 7 of 62` example.
+    /// The prompt row: `:{input}▌` flush left, match count right-aligned — `:` rather than
+    /// §3a's own `>`, so the prompt itself signals that what's typed is a `:command`, per the
+    /// user's own ask.
     fn prompt_line(&self, width: u16) -> Line<'static> {
-        let left = format!("> {}▌", self.input);
+        let left = format!(":{}▌", self.input);
         let right = format!("{} of {TOTAL_ACTIONS}", CANDIDATES.len());
         Line::from(pad_between(&left, &right, width))
     }
@@ -236,9 +243,38 @@ fn argument_preview_line(width: u16) -> Line<'static> {
     let split_at = padded.len().saturating_sub(right.len());
     let (prefix, suffix) = padded.split_at(split_at);
     Line::from(vec![
-        ratatui::text::Span::styled(prefix.to_string(), Style::default().fg(DIM)),
-        ratatui::text::Span::styled(suffix.to_string(), Style::default().fg(ACCENT)),
+        Span::styled(prefix.to_string(), Style::default().fg(DIM)),
+        Span::styled(suffix.to_string(), Style::default().fg(ACCENT)),
     ])
+}
+
+/// The window footer hint row. A background fill turned out to depend on how the user's own
+/// terminal theme remaps indexed colours — it rendered invisibly there even though the cells
+/// carried the right SGR codes — so the rule `render` draws above this row is what actually
+/// separates it from the candidate list; each key is bold instead, which doesn't depend on
+/// the palette.
+fn footer_hint_line() -> Line<'static> {
+    const HINTS: &[(&str, &str)] = &[
+        ("↑↓", "select"),
+        ("tab", "complete"),
+        ("enter", "run"),
+        ("^r", "history"),
+        ("esc", "close"),
+    ];
+
+    let key_style = Style::default().add_modifier(Modifier::BOLD);
+    let label_style = Style::default().fg(FOOTER_LABEL);
+
+    let mut spans = Vec::with_capacity(HINTS.len() * 3);
+    for (idx, (key, label)) in HINTS.iter().enumerate() {
+        if idx > 0 {
+            spans.push(Span::raw("  "));
+        }
+        spans.push(Span::styled(*key, key_style));
+        spans.push(Span::raw(" "));
+        spans.push(Span::styled(*label, label_style));
+    }
+    Line::from(spans)
 }
 
 /// Pads `left` and `right` onto one line of exactly `width` cells, `right` flush to the far
