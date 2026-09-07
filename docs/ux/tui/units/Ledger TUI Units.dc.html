@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="_ds/modernist-4aa36bd2-9125-4b41-bcc8-a319ca5ae354/styles.css">
+<script src="_ds/modernist-4aa36bd2-9125-4b41-bcc8-a319ca5ae354/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+body{margin:0;background:var(--color-bg,#f3f2f2);color:var(--color-text,#201e1d);font-family:Archivo,system-ui,sans-serif}
+a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(--color-accent-700,#ae1800)}
+.dv-turn{padding:40px 44px 32px;border-bottom:2px solid rgba(32,30,29,.4);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+.dv-tid{font:700 10px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:#201e1d;color:#f3f2f2;text-decoration:none}
+.dv-tname{font:800 13px/1.2 Archivo,sans-serif;letter-spacing:-.01em}
+.dv-sub{font:400 11px/1.5 Archivo,sans-serif;color:#7d7979;margin:0 0 20px;max-width:78ch}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:700 10.5px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:rgba(32,30,29,.09);color:#201e1d;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.35 Archivo,sans-serif;color:#605d5d}
+.dv-olabel b{font-weight:800;color:#201e1d}
+.dv-card{max-width:100%;background:#fff;border:2px solid #201e1d;overflow:hidden}
+.dv-opt:target .dv-oid{background:#ec3013;color:#fff}
+.dv-next{margin:26px 0 0;font:400 11px/1.6 Archivo,sans-serif;color:#7d7979}
+.dv-rowhd{font:800 9.5px Archivo,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#7d7979;margin:34px 0 14px;padding-bottom:5px;border-bottom:2px solid rgba(32,30,29,.4)}
+/* ── terminal primitives ── */
+.t{background:#fff;color:#201e1d;font:400 11px/1.5 JetBrains Mono,ui-monospace,Menlo,monospace;display:flex;flex-direction:column}
+.tbar{display:flex;justify-content:space-between;gap:12px;background:#201e1d;color:#f3f2f2;padding:3px 8px;font-size:10px;letter-spacing:.03em}
+.tbar b{font-weight:700}
+.tabs{display:flex;gap:0;border-bottom:1px solid #bab6b6;font-size:10px;background:#f8f4f4}
+.tab{padding:3px 11px;color:#7d7979;border-right:1px solid #d7d3d3}
+.tab.on{background:#ec3013;color:#fff;font-weight:700}
+.tk{margin-top:auto;background:#eae7e7;border-top:1px solid #bab6b6;padding:3px 8px;font-size:10px;color:#605d5d;display:flex;gap:13px;flex-wrap:wrap}
+.k{background:#201e1d;color:#f3f2f2;padding:0 3px;margin-right:3px}
+.tbody{display:flex;min-height:0;flex:1}
+.sb{width:172px;flex:none;border-right:1px solid #bab6b6;padding:6px 8px}
+.pane{flex:1;min-width:0;padding:7px 9px}
+.pane+.pane{border-left:1px solid #bab6b6}
+.hd{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#7d7979;border-bottom:1px solid #d7d3d3;padding-bottom:2px;margin:0 0 5px;display:flex;justify-content:space-between}
+.hd.tight{margin-top:9px}
+.row{display:grid;gap:7px;padding:.5px 0;align-items:baseline}
+.sel{background:#201e1d;color:#f3f2f2;margin:0 -9px;padding:.5px 9px}
+.sel .mut,.sel .neg{color:#ffc4b8}
+.mut{color:#9b9797}.neg{color:#ec3013}.pos{color:#201e1d}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+.box{border:1px solid #bab6b6;padding:5px 7px}
+.box.foc{border:2px solid #ec3013;padding:4px 6px}
+.big{font:700 22px/1.1 JetBrains Mono,monospace;letter-spacing:-.02em}
+.cells{display:grid;gap:0;border:1px solid #bab6b6}
+.cells>div{padding:5px 7px;border-right:1px solid #d7d3d3}
+.cells>div:last-child{border-right:0}
+.lab{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#7d7979}
+.lc{display:flex;align-items:flex-end;gap:1px;height:66px;margin:4px 0 2px}
+.lcb{flex:1;border-top:2px solid #ec3013;min-height:2px}
+.lcb.g{border-top-color:#bab6b6}
+.dnt{width:88px;height:88px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center}
+.dnt>i{width:46px;height:46px;border-radius:50%;background:#fff;display:block}
+.sw{width:8px;height:8px;display:inline-block;margin-right:5px}
+.bn{background:#ec3013;height:9px;display:block}
+.bp{background:#201e1d;height:9px;display:block}
+.cs{display:flex;align-items:stretch;gap:3px;height:84px;margin:4px 0}
+.csc{position:relative;flex:1}
+.csw{position:absolute;left:50%;width:1px;background:#605d5d;transform:translateX(-50%)}
+.csb{position:absolute;left:1px;right:1px;border:1px solid #201e1d;background:#fff}
+.csb.d{background:#ec3013;border-color:#ec3013}
+.bt{position:relative;height:10px;background:#eae7e7;flex:1}
+.btf{position:absolute;left:0;top:0;bottom:0;background:#9b9797}
+.btf.ov{background:#ec3013}
+.btm{position:absolute;top:-3px;bottom:-3px;width:1px;background:#201e1d}
+.cmd{border-top:2px solid #201e1d;padding:3px 8px;font-size:11px;background:#f8f4f4}
+.cmd i{background:#ec3013;color:#fff;font-style:normal;padding:0 2px}
+.ovl{border:2px solid #201e1d;background:#fff;box-shadow:8px 8px 0 rgba(32,30,29,.14)}
+.note{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#ec3013}
+/* dark terminal variant */
+.dk .t{background:#161413;color:#eae7e7}
+.dk .dv-card,.dk.dv-card{border-color:#201e1d}
+.dk .tk{background:#201e1d;border-top-color:#444141;color:#9b9797}
+.dk .tabs{background:#201e1d;border-bottom-color:#444141}
+.dk .sb,.dk .pane+.pane{border-color:#444141}
+.dk .hd{border-bottom-color:#444141;color:#9b9797}
+.dk .box{border-color:#605d5d}
+.dk .sel{background:#eae7e7;color:#161413}
+.dk .sel .mut,.dk .sel .neg{color:#ae1800}
+.dk .mut{color:#7d7979}.dk .pos{color:#eae7e7}
+.dk .cells,.dk .cells>div{border-color:#444141}
+.dk .dnt>i{background:#161413}
+.dk .csb{border-color:#eae7e7;background:#161413}
+.dk .bp{background:#eae7e7}
+.dk .bt{background:#2c2928}
+.dk .btf{background:#605d5d}
+.dk .btm{background:#eae7e7}
+.dk .cmd{background:#201e1d;border-top-color:#605d5d}
+.dk .ovl{background:#161413;border-color:#eae7e7}
+.dk .lcb.g{border-top-color:#605d5d}
+</style></helmet>
+
+<section class="dv-turn {{ themeClass }}" id="t4">
+<div class="dv-thd"><a class="dv-tid" href="#t4">4</a><span class="dv-tname">Units screen &amp; unit popups</span></div>
+<p class="dv-sub">Unit list left, summary of the highlighted unit under it, weekly price history right — <code>j/k</code> scrolls the 52 weeks, <code>[</code> pages back another twelve months. Then the add, edit and delete overlays; delete exists in two states because it is only offered when nothing references the unit.</p>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="4a">
+<div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a><span><b>Units.</b> Highlighted unit drives both the summary box and the price history.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; units / VDHG</span><span>6 units &nbsp;·&nbsp; base AUD &nbsp;·&nbsp; ✓ 14:02</span></div>
+  <div class="tbody">
+    <div class="pane" style="flex:none;width:238px">
+      <div class="hd">units <span>6 of 6</span></div>
+      <div class="row" style="grid-template-columns:46px 1fr 62px"><span class="mut">CODE</span><span class="mut">TYPE</span><span class="mut n">LAST</span></div>
+      <div class="row" style="grid-template-columns:46px 1fr 62px"><span>AUD</span><span class="mut">currency · base</span><span class="n mut">1.0000</span></div>
+      <div class="row" style="grid-template-columns:46px 1fr 62px"><span>USD</span><span class="mut">currency</span><span class="n mut">0.6612</span></div>
+      <div class="row sel" style="grid-template-columns:46px 1fr 62px"><span>VDHG</span><span>etf</span><span class="n">72.41</span></div>
+      <div class="row" style="grid-template-columns:46px 1fr 62px"><span>VAS</span><span class="mut">etf</span><span class="n mut">104.82</span></div>
+      <div class="row" style="grid-template-columns:46px 1fr 62px"><span>BTC</span><span class="mut">crypto</span><span class="n mut">168 402</span></div>
+      <div class="row" style="grid-template-columns:46px 1fr 62px"><span class="mut">AAPL</span><span class="mut">share · inactive</span><span class="n mut">341.06</span></div>
+      <div class="hd tight">summary <span class="note">e edit</span></div>
+      <div class="box" style="padding:5px 7px">
+        <div class="row" style="grid-template-columns:1fr auto;padding:0"><span style="font-weight:700">VDHG</span><span class="mut">etf</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span class="mut">Vanguard Diversified High Growth</span></div>
+        <div class="row" style="grid-template-columns:66px 1fr"><span class="mut">symbol</span><span>VDHG.AX</span></div>
+        <div class="row" style="grid-template-columns:66px 1fr"><span class="mut">precision</span><span>3 <span class="mut">· price 4</span></span></div>
+        <div class="row" style="grid-template-columns:66px 1fr"><span class="mut">priced in</span><span>AUD</span></div>
+        <div class="row" style="grid-template-columns:66px 1fr"><span class="mut">source</span><span class="mut">manual entry</span></div>
+        <div class="row" style="grid-template-columns:66px 1fr"><span class="mut">last price</span><span>72.41 <span class="mut">· 31 aug</span></span></div>
+        <div class="row" style="grid-template-columns:66px 1fr"><span class="mut">52w range</span><span>64.18 – 73.90</span></div>
+        <div class="row" style="grid-template-columns:66px 1fr"><span class="mut">accounts</span><span>1 <span class="mut">· Index Fund</span></span></div>
+        <div class="row" style="grid-template-columns:66px 1fr"><span class="mut">holdings</span><span>561.204</span></div>
+        <div class="row" style="grid-template-columns:66px 1fr;border-top:1px solid #d7d3d3;margin-top:3px;padding-top:3px"><span class="mut">value</span><span style="font-weight:700">40 637.79 <span class="mut">AUD</span></span></div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="hd">weekly close &nbsp;·&nbsp; VDHG <span>sep 25 – sep 26 · candlestick</span></div>
+      <div class="cs" style="height:48px">
+        <div class="csc"><i class="csw" style="top:44%;height:44%"></i><i class="csb" style="top:56%;height:24%"></i></div>
+        <div class="csc"><i class="csw" style="top:40%;height:46%"></i><i class="csb d" style="top:52%;height:22%"></i></div>
+        <div class="csc"><i class="csw" style="top:46%;height:42%"></i><i class="csb" style="top:58%;height:20%"></i></div>
+        <div class="csc"><i class="csw" style="top:36%;height:48%"></i><i class="csb" style="top:46%;height:26%"></i></div>
+        <div class="csc"><i class="csw" style="top:38%;height:44%"></i><i class="csb d" style="top:48%;height:24%"></i></div>
+        <div class="csc"><i class="csw" style="top:30%;height:50%"></i><i class="csb" style="top:40%;height:28%"></i></div>
+        <div class="csc"><i class="csw" style="top:34%;height:46%"></i><i class="csb" style="top:44%;height:22%"></i></div>
+        <div class="csc"><i class="csw" style="top:26%;height:52%"></i><i class="csb" style="top:36%;height:28%"></i></div>
+        <div class="csc"><i class="csw" style="top:32%;height:44%"></i><i class="csb d" style="top:42%;height:20%"></i></div>
+        <div class="csc"><i class="csw" style="top:22%;height:54%"></i><i class="csb" style="top:32%;height:30%"></i></div>
+        <div class="csc"><i class="csw" style="top:18%;height:50%"></i><i class="csb" style="top:28%;height:26%"></i></div>
+        <div class="csc"><i class="csw" style="top:24%;height:46%"></i><i class="csb d" style="top:34%;height:22%"></i></div>
+        <div class="csc"><i class="csw" style="top:14%;height:52%"></i><i class="csb" style="top:24%;height:28%"></i></div>
+        <div class="csc"><i class="csw" style="top:10%;height:56%"></i><i class="csb" style="top:20%;height:32%"></i></div>
+        <div class="csc"><i class="csw" style="top:16%;height:48%"></i><i class="csb d" style="top:26%;height:24%"></i></div>
+        <div class="csc"><i class="csw" style="top:8%;height:54%"></i><i class="csb" style="top:18%;height:30%"></i></div>
+        <div class="csc"><i class="csw" style="top:12%;height:50%"></i><i class="csb" style="top:22%;height:26%"></i></div>
+        <div class="csc"><i class="csw" style="top:6%;height:58%"></i><i class="csb" style="top:14%;height:34%"></i></div>
+        <div class="csc"><i class="csw" style="top:4%;height:52%"></i><i class="csb" style="top:12%;height:28%"></i></div>
+        <div class="csc"><i class="csw" style="top:10%;height:46%"></i><i class="csb d" style="top:18%;height:22%"></i></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr auto auto;gap:12px;padding-bottom:2px"><span class="mut">sep 25 &nbsp;64.18</span><span class="mut">mar 26</span><span class="mut">sep 26 &nbsp;72.41</span></div>
+      <div class="hd tight">weekly prices <span>52 weeks · w/c monday</span></div>
+      <div style="display:flex;gap:14px">
+        <div style="flex:1">
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">W/C</span><span class="mut n">CLOSE</span><span class="mut n">Δ%</span></div>
+          <div class="row sel" style="grid-template-columns:50px 56px 46px"><span>31 aug</span><span class="n">72.41</span><span class="n">+0.42</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span>24 aug</span><span class="n mut">72.11</span><span class="n neg">−0.61</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span>17 aug</span><span class="n mut">72.55</span><span class="n mut">+1.08</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span>10 aug</span><span class="n mut">71.78</span><span class="n mut">+0.94</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span>03 aug</span><span class="n mut">71.11</span><span class="n neg">−0.28</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span>27 jul</span><span class="n mut">71.31</span><span class="n mut">+1.44</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span>20 jul</span><span class="n mut">70.30</span><span class="n mut">+0.63</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span>13 jul</span><span class="n mut">69.86</span><span class="n neg">−0.90</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span>06 jul</span><span class="n mut">70.49</span><span class="n mut">+2.11</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span>29 jun</span><span class="n mut">69.03</span><span class="n mut">+0.34</span></div>
+        </div>
+        <div style="flex:1">
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">W/C</span><span class="mut n">CLOSE</span><span class="mut n">Δ%</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">22 jun</span><span class="n mut">68.80</span><span class="n neg">−1.26</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">15 jun</span><span class="n mut">69.68</span><span class="n mut">+0.72</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">08 jun</span><span class="n mut">69.18</span><span class="n mut">+1.03</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">01 jun</span><span class="n mut">68.47</span><span class="n neg">−0.44</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">25 may</span><span class="n mut">68.77</span><span class="n mut">+1.61</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">18 may</span><span class="n mut">67.68</span><span class="n mut">+0.55</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">11 may</span><span class="n mut">67.31</span><span class="n neg">−0.73</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">04 may</span><span class="n mut">67.80</span><span class="n mut">+1.19</span></div>
+          <div class="row" style="grid-template-columns:50px 56px 46px"><span class="mut">— 33 earlier weeks —</span><span></span><span></span></div>
+        </div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr auto;border-top:1px solid #d7d3d3;margin-top:3px;padding-top:3px"><span class="mut">showing 19 of 52 · <span class="k">j/k</span>scroll</span><span class="mut"><span class="k">[</span>sep 24 – sep 25 &nbsp;<span class="k">]</span>forward</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:4px"><span class="mut">:unit new &lt;code&gt; &lt;type&gt; &lt;precision&gt; &nbsp;— add a unit</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">:unit edit VDHG &nbsp;— name, symbol, precision, active</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">:price set VDHG &lt;date&gt; &lt;close&gt; &nbsp;·&nbsp; :price import &lt;path.csv&gt;</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>unit</span><span><span class="k">tab</span>list↔prices</span><span><span class="k">n</span>new unit</span><span><span class="k">e</span>edit</span><span><span class="k">p</span>set price</span><span><span class="k">I</span>import csv</span><span><span class="k">[</span>earlier 12m</span></div>
+</div>
+</div>
+</div>
+
+
+
+
+<div class="dv-opt" id="4b">
+<div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a><span><b>Add.</b> <code>:unit new</code> — code and price precision are fixed at creation.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:380px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; units</span><span>INSERT &nbsp;·&nbsp; new unit</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">units <span>6 of 6</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span class="mut">CODE</span><span class="mut">TYPE</span><span class="mut n">LAST</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>AUD</span><span class="mut">currency · base</span><span class="n mut">1.0000</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>USD</span><span class="mut">currency</span><span class="n mut">0.6612</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>VDHG</span><span class="mut">etf</span><span class="n mut">72.41</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>VAS</span><span class="mut">etf</span><span class="n mut">104.82</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>BTC</span><span class="mut">crypto</span><span class="n mut">168 402</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:15%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>new unit</span><span class="mut">:unit new</span></div>
+    <div style="padding:4px 8px">
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">code</span><span>VGS<span class="neg">▌</span> <span class="mut">· uppercase, unique, permanent</span></span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">name</span><span class="mut">Vanguard Intl Shares Index ETF</span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">type</span><span>currency <span style="background:#201e1d;color:#fff;padding:0 4px">etf</span> share crypto <span class="mut">· ←→</span></span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">symbol</span><span class="mut">VGS.AX &nbsp;· optional, for your own reference</span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">priced in</span><span>AUD <span class="mut">· tab to pick another unit</span></span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">qty precision</span><span>3 <span class="mut">· decimals held</span></span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">price precision</span><span>4 <span class="mut">· permanent</span></span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">active</span><span>[×]</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 1px"><span class="note">code and price precision cannot change once a price or transaction exists</span></div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">tab</span>next field</span><span><span class="k">^s</span>create</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close unit form</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="4c">
+<div class="dv-olabel"><a class="dv-oid" href="#4c">4c</a><span><b>Edit.</b> <code>:unit edit VDHG</code> — locked fields shown, not hidden; precision changes warn.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:380px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; units / VDHG</span><span>INSERT &nbsp;·&nbsp; edit unit</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">units <span>6 of 6</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span class="mut">CODE</span><span class="mut">TYPE</span><span class="mut n">LAST</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>AUD</span><span class="mut">currency · base</span><span class="n mut">1.0000</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>USD</span><span class="mut">currency</span><span class="n mut">0.6612</span></div>
+    <div class="row sel" style="grid-template-columns:46px 1fr 62px"><span>VDHG</span><span>etf</span><span class="n">72.41</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>VAS</span><span class="mut">etf</span><span class="n mut">104.82</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>BTC</span><span class="mut">crypto</span><span class="n mut">168 402</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:9%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>edit unit</span><span class="mut">1 account · 412 txns · 52 prices</span></div>
+    <div style="padding:4px 8px">
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">code</span><span class="mut">VDHG &nbsp;🔒 referenced by 412 transactions</span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">name</span><span>Vanguard Diversified High Growth<span class="neg">▌</span></span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">type</span><span class="mut">etf &nbsp;🔒 fixed while prices exist</span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">symbol</span><span>VDHG.AX</span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">priced in</span><span class="mut">AUD &nbsp;🔒</span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">qty precision</span><span>3 → 2 <span class="neg">·</span> <span class="mut">was 3</span></span></div>
+      <div class="row" style="grid-template-columns:74px 1fr;padding:1px 0"><span class="mut">active</span><span>[×] <span class="mut">· clear to hide from pickers, keeps history</span></span></div>
+      <div class="box foc" style="margin:4px 0 1px;padding:3px 5px"><div class="row" style="grid-template-columns:1fr;padding:0"><span class="neg">lowering precision rounds 1 holding: 561.204 → 561.20</span></div><div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">transactions are not rewritten — the rounding applies to display and new entry</span></div></div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">tab</span>next field</span><span><span class="k">^s</span>save</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close unit form</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="4d">
+<div class="dv-olabel"><a class="dv-oid" href="#4d">4d</a><span><b>Delete — refused.</b> Transactions reference the unit, so the only offer is deactivate.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:380px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; units / VDHG</span><span>delete blocked</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">units <span>6 of 6</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span class="mut">CODE</span><span class="mut">TYPE</span><span class="mut n">LAST</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>AUD</span><span class="mut">currency · base</span><span class="n mut">1.0000</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>USD</span><span class="mut">currency</span><span class="n mut">0.6612</span></div>
+    <div class="row sel" style="grid-template-columns:46px 1fr 62px"><span>VDHG</span><span>etf</span><span class="n">72.41</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>VAS</span><span class="mut">etf</span><span class="n mut">104.82</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>BTC</span><span class="mut">crypto</span><span class="n mut">168 402</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:19%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span class="neg">cannot delete VDHG</span><span class="mut">:unit delete</span></div>
+    <div style="padding:5px 8px">
+      <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span>a unit can only be deleted when nothing references it.</span></div>
+      <div class="row" style="grid-template-columns:96px 1fr"><span class="mut">transactions</span><span class="neg">412 <span class="mut">· Index Fund</span></span></div>
+      <div class="row" style="grid-template-columns:96px 1fr"><span class="mut">accounts</span><span class="neg">1 <span class="mut">· Index Fund (unit fixed at creation)</span></span></div>
+      <div class="row" style="grid-template-columns:96px 1fr"><span class="mut">prices</span><span class="mut">52 weekly closes</span></div>
+      <div class="row" style="grid-template-columns:96px 1fr"><span class="mut">budgets</span><span class="mut">none</span></div>
+      <div class="box" style="margin:5px 0 1px;padding:4px 6px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span><span class="k">x</span>deactivate instead <span class="mut">— hides VDHG from pickers, keeps every record</span></span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">to delete: reassign or remove the 412 transactions first</span></div>
+      </div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">x</span>deactivate</span><span><span class="k">enter</span>show the 412 txns</span><span><span class="k">esc</span>close</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close dialog</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="4e">
+<div class="dv-olabel"><a class="dv-oid" href="#4e">4e</a><span><b>Delete — allowed.</b> Nothing references it; typing the code is the confirm.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:380px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; units / AAPL</span><span>confirm delete</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">units <span>6 of 6</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span class="mut">CODE</span><span class="mut">TYPE</span><span class="mut n">LAST</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>VDHG</span><span class="mut">etf</span><span class="n mut">72.41</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>VAS</span><span class="mut">etf</span><span class="n mut">104.82</span></div>
+    <div class="row" style="grid-template-columns:46px 1fr 62px"><span>BTC</span><span class="mut">crypto</span><span class="n mut">168 402</span></div>
+    <div class="row sel" style="grid-template-columns:46px 1fr 62px"><span>AAPL</span><span>share · inactive</span><span class="n">341.06</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:19%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>delete AAPL</span><span class="mut">:unit delete</span></div>
+    <div style="padding:5px 8px">
+      <div class="row" style="grid-template-columns:96px 1fr"><span class="mut">transactions</span><span>0 <span class="mut">· safe to delete</span></span></div>
+      <div class="row" style="grid-template-columns:96px 1fr"><span class="mut">accounts</span><span>0</span></div>
+      <div class="row" style="grid-template-columns:96px 1fr"><span class="mut">prices</span><span>18 weekly closes <span class="neg">· deleted with the unit</span></span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:4px 0 2px"><span>this removes the unit and its price history. it cannot be undone.</span></div>
+      <div class="box foc" style="margin:2px 0 1px;padding:4px 6px">
+        <div class="row" style="grid-template-columns:auto 1fr;padding:0"><span class="mut">type the code</span><span>AAPL<span class="neg">▌</span></span></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0"><span class="mut">keeping the history instead? <span class="k">x</span>deactivate</span></div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">^s</span>delete</span><span><span class="k">x</span>deactivate</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close dialog</span></div>
+</div>
+</div>
+</div>
+
+
+</div>
+<p class="dv-next">Try next: "the <code>:price set</code> and <code>:price import</code> overlays" · "same delete-guard pattern for accounts and categories" · "the currency variant, no price series"</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;terminal&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;\&quot;light\&quot; | \&quot;dark\&quot;&quot;,&quot;section&quot;:&quot;Wireframe&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: (this.props.terminal ?? "light") === "dark" ? "dk" : "" };
+  }
+}
+</script>
+</body>
+</html>
