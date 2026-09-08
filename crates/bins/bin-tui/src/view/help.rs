@@ -1,5 +1,5 @@
 //! The Help `View`, hosted by `Shell` (ADR-0013). Wireframe stage: a single bordered box
-//! proving the navigation path — the command palette's `help` entry and the global `?` key
+//! proving the navigation path — the command popup's `help` entry and the global `?` key
 //! both land here — before the real `:help` browse-every-command content is built out.
 
 use ratatui::{Frame, layout::Rect, widgets::Block};

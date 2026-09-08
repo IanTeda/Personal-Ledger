@@ -1,4 +1,4 @@
-//! The command list the palette renders — grounded in what `crate::screen` actually
+//! The command list the command popup renders — grounded in what `crate::screen` actually
 //! implements today (Units, Categories, Accounts, Transactions, Payees, Balance Checks,
 //! Budgets, Reports, CSV import), grouped one file per domain, rather than
 //! `docs/ux/tui/README.md`'s aspirational grammar where nothing yet backs it (`sync`,
@@ -64,13 +64,13 @@ pub struct Command {
     pub description: &'static str,
 }
 
-/// One domain's commands, grouped for the palette's resting-state list.
+/// One domain's commands, grouped for the command popup's resting-state list.
 pub struct Domain {
     pub name: &'static str,
     pub commands: &'static [Command],
 }
 
-/// Every domain, Dashboard first then alphabetical — the palette's resting-state order.
+/// Every domain, Dashboard first then alphabetical — the command popup's resting-state order.
 pub const DOMAINS: &[Domain] = &[
     Domain {
         name: "Dashboard",
@@ -114,13 +114,13 @@ pub const DOMAINS: &[Domain] = &[
     },
 ];
 
-/// Total command count across every domain, for the palette's match-count row.
+/// Total command count across every domain, for the command popup's match-count row.
 pub fn total_commands() -> usize {
     DOMAINS.iter().map(|domain| domain.commands.len()).sum()
 }
 
 /// Every command with its owning domain's name, in `DOMAINS` order — the flat shape a
-/// filtered (non-resting) palette view renders from.
+/// filtered (non-resting) command popup view renders from.
 pub fn all() -> impl Iterator<Item = (&'static str, &'static Command)> {
     DOMAINS.iter().flat_map(|domain| {
         domain

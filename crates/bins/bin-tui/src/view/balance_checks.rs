@@ -1,5 +1,5 @@
 //! The Balance Checks `View`, hosted by `Shell` (ADR-0013). Wireframe stage: a single
-//! bordered box proving the navigation path — the command palette's `check list` entry and
+//! bordered box proving the navigation path — the command popup's `check list` entry and
 //! the global `g k` jump chord both land here — before any real list/detail content is built
 //! out.
 

@@ -1,7 +1,10 @@
-//! The command palette — the shell's own floating command window (`docs/ux/tui/README.md`
-//! §3a), opened with `Ctrl+;` from anywhere. `view/mod.rs` calls this out as later work over
-//! the `View` trait: the palette overlays whatever `View` is active rather than being one
-//! itself, so `Shell` owns it directly instead of hosting it through `View`.
+//! The command popup — the shell's own floating command window (`docs/ux/tui/README.md` §3a,
+//! where it's specified as the "command palette"), opened with `Ctrl+;` from anywhere.
+//! `view/mod.rs` calls this out as later work over the `View` trait: the popup overlays
+//! whatever `View` is active rather than being one itself, so `Shell` owns it directly instead
+//! of hosting it through `View`. It is the first tenant of `crate::popup` — the unit add/edit/
+//! delete dialogs (`docs/ux/tui/units/README.md` "The forms") are next, sharing its `Dim`
+//! overlay treatment.
 //!
 //! The command list itself (`commands`) is real, grouped by domain — `docs/ux/tui/
 //! README.md`'s action registry (args/effect resolvers, `:help`/footer/keymap generation,
@@ -15,7 +18,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Line,
-    widgets::{Block, Clear, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget},
+    widgets::{Block, Clear, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
 /// Dim colour for hint text and secondary detail, matching `ACCENT`'s siblings in
@@ -29,19 +32,19 @@ const DIM: Color = Color::DarkGray;
 const FOOTER_LABEL: Color = Color::Rgb(90, 90, 90);
 
 /// Reference terminal width `docs/ux/tui/README.md` draws its wireframes against — the
-/// palette's fixed width below is computed from this rather than from whatever terminal the
-/// user happens to be running, so opening the palette looks the same at 96 columns and at
+/// popup's fixed width below is computed from this rather than from whatever terminal the
+/// user happens to be running, so opening the popup looks the same at 96 columns and at
 /// 300.
 const REFERENCE_TERMINAL_WIDTH: u16 = 96;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes — back to §3a's own suggested ~78%
 /// after a narrower value read too cramped in practice.
-const PALETTE_WIDTH_PERCENT: u32 = 78;
+const POPUP_WIDTH_PERCENT: u32 = 78;
 
-/// The palette's fixed width in terminal cells: computed once against the reference width
+/// The popup's fixed width in terminal cells: computed once against the reference width
 /// above, not recomputed from the live terminal on every resize, so a wider terminal no
 /// longer grows the popup — only a narrower one shrinks it (`popup_rect`).
-const PALETTE_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * PALETTE_WIDTH_PERCENT) / 100) as u16;
+const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 
 /// Blank cells between the `:command`, `<binding>` and description columns.
 const COLUMN_GAP: usize = 2;
@@ -60,18 +63,18 @@ enum Row {
     },
 }
 
-/// State for the floating command palette: its input buffer and candidate selection.
-/// `Shell` holds this as `Option<CommandPalette>` — `Some` while the window is open.
+/// State for the floating command popup: its input buffer and candidate selection.
+/// `Shell` holds this as `Option<CommandPopup>` — `Some` while the window is open.
 #[derive(Default)]
-pub struct CommandPalette {
+pub struct CommandPopup {
     input: String,
     /// Index into the *selectable* rows only (headers are skipped), not the row list's own
     /// index — so it stays meaningful whether or not headers are showing.
     selected: usize,
 }
 
-impl CommandPalette {
-    /// Opens a fresh palette with an empty input buffer.
+impl CommandPopup {
+    /// Opens a fresh popup with an empty input buffer.
     pub fn new() -> Self {
         Self::default()
     }
@@ -369,14 +372,14 @@ const MAX_HEIGHT_DENOMINATOR: u16 = 5;
 const MAX_HEIGHT_EXTRA_ROWS: u16 = 2;
 
 /// Computes a centred popup `Rect` of the given content height, anchored in `area`'s top
-/// third. Width is `PALETTE_WIDTH`, fixed regardless of terminal size — it does not grow on a
+/// third. Width is `POPUP_WIDTH`, fixed regardless of terminal size — it does not grow on a
 /// wider terminal — except when `area` itself is narrower, where it shrinks to fit rather
 /// than overflow. Height is capped to `MAX_HEIGHT_NUMERATOR`/`MAX_HEIGHT_DENOMINATOR` of the
 /// space below the anchor plus `MAX_HEIGHT_EXTRA_ROWS`, so a long resting-state list scrolls
 /// rather than overflowing — short content (a tight filter match) still shrinks below that
 /// cap rather than padding out to it.
 fn popup_rect(area: Rect, height: u16) -> Rect {
-    let width = PALETTE_WIDTH.min(area.width);
+    let width = POPUP_WIDTH.min(area.width);
     let x = area.x + (area.width.saturating_sub(width)) / 2;
 
     let y = area.y + (area.height / 3).max(1);
@@ -426,82 +429,71 @@ fn render_scrollbar(
     frame.render_stateful_widget(scrollbar, track, &mut state);
 }
 
-/// A widget that dims an already-drawn area of the buffer without touching its colours,
-/// so the view behind the palette "stays visible and heavily dimmed", per §3a — `Buffer` has
-/// no public per-cell mutation outside the `Widget`/render path, so this goes through one.
-pub struct Dim;
-
-impl Widget for Dim {
-    fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
-        buf.set_style(area, Style::default().add_modifier(Modifier::DIM));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn typing_appends_to_the_input_buffer() {
-        let mut palette = CommandPalette::new();
-        palette.push_char('b');
-        palette.push_char('u');
-        palette.push_char('d');
-        assert_eq!(palette.input, "bud");
+        let mut popup = CommandPopup::new();
+        popup.push_char('b');
+        popup.push_char('u');
+        popup.push_char('d');
+        assert_eq!(popup.input, "bud");
     }
 
     #[test]
     fn backspace_removes_the_last_character() {
-        let mut palette = CommandPalette::new();
-        palette.push_char('b');
-        palette.backspace();
-        assert_eq!(palette.input, "");
+        let mut popup = CommandPopup::new();
+        popup.push_char('b');
+        popup.backspace();
+        assert_eq!(popup.input, "");
     }
 
     #[test]
     fn backspace_on_empty_input_does_not_panic() {
-        let mut palette = CommandPalette::new();
-        palette.backspace();
-        assert_eq!(palette.input, "");
+        let mut popup = CommandPopup::new();
+        popup.backspace();
+        assert_eq!(popup.input, "");
     }
 
     #[test]
     fn selection_is_clamped_to_every_command_at_rest() {
-        let mut palette = CommandPalette::new();
-        palette.move_up();
-        assert_eq!(palette.selected, 0);
+        let mut popup = CommandPopup::new();
+        popup.move_up();
+        assert_eq!(popup.selected, 0);
 
         for _ in 0..commands::total_commands() + 5 {
-            palette.move_down();
+            popup.move_down();
         }
-        assert_eq!(palette.selected, commands::total_commands() - 1);
+        assert_eq!(popup.selected, commands::total_commands() - 1);
     }
 
     #[test]
     fn typing_filters_to_matching_commands_only() {
-        let mut palette = CommandPalette::new();
+        let mut popup = CommandPopup::new();
         for c in "unit".chars() {
-            palette.push_char(c);
+            popup.push_char(c);
         }
-        let count = palette.selectable_count();
+        let count = popup.selectable_count();
         assert!(count > 0);
         assert!(count < commands::total_commands());
     }
 
     #[test]
     fn typing_resets_the_selection() {
-        let mut palette = CommandPalette::new();
-        palette.move_down();
-        palette.move_down();
-        assert_eq!(palette.selected, 2);
-        palette.push_char('u');
-        assert_eq!(palette.selected, 0);
+        let mut popup = CommandPopup::new();
+        popup.move_down();
+        popup.move_down();
+        assert_eq!(popup.selected, 2);
+        popup.push_char('u');
+        assert_eq!(popup.selected, 0);
     }
 
     #[test]
     fn resting_rows_include_a_header_per_domain() {
-        let palette = CommandPalette::new();
-        let rows = palette.rows();
+        let popup = CommandPopup::new();
+        let rows = popup.rows();
         let header_count = rows
             .iter()
             .filter(|row| matches!(row, Row::Header(_)))
@@ -511,9 +503,9 @@ mod tests {
 
     #[test]
     fn filtered_rows_have_no_headers() {
-        let mut palette = CommandPalette::new();
-        palette.push_char('u');
-        let rows = palette.rows();
+        let mut popup = CommandPopup::new();
+        popup.push_char('u');
+        let rows = popup.rows();
         assert!(rows.iter().all(|row| matches!(row, Row::Entry { .. })));
     }
 
@@ -546,13 +538,13 @@ mod tests {
     fn popup_width_does_not_grow_with_a_wider_terminal() {
         let narrow = popup_rect(Rect::new(0, 0, 96, 30), 11);
         let wide = popup_rect(Rect::new(0, 0, 300, 30), 11);
-        assert_eq!(narrow.width, PALETTE_WIDTH);
-        assert_eq!(wide.width, PALETTE_WIDTH);
+        assert_eq!(narrow.width, POPUP_WIDTH);
+        assert_eq!(wide.width, POPUP_WIDTH);
     }
 
     #[test]
     fn popup_width_shrinks_to_fit_a_terminal_narrower_than_the_fixed_width() {
-        let area = Rect::new(0, 0, PALETTE_WIDTH - 5, 30);
+        let area = Rect::new(0, 0, POPUP_WIDTH - 5, 30);
         let popup = popup_rect(area, 11);
         assert_eq!(popup.width, area.width);
     }
@@ -561,25 +553,25 @@ mod tests {
     fn renders_without_panicking_at_rest() {
         use ratatui::{Terminal, backend::TestBackend};
 
-        let palette = CommandPalette::new();
+        let popup = CommandPopup::new();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| palette.render(frame, frame.area()))
-            .expect("rendering the palette should not error");
+            .draw(|frame| popup.render(frame, frame.area()))
+            .expect("rendering the popup should not error");
     }
 
     #[test]
     fn renders_without_panicking_while_filtering() {
         use ratatui::{Terminal, backend::TestBackend};
 
-        let mut palette = CommandPalette::new();
-        palette.push_char('u');
+        let mut popup = CommandPopup::new();
+        popup.push_char('u');
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| palette.render(frame, frame.area()))
-            .expect("rendering the filtered palette should not error");
+            .draw(|frame| popup.render(frame, frame.area()))
+            .expect("rendering the filtered popup should not error");
     }
 
     #[test]
@@ -587,11 +579,11 @@ mod tests {
         use ratatui::{Terminal, backend::TestBackend};
 
         // Shorter than the full resting-state list — exercises the scrolling path.
-        let palette = CommandPalette::new();
+        let popup = CommandPopup::new();
         let backend = TestBackend::new(96, 15);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| palette.render(frame, frame.area()))
-            .expect("rendering a scrolled palette should not error");
+            .draw(|frame| popup.render(frame, frame.area()))
+            .expect("rendering a scrolled popup should not error");
     }
 }

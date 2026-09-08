@@ -17,8 +17,8 @@ use ratatui::{
 use tokio::sync::mpsc;
 
 use crate::{
-    command_palette::{CommandPalette, Dim},
     event::{Event, EventHandler},
+    popup::{Dim, command::CommandPopup},
     tui::Tui,
     view::{
         Action, View, accounts::AccountsView, balance_checks::BalanceChecksView,
@@ -40,11 +40,11 @@ pub struct Shell {
     /// Kept so a view swap (e.g. [`Action::OpenUnits`]) can hand the freshly-hosted view its
     /// own clone, the same way `new()` hands one to the initial Dashboard view.
     action_tx: mpsc::UnboundedSender<Action>,
-    /// The command palette overlay (`docs/ux/tui/README.md` §3a) — `Some` while open. Owned
+    /// The command popup overlay (`docs/ux/tui/README.md` §3a) — `Some` while open. Owned
     /// here rather than by the active `View`: it floats over whatever view is on screen and
     /// intercepts keys before the view sees them, per `view/mod.rs`'s "shell's own command
     /// window" note.
-    command_palette: Option<CommandPalette>,
+    command_popup: Option<CommandPopup>,
     /// `true` after a lone `g` keypress with no completing chord yet — the leader half of the
     /// `g <letter>` jump chords in `docs/ux/tui/README.md`'s "Jumps" table (e.g. `g d`
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
@@ -65,7 +65,7 @@ impl Shell {
             should_quit: false,
             action_rx,
             action_tx,
-            command_palette: None,
+            command_popup: None,
             pending_leader: false,
         }
     }
@@ -105,10 +105,10 @@ impl Shell {
     }
 
     /// Translates a raw terminal event into an [`Action`]. Precedence: `Ctrl+C` always quits,
-    /// even mid-chord; then, while the command palette is open, it takes every other key over
+    /// even mid-chord; then, while the command popup is open, it takes every other key over
     /// the active view (per §3a, the view behind it is inert while it's up); then a pending
     /// `g` leader consumes the very next key as its chord completion (or aborts silently if it
-    /// doesn't complete one); otherwise `Ctrl+;` opens the palette, `Ctrl+U` opens the
+    /// doesn't complete one); otherwise `Ctrl+;` opens the popup, `Ctrl+U` opens the
     /// placeholder Units view directly, `?` opens the placeholder Help view, a lone `g` arms
     /// the leader, and anything left falls to the active view's own `handle_key`.
     /// `Event::Resize` never reaches here — `run` intercepts it directly to clear the
@@ -120,8 +120,8 @@ impl Shell {
                 if is_hard_quit(key) {
                     return Some(Action::Quit);
                 }
-                if self.command_palette.is_some() {
-                    return self.map_palette_key(key);
+                if self.command_popup.is_some() {
+                    return self.map_command_popup_key(key);
                 }
                 if self.pending_leader {
                     self.pending_leader = false;
@@ -138,8 +138,8 @@ impl Shell {
                         _ => None,
                     };
                 }
-                if is_open_palette(key) {
-                    return Some(Action::OpenPalette);
+                if is_open_command_popup(key) {
+                    return Some(Action::OpenCommandPopup);
                 }
                 if is_open_units(key) {
                     return Some(Action::OpenUnits);
@@ -157,22 +157,22 @@ impl Shell {
         }
     }
 
-    /// Routes a key while the command palette is open. `Ctrl+;` toggles it shut again; `Esc`
+    /// Routes a key while the command popup is open. `Ctrl+;` toggles it shut again; `Esc`
     /// closes it; typing, `Backspace` and `↑`/`↓` drive the input buffer and selection.
     /// `Enter` runs the highlighted command if it's one of the domain "list" (or `unit`/
     /// `dashboard`/`help`) commands with a real view behind it; any other key (e.g. `Tab` —
     /// completion is the action-registry's "later ticket", per `view/mod.rs`) is swallowed
-    /// without effect, since the palette owns every key while it's up.
-    fn map_palette_key(&self, key: KeyEvent) -> Option<Action> {
-        if is_open_palette(key) {
-            return Some(Action::ClosePalette);
+    /// without effect, since the popup owns every key while it's up.
+    fn map_command_popup_key(&self, key: KeyEvent) -> Option<Action> {
+        if is_open_command_popup(key) {
+            return Some(Action::CloseCommandPopup);
         }
         match key.code {
-            KeyCode::Esc => Some(Action::ClosePalette),
-            KeyCode::Up => Some(Action::PaletteMoveUp),
-            KeyCode::Down => Some(Action::PaletteMoveDown),
-            KeyCode::Backspace => Some(Action::PaletteBackspace),
-            KeyCode::Enter => match self.command_palette.as_ref()?.selected_command_name() {
+            KeyCode::Esc => Some(Action::CloseCommandPopup),
+            KeyCode::Up => Some(Action::CommandPopupMoveUp),
+            KeyCode::Down => Some(Action::CommandPopupMoveDown),
+            KeyCode::Backspace => Some(Action::CommandPopupBackspace),
+            KeyCode::Enter => match self.command_popup.as_ref()?.selected_command_name() {
                 Some("unit") => Some(Action::OpenUnits),
                 Some("dashboard") => Some(Action::OpenDashboard),
                 Some("account list") => Some(Action::OpenAccounts),
@@ -185,7 +185,7 @@ impl Shell {
                 Some("txn recent") => Some(Action::OpenTransactions),
                 _ => None,
             },
-            KeyCode::Char(c) => Some(Action::PaletteInput(c)),
+            KeyCode::Char(c) => Some(Action::CommandPopupInput(c)),
             _ => None,
         }
     }
@@ -195,26 +195,26 @@ impl Shell {
         match action {
             Action::Quit => self.should_quit = true,
             Action::Tick => self.view.update(&action),
-            Action::OpenPalette => self.command_palette = Some(CommandPalette::new()),
-            Action::ClosePalette => self.command_palette = None,
-            Action::PaletteInput(c) => {
-                if let Some(palette) = &mut self.command_palette {
-                    palette.push_char(c);
+            Action::OpenCommandPopup => self.command_popup = Some(CommandPopup::new()),
+            Action::CloseCommandPopup => self.command_popup = None,
+            Action::CommandPopupInput(c) => {
+                if let Some(popup) = &mut self.command_popup {
+                    popup.push_char(c);
                 }
             }
-            Action::PaletteBackspace => {
-                if let Some(palette) = &mut self.command_palette {
-                    palette.backspace();
+            Action::CommandPopupBackspace => {
+                if let Some(popup) = &mut self.command_popup {
+                    popup.backspace();
                 }
             }
-            Action::PaletteMoveUp => {
-                if let Some(palette) = &mut self.command_palette {
-                    palette.move_up();
+            Action::CommandPopupMoveUp => {
+                if let Some(popup) = &mut self.command_popup {
+                    popup.move_up();
                 }
             }
-            Action::PaletteMoveDown => {
-                if let Some(palette) = &mut self.command_palette {
-                    palette.move_down();
+            Action::CommandPopupMoveDown => {
+                if let Some(popup) = &mut self.command_popup {
+                    popup.move_down();
                 }
             }
             Action::OpenUnits => self.open(UnitsView::new()),
@@ -231,13 +231,13 @@ impl Shell {
     }
 
     /// Swaps the active view, hands it a fresh clone of `action_tx` (as `new()` does for the
-    /// initial Dashboard), and closes the command palette — the common tail of every `Open*`
+    /// initial Dashboard), and closes the command popup — the common tail of every `Open*`
     /// action.
     fn open<V: View + 'static>(&mut self, view: V) {
         let mut view: Box<dyn View> = Box::new(view);
         view.init(self.action_tx.clone());
         self.view = view;
-        self.command_palette = None;
+        self.command_popup = None;
     }
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
@@ -253,12 +253,12 @@ impl Shell {
             ])
             .split(frame.area());
 
-        let palette_open = self.command_palette.is_some();
+        let popup_open = self.command_popup.is_some();
 
         // Header Frame — the status line names the mode whenever it isn't the resting
         // NORMAL state, per `docs/ux/tui/README.md`'s "show the mode ... whenever it is not
         // NORMAL".
-        let mode = if palette_open { " · COMMAND" } else { "" };
+        let mode = if popup_open { " · COMMAND" } else { "" };
         frame.render_widget(
             Paragraph::new(Line::from(format!(
                 " 📒 Personal Ledger | {}{mode} ",
@@ -276,8 +276,8 @@ impl Shell {
         frame.render_widget(Block::new().borders(Borders::TOP), rows[2]);
 
         // Footer Frame — each keybind's key is bolded to stand out from its label. While the
-        // palette is open the whole bar greys out and gains its own close hint, per §3a.
-        let footer = if palette_open {
+        // popup is open the whole bar greys out and gains its own close hint, per §3a.
+        let footer = if popup_open {
             Line::from(" : command · / search · ? help · esc close command window ")
                 .style(Style::default().fg(Color::DarkGray))
         } else {
@@ -294,11 +294,11 @@ impl Shell {
         };
         frame.render_widget(Paragraph::new(footer), rows[3]);
 
-        // Command palette overlay — dims the view behind it (never hides it) and floats over
+        // Command popup overlay — dims the view behind it (never hides it) and floats over
         // the whole frame, per §3a.
-        if let Some(palette) = &self.command_palette {
+        if let Some(popup) = &self.command_popup {
             frame.render_widget(Dim, rows[1]);
-            palette.render(frame, frame.area());
+            popup.render(frame, frame.area());
         }
     }
 }
@@ -308,24 +308,24 @@ fn is_hard_quit(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('c'))
 }
 
-/// `Ctrl+;` — opens the command palette from anywhere, shift optional. `Tui` requests
+/// `Ctrl+;` — opens the command popup from anywhere, shift optional. `Tui` requests
 /// `DISAMBIGUATE_ESCAPE_CODES` so a Kitty-protocol terminal reports the unshifted key as
 /// `Char(';')` regardless of whether `Shift` is also held (physically producing `:`); `':'`
 /// is matched too as a defensive fallback for a terminal or layout that reports the shifted
 /// symbol instead. Either way `Shift`'s presence is ignored.
-fn is_open_palette(key: KeyEvent) -> bool {
+fn is_open_command_popup(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL)
         && matches!(key.code, KeyCode::Char(';') | KeyCode::Char(':'))
 }
 
-/// `Ctrl+U` — opens the placeholder Units view directly, alongside the command palette's own
+/// `Ctrl+U` — opens the placeholder Units view directly, alongside the command popup's own
 /// `unit` / `g u` route (`docs/ux/tui/units/README.md`).
 fn is_open_units(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('u'))
 }
 
 /// `?` — opens the placeholder Help view, matching the footer's own `? help` hint and the
-/// palette's `help` command (`docs/ux/tui/README.md`).
+/// popup's `help` command (`docs/ux/tui/README.md`).
 fn is_open_help(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('?'))
 }
@@ -419,32 +419,32 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_semicolon_is_recognised_as_open_palette() {
+    fn ctrl_semicolon_is_recognised_as_open_command_popup() {
         let ctrl_semicolon = KeyEvent::new(KeyCode::Char(';'), KeyModifiers::CONTROL);
-        assert!(is_open_palette(ctrl_semicolon));
+        assert!(is_open_command_popup(ctrl_semicolon));
 
         let plain_semicolon = KeyEvent::new(KeyCode::Char(';'), KeyModifiers::NONE);
-        assert!(!is_open_palette(plain_semicolon));
+        assert!(!is_open_command_popup(plain_semicolon));
     }
 
     #[test]
-    fn ctrl_semicolon_with_shift_held_is_also_recognised_as_open_palette() {
+    fn ctrl_semicolon_with_shift_held_is_also_recognised_as_open_command_popup() {
         // Whether `Shift` is also held (physically producing `:` rather than `;`) doesn't
-        // matter — see `is_open_palette`'s doc.
+        // matter — see `is_open_command_popup`'s doc.
         let ctrl_shift_semicolon = KeyEvent::new(
             KeyCode::Char(';'),
             KeyModifiers::CONTROL | KeyModifiers::SHIFT,
         );
-        assert!(is_open_palette(ctrl_shift_semicolon));
+        assert!(is_open_command_popup(ctrl_shift_semicolon));
 
         let ctrl_colon = KeyEvent::new(KeyCode::Char(':'), KeyModifiers::CONTROL);
-        assert!(is_open_palette(ctrl_colon));
+        assert!(is_open_command_popup(ctrl_colon));
     }
 
     #[test]
-    fn ctrl_colon_opens_the_command_palette() {
+    fn ctrl_colon_opens_the_command_popup() {
         let mut shell = Shell::new();
-        assert!(shell.command_palette.is_none());
+        assert!(shell.command_popup.is_none());
 
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
@@ -454,13 +454,13 @@ mod tests {
             .expect("ctrl+: always maps to an action");
         shell.update(action);
 
-        assert!(shell.command_palette.is_some());
+        assert!(shell.command_popup.is_some());
     }
 
     #[test]
-    fn ctrl_colon_again_closes_an_open_palette() {
+    fn ctrl_colon_again_closes_an_open_command_popup() {
         let mut shell = Shell::new();
-        shell.update(Action::OpenPalette);
+        shell.update(Action::OpenCommandPopup);
 
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
@@ -470,38 +470,38 @@ mod tests {
             .expect("ctrl+: while open always maps to an action");
         shell.update(action);
 
-        assert!(shell.command_palette.is_none());
+        assert!(shell.command_popup.is_none());
     }
 
     #[test]
-    fn esc_closes_an_open_palette() {
+    fn esc_closes_an_open_command_popup() {
         let mut shell = Shell::new();
-        shell.update(Action::OpenPalette);
+        shell.update(Action::OpenCommandPopup);
 
         let action = shell
             .map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
             .expect("esc while open always maps to an action");
         shell.update(action);
 
-        assert!(shell.command_palette.is_none());
+        assert!(shell.command_popup.is_none());
     }
 
     #[test]
-    fn typing_while_the_palette_is_open_never_reaches_the_view() {
+    fn typing_while_the_command_popup_is_open_never_reaches_the_view() {
         let mut shell = Shell::new();
-        shell.update(Action::OpenPalette);
+        shell.update(Action::OpenCommandPopup);
 
         let action = shell.map_event(Event::Key(KeyEvent::new(
             KeyCode::Char('b'),
             KeyModifiers::NONE,
         )));
-        assert_eq!(action, Some(Action::PaletteInput('b')));
+        assert_eq!(action, Some(Action::CommandPopupInput('b')));
     }
 
     #[test]
-    fn ctrl_c_still_quits_while_the_palette_is_open() {
+    fn ctrl_c_still_quits_while_the_command_popup_is_open() {
         let mut shell = Shell::new();
-        shell.update(Action::OpenPalette);
+        shell.update(Action::OpenCommandPopup);
 
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
@@ -533,7 +533,7 @@ mod tests {
                 KeyCode::Char('u'),
                 KeyModifiers::CONTROL,
             )))
-            .expect("ctrl+u always maps to an action while no palette is open");
+            .expect("ctrl+u always maps to an action while no popup is open");
         shell.update(action);
 
         assert_eq!(shell.view.title(), "Units");
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn selecting_the_unit_command_and_pressing_enter_opens_the_units_view() {
         let mut shell = Shell::new();
-        shell.update(Action::OpenPalette);
+        shell.update(Action::OpenCommandPopup);
         for c in "unit".chars() {
             let action = shell
                 .map_event(Event::Key(KeyEvent::new(
@@ -562,16 +562,16 @@ mod tests {
         shell.update(action);
 
         assert_eq!(shell.view.title(), "Units");
-        assert!(shell.command_palette.is_none());
+        assert!(shell.command_popup.is_none());
     }
 
     #[test]
     fn enter_on_a_command_with_no_real_view_yet_is_still_swallowed() {
         // Filtered down to `report account-balance` — a specific report, reached only via the
-        // Reports screen's own picker (`command_palette/commands/reports.rs`) — which has no
+        // Reports screen's own picker (`command_popup/commands/reports.rs`) — which has no
         // dispatch of its own even though `report list` does. `Enter` should still be a no-op.
         let mut shell = Shell::new();
-        shell.update(Action::OpenPalette);
+        shell.update(Action::OpenCommandPopup);
         for c in "account-balance".chars() {
             let action = shell
                 .map_event(Event::Key(KeyEvent::new(
@@ -595,7 +595,7 @@ mod tests {
         shell.update(Action::OpenUnits);
         assert_eq!(shell.view.title(), "Units");
 
-        shell.update(Action::OpenPalette);
+        shell.update(Action::OpenCommandPopup);
         for c in "dashboard".chars() {
             let action = shell
                 .map_event(Event::Key(KeyEvent::new(
@@ -615,7 +615,7 @@ mod tests {
         shell.update(action);
 
         assert_eq!(shell.view.title(), "Dashboard");
-        assert!(shell.command_palette.is_none());
+        assert!(shell.command_popup.is_none());
     }
 
     #[test]
@@ -722,22 +722,22 @@ mod tests {
                 KeyCode::Char('?'),
                 KeyModifiers::NONE,
             )))
-            .expect("? always maps to an action while no palette is open");
+            .expect("? always maps to an action while no popup is open");
         shell.update(action);
 
         assert_eq!(shell.view.title(), "Help");
     }
 
     #[test]
-    fn question_mark_is_swallowed_while_the_palette_is_open() {
+    fn question_mark_is_swallowed_while_the_command_popup_is_open() {
         let mut shell = Shell::new();
-        shell.update(Action::OpenPalette);
+        shell.update(Action::OpenCommandPopup);
 
         let action = shell.map_event(Event::Key(KeyEvent::new(
             KeyCode::Char('?'),
             KeyModifiers::NONE,
         )));
-        assert_eq!(action, Some(Action::PaletteInput('?')));
+        assert_eq!(action, Some(Action::CommandPopupInput('?')));
     }
 
     #[test]
@@ -755,7 +755,7 @@ mod tests {
 
         for (filter, expected_title) in cases {
             let mut shell = Shell::new();
-            shell.update(Action::OpenPalette);
+            shell.update(Action::OpenCommandPopup);
             for c in filter.chars() {
                 let action = shell
                     .map_event(Event::Key(KeyEvent::new(
@@ -775,20 +775,20 @@ mod tests {
             shell.update(action);
 
             assert_eq!(shell.view.title(), *expected_title, "{filter}");
-            assert!(shell.command_palette.is_none(), "{filter}");
+            assert!(shell.command_popup.is_none(), "{filter}");
         }
     }
 
     #[test]
-    fn renders_the_open_command_palette_without_panicking() {
+    fn renders_the_open_command_popup_without_panicking() {
         let mut shell = Shell::new();
-        shell.update(Action::OpenPalette);
+        shell.update(Action::OpenCommandPopup);
 
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
 
         terminal
             .draw(|frame| shell.draw(frame))
-            .expect("drawing the shell with the palette open should not error");
+            .expect("drawing the shell with the popup open should not error");
     }
 }

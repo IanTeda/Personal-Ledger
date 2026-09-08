@@ -1,5 +1,5 @@
 //! The Payees `View`, hosted by `Shell` (ADR-0013). Wireframe stage: a single bordered box
-//! proving the navigation path — the command palette's `payee list` entry and the global
+//! proving the navigation path — the command popup's `payee list` entry and the global
 //! `g p` jump chord both land here — before any real list/detail content is built out.
 
 use ratatui::{Frame, layout::Rect, widgets::Block};

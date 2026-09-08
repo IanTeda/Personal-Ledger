@@ -24,7 +24,7 @@ use tokio::sync::mpsc::UnboundedSender;
 /// action registry the command window will dispatch through (ADR-0013) is later work; this
 /// only needs enough to drive the event loop and let a `View` react to a tick.
 ///
-/// The `Palette*` variants drive `Shell`'s own command window (`crate::command_palette`)
+/// The `CommandPopup*` variants drive `Shell`'s own command window (`crate::popup::command`)
 /// rather than the active `View` — they exist here because `Shell`'s event loop only redraws
 /// in response to an `Action`, and every `View::update` implementation ignores variants it
 /// doesn't care about, so adding shell-chrome messages alongside `Quit`/`Tick` costs a `View`
@@ -36,46 +36,48 @@ pub enum Action {
     /// `Ctrl+C` — the hard-quit safety net, recognised by `Shell` itself before any `View`
     /// sees the key.
     Quit,
-    /// `Ctrl+;` — opens the command palette overlay.
-    OpenPalette,
-    /// `Esc`, or `Ctrl+;` again — closes the command palette overlay.
-    ClosePalette,
-    /// A printable character typed while the palette is open, appended to its input buffer.
-    PaletteInput(char),
-    /// `Backspace` while the palette is open — removes the last character of its input.
-    PaletteBackspace,
-    /// `↑` while the palette is open — moves the selection up one candidate row.
-    PaletteMoveUp,
-    /// `↓` while the palette is open — moves the selection down one candidate row.
-    PaletteMoveDown,
-    /// `Ctrl+U`, or `Enter` on the palette's `unit` command — opens the placeholder Units
-    /// view (`docs/ux/tui/units/README.md`), the first domain to land a real (if still
-    /// wireframe-stage) destination behind the palette's `unit` entry.
+    /// `Ctrl+;` — opens the command popup overlay.
+    OpenCommandPopup,
+    /// `Esc`, or `Ctrl+;` again — closes the command popup overlay.
+    CloseCommandPopup,
+    /// A printable character typed while the command popup is open, appended to its input
+    /// buffer.
+    CommandPopupInput(char),
+    /// `Backspace` while the command popup is open — removes the last character of its input.
+    CommandPopupBackspace,
+    /// `↑` while the command popup is open — moves the selection up one candidate row.
+    CommandPopupMoveUp,
+    /// `↓` while the command popup is open — moves the selection down one candidate row.
+    CommandPopupMoveDown,
+    /// `Ctrl+U`, or `Enter` on the command popup's `unit` command — opens the placeholder
+    /// Units view (`docs/ux/tui/units/README.md`), the first domain to land a real (if still
+    /// wireframe-stage) destination behind the command popup's `unit` entry.
     OpenUnits,
-    /// `g d` (the `docs/ux/tui/README.md` "Jumps" table's chord), or `Enter` on the palette's
-    /// `dashboard` command — returns to the Dashboard view.
+    /// `g d` (the `docs/ux/tui/README.md` "Jumps" table's chord), or `Enter` on the command
+    /// popup's `dashboard` command — returns to the Dashboard view.
     OpenDashboard,
-    /// `g a`, or `Enter` on the palette's `account list` command — opens the placeholder
-    /// Accounts view.
+    /// `g a`, or `Enter` on the command popup's `account list` command — opens the
+    /// placeholder Accounts view.
     OpenAccounts,
-    /// `g k`, or `Enter` on the palette's `check list` command — opens the placeholder
+    /// `g k`, or `Enter` on the command popup's `check list` command — opens the placeholder
     /// Balance Checks view.
     OpenBalanceChecks,
-    /// `g b`, or `Enter` on the palette's `budget list [period]` command — opens the
+    /// `g b`, or `Enter` on the command popup's `budget list [period]` command — opens the
     /// placeholder Budgets view.
     OpenBudgets,
-    /// `g c`, or `Enter` on the palette's `category list` command — opens the placeholder
-    /// Categories view.
+    /// `g c`, or `Enter` on the command popup's `category list` command — opens the
+    /// placeholder Categories view.
     OpenCategories,
-    /// `?`, or `Enter` on the palette's `help` command — opens the placeholder Help view.
+    /// `?`, or `Enter` on the command popup's `help` command — opens the placeholder Help
+    /// view.
     OpenHelp,
-    /// `g p`, or `Enter` on the palette's `payee list` command — opens the placeholder
+    /// `g p`, or `Enter` on the command popup's `payee list` command — opens the placeholder
     /// Payees view.
     OpenPayees,
-    /// `g r`, or `Enter` on the palette's `report list` command — opens the placeholder
+    /// `g r`, or `Enter` on the command popup's `report list` command — opens the placeholder
     /// Reports view.
     OpenReports,
-    /// `g t`, or `Enter` on the palette's `txn recent` command — opens the placeholder
+    /// `g t`, or `Enter` on the command popup's `txn recent` command — opens the placeholder
     /// Transactions view.
     OpenTransactions,
 }

@@ -1,5 +1,5 @@
 //! The Transactions `View`, hosted by `Shell` (ADR-0013). Wireframe stage: a single bordered
-//! box proving the navigation path — the command palette's `txn recent` entry and the global
+//! box proving the navigation path — the command popup's `txn recent` entry and the global
 //! `g t` jump chord both land here — before any real list/detail content is built out.
 
 use ratatui::{Frame, layout::Rect, widgets::Block};

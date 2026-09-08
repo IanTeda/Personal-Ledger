@@ -1,5 +1,5 @@
 //! The Budgets `View`, hosted by `Shell` (ADR-0013). Wireframe stage: a single bordered box
-//! proving the navigation path — the command palette's `budget list [period]` entry and the
+//! proving the navigation path — the command popup's `budget list [period]` entry and the
 //! global `g b` jump chord both land here — before any real list/detail content is built out.
 
 use ratatui::{Frame, layout::Rect, widgets::Block};

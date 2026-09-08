@@ -36,13 +36,13 @@ impl Tui {
     ///
     /// Also opts into the Kitty keyboard protocol's `DISAMBIGUATE_ESCAPE_CODES`, when the
     /// terminal supports it: legacy terminal encoding reduces `Ctrl+;` to the same control
-    /// code as `Esc` (both are `0x1B`), which is exactly the combination the command palette
+    /// code as `Esc` (both are `0x1B`), which is exactly the combination the command popup
     /// (`Shell`) binds — without this, `Ctrl+;` is unreliable on terminals that don't speak
     /// the enhanced protocol at all (a plain `xterm`, most Linux VTs, some multiplexer
     /// configurations). `supports_keyboard_enhancement` probes the terminal first so nothing
     /// is pushed where it wouldn't be understood.
     ///
-    /// This doesn't request `REPORT_ALTERNATE_KEYS` — `shell::is_open_palette` doesn't care
+    /// This doesn't request `REPORT_ALTERNATE_KEYS` — `shell::is_open_command_popup` doesn't care
     /// whether `Shift` was also held (physically producing `:` rather than `;`), so there's
     /// no need for the terminal to disambiguate that.
     pub fn new() -> io::Result<Self> {
