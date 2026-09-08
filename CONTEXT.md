@@ -44,23 +44,26 @@ edited outside the running app. Each Preference is individually either Ledger-sc
 (stored in `lib-database`, synced via Change Sets like other Ledger data) or
 Client-scoped (stored locally, never synced); which kind a given Preference is gets
 decided as it's defined, in CC-TUI-001/CC-DESKTOP-001 (`docs/product-requirements.md`).
-For the TUI Concept cycle the only Preference is the Ledger-scoped default Unit for new
-Accounts (see [Decide the application Settings / Preference
-model](https://github.com/IanTeda/Personal-Ledger/issues/63)) — display-level settings
-like colour theme, date format, and decimal/thousands separator are Configuration
-instead, not Preferences (see below), since the user sets them once via the config file
-rather than editing them from inside a running Client.
+As of [ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md), the
+Preferences are the default Unit for new Accounts, colour theme, date format, and
+decimal/thousands separator — all four Ledger-scoped, so they sync across a user's own
+Clients rather than being set separately on each one. No Client-scoped Preference exists
+yet; that half of the split stays available for whenever a genuinely per-device setting
+shows up.
 _Avoid_: Configuration, setting — "Configuration" is reserved for `lib-config`'s layered,
 deployment-time config (files/env vars, see `docs/configuration.md`); a Preference is
 edited by the user from inside a running Client instead.
 
 **Configuration**:
 Deployment-time settings loaded by `lib-config` before or as a Client/the Sync Server
-starts — defaults, system/user/executable-directory/working-directory files, an explicit
-path, or environment variables, in that precedence order (see `docs/configuration.md`).
-Not user-editable from inside a running app — see Preference, above, for that. Covers
-display-level TUI settings with no Ledger meaning (colour theme, date format,
-decimal/thousands separator), not just deployment mechanics like the telemetry level.
+starts — defaults, an explicit path, or environment variables, plus a file-location
+search in between (the full system/user/executable-directory/working-directory search
+for a Client; a single configured file path for the Sync Server, per
+[ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md)) — in that
+precedence order (see `docs/configuration.md`). Not user-editable from inside a running
+app — see Preference, above, for that. Covers only settings needed before the app (or
+its database) can run — the database connection/pool settings and the telemetry level —
+not display-level settings, which are Preferences instead (see above).
 _Avoid_: Preference, setting.
 
 **Sync Server**:
