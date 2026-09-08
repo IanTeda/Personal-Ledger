@@ -103,6 +103,18 @@ impl CommandPalette {
         }
     }
 
+    /// The `:name` of the command currently highlighted by `selected`, if any — `Shell` checks
+    /// this against `Enter` to decide whether the highlighted command has a real view to open
+    /// yet (today, only `unit` does).
+    pub fn selected_command_name(&self) -> Option<&'static str> {
+        let rows = self.rows();
+        let row_idx = Self::selected_row_index(&rows, self.selected);
+        match rows.get(row_idx)? {
+            Row::Entry { command, .. } => Some(command.name),
+            Row::Header(_) => None,
+        }
+    }
+
     /// Every command matching the current input, case-insensitively against its `:name`,
     /// description or owning domain — the flat list a non-empty input filters down to.
     fn filtered(&self) -> impl Iterator<Item = (&'static str, &'static commands::Command)> + '_ {

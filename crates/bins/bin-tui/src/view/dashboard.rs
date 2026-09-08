@@ -314,9 +314,10 @@ struct MonthFlow {
 /// Item 3 — 8 months of income vs. expense (more than the handoff's 6, so the month rows
 /// exactly fill the Net Worth chart's height, gap-free), one row per month: a two-tone bar
 /// split by each month's expense share (accent) vs. income share (default), the same
-/// "negatives get the accent" convention as Liabilities. No border — a heading underlined
-/// with a full-width rule, matching the Net Worth box, then the month rows (with a blank
-/// row between each), then an "expense · income" caption.
+/// "negatives get the accent" convention as Liabilities. No border — a heading with a
+/// right-aligned "8M DIVERGENT" tag (matching the "WHERE IT WENT · PIE CHART" pattern),
+/// underlined with a full-width rule, matching the Net Worth box, then the month rows (with
+/// a blank row between each), then an "expense · income" caption.
 fn render_income_vs_expense(frame: &mut Frame, area: Rect, flows: &[MonthFlow]) {
     // `flows.len()` rows plus a 1-row gap between each.
     let month_rows_height = (flows.len() as u16) * 2 - 1;
@@ -333,9 +334,17 @@ fn render_income_vs_expense(frame: &mut Frame, area: Rect, flows: &[MonthFlow]) 
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
+    let heading_columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(12)])
+        .split(rows[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled("INCOME VS EXPENSE · 8M DIVERGENT", dim)),
-        rows[0],
+        Paragraph::new(Span::styled("INCOME VS EXPENSE", dim)),
+        heading_columns[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled("8M DIVERGENT", dim)).alignment(Alignment::Right),
+        heading_columns[1],
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
@@ -1076,10 +1085,8 @@ mod tests {
     fn income_vs_expense_shows_eight_months_and_a_caption() {
         let text = render(&DashboardView::new());
 
-        assert!(
-            text.contains("INCOME VS EXPENSE · 8M DIVERGENT"),
-            "heading missing"
-        );
+        assert!(text.contains("INCOME VS EXPENSE"), "heading missing");
+        assert!(text.contains("8M DIVERGENT"), "8m divergent tag missing");
         for month in ["apr", "may", "jun", "jul", "aug", "sep", "oct", "nov"] {
             assert!(text.contains(month), "{month} row missing");
         }

@@ -9,9 +9,9 @@ use super::{Chord, Command};
 
 pub const COMMANDS: &[Command] = &[
     Command {
-        name: "unit list",
+        name: "unit",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('u')]),
-        description: "units, details and weekly prices",
+        description: "Units screen with details, summary and prices",
     },
     Command {
         name: "unit new <code> <type>",

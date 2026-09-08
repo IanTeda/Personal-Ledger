@@ -5,7 +5,16 @@
 //! navigation stack, no breadcrumb; the shell's own command window (a later ticket) is the
 //! only way the design specifies for switching which `View` is active.
 
+pub mod accounts;
+pub mod balance_checks;
+pub mod budgets;
+pub mod categories;
 pub mod dashboard;
+pub mod help;
+pub mod payees;
+pub mod reports;
+pub mod transactions;
+pub mod units;
 
 use crossterm::event::KeyEvent;
 use ratatui::{Frame, layout::Rect};
@@ -39,6 +48,36 @@ pub enum Action {
     PaletteMoveUp,
     /// `↓` while the palette is open — moves the selection down one candidate row.
     PaletteMoveDown,
+    /// `Ctrl+U`, or `Enter` on the palette's `unit` command — opens the placeholder Units
+    /// view (`docs/ux/tui/units/README.md`), the first domain to land a real (if still
+    /// wireframe-stage) destination behind the palette's `unit` entry.
+    OpenUnits,
+    /// `g d` (the `docs/ux/tui/README.md` "Jumps" table's chord), or `Enter` on the palette's
+    /// `dashboard` command — returns to the Dashboard view.
+    OpenDashboard,
+    /// `g a`, or `Enter` on the palette's `account list` command — opens the placeholder
+    /// Accounts view.
+    OpenAccounts,
+    /// `g k`, or `Enter` on the palette's `check list` command — opens the placeholder
+    /// Balance Checks view.
+    OpenBalanceChecks,
+    /// `g b`, or `Enter` on the palette's `budget list [period]` command — opens the
+    /// placeholder Budgets view.
+    OpenBudgets,
+    /// `g c`, or `Enter` on the palette's `category list` command — opens the placeholder
+    /// Categories view.
+    OpenCategories,
+    /// `?`, or `Enter` on the palette's `help` command — opens the placeholder Help view.
+    OpenHelp,
+    /// `g p`, or `Enter` on the palette's `payee list` command — opens the placeholder
+    /// Payees view.
+    OpenPayees,
+    /// `g r`, or `Enter` on the palette's `report list` command — opens the placeholder
+    /// Reports view.
+    OpenReports,
+    /// `g t`, or `Enter` on the palette's `txn recent` command — opens the placeholder
+    /// Transactions view.
+    OpenTransactions,
 }
 
 /// The single view `Shell` hosts at a time.
