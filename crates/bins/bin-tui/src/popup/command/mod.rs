@@ -2,9 +2,9 @@
 //! where it's specified as the "command palette"), opened with `Ctrl+;` from anywhere.
 //! `view/mod.rs` calls this out as later work over the `View` trait: the popup overlays
 //! whatever `View` is active rather than being one itself, so `Shell` owns it directly instead
-//! of hosting it through `View`. It is the first tenant of `crate::popup` — the unit add/edit/
-//! delete dialogs (`docs/ux/tui/units/README.md` "The forms") are next, sharing its `Dim`
-//! overlay treatment.
+//! of hosting it through `View`. It was the first tenant of `crate::popup`; `popup::unit::new`
+//! (`docs/ux/tui/units/README.md` §4b) now shares its `Dim` overlay treatment and
+//! `REFERENCE_TERMINAL_WIDTH` baseline.
 //!
 //! The command list itself (`commands`) is real, grouped by domain — `docs/ux/tui/
 //! README.md`'s action registry (args/effect resolvers, `:help`/footer/keymap generation,
@@ -21,6 +21,8 @@ use ratatui::{
     widgets::{Block, Clear, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
+use crate::popup::REFERENCE_TERMINAL_WIDTH;
+
 /// Dim colour for hint text and secondary detail, matching `ACCENT`'s siblings in
 /// `view/dashboard.rs`'s style table.
 const DIM: Color = Color::DarkGray;
@@ -30,12 +32,6 @@ const DIM: Color = Color::DarkGray;
 /// (like `Color::Black` before it) renders however the user's terminal theme happens to remap
 /// that palette slot, which isn't reliably "dark" on every theme.
 const FOOTER_LABEL: Color = Color::Rgb(90, 90, 90);
-
-/// Reference terminal width `docs/ux/tui/README.md` draws its wireframes against — the
-/// popup's fixed width below is computed from this rather than from whatever terminal the
-/// user happens to be running, so opening the popup looks the same at 96 columns and at
-/// 300.
-const REFERENCE_TERMINAL_WIDTH: u16 = 96;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes — back to §3a's own suggested ~78%
 /// after a narrower value read too cramped in practice.

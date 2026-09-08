@@ -18,7 +18,11 @@ use tokio::sync::mpsc;
 
 use crate::{
     event::{Event, EventHandler},
-    popup::{Dim, command::CommandPopup},
+    popup::{
+        Dim,
+        command::CommandPopup,
+        unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
+    },
     tui::Tui,
     view::{
         Action, View, accounts::AccountsView, balance_checks::BalanceChecksView,
@@ -45,6 +49,13 @@ pub struct Shell {
     /// intercepts keys before the view sees them, per `view/mod.rs`'s "shell's own command
     /// window" note.
     command_popup: Option<CommandPopup>,
+    /// Whichever unit-domain form (`docs/ux/tui/units/README.md` "The forms") is open —
+    /// `Some` while one is. Owned here for the same reason as `command_popup`: it floats over
+    /// whatever view is on screen and intercepts keys before the view sees them. Mutually
+    /// exclusive with `command_popup` (opening one closes the other), and with itself — only
+    /// one unit form is ever open at a time, hence the single `Option<UnitPopup>` rather than
+    /// one field per form.
+    unit_popup: Option<UnitPopup>,
     /// `true` after a lone `g` keypress with no completing chord yet — the leader half of the
     /// `g <letter>` jump chords in `docs/ux/tui/README.md`'s "Jumps" table (e.g. `g d`
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
@@ -66,6 +77,7 @@ impl Shell {
             action_rx,
             action_tx,
             command_popup: None,
+            unit_popup: None,
             pending_leader: false,
         }
     }
@@ -105,14 +117,17 @@ impl Shell {
     }
 
     /// Translates a raw terminal event into an [`Action`]. Precedence: `Ctrl+C` always quits,
-    /// even mid-chord; then, while the command popup is open, it takes every other key over
-    /// the active view (per §3a, the view behind it is inert while it's up); then a pending
-    /// `g` leader consumes the very next key as its chord completion (or aborts silently if it
-    /// doesn't complete one); otherwise `Ctrl+;` opens the popup, `Ctrl+U` opens the
-    /// placeholder Units view directly, `?` opens the placeholder Help view, a lone `g` arms
-    /// the leader, and anything left falls to the active view's own `handle_key`.
-    /// `Event::Resize` never reaches here — `run` intercepts it directly to clear the
-    /// terminal, since that's a `Tui`-level concern with no `Action` of its own.
+    /// even mid-chord; then, while the command popup or a unit form is open, it takes every
+    /// other key over the active view (per §3a, the view behind it is inert while it's up);
+    /// then a pending `g` leader consumes the very next key as its chord completion (or aborts
+    /// silently if it doesn't complete one); otherwise `Ctrl+;` opens the command popup,
+    /// `Ctrl+U` opens the placeholder Units view directly, `?` opens the placeholder Help
+    /// view, a lone `g` arms the leader, and anything left falls to the active view's own
+    /// `handle_key` (which is how the Units view's own `n`/`e`/`d` reach
+    /// [`Action::OpenNewUnitPopup`]/[`Action::OpenEditUnitPopup`]/
+    /// [`Action::OpenDeleteUnitPopup`]). `Event::Resize` never reaches here — `run` intercepts
+    /// it directly to clear the terminal, since that's a `Tui`-level concern with no `Action`
+    /// of its own.
     fn map_event(&mut self, event: Event) -> Option<Action> {
         match event {
             Event::Tick => Some(Action::Tick),
@@ -122,6 +137,9 @@ impl Shell {
                 }
                 if self.command_popup.is_some() {
                     return self.map_command_popup_key(key);
+                }
+                if self.unit_popup.is_some() {
+                    return map_unit_popup_key(key);
                 }
                 if self.pending_leader {
                     self.pending_leader = false;
@@ -174,6 +192,9 @@ impl Shell {
             KeyCode::Backspace => Some(Action::CommandPopupBackspace),
             KeyCode::Enter => match self.command_popup.as_ref()?.selected_command_name() {
                 Some("unit") => Some(Action::OpenUnits),
+                Some("unit new <code> <type>") => Some(Action::OpenNewUnitPopup),
+                Some("unit edit <code>") => Some(Action::OpenEditUnitPopup),
+                Some("unit delete <code>") => Some(Action::OpenDeleteUnitPopup),
                 Some("dashboard") => Some(Action::OpenDashboard),
                 Some("account list") => Some(Action::OpenAccounts),
                 Some("check list") => Some(Action::OpenBalanceChecks),
@@ -217,6 +238,22 @@ impl Shell {
                     popup.move_down();
                 }
             }
+            Action::OpenNewUnitPopup => {
+                self.unit_popup = Some(UnitPopup::New(NewUnitPopup::new()));
+                self.command_popup = None;
+            }
+            Action::OpenEditUnitPopup => {
+                self.unit_popup = Some(UnitPopup::Edit(EditUnitPopup::new()));
+                self.command_popup = None;
+            }
+            Action::OpenDeleteUnitPopup => {
+                // Always the refused (§4d) variant for now — no reference-count resolution is
+                // wired up yet to pick between it and `DeleteUnitPopup::allowed` (see
+                // `popup::unit::delete`'s own module doc).
+                self.unit_popup = Some(UnitPopup::Delete(DeleteUnitPopup::refused()));
+                self.command_popup = None;
+            }
+            Action::CloseUnitPopup => self.unit_popup = None,
             Action::OpenUnits => self.open(UnitsView::new()),
             Action::OpenDashboard => self.open(DashboardView::new()),
             Action::OpenAccounts => self.open(AccountsView::new()),
@@ -231,13 +268,13 @@ impl Shell {
     }
 
     /// Swaps the active view, hands it a fresh clone of `action_tx` (as `new()` does for the
-    /// initial Dashboard), and closes the command popup — the common tail of every `Open*`
-    /// action.
+    /// initial Dashboard), and closes both popups — the common tail of every `Open*` action.
     fn open<V: View + 'static>(&mut self, view: V) {
         let mut view: Box<dyn View> = Box::new(view);
         view.init(self.action_tx.clone());
         self.view = view;
         self.command_popup = None;
+        self.unit_popup = None;
     }
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
@@ -253,12 +290,20 @@ impl Shell {
             ])
             .split(frame.area());
 
-        let popup_open = self.command_popup.is_some();
+        let command_popup_open = self.command_popup.is_some();
+        let unit_popup_open = self.unit_popup.is_some();
 
         // Header Frame — the status line names the mode whenever it isn't the resting
         // NORMAL state, per `docs/ux/tui/README.md`'s "show the mode ... whenever it is not
-        // NORMAL".
-        let mode = if popup_open { " · COMMAND" } else { "" };
+        // NORMAL" — `COMMAND` for the command popup, `INSERT` for a unit form, per "Modal,
+        // vim-flavoured ... INSERT only inside forms ... COMMAND while the palette is open".
+        let mode = if command_popup_open {
+            " · COMMAND"
+        } else if unit_popup_open {
+            " · INSERT"
+        } else {
+            ""
+        };
         frame.render_widget(
             Paragraph::new(Line::from(format!(
                 " 📒 Personal Ledger | {}{mode} ",
@@ -275,11 +320,15 @@ impl Shell {
         // background fill as the visual boundary between them.
         frame.render_widget(Block::new().borders(Borders::TOP), rows[2]);
 
-        // Footer Frame — each keybind's key is bolded to stand out from its label. While the
-        // popup is open the whole bar greys out and gains its own close hint, per §3a.
-        let footer = if popup_open {
+        // Footer Frame — each keybind's key is bolded to stand out from its label. While a
+        // popup is open the whole bar greys out and gains its own close hint: §3a for the
+        // command popup, "The forms" ("the app's footer greyed to `esc close unit form`") for
+        // a unit form.
+        let footer = if command_popup_open {
             Line::from(" : command · / search · ? help · esc close command window ")
                 .style(Style::default().fg(Color::DarkGray))
+        } else if unit_popup_open {
+            Line::from(" esc close unit form ").style(Style::default().fg(Color::DarkGray))
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             Line::from(vec![
@@ -294,9 +343,12 @@ impl Shell {
         };
         frame.render_widget(Paragraph::new(footer), rows[3]);
 
-        // Command popup overlay — dims the view behind it (never hides it) and floats over
-        // the whole frame, per §3a.
+        // Popup overlays — dim the view behind them (never hide it) and float over the whole
+        // frame, per §3a. Mutually exclusive: only one is ever `Some` at a time.
         if let Some(popup) = &self.command_popup {
+            frame.render_widget(Dim, rows[1]);
+            popup.render(frame, frame.area());
+        } else if let Some(popup) = &self.unit_popup {
             frame.render_widget(Dim, rows[1]);
             popup.render(frame, frame.area());
         }
@@ -328,6 +380,19 @@ fn is_open_units(key: KeyEvent) -> bool {
 /// popup's `help` command (`docs/ux/tui/README.md`).
 fn is_open_help(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('?'))
+}
+
+/// Routes a key while a unit form (new, edit or delete) is open. Only `Esc` does anything yet — no
+/// field is editable until each form's fields land (`docs/ux/tui/units/README.md` §4b/§4c);
+/// every other key is swallowed, since the popup owns every key while it's up (mirroring
+/// `Shell::map_command_popup_key`). A free function rather than a method — unlike the command
+/// popup, there's no draft state yet to consult, and `Esc` behaves the same regardless of
+/// which form is open.
+fn map_unit_popup_key(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Esc => Some(Action::CloseUnitPopup),
+        _ => None,
+    }
 }
 
 impl Default for Shell {
@@ -536,7 +601,7 @@ mod tests {
             .expect("ctrl+u always maps to an action while no popup is open");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Units");
+        assert_eq!(shell.view.title(), "Units & Prices");
     }
 
     #[test]
@@ -561,14 +626,14 @@ mod tests {
             .expect("enter on the `unit` command always maps to an action");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Units");
+        assert_eq!(shell.view.title(), "Units & Prices");
         assert!(shell.command_popup.is_none());
     }
 
     #[test]
     fn enter_on_a_command_with_no_real_view_yet_is_still_swallowed() {
         // Filtered down to `report account-balance` — a specific report, reached only via the
-        // Reports screen's own picker (`command_popup/commands/reports.rs`) — which has no
+        // Reports screen's own picker (`popup/command/commands/reports.rs`) — which has no
         // dispatch of its own even though `report list` does. `Enter` should still be a no-op.
         let mut shell = Shell::new();
         shell.update(Action::OpenCommandPopup);
@@ -593,7 +658,7 @@ mod tests {
     fn selecting_the_dashboard_command_and_pressing_enter_opens_the_dashboard_view() {
         let mut shell = Shell::new();
         shell.update(Action::OpenUnits);
-        assert_eq!(shell.view.title(), "Units");
+        assert_eq!(shell.view.title(), "Units & Prices");
 
         shell.update(Action::OpenCommandPopup);
         for c in "dashboard".chars() {
@@ -622,7 +687,7 @@ mod tests {
     fn g_then_d_opens_the_dashboard_view() {
         let mut shell = Shell::new();
         shell.update(Action::OpenUnits);
-        assert_eq!(shell.view.title(), "Units");
+        assert_eq!(shell.view.title(), "Units & Prices");
 
         let armed = shell.map_event(Event::Key(KeyEvent::new(
             KeyCode::Char('g'),
@@ -690,7 +755,7 @@ mod tests {
             ('p', "Payees"),
             ('r', "Reports"),
             ('t', "Transactions"),
-            ('u', "Units"),
+            ('u', "Units & Prices"),
         ];
 
         for (letter, expected_title) in cases {
@@ -790,5 +855,231 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell with the popup open should not error");
+    }
+
+    #[test]
+    fn n_on_the_units_view_opens_the_new_unit_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenUnits);
+        assert!(shell.unit_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('n'),
+                KeyModifiers::NONE,
+            )))
+            .expect("n on the units view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.unit_popup, Some(UnitPopup::New(_))));
+    }
+
+    #[test]
+    fn e_on_the_units_view_opens_the_edit_unit_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenUnits);
+        assert!(shell.unit_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('e'),
+                KeyModifiers::NONE,
+            )))
+            .expect("e on the units view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.unit_popup, Some(UnitPopup::Edit(_))));
+    }
+
+    #[test]
+    fn d_on_the_units_view_opens_the_delete_unit_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenUnits);
+        assert!(shell.unit_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('d'),
+                KeyModifiers::NONE,
+            )))
+            .expect("d on the units view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.unit_popup, Some(UnitPopup::Delete(_))));
+    }
+
+    #[test]
+    fn esc_closes_an_open_unit_popup() {
+        for open in [
+            Action::OpenNewUnitPopup,
+            Action::OpenEditUnitPopup,
+            Action::OpenDeleteUnitPopup,
+        ] {
+            let mut shell = Shell::new();
+            shell.update(open);
+
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
+                .expect("esc while open always maps to an action");
+            shell.update(action);
+
+            assert!(shell.unit_popup.is_none());
+        }
+    }
+
+    #[test]
+    fn other_keys_are_swallowed_while_a_unit_popup_is_open() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenNewUnitPopup);
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('n'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(action, None);
+    }
+
+    #[test]
+    fn opening_a_unit_popup_closes_an_open_command_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        assert!(shell.command_popup.is_some());
+
+        shell.update(Action::OpenNewUnitPopup);
+
+        assert!(shell.unit_popup.is_some());
+        assert!(shell.command_popup.is_none());
+    }
+
+    #[test]
+    fn opening_a_unit_popup_replaces_any_other_open_unit_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenNewUnitPopup);
+        assert!(matches!(shell.unit_popup, Some(UnitPopup::New(_))));
+
+        shell.update(Action::OpenEditUnitPopup);
+
+        assert!(matches!(shell.unit_popup, Some(UnitPopup::Edit(_))));
+
+        shell.update(Action::OpenDeleteUnitPopup);
+
+        assert!(matches!(shell.unit_popup, Some(UnitPopup::Delete(_))));
+    }
+
+    #[test]
+    fn selecting_the_unit_new_command_and_pressing_enter_opens_the_new_unit_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        for c in "unit new".chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on the `unit new` command always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.unit_popup, Some(UnitPopup::New(_))));
+        assert!(shell.command_popup.is_none());
+    }
+
+    #[test]
+    fn selecting_the_unit_edit_command_and_pressing_enter_opens_the_edit_unit_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        for c in "unit edit".chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on the `unit edit` command always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.unit_popup, Some(UnitPopup::Edit(_))));
+        assert!(shell.command_popup.is_none());
+    }
+
+    #[test]
+    fn selecting_the_unit_delete_command_and_pressing_enter_opens_the_delete_unit_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        for c in "unit delete".chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on the `unit delete` command always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.unit_popup, Some(UnitPopup::Delete(_))));
+        assert!(shell.command_popup.is_none());
+    }
+
+    #[test]
+    fn renders_the_open_new_unit_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenNewUnitPopup);
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the new unit popup open should not error");
+    }
+
+    #[test]
+    fn renders_the_open_edit_unit_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenEditUnitPopup);
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the edit unit popup open should not error");
+    }
+
+    #[test]
+    fn renders_the_open_delete_unit_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenDeleteUnitPopup);
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the delete unit popup open should not error");
     }
 }

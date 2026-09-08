@@ -9,12 +9,20 @@
 //! heavily dimmed", never hidden or cleared, per §3a.
 
 pub mod command;
+pub mod unit;
 
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     widgets::Widget,
 };
+
+/// Reference terminal width `docs/ux/tui/README.md` draws its wireframes against — every
+/// popup's fixed width is computed from this rather than from whatever terminal the user
+/// happens to be running, so opening one looks the same at 96 columns and at 300. Shared so
+/// `popup::command`'s ~78% and a unit form's ~88% (`docs/ux/tui/units/README.md` "The forms")
+/// scale off the same baseline.
+pub const REFERENCE_TERMINAL_WIDTH: u16 = 96;
 
 /// A widget that dims an already-drawn area of the buffer without touching its colours, so the
 /// view behind a popup stays visible and heavily dimmed, per §3a — `Buffer` has no public

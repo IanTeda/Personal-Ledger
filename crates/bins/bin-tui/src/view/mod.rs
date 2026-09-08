@@ -53,6 +53,18 @@ pub enum Action {
     /// Units view (`docs/ux/tui/units/README.md`), the first domain to land a real (if still
     /// wireframe-stage) destination behind the command popup's `unit` entry.
     OpenUnits,
+    /// `n` on the Units view, or `Enter` on the command popup's `unit new <code> <type>`
+    /// command — opens the "new unit" popup (`docs/ux/tui/units/README.md` §4b).
+    OpenNewUnitPopup,
+    /// `e` on the Units view, or `Enter` on the command popup's `unit edit <code>` command —
+    /// opens the "edit unit" popup (`docs/ux/tui/units/README.md` §4c).
+    OpenEditUnitPopup,
+    /// `d` on the Units view, or `Enter` on the command popup's `unit delete <code>` command —
+    /// opens the "delete unit" popup (`docs/ux/tui/units/README.md` §4d/§4e).
+    OpenDeleteUnitPopup,
+    /// `Esc` while a unit popup (new, edit or delete) is open — closes it without saving or
+    /// deleting anything.
+    CloseUnitPopup,
     /// `g d` (the `docs/ux/tui/README.md` "Jumps" table's chord), or `Enter` on the command
     /// popup's `dashboard` command — returns to the Dashboard view.
     OpenDashboard,

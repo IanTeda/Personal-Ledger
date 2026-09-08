@@ -6,6 +6,7 @@
 //! summary detail, candlestick chart, price table, forms) is built out.
 
 use chandelier::{Candle, CandleSeries, CandlestickChart};
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -61,9 +62,11 @@ const SUMMARY_BOX_CONTENT_HEIGHT: u16 =
 /// above instead of sitting as blank space at the bottom of the summary box.
 const SUMMARY_SECTION_HEIGHT: u16 = 2 + SUMMARY_BOX_CONTENT_HEIGHT + 2;
 
-/// Height of the weekly close section: heading, its rule, ~11 rows of candles, and the
-/// price/time axis rows drawn by `chandelier`'s `CandlestickChart`.
-const WEEKLY_CLOSE_HEIGHT: u16 = 17;
+/// Height of the weekly close section: heading, its rule, ~6 rows of candles, and the
+/// price/time axis rows drawn by `chandelier`'s `CandlestickChart` — shorter than the initial
+/// ~11-row draft so the box reads as a glance-able sparkline rather than competing with the
+/// weekly prices table below it for vertical space.
+const WEEKLY_CLOSE_HEIGHT: u16 = 12;
 
 /// Number of fake weekly candles behind the weekly close chart — roughly the "12 months" of
 /// weekly OHLC from §4a; `CandlestickChart` autoscales and draws the most recent that fit.
@@ -121,6 +124,18 @@ impl UnitsView {
 }
 
 impl View for UnitsView {
+    /// `n` opens the "new unit" popup, `e` the "edit unit" popup, `d` the "delete unit" popup
+    /// (`docs/ux/tui/units/README.md` §4a's own `n new` / `e edit` / `d delete` key hints) —
+    /// everything else falls through to `Shell`'s global keys.
+    fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
+        match key.code {
+            KeyCode::Char('n') => Some(Action::OpenNewUnitPopup),
+            KeyCode::Char('e') => Some(Action::OpenEditUnitPopup),
+            KeyCode::Char('d') => Some(Action::OpenDeleteUnitPopup),
+            _ => None,
+        }
+    }
+
     fn update(&mut self, _action: &Action) {}
 
     fn view(&self, frame: &mut Frame, area: Rect) {
@@ -142,7 +157,7 @@ impl View for UnitsView {
     }
 
     fn title(&self) -> &'static str {
-        "Units"
+        "Units & Prices"
     }
 }
 
@@ -540,6 +555,7 @@ fn render_price_history(frame: &mut Frame, area: Rect) {
             Constraint::Length(WEEKLY_CLOSE_HEIGHT),
             Constraint::Length(1), // blank spacer
             Constraint::Min(0),
+            Constraint::Length(1), // blank spacer
             Constraint::Length(KEYBIND_HINTS_HEIGHT),
             Constraint::Length(1), // blank spacer, above the shell's footer
         ])
@@ -548,8 +564,9 @@ fn render_price_history(frame: &mut Frame, area: Rect) {
     render_weekly_close(frame, rows[0], &fake_weekly_candles());
     // rows[1] is left blank — breathing space between weekly close and weekly prices.
     render_weekly_prices(frame, rows[2], &fake_weekly_prices());
-    render_keybind_hints(frame, rows[3]);
-    // rows[4] is left blank — breathing space between the hints box and the shell footer.
+    // rows[3] is left blank — breathing space between weekly prices and the hints box.
+    render_keybind_hints(frame, rows[4]);
+    // rows[5] is left blank — breathing space between the hints box and the shell footer.
 }
 
 /// One week's fake close/change/value row for the weekly prices table, newest week first.
@@ -892,9 +909,38 @@ fn fake_weekly_candles() -> Vec<Candle> {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
+
+    #[test]
+    fn n_opens_the_new_unit_popup() {
+        let mut view = UnitsView::new();
+        let action = view.handle_key(KeyEvent::new(KeyCode::Char('n'), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::OpenNewUnitPopup));
+    }
+
+    #[test]
+    fn e_opens_the_edit_unit_popup() {
+        let mut view = UnitsView::new();
+        let action = view.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::OpenEditUnitPopup));
+    }
+
+    #[test]
+    fn d_opens_the_delete_unit_popup() {
+        let mut view = UnitsView::new();
+        let action = view.handle_key(KeyEvent::new(KeyCode::Char('d'), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::OpenDeleteUnitPopup));
+    }
+
+    #[test]
+    fn other_keys_fall_through_to_the_shell() {
+        let mut view = UnitsView::new();
+        let action = view.handle_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
+        assert_eq!(action, None);
+    }
 
     fn render(view: &UnitsView) -> String {
         let backend = TestBackend::new(96, 30);
@@ -1029,18 +1075,33 @@ mod tests {
                 .find(|&y| row_text(y).contains(needle))
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
+        // Scoped to the right column only (`LEFT_COLUMN_WIDTH` plus the 2-cell gap between
+        // columns): the full row width also carries the left column's own content (the unit
+        // list/summary boxes), which can be non-blank at any given `y` regardless of what the
+        // right column is doing at that row.
+        let right_column_row_is_blank = |y: u16| -> bool {
+            (LEFT_COLUMN_WIDTH + 2..buffer.area.width)
+                .all(|x| buffer[(x, y)].symbol().trim().is_empty())
+        };
 
         let column_header_row = row_index("MARKET VALUE");
         let keys_heading_row = row_index("KEYS · COMMANDS");
-        let last_price_row = keys_heading_row - 1;
+        // The row directly above the hints box is a deliberate blank spacer
+        // (`render_price_history`'s own breathing space between the two sections) — the last
+        // price row is the one above that.
+        let last_price_row = keys_heading_row - 2;
 
         assert!(
             last_price_row > column_header_row,
             "expected at least one weekly price row"
         );
         assert!(
-            !row_text(last_price_row).trim().is_empty(),
-            "the row right before the next section should still hold price data, not be blank"
+            !right_column_row_is_blank(last_price_row),
+            "the row above the spacer should still hold price data, not be blank"
+        );
+        assert!(
+            right_column_row_is_blank(keys_heading_row - 1),
+            "expected a blank spacer row between the weekly prices table and the hints box"
         );
     }
 
@@ -1386,7 +1447,7 @@ mod tests {
     }
 
     #[test]
-    fn title_is_units() {
-        assert_eq!(UnitsView::new().title(), "Units");
+    fn title_is_units_and_prices() {
+        assert_eq!(UnitsView::new().title(), "Units & Prices");
     }
 }
