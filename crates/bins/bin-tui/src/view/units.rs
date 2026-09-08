@@ -97,6 +97,10 @@ const COMMAND_HINTS: [&str; 3] = [
 /// weekly prices heading's tag, so the two stay consistent.
 const FAKE_UNITS_HELD: &str = "561.204";
 
+/// `FAKE_UNITS_HELD` as a plain number, for computing the generated weekly price rows' market
+/// value (`close * FAKE_UNITS_HELD_QTY`). Keep the two in sync.
+const FAKE_UNITS_HELD_QTY: f64 = 561.204;
+
 /// Width of the weekly prices table's `W/C` column.
 const WEEKLY_PRICE_DATE_WIDTH: u16 = 7;
 
@@ -548,94 +552,91 @@ fn render_price_history(frame: &mut Frame, area: Rect) {
     // rows[4] is left blank — breathing space between the hints box and the shell footer.
 }
 
-/// One week's fake close/change/value row for the weekly prices table — §4a's own worked
-/// example (VDHG), newest week first.
+/// One week's fake close/change/value row for the weekly prices table, newest week first.
 struct WeeklyPriceRow {
     /// The week-commencing date, e.g. `"31 aug"`.
-    week_commencing: &'static str,
-    close: &'static str,
+    week_commencing: String,
+    close: String,
     /// The signed weekly change, e.g. `"+0.42"` or `"-0.61"`.
-    change_percent: &'static str,
-    market_value: &'static str,
+    change_percent: String,
+    market_value: String,
     /// A negative week renders `change_percent` in the accent colour.
     is_negative: bool,
 }
 
-/// The fake weekly prices behind the table — ten weeks, newest first, matching the summary
-/// box's own `last price`/`UNITS HELD` figures.
+/// The fake weekly prices behind the table. The first ten rows are §4a's own worked example
+/// (VDHG), verbatim; the rest are generated continuing backward from there (deterministic
+/// xorshift PRNG, the same technique as `fake_weekly_candles`) out to `FAKE_WEEK_COUNT`, so
+/// the table fills any reasonably tall terminal instead of trailing off into blank rows.
 fn fake_weekly_prices() -> Vec<WeeklyPriceRow> {
-    vec![
-        WeeklyPriceRow {
-            week_commencing: "31 aug",
-            close: "72.41",
-            change_percent: "+0.42",
-            market_value: "40 637.79",
-            is_negative: false,
-        },
-        WeeklyPriceRow {
-            week_commencing: "24 aug",
-            close: "72.11",
-            change_percent: "-0.61",
-            market_value: "40 469.42",
-            is_negative: true,
-        },
-        WeeklyPriceRow {
-            week_commencing: "17 aug",
-            close: "72.55",
-            change_percent: "+1.08",
-            market_value: "40 716.34",
-            is_negative: false,
-        },
-        WeeklyPriceRow {
-            week_commencing: "10 aug",
-            close: "71.78",
-            change_percent: "+0.94",
-            market_value: "40 284.20",
-            is_negative: false,
-        },
-        WeeklyPriceRow {
-            week_commencing: "03 aug",
-            close: "71.11",
-            change_percent: "-0.28",
-            market_value: "39 908.16",
-            is_negative: true,
-        },
-        WeeklyPriceRow {
-            week_commencing: "27 jul",
-            close: "71.31",
-            change_percent: "+1.44",
-            market_value: "40 020.42",
-            is_negative: false,
-        },
-        WeeklyPriceRow {
-            week_commencing: "20 jul",
-            close: "70.30",
-            change_percent: "+0.63",
-            market_value: "39 453.63",
-            is_negative: false,
-        },
-        WeeklyPriceRow {
-            week_commencing: "13 jul",
-            close: "69.86",
-            change_percent: "-0.90",
-            market_value: "39 206.69",
-            is_negative: true,
-        },
-        WeeklyPriceRow {
-            week_commencing: "06 jul",
-            close: "70.49",
-            change_percent: "+2.11",
-            market_value: "39 560.28",
-            is_negative: false,
-        },
-        WeeklyPriceRow {
-            week_commencing: "29 jun",
-            close: "69.03",
-            change_percent: "+0.34",
-            market_value: "38 740.93",
-            is_negative: false,
-        },
+    let mut rows: Vec<WeeklyPriceRow> = [
+        ("31 aug", "72.41", "+0.42", "40 637.79", false),
+        ("24 aug", "72.11", "-0.61", "40 469.42", true),
+        ("17 aug", "72.55", "+1.08", "40 716.34", false),
+        ("10 aug", "71.78", "+0.94", "40 284.20", false),
+        ("03 aug", "71.11", "-0.28", "39 908.16", true),
+        ("27 jul", "71.31", "+1.44", "40 020.42", false),
+        ("20 jul", "70.30", "+0.63", "39 453.63", false),
+        ("13 jul", "69.86", "-0.90", "39 206.69", true),
+        ("06 jul", "70.49", "+2.11", "39 560.28", false),
+        ("29 jun", "69.03", "+0.34", "38 740.93", false),
     ]
+    .into_iter()
+    .map(
+        |(week_commencing, close, change_percent, market_value, is_negative)| WeeklyPriceRow {
+            week_commencing: week_commencing.to_string(),
+            close: close.to_string(),
+            change_percent: change_percent.to_string(),
+            market_value: market_value.to_string(),
+            is_negative,
+        },
+    )
+    .collect();
+
+    let mut week_commencing =
+        chrono::NaiveDate::from_ymd_opt(2025, 6, 29).expect("29 june 2025 is a valid date");
+    let mut close = 69.03_f64;
+    let mut seed: u64 = 29;
+    for _ in rows.len()..FAKE_WEEK_COUNT {
+        week_commencing -= chrono::Duration::weeks(1);
+
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        let change_percent = (seed % 400) as f64 / 100.0 - 2.0; // -2.00..=2.00
+        let previous_close = (close / (1.0 + change_percent / 100.0)).max(1.0);
+
+        rows.push(WeeklyPriceRow {
+            week_commencing: week_commencing.format("%d %b").to_string().to_lowercase(),
+            close: format!("{previous_close:.2}"),
+            change_percent: format!("{change_percent:+.2}"),
+            market_value: format_market_value(previous_close * FAKE_UNITS_HELD_QTY),
+            is_negative: change_percent < 0.0,
+        });
+
+        close = previous_close;
+    }
+
+    rows
+}
+
+/// Formats a dollar amount with a space thousands separator and two decimal places, e.g.
+/// `40637.79` -> `"40 637.79"`, matching the weekly prices table's own fake figures.
+fn format_market_value(amount: f64) -> String {
+    let whole = amount.trunc().abs() as i64;
+    let cents = ((amount.abs() - whole as f64) * 100.0).round() as u32;
+
+    let digits = whole.to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, ch) in digits.chars().rev().enumerate() {
+        if index != 0 && index % 3 == 0 {
+            grouped.push(' ');
+        }
+        grouped.push(ch);
+    }
+    let grouped: String = grouped.chars().rev().collect();
+
+    format!("{grouped}.{cents:02}")
 }
 
 /// The weekly prices table (middle right): a "WEEKLY PRICES · W/C MONDAY · N UNITS" heading
@@ -753,14 +754,14 @@ fn render_weekly_price_row(frame: &mut Frame, area: Rect, row: &WeeklyPriceRow, 
     };
 
     let columns = weekly_price_columns(area);
-    frame.render_widget(Paragraph::new(row.week_commencing), columns[0]);
-    frame.render_widget(Paragraph::new(row.close), columns[1]);
+    frame.render_widget(Paragraph::new(row.week_commencing.as_str()), columns[0]);
+    frame.render_widget(Paragraph::new(row.close.as_str()), columns[1]);
     frame.render_widget(
-        Paragraph::new(Span::styled(row.change_percent, change_style)),
+        Paragraph::new(Span::styled(row.change_percent.as_str(), change_style)),
         columns[2],
     );
     frame.render_widget(
-        Paragraph::new(row.market_value).alignment(Alignment::Right),
+        Paragraph::new(row.market_value.as_str()).alignment(Alignment::Right),
         columns[3],
     );
 }
@@ -948,10 +949,10 @@ mod tests {
     }
 
     #[test]
-    fn weekly_prices_shows_the_heading_tag_column_header_and_every_row() {
-        // Taller than the 96x30 minimum: all ten fake weeks need more height than the
-        // minimum leaves for the weekly prices table (the scrollbar covers that case at
-        // minimum size — see `weekly_prices_shows_a_scrollbar`).
+    fn weekly_prices_shows_the_heading_tag_column_header_and_the_worked_example_rows() {
+        // Taller than the 96x30 minimum: the worked example's first ten weeks need more
+        // height than the minimum leaves for the weekly prices table (the scrollbar covers
+        // that case at minimum size — see `weekly_prices_shows_a_scrollbar`).
         let backend = TestBackend::new(96, 45);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
@@ -978,28 +979,69 @@ mod tests {
             "MARKET VALUE column header missing"
         );
 
-        for row in fake_weekly_prices() {
+        // §4a's own worked example — the first ten rows `fake_weekly_prices` starts from,
+        // verbatim, before it continues generating earlier weeks.
+        for row in fake_weekly_prices().into_iter().take(10) {
             assert!(
-                text.contains(row.week_commencing),
+                text.contains(row.week_commencing.as_str()),
                 "{}'s date missing",
                 row.week_commencing
             );
             assert!(
-                text.contains(row.close),
+                text.contains(row.close.as_str()),
                 "{}'s close missing",
                 row.week_commencing
             );
             assert!(
-                text.contains(row.change_percent),
+                text.contains(row.change_percent.as_str()),
                 "{}'s change missing",
                 row.week_commencing
             );
             assert!(
-                text.contains(row.market_value),
+                text.contains(row.market_value.as_str()),
                 "{}'s market value missing",
                 row.week_commencing
             );
         }
+    }
+
+    #[test]
+    fn weekly_prices_table_fills_the_available_height_with_no_trailing_blank_rows() {
+        // Tall enough that the ten worked-example rows alone wouldn't fill it — confirms
+        // `fake_weekly_prices`'s generated rows (past the first ten) actually reach the
+        // bottom of the table's own space rather than leaving it short.
+        let backend = TestBackend::new(96, 60);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| UnitsView::new().view(frame, frame.area()))
+            .expect("drawing the units view should not error");
+
+        let buffer = terminal.backend().buffer();
+        let row_text = |y: u16| -> String {
+            let mut row = String::new();
+            for x in 0..buffer.area.width {
+                row.push_str(buffer[(x, y)].symbol());
+            }
+            row
+        };
+        let row_index = |needle: &str| -> u16 {
+            (0..buffer.area.height)
+                .find(|&y| row_text(y).contains(needle))
+                .unwrap_or_else(|| panic!("no row contains {needle:?}"))
+        };
+
+        let column_header_row = row_index("MARKET VALUE");
+        let keys_heading_row = row_index("KEYS · COMMANDS");
+        let last_price_row = keys_heading_row - 1;
+
+        assert!(
+            last_price_row > column_header_row,
+            "expected at least one weekly price row"
+        );
+        assert!(
+            !row_text(last_price_row).trim().is_empty(),
+            "the row right before the next section should still hold price data, not be blank"
+        );
     }
 
     #[test]
