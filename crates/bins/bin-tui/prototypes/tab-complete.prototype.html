@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PROTOTYPE — command popup Tab-complete (throwaway, not production)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #201e1d; --ground: #f3f2f2; --accent: #ec3013;
+    --dim: #605d5d; --dim2: #9b9797; --line: #d7d3d3; --sel: #201e1d; --selfg: #f3f2f2;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #f3f2f2; --ground: #161413; --dim: #9b9797; --dim2: #605d5d; --line: #3a3736; --sel: #f3f2f2; --selfg: #161413; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 900px; margin-inline: auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .badge { display: inline-block; font: 11px/1 var(--mono); background: var(--accent); color: #fff; padding: 3px 6px; border-radius: 3px; letter-spacing: .04em; margin-bottom: 10px; }
+  .question { color: var(--dim); font-size: 14px; margin: 0 0 20px; padding: 10px 14px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .panel { border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 18px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); margin: 0 0 12px; }
+  .term { font: 14px/1.5 var(--mono); background: var(--ink); color: var(--ground); border-radius: 6px; padding: 12px 14px; white-space: pre; overflow-x: auto; }
+  .term .prompt { color: color-mix(in srgb, var(--ground) 60%, var(--accent) 40%); }
+  .term .count { float: right; opacity: .6; }
+  .row { display: block; }
+  .row.sel { background: var(--ground); color: var(--ink); }
+  .row .hit { text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; }
+  .row .tier { opacity: .45; font-size: 11px; margin-left: 6px; }
+  .none { opacity: .5; font-style: italic; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  button { font: 13px var(--mono); border: 1px solid var(--line); background: transparent; color: var(--ink); padding: 6px 10px; border-radius: 5px; cursor: pointer; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.primary { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  input[type=text] { font: 14px var(--mono); padding: 6px 10px; border: 1px solid var(--line); border-radius: 5px; background: var(--ground); color: var(--ink); width: 220px; }
+  select { font: 13px var(--mono); padding: 5px 8px; border-radius: 5px; border: 1px solid var(--line); background: var(--ground); color: var(--ink); }
+  .modebar { display: flex; gap: 14px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .modebar label { display: flex; gap: 5px; align-items: center; font-size: 13px; cursor: pointer; }
+  .log { font: 12px var(--mono); color: var(--dim); min-height: 18px; margin-top: 8px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tabs button.active { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .scenario-desc { font-size: 13px; color: var(--dim); margin-bottom: 10px; }
+  .steps { display: flex; gap: 8px; flex-wrap: wrap; }
+  .steps button { border-style: dashed; }
+  .steps button.done { opacity: .35; border-style: solid; }
+  kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+
+<span class="badge">PROTOTYPE — throwaway, see commit message for context</span>
+<h1>Command popup: what should <kbd>Tab</kbd> do?</h1>
+<p class="question">
+  Wayfinder ticket <a href="https://github.com/IanTeda/Personal-Ledger/issues/91" target="_blank" rel="noopener">#91</a>.
+  The shipped command popup has no argument-editing UI and no tokenised grammar — each <code>Command</code> is just a flat
+  display string with placeholders baked in as text (e.g. <code>"budget new &lt;category&gt; &lt;limit&gt;"</code>). Typing only
+  ever filters/ranks that flat list; it never populates an argument. So what should <kbd>Tab</kbd> actually do to the input buffer
+  when a row is selected? Compare three candidate behaviours below against the same keystrokes, live.
+</p>
+
+<div class="panel">
+  <h2>Tab behaviour under test</h2>
+  <div class="modebar">
+    <label><input type="radio" name="mode" value="whole" checked> <b>(a) whole</b> — fill input with the exact selected row text, placeholders and all</label>
+    <label><input type="radio" name="mode" value="stem"> <b>(b) stem</b> — fill input up to (not including) the first <code>&lt;</code>/<code>[</code></label>
+    <label><input type="radio" name="mode" value="disabled"> <b>(c) disabled</b> — Tab does nothing yet</label>
+  </div>
+
+  <h2>Current state</h2>
+  <div class="term" id="term"></div>
+  <div class="controls">
+    <input type="text" id="typer" placeholder="type here — routes through push_char per keystroke" autocomplete="off" spellcheck="false">
+    <button id="btn-backspace">⌫ Backspace</button>
+    <button id="btn-up">↑ move up</button>
+    <button id="btn-down">↓ move down</button>
+    <button id="btn-tab" class="primary">⇥ Tab</button>
+    <button id="btn-enter">↵ Enter</button>
+    <button id="btn-reset">reset</button>
+  </div>
+  <div class="log" id="log"></div>
+</div>
+
+<div class="panel">
+  <h2>Guided walkthroughs</h2>
+  <div class="tabs" id="scenario-tabs"></div>
+  <div class="scenario-desc" id="scenario-desc"></div>
+  <div class="steps" id="scenario-steps"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Pure module — the bit worth lifting into crates/bins/bin-tui/src/popup/command/mod.rs
+// once a mode is chosen. No DOM references below this block.
+// ---------------------------------------------------------------------------
+
+const COMMANDS = [
+  { domain: "Dashboard", name: "dashboard", description: "financial position — the default view" },
+  { domain: "Help", name: "help", description: "browse every command" },
+  { domain: "Units", name: "unit", description: "units, details and weekly prices" },
+  { domain: "Units", name: "unit new <code> <type>", description: "add a unit — code is permanent" },
+  { domain: "Units", name: "unit edit <code>", description: "change a unit's type or precision" },
+  { domain: "Units", name: "unit delete <code>", description: "delete a unit with no priced history" },
+  { domain: "Accounts", name: "account list", description: "accounts and their balances" },
+  { domain: "Accounts", name: "account new <name> <type>", description: "add an account" },
+  { domain: "Accounts", name: "account edit <name>", description: "rename or retype an account" },
+  { domain: "Accounts", name: "account delete <name>", description: "delete an account with no transactions" },
+  { domain: "Budgets", name: "budget list [period]", description: "budgets vs actual for the period" },
+  { domain: "Budgets", name: "budget new <category> <limit>", description: "add a budget for a category" },
+  { domain: "Budgets", name: "budget edit <category> [limit]", description: "change the limit or period" },
+  { domain: "Budgets", name: "budget delete <category>", description: "remove a category's budget" },
+  { domain: "Reports", name: "report budget-variance", description: "budget vs actual, over/under by category" },
+  { domain: "Categories", name: "category list", description: "categories and 30-day totals" },
+];
+
+// Tier rule settled in #90: 1 = name starts with query, 2 = query anywhere in name/domain,
+// 3 = query in description only. Ties keep COMMANDS' own (fixed) order.
+function tierOf(cmd, needle) {
+  if (!needle) return 0;
+  const name = cmd.name.toLowerCase();
+  const domain = cmd.domain.toLowerCase();
+  const desc = cmd.description.toLowerCase();
+  if (name.startsWith(needle)) return 1;
+  if (name.includes(needle) || domain.includes(needle)) return 2;
+  if (desc.includes(needle)) return 3;
+  return null; // no match at all — excluded
+}
+
+function firstHitField(cmd, needle) {
+  if (!needle) return null;
+  if (cmd.name.toLowerCase().includes(needle)) return "name";
+  if (cmd.description.toLowerCase().includes(needle)) return "description";
+  return null; // domain-only match — nothing literal to underline
+}
+
+function rankedRows(input) {
+  const needle = input.toLowerCase();
+  const withTier = COMMANDS
+    .map((cmd, originalIndex) => ({ cmd, tier: tierOf(cmd, needle), originalIndex }))
+    .filter((r) => needle === "" || r.tier !== null);
+  withTier.sort((a, b) => (a.tier - b.tier) || (a.originalIndex - b.originalIndex));
+  return withTier;
+}
+
+// The state machine under test. Mirrors CommandPopup { input, selected } plus the
+// tabMode knob this prototype exists to pin down.
+function initialState(tabMode) {
+  return { input: "", selected: 0, tabMode, lastAction: "reset" };
+}
+
+function selectableCount(state) {
+  return rankedRows(state.input).length;
+}
+
+function selectedCommand(state) {
+  const rows = rankedRows(state.input);
+  return rows[state.selected]?.cmd ?? null;
+}
+
+// tabFill: the one function each candidate answer differs on.
+function tabFill(cmd, mode) {
+  if (!cmd) return null;
+  if (mode === "disabled") return null;
+  if (mode === "whole") return cmd.name;
+  if (mode === "stem") {
+    const cut = cmd.name.search(/[<\[]/);
+    return cut === -1 ? cmd.name : cmd.name.slice(0, cut).trimEnd();
+  }
+  return null;
+}
+
+function reduce(state, action) {
+  switch (action.type) {
+    case "type_char": {
+      return { ...state, input: state.input + action.char, selected: 0, lastAction: `typed '${action.char}'` };
+    }
+    case "backspace": {
+      return { ...state, input: state.input.slice(0, -1), selected: 0, lastAction: "backspace" };
+    }
+    case "move_up": {
+      return { ...state, selected: Math.max(0, state.selected - 1), lastAction: "move up" };
+    }
+    case "move_down": {
+      const count = selectableCount(state);
+      return { ...state, selected: count > 0 ? Math.min(count - 1, state.selected + 1) : 0, lastAction: "move down" };
+    }
+    case "tab": {
+      const cmd = selectedCommand(state);
+      const fill = tabFill(cmd, state.tabMode);
+      if (fill === null) return { ...state, lastAction: cmd ? "tab — disabled, no-op" : "tab — no selection, no-op" };
+      if (fill === state.input) return { ...state, lastAction: "tab — already complete, no-op" };
+      return { ...state, input: fill, selected: 0, lastAction: `tab — filled '${fill}'` };
+    }
+    case "enter": {
+      const cmd = selectedCommand(state);
+      return { ...state, lastAction: cmd ? `enter — would run '${cmd.name}'` : "enter — no selection, no-op" };
+    }
+    case "reset": {
+      return initialState(state.tabMode);
+    }
+    case "set_mode": {
+      return { ...state, tabMode: action.mode, lastAction: `mode → ${action.mode}` };
+    }
+    default:
+      return state;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Thin DOM shell — everything below reaches into `document`; none of it is
+// meant to survive past this prototype.
+// ---------------------------------------------------------------------------
+
+let state = initialState("whole");
+
+function render() {
+  const rows = rankedRows(state.input);
+  const needle = state.input.toLowerCase();
+  const term = document.getElementById("term");
+  const left = `:${state.input}▌`;
+  const right = `${rows.length} of ${COMMANDS.length}`;
+  const pad = Math.max(1, 60 - left.length - right.length);
+  let html = `<span class="prompt">${escapeHtml(left)}</span>${" ".repeat(pad)}<span class="count">${right}</span>\n`;
+  html += "─".repeat(60) + "\n";
+  if (rows.length === 0) {
+    html += `<span class="none">— no matches —</span>`;
+  } else {
+    rows.forEach((r, i) => {
+      const cmd = r.cmd;
+      const hitField = firstHitField(cmd, needle);
+      const nameHtml = hitField === "name" ? underline(cmd.name, needle) : escapeHtml(cmd.name);
+      const descHtml = hitField === "description" ? underline(cmd.description, needle) : escapeHtml(cmd.description);
+      const tierLabel = needle ? `<span class="tier">tier ${r.tier}</span>` : "";
+      const cls = i === state.selected ? "row sel" : "row";
+      html += `<div class="${cls}">:${nameHtml.padEnd(34)} ${descHtml}${tierLabel}</div>`;
+    });
+  }
+  term.innerHTML = html;
+
+  document.getElementById("log").textContent = `last action: ${state.lastAction}`;
+  document.querySelector(`input[name=mode][value="${state.tabMode}"]`).checked = true;
+}
+
+function underline(text, needle) {
+  const idx = text.toLowerCase().indexOf(needle);
+  if (idx === -1) return escapeHtml(text);
+  return (
+    escapeHtml(text.slice(0, idx)) +
+    `<span class="hit">${escapeHtml(text.slice(idx, idx + needle.length))}</span>` +
+    escapeHtml(text.slice(idx + needle.length))
+  );
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+function dispatch(action) {
+  state = reduce(state, action);
+  render();
+}
+
+document.querySelectorAll('input[name=mode]').forEach((el) => {
+  el.addEventListener("change", (e) => dispatch({ type: "set_mode", mode: e.target.value }));
+});
+document.getElementById("btn-backspace").addEventListener("click", () => dispatch({ type: "backspace" }));
+document.getElementById("btn-up").addEventListener("click", () => dispatch({ type: "move_up" }));
+document.getElementById("btn-down").addEventListener("click", () => dispatch({ type: "move_down" }));
+document.getElementById("btn-tab").addEventListener("click", () => dispatch({ type: "tab" }));
+document.getElementById("btn-enter").addEventListener("click", () => dispatch({ type: "enter" }));
+document.getElementById("btn-reset").addEventListener("click", () => { document.getElementById("typer").value = ""; dispatch({ type: "reset" }); });
+
+const typer = document.getElementById("typer");
+typer.addEventListener("keydown", (e) => {
+  if (e.key === "Backspace") { e.preventDefault(); dispatch({ type: "backspace" }); typer.value = state.input; return; }
+  if (e.key === "Tab") { e.preventDefault(); dispatch({ type: "tab" }); typer.value = state.input; return; }
+  if (e.key === "Enter") { e.preventDefault(); dispatch({ type: "enter" }); return; }
+  if (e.key === "ArrowUp") { e.preventDefault(); dispatch({ type: "move_up" }); return; }
+  if (e.key === "ArrowDown") { e.preventDefault(); dispatch({ type: "move_down" }); return; }
+  if (e.key.length === 1) { e.preventDefault(); dispatch({ type: "type_char", char: e.key }); typer.value = state.input; }
+});
+
+// --- Guided walkthroughs -----------------------------------------------------
+
+const SCENARIOS = [
+  {
+    title: "Happy path — narrow to one exact command",
+    desc: "Type 'bud' (budget commands rank to the top per #90), arrow down to the mutating one, then Tab. Watch the match count and compare it across the three modes using the radio buttons above.",
+    steps: [
+      { label: "type 'b'", action: { type: "type_char", char: "b" } },
+      { label: "type 'u'", action: { type: "type_char", char: "u" } },
+      { label: "type 'd'", action: { type: "type_char", char: "d" } },
+      { label: "↓ (to 'budget new …')", action: { type: "move_down" } },
+      { label: "Tab", action: { type: "tab" } },
+    ],
+  },
+  {
+    title: "Edge case — Tab with zero matches",
+    desc: "Type something nothing matches, then hit Tab. It should be a no-op — there's no selected row to fill from.",
+    steps: [
+      { label: "type 'x'", action: { type: "type_char", char: "x" } },
+      { label: "type 'y'", action: { type: "type_char", char: "y" } },
+      { label: "type 'z'", action: { type: "type_char", char: "z" } },
+      { label: "Tab (should no-op)", action: { type: "tab" } },
+    ],
+  },
+  {
+    title: "Edge case — Tab is idempotent",
+    desc: "Select a command with no placeholders ('help') and Tab twice. Second press must not change anything or duplicate text.",
+    steps: [
+      { label: "type 'h'", action: { type: "type_char", char: "h" } },
+      { label: "type 'e'", action: { type: "type_char", char: "e" } },
+      { label: "Tab", action: { type: "tab" } },
+      { label: "Tab again (should no-op)", action: { type: "tab" } },
+    ],
+  },
+  {
+    title: "Illegal attempt — Tab doesn't cycle candidates",
+    desc: "With several budget commands visible, Tab always fills from the currently *selected* row — it never steps to 'the next candidate' on repeat presses. Arrow keys are the only way to change which one Tab will fill.",
+    steps: [
+      { label: "type 'b'", action: { type: "type_char", char: "b" } },
+      { label: "type 'u'", action: { type: "type_char", char: "u" } },
+      { label: "type 'd'", action: { type: "type_char", char: "d" } },
+      { label: "Tab (fills row 0: 'budget list [period]')", action: { type: "tab" } },
+      { label: "reset, then …", action: { type: "reset" } },
+    ],
+  },
+];
+
+let activeScenario = 0;
+let stepCursor = 0;
+
+function renderScenarios() {
+  const tabs = document.getElementById("scenario-tabs");
+  tabs.innerHTML = "";
+  SCENARIOS.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.textContent = `${i + 1}. ${s.title}`;
+    if (i === activeScenario) b.classList.add("active");
+    b.addEventListener("click", () => { activeScenario = i; stepCursor = 0; document.getElementById("typer").value = ""; dispatch({ type: "reset" }); renderScenarios(); });
+    tabs.appendChild(b);
+  });
+  document.getElementById("scenario-desc").textContent = SCENARIOS[activeScenario].desc;
+  const stepsEl = document.getElementById("scenario-steps");
+  stepsEl.innerHTML = "";
+  SCENARIOS[activeScenario].steps.forEach((step, i) => {
+    const b = document.createElement("button");
+    b.textContent = `${i + 1}. ${step.label}`;
+    if (i < stepCursor) b.classList.add("done");
+    b.addEventListener("click", () => {
+      dispatch(step.action);
+      typer.value = state.input;
+      stepCursor = Math.max(stepCursor, i + 1);
+      renderScenarios();
+    });
+    stepsEl.appendChild(b);
+  });
+}
+
+renderScenarios();
+render();
+</script>
+</body>
+</html>
