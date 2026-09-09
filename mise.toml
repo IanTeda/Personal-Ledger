@@ -63,15 +63,20 @@ run = "sqlx database create"
 # `bin-sync-server` (`migrations/sync-server`).
 [tasks.db-migrate-client]
 description = "Apply the Client-Ledger migrations"
-run = "sqlx migrate run --source crates/libs/lib-database/migrations/client"
+run = "sqlx migrate run --ignore-missing --source crates/libs/lib-database/migrations/client"
 
 [tasks.db-migrate-sync-server]
 description = "Apply the Sync Server migrations"
-run = "sqlx migrate run --source crates/libs/lib-database/migrations/sync-server"
+run = "sqlx migrate run --ignore-missing --source crates/libs/lib-database/migrations/sync-server"
 
 [tasks.db-migrate]
 description = "Apply both the Client-Ledger and Sync-Server migration sets"
-run = "mise run db-migrate-client && mise run db-migrate-sync-server"
+# Sync Server MUST run first: its accounts->sync_users rename (20260904000000) frees up the
+# `accounts` table name for the Client-Ledger's own domain accounts table. Reversing the
+# order lets the Client-Ledger's `CREATE TABLE IF NOT EXISTS accounts` win the name first, so
+# the Sync Server's own create-accounts migration silently no-ops and the rename then hijacks
+# the domain accounts table instead.
+run = "mise run db-migrate-sync-server && mise run db-migrate-client"
 
 # DATABASE_URL points at a dev SQLite file inside the repo (`{{config_root}}` is the
 # directory containing this mise.toml) so these tasks work regardless of where the repo is
