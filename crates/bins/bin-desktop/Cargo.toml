@@ -19,6 +19,7 @@ lib_telemetry = { path = "../../libs/lib-telemetry" }
 
 ## -- Workspace Dependencies --
 chrono = { workspace = true }
+clap = { workspace = true }
 gpui = { workspace = true }
 gpui-component = { workspace = true }
 sqlx = { workspace = true }

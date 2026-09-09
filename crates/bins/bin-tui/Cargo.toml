@@ -21,6 +21,7 @@ lib_telemetry = { path = "../../libs/lib-telemetry" }
 bigdecimal = { workspace = true }
 chandelier = { workspace = true }
 chrono = { workspace = true }
+clap = { workspace = true }
 crossterm = { workspace = true }
 futures-util = { workspace = true }
 ratatui = { workspace = true }

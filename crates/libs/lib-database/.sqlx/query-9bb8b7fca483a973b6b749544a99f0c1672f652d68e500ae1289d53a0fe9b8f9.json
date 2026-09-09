@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                UPDATE preferences\n                SET default_unit_id = ?, colour_theme = ?, date_format = ?, number_format = ?\n                WHERE id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "9bb8b7fca483a973b6b749544a99f0c1672f652d68e500ae1289d53a0fe9b8f9"
+}

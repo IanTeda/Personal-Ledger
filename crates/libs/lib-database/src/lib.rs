@@ -113,6 +113,12 @@ pub use budgets::{BudgetProgress, Budgets};
 pub mod sync_users;
 pub use sync_users::SyncUser;
 
+/// User-editable Ledger-scoped settings (default Unit, colour theme, date format,
+/// decimal/thousands separator), synced across a user's Clients in future (ADR-0014).
+/// Singleton by convention (mirroring `sync_users`), not a database constraint.
+pub mod preferences;
+pub use preferences::Preferences;
+
 /// The Sync Server's durable Change Set log (ADR-0009).
 pub mod change_sets;
 pub use change_sets::ChangeSet;

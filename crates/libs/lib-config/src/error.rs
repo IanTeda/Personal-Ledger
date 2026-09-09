@@ -40,9 +40,9 @@ pub enum ConfigError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::net::SocketAddr;
     use std::fs::File;
     use std::io::Write;
+    use std::net::SocketAddr;
 
     #[test]
     fn validation_variant_formats_as_expected() {

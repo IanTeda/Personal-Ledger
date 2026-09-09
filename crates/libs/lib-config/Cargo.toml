@@ -9,6 +9,7 @@ lib_database = { path = "../../../crates/libs/lib-database" }
 lib_telemetry = { path = "../../../crates/libs/lib-telemetry" }
 
 ## -- Workspace Shared Dependencies --
+clap = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 
@@ -18,6 +19,7 @@ dirs = { version = "6.0.0" }
 
 
 [dev-dependencies]
+serde_json = { workspace = true }
 tempfile = "3.10.1"
 
 [lints]

@@ -31,6 +31,7 @@
 //! executor over a `tokio::sync::oneshot` channel (a plain future, needing no Tokio runtime
 //! context itself to await).
 
+use clap::Parser;
 use gpui::{
     App, Application, Bounds, Context, Entity, Pixels, SharedString, Window, WindowBounds,
     WindowOptions, canvas, div, fill, point, prelude::*, px, size,
@@ -41,6 +42,13 @@ use gpui_component::{
     tab::{Tab, TabBar},
     table::{Column, Table, TableDelegate, TableState},
 };
+
+/// Personal Ledger Desktop.
+#[derive(Parser)]
+struct Cli {
+    #[command(flatten)]
+    config: lib_config::ConfigArgs,
+}
 
 /// A single dummy monthly-spend data point, standing in for a real transaction-total
 /// report (FR.35).
@@ -781,7 +789,8 @@ mod tests {
 // thread rather than a worker thread, which is exactly where the main/UI thread needs to be.
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = lib_config::LedgerConfig::parse(None)?;
+    let cli = Cli::parse();
+    let config = lib_config::LedgerConfig::parse(cli.config.path.as_deref())?;
     let telemetry_level = Some(&config.telemetry_config().telemetry_level());
     lib_telemetry::init(telemetry_level)?;
 

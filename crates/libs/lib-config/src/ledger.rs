@@ -2,36 +2,33 @@
 //!
 //! This module provides a layered configuration system for the Personal Ledger application.
 //! It supports loading configuration from multiple sources with a defined precedence order.
-//!
 //! Configuration files use INI format.
 //!
-//! ## Configuration Sources (in precedence order)
+//! Two entry points exist, differing only in how far the file-location *search* reaches --
+//! the sources layered on top of it (defaults, an explicit path, environment variables) are
+//! identical (ADR-0014):
 //!
-//! 1. Built-in defaults (lowest precedence)
-//! 2. System-wide configuration files
-//! 3. User-specific configuration files
-//! 4. Executable directory configuration files
-//! 5. Current working directory configuration files
-//! 6. Explicit configuration file (passed to `parse`)
-//! 7. Environment variables (highest precedence)
+//! - [`LedgerConfig::parse`] -- for `bin-tui`/`bin-desktop`: the full search --
+//!   defaults -> system -> user -> executable-directory -> working-directory ->
+//!   explicit path -> environment variables.
+//! - [`LedgerConfig::parse_for_sync_server`] -- for `bin-sync-server`: defaults ->
+//!   explicit path -> environment variables only. The system/user/executable-directory/
+//!   working-directory tiers don't correspond to anything meaningful inside a Docker
+//!   container.
 //!
 //! ## Example
 //!
 //! ```rust
 //! use lib_config::LedgerConfig;
 //!
-//! // Load configuration from default locations
 //! let config = LedgerConfig::parse(None).expect("Failed to load config");
 //!
-//! // Access telemetry configuration
 //! let telemetry = config.telemetry_config();
 //! println!("Telemetry level: {:?}", telemetry.telemetry_level());
 //!
-//! // Access database configuration
 //! let database = config.database_config();
 //! println!("Database URL: {}", database.url());
 //!
-//! // Load with explicit config file
 //! use std::path::Path;
 //! let config_path = Path::new("custom.conf");
 //! let config = LedgerConfig::parse(Some(config_path)).expect("Failed to load config");
@@ -50,32 +47,24 @@
 //! acquire_timeout_seconds = 30
 //! idle_timeout_seconds = 600
 //! max_lifetime_seconds = 1800
+//!
+//! # Only read by bin-sync-server, via `LedgerConfig::parse_for_sync_server`.
+//! [sync-server]
+//! bind_address = "0.0.0.0:50051"
 //! ```
 
 use std::path::{Path, PathBuf};
 
-use config::Config;
+use config::{Config, ConfigBuilder, builder::DefaultState};
 use lib_database as database;
 use lib_telemetry as telemetry;
 
-/// Application name used for configuration directories and environment variables.
-/// This should match the binary name and be used consistently across the application.
-///
-/// # Changing the Application Name
-///
-/// To use this configuration system for a different application:
-/// 1. Change this constant to match your application name
-/// 2. Update the corresponding ENV_PREFIX if needed
-/// 3. Ensure your binary name matches this constant
+/// Application name used for configuration directories, file names, and environment
+/// variable prefixes.
 const APPLICATION_NAME: &str = "personal-ledger";
 
-/// Environment variable prefix derived from the application name.
-/// Converts "personal-ledger" to "PERSONAL_LEDGER" for environment variables.
-///
-/// # Changing the Environment Prefix
-///
-/// If your application name contains characters that aren't valid in environment
-/// variable names, update this constant accordingly.
+/// Environment variable prefix derived from [`APPLICATION_NAME`] (`personal-ledger` ->
+/// `PERSONAL_LEDGER`).
 const ENV_PREFIX: &str = "PERSONAL_LEDGER";
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
@@ -85,59 +74,75 @@ pub struct LedgerConfig {
 
     #[serde(alias = "Database")]
     pub database: database::DatabaseConfig,
+
+    /// Sync-Server-only settings. Populated from the `[sync-server]` section (see
+    /// [`Self::normalise_ini`] for the `-`/`_` translation); never read by Clients.
+    #[serde(alias = "SyncServer", alias = "Sync-Server")]
+    pub sync_server: crate::SyncServerConfig,
 }
 
 impl LedgerConfig {
-    /// Get the application name used for configuration.
-    ///
-    /// This returns the same name used for configuration directories,
-    /// file names, and environment variable prefixes.
-    ///
-    /// # Returns
-    ///
-    /// The application name as a static string slice.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::LedgerConfig;
-    ///
-    /// assert_eq!(LedgerConfig::application_name(), "personal-ledger");
-    /// ```
+    /// The application name used for configuration.
     pub fn application_name() -> &'static str {
         APPLICATION_NAME
     }
 
-    /// Get the environment variable prefix used for configuration.
-    ///
-    /// This returns the prefix used for environment variable overrides.
-    ///
-    /// # Returns
-    ///
-    /// The environment variable prefix as a static string slice.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::LedgerConfig;
-    ///
-    /// assert_eq!(LedgerConfig::env_prefix(), "PERSONAL_LEDGER");
-    /// ```
+    /// The environment variable prefix used for configuration overrides.
     pub fn env_prefix() -> &'static str {
         ENV_PREFIX
     }
 
+    /// Parse configuration for a Client (`bin-tui`/`bin-desktop`): the full
+    /// defaults -> system -> user -> executable-directory -> working-directory ->
+    /// explicit path -> environment variables precedence chain (highest last).
+    ///
+    /// # Errors
+    /// Returns an error if any present config file can't be read/parsed, or if the merged
+    /// result doesn't deserialize into a valid `LedgerConfig`.
     pub fn parse(config_file: Option<&Path>) -> super::ConfigResult<LedgerConfig> {
-        // Higher precedence sources override lower precedence ones:
-        // 1. Built-in defaults (lowest)
-        // 2. System config files
-        // 3. User config files
-        // 4. Executable directory config files
-        // 5. Current working directory config files
-        // 6. Explicit config files
-        // 7. Environment variables (highest)
+        let mut config_builder = Self::defaults_builder()?;
 
-        //-- 01. Build Defaults
+        if let Some(system_config) = Self::get_system_config_path().filter(|p| p.exists()) {
+            config_builder = Self::add_ini_source(config_builder, &system_config)?;
+        }
+        if let Some(user_config) = Self::get_user_config_path().filter(|p| p.exists()) {
+            config_builder = Self::add_ini_source(config_builder, &user_config)?;
+        }
+        if let Some(exec_config) = Self::get_executable_config_path().filter(|p| p.exists()) {
+            config_builder = Self::add_ini_source(config_builder, &exec_config)?;
+        }
+
+        let cwd_config = if config_file.is_none() {
+            Some(Self::get_cwd_config_path()?)
+        } else {
+            None
+        };
+        if let Some(cwd_config) = cwd_config.filter(|p| p.exists()) {
+            config_builder = Self::add_ini_source(config_builder, &cwd_config)?;
+        }
+
+        config_builder = Self::add_explicit_and_env(config_builder, config_file)?;
+
+        Self::build(config_builder)
+    }
+
+    /// Parse configuration for the Sync Server: a reduced defaults -> explicit path ->
+    /// environment variables chain (ADR-0014) -- the Client-only system/user/executable-
+    /// directory/working-directory search tiers don't correspond to anything meaningful
+    /// inside a Docker container.
+    ///
+    /// # Errors
+    /// Returns an error if the explicit config file (when given) can't be read/parsed, or if
+    /// the merged result doesn't deserialize into a valid `LedgerConfig`.
+    pub fn parse_for_sync_server(config_file: Option<&Path>) -> super::ConfigResult<LedgerConfig> {
+        let config_builder = Self::defaults_builder()?;
+        let config_builder = Self::add_explicit_and_env(config_builder, config_file)?;
+        Self::build(config_builder)
+    }
+
+    /// Seed a fresh layered builder with every section's built-in defaults (lowest
+    /// precedence) -- shared by both [`Self::parse`] and [`Self::parse_for_sync_server`].
+    fn defaults_builder() -> super::ConfigResult<ConfigBuilder<DefaultState>> {
         let default_telemetry_level = telemetry::TelemetryConfig::default().telemetry_level();
 
         let mut config_builder = Config::builder().set_default(
@@ -145,91 +150,74 @@ impl LedgerConfig {
             default_telemetry_level.to_string(),
         )?;
 
-        // Add database defaults
         for (key, value) in database::DatabaseConfig::default_config_values() {
             config_builder = config_builder.set_default(key, value)?;
         }
 
-        //-- helper: read INI file and normalise section headers to lowercase
-        let normalise_ini = |p: &Path| -> super::ConfigResult<String> {
-            let content = std::fs::read_to_string(p).map_err(|e| {
-                super::ConfigError::Validation(format!(
-                    "Could not read config file {:?}: {}",
-                    p, e
-                ))
-            })?;
-
-            let normalised = content
-                .lines()
-                .map(|line| {
-                    let trimmed = line.trim();
-                    if trimmed.starts_with('[') && trimmed.ends_with(']') {
-                        // Lowercase the section name inside the brackets
-                        let inner = &trimmed[1..trimmed.len() - 1];
-                        format!("[{}]", inner.to_lowercase())
-                    } else {
-                        line.to_string()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
-            Ok(normalised)
-        };
-
-        //-- 02. System config directory (lowest precedence after defaults)
-        if let Some(system_config) = Self::get_system_config_path().filter(|p| p.exists()) {
-            let normalised = normalise_ini(&system_config)?;
-            config_builder = config_builder.add_source(
-                config::File::from_str(&normalised, config::FileFormat::Ini),
-            );
+        for (key, value) in crate::SyncServerConfig::default_config_values() {
+            config_builder = config_builder.set_default(key, value)?;
         }
 
-        //-- 03. User config directory
-        if let Some(user_config) = Self::get_user_config_path().filter(|p| p.exists()) {
-            let normalised = normalise_ini(&user_config)?;
-            config_builder = config_builder.add_source(
-                config::File::from_str(&normalised, config::FileFormat::Ini),
-            );
-        }
+        Ok(config_builder)
+    }
 
-        //-- 04. Executable directory
-        if let Some(exec_config) = Self::get_executable_config_path().filter(|p| p.exists()) {
-            let normalised = normalise_ini(&exec_config)?;
-            config_builder = config_builder.add_source(
-                config::File::from_str(&normalised, config::FileFormat::Ini),
-            );
-        }
+    /// Add the explicit config file (if given and it exists) and environment variable
+    /// overrides -- the two highest-precedence tiers, shared by both entry points. Env vars
+    /// (e.g. `PERSONAL_LEDGER_TELEMETRY__TELEMETRY_LEVEL=debug`) always come last/highest.
+    fn add_explicit_and_env(
+        config_builder: ConfigBuilder<DefaultState>,
+        config_file: Option<&Path>,
+    ) -> super::ConfigResult<ConfigBuilder<DefaultState>> {
+        let mut config_builder = config_builder;
 
-        //-- 05. Current working directory
-        let cwd_config = if config_file.is_none() {
-            Some(Self::get_cwd_config_path()?)
-        } else {
-            None
-        };
-        if let Some(cwd_config) = cwd_config.filter(|p| p.exists()) {
-            let normalised = normalise_ini(&cwd_config)?;
-            config_builder = config_builder.add_source(
-                config::File::from_str(&normalised, config::FileFormat::Ini),
-            );
-        }
-
-        //-- 06. Explicit config file
         if let Some(explicit_config) = config_file.filter(|p| p.exists()) {
-            let normalised = normalise_ini(explicit_config)?;
-            config_builder = config_builder.add_source(
-                config::File::from_str(&normalised, config::FileFormat::Ini),
-            );
+            config_builder = Self::add_ini_source(config_builder, explicit_config)?;
         }
 
-        //-- 07. Environment variables (highest precedence)
-        // Supports variables like: PERSONAL_LEDGER_TELEMETRY__TELEMETRY_LEVEL=debug
         config_builder = config_builder.add_source(config::Environment::with_prefix(ENV_PREFIX));
 
-        //-- 08. Build and Deserialize
+        Ok(config_builder)
+    }
+
+    /// Read an INI file, normalise its section headers, and add it as a source.
+    fn add_ini_source(
+        config_builder: ConfigBuilder<DefaultState>,
+        path: &Path,
+    ) -> super::ConfigResult<ConfigBuilder<DefaultState>> {
+        let normalised = Self::normalise_ini(path)?;
+        Ok(config_builder.add_source(config::File::from_str(&normalised, config::FileFormat::Ini)))
+    }
+
+    /// Read an INI file and normalise its section headers: lower-cased (so `[Telemetry]`/
+    /// `[telemetry]` are equivalent) and with `-` translated to `_` (so `[sync-server]`
+    /// matches the `sync_server` field/serde alias -- INI section names commonly use
+    /// hyphens, but Rust field names can't).
+    fn normalise_ini(p: &Path) -> super::ConfigResult<String> {
+        let content = std::fs::read_to_string(p).map_err(|e| {
+            super::ConfigError::Validation(format!("Could not read config file {:?}: {}", p, e))
+        })?;
+
+        let normalised = content
+            .lines()
+            .map(|line| {
+                let trimmed = line.trim();
+                if trimmed.starts_with('[') && trimmed.ends_with(']') {
+                    let inner = &trimmed[1..trimmed.len() - 1];
+                    format!("[{}]", inner.to_lowercase().replace('-', "_"))
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(normalised)
+    }
+
+    /// Build and deserialize the layered `config::Config` into a `LedgerConfig`.
+    fn build(config_builder: ConfigBuilder<DefaultState>) -> super::ConfigResult<LedgerConfig> {
         let config = config_builder.build()?;
         let ledger_config: LedgerConfig = config.try_deserialize()?;
-
         Ok(ledger_config)
     }
 
@@ -262,7 +250,6 @@ impl LedgerConfig {
         }
         #[cfg(target_os = "windows")]
         {
-            // On Windows, use ALLUSERSPROFILE for system-wide settings
             std::env::var_os("ALLUSERSPROFILE").map(|all_users| {
                 PathBuf::from(all_users)
                     .join(APPLICATION_NAME)
@@ -336,6 +323,11 @@ impl LedgerConfig {
     pub fn database_config(&self) -> &lib_database::DatabaseConfig {
         &self.database
     }
+
+    /// Get the Sync-Server-only configuration.
+    pub fn sync_server_config(&self) -> &crate::SyncServerConfig {
+        &self.sync_server
+    }
 }
 
 #[cfg(test)]
@@ -353,30 +345,6 @@ mod tests {
     #[test]
     fn env_prefix_returns_correct_value() {
         assert_eq!(LedgerConfig::env_prefix(), ENV_PREFIX);
-    }
-
-    #[test]
-    fn telemetry_config_returns_telemetry_reference() {
-        let config = LedgerConfig::default();
-        let telemetry = config.telemetry_config();
-        assert_eq!(
-            telemetry.telemetry_level(),
-            config.telemetry.telemetry_level()
-        );
-    }
-
-    #[test]
-    fn database_config_returns_database_reference() {
-        let config = LedgerConfig::default();
-        let database = config.database_config();
-        assert_eq!(
-            database.url(),
-            config.database.url()
-        );
-        assert_eq!(
-            database.max_connections(),
-            config.database.max_connections()
-        );
     }
 
     #[test]
@@ -413,34 +381,68 @@ mod tests {
         }
     }
 
+    /// The process (and thus its current directory) is shared by every test thread `cargo
+    /// test` runs concurrently -- serialise the tests that change cwd via this mutex so they
+    /// don't stomp on each other's temp directories.
+    static CWD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Run `body` inside a fresh empty temp directory (so no ambient config files leak in),
+    /// restoring the original cwd afterwards even if `body` panics.
+    fn in_empty_cwd<T>(body: impl FnOnce() -> T) -> T {
+        let _guard = CWD_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let temp_dir = TempDir::new().unwrap();
+        let original_cwd = env::current_dir().unwrap();
+        env::set_current_dir(&temp_dir).unwrap();
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(body));
+
+        env::set_current_dir(original_cwd).unwrap();
+
+        match result {
+            Ok(value) => value,
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
     #[test]
     fn parse_with_defaults_loads_successfully() {
-        // Change to a temp directory to ensure no config files are loaded
-        let temp_dir = TempDir::new().unwrap();
-        let original_cwd = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&temp_dir).unwrap();
+        in_empty_cwd(|| {
+            let config = LedgerConfig::parse(None).unwrap();
+            assert_eq!(
+                config.telemetry.telemetry_level(),
+                telemetry::TelemetryConfig::default().telemetry_level()
+            );
+            assert_eq!(
+                config.database.url(),
+                database::DatabaseConfig::default().url()
+            );
+            assert_eq!(
+                config.database.max_connections(),
+                database::DatabaseConfig::default().max_connections()
+            );
+            assert_eq!(
+                config.sync_server.bind_address(),
+                crate::SyncServerConfig::default().bind_address()
+            );
+        });
+    }
 
-        // This should work without any config files present
-        let result = LedgerConfig::parse(None);
-        assert!(result.is_ok());
-        let config = result.unwrap();
-        // Should have default telemetry config
-        assert_eq!(
-            config.telemetry.telemetry_level(),
-            telemetry::TelemetryConfig::default().telemetry_level()
-        );
-        // Should have default database config
-        assert_eq!(
-            config.database.url(),
-            database::DatabaseConfig::default().url()
-        );
-        assert_eq!(
-            config.database.max_connections(),
-            database::DatabaseConfig::default().max_connections()
-        );
-
-        // Restore original directory
-        std::env::set_current_dir(original_cwd).unwrap();
+    #[test]
+    fn parse_for_sync_server_with_defaults_loads_successfully() {
+        in_empty_cwd(|| {
+            let config = LedgerConfig::parse_for_sync_server(None).unwrap();
+            assert_eq!(
+                config.sync_server.bind_address(),
+                crate::SyncServerConfig::default().bind_address()
+            );
+            assert_eq!(
+                config.database.url(),
+                database::DatabaseConfig::default().url()
+            );
+        });
     }
 
     #[test]
@@ -448,9 +450,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_file = temp_dir.path().join("test.conf");
 
-        // Create a config file with custom telemetry level (INI format)
-        let config_content = 
-        r#"
+        let config_content = r#"
         [telemetry]
         telemetry_level = "debug"
 
@@ -460,9 +460,7 @@ mod tests {
         "#;
         fs::write(&config_file, config_content).unwrap();
 
-        let result = LedgerConfig::parse(Some(&config_file));
-        assert!(result.is_ok());
-        let config = result.unwrap();
+        let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(
             config.telemetry.telemetry_level(),
             telemetry::TelemetryLevels::DEBUG
@@ -472,11 +470,50 @@ mod tests {
     }
 
     #[test]
+    fn parse_for_sync_server_reads_sync_server_section_from_explicit_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_file = temp_dir.path().join("sync-server.conf");
+
+        let config_content = r#"
+        [sync-server]
+        bind_address = "127.0.0.1:9000"
+        "#;
+        fs::write(&config_file, config_content).unwrap();
+
+        let config = LedgerConfig::parse_for_sync_server(Some(&config_file)).unwrap();
+        assert_eq!(config.sync_server.bind_address(), "127.0.0.1:9000");
+    }
+
+    #[test]
+    fn parse_for_sync_server_ignores_cwd_config() {
+        in_empty_cwd(|| {
+            let config_dir = PathBuf::from("config");
+            fs::create_dir(&config_dir).unwrap();
+            let cwd_config_file = config_dir.join("personal-ledger.conf");
+            fs::write(
+                &cwd_config_file,
+                r#"
+                [telemetry]
+                telemetry_level = "warn"
+                "#,
+            )
+            .unwrap();
+
+            // A Client (`parse`) would pick this up; the Sync Server must not.
+            let config = LedgerConfig::parse_for_sync_server(None).unwrap();
+            assert_eq!(
+                config.telemetry.telemetry_level(),
+                telemetry::TelemetryConfig::default().telemetry_level()
+            );
+        });
+    }
+
+    #[test]
     fn parse_with_nonexistent_explicit_file_returns_error() {
         let temp_dir = TempDir::new().unwrap();
         let nonexistent_path = temp_dir.path().join("nonexistent.conf");
+        // Should still succeed because the file is optional.
         let result = LedgerConfig::parse(Some(&nonexistent_path));
-        // Should still succeed because the file is optional
         assert!(result.is_ok());
     }
 
@@ -485,9 +522,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_file = temp_dir.path().join("test.conf");
 
-        // Create config with [telemetry]
-        let config_content = 
-        r#"
+        let config_content = r#"
         [telemetry]
         telemetry_level = "info"
 
@@ -496,12 +531,7 @@ mod tests {
         "#;
         fs::write(&config_file, config_content).unwrap();
 
-        let result = LedgerConfig::parse(Some(&config_file));
-        if let Err(e) = &result {
-            println!("Parse error: {:?}", e);
-        }
-        assert!(result.is_ok());
-        let config = result.unwrap();
+        let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(
             config.telemetry.telemetry_level(),
             telemetry::TelemetryLevels::INFO
@@ -514,12 +544,11 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_file = temp_dir.path().join("invalid.conf");
 
-        // Create invalid INI content (malformed)
-        let config_content = 
-        r#"
+        // Missing closing bracket -- malformed INI.
+        let config_content = r#"
         [telemetry
         telemetry_level = "debug"
-        "#; // Missing closing bracket
+        "#;
         fs::write(&config_file, config_content).unwrap();
 
         let result = LedgerConfig::parse(Some(&config_file));
@@ -531,9 +560,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config_file = temp_dir.path().join("invalid_level.conf");
 
-        // Create config with invalid telemetry level
-        let config_content = 
-        r#"
+        let config_content = r#"
         [telemetry]
         telemetry_level = "invalid"
         "#;
@@ -545,49 +572,59 @@ mod tests {
 
     #[test]
     fn parse_precedence_explicit_over_cwd() {
+        in_empty_cwd(|| {
+            let config_dir = PathBuf::from("config");
+            fs::create_dir(&config_dir).unwrap();
+            let cwd_config_file = config_dir.join("personal-ledger.conf");
+            fs::write(
+                &cwd_config_file,
+                r#"
+                [Telemetry]
+                telemetry_level = "warn"
+
+                [Database]
+                max_connections = 5
+                "#,
+            )
+            .unwrap();
+
+            let explicit_file = PathBuf::from("explicit.conf");
+            fs::write(
+                &explicit_file,
+                r#"
+                [Telemetry]
+                telemetry_level = "debug"
+
+                [Database]
+                max_connections = 15
+                "#,
+            )
+            .unwrap();
+
+            let config = LedgerConfig::parse(Some(&explicit_file)).unwrap();
+            assert_eq!(
+                config.telemetry.telemetry_level(),
+                telemetry::TelemetryLevels::DEBUG
+            );
+            assert_eq!(config.database.max_connections(), 15);
+        });
+    }
+
+    #[test]
+    fn parse_reads_hyphenated_sync_server_section() {
         let temp_dir = TempDir::new().unwrap();
-        let original_cwd = env::current_dir().unwrap();
-        env::set_current_dir(&temp_dir).unwrap();
+        let config_file = temp_dir.path().join("test.conf");
 
-        // Create CWD config with warn
-        let config_dir = temp_dir.path().join("config");
-        fs::create_dir(&config_dir).unwrap();
-        let cwd_config_file = config_dir.join("personal-ledger.conf");
-        let cwd_content = 
-        r#"
-        [Telemetry]
-        telemetry_level = "warn"
+        fs::write(
+            &config_file,
+            r#"
+            [Sync-Server]
+            bind_address = "0.0.0.0:1234"
+            "#,
+        )
+        .unwrap();
 
-        [Database]
-        max_connections = 5
-        "#;
-        fs::write(&cwd_config_file, cwd_content).unwrap();
-
-        // Create explicit config with debug
-        let explicit_file = temp_dir.path().join("explicit.conf");
-        let explicit_content = 
-        r#"
-        [Telemetry]
-        telemetry_level = "debug"
-
-        [Database]
-        max_connections = 15
-        "#;
-        fs::write(&explicit_file, explicit_content).unwrap();
-
-        let result = LedgerConfig::parse(Some(&explicit_file));
-        if let Err(e) = &result {
-            println!("Parse error: {:?}", e);
-        }
-        assert!(result.is_ok());
-        let config = result.unwrap();
-        // Explicit should override CWD
-        assert_eq!(
-            config.telemetry.telemetry_level(),
-            telemetry::TelemetryLevels::DEBUG
-        );
-        assert_eq!(config.database.max_connections(), 15);
-
-        env::set_current_dir(original_cwd).unwrap();
+        let config = LedgerConfig::parse(Some(&config_file)).unwrap();
+        assert_eq!(config.sync_server.bind_address(), "0.0.0.0:1234");
     }
 }

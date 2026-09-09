@@ -2,6 +2,19 @@
 
 The Personal Ledger application will look for configuration files in multiple locations. It uses a layered configuration system with a defined precedence order. This provides flexibility for different deployment scenarios, from development to production.
 
+Per [ADR-0014](adr/0014-preferences-table-and-leaner-sync-server-config.md), Configuration covers only settings needed before the app (or its database) can run: database connection/pool settings, the telemetry level, and (for the Sync Server only) the gRPC bind address. Everything else the user might tweak from inside a running Client — colour theme, date format, decimal/thousands separator, default Unit — is a Preference instead, stored in the Ledger's own database, not here.
+
+`lib-config` is shared by all three consumers (`bin-tui`, `bin-desktop`, `bin-sync-server`), but they don't all see the same sections or search the same locations — see [Configuration Hierarchy](#configuration-hierarchy) and [Sync Server Section](#sync-server-section) below.
+
+## Explicit Config File via CLI
+
+All three binaries accept a `--config`/`-c` flag to point at an explicit config file, taking the same precedence as "Explicit Configuration File" below:
+
+```sh
+tui --config ./my-personal-ledger.conf
+sync-server -c /etc/personal-ledger/sync-server.conf
+```
+
 ## INI Configuration Format
 
 Personal Ledger uses the INI (Initialisation) file format for configuration files. INI is a simple, human-readable format consisting of sections, keys, and values.
@@ -35,12 +48,13 @@ key3 = true
 
 Configuration sections group related settings together. The application currently supports:
 
-- `[Telemetry]`: Logging and telemetry settings
-- `[Database]`: Database connection and pool settings
+- `[Telemetry]`: Logging and telemetry settings (read by all three consumers)
+- `[Database]`: Database connection and pool settings (read by all three consumers)
+- `[Sync-Server]`: Sync Server-only settings (bind address) -- only `bin-sync-server` reads it; `bin-tui`/`bin-desktop` ignore it. Hyphens or underscores both work (`[Sync-Server]`/`[sync_server]`), unlike the other sections, which are plain words.
 
 ## Configuration Hierarchy
 
-Configuration settings are loaded from multiple sources in the following precedence order (highest to lowest):
+`bin-tui` and `bin-desktop` (the Clients) load configuration from multiple sources in the following precedence order (highest to lowest):
 
 1. **Environment Variables** (highest precedence)
 
@@ -51,7 +65,7 @@ Configuration settings are loaded from multiple sources in the following precede
 
 2. **Explicit Configuration File**
 
-   - Passed directly to the application via command-line arguments
+   - Passed via the `--config`/`-c` CLI flag
    - Useful for custom configurations in specific deployments
 
 3. **Current Working Directory**
@@ -78,6 +92,26 @@ Configuration settings are loaded from multiple sources in the following precede
    - Windows: `%ALLUSERSPROFILE%\personal-ledger\personal-ledger.conf`
 
 7. **Built-in Defaults** (lowest precedence)
+
+## Sync Server Section
+
+`bin-sync-server` uses a **reduced** precedence chain instead (ADR-0014): **Environment Variables** → **Explicit Configuration File** (`--config`/`-c`) → **Built-in Defaults**. The Current Working Directory/Executable Directory/User/System tiers don't apply -- they don't correspond to anything meaningful inside a Docker container, the Sync Server's only deployment target.
+
+The `[Sync-Server]` section currently has one setting:
+
+### bind_address
+
+The socket address the Sync Server's gRPC/HTTP listener binds to.
+
+- **Type**: String
+- **Default**: `"0.0.0.0:50051"`
+
+Example:
+
+```ini
+[Sync-Server]
+bind_address = "0.0.0.0:50051"
+```
 
    - Hardcoded default values in the application code
 
@@ -218,4 +252,8 @@ min_connections = 1
 acquire_timeout_seconds = 30
 idle_timeout_seconds = 600
 max_lifetime_seconds = 1800
+
+# Only read by bin-sync-server -- bin-tui/bin-desktop ignore this section.
+[Sync-Server]
+bind_address = "0.0.0.0:50051"
 ```

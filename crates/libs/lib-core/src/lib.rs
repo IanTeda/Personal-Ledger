@@ -87,6 +87,16 @@ pub use url_slug::{UrlSlug, UrlSlugError};
 mod hex_color;
 pub use hex_color::{HexColor, HexColorError};
 
+/// How a Client displays dates -- a Preference (ADR-0014), a fixed set of choices rather
+/// than a free-form strftime string.
+mod date_format;
+pub use date_format::{DateFormat, DateFormatError};
+
+/// How a Client displays amounts -- a Preference (ADR-0014) coupling the thousands and
+/// decimal separator into one choice, since real locales always pair them.
+mod number_format;
+pub use number_format::{NumberFormat, NumberFormatError};
+
 /// Hybrid Logical Clock timestamp type used for Change Set conflict resolution.
 ///
 /// [`HybridLogicalClock`] pairs physical time with a monotonic logical counter, and

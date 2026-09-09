@@ -15,11 +15,20 @@ mod shell;
 mod tui;
 mod view;
 
+use clap::Parser;
 use shell::Shell;
+
+/// Personal Ledger TUI.
+#[derive(Parser)]
+struct Cli {
+    #[command(flatten)]
+    config: lib_config::ConfigArgs,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = lib_config::LedgerConfig::parse(None)?;
+    let cli = Cli::parse();
+    let config = lib_config::LedgerConfig::parse(cli.config.path.as_deref())?;
     let telemetry_level = Some(&config.telemetry_config().telemetry_level());
     lib_telemetry::init(telemetry_level)?;
 
