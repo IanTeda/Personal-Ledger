@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PROTOTYPE — command popup argument preview (throwaway, not production)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --ink: #201e1d; --ground: #f3f2f2; --accent: #ec3013;
+    --dim: #605d5d; --dim2: #9b9797; --line: #d7d3d3;
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #f3f2f2; --ground: #161413; --dim: #9b9797; --dim2: #605d5d; --line: #3a3736; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; padding: 24px; max-width: 900px; margin-inline: auto; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .badge { display: inline-block; font: 11px/1 var(--mono); background: var(--accent); color: #fff; padding: 3px 6px; border-radius: 3px; letter-spacing: .04em; margin-bottom: 10px; }
+  .question { color: var(--dim); font-size: 14px; margin: 0 0 20px; padding: 10px 14px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .panel { border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 18px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--dim); margin: 0 0 12px; }
+  .term { font: 14px/1.5 var(--mono); background: var(--ink); color: var(--ground); border-radius: 6px; padding: 12px 14px; white-space: pre; overflow-x: auto; }
+  .term .prompt { color: color-mix(in srgb, var(--ground) 60%, var(--accent) 40%); }
+  .term .count { float: right; opacity: .6; }
+  .row.sel { background: var(--ground); color: var(--ink); }
+  .argrow { color: color-mix(in srgb, var(--ground) 55%, var(--accent) 45%); }
+  .argrow .over { color: var(--accent); font-weight: bold; }
+  .argrow.reserved { color: color-mix(in srgb, var(--ground) 25%, var(--ink) 5%); opacity: .3; }
+  .modebar { display: flex; gap: 18px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .modebar fieldset { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .modebar legend { font-size: 11px; text-transform: uppercase; color: var(--dim); padding: 0 4px; }
+  .modebar label { display: flex; gap: 5px; align-items: center; font-size: 13px; cursor: pointer; margin: 2px 0; }
+  button { font: 13px var(--mono); border: 1px solid var(--line); background: transparent; color: var(--ink); padding: 6px 10px; border-radius: 5px; cursor: pointer; margin: 2px; }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  .log { font: 12px var(--mono); color: var(--dim); min-height: 18px; margin-top: 8px; }
+  kbd { font: 11px var(--mono); border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+
+<span class="badge">PROTOTYPE — throwaway, see commit message for context</span>
+<h1>Command popup: how should the argument-preview row render?</h1>
+<p class="question">
+  Wayfinder ticket <a href="https://github.com/IanTeda/Personal-Ledger/issues/93" target="_blank" rel="noopener">#93</a>,
+  scoped to <b>Option A (minimal/wireframe)</b>: preview appears as soon as a command is selected/highlighted — no argument
+  typing exists yet, each placeholder just resolves to a fixed fake default. Arrow through the command list below (real
+  representative subset) and compare the two layout questions: does the preview show as <b>one combined row</b> or
+  <b>one row per argument</b>, and does the popup <b>always reserve space</b> for it (blank when absent) or
+  <b>grow/shrink dynamically</b>?
+</p>
+
+<div class="panel">
+  <h2>Layout under test</h2>
+  <div class="modebar">
+    <fieldset>
+      <legend>Row grouping</legend>
+      <label><input type="radio" name="grouping" value="combined" checked> combined — one row, all args joined</label>
+      <label><input type="radio" name="grouping" value="stacked"> stacked — one row per argument</label>
+    </fieldset>
+    <fieldset>
+      <legend>Reserved space</legend>
+      <label><input type="radio" name="space" value="reserved" checked> always reserved (dim placeholder row when absent)</label>
+      <label><input type="radio" name="space" value="dynamic"> dynamic (popup grows/shrinks, no row at all when absent)</label>
+    </fieldset>
+  </div>
+
+  <h2>Popup (arrow through it)</h2>
+  <div class="term" id="term"></div>
+  <div class="controls">
+    <button id="btn-up">↑ move up</button>
+    <button id="btn-down">↓ move down</button>
+  </div>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Pure module — the bit worth lifting into crates/bins/bin-tui/src/popup/command/
+// once a layout is chosen. No DOM references below this block.
+// ---------------------------------------------------------------------------
+
+// Each `args` entry is `{ placeholder, resolve }` — `resolve()` is a plain fn
+// returning a fake-data-backed string. Nothing here depends on typed input:
+// that's the whole point of Option A.
+const COMMANDS = [
+  { name: "dashboard", args: [] },
+  { name: "help", args: [] },
+  { name: "unit", args: [] },
+  {
+    name: "unit new <code> <type>",
+    args: [
+      { placeholder: "<code>", resolve: () => "BTC" },
+      { placeholder: "<type>", resolve: () => "crypto" },
+    ],
+  },
+  {
+    name: "unit edit <code>",
+    args: [{ placeholder: "<code>", resolve: () => "BTC" }],
+  },
+  { name: "account list", args: [] },
+  {
+    name: "account new <name> <type>",
+    args: [
+      { placeholder: "<name>", resolve: () => "Everyday Checking" },
+      { placeholder: "<type>", resolve: () => "asset" },
+    ],
+  },
+  {
+    name: "budget new <category> <limit>",
+    args: [
+      { placeholder: "<category>", resolve: () => "dining · 30-day actual 412.00" },
+      { placeholder: "<limit>", resolve: () => "300.00" },
+    ],
+  },
+  {
+    // Mirrors the original handoff's own example almost verbatim — one
+    // resolver is free to return an arbitrarily enriched string, not just
+    // the bare argument value.
+    name: "budget edit <category> [limit]",
+    args: [
+      { placeholder: "<category>", resolve: () => "dining · limit 300.00 · actual 412.00 · over by 112.00", over: true },
+      { placeholder: "[limit]", resolve: () => "300.00" },
+    ],
+  },
+  { name: "report budget-variance", args: [] },
+];
+
+const MAX_ARGS = Math.max(...COMMANDS.map((c) => c.args.length));
+
+function initialState() {
+  return { selected: 0, grouping: "combined", space: "reserved" };
+}
+
+function reduce(state, action) {
+  switch (action.type) {
+    case "move_up":
+      return { ...state, selected: Math.max(0, state.selected - 1) };
+    case "move_down":
+      return { ...state, selected: Math.min(COMMANDS.length - 1, state.selected + 1) };
+    case "set_grouping":
+      return { ...state, grouping: action.value };
+    case "set_space":
+      return { ...state, space: action.value };
+    default:
+      return state;
+  }
+}
+
+// The bit this ticket is actually deciding: how many lines the preview
+// occupies for a given command + grouping mode.
+function previewLines(cmd, grouping) {
+  if (cmd.args.length === 0) return [];
+  if (grouping === "combined") {
+    const joined = cmd.args.map((a) => `${a.placeholder} — ${a.resolve()}`).join("  ·  ");
+    return [{ text: joined, over: cmd.args.some((a) => a.over) }];
+  }
+  return cmd.args.map((a, i) => ({ text: `arg ${i + 1} ${a.placeholder} — ${a.resolve()}`, over: !!a.over }));
+}
+
+// ---------------------------------------------------------------------------
+// Thin DOM shell.
+// ---------------------------------------------------------------------------
+
+let state = initialState();
+
+function render() {
+  const cmd = COMMANDS[state.selected];
+  const lines = previewLines(cmd, state.grouping);
+  const reservedRows = state.grouping === "stacked" ? MAX_ARGS : 1;
+
+  const term = document.getElementById("term");
+  let html = `<span class="prompt">:${escapeHtml(cmd.name)}▌</span>\n`;
+  html += "─".repeat(60) + "\n";
+
+  COMMANDS.forEach((c, i) => {
+    const cls = i === state.selected ? "row sel" : "row";
+    html += `<div class="${cls}">:${escapeHtml(c.name)}</div>`;
+  });
+
+  html += "─".repeat(60) + "\n";
+
+  if (state.space === "reserved") {
+    for (let i = 0; i < reservedRows; i++) {
+      if (i < lines.length) {
+        html += renderArgLine(lines[i]);
+      } else {
+        html += `<div class="argrow reserved">(no argument ${i + 1})</div>`;
+      }
+    }
+  } else {
+    if (lines.length === 0) {
+      html += `<span style="opacity:.4">— no argument-preview row: popup is one row shorter —</span>\n`;
+    } else {
+      lines.forEach((l) => (html += renderArgLine(l)));
+    }
+  }
+
+  html += "─".repeat(60) + "\n";
+  html += `<span style="opacity:.6">↑↓ select · tab complete · enter run · ^r history · esc close</span>`;
+  term.innerHTML = html;
+
+  document.getElementById("log").textContent =
+    `selected: '${cmd.name}' · ${cmd.args.length} arg(s) · grouping=${state.grouping} · space=${state.space} · preview rows shown=${state.space === "reserved" ? reservedRows : lines.length}`;
+}
+
+function renderArgLine(line) {
+  const cls = "argrow" + (line.over ? " over" : "");
+  return `<div class="${cls}">${escapeHtml(line.text)}</div>`;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+function dispatch(action) {
+  state = reduce(state, action);
+  render();
+}
+
+document.getElementById("btn-up").addEventListener("click", () => dispatch({ type: "move_up" }));
+document.getElementById("btn-down").addEventListener("click", () => dispatch({ type: "move_down" }));
+document.querySelectorAll('input[name=grouping]').forEach((el) =>
+  el.addEventListener("change", (e) => dispatch({ type: "set_grouping", value: e.target.value }))
+);
+document.querySelectorAll('input[name=space]').forEach((el) =>
+  el.addEventListener("change", (e) => dispatch({ type: "set_space", value: e.target.value }))
+);
+window.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowUp") { e.preventDefault(); dispatch({ type: "move_up" }); }
+  if (e.key === "ArrowDown") { e.preventDefault(); dispatch({ type: "move_down" }); }
+});
+
+render();
+</script>
+</body>
+</html>
