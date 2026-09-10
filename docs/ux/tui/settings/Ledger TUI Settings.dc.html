@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="../_ds/modernist-4aa36bd2-9125-4b41-bcc8-a319ca5ae354/styles.css">
+<script src="../_ds/modernist-4aa36bd2-9125-4b41-bcc8-a319ca5ae354/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+body{margin:0;background:var(--color-bg,#f3f2f2);color:var(--color-text,#201e1d);font-family:Archivo,system-ui,sans-serif}
+a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(--color-accent-700,#ae1800)}
+.dv-turn{padding:40px 44px 32px;border-bottom:2px solid rgba(32,30,29,.4);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+.dv-tid{font:700 10px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:#201e1d;color:#f3f2f2;text-decoration:none}
+.dv-tname{font:800 13px/1.2 Archivo,sans-serif;letter-spacing:-.01em}
+.dv-sub{font:400 11px/1.5 Archivo,sans-serif;color:#7d7979;margin:0 0 20px;max-width:78ch}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:700 10.5px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:rgba(32,30,29,.09);color:#201e1d;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.35 Archivo,sans-serif;color:#605d5d}
+.dv-olabel b{font-weight:800;color:#201e1d}
+.dv-card{max-width:100%;background:#fff;border:2px solid #201e1d;overflow:hidden}
+.dv-opt:target .dv-oid{background:#ec3013;color:#fff}
+.dv-next{margin:26px 0 0;font:400 11px/1.6 Archivo,sans-serif;color:#7d7979}
+.dv-rowhd{font:800 9.5px Archivo,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#7d7979;margin:34px 0 14px;padding-bottom:5px;border-bottom:2px solid rgba(32,30,29,.4)}
+/* ── terminal primitives ── */
+.t{background:#fff;color:#201e1d;font:400 11px/1.5 JetBrains Mono,ui-monospace,Menlo,monospace;display:flex;flex-direction:column}
+.tbar{display:flex;justify-content:space-between;gap:12px;background:#201e1d;color:#f3f2f2;padding:3px 8px;font-size:10px;letter-spacing:.03em}
+.tbar b{font-weight:700}
+.tabs{display:flex;gap:0;border-bottom:1px solid #bab6b6;font-size:10px;background:#f8f4f4}
+.tab{padding:3px 11px;color:#7d7979;border-right:1px solid #d7d3d3}
+.tab.on{background:#ec3013;color:#fff;font-weight:700}
+.tk{margin-top:auto;background:#eae7e7;border-top:1px solid #bab6b6;padding:3px 8px;font-size:10px;color:#605d5d;display:flex;gap:13px;flex-wrap:wrap}
+.k{background:#201e1d;color:#f3f2f2;padding:0 3px;margin-right:3px}
+.tbody{display:flex;min-height:0;flex:1}
+.sb{width:172px;flex:none;border-right:1px solid #bab6b6;padding:6px 8px}
+.pane{flex:1;min-width:0;padding:7px 9px}
+.pane+.pane{border-left:1px solid #bab6b6}
+.hd{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#7d7979;border-bottom:1px solid #d7d3d3;padding-bottom:2px;margin:0 0 5px;display:flex;justify-content:space-between}
+.hd.tight{margin-top:9px}
+.row{display:grid;gap:7px;padding:.5px 0;align-items:baseline}
+.sel{background:#201e1d;color:#f3f2f2;margin:0 -9px;padding:.5px 9px}
+.sel .mut,.sel .neg{color:#ffc4b8}
+.mut{color:#9b9797}.neg{color:#ec3013}.pos{color:#201e1d}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+.box{border:1px solid #bab6b6;padding:5px 7px}
+.box.foc{border:2px solid #ec3013;padding:4px 6px}
+.big{font:700 22px/1.1 JetBrains Mono,monospace;letter-spacing:-.02em}
+.cells{display:grid;gap:0;border:1px solid #bab6b6}
+.cells>div{padding:5px 7px;border-right:1px solid #d7d3d3}
+.cells>div:last-child{border-right:0}
+.lab{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#7d7979}
+.lc{display:flex;align-items:flex-end;gap:1px;height:66px;margin:4px 0 2px}
+.lcb{flex:1;border-top:2px solid #ec3013;min-height:2px}
+.lcb.g{border-top-color:#bab6b6}
+.dnt{width:88px;height:88px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center}
+.dnt>i{width:46px;height:46px;border-radius:50%;background:#fff;display:block}
+.sw{width:8px;height:8px;display:inline-block;margin-right:5px}
+.bn{background:#ec3013;height:9px;display:block}
+.bp{background:#201e1d;height:9px;display:block}
+.cs{display:flex;align-items:stretch;gap:3px;height:84px;margin:4px 0}
+.csc{position:relative;flex:1}
+.csw{position:absolute;left:50%;width:1px;background:#605d5d;transform:translateX(-50%)}
+.csb{position:absolute;left:1px;right:1px;border:1px solid #201e1d;background:#fff}
+.csb.d{background:#ec3013;border-color:#ec3013}
+.bt{position:relative;height:10px;background:#eae7e7;flex:1}
+.btf{position:absolute;left:0;top:0;bottom:0;background:#9b9797}
+.btf.ov{background:#ec3013}
+.btm{position:absolute;top:-3px;bottom:-3px;width:1px;background:#201e1d}
+.cmd{border-top:2px solid #201e1d;padding:3px 8px;font-size:11px;background:#f8f4f4}
+.cmd i{background:#ec3013;color:#fff;font-style:normal;padding:0 2px}
+.ovl{border:2px solid #201e1d;background:#fff;box-shadow:8px 8px 0 rgba(32,30,29,.14)}
+.note{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#ec3013}
+/* dark terminal variant */
+.dk .t{background:#161413;color:#eae7e7}
+.dk .dv-card,.dk.dv-card{border-color:#201e1d}
+.dk .tk{background:#201e1d;border-top-color:#444141;color:#9b9797}
+.dk .tabs{background:#201e1d;border-bottom-color:#444141}
+.dk .sb,.dk .pane+.pane{border-color:#444141}
+.dk .hd{border-bottom-color:#444141;color:#9b9797}
+.dk .box{border-color:#605d5d}
+.dk .sel{background:#eae7e7;color:#161413}
+.dk .sel .mut,.dk .sel .neg{color:#ae1800}
+.dk .mut{color:#7d7979}.dk .pos{color:#eae7e7}
+.dk .cells,.dk .cells>div{border-color:#444141}
+.dk .dnt>i{background:#161413}
+.dk .csb{border-color:#eae7e7;background:#161413}
+.dk .bp{background:#eae7e7}
+.dk .bt{background:#2c2928}
+.dk .btf{background:#605d5d}
+.dk .btm{background:#eae7e7}
+.dk .cmd{background:#201e1d;border-top-color:#605d5d}
+.dk .ovl{background:#161413;border-color:#eae7e7}
+.dk .lcb.g{border-top-color:#605d5d}
+</style></helmet>
+
+<section class="dv-turn {{ themeClass }}" id="t4">
+<div class="dv-thd"><a class="dv-tid" href="#t4">settings</a><span class="dv-tname">Settings — database-backed</span></div>
+<p class="dv-sub">Settings live in the database, not a config file: every setting has a shipped default in code, and changing one writes a row to <code>settings</code> that overrides it. So a red dot means <i>a row exists for this key</i> — the dot is the override, and <code>r</code> deletes the row rather than writing the default back. Values edit in place (<code>enter</code> opens the row, <code>←→</code> picks an enum, <code>esc</code> reverts), commit in one transaction, and take effect on the next render — nothing to write, nothing to reload. Static config is reduced to the four bootstrap keys needed <i>before</i> the database is open. Settings that rewrite stored data (base unit) still route through a guard dialog.</p>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="4a">
+<div class="dv-olabel"><a class="dv-oid" href="#4a">4a</a><span><b>Settings.</b> General group; overridden rows dotted, and the <code>settings</code> rows behind them.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; settings / general</span><span>3 overridden &nbsp;·&nbsp; ✓ committed 14:02</span></div>
+  <div class="tbody">
+    <div class="pane" style="flex:none;width:200px">
+      <div class="hd">groups <span>7</span></div>
+      <div class="row sel" style="grid-template-columns:1fr auto;margin:0 0 0 -9px"><span>general</span><span>8</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>display</span><span class="mut">7</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>units &amp; prices</span><span class="mut">6</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>files &amp; backup</span><span class="mut">5</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>reconcile</span><span class="mut">4</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>keys</span><span class="mut">12</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>about</span><span class="mut">—</span></div>
+      <div class="hd tight">where values live <span class="note">H log</span></div>
+      <div class="box" style="padding:5px 7px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">ledger.db · table</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span>settings</span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0;border-top:1px solid #d7d3d3"><span class="mut">overrides</span><span class="neg">3 rows</span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0"><span class="mut">defaults</span><span class="mut">42 in code</span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0"><span class="mut">last commit</span><span>14:02</span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0;border-top:1px solid #d7d3d3"><span class="mut">bootstrap</span><span class="mut">4 keys</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">ledger.toml · read-only</span></div>
+      </div>
+      <div class="hd tight">reset <span class="note">deletes the row</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut"><span class="k">r</span>this setting</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut"><span class="k">R</span>whole group</span></div>
+    </div>
+    <div class="pane">
+      <div class="hd">general <span>8 settings · 3 overridden</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">SETTING</span><span class="mut">VALUE</span><span class="mut">NOTE</span></div>
+      <div class="row sel" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0;margin:0 -9px"><span class="neg">·</span><span>base unit</span><span>AUD</span><span>every total converts to this</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>fiscal year starts</span><span>01 jul</span><span class="mut">drives year-to-date and reports</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>week starts</span><span>monday</span><span class="mut">w/c label on weekly prices</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span class="neg">·</span><span>date input</span><span>dd/mm/yyyy</span><span class="mut">accepted when typing a date</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>number format</span><span>1 234.56</span><span class="mut">space groups · dot decimal</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span class="neg">·</span><span>negatives</span><span>−1 234.56</span><span class="mut">minus · brackets · trailing</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>confirm deletes</span><span>type the name</span><span class="mut">off falls back to y/n</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>undo depth</span><span>50 commands</span><span class="mut">kept in the database</span></div>
+      <div class="hd tight">selected <span>base unit</span></div>
+      <div class="box" style="padding:5px 7px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span>The unit every account, report and net-position figure is</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span>converted into, using the weekly close of each unit.</span></div>
+        <div class="row" style="grid-template-columns:96px 1fr;padding:1px 0;border-top:1px solid #d7d3d3"><span class="mut">default</span><span class="mut">USD</span></div>
+        <div class="row" style="grid-template-columns:96px 1fr;padding:1px 0"><span class="mut">accepts</span><span class="mut">any active currency unit — 2 available</span></div>
+        <div class="row" style="grid-template-columns:96px 1fr;padding:1px 0"><span class="mut">changing it</span><span class="neg">re-converts every historical total</span></div>
+      </div>
+      <div class="hd tight">settings table <span>3 rows · 2 shown</span></div>
+      <div class="row" style="grid-template-columns:130px 104px 1fr;padding:1px 0"><span class="mut">KEY</span><span class="mut">VALUE</span><span class="mut">CHANGED</span></div>
+      <div class="row" style="grid-template-columns:130px 104px 1fr;padding:0"><span class="mut">general.base_unit</span><span class="pos">AUD</span><span class="mut">14:02 today</span></div>
+      <div class="row" style="grid-template-columns:130px 104px 1fr;padding:0"><span class="mut">general.date_input</span><span class="pos">dmy</span><span class="mut">02 sep</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0"><span class="mut">:set base &lt;unit&gt; &nbsp;·&nbsp; :set negatives brackets &nbsp;·&nbsp; :settings log</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>setting</span><span><span class="k">tab</span>groups↔settings</span><span><span class="k">enter</span>edit</span><span><span class="k">r</span>drop override</span><span><span class="k">u</span>undo commit</span><span><span class="k">H</span>change log</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="4b">
+<div class="dv-olabel"><a class="dv-oid" href="#4b">4b</a><span><b>Editing in place.</b> <code>enter</code> opens the row where it sits — inline options, live preview, and one committed row on accept.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; settings / general / negatives</span><span>EDIT &nbsp;·&nbsp; uncommitted</span></div>
+  <div class="tbody">
+    <div class="pane" style="flex:none;width:200px;opacity:.45">
+      <div class="hd">groups <span>7</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>general</span><span class="mut">8</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>display</span><span class="mut">7</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>units &amp; prices</span><span class="mut">6</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>files &amp; backup</span><span class="mut">5</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>reconcile</span><span class="mut">4</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>keys</span><span class="mut">12</span></div>
+      <div class="row" style="grid-template-columns:1fr auto"><span>about</span><span class="mut">—</span></div>
+      <div class="hd tight">where values live</div>
+      <div class="box" style="padding:5px 7px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">ledger.db · table</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span>settings</span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0;border-top:1px solid #d7d3d3"><span class="mut">overrides</span><span class="neg">3 rows</span></div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="hd">general <span>editing 1 of 8</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">SETTING</span><span class="mut">VALUE</span><span class="mut">NOTE</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span class="neg">·</span><span class="mut">base unit</span><span class="mut">AUD</span><span class="mut">every total converts to this</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">fiscal year starts</span><span class="mut">01 jul</span><span class="mut">drives year-to-date and reports</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">week starts</span><span class="mut">monday</span><span class="mut">w/c label on weekly prices</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span class="neg">·</span><span class="mut">date input</span><span class="mut">dd/mm/yyyy</span><span class="mut">accepted when typing a date</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">number format</span><span class="mut">1 234.56</span><span class="mut">space groups · dot decimal</span></div>
+      <div class="box foc" style="margin:2px 0;padding:4px 6px">
+        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:0"><span class="neg">·</span><span>negatives</span><span class="mut">how a negative amount prints everywhere</span></div>
+        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:3px 0 0"><span></span><span class="mut">value</span><span><span style="background:#201e1d;color:#fff;padding:0 4px">minus</span> brackets trailing &nbsp;<span class="mut">· ←→</span></span></div>
+        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:1px 0"><span></span><span class="mut">preview</span><span class="neg">−320 334.10</span></div>
+        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:1px 0"><span></span><span class="mut">was</span><span class="mut">(320 334.10) · brackets, the default</span></div>
+        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:1px 0"><span></span><span class="mut">on accept</span><span class="mut">upsert general.negatives = "minus"</span></div>
+      </div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">confirm deletes</span><span class="mut">type the name</span><span class="mut">off falls back to y/n</span></div>
+      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">undo depth</span><span class="mut">50 commands</span><span class="mut">kept in the database</span></div>
+      <div class="hd tight">applies to <span>everywhere an amount prints</span></div>
+      <div class="box" style="padding:5px 7px">
+        <div class="row" style="grid-template-columns:118px 1fr;padding:1px 0"><span class="mut">net position</span><span class="neg">−320 334.10</span></div>
+        <div class="row" style="grid-template-columns:118px 1fr;padding:1px 0"><span class="mut">ledger row</span><span>Woolworths &nbsp;<span class="neg">−184.20</span> &nbsp;<span class="mut">groceries</span></span></div>
+        <div class="row" style="grid-template-columns:118px 1fr;padding:1px 0"><span class="mut">csv export</span><span class="mut">unaffected — always machine format</span></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 0"><span class="mut">uncommitted: <span class="k">enter</span> commits and redraws — <span class="k">esc</span> reverts to brackets</span></div>
+    </div>
+  </div>
+  <div class="cmd">:set negatives minus<span class="neg">▌</span> &nbsp;<span class="mut">— same edit, typed</span></div>
+  <div class="tk"><span><span class="k">←→</span>choose</span><span><span class="k">enter</span>commit</span><span><span class="k">esc</span>revert</span><span><span class="k">r</span>drop override</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="4c">
+<div class="dv-olabel"><a class="dv-oid" href="#4c">4c</a><span><b>Base unit guard.</b> One setting whose row invalidates derived data — it states the cost before committing.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:380px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; settings / general</span><span>confirm base unit</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">general <span>8 settings</span></div>
+    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">base unit</span><span>AUD</span></div>
+    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">fiscal year starts</span><span class="mut">01 jul</span></div>
+    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">week starts</span><span class="mut">monday</span></div>
+    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">date input</span><span class="mut">dd/mm/yyyy</span></div>
+    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">number format</span><span class="mut">1 234.56</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:15%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>base unit &nbsp;AUD → USD</span><span class="mut">:set base</span></div>
+    <div style="padding:5px 8px">
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span>transactions are stored in their own units and are</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span>not touched. Every reported total is re-converted</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span>at the weekly USD close.</span></div>
+      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">transactions</span><span>412 <span class="mut">· unchanged</span></span></div>
+      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">accounts</span><span>11 <span class="mut">· 4 already in USD</span></span></div>
+      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">re-converted</span><span>18 months of totals</span></div>
+      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">missing rates</span><span class="neg">6 weeks <span class="mut">· nov 25 – dec 25</span></span></div>
+      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">one write</span><span class="mut">general.base_unit = "USD"</span></div>
+      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">then</span><span class="mut">clears the cached totals · <span class="k">u</span> undoes it</span></div>
+      <div class="box" style="margin:5px 0 1px;padding:4px 6px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span>those 6 weeks report as gaps until priced.</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut"><span class="k">i</span>import USD closes first <span class="mut">— :price import</span></span></div>
+      </div>
+      <div class="box foc" style="margin:4px 0 1px;padding:4px 6px">
+        <div class="row" style="grid-template-columns:auto 1fr;padding:0"><span class="mut">type the unit</span><span>USD<span class="neg">▌</span></span></div>
+      </div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">enter</span>commit and re-convert</span><span><span class="k">i</span>import first</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close dialog</span></div>
+</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next" style="display:none">Try next: "the change log — <code>:settings log</code> with undo" · "the keys group — rebinding a key and its conflict state" · "display group with the theme preview" · "settings search from the palette (<code>:set</code> with no argument)"</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;terminal&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;\&quot;light\&quot; | \&quot;dark\&quot;&quot;,&quot;section&quot;:&quot;Wireframe&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: (this.props.terminal ?? "light") === "dark" ? "dk" : "" };
+  }
+}
+</script>
+</body>
+</html>
