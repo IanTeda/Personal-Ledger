@@ -29,19 +29,6 @@ impl crate::Categories {
     /// - The category with the given ID does not exist in the database.
     /// - A database connection or query execution error occurs.
     ///
-    /// # Examples
-    /// ```rust,no_run
-    /// # use lib_database::Categories;
-    /// # use sqlx::SqlitePool;
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut category = Categories::mock();
-    /// category.id = lib_core::RowID::new();
-    /// // Assume category is inserted first...
-    /// category.delete(pool).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
     /// # Security
     /// This function does not perform any input validation beyond database constraints.
     /// Ensure category IDs are validated before calling this function.
@@ -112,18 +99,6 @@ impl crate::Categories {
     /// - The category with the given ID does not exist in the database.
     /// - A database connection or query execution error occurs.
     ///
-    /// # Examples
-    /// ```rust,no_run
-    /// # use lib_database::Categories;
-    /// # use lib_core::RowID;
-    /// # use sqlx::SqlitePool;
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let category_id = RowID::from(123);
-    /// Categories::delete_by_id(category_id, pool).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
     /// # Security
     /// This function does not perform any input validation beyond database constraints.
     /// Ensure IDs are validated before calling this function.
@@ -191,18 +166,6 @@ impl crate::Categories {
     /// This function will return an error if:
     /// - Any category with the given IDs does not exist in the database.
     /// - A database connection, transaction, or query execution error occurs.
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// # use lib_database::Categories;
-    /// # use lib_core::RowID;
-    /// # use sqlx::SqlitePool;
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let ids = vec![RowID::from(123), RowID::from(456)];
-    /// Categories::delete_many_by_id(&ids, pool).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// # Performance
     /// This operation uses a database transaction. For large numbers of IDs, consider the transaction size
@@ -295,17 +258,6 @@ impl crate::Categories {
     /// # Errors
     /// This function will return an error if a database connection or query execution error occurs.
     ///
-    /// # Examples
-    /// ```rust,no_run
-    /// # use lib_database::Categories;
-    /// # use sqlx::SqlitePool;
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let deleted_count = Categories::delete_inactive(pool).await?;
-    /// println!("Deleted {} inactive categories", deleted_count);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
     /// # Security
     /// This function performs a bulk deletion without individual checks. Use with caution.
     ///
@@ -358,16 +310,6 @@ impl crate::Categories {
     /// This function will return an error if:
     /// - The category with the given code does not exist in the database.
     /// - A database connection or query execution error occurs.
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// # use lib_database::Categories;
-    /// # use sqlx::SqlitePool;
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// Categories::delete_by_code("FOO.BAR.BAZ", pool).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// # Security
     /// This function does not perform any input validation beyond database constraints.
@@ -437,18 +379,6 @@ impl crate::Categories {
     /// - The category with the given slug does not exist in the database.
     /// - A database connection or query execution error occurs.
     ///
-    /// # Examples
-    /// ```rust,no_run
-    /// # use lib_database::Categories;
-    /// # use lib_core::UrlSlug;
-    /// # use sqlx::SqlitePool;
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let slug = UrlSlug::from("groceries");
-    /// Categories::delete_by_url_slug(&slug, pool).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
     /// # Security
     /// This function does not perform any input validation beyond database constraints.
     /// Ensure slugs are validated before calling this function.
@@ -515,18 +445,6 @@ impl crate::Categories {
     ///
     /// # Errors
     /// This function will return an error if a database connection or query execution error occurs.
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// # use lib_database::Categories;
-    /// # use sqlx::SqlitePool;
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// // WARNING: This deletes all categories!
-    /// let deleted_count = Categories::delete_all(pool).await?;
-    /// println!("Deleted all {} categories", deleted_count);
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// # Security
     /// This function performs a destructive bulk deletion. Only use in testing or admin scenarios.

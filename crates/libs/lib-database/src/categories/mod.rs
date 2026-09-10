@@ -20,30 +20,8 @@
 //!
 //! ## Usage
 //!
-//! Use the builder pattern for creating categories in tests:
-//!
-//! ```rust,no_run
-//! use lib_database::categories::{Categories, CategoriesBuilder};
-//! use lib_core::CategoryTypes;
-//!
-//! let category = CategoriesBuilder::new()
-//!     .with_name("Groceries")
-//!     .with_category_type(CategoryTypes::Expense)
-//!     .with_code("FOOD.001")
-//!     .build()?;
-//! # Ok::<(), Box<dyn std::error::Error>>(())
-//! ```
-//!
-//! Perform database operations:
-//!
-//! ```rust,no_run
-//! # use lib_database::{Categories, DatabasePool};
-//! # async fn example(pool: &DatabasePool) -> Result<(), Box<dyn std::error::Error>> {
-//! let inserted = category.insert(pool).await?;
-//! let found = Categories::find_by_id(inserted.id, pool).await?;
-//! # Ok(())
-//! # }
-//! ```
+//! See the unit tests in [`builder`](builder), [`insert`](insert), [`update`](update),
+//! [`delete`](delete), and [`find`](find) for usage examples.
 //!
 //! ## Security
 //!

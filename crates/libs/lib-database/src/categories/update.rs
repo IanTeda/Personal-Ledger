@@ -42,21 +42,6 @@ impl crate::Categories {
     /// * A database connection error occurs
     /// * The update operation fails due to constraint violations
     ///
-    /// # Examples
-    /// ```rust,no_run
-    /// use lib_database::Categories;
-    /// use sqlx::SqlitePool;
-    ///
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let mut category = Categories::mock();
-    /// category.name = "Updated Category Name".to_string();
-    ///
-    /// let updated_category = category.update(pool).await?;
-    /// println!("Updated category: {}", updated_category.name);
-    /// # Ok(())
-    /// # }
-    /// ```
-    ///
     /// # Security
     /// This function does not perform any input validation beyond what is enforced by
     /// the database constraints. Ensure category data is validated before calling this function.
@@ -184,23 +169,6 @@ impl crate::Categories {
     /// * Any update operation fails due to constraint violations
     ///
     /// When an error occurs, the entire transaction is rolled back and no categories are updated.
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// use lib_database::Categories;
-    /// use sqlx::SqlitePool;
-    ///
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let categories = vec![
-    ///     Categories { id: 1.into(), name: "Category 1".to_string(), ..Categories::mock() },
-    ///     Categories { id: 2.into(), name: "Category 2".to_string(), ..Categories::mock() },
-    /// ];
-    ///
-    /// let updated_categories = Categories::update_many(&categories, pool).await?;
-    /// println!("Updated {} categories", updated_categories.len());
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// # Performance
     /// This operation uses a database transaction to ensure atomicity. For large numbers of categories,
@@ -357,26 +325,6 @@ impl crate::Categories {
     /// This function will return an error if:
     /// * The category with the specified `id` does not exist in the database
     /// * A database connection error occurs
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// use lib_database::Categories;
-    /// use lib_core::RowID;
-    /// use sqlx::SqlitePool;
-    ///
-    /// # async fn example(pool: &SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
-    /// let category_id = RowID::from(123);
-    ///
-    /// // Activate a category
-    /// let activated_category = Categories::update_active_status(category_id, true, pool).await?;
-    /// assert!(activated_category.is_active);
-    ///
-    /// // Deactivate the same category
-    /// let deactivated_category = Categories::update_active_status(category_id, false, pool).await?;
-    /// assert!(!deactivated_category.is_active);
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// # Performance
     /// This method is more efficient than a full category update when only the active status needs to change,

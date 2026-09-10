@@ -12,58 +12,8 @@
 //! - **Health Monitoring**: Includes health check functionality for connection validation
 //! - **Resource Management**: Proper cleanup and ownership transfer of pool resources
 //!
-//! ## Usage
-//!
-//! ### Basic Connection Setup
-//!
-//! ```rust,no_run
-//! use lib_database::{DatabaseConnection, DatabaseConfig};
-//!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create configuration
-//! let config = DatabaseConfig::default();
-//!
-//! // Establish database connection
-//! let connection = DatabaseConnection::new(config).await?;
-//!
-//! // Use the connection for queries
-//! let pool = connection.pool();
-//! let result = sqlx::query("SELECT 1").fetch_one(pool).await?;
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ### Health Checking
-//!
-//! ```rust,no_run
-//! use lib_database::{DatabaseConnection, DatabaseConfig};
-//!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let connection = DatabaseConnection::new(DatabaseConfig::default()).await?;
-//!
-//! // Verify connection health
-//! connection.health_check().await?;
-//! println!("Database connection is healthy!");
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! ### Pool Ownership Transfer
-//!
-//! ```rust,no_run
-//! use lib_database::{DatabaseConnection, DatabaseConfig};
-//!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let connection = DatabaseConnection::new(DatabaseConfig::default()).await?;
-//!
-//! // Transfer ownership of the pool
-//! let pool = connection.into_pool();
-//!
-//! // Now you own the pool directly
-//! let result = sqlx::query("SELECT 1").fetch_one(&pool).await?;
-//! # Ok(())
-//! # }
-//! ```
+//! See the `#[cfg(test)]` module below for usage examples (connection setup, health
+//! checking, and pool ownership transfer).
 //!
 //! ## Architecture Notes
 //!
@@ -98,25 +48,6 @@ use lib_config::DatabaseConfig;
 ///
 /// The underlying `SqlitePool` is thread-safe and can be shared across async tasks.
 /// Multiple concurrent operations are supported through the connection pool.
-///
-/// ## Example
-///
-/// ```rust,no_run
-/// use lib_database::{DatabaseConnection, DatabaseConfig};
-///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// // Configure the connection
-/// let config = DatabaseConfig::default();
-///
-/// // Create the connection
-/// let connection = DatabaseConnection::new(config).await?;
-///
-/// // Use for database operations
-/// let pool = connection.pool();
-/// // ... perform queries ...
-/// # Ok(())
-/// # }
-/// ```
 pub struct DatabaseConnection {
     /// The underlying SQLx SQLite connection pool.
     ///
@@ -149,18 +80,6 @@ impl DatabaseConnection {
     /// - The database URL is invalid or unreachable
     /// - The database file cannot be created or accessed
     /// - Pool configuration parameters are invalid
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::{DatabaseConnection, DatabaseConfig};
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let config = DatabaseConfig::default();
-    /// let connection = DatabaseConnection::new(config).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn new(config: DatabaseConfig) -> Result<Self> {
         let pool_options = SqlitePoolOptions::new()
             .max_connections(config.max_connections())
@@ -202,22 +121,6 @@ impl DatabaseConnection {
     /// # Returns
     ///
     /// A reference to the `SqlitePool`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::{DatabaseConnection, DatabaseConfig};
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let config = DatabaseConfig::default();
-    /// let connection = DatabaseConnection::new(config).await?;
-    /// let pool = connection.pool();
-    ///
-    /// // Use the pool for queries
-    /// let result = sqlx::query("SELECT 1").fetch_one(pool).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
     }
@@ -229,22 +132,6 @@ impl DatabaseConnection {
     /// # Returns
     ///
     /// The owned `SqlitePool`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::{DatabaseConnection, DatabaseConfig};
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let config = DatabaseConfig::default();
-    /// let connection = DatabaseConnection::new(config).await?;
-    /// let pool = connection.into_pool();
-    ///
-    /// // Now you own the pool
-    /// let result = sqlx::query("SELECT 1").fetch_one(&pool).await?;
-    /// # Ok(())
-    /// # }
-    /// ```
     pub fn into_pool(self) -> SqlitePool {
         self.pool
     }
@@ -256,20 +143,6 @@ impl DatabaseConnection {
     /// # Returns
     ///
     /// `Ok(())` if the connection is healthy, or a `DatabaseError` if not.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::{DatabaseConnection, DatabaseConfig};
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let config = DatabaseConfig::default();
-    /// let connection = DatabaseConnection::new(config).await?;
-    /// connection.health_check().await?;
-    /// println!("Database connection is healthy!");
-    /// # Ok(())
-    /// # }
-    /// ```
     pub async fn health_check(&self) -> Result<()> {
         sqlx::query("SELECT 1")
             .fetch_one(&self.pool)

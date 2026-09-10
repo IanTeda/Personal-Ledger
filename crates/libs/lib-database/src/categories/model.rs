@@ -25,43 +25,8 @@
 //!
 //! ## Usage
 //!
-//! ```rust,no_run
-//! use lib_database::Categories;
-//!
-//! // Create a category instance (typically from database query)
-//! # // This would normally come from sqlx::FromRow
-//! # let category = Categories {
-//! #     id: lib_core::RowID::new(),
-//! #     code: "FOO.BAR.BAZ".to_string(),
-//! #     name: "Example Category".to_string(),
-//! #     description: Some("An example category".to_string()),
-//! #     url_slug: Some(lib_core::UrlSlug::parse("example-category").unwrap()),
-//! #     category_type: lib_core::CategoryTypes::Expense,
-//! #     color: Some(lib_core::HexColor::parse("#FF5733").unwrap()),
-//! #     icon: Some("shopping-cart".to_string()),
-//! #     is_active: true,
-//! #     created_on: chrono::Utc::now(),
-//! #     updated_on: chrono::Utc::now(),
-//! # };
-//!
-//! // Access category properties
-//! println!("Category: {}", category.name);
-//! println!("Type: {}", category.category_type.as_str());
-//! ```
-//!
-//! ## Testing
-//!
-//! The module includes comprehensive test utilities for generating mock data:
-//!
-//! ```rust
-//! # #[cfg(test)]
-//! # use lib_database::categories::Categories;
-//! # #[cfg(test)]
-//! # fn example() {
-//! let mock_category = Categories::mock();
-//! assert!(!mock_category.name.is_empty());
-//! # }
-//! ```
+//! See the `#[cfg(test)]` module below for usage examples, including the `Categories::mock()`
+//! test utility.
 
 /// Database row model representing a persisted category.
 ///
@@ -169,19 +134,6 @@ impl Categories {
     /// - A valid category type
     /// - Randomly assigned optional fields (color, icon, etc.)
     /// - Current timestamps for created/updated
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # #[cfg(test)]
-    /// # use lib_database::categories::Categories;
-    /// # #[cfg(test)]
-    /// # fn example() {
-    /// let mock_category = Categories::mock();
-    /// assert!(!mock_category.name.is_empty());
-    /// assert!(mock_category.code.contains('.'));
-    /// # }
-    /// ```
     #[cfg(test)]
     pub fn mock() -> Self {
         use crate::categories::CategoriesBuilder;

@@ -43,69 +43,8 @@
 //!
 //! ## Examples
 //!
-//! ```rust,no_run
-//! use lib_database::categories::Categories;
-//! use lib_database::DatabaseConnection;
-//!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a database connection
-//! let config = lib_database::DatabaseConfig::default();
-//! let connection = lib_database::DatabaseConnection::new(config).await?;
-//! let pool = connection.pool();
-//!
-//! // Single insert
-//! let category = Categories {
-//!     id: lib_core::RowID::new(),
-//!     code: "FOO.BAR.BAZ".to_string(),
-//!     name: "Example Category".to_string(),
-//!     description: Some("An example category".to_string()),
-//!     url_slug: Some(lib_core::UrlSlug::parse("example-category").unwrap()),
-//!     category_type: lib_core::CategoryTypes::Expense,
-//!     color: Some(lib_core::HexColor::parse("#FF5733").unwrap()),
-//!     icon: Some("shopping-cart".to_string()),
-//!     is_active: true,
-//!     created_on: chrono::Utc::now(),
-//!     updated_on: chrono::Utc::now(),
-//! };
-//! let inserted = category.insert(pool).await?;
-//!
-//! // Bulk insert
-//! let categories = vec![
-//!     Categories {
-//!         id: lib_core::RowID::new(),
-//!         code: "FOO.BAR.BAZ".to_string(),
-//!         name: "Category 1".to_string(),
-//!         description: None,
-//!         url_slug: Some(lib_core::UrlSlug::parse("category-1").unwrap()),
-//!         category_type: lib_core::CategoryTypes::Expense,
-//!         color: None,
-//!         icon: None,
-//!         is_active: true,
-//!         created_on: chrono::Utc::now(),
-//!         updated_on: chrono::Utc::now(),
-//!     },
-//!     Categories {
-//!         id: lib_core::RowID::new(),
-//!         code: "FOO.BAR.QUX".to_string(),
-//!         name: "Category 2".to_string(),
-//!         description: None,
-//!         url_slug: Some(lib_core::UrlSlug::parse("category-2").unwrap()),
-//!         category_type: lib_core::CategoryTypes::Income,
-//!         color: None,
-//!         icon: None,
-//!         is_active: true,
-//!         created_on: chrono::Utc::now(),
-//!         updated_on: chrono::Utc::now(),
-//!     },
-//! ];
-//! let inserted_bulk = Categories::insert_many(&categories, pool).await?;
-//!
-//! // Upsert operation
-//! let upserted = Categories::insert_or_update(&category, pool).await?;
-//!
-//! # Ok(())
-//! # }
-//! ```
+//! See the `#[cfg(test)]` module below for usage examples of `insert`, `insert_many`, and
+//! `insert_or_update`.
 
 use lib_core as domain;
 
@@ -148,39 +87,6 @@ impl crate::Categories {
     /// - **INFO**: Successful insertion confirmation
     /// - **DEBUG**: Validation and operation details
     /// - **TRACE**: Step-by-step execution flow
-    ///
-    /// ## Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::categories::Categories;
-    /// use lib_database::DatabaseConnection;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// // Create a database connection
-    /// let config = lib_database::DatabaseConfig::default();
-    /// let connection = lib_database::DatabaseConnection::new(config).await?;
-    /// let pool = connection.pool();
-    ///
-    /// // Create and insert a category
-    /// let category = Categories {
-    ///     id: lib_core::RowID::new(),
-    ///     code: "FOO.BAR.BAZ".to_string(),
-    ///     name: "Example Category".to_string(),
-    ///     description: Some("An example category".to_string()),
-    ///     url_slug: Some(lib_core::UrlSlug::parse("example-category").unwrap()),
-    ///     category_type: lib_core::CategoryTypes::Expense,
-    ///     color: Some(lib_core::HexColor::parse("#FF5733").unwrap()),
-    ///     icon: Some("shopping-cart".to_string()),
-    ///     is_active: true,
-    ///     created_on: chrono::Utc::now(),
-    ///     updated_on: chrono::Utc::now(),
-    /// };
-    /// let inserted = category.insert(pool).await?;
-    ///
-    /// println!("Inserted category: {}", inserted.name);
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// ## Performance
     ///
@@ -377,69 +283,6 @@ impl crate::Categories {
     /// - **INFO**: Operation start/completion with statistics
     /// - **DEBUG**: Batch details and final results
     /// - **TRACE**: Per-category processing steps
-    ///
-    /// ## Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::categories::Categories;
-    /// use lib_database::DatabaseConnection;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// // Create a database connection
-    /// let config = lib_database::DatabaseConfig::default();
-    /// let connection = lib_database::DatabaseConnection::new(config).await?;
-    /// let pool = connection.pool();
-    ///
-    /// // Create multiple categories
-    /// let categories = vec![
-    ///     Categories {
-    ///         id: lib_core::RowID::new(),
-    ///         code: "FOO.BAR.BAZ".to_string(),
-    ///         name: "Category 1".to_string(),
-    ///         description: None,
-    ///         url_slug: Some(lib_core::UrlSlug::parse("category-1").unwrap()),
-    ///         category_type: lib_core::CategoryTypes::Expense,
-    ///         color: None,
-    ///         icon: None,
-    ///         is_active: true,
-    ///         created_on: chrono::Utc::now(),
-    ///         updated_on: chrono::Utc::now(),
-    ///     },
-    ///     Categories {
-    ///         id: lib_core::RowID::new(),
-    ///         code: "FOO.BAR.QUX".to_string(),
-    ///         name: "Category 2".to_string(),
-    ///         description: None,
-    ///         url_slug: Some(lib_core::UrlSlug::parse("category-2").unwrap()),
-    ///         category_type: lib_core::CategoryTypes::Income,
-    ///         color: None,
-    ///         icon: None,
-    ///         is_active: true,
-    ///         created_on: chrono::Utc::now(),
-    ///         updated_on: chrono::Utc::now(),
-    ///     },
-    ///     Categories {
-    ///         id: lib_core::RowID::new(),
-    ///         code: "FOO.BAR.QUUX".to_string(),
-    ///         name: "Category 3".to_string(),
-    ///         description: None,
-    ///         url_slug: Some(lib_core::UrlSlug::parse("category-3").unwrap()),
-    ///         category_type: lib_core::CategoryTypes::Asset,
-    ///         color: None,
-    ///         icon: None,
-    ///         is_active: true,
-    ///         created_on: chrono::Utc::now(),
-    ///         updated_on: chrono::Utc::now(),
-    ///     },
-    /// ];
-    ///
-    /// // Bulk insert with transaction guarantees
-    /// let inserted = Categories::insert_many(&categories, pool).await?;
-    ///
-    /// println!("Successfully inserted {} categories", inserted.len());
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// ## Performance
     ///
@@ -679,45 +522,6 @@ impl crate::Categories {
     /// - **INFO**: Operation completion with INSERT/UPDATE indication
     /// - **DEBUG**: Operation type detection and final state
     /// - **TRACE**: Step-by-step execution flow
-    ///
-    /// ## Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::categories::Categories;
-    /// use lib_database::DatabaseConnection;
-    ///
-    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// // Create a database connection
-    /// let config = lib_database::DatabaseConfig::default();
-    /// let connection = lib_database::DatabaseConnection::new(config).await?;
-    /// let pool = connection.pool();
-    ///
-    /// // Create a category
-    /// let mut category = Categories {
-    ///     id: lib_core::RowID::new(),
-    ///     code: "FOO.BAR.BAZ".to_string(),
-    ///     name: "Original Name".to_string(),
-    ///     description: Some("An example category".to_string()),
-    ///     url_slug: Some(lib_core::UrlSlug::parse("original-name").unwrap()),
-    ///     category_type: lib_core::CategoryTypes::Expense,
-    ///     color: Some(lib_core::HexColor::parse("#FF5733").unwrap()),
-    ///     icon: Some("shopping-cart".to_string()),
-    ///     is_active: true,
-    ///     created_on: chrono::Utc::now(),
-    ///     updated_on: chrono::Utc::now(),
-    /// };
-    /// category.name = "Updated Name".to_string();
-    ///
-    /// // First call - INSERT
-    /// let result1 = Categories::insert_or_update(&category, pool).await?;
-    /// println!("Inserted: {}", result1.name);
-    ///
-    /// // Second call - UPDATE (same ID)
-    /// let result2 = Categories::insert_or_update(&category, pool).await?;
-    /// println!("Updated: {}", result2.name);
-    /// # Ok(())
-    /// # }
-    /// ```
     ///
     /// ## Performance
     ///

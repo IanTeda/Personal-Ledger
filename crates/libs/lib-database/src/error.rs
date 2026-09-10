@@ -19,15 +19,6 @@
 //!
 //! All database service functions should return `Result<T, DatabaseError>` for consistent error propagation.
 //!
-//! Example:
-//! ```rust,no_run
-//! use lib_database::DatabaseError;
-//! fn do_db_work() -> Result<(), DatabaseError> {
-//!     // Simulate a connection error
-//!     Err(DatabaseError::Connection("Failed to connect to database".to_string()))
-//! }
-//! ```
-//!
 //! ## Integration
 //!
 //! Errors are convertible to `LedgerError` for unified error handling across the backend.
@@ -47,33 +38,11 @@
 ///
 /// This enum wraps errors from the underlying database operations and adds
 /// domain-specific validation variants for database-related failures.
-///
-/// # Examples
-///
-/// Handling a database error:
-/// ```rust,no_run
-/// use lib_database::DatabaseError;
-/// fn handle_error(err: DatabaseError) {
-///     match err {
-///         DatabaseError::NotFound(msg) => println!("Resource not found: {}", msg),
-///         DatabaseError::Connection(msg) => println!("Connection failed: {}", msg),
-///         _ => println!("Other error: {}", err),
-///     }
-/// }
-/// ```
 pub enum Error {
     /// Category Builder Error
     ///
     /// Occurs when constructing a category fails due to invalid input or missing required fields.
     /// This is typically used in builder patterns for category creation.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::DatabaseError;
-    /// let err = DatabaseError::CategoryBuilder("Name is required".to_string());
-    /// assert!(matches!(err, DatabaseError::CategoryBuilder(_)));
-    /// ```
     #[error("Error building category: {0}")]
     CategoryBuilder(String),
 
@@ -168,14 +137,6 @@ pub enum Error {
     ///
     /// Represents failures in establishing or maintaining database connections,
     /// such as invalid credentials, network issues, or server unavailability.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::DatabaseError;
-    /// let err = DatabaseError::Connection("Database server unreachable".to_string());
-    /// assert!(matches!(err, DatabaseError::Connection(_)));
-    /// ```
     #[error("Error connecting to the database: {0}")]
     Connection(String),
 
@@ -183,72 +144,30 @@ pub enum Error {
     ///
     /// Encapsulates errors from the SQLx crate, including query failures, pool exhaustion,
     /// or type conversion issues.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::DatabaseError;
-    /// let sqlx_err = sqlx::Error::RowNotFound;
-    /// let err: DatabaseError = sqlx_err.into();
-    /// assert!(matches!(err, DatabaseError::Sqlx(_)));
-    /// ```
     #[error("Database error: {0}")]
     Sqlx(#[from] sqlx::Error),
 
     /// Database migration error
     ///
     /// Occurs during database schema migrations, such as failed SQL execution or version conflicts.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::DatabaseError;
-    /// let migrate_err = sqlx::migrate::MigrateError::Execute(sqlx::Error::RowNotFound);
-    /// let err: DatabaseError = migrate_err.into();
-    /// assert!(matches!(err, DatabaseError::Migration(_)));
-    /// ```
     #[error("Database migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
 
     /// Validation errors originating from the DB layer (e.g. constraint violations)
     ///
     /// Used for domain validation failures, such as unique constraint violations or invalid data formats.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::DatabaseError;
-    /// let err = DatabaseError::Validation("Duplicate category code".to_string());
-    /// assert!(matches!(err, DatabaseError::Validation(_)));
-    /// ```
     #[error("Validation: {0}")]
     Validation(String),
 
     /// Resource not found errors
     ///
     /// Indicates that a requested database record does not exist.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::DatabaseError;
-    /// let err = DatabaseError::NotFound("Category with ID 123 not found".to_string());
-    /// assert!(matches!(err, DatabaseError::NotFound(_)));
-    /// ```
     #[error("Not found: {0}")]
     NotFound(String),
 
     /// Generic catch-all for database related errors
     ///
     /// For miscellaneous database errors that don't fit other categories.
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use lib_database::DatabaseError;
-    /// let err = DatabaseError::Generic("Unexpected database state".to_string());
-    /// assert!(matches!(err, DatabaseError::Generic(_)));
-    /// ```
     #[error("Other database error: {0}")]
     Generic(String),
 }

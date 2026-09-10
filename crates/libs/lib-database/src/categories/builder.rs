@@ -221,13 +221,6 @@ impl CategoriesBuilder {
     /// in non-production scenarios. It generates a new ID, uses a default code and name, and sets
     /// other fields to reasonable defaults.
     ///
-    /// # Examples
-    /// ```
-    /// use lib_database::categories::CategoriesBuilder;
-    ///
-    /// let category = CategoriesBuilder::new().build_with_defaults();
-    /// assert!(!category.name.is_empty());
-    /// ```
     pub fn build_with_defaults(self) -> Categories {
         let name = self.name.unwrap_or_else(|| "Default Category".to_string());
         let category_type = self

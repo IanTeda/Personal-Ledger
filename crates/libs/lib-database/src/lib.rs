@@ -99,20 +99,5 @@ mod connection;
 /// - Safe access to underlying SQLx pools
 /// - Ownership transfer capabilities
 ///
-/// ## Example
-///
-/// ```rust,no_run
-/// use lib_database::{DatabaseConnection, DatabaseConfig};
-///
-/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-/// let config = DatabaseConfig::default();
-/// let connection = DatabaseConnection::new(config).await?;
-///
-/// // Verify connection health
-/// connection.health_check().await?;
-/// # Ok(())
-/// # }
-/// ```
-///
-/// See [`connection`] module for detailed API documentation.
+/// See [`connection`] module for detailed API documentation and unit tests.
 pub use connection::DatabaseConnection;
