@@ -8,4 +8,5 @@ pub const COMMANDS: &[Command] = &[Command {
     name: "help",
     chord: Chord(&[KeyCode::Char('?')]),
     description: "browse every command",
+    args: &[],
 }];

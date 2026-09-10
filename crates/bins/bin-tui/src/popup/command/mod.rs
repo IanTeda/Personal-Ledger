@@ -6,10 +6,12 @@
 //! (`docs/ux/tui/units/README.md` §4b) now shares its `Dim` overlay treatment and
 //! `REFERENCE_TERMINAL_WIDTH` baseline.
 //!
-//! The command list itself (`commands`) is real, grouped by domain — `docs/ux/tui/
-//! README.md`'s action registry (args/effect resolvers, `:help`/footer/keymap generation,
-//! actual key dispatch) is still later work, built out domain by domain as those areas land
-//! on the new Shell/View navigation.
+//! The command list itself (`commands`) is real, grouped by domain, each with a fixed
+//! argument-preview (`Command::args`) rendered here as the popup's one dynamic info row
+//! (`info_row`) — `:help`/footer/keymap generation and real key dispatch beyond the 6
+//! commands with content behind them (`unit`, `unit new/edit/delete`, `dashboard`,
+//! `settings`) are still later work, built out domain by domain as those areas land on the
+//! new Shell/View navigation.
 
 mod commands;
 
@@ -46,7 +48,9 @@ const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT
 const COLUMN_GAP: usize = 2;
 
 /// Fixed chrome rows inside the border: prompt, its rule, the footer's rule, the footer
-/// itself. The body between them is whatever's left (`render`), scrolling past it.
+/// itself. The body between them is whatever's left (`render`), scrolling past it. Does not
+/// include the info row (`info_row`) — that's an extra row on top, present only while it has
+/// something to show.
 const FIXED_ROWS: u16 = 4;
 
 /// One row of the resting/filtered body: a domain header (resting state only, per the user's
@@ -67,6 +71,12 @@ pub struct CommandPopup {
     /// Index into the *selectable* rows only (headers are skipped), not the row list's own
     /// index — so it stays meaningful whether or not headers are showing.
     selected: usize,
+    /// The `:name` of the last command `Enter` tried to run outside the 6 with real content
+    /// behind them — `Some` while its `":{name} — not yet built"` message shows in the info
+    /// row. Cleared by any subsequent mutating action (typing, backspace, `↑`/`↓`, `Tab`);
+    /// takes priority over the argument-preview row while it's set, since it only ever
+    /// appears right after an `Enter` attempt on the currently-highlighted command.
+    not_yet_built: Option<&'static str>,
 }
 
 impl CommandPopup {
@@ -81,17 +91,20 @@ impl CommandPopup {
     pub fn push_char(&mut self, c: char) {
         self.input.push(c);
         self.selected = 0;
+        self.not_yet_built = None;
     }
 
     /// Removes the last character of the input buffer, if any, resetting the selection.
     pub fn backspace(&mut self) {
         self.input.pop();
         self.selected = 0;
+        self.not_yet_built = None;
     }
 
     /// Moves the selection up one row, clamped at the top.
     pub fn move_up(&mut self) {
         self.selected = self.selected.saturating_sub(1);
+        self.not_yet_built = None;
     }
 
     /// Moves the selection down one row, clamped at the bottom of whatever's currently shown.
@@ -100,18 +113,67 @@ impl CommandPopup {
         if count > 0 && self.selected + 1 < count {
             self.selected += 1;
         }
+        self.not_yet_built = None;
+    }
+
+    /// `Tab` while the popup is open — completion isn't built yet, so this only clears a
+    /// showing "not yet built" message, matching every other mutating key.
+    pub fn tab(&mut self) {
+        self.not_yet_built = None;
+    }
+
+    /// Records that `Enter` was pressed on `name`, a command outside the 6 with real content
+    /// behind them — `render` shows `":{name} — not yet built"` in the info row until the
+    /// next mutating key clears it.
+    pub fn set_not_yet_built(&mut self, name: &'static str) {
+        self.not_yet_built = Some(name);
+    }
+
+    /// The command currently highlighted by `selected`, if any.
+    fn selected_command(&self) -> Option<&'static commands::Command> {
+        let rows = self.rows();
+        let row_idx = Self::selected_row_index(&rows, self.selected);
+        match rows.get(row_idx)? {
+            Row::Entry { command, .. } => Some(command),
+            Row::Header(_) => None,
+        }
     }
 
     /// The `:name` of the command currently highlighted by `selected`, if any — `Shell` checks
     /// this against `Enter` to decide whether the highlighted command has a real view to open
-    /// yet (today, only `unit` does).
+    /// yet (today, only the unit family and `dashboard` do).
     pub fn selected_command_name(&self) -> Option<&'static str> {
-        let rows = self.rows();
-        let row_idx = Self::selected_row_index(&rows, self.selected);
-        match rows.get(row_idx)? {
-            Row::Entry { command, .. } => Some(command.name),
-            Row::Header(_) => None,
+        self.selected_command().map(|command| command.name)
+    }
+
+    /// The highlighted command's args, joined into one combined preview string (`"{placeholder}
+    /// — {preview}"` per arg, `" · "`-separated) — `None` for a command with no args, per
+    /// `Command::args`.
+    fn arg_preview(&self) -> Option<String> {
+        let command = self.selected_command()?;
+        if command.args.is_empty() {
+            return None;
         }
+        Some(
+            command
+                .args
+                .iter()
+                .map(|arg| format!("{} — {}", arg.placeholder, arg.preview))
+                .collect::<Vec<_>>()
+                .join(" · "),
+        )
+    }
+
+    /// The popup's one dynamic info-row slot: the "not yet built" message if `Enter` was just
+    /// pressed on a not-yet-dispatched command, otherwise the highlighted command's argument
+    /// preview, otherwise nothing — `bool` is whether it's the "not yet built" message (styled
+    /// plainly) rather than an argument preview (styled dim). `None` means the row doesn't
+    /// render at all, and the popup is one row shorter.
+    pub(crate) fn info_row(&self) -> Option<(String, bool)> {
+        if let Some(name) = self.not_yet_built {
+            return Some((format!(":{name} — not yet built"), true));
+        }
+        self.arg_preview().map(|preview| (preview, false))
     }
 
     /// Every command matching the current input, case-insensitively against its `:name`,
@@ -192,27 +254,39 @@ impl CommandPopup {
     /// Renders the floating overlay, centred and content-sized up to a terminal-height cap
     /// (mirroring the `:help` window's own §2a scrolling convention), within `area` (the full
     /// terminal area — the popup floats over the shell's status line and footer too, not
-    /// just the view region, per §3a's "centred floating overlay").
+    /// just the view region, per §3a's "centred floating overlay"). The info row (`info_row`)
+    /// adds exactly one row when present — a zero-arg command with no "not yet built" message
+    /// showing renders no info row at all, and the popup is correspondingly one row shorter.
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         let rows = self.rows();
-        let popup = popup_rect(area, rows.len() as u16 + FIXED_ROWS + 2 /* borders */);
+        let info_row = self.info_row();
+        let extra_row: u16 = if info_row.is_some() { 1 } else { 0 };
+        let popup = popup_rect(
+            area,
+            rows.len() as u16 + FIXED_ROWS + extra_row + 2, // + 2 borders
+        );
 
         frame.render_widget(Clear, popup);
         let block = Block::bordered();
         let inner = block.inner(popup);
         frame.render_widget(block, popup);
 
-        let body_height = inner.height.saturating_sub(FIXED_ROWS);
+        let body_height = inner.height.saturating_sub(FIXED_ROWS + extra_row);
+
+        let mut constraints = vec![
+            Constraint::Length(1), // prompt
+            Constraint::Length(1), // rule
+            Constraint::Length(body_height),
+        ];
+        if info_row.is_some() {
+            constraints.push(Constraint::Length(1)); // info row
+        }
+        constraints.push(Constraint::Length(1)); // rule
+        constraints.push(Constraint::Length(1)); // footer
 
         let layout = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([
-                Constraint::Length(1),
-                Constraint::Length(1),
-                Constraint::Length(body_height),
-                Constraint::Length(1),
-                Constraint::Length(1),
-            ])
+            .constraints(constraints)
             .split(inner);
 
         let scroll_offset = self.scroll_offset(&rows, layout[2].height);
@@ -222,8 +296,27 @@ impl CommandPopup {
         frame.render_widget(rule(), layout[1]);
         self.render_body(frame, layout[2], &rows, scroll_offset);
         render_scrollbar(frame, popup, layout[2], rows.len(), scroll_offset);
-        frame.render_widget(rule(), layout[3]);
-        frame.render_widget(footer_hint_line(), layout[4]);
+
+        let mut next = 3;
+        if let Some((text, is_message)) = &info_row {
+            self.render_info_row(frame, layout[next], text, *is_message);
+            next += 1;
+        }
+        frame.render_widget(rule(), layout[next]);
+        next += 1;
+        frame.render_widget(footer_hint_line(), layout[next]);
+    }
+
+    /// The info row itself: the "not yet built" message renders plainly, the argument preview
+    /// dim (matching the footer hint labels' own dim treatment) so it reads as secondary to
+    /// the candidate list above it.
+    fn render_info_row(&self, frame: &mut Frame, area: Rect, text: &str, is_message: bool) {
+        let style = if is_message {
+            Style::default()
+        } else {
+            Style::default().fg(DIM)
+        };
+        frame.render_widget(Line::from(pad_line(text, area.width)).style(style), area);
     }
 
     /// The prompt row: `:{input}▌` flush left, match count right-aligned — `:` rather than
@@ -581,5 +674,121 @@ mod tests {
         terminal
             .draw(|frame| popup.render(frame, frame.area()))
             .expect("rendering a scrolled popup should not error");
+    }
+
+    /// Filters `popup` down to exactly one match.
+    fn filter_to(popup: &mut CommandPopup, needle: &str) {
+        for c in needle.chars() {
+            popup.push_char(c);
+        }
+    }
+
+    #[test]
+    fn arg_preview_joins_every_arg_with_placeholder_and_dash() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "unit edit");
+        assert_eq!(popup.selected_command_name(), Some("unit edit <code>"));
+        assert_eq!(
+            popup.arg_preview().as_deref(),
+            Some("<code> — VDHG · etf · Vanguard Diversified High Growth")
+        );
+    }
+
+    #[test]
+    fn a_zero_arg_command_has_no_arg_preview() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "dashboard");
+        assert_eq!(popup.selected_command_name(), Some("dashboard"));
+        assert_eq!(popup.arg_preview(), None);
+        assert_eq!(popup.info_row(), None);
+    }
+
+    #[test]
+    fn info_row_prefers_the_not_yet_built_message_over_the_argument_preview() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "unit edit");
+        assert!(popup.info_row().is_some_and(|(_, is_message)| !is_message));
+
+        popup.set_not_yet_built("unit edit <code>");
+        let (text, is_message) = popup.info_row().expect("a message should now show");
+        assert!(is_message);
+        assert_eq!(text, ":unit edit <code> — not yet built");
+    }
+
+    #[test]
+    fn move_up_move_down_backspace_and_push_char_all_clear_a_not_yet_built_message() {
+        let clears_via = |mutate: fn(&mut CommandPopup)| {
+            let mut popup = CommandPopup::new();
+            popup.set_not_yet_built("quit");
+            mutate(&mut popup);
+            assert!(
+                popup.info_row().is_none_or(|(_, is_message)| !is_message),
+                "message should be cleared"
+            );
+        };
+
+        clears_via(|popup| popup.move_up());
+        clears_via(|popup| popup.move_down());
+        clears_via(|popup| popup.backspace());
+        clears_via(|popup| popup.push_char('x'));
+        clears_via(|popup| popup.tab());
+    }
+
+    #[test]
+    fn rendering_grows_the_popup_by_one_row_when_an_info_row_shows() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let render_height = |popup: &CommandPopup| -> u16 {
+            let backend = TestBackend::new(96, 30);
+            let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+            terminal
+                .draw(|frame| popup.render(frame, frame.area()))
+                .expect("rendering the popup should not error");
+            popup_rect(
+                Rect::new(0, 0, 96, 30),
+                popup.rows().len() as u16
+                    + FIXED_ROWS
+                    + if popup.info_row().is_some() { 1 } else { 0 }
+                    + 2,
+            )
+            .height
+        };
+
+        let mut no_args = CommandPopup::new();
+        filter_to(&mut no_args, "dashboard");
+        let mut with_args = CommandPopup::new();
+        filter_to(&mut with_args, "unit edit");
+
+        assert_eq!(
+            render_height(&with_args),
+            render_height(&no_args) + 1,
+            "a command with an argument preview should render exactly one row taller"
+        );
+    }
+
+    #[test]
+    fn renders_without_panicking_with_an_argument_preview_row() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "unit edit");
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| popup.render(frame, frame.area()))
+            .expect("rendering the popup with an argument preview should not error");
+    }
+
+    #[test]
+    fn renders_without_panicking_with_a_not_yet_built_message() {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let mut popup = CommandPopup::new();
+        popup.set_not_yet_built("quit");
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| popup.render(frame, frame.area()))
+            .expect("rendering the popup with a not-yet-built message should not error");
     }
 }

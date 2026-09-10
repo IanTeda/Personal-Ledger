@@ -5,27 +5,40 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Arg, Chord, Command};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "payee list",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('p')]),
         description: "payees and their transaction totals",
+        args: &[],
     },
     Command {
         name: "payee new <name>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "add a payee",
+        args: &[Arg {
+            placeholder: "<name>",
+            preview: "e.g. Woolworths, ATO, Telstra",
+        }],
     },
     Command {
         name: "payee edit <name>",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted payee",
+        args: &[Arg {
+            placeholder: "<name>",
+            preview: "Woolworths · 42 transactions",
+        }],
     },
     Command {
         name: "payee delete <name>",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "delete — payees in use can't be removed",
+        args: &[Arg {
+            placeholder: "<name>",
+            preview: "Woolworths · in use — can't be removed",
+        }],
     },
 ];

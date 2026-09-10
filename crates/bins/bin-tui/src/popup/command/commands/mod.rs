@@ -5,12 +5,14 @@
 //! `price`).
 //!
 //! This is data only: no action registry, no `:help`/footer/keymap generation, and (bar
-//! `Shell` special-casing `Enter` on each domain's "list" command — `unit`, `dashboard`,
-//! `account list`, `check list`, `budget list`, `category list`, `help`, `payee list`,
-//! `quit`, `report list`, `settings`, `txn recent` — every one of which now has a real, if
-//! still wireframe-stage, effect behind it) no key dispatch. `Chord` models each command's eventual
-//! binding as typed data so a later dispatch ticket is additive (it consumes the same value
-//! already sitting here) rather than needing its own binding representation.
+//! `Shell` special-casing `Enter` on the 6 commands with real content behind them — `unit`,
+//! `unit new <code> <type>`, `unit edit <code>`, `unit delete <code>`, `dashboard`,
+//! `settings` — every other command showing a "not yet built" message instead, per
+//! `CommandPopup`'s `not_yet_built` state) no key dispatch. `Chord` models each command's
+//! eventual binding as typed data so a later dispatch ticket is additive (it consumes the
+//! same value already sitting here) rather than needing its own binding representation. `Arg`
+//! does the same for a command's argument-preview row: fixed fake-data content now, a
+//! resolver against real `lib-database` data later.
 
 mod accounts;
 mod balance_checks;
@@ -59,11 +61,23 @@ impl fmt::Display for Chord {
 }
 
 /// One command: its `:name` (excluding the leading `:`, added when rendering), its eventual
-/// binding, and its description.
+/// binding, its description, and the arguments its name's `<...>`/`[...]` placeholders name —
+/// empty for a command with none.
 pub struct Command {
     pub name: &'static str,
     pub chord: Chord,
     pub description: &'static str,
+    pub args: &'static [Arg],
+}
+
+/// One argument a command takes, feeding the command popup's single combined preview row
+/// (`CommandPopup::arg_preview`) for whichever command is currently highlighted. Plain
+/// constant data — no resolver function; `preview` may be as rich as the command needs (e.g.
+/// a budget's current actual-vs-limit alongside its category), not structurally split between
+/// "the argument's value" and "context about it".
+pub struct Arg {
+    pub placeholder: &'static str,
+    pub preview: &'static str,
 }
 
 /// One domain's commands, grouped for the command popup's resting-state list.

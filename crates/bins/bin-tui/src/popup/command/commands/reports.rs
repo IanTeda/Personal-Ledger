@@ -14,30 +14,36 @@ pub const COMMANDS: &[Command] = &[
         name: "report list",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('r')]),
         description: "spending report and charts",
+        args: &[],
     },
     Command {
         name: "report account-balance",
         chord: Chord::NONE,
         description: "every account's current balance",
+        args: &[],
     },
     Command {
         name: "report category-total",
         chord: Chord::NONE,
         description: "spending by category over a range",
+        args: &[],
     },
     Command {
         name: "report payee-total",
         chord: Chord::NONE,
         description: "spending by payee over a range",
+        args: &[],
     },
     Command {
         name: "report budget-variance",
         chord: Chord::NONE,
         description: "budgets vs actual for the current period",
+        args: &[],
     },
     Command {
         name: "report balance-check-variance",
         chord: Chord::NONE,
         description: "asserted vs computed balance, by check",
+        args: &[],
     },
 ];

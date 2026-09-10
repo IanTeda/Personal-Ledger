@@ -12,4 +12,5 @@ pub const COMMANDS: &[Command] = &[Command {
     name: "settings",
     chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('s')]),
     description: "groups, overrides and the settings table",
+    args: &[],
 }];

@@ -6,32 +6,43 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Arg, Chord, Command};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "check list",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('k')]),
         description: "balance checks and clearing",
+        args: &[],
     },
     Command {
         name: "check new <account> <date> <balance>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "record a balance check",
+        args: &[Arg {
+            placeholder: "<account>",
+            preview: "Everyday · last check 31 aug · $4,210.55",
+        }],
     },
     Command {
         name: "check edit",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted balance check",
+        args: &[],
     },
     Command {
         name: "check delete",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "delete the highlighted balance check",
+        args: &[],
     },
     Command {
         name: "check import <path.csv>",
         chord: Chord(&[KeyCode::Char('i')]),
         description: "import balance checks from a CSV file",
+        args: &[Arg {
+            placeholder: "<path.csv>",
+            preview: "e.g. ./import/august-checks.csv",
+        }],
     },
 ];

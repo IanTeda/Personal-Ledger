@@ -6,27 +6,43 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Arg, Chord, Command};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "budget list [period]",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('b')]),
         description: "budgets vs actual for the period",
+        args: &[Arg {
+            placeholder: "[period]",
+            preview: "current: SEP 2026 · optional, defaults to this period",
+        }],
     },
     Command {
         name: "budget new <category> <limit>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "start tracking a category",
+        args: &[Arg {
+            placeholder: "<category>",
+            preview: "e.g. dining, groceries — one budget per category",
+        }],
     },
     Command {
         name: "budget edit <category> [limit]",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "change the limit or period",
+        args: &[Arg {
+            placeholder: "<category>",
+            preview: "dining · limit 300.00 · actual 412.00 · over by 112.00",
+        }],
     },
     Command {
         name: "budget delete <category>",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "stop tracking a category",
+        args: &[Arg {
+            placeholder: "<category>",
+            preview: "dining · limit 300.00 — stops tracking, keeps past transactions",
+        }],
     },
 ];

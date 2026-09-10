@@ -6,27 +6,40 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Arg, Chord, Command};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "category list",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('c')]),
         description: "categories and 30-day totals",
+        args: &[],
     },
     Command {
         name: "category new <name> <type>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "add a category",
+        args: &[Arg {
+            placeholder: "<name>",
+            preview: "e.g. dining, groceries, salary",
+        }],
     },
     Command {
         name: "category edit <name>",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted category",
+        args: &[Arg {
+            placeholder: "<name>",
+            preview: "dining · expense · 30-day total $412.00",
+        }],
     },
     Command {
         name: "category delete <name>",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "delete — categories in use can't be removed",
+        args: &[Arg {
+            placeholder: "<name>",
+            preview: "dining · in use — can't be removed",
+        }],
     },
 ];

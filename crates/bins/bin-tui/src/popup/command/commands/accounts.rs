@@ -6,27 +6,40 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Arg, Chord, Command};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "account list",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('a')]),
         description: "accounts and their balances",
+        args: &[],
     },
     Command {
         name: "account new <name> <type>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "add an account",
+        args: &[Arg {
+            placeholder: "<name>",
+            preview: "e.g. Everyday, Savings, Mortgage",
+        }],
     },
     Command {
         name: "account edit <name>",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted account",
+        args: &[Arg {
+            placeholder: "<name>",
+            preview: "Everyday · transaction · $4,210.55",
+        }],
     },
     Command {
         name: "account delete <name>",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "delete — accounts in use can't be removed",
+        args: &[Arg {
+            placeholder: "<name>",
+            preview: "Everyday · in use — can't be removed",
+        }],
     },
 ];

@@ -8,4 +8,5 @@ pub const COMMANDS: &[Command] = &[Command {
     name: "dashboard",
     chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('d')]),
     description: "financial position — the default view",
+    args: &[],
 }];

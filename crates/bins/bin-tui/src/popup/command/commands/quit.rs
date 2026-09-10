@@ -8,4 +8,5 @@ pub const COMMANDS: &[Command] = &[Command {
     name: "quit",
     chord: Chord(&[KeyCode::Char('Q')]),
     description: "quit the app",
+    args: &[],
 }];

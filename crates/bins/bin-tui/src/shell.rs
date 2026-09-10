@@ -62,6 +62,11 @@ pub struct Shell {
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
     /// chord, so an aborted chord never leaks into later keypresses.
     pending_leader: bool,
+    /// Every view displaced by an `Open*` action, most-recently-displaced last — `Esc` (when
+    /// no popup is open) pops one off and makes it active again. Opening Dashboard clears
+    /// this entirely rather than pushing onto it (it's the app's one home view); re-opening
+    /// the already-active view leaves it untouched (`Shell::open`).
+    view_stack: Vec<Box<dyn View>>,
 }
 
 impl Shell {
@@ -80,6 +85,7 @@ impl Shell {
             command_popup: None,
             unit_popup: None,
             pending_leader: false,
+            view_stack: Vec::new(),
         }
     }
 
@@ -123,12 +129,13 @@ impl Shell {
     /// then a pending `g` leader consumes the very next key as its chord completion (or aborts
     /// silently if it doesn't complete one); otherwise `Ctrl+;` opens the command popup,
     /// `Ctrl+U` opens the placeholder Units view directly, `?` opens the placeholder Help
-    /// view, `Q` quits, a lone `g` arms the leader, and anything left falls to the active
-    /// view's own `handle_key` (which is how the Units view's own `n`/`e`/`d` reach
-    /// [`Action::OpenNewUnitPopup`]/[`Action::OpenEditUnitPopup`]/
-    /// [`Action::OpenDeleteUnitPopup`]). `Event::Resize` never reaches here — `run` intercepts
-    /// it directly to clear the terminal, since that's a `Tui`-level concern with no `Action`
-    /// of its own.
+    /// view, `Esc` pops the view-navigation stack ([`Action::PopView`]), `Q` (shift) quits,
+    /// `q` (lowercase) also quits via its own [`Action::GracefulQuit`], a lone `g` arms the
+    /// leader, and anything left falls to the active view's own `handle_key` (which is how the
+    /// Units view's own `n`/`e`/`d` reach [`Action::OpenNewUnitPopup`]/
+    /// [`Action::OpenEditUnitPopup`]/[`Action::OpenDeleteUnitPopup`]). `Event::Resize` never
+    /// reaches here — `run` intercepts it directly to clear the terminal, since that's a
+    /// `Tui`-level concern with no `Action` of its own.
     fn map_event(&mut self, event: Event) -> Option<Action> {
         match event {
             Event::Tick => Some(Action::Tick),
@@ -167,8 +174,14 @@ impl Shell {
                 if is_open_help(key) {
                     return Some(Action::OpenHelp);
                 }
+                if key.code == KeyCode::Esc {
+                    return Some(Action::PopView);
+                }
                 if is_quit(key) {
                     return Some(Action::Quit);
+                }
+                if is_graceful_quit(key) {
+                    return Some(Action::GracefulQuit);
                 }
                 if key.code == KeyCode::Char('g') && key.modifiers == KeyModifiers::NONE {
                     self.pending_leader = true;
@@ -181,11 +194,11 @@ impl Shell {
     }
 
     /// Routes a key while the command popup is open. `Ctrl+;` toggles it shut again; `Esc`
-    /// closes it; typing, `Backspace` and `↑`/`↓` drive the input buffer and selection.
-    /// `Enter` runs the highlighted command if it's one of the domain "list" (or `unit`/
-    /// `dashboard`/`help`/`quit`) commands with a real effect behind it; any other key (e.g.
-    /// `Tab` — completion is the action-registry's "later ticket", per `view/mod.rs`) is
-    /// swallowed without effect, since the popup owns every key while it's up.
+    /// closes it; typing, `Backspace` and `↑`/`↓` drive the input buffer and selection; `Tab`
+    /// clears a showing "not yet built" message (completion itself isn't built yet). `Enter`
+    /// runs the highlighted command if it's one of the 6 with real content behind them
+    /// (`unit`, `unit new/edit/delete`, `dashboard`, `settings`); on any other command it
+    /// shows [`Action::CommandPopupSetNotYetBuilt`] instead — the popup stays open either way.
     fn map_command_popup_key(&self, key: KeyEvent) -> Option<Action> {
         if is_open_command_popup(key) {
             return Some(Action::CloseCommandPopup);
@@ -195,23 +208,16 @@ impl Shell {
             KeyCode::Up => Some(Action::CommandPopupMoveUp),
             KeyCode::Down => Some(Action::CommandPopupMoveDown),
             KeyCode::Backspace => Some(Action::CommandPopupBackspace),
+            KeyCode::Tab => Some(Action::CommandPopupTab),
             KeyCode::Enter => match self.command_popup.as_ref()?.selected_command_name() {
                 Some("unit") => Some(Action::OpenUnits),
                 Some("unit new <code> <type>") => Some(Action::OpenNewUnitPopup),
                 Some("unit edit <code>") => Some(Action::OpenEditUnitPopup),
                 Some("unit delete <code>") => Some(Action::OpenDeleteUnitPopup),
                 Some("dashboard") => Some(Action::OpenDashboard),
-                Some("account list") => Some(Action::OpenAccounts),
-                Some("check list") => Some(Action::OpenBalanceChecks),
-                Some("budget list [period]") => Some(Action::OpenBudgets),
-                Some("category list") => Some(Action::OpenCategories),
-                Some("help") => Some(Action::OpenHelp),
-                Some("payee list") => Some(Action::OpenPayees),
-                Some("quit") => Some(Action::Quit),
-                Some("report list") => Some(Action::OpenReports),
                 Some("settings") => Some(Action::OpenSettings),
-                Some("txn recent") => Some(Action::OpenTransactions),
-                _ => None,
+                Some(name) => Some(Action::CommandPopupSetNotYetBuilt(name)),
+                None => None,
             },
             KeyCode::Char(c) => Some(Action::CommandPopupInput(c)),
             _ => None,
@@ -222,6 +228,7 @@ impl Shell {
     fn update(&mut self, action: Action) {
         match action {
             Action::Quit => self.should_quit = true,
+            Action::GracefulQuit => self.should_quit = true,
             Action::Tick => self.view.update(&action),
             Action::OpenCommandPopup => self.command_popup = Some(CommandPopup::new()),
             Action::CloseCommandPopup => self.command_popup = None,
@@ -243,6 +250,21 @@ impl Shell {
             Action::CommandPopupMoveDown => {
                 if let Some(popup) = &mut self.command_popup {
                     popup.move_down();
+                }
+            }
+            Action::CommandPopupTab => {
+                if let Some(popup) = &mut self.command_popup {
+                    popup.tab();
+                }
+            }
+            Action::CommandPopupSetNotYetBuilt(name) => {
+                if let Some(popup) = &mut self.command_popup {
+                    popup.set_not_yet_built(name);
+                }
+            }
+            Action::PopView => {
+                if let Some(previous) = self.view_stack.pop() {
+                    self.view = previous;
                 }
             }
             Action::OpenNewUnitPopup => {
@@ -277,10 +299,30 @@ impl Shell {
 
     /// Swaps the active view, hands it a fresh clone of `action_tx` (as `new()` does for the
     /// initial Dashboard), and closes both popups — the common tail of every `Open*` action.
+    /// Also drives `view_stack`: opening the already-active view (compared by `View::title()`)
+    /// is a no-op for the stack and the view itself; opening Dashboard clears the stack
+    /// entirely, since it's the app's one home view and going there always resets navigation;
+    /// opening anything else pushes the outgoing view onto the stack first, so `Esc`
+    /// ([`Action::PopView`]) can return to it.
     fn open<V: View + 'static>(&mut self, view: V) {
         let mut view: Box<dyn View> = Box::new(view);
+
+        if view.title() == self.view.title() {
+            self.command_popup = None;
+            self.unit_popup = None;
+            return;
+        }
+
         view.init(self.action_tx.clone());
-        self.view = view;
+
+        if view.title() == "Dashboard" {
+            self.view_stack.clear();
+            self.view = view;
+        } else {
+            let previous = std::mem::replace(&mut self.view, view);
+            self.view_stack.push(previous);
+        }
+
         self.command_popup = None;
         self.unit_popup = None;
     }
@@ -397,6 +439,15 @@ fn is_open_help(key: KeyEvent) -> bool {
 /// there, `Q` is ordinary filter/chord input instead.
 fn is_quit(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('Q'))
+}
+
+/// `q` (lowercase) — quits the app from anywhere the command popup/unit forms aren't
+/// intercepting keys, identically to [`is_quit`]'s `Q` today, but through its own
+/// [`Action::GracefulQuit`] so a future confirm-before-quit check only needs to change that
+/// one match arm. Distinct from [`is_quit`] since crossterm reports `Shift+q` as `Char('Q')`
+/// regardless of which one physically fired.
+fn is_graceful_quit(key: KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char('q'))
 }
 
 /// Routes a key while a unit form (new, edit or delete) is open. Only `Esc` does anything yet — no
@@ -648,10 +699,11 @@ mod tests {
     }
 
     #[test]
-    fn enter_on_a_command_with_no_real_view_yet_is_still_swallowed() {
+    fn enter_on_a_command_with_no_real_view_yet_shows_a_not_yet_built_message() {
         // Filtered down to `report account-balance` — a specific report, reached only via the
         // Reports screen's own picker (`popup/command/commands/reports.rs`) — which has no
-        // dispatch of its own even though `report list` does. `Enter` should still be a no-op.
+        // dispatch of its own even though `report list` does. `Enter` should show the
+        // "not yet built" message rather than open a view, and the popup should stay open.
         let mut shell = Shell::new();
         shell.update(Action::OpenCommandPopup);
         for c in "account-balance".chars() {
@@ -664,11 +716,20 @@ mod tests {
             shell.update(action);
         }
 
-        let action = shell.map_event(Event::Key(KeyEvent::new(
-            KeyCode::Enter,
-            KeyModifiers::NONE,
-        )));
-        assert_eq!(action, None);
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on an unbuilt command still maps to an action");
+        assert_eq!(
+            action,
+            Action::CommandPopupSetNotYetBuilt("report account-balance")
+        );
+        shell.update(action);
+
+        assert!(shell.command_popup.is_some(), "popup should stay open");
+        assert_eq!(shell.view.title(), "Dashboard", "no view should open");
     }
 
     #[test]
@@ -839,7 +900,10 @@ mod tests {
     }
 
     #[test]
-    fn selecting_the_quit_command_and_pressing_enter_quits_the_shell() {
+    fn selecting_the_quit_command_and_pressing_enter_shows_a_not_yet_built_message() {
+        // `quit` isn't one of the 6 commands with real content behind them — Enter on it
+        // shows the "not yet built" message rather than quitting; the app still quits via the
+        // global `Q`/`q` keys or `Ctrl+C`, just not through the command popup.
         let mut shell = Shell::new();
         shell.update(Action::OpenCommandPopup);
         for c in "quit".chars() {
@@ -857,10 +921,11 @@ mod tests {
                 KeyCode::Enter,
                 KeyModifiers::NONE,
             )))
-            .expect("enter on the `quit` command always maps to an action");
+            .expect("enter on `quit` still maps to an action");
         shell.update(action);
 
-        assert!(shell.should_quit);
+        assert!(!shell.should_quit);
+        assert!(shell.command_popup.is_some(), "popup should stay open");
     }
 
     #[test]
@@ -876,20 +941,22 @@ mod tests {
     }
 
     #[test]
-    fn selecting_each_domain_list_command_and_pressing_enter_opens_its_view() {
-        let cases: &[(&str, &str)] = &[
-            ("account list", "Accounts"),
-            ("check list", "Balance Checks"),
-            ("budget list", "Budgets"),
-            ("category list", "Categories"),
-            ("help", "Help"),
-            ("payee list", "Payees"),
-            ("report list", "Reports"),
-            ("settings", "Settings"),
-            ("txn recent", "Transactions"),
+    fn selecting_each_no_longer_dispatched_list_command_and_pressing_enter_shows_not_yet_built() {
+        // These 8 used to navigate to an empty placeholder box on `Enter`; per this ticket
+        // they now show the "not yet built" message like every other undispatched command,
+        // and the popup stays open rather than navigating anywhere.
+        let cases: &[&str] = &[
+            "account list",
+            "check list",
+            "budget list",
+            "category list",
+            "help",
+            "payee list",
+            "report list",
+            "txn recent",
         ];
 
-        for (filter, expected_title) in cases {
+        for filter in cases {
             let mut shell = Shell::new();
             shell.update(Action::OpenCommandPopup);
             for c in filter.chars() {
@@ -910,8 +977,8 @@ mod tests {
                 .unwrap_or_else(|| panic!("enter on `{filter}` should map to an action"));
             shell.update(action);
 
-            assert_eq!(shell.view.title(), *expected_title, "{filter}");
-            assert!(shell.command_popup.is_none(), "{filter}");
+            assert_eq!(shell.view.title(), "Dashboard", "{filter}");
+            assert!(shell.command_popup.is_some(), "{filter}");
         }
     }
 
@@ -1152,5 +1219,278 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell with the delete unit popup open should not error");
+    }
+
+    #[test]
+    fn selecting_the_settings_command_and_pressing_enter_opens_the_settings_view() {
+        // `settings` is real, wireframe-stage content (`docs/ux/tui/settings/README.md` §4a),
+        // so it's dispatched from `Enter` alongside `unit`/`dashboard`, unlike the 8 empty
+        // placeholder boxes.
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        for c in "settings".chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on the `settings` command always maps to an action");
+        shell.update(action);
+
+        assert_eq!(shell.view.title(), "Settings");
+        assert!(shell.command_popup.is_none());
+    }
+
+    #[test]
+    fn selecting_a_command_with_args_shows_its_argument_preview_row() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        for c in "unit edit".chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+
+        let popup = shell.command_popup.as_ref().expect("popup should be open");
+        assert_eq!(popup.selected_command_name(), Some("unit edit <code>"));
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with an argument preview should not error");
+
+        let buffer = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+        }
+        assert!(
+            text.contains("<code> — VDHG"),
+            "expected the highlighted command's argument preview to render"
+        );
+    }
+
+    #[test]
+    fn a_zero_arg_command_shows_no_argument_preview_row() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        for c in "dashboard".chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+
+        let popup = shell.command_popup.as_ref().expect("popup should be open");
+        assert_eq!(popup.selected_command_name(), Some("dashboard"));
+        assert_eq!(popup.info_row(), None);
+    }
+
+    #[test]
+    fn typing_after_a_not_yet_built_message_clears_it() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        for c in "quit".chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on `quit` still maps to an action");
+        shell.update(action);
+        assert!(
+            shell
+                .command_popup
+                .as_ref()
+                .unwrap()
+                .info_row()
+                .is_some_and(|(_, is_message)| is_message)
+        );
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Backspace,
+                KeyModifiers::NONE,
+            )))
+            .expect("backspace always maps to an action while the popup is open");
+        shell.update(action);
+
+        assert!(
+            shell
+                .command_popup
+                .as_ref()
+                .unwrap()
+                .info_row()
+                .is_none_or(|(_, is_message)| !is_message),
+            "the not-yet-built message should be cleared by a mutating key"
+        );
+    }
+
+    #[test]
+    fn tab_clears_a_showing_not_yet_built_message() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        for c in "quit".chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on `quit` still maps to an action");
+        shell.update(action);
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE)))
+            .expect("tab always maps to an action while the popup is open");
+        assert_eq!(action, Action::CommandPopupTab);
+        shell.update(action);
+
+        assert!(
+            shell
+                .command_popup
+                .as_ref()
+                .unwrap()
+                .info_row()
+                .is_none_or(|(_, is_message)| !is_message)
+        );
+    }
+
+    #[test]
+    fn esc_at_rest_is_a_no_op_with_an_empty_view_stack() {
+        let mut shell = Shell::new();
+        assert!(shell.view_stack.is_empty());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
+            .expect("esc while no popup is open always maps to an action");
+        assert_eq!(action, Action::PopView);
+        shell.update(action);
+
+        assert_eq!(shell.view.title(), "Dashboard");
+        assert!(shell.view_stack.is_empty());
+    }
+
+    #[test]
+    fn opening_a_new_view_pushes_the_outgoing_one_and_esc_pops_back_to_it() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenUnits);
+        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view_stack.len(), 1);
+
+        shell.update(Action::OpenAccounts);
+        assert_eq!(shell.view.title(), "Accounts");
+        assert_eq!(shell.view_stack.len(), 2);
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
+            .expect("esc while no popup is open always maps to an action");
+        shell.update(action);
+
+        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view_stack.len(), 1);
+    }
+
+    #[test]
+    fn opening_dashboard_clears_the_view_stack() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenUnits);
+        shell.update(Action::OpenAccounts);
+        assert_eq!(shell.view_stack.len(), 2);
+
+        shell.update(Action::OpenDashboard);
+
+        assert_eq!(shell.view.title(), "Dashboard");
+        assert!(shell.view_stack.is_empty());
+    }
+
+    #[test]
+    fn reopening_the_already_active_view_is_a_no_op() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenUnits);
+        assert_eq!(shell.view_stack.len(), 1);
+
+        shell.update(Action::OpenUnits);
+
+        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(
+            shell.view_stack.len(),
+            1,
+            "the stack should stay untouched when re-opening the active view"
+        );
+    }
+
+    #[test]
+    fn reopening_the_already_active_view_still_closes_an_open_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenUnits);
+        shell.update(Action::OpenCommandPopup);
+        assert!(shell.command_popup.is_some());
+
+        shell.update(Action::OpenUnits);
+
+        assert!(shell.command_popup.is_none());
+    }
+
+    #[test]
+    fn lowercase_q_quits_the_shell_at_rest() {
+        let mut shell = Shell::new();
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('q'),
+                KeyModifiers::NONE,
+            )))
+            .expect("q always maps to an action while no popup is open");
+        assert_eq!(action, Action::GracefulQuit);
+        shell.update(action);
+
+        assert!(shell.should_quit);
+    }
+
+    #[test]
+    fn lowercase_q_is_ordinary_input_while_the_command_popup_is_open() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('q'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(action, Some(Action::CommandPopupInput('q')));
+        assert!(!shell.should_quit);
     }
 }

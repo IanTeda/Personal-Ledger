@@ -50,6 +50,15 @@ pub enum Action {
     CommandPopupMoveUp,
     /// `↓` while the command popup is open — moves the selection down one candidate row.
     CommandPopupMoveDown,
+    /// `Tab` while the command popup is open — clears a showing "not yet built" message;
+    /// completion against the filtered candidates isn't built yet, so this has no other
+    /// effect.
+    CommandPopupTab,
+    /// `Enter` on a command outside the 6 with real content behind them (`unit`, `unit
+    /// new/edit/delete`, `dashboard`, `settings`) — shows `":{name} — not yet built"` in the
+    /// popup's info row, replacing whatever argument preview was showing. The popup stays
+    /// open; `Enter` never closes it.
+    CommandPopupSetNotYetBuilt(&'static str),
     /// `Ctrl+U`, or `Enter` on the command popup's `unit` command — opens the placeholder
     /// Units view (`docs/ux/tui/units/README.md`), the first domain to land a real (if still
     /// wireframe-stage) destination behind the command popup's `unit` entry.
@@ -97,6 +106,14 @@ pub enum Action {
     /// `g t`, or `Enter` on the command popup's `txn recent` command — opens the placeholder
     /// Transactions view.
     OpenTransactions,
+    /// `Esc`, only reached when no popup is open (a popup's own `Esc` maps to
+    /// `CloseCommandPopup`/`CloseUnitPopup` first) — pops one view off `Shell`'s
+    /// `view_stack`, or no-ops if the stack is empty (already at Dashboard, the app's root).
+    PopView,
+    /// `q` (lowercase), live only when no popup is open — quits the app, identically to
+    /// `Quit` today, but through its own variant so a future confirm-before-quit check (once
+    /// any view holds dirty/unsaved state) can be inserted without re-plumbing the keybinding.
+    GracefulQuit,
 }
 
 /// The single view `Shell` hosts at a time.

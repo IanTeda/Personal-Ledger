@@ -5,27 +5,34 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Arg, Chord, Command};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "txn recent",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('t')]),
         description: "last 50 transactions, all accounts",
+        args: &[],
     },
     Command {
         name: "txn new [account]",
         chord: Chord(&[KeyCode::Char('a')]),
         description: "add a transaction from anywhere",
+        args: &[Arg {
+            placeholder: "[account]",
+            preview: "optional · defaults to the current account, if any",
+        }],
     },
     Command {
         name: "txn edit",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted transaction",
+        args: &[],
     },
     Command {
         name: "txn delete",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "delete — confirms by payee and amount",
+        args: &[],
     },
 ];
