@@ -717,6 +717,7 @@ dependencies = [
  "lib_database",
  "lib_tracing",
  "sqlx",
+ "thiserror 2.0.20",
  "tokio",
 ]
 
@@ -744,6 +745,7 @@ dependencies = [
  "sha2 0.10.9",
  "sqlx",
  "tempfile",
+ "thiserror 2.0.20",
  "tokio",
  "tokio-stream",
  "tonic",
@@ -767,6 +769,7 @@ dependencies = [
  "ratatui",
  "regex",
  "sqlx",
+ "thiserror 2.0.20",
  "tokio",
  "tui-box-text",
  "tui-piechart",

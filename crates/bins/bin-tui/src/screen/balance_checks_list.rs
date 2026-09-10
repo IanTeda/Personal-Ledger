@@ -83,14 +83,18 @@ impl BalanceChecksListScreen {
         self.error = None;
     }
 
-    async fn load() -> lib_database::Result<Vec<lib_database::BalanceChecks>> {
+    async fn load() -> crate::Result<Vec<lib_database::BalanceChecks>> {
         let pool = db::connect().await?;
-        lib_database::BalanceChecks::find_all(&pool).await
+        lib_database::BalanceChecks::find_all(&pool)
+            .await
+            .map_err(crate::error::Error::from)
     }
 
-    async fn delete(id: lib_core::RowID) -> lib_database::Result<()> {
+    async fn delete(id: lib_core::RowID) -> crate::Result<()> {
         let pool = db::connect().await?;
-        lib_database::BalanceChecks::delete_by_id(id, &pool).await
+        lib_database::BalanceChecks::delete_by_id(id, &pool)
+            .await
+            .map_err(crate::error::Error::from)
     }
 }
 
@@ -115,7 +119,9 @@ impl Screen for BalanceChecksListScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Accounts::find_all(&pool).await
+                lib_database::Accounts::find_all(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {

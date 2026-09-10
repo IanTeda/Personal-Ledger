@@ -205,13 +205,14 @@ impl AccountDetailScreen {
         };
 
         tokio::spawn(async move {
-            let result = async {
+            let result: crate::Result<_> = async {
                 let pool = db::connect().await?;
-                if is_create {
-                    account.insert(&pool).await
+                let saved = if is_create {
+                    account.insert(&pool).await?
                 } else {
-                    account.update(&pool).await
-                }
+                    account.update(&pool).await?
+                };
+                Ok(saved)
             }
             .await;
 
@@ -230,7 +231,9 @@ impl Screen for AccountDetailScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Units::find_active(&pool).await
+                lib_database::Units::find_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {

@@ -130,12 +130,14 @@ impl CsvImportScreen {
     async fn run_import(
         account_id: lib_core::RowID,
         path: String,
-    ) -> lib_database::Result<Vec<lib_database::BalanceChecks>> {
+    ) -> crate::Result<Vec<lib_database::BalanceChecks>> {
         let pool = db::connect().await?;
         let file = std::fs::File::open(&path).map_err(|err| {
             lib_database::Error::CsvImport(format!("could not open {path}: {err}"))
         })?;
-        lib_database::BalanceChecks::import_csv(account_id, file, &pool).await
+        lib_database::BalanceChecks::import_csv(account_id, file, &pool)
+            .await
+            .map_err(crate::error::Error::from)
     }
 }
 
@@ -151,7 +153,9 @@ impl Screen for CsvImportScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Accounts::find_all_active(&pool).await
+                lib_database::Accounts::find_all_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {

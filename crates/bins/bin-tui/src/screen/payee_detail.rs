@@ -109,7 +109,7 @@ impl PayeeDetailScreen {
         name: String,
         is_active: bool,
         original: Option<lib_database::Payees>,
-    ) -> lib_database::Result<lib_database::Payees> {
+    ) -> crate::Result<lib_database::Payees> {
         let pool = db::connect().await?;
 
         let Some(id) = editing_id else {
@@ -117,7 +117,7 @@ impl PayeeDetailScreen {
                 .with_name(name)
                 .with_is_active_opt(Some(is_active))
                 .build()?;
-            return payee.insert(&pool).await;
+            return payee.insert(&pool).await.map_err(crate::error::Error::from);
         };
 
         let original = original.expect("editing an existing Payee always carries its original");

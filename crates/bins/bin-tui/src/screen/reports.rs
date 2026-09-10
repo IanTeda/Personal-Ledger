@@ -27,6 +27,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
     action::{Action, InputMode},
     db,
+    error::Error,
     screen::Screen,
 };
 
@@ -346,7 +347,7 @@ impl ReportsScreen {
                     let progress = budget.current_progress(&pool).await?;
                     results.push((budget.id, progress));
                 }
-                Ok::<_, lib_database::Error>(results)
+                Ok::<_, Error>(results)
             }
             .await;
             let action = match action {
@@ -386,7 +387,7 @@ impl ReportsScreen {
                     let balance = account.balance_as_of(check.date, &pool).await?;
                     results.push((check.id, balance));
                 }
-                Ok::<_, lib_database::Error>(results)
+                Ok::<_, Error>(results)
             }
             .await;
             let action = match action {
@@ -453,7 +454,9 @@ impl ReportsScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Categories::totals(scope, from, to, &pool).await
+                lib_database::Categories::totals(scope, from, to, &pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -476,7 +479,9 @@ impl ReportsScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Payees::totals(scope, from, to, &pool).await
+                lib_database::Payees::totals(scope, from, to, &pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -500,7 +505,9 @@ impl Screen for ReportsScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Accounts::find_all(&pool).await
+                lib_database::Accounts::find_all(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -514,7 +521,9 @@ impl Screen for ReportsScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Units::find_all(&pool).await
+                lib_database::Units::find_all(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -528,7 +537,9 @@ impl Screen for ReportsScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Categories::find_all_active(&pool).await
+                lib_database::Categories::find_all_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -542,7 +553,9 @@ impl Screen for ReportsScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Payees::find_all(&pool).await
+                lib_database::Payees::find_all(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -562,7 +575,7 @@ impl Screen for ReportsScreen {
                     let balance = account.balance(&pool).await?;
                     balances.push((account.id, balance));
                 }
-                Ok::<_, lib_database::Error>(balances)
+                Ok::<_, Error>(balances)
             }
             .await;
             let action = match action {
@@ -576,7 +589,9 @@ impl Screen for ReportsScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Budgets::find_all_active(&pool).await
+                lib_database::Budgets::find_all_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -590,7 +605,9 @@ impl Screen for ReportsScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::BalanceChecks::find_all(&pool).await
+                lib_database::BalanceChecks::find_all(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {

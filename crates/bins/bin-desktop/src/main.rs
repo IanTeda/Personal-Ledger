@@ -43,6 +43,14 @@ use gpui_component::{
     table::{Column, Table, TableDelegate, TableState},
 };
 
+mod error;
+pub use error::Error;
+
+/// Crate Result type alias used across the Desktop binary.
+///
+/// Use `crate::Result<T>` for functions that return `T` or a `crate::Error`.
+pub type Result<T> = std::result::Result<T, Error>;
+
 /// Personal Ledger Desktop.
 #[derive(Parser)]
 struct Cli {
@@ -364,15 +372,13 @@ enum LiveCategoriesStatus {
 /// category if the store is empty (a real write), then reads every category back (a real
 /// read) -- proving the embedded-SQLite path works end-to-end through a real client, not a
 /// mock, the same proof the TUI's own live-data demo established for FC-TUI-005.
-async fn load_live_categories() -> lib_database::Result<Vec<lib_database::Categories>> {
+async fn load_live_categories() -> Result<Vec<lib_database::Categories>> {
     load_live_categories_from(live_categories_database_url()).await
 }
 
 /// Same as [`load_live_categories`], against an explicit database URL -- split out so
 /// tests can point it at an isolated, throwaway SQLite file instead of the shared demo one.
-async fn load_live_categories_from(
-    url: String,
-) -> lib_database::Result<Vec<lib_database::Categories>> {
+async fn load_live_categories_from(url: String) -> Result<Vec<lib_database::Categories>> {
     let config = lib_config::DatabaseConfig {
         url,
         ..lib_config::DatabaseConfig::default()
@@ -382,7 +388,8 @@ async fn load_live_categories_from(
 
     sqlx::migrate!("../../libs/lib-database/migrations/client")
         .run(pool)
-        .await?;
+        .await
+        .map_err(lib_database::Error::from)?;
 
     if lib_database::Categories::find_all(pool).await?.is_empty() {
         let seed = lib_database::Categories {
@@ -404,7 +411,9 @@ async fn load_live_categories_from(
         seed.insert(pool).await?;
     }
 
-    lib_database::Categories::find_all(pool).await
+    lib_database::Categories::find_all(pool)
+        .await
+        .map_err(Into::into)
 }
 
 /// Kicks off the Live Categories load as a detached `GPUI` task: bridges over to the given
@@ -788,7 +797,7 @@ mod tests {
 // it un-awaited inside this async fn body just means it executes on Tokio's `block_on`
 // thread rather than a worker thread, which is exactly where the main/UI thread needs to be.
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = lib_config::Config::parse(cli.config.path.as_deref())?;
     let telemetry_level = Some(&config.telemetry_config().telemetry_level());

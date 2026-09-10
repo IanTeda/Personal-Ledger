@@ -1,4 +1,5 @@
 mod auth;
+mod error;
 
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ use rand::RngCore;
 use secrecy::SecretString;
 use tonic::service::Routes;
 
+use error::SyncServerResult;
 use lib_config as config;
 use lib_rpc::{SyncService, SyncServiceServer, UtilitiesService, UtilitiesServiceServer};
 use lib_tracing as telemetry;
@@ -28,7 +30,7 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> SyncServerResult<()> {
     let cli = Cli::parse();
     // `parse_for_sync_server`, not `parse` -- ADR-0014's reduced defaults -> explicit path ->
     // env chain, skipping the Client-only system/user/executable-directory/working-directory
@@ -50,7 +52,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let database_pool = database_connection.into_pool();
     sqlx::migrate!("../../libs/lib-database/migrations/sync-server")
         .run(&database_pool)
-        .await?;
+        .await
+        .map_err(lib_database::Error::from)?;
     let database_pool = Arc::new(database_pool);
 
     bootstrap_account(&database_pool).await?;
@@ -102,7 +105,7 @@ fn generate_signing_key() -> String {
 }
 
 /// Create the single bootstrap sync user on first run, if the `sync_users` table is empty.
-async fn bootstrap_account(pool: &sqlx::SqlitePool) -> Result<(), Box<dyn std::error::Error>> {
+async fn bootstrap_account(pool: &sqlx::SqlitePool) -> SyncServerResult<()> {
     if lib_database::SyncUser::find_only(pool).await?.is_some() {
         return Ok(());
     }

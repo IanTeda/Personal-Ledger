@@ -16,13 +16,13 @@ fn database_url() -> String {
 
 /// Connect to the Client's local Ledger store and apply the Client migration set
 /// (`migrations/client`), returning a ready-to-use pool.
-pub async fn connect() -> lib_database::Result<sqlx::SqlitePool> {
+pub async fn connect() -> crate::Result<sqlx::SqlitePool> {
     connect_to(database_url()).await
 }
 
 /// Same as [`connect`], against an explicit database URL — split out so tests can point it
 /// at an isolated, throwaway SQLite file instead of the shared one.
-pub async fn connect_to(url: String) -> lib_database::Result<sqlx::SqlitePool> {
+pub async fn connect_to(url: String) -> crate::Result<sqlx::SqlitePool> {
     let config = lib_config::DatabaseConfig {
         url,
         ..lib_config::DatabaseConfig::default()
@@ -32,7 +32,8 @@ pub async fn connect_to(url: String) -> lib_database::Result<sqlx::SqlitePool> {
 
     sqlx::migrate!("../../libs/lib-database/migrations/client")
         .run(&pool)
-        .await?;
+        .await
+        .map_err(lib_database::Error::from)?;
 
     Ok(pool)
 }

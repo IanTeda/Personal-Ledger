@@ -191,13 +191,14 @@ impl CategoryDetailScreen {
         let is_create = self.editing_id.is_none();
 
         tokio::spawn(async move {
-            let result = async {
+            let result: crate::Result<_> = async {
                 let pool = db::connect().await?;
-                if is_create {
-                    category.insert(&pool).await
+                let saved = if is_create {
+                    category.insert(&pool).await?
                 } else {
-                    category.update(&pool).await
-                }
+                    category.update(&pool).await?
+                };
+                Ok(saved)
             }
             .await;
 

@@ -33,7 +33,7 @@ mod sync_server;
 mod tracing;
 
 /// Re-export settings [`Error`] type.
-pub(crate) use error::Error;
+pub use error::Error;
 
 /// Re-export [`Result`] type alias used across configuration module.
 pub(crate) type Result<T> = std::result::Result<T, Error>;

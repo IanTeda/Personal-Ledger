@@ -17,6 +17,7 @@ use ratatui::{
 use tokio::sync::mpsc;
 
 use crate::{
+    Result,
     action::{Action, InputMode},
     event::{Event, EventHandler},
     screen::{
@@ -70,7 +71,7 @@ impl App {
     }
 
     /// Runs the app until the user quits.
-    pub async fn run(&mut self) -> std::io::Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         let mut tui = Tui::new()?;
         let mut events = EventHandler::new(TICK_RATE);
 

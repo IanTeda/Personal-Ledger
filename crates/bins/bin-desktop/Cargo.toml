@@ -23,6 +23,7 @@ clap = { workspace = true }
 gpui = { workspace = true }
 gpui-component = { workspace = true }
 sqlx = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 
 [lints]

@@ -123,20 +123,24 @@ impl BudgetsListScreen {
         self.error = None;
     }
 
-    async fn load() -> lib_database::Result<Vec<lib_database::Budgets>> {
+    async fn load() -> crate::Result<Vec<lib_database::Budgets>> {
         let pool = db::connect().await?;
-        lib_database::Budgets::find_all_active(&pool).await
+        lib_database::Budgets::find_all_active(&pool)
+            .await
+            .map_err(crate::error::Error::from)
     }
 
-    async fn delete(id: lib_core::RowID) -> lib_database::Result<()> {
+    async fn delete(id: lib_core::RowID) -> crate::Result<()> {
         let pool = db::connect().await?;
-        lib_database::Budgets::delete_by_id(id, &pool).await
+        lib_database::Budgets::delete_by_id(id, &pool)
+            .await
+            .map_err(crate::error::Error::from)
     }
 
     /// Computes progress for every given Budget, in order, against one connection.
     async fn load_progress(
         budgets: Vec<lib_database::Budgets>,
-    ) -> lib_database::Result<Vec<(lib_core::RowID, lib_database::BudgetProgress)>> {
+    ) -> crate::Result<Vec<(lib_core::RowID, lib_database::BudgetProgress)>> {
         let pool = db::connect().await?;
         let mut results = Vec::with_capacity(budgets.len());
         for budget in budgets {
@@ -181,7 +185,9 @@ impl Screen for BudgetsListScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Categories::find_all_active(&pool).await
+                lib_database::Categories::find_all_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {

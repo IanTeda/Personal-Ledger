@@ -19,6 +19,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::{
     action::{Action, InputMode},
     db,
+    error::Error,
     screen::Screen,
 };
 
@@ -138,7 +139,9 @@ impl Screen for DashboardScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Accounts::find_all(&pool).await
+                lib_database::Accounts::find_all(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -157,7 +160,7 @@ impl Screen for DashboardScreen {
                     let balance = account.balance(&pool).await?;
                     balances.push((account.id, balance));
                 }
-                Ok::<_, lib_database::Error>(balances)
+                Ok::<_, Error>(balances)
             }
             .await;
             let action = match action {

@@ -182,13 +182,14 @@ impl BalanceCheckDetailScreen {
         };
 
         tokio::spawn(async move {
-            let result = async {
+            let result: crate::Result<_> = async {
                 let pool = db::connect().await?;
-                if is_create {
-                    balance_check.insert(&pool).await
+                let saved = if is_create {
+                    balance_check.insert(&pool).await?
                 } else {
-                    balance_check.update(&pool).await
-                }
+                    balance_check.update(&pool).await?
+                };
+                Ok(saved)
             }
             .await;
 
@@ -207,7 +208,9 @@ impl Screen for BalanceCheckDetailScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Accounts::find_all_active(&pool).await
+                lib_database::Accounts::find_all_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {

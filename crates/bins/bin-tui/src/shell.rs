@@ -83,7 +83,7 @@ impl Shell {
     }
 
     /// Runs the shell until the user quits.
-    pub async fn run(&mut self) -> std::io::Result<()> {
+    pub async fn run(&mut self) -> crate::Result<()> {
         let mut tui = Tui::new()?;
         let mut events = EventHandler::new(TICK_RATE);
 

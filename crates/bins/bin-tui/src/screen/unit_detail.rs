@@ -149,13 +149,14 @@ impl UnitDetailScreen {
         let is_create = self.editing_id.is_none();
 
         tokio::spawn(async move {
-            let result = async {
+            let result: crate::Result<_> = async {
                 let pool = db::connect().await?;
-                if is_create {
-                    unit.insert(&pool).await
+                let saved = if is_create {
+                    unit.insert(&pool).await?
                 } else {
-                    unit.update(&pool).await
-                }
+                    unit.update(&pool).await?
+                };
+                Ok(saved)
             }
             .await;
 

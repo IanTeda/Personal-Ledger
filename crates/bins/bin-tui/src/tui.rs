@@ -45,7 +45,7 @@ impl Tui {
     /// This doesn't request `REPORT_ALTERNATE_KEYS` — `shell::is_open_command_popup` doesn't care
     /// whether `Shift` was also held (physically producing `:` rather than `;`), so there's
     /// no need for the terminal to disambiguate that.
-    pub fn new() -> io::Result<Self> {
+    pub fn new() -> crate::Result<Self> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen)?;
@@ -70,15 +70,15 @@ impl Tui {
     pub fn draw(
         &mut self,
         render: impl FnOnce(&mut ratatui::Frame),
-    ) -> io::Result<ratatui::CompletedFrame<'_>> {
-        self.terminal.draw(render)
+    ) -> crate::Result<ratatui::CompletedFrame<'_>> {
+        self.terminal.draw(render).map_err(Into::into)
     }
 
     /// Clears the terminal. Call this on a resize — the newly-revealed rows may still hold
     /// whatever the terminal emulator had there before, and ratatui's diffing has no way to
     /// know that without being told explicitly.
-    pub fn clear(&mut self) -> io::Result<()> {
-        self.terminal.clear()
+    pub fn clear(&mut self) -> crate::Result<()> {
+        self.terminal.clear().map_err(Into::into)
     }
 }
 

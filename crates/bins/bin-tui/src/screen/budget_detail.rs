@@ -248,13 +248,14 @@ impl BudgetDetailScreen {
         };
 
         tokio::spawn(async move {
-            let result = async {
+            let result: crate::Result<_> = async {
                 let pool = db::connect().await?;
-                if is_create {
-                    budget.insert(&pool).await
+                let saved = if is_create {
+                    budget.insert(&pool).await?
                 } else {
-                    budget.update(&pool).await
-                }
+                    budget.update(&pool).await?
+                };
+                Ok(saved)
             }
             .await;
 
@@ -273,7 +274,9 @@ impl Screen for BudgetDetailScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Categories::find_all_active(&pool).await
+                lib_database::Categories::find_all_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -293,7 +296,9 @@ impl Screen for BudgetDetailScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Units::find_active(&pool).await
+                lib_database::Units::find_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {

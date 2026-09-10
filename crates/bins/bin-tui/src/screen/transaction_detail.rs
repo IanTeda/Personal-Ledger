@@ -361,7 +361,7 @@ impl TransactionDetailScreen {
         mut form: lib_database::Transactions,
         payee_name: String,
         original: Option<lib_database::Transactions>,
-    ) -> lib_database::Result<lib_database::Transactions> {
+    ) -> crate::Result<lib_database::Transactions> {
         let pool = db::connect().await?;
 
         form.payee_id = if payee_name.is_empty() {
@@ -375,7 +375,7 @@ impl TransactionDetailScreen {
         };
 
         let Some(original) = original else {
-            return form.insert(&pool).await;
+            return form.insert(&pool).await.map_err(crate::error::Error::from);
         };
 
         let mut latest = original.clone();
@@ -409,7 +409,9 @@ impl Screen for TransactionDetailScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Categories::find_all_active(&pool).await
+                lib_database::Categories::find_all_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -423,7 +425,9 @@ impl Screen for TransactionDetailScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Accounts::find_all(&pool).await
+                lib_database::Accounts::find_all(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -437,7 +441,9 @@ impl Screen for TransactionDetailScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::Payees::find_all_active(&pool).await
+                lib_database::Payees::find_all_active(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {
@@ -451,7 +457,9 @@ impl Screen for TransactionDetailScreen {
         tokio::spawn(async move {
             let action = async {
                 let pool = db::connect().await?;
-                lib_database::PayeeAliases::find_all(&pool).await
+                lib_database::PayeeAliases::find_all(&pool)
+                    .await
+                    .map_err(crate::error::Error::from)
             }
             .await;
             let action = match action {

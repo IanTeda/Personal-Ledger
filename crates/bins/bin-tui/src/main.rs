@@ -8,6 +8,7 @@
 mod action;
 mod app;
 mod db;
+mod error;
 mod event;
 mod popup;
 mod screen;
@@ -18,6 +19,13 @@ mod view;
 use clap::Parser;
 use shell::Shell;
 
+pub use error::Error;
+
+/// Crate Result type alias used across the TUI binary.
+///
+/// Use `TuiResult<T>` for functions that return `T` or a `TuiError`.
+pub type Result<T> = std::result::Result<T, crate::Error>;
+
 /// Personal Ledger TUI.
 #[derive(Parser)]
 struct Cli {
@@ -26,7 +34,7 @@ struct Cli {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     let config = lib_config::Config::parse(cli.config.path.as_deref())?;
     let telemetry_level = Some(&config.telemetry_config().telemetry_level());
