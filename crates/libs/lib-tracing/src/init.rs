@@ -35,7 +35,7 @@
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{EnvFilter, prelude::*};
 
-use crate::{TelemetryError, TelemetryLevels, TelemetryResult};
+use crate::{Error, Levels, TelemetryResult};
 
 /// Initialises the telemetry system for the Personal Ledger application.
 ///
@@ -90,7 +90,7 @@ use crate::{TelemetryError, TelemetryLevels, TelemetryResult};
 /// // or if there are conflicts with existing loggers
 /// # Ok::<(), lib_tracing::TelemetryError>(())
 /// ```
-pub fn init(telemetry_level: Option<&TelemetryLevels>) -> TelemetryResult<()> {
+pub fn init(telemetry_level: Option<&Levels>) -> TelemetryResult<()> {
     // TODO: Add log file functionality
 
     // ============================================================================
@@ -131,15 +131,14 @@ pub fn init(telemetry_level: Option<&TelemetryLevels>) -> TelemetryResult<()> {
     // ============================================================================
     // Convert all log records into tracing events for unified processing
     tracing_log::LogTracer::init()
-        .map_err(|e| TelemetryError::generic(format!("Log tracer initialisation failed: {}", e)))?;
+        .map_err(|e| Error::generic(format!("Log tracer initialisation failed: {}", e)))?;
 
     // ============================================================================
     // Phase 5: Activate Global Subscriber
     // ============================================================================
     // Set this registry as the global default subscriber to start collecting telemetry
-    set_global_default(registry).map_err(|e| {
-        TelemetryError::generic(format!("Failed to set global default subscriber: {}", e))
-    })?;
+    set_global_default(registry)
+        .map_err(|e| Error::generic(format!("Failed to set global default subscriber: {}", e)))?;
 
     Ok(())
 }
@@ -160,7 +159,7 @@ mod tests {
             Ok(()) => {
                 // Successfully initialised - this is the expected case for first init
             }
-            Err(TelemetryError::Generic(msg)) => {
+            Err(Error::Generic(msg)) => {
                 // Check if it's the expected "already initialised" error
                 assert!(
                     msg.contains("already initialised")
@@ -175,14 +174,14 @@ mod tests {
 
     #[test]
     fn test_init_with_debug_level() {
-        let debug_level = TelemetryLevels::DEBUG;
+        let debug_level = Levels::DEBUG;
         let result = init(Some(&debug_level));
 
         match result {
             Ok(()) => {
                 // Successfully initialised with DEBUG level
             }
-            Err(TelemetryError::Generic(msg)) => {
+            Err(Error::Generic(msg)) => {
                 // Expected if already initialised
                 assert!(
                     msg.contains("already initialised")
@@ -198,12 +197,12 @@ mod tests {
     #[test]
     fn test_init_with_all_levels() {
         let levels = [
-            TelemetryLevels::OFF,
-            TelemetryLevels::ERROR,
-            TelemetryLevels::WARN,
-            TelemetryLevels::INFO,
-            TelemetryLevels::DEBUG,
-            TelemetryLevels::TRACE,
+            Levels::OFF,
+            Levels::ERROR,
+            Levels::WARN,
+            Levels::INFO,
+            Levels::DEBUG,
+            Levels::TRACE,
         ];
 
         for level in &levels {
@@ -213,7 +212,7 @@ mod tests {
                     // Successfully initialised
                     break; // If one succeeds, we've tested the functionality
                 }
-                Err(TelemetryError::Generic(msg)) => {
+                Err(Error::Generic(msg)) => {
                     // Continue if already initialised
                     assert!(
                         msg.contains("already initialised")
@@ -236,7 +235,7 @@ mod tests {
         let _ = init(None);
 
         // Second call should definitely fail
-        let result = init(Some(&TelemetryLevels::DEBUG));
+        let result = init(Some(&Levels::DEBUG));
 
         // This should fail because telemetry is already initialised
         match result {
@@ -244,7 +243,7 @@ mod tests {
                 // This might happen if the first call failed and this succeeds
                 // Not ideal but acceptable for this test
             }
-            Err(TelemetryError::Generic(msg)) => {
+            Err(Error::Generic(msg)) => {
                 // Expected error for double initialisation
                 assert!(
                     msg.contains("tracer") || msg.contains("subscriber") || msg.contains("already"),
@@ -262,27 +261,27 @@ mod tests {
 
         let test_cases = vec![
             (
-                TelemetryLevels::OFF,
+                Levels::OFF,
                 tracing::level_filters::LevelFilter::OFF,
             ),
             (
-                TelemetryLevels::ERROR,
+                Levels::ERROR,
                 tracing::level_filters::LevelFilter::ERROR,
             ),
             (
-                TelemetryLevels::WARN,
+                Levels::WARN,
                 tracing::level_filters::LevelFilter::WARN,
             ),
             (
-                TelemetryLevels::INFO,
+                Levels::INFO,
                 tracing::level_filters::LevelFilter::INFO,
             ),
             (
-                TelemetryLevels::DEBUG,
+                Levels::DEBUG,
                 tracing::level_filters::LevelFilter::DEBUG,
             ),
             (
-                TelemetryLevels::TRACE,
+                Levels::TRACE,
                 tracing::level_filters::LevelFilter::TRACE,
             ),
         ];
@@ -301,7 +300,7 @@ mod tests {
     fn test_default_level_behaviors() {
         // Test that None parameter defaults to INFO level
         let none_result: tracing::level_filters::LevelFilter = None
-            .map(|&level: &TelemetryLevels| level.into())
+            .map(|&level: &Levels| level.into())
             .unwrap_or(tracing::level_filters::LevelFilter::INFO);
 
         assert_eq!(none_result, tracing::level_filters::LevelFilter::INFO);
@@ -311,9 +310,9 @@ mod tests {
     fn test_env_filter_creation() {
         // Test that env filter can be created with different levels
         let levels = [
-            TelemetryLevels::DEBUG,
-            TelemetryLevels::INFO,
-            TelemetryLevels::WARN,
+            Levels::DEBUG,
+            Levels::INFO,
+            Levels::WARN,
         ];
 
         for level in &levels {
@@ -349,10 +348,10 @@ mod tests {
     #[test]
     fn test_error_message_formatting() {
         // Test that error messages are properly formatted
-        let test_error = TelemetryError::generic("test message");
+        let test_error = Error::generic("test message");
 
         match &test_error {
-            TelemetryError::Generic(msg) => {
+            Error::Generic(msg) => {
                 assert_eq!(msg, "test message");
             }
         }
@@ -371,10 +370,10 @@ mod tests {
             Err(_) => panic!("Expected Ok(42)"),
         }
 
-        let err_result: TelemetryResult<i32> = Err(TelemetryError::generic("test error"));
+        let err_result: TelemetryResult<i32> = Err(Error::generic("test error"));
         assert!(err_result.is_err());
 
-        if let Err(TelemetryError::Generic(msg)) = err_result {
+        if let Err(Error::Generic(msg)) = err_result {
             assert_eq!(msg, "test error");
         } else {
             panic!("Expected Generic error");

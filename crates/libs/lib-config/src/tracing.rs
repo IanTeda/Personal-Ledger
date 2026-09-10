@@ -20,7 +20,7 @@ const DEFAULT_ENABLED: bool = true;
 /// This constant defines the baseline logging verbosity when no specific configuration
 /// is provided. INFO level provides a good balance between visibility and performance
 /// for production deployments.
-const DEFAULT_TRACING_LEVEL: lib_tracing::TelemetryLevels = lib_tracing::TelemetryLevels::INFO;
+const DEFAULT_TRACING_LEVEL: lib_tracing::Levels = lib_tracing::Levels::INFO;
 
 /// Default show config startup state if none is provided.
 const SHOW_CONFIG_AT_STARTUP: bool = false;
@@ -57,7 +57,7 @@ pub struct TracingConfig {
     /// - `DEBUG`: Detailed debugging information
     /// - `TRACE`: Very detailed execution tracing
     #[serde(rename = "telemetry_level")]
-    pub level: lib_tracing::TelemetryLevels,
+    pub level: lib_tracing::Levels,
 
     /// Whether to show configuration at startup.
     pub show_config_at_startup: bool,
@@ -90,7 +90,7 @@ impl TracingConfig {
     ///
     /// The configured `TelemetryLevels` value that can be passed directly
     /// to `lib_tracing::init()`.
-    pub fn telemetry_level(&self) -> lib_tracing::TelemetryLevels {
+    pub fn telemetry_level(&self) -> lib_tracing::Levels {
         self.level
     }
 
@@ -115,13 +115,13 @@ impl TracingConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib_tracing::TelemetryLevels;
+    use lib_tracing::Levels;
 
     #[test]
     fn default_enables_tracing_at_info_level() {
         let config = TracingConfig::default();
         assert!(config.enabled);
-        assert_eq!(config.level, TelemetryLevels::INFO);
+        assert_eq!(config.level, Levels::INFO);
         assert!(!config.show_config_at_startup);
     }
 
@@ -129,21 +129,21 @@ mod tests {
     fn telemetry_level_returns_configured_level() {
         let config = TracingConfig {
             enabled: true,
-            level: TelemetryLevels::DEBUG,
+            level: Levels::DEBUG,
             show_config_at_startup: false,
         };
-        assert_eq!(config.telemetry_level(), TelemetryLevels::DEBUG);
+        assert_eq!(config.telemetry_level(), Levels::DEBUG);
     }
 
     #[test]
     fn telemetry_level_returns_correct_value_for_all_variants() {
         for level in [
-            TelemetryLevels::OFF,
-            TelemetryLevels::ERROR,
-            TelemetryLevels::WARN,
-            TelemetryLevels::INFO,
-            TelemetryLevels::DEBUG,
-            TelemetryLevels::TRACE,
+            Levels::OFF,
+            Levels::ERROR,
+            Levels::WARN,
+            Levels::INFO,
+            Levels::DEBUG,
+            Levels::TRACE,
         ] {
             let config = TracingConfig {
                 enabled: true,
@@ -158,7 +158,7 @@ mod tests {
     fn clone_produces_equal_value() {
         let config = TracingConfig {
             enabled: false,
-            level: TelemetryLevels::TRACE,
+            level: Levels::TRACE,
             show_config_at_startup: true,
         };
         assert_eq!(config.clone(), config);
@@ -174,11 +174,11 @@ mod tests {
     #[test]
     fn different_levels_compare_unequal() {
         let a = TracingConfig {
-            level: TelemetryLevels::DEBUG,
+            level: Levels::DEBUG,
             ..Default::default()
         };
         let b = TracingConfig {
-            level: TelemetryLevels::ERROR,
+            level: Levels::ERROR,
             ..Default::default()
         };
         assert_ne!(a, b);
@@ -222,7 +222,7 @@ mod tests {
     fn serialize_to_json_roundtrip() {
         let config = TracingConfig {
             enabled: true,
-            level: TelemetryLevels::WARN,
+            level: Levels::WARN,
             show_config_at_startup: true,
         };
         let json = serde_json::to_string(&config).expect("serialize TracingConfig");
@@ -234,7 +234,7 @@ mod tests {
     #[test]
     fn serialize_level_as_lowercase_string() {
         let config = TracingConfig {
-            level: TelemetryLevels::DEBUG,
+            level: Levels::DEBUG,
             ..Default::default()
         };
         let json = serde_json::to_string(&config).expect("serialize TracingConfig");
@@ -250,7 +250,7 @@ mod tests {
             r#"{"enabled": false, "telemetry_level": "trace", "show_config_at_startup": true}"#;
         let config: TracingConfig = serde_json::from_str(json).expect("deserialize TracingConfig");
         assert!(!config.enabled);
-        assert_eq!(config.level, TelemetryLevels::TRACE);
+        assert_eq!(config.level, Levels::TRACE);
         assert!(config.show_config_at_startup);
     }
 
@@ -297,12 +297,12 @@ mod tests {
     #[test]
     fn deserialize_all_level_variants() {
         for (json_str, expected) in [
-            ("\"off\"", TelemetryLevels::OFF),
-            ("\"error\"", TelemetryLevels::ERROR),
-            ("\"warn\"", TelemetryLevels::WARN),
-            ("\"info\"", TelemetryLevels::INFO),
-            ("\"debug\"", TelemetryLevels::DEBUG),
-            ("\"trace\"", TelemetryLevels::TRACE),
+            ("\"off\"", Levels::OFF),
+            ("\"error\"", Levels::ERROR),
+            ("\"warn\"", Levels::WARN),
+            ("\"info\"", Levels::INFO),
+            ("\"debug\"", Levels::DEBUG),
+            ("\"trace\"", Levels::TRACE),
         ] {
             let json = format!(
                 r#"{{"enabled": true, "telemetry_level": {json_str}, "show_config_at_startup": false}}"#

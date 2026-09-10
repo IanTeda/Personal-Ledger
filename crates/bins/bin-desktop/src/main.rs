@@ -790,7 +790,7 @@ mod tests {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    let config = lib_config::LedgerConfig::parse(cli.config.path.as_deref())?;
+    let config = lib_config::Config::parse(cli.config.path.as_deref())?;
     let telemetry_level = Some(&config.telemetry_config().telemetry_level());
     lib_tracing::init(telemetry_level)?;
 

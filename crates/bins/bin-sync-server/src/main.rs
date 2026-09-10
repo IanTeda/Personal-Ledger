@@ -33,7 +33,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // `parse_for_sync_server`, not `parse` -- ADR-0014's reduced defaults -> explicit path ->
     // env chain, skipping the Client-only system/user/executable-directory/working-directory
     // search tiers (they don't correspond to anything meaningful inside a Docker container).
-    let config = config::LedgerConfig::parse_for_sync_server(cli.config.path.as_deref())?;
+    let config = config::Config::parse_for_sync_server(cli.config.path.as_deref())?;
 
     let telemetry_level = Some(&config.telemetry_config().telemetry_level());
     telemetry::init(telemetry_level)?;

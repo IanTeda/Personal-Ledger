@@ -4320,7 +4320,6 @@ dependencies = [
 name = "lib_tracing"
 version = "0.1.0"
 dependencies = [
- "config",
  "fake",
  "serde",
  "serde_json",

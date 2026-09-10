@@ -13,7 +13,6 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 
 #-- Library Dependencies --
-config = { version = "0.15.16"}
 tracing-log = { version = "0.2.0" }
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "std"] }
 

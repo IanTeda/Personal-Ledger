@@ -5,7 +5,7 @@
 /// This enum provides detailed error classification for telemetry-related failures,
 /// allowing for precise error handling and debugging of logging infrastructure issues.
 #[derive(thiserror::Error, Debug)]
-pub enum TelemetryError {
+pub enum Error {
     /// Generic telemetry errors.
     ///
     /// This covers generic telemetry issues that don't fit into the more specific
@@ -18,7 +18,7 @@ pub enum TelemetryError {
 ///
 /// These methods provide convenient constructors for common error scenarios,
 /// allowing for more ergonomic error creation throughout the telemetry module.
-impl TelemetryError {
+impl Error {
     /// Creates a new generic configuration error.
     ///
     /// # Arguments
@@ -39,33 +39,33 @@ impl TelemetryError {
 mod tests {
     use super::*;
     use crate::TelemetryResult;
-    use fake::faker::lorem::en::Sentence;
     use fake::Fake;
+    use fake::faker::lorem::en::Sentence;
 
     #[test]
     fn test_generic_error_with_string() {
         let message = Sentence(3..8).fake::<String>();
-        let error = TelemetryError::generic(message.clone());
+        let error = Error::generic(message.clone());
 
         match error {
-            TelemetryError::Generic(msg) => assert_eq!(msg, message),
+            Error::Generic(msg) => assert_eq!(msg, message),
         }
     }
 
     #[test]
     fn test_generic_error_with_str() {
         let message = Sentence(3..8).fake::<String>();
-        let error = TelemetryError::generic(message.as_str());
+        let error = Error::generic(message.as_str());
 
         match error {
-            TelemetryError::Generic(msg) => assert_eq!(msg, message),
+            Error::Generic(msg) => assert_eq!(msg, message),
         }
     }
 
     #[test]
     fn test_generic_error_display() {
         let message = Sentence(3..8).fake::<String>();
-        let error = TelemetryError::generic(message.clone());
+        let error = Error::generic(message.clone());
         let display_msg = format!("{}", error);
 
         assert_eq!(display_msg, format!("Telemetry generic error: {}", message));
@@ -74,7 +74,7 @@ mod tests {
     #[test]
     fn test_generic_error_debug() {
         let message = Sentence(3..8).fake::<String>();
-        let error = TelemetryError::generic(message.clone());
+        let error = Error::generic(message.clone());
         let debug_msg = format!("{:?}", error);
 
         // The debug output should contain the variant name and message
@@ -92,7 +92,7 @@ mod tests {
         }
 
         let error_message = Sentence(2..5).fake::<String>();
-        let error_result: TelemetryResult<i32> = Err(TelemetryError::generic(error_message));
+        let error_result: TelemetryResult<i32> = Err(Error::generic(error_message));
         assert!(error_result.is_err());
     }
 }

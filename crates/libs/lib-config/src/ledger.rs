@@ -461,7 +461,7 @@ mod tests {
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(
             config.telemetry.telemetry_level(),
-            lib_tracing::TelemetryLevels::DEBUG
+            lib_tracing::Levels::DEBUG
         );
         assert_eq!(config.database.url(), "sqlite:test.db");
         assert_eq!(config.database.max_connections(), 20);
@@ -532,7 +532,7 @@ mod tests {
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(
             config.telemetry.telemetry_level(),
-            lib_tracing::TelemetryLevels::INFO
+            lib_tracing::Levels::INFO
         );
         assert_eq!(config.database.url(), "sqlite:custom.db");
     }
@@ -602,7 +602,7 @@ mod tests {
             let config = LedgerConfig::parse(Some(&explicit_file)).unwrap();
             assert_eq!(
                 config.telemetry.telemetry_level(),
-                lib_tracing::TelemetryLevels::DEBUG
+                lib_tracing::Levels::DEBUG
             );
             assert_eq!(config.database.max_connections(), 15);
         });

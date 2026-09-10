@@ -37,7 +37,7 @@ pub use error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// The top-level application configuration type, shared by all three consumers.
-pub use ledger::LedgerConfig;
+pub use ledger::LedgerConfig as Config;
 
 /// Database connection pool configuration, re-exported by `lib-database` (its own
 /// connection pooling is the only consumer of the type, but the type itself lives here
