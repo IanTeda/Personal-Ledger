@@ -122,8 +122,8 @@ impl Shell {
     /// then a pending `g` leader consumes the very next key as its chord completion (or aborts
     /// silently if it doesn't complete one); otherwise `Ctrl+;` opens the command popup,
     /// `Ctrl+U` opens the placeholder Units view directly, `?` opens the placeholder Help
-    /// view, a lone `g` arms the leader, and anything left falls to the active view's own
-    /// `handle_key` (which is how the Units view's own `n`/`e`/`d` reach
+    /// view, `Q` quits, a lone `g` arms the leader, and anything left falls to the active
+    /// view's own `handle_key` (which is how the Units view's own `n`/`e`/`d` reach
     /// [`Action::OpenNewUnitPopup`]/[`Action::OpenEditUnitPopup`]/
     /// [`Action::OpenDeleteUnitPopup`]). `Event::Resize` never reaches here — `run` intercepts
     /// it directly to clear the terminal, since that's a `Tui`-level concern with no `Action`
@@ -165,6 +165,9 @@ impl Shell {
                 if is_open_help(key) {
                     return Some(Action::OpenHelp);
                 }
+                if is_quit(key) {
+                    return Some(Action::Quit);
+                }
                 if key.code == KeyCode::Char('g') && key.modifiers == KeyModifiers::NONE {
                     self.pending_leader = true;
                     return None;
@@ -178,9 +181,9 @@ impl Shell {
     /// Routes a key while the command popup is open. `Ctrl+;` toggles it shut again; `Esc`
     /// closes it; typing, `Backspace` and `↑`/`↓` drive the input buffer and selection.
     /// `Enter` runs the highlighted command if it's one of the domain "list" (or `unit`/
-    /// `dashboard`/`help`) commands with a real view behind it; any other key (e.g. `Tab` —
-    /// completion is the action-registry's "later ticket", per `view/mod.rs`) is swallowed
-    /// without effect, since the popup owns every key while it's up.
+    /// `dashboard`/`help`/`quit`) commands with a real effect behind it; any other key (e.g.
+    /// `Tab` — completion is the action-registry's "later ticket", per `view/mod.rs`) is
+    /// swallowed without effect, since the popup owns every key while it's up.
     fn map_command_popup_key(&self, key: KeyEvent) -> Option<Action> {
         if is_open_command_popup(key) {
             return Some(Action::CloseCommandPopup);
@@ -202,6 +205,7 @@ impl Shell {
                 Some("category list") => Some(Action::OpenCategories),
                 Some("help") => Some(Action::OpenHelp),
                 Some("payee list") => Some(Action::OpenPayees),
+                Some("quit") => Some(Action::Quit),
                 Some("report list") => Some(Action::OpenReports),
                 Some("txn recent") => Some(Action::OpenTransactions),
                 _ => None,
@@ -380,6 +384,15 @@ fn is_open_units(key: KeyEvent) -> bool {
 /// popup's `help` command (`docs/ux/tui/README.md`).
 fn is_open_help(key: KeyEvent) -> bool {
     matches!(key.code, KeyCode::Char('?'))
+}
+
+/// `Q` — quits the app from anywhere the command popup/unit forms aren't intercepting keys,
+/// matching the footer's `docs/ux/tui/README.md` global keybind table (`Q` quit, distinct from
+/// its still-unbuilt lowercase `q` "close view" sibling) and the popup's own `quit` command.
+/// Unlike [`is_hard_quit`] (`Ctrl+C`), this doesn't fire mid-chord or while a popup is open —
+/// there, `Q` is ordinary filter/chord input instead.
+fn is_quit(key: KeyEvent) -> bool {
+    matches!(key.code, KeyCode::Char('Q'))
 }
 
 /// Routes a key while a unit form (new, edit or delete) is open. Only `Esc` does anything yet — no
@@ -791,6 +804,58 @@ mod tests {
         shell.update(action);
 
         assert_eq!(shell.view.title(), "Help");
+    }
+
+    #[test]
+    fn shift_q_quits_the_shell() {
+        let mut shell = Shell::new();
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('Q'),
+                KeyModifiers::NONE,
+            )))
+            .expect("Q always maps to an action while no popup is open");
+        shell.update(action);
+
+        assert!(shell.should_quit);
+    }
+
+    #[test]
+    fn shift_q_is_swallowed_while_the_command_popup_is_open() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('Q'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(action, Some(Action::CommandPopupInput('Q')));
+        assert!(!shell.should_quit);
+    }
+
+    #[test]
+    fn selecting_the_quit_command_and_pressing_enter_quits_the_shell() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        for c in "quit".chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on the `quit` command always maps to an action");
+        shell.update(action);
+
+        assert!(shell.should_quit);
     }
 
     #[test]
