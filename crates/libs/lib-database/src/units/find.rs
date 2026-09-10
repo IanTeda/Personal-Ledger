@@ -11,7 +11,7 @@ impl crate::Units {
     pub async fn find_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let unit = sqlx::query_as!(
             crate::Units,
             r#"
@@ -43,7 +43,7 @@ impl crate::Units {
     pub async fn find_by_code(
         code: &str,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let unit = sqlx::query_as!(
             crate::Units,
             r#"
@@ -72,7 +72,7 @@ impl crate::Units {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find all Units: ", level = "debug", skip(pool))]
-    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Vec<Self>> {
+    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let units = sqlx::query_as!(
             crate::Units,
             r#"
@@ -101,7 +101,7 @@ impl crate::Units {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find active Units: ", level = "debug", skip(pool))]
-    pub async fn find_active(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Vec<Self>> {
+    pub async fn find_active(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let units = sqlx::query_as!(
             crate::Units,
             r#"
@@ -134,7 +134,7 @@ impl crate::Units {
         offset: i64,
         limit: i64,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i64)> {
+    ) -> crate::Result<(Vec<Self>, i64)> {
         let units = sqlx::query_as!(
             crate::Units,
             r#"

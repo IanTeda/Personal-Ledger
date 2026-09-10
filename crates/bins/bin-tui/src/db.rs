@@ -16,16 +16,16 @@ fn database_url() -> String {
 
 /// Connect to the Client's local Ledger store and apply the Client migration set
 /// (`migrations/client`), returning a ready-to-use pool.
-pub async fn connect() -> lib_database::DatabaseResult<sqlx::SqlitePool> {
+pub async fn connect() -> lib_database::Result<sqlx::SqlitePool> {
     connect_to(database_url()).await
 }
 
 /// Same as [`connect`], against an explicit database URL — split out so tests can point it
 /// at an isolated, throwaway SQLite file instead of the shared one.
-pub async fn connect_to(url: String) -> lib_database::DatabaseResult<sqlx::SqlitePool> {
-    let config = lib_database::DatabaseConfig {
+pub async fn connect_to(url: String) -> lib_database::Result<sqlx::SqlitePool> {
+    let config = lib_config::DatabaseConfig {
         url,
-        ..lib_database::DatabaseConfig::default()
+        ..lib_config::DatabaseConfig::default()
     };
     let connection = lib_database::DatabaseConnection::new(config).await?;
     let pool = connection.into_pool();

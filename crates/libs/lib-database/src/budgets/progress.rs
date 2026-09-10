@@ -69,7 +69,7 @@ impl crate::Budgets {
     pub async fn current_progress(
         &self,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<BudgetProgress> {
+    ) -> crate::Result<BudgetProgress> {
         let today = chrono::Utc::now().date_naive();
         let (period_start, period_end) = self.period.current_bounds(today);
 

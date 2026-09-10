@@ -77,7 +77,8 @@
 
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
-use crate::{DatabaseConfig, DatabaseError, DatabaseResult};
+use crate::{Result, Error};
+use lib_config::DatabaseConfig;
 
 /// Database connection wrapper providing high-level access to SQLite connection pools.
 ///
@@ -160,7 +161,7 @@ impl DatabaseConnection {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn new(config: DatabaseConfig) -> DatabaseResult<Self> {
+    pub async fn new(config: DatabaseConfig) -> Result<Self> {
         let pool_options = SqlitePoolOptions::new()
             .max_connections(config.max_connections())
             .min_connections(config.min_connections())
@@ -186,9 +187,10 @@ impl DatabaseConnection {
                 })
             });
 
-        let pool = pool_options.connect(config.url()).await.map_err(|e| {
-            DatabaseError::Connection(format!("Failed to connect to database pool: {}", e))
-        })?;
+        let pool = pool_options
+            .connect(config.url())
+            .await
+            .map_err(|e| Error::Connection(format!("Failed to connect to database pool: {}", e)))?;
 
         Ok(Self { pool })
     }
@@ -268,11 +270,11 @@ impl DatabaseConnection {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn health_check(&self) -> DatabaseResult<()> {
+    pub async fn health_check(&self) -> Result<()> {
         sqlx::query("SELECT 1")
             .fetch_one(&self.pool)
             .await
-            .map_err(|e| DatabaseError::Connection(format!("Health check failed: {}", e)))?;
+            .map_err(|e| Error::Connection(format!("Health check failed: {}", e)))?;
         Ok(())
     }
 }

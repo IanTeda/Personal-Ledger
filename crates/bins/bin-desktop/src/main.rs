@@ -364,7 +364,7 @@ enum LiveCategoriesStatus {
 /// category if the store is empty (a real write), then reads every category back (a real
 /// read) -- proving the embedded-SQLite path works end-to-end through a real client, not a
 /// mock, the same proof the TUI's own live-data demo established for FC-TUI-005.
-async fn load_live_categories() -> lib_database::DatabaseResult<Vec<lib_database::Categories>> {
+async fn load_live_categories() -> lib_database::Result<Vec<lib_database::Categories>> {
     load_live_categories_from(live_categories_database_url()).await
 }
 
@@ -372,10 +372,10 @@ async fn load_live_categories() -> lib_database::DatabaseResult<Vec<lib_database
 /// tests can point it at an isolated, throwaway SQLite file instead of the shared demo one.
 async fn load_live_categories_from(
     url: String,
-) -> lib_database::DatabaseResult<Vec<lib_database::Categories>> {
-    let config = lib_database::DatabaseConfig {
+) -> lib_database::Result<Vec<lib_database::Categories>> {
+    let config = lib_config::DatabaseConfig {
         url,
-        ..lib_database::DatabaseConfig::default()
+        ..lib_config::DatabaseConfig::default()
     };
     let connection = lib_database::DatabaseConnection::new(config).await?;
     let pool = connection.pool();
@@ -792,7 +792,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let config = lib_config::Config::parse(cli.config.path.as_deref())?;
     let telemetry_level = Some(&config.telemetry_config().telemetry_level());
-    lib_tracing::init(telemetry_level)?;
+    let log_file_path = config.telemetry_config().log_file_path();
+    // Held for the lifetime of `main` -- dropping it stops the background worker that
+    // flushes buffered log lines to `log_file_path` (when configured).
+    let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
 
     let tokio_handle = tokio::runtime::Handle::current();
 

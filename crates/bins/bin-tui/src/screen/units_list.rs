@@ -76,12 +76,12 @@ impl UnitsListScreen {
         self.error = None;
     }
 
-    async fn load() -> lib_database::DatabaseResult<Vec<lib_database::Units>> {
+    async fn load() -> lib_database::Result<Vec<lib_database::Units>> {
         let pool = db::connect().await?;
         lib_database::Units::find_all(&pool).await
     }
 
-    async fn delete(id: lib_core::RowID) -> lib_database::DatabaseResult<()> {
+    async fn delete(id: lib_core::RowID) -> lib_database::Result<()> {
         let pool = db::connect().await?;
         lib_database::Units::delete_by_id(id, &pool).await
     }

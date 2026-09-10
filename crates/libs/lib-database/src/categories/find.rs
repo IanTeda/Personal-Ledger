@@ -28,7 +28,7 @@ impl crate::Categories {
     pub async fn find_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let category = sqlx::query_as!(
             crate::Categories,
             r#"
@@ -69,7 +69,7 @@ impl crate::Categories {
     pub async fn find_by_code(
         code: &str,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let category = sqlx::query_as!(
             crate::Categories,
             r#"
@@ -110,7 +110,7 @@ impl crate::Categories {
     pub async fn find_by_url_slug(
         slug: &domain::UrlSlug,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let category = sqlx::query_as!(
             crate::Categories,
             r#"
@@ -166,7 +166,7 @@ impl crate::Categories {
     pub async fn find_by_name(
         name: &str,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         tracing::trace!(
             search_name = %name,
             "Starting find categories by name operation"
@@ -225,7 +225,7 @@ impl crate::Categories {
     ///
     /// # Tracing
     /// Logs INFO with the number of categories retrieved.
-    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Vec<Self>> {
+    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let categories = sqlx::query_as!(
             crate::Categories,
             r#"
@@ -268,7 +268,7 @@ impl crate::Categories {
     /// Logs INFO with the number of categories retrieved.
     pub async fn find_all_active(
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let categories = sqlx::query_as!(
             crate::Categories,
             r#"
@@ -322,7 +322,7 @@ impl crate::Categories {
     )]
     pub async fn find_inactive(
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         tracing::trace!("Starting find inactive categories operation");
 
         tracing::debug!("Executing query to find inactive categories");
@@ -375,7 +375,7 @@ impl crate::Categories {
     pub async fn find_by_type(
         category_type: domain::CategoryTypes,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let categories = sqlx::query_as!(
             crate::Categories,
             r#"
@@ -426,7 +426,7 @@ impl crate::Categories {
     pub async fn find_active_by_type(
         category_type: domain::CategoryTypes,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let categories = sqlx::query_as!(
             crate::Categories,
             r#"
@@ -490,7 +490,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         tracing::trace!(
             offset = %offset,
             limit = %limit,
@@ -547,7 +547,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         tracing::trace!(
             offset = %offset,
             limit = %limit,
@@ -604,7 +604,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         tracing::trace!(
             offset = %offset,
             limit = %limit,
@@ -664,7 +664,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         let category_type_str = category_type.as_str();
 
         tracing::trace!(
@@ -729,7 +729,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         let category_type_str = category_type.as_str();
 
         tracing::trace!(
@@ -789,7 +789,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         // For now, implement a simpler version that handles the most common cases
         // TODO: Implement full dynamic filtering when needed
 
@@ -819,7 +819,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories")
             .fetch_one(pool)
             .await?;
@@ -857,7 +857,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         let total_count: i32 =
             sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE is_active = true")
                 .fetch_one(pool)
@@ -897,7 +897,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         let total_count: i32 =
             sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE is_active = false")
                 .fetch_one(pool)
@@ -938,7 +938,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         let total_count: i32 =
             sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE category_type = ?")
                 .bind(&category_type)
@@ -981,7 +981,7 @@ impl crate::Categories {
         offset: i32,
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
+    ) -> crate::Result<(Vec<Self>, i32)> {
         let total_count: i32 = sqlx::query_scalar(
             "SELECT COUNT(*) as count FROM categories WHERE category_type = ? AND is_active = true",
         )

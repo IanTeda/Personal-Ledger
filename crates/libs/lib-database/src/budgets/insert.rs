@@ -14,14 +14,14 @@ impl crate::Budgets {
         skip(self, pool),
         fields(id = %self.id, category_id = %self.category_id),
     )]
-    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let category = crate::Categories::find_by_id(self.category_id, pool)
             .await?
             .ok_or_else(|| {
-                crate::DatabaseError::NotFound(format!("Category {} not found", self.category_id))
+                crate::Error::NotFound(format!("Category {} not found", self.category_id))
             })?;
         if category.category_type != lib_core::CategoryTypes::Expense {
-            return Err(crate::DatabaseError::BudgetCategoryNotExpense(
+            return Err(crate::Error::BudgetCategoryNotExpense(
                 self.category_id.to_string(),
             ));
         }
@@ -60,7 +60,7 @@ impl crate::Budgets {
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Budget {} not found after insert", self.id))
+            crate::Error::NotFound(format!("Budget {} not found after insert", self.id))
         })
     }
 }
@@ -103,7 +103,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(crate::DatabaseError::BudgetCategoryNotExpense(_))
+            Err(crate::Error::BudgetCategoryNotExpense(_))
         ));
     }
 

@@ -31,26 +31,26 @@ impl crate::BalanceChecks {
         account_id: lib_core::RowID,
         reader: R,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let mut csv_reader = csv::ReaderBuilder::new()
             .has_headers(true)
             .from_reader(reader);
 
         let headers = csv_reader
             .headers()
-            .map_err(|err| crate::DatabaseError::CsvImport(err.to_string()))?
+            .map_err(|err| crate::Error::CsvImport(err.to_string()))?
             .clone();
         let date_index = headers
             .iter()
             .position(|h| h.eq_ignore_ascii_case("date"))
             .ok_or_else(|| {
-                crate::DatabaseError::CsvImport("missing required \"date\" column".to_string())
+                crate::Error::CsvImport("missing required \"date\" column".to_string())
             })?;
         let balance_index = headers
             .iter()
             .position(|h| h.eq_ignore_ascii_case("balance"))
             .ok_or_else(|| {
-                crate::DatabaseError::CsvImport("missing required \"balance\" column".to_string())
+                crate::Error::CsvImport("missing required \"balance\" column".to_string())
             })?;
 
         let now = chrono::Utc::now();
@@ -58,24 +58,23 @@ impl crate::BalanceChecks {
         for (row_number, record) in csv_reader.records().enumerate() {
             // Row 1 is the first data row, right after the header.
             let row_number = row_number + 1;
-            let record = record.map_err(|err| {
-                crate::DatabaseError::CsvImport(format!("row {row_number}: {err}"))
-            })?;
+            let record = record
+                .map_err(|err| crate::Error::CsvImport(format!("row {row_number}: {err}")))?;
 
             let date_field = record.get(date_index).ok_or_else(|| {
-                crate::DatabaseError::CsvImport(format!("row {row_number}: missing date field"))
+                crate::Error::CsvImport(format!("row {row_number}: missing date field"))
             })?;
             let date: chrono::NaiveDate = date_field.trim().parse().map_err(|_| {
-                crate::DatabaseError::CsvImport(format!(
+                crate::Error::CsvImport(format!(
                     "row {row_number}: invalid date {date_field:?} (expected YYYY-MM-DD)"
                 ))
             })?;
 
             let balance_field = record.get(balance_index).ok_or_else(|| {
-                crate::DatabaseError::CsvImport(format!("row {row_number}: missing balance field"))
+                crate::Error::CsvImport(format!("row {row_number}: missing balance field"))
             })?;
             let asserted_balance: lib_core::Money = balance_field.trim().parse().map_err(|_| {
-                crate::DatabaseError::CsvImport(format!(
+                crate::Error::CsvImport(format!(
                     "row {row_number}: invalid balance amount {balance_field:?}"
                 ))
             })?;
@@ -171,7 +170,7 @@ mod tests {
 
         let result = crate::BalanceChecks::import_csv(account_id, Cursor::new(csv), &pool).await;
 
-        assert!(matches!(result, Err(crate::DatabaseError::CsvImport(_))));
+        assert!(matches!(result, Err(crate::Error::CsvImport(_))));
     }
 
     #[sqlx::test(migrations = "migrations/client")]
@@ -181,7 +180,7 @@ mod tests {
 
         let result = crate::BalanceChecks::import_csv(account_id, Cursor::new(csv), &pool).await;
 
-        assert!(matches!(result, Err(crate::DatabaseError::CsvImport(_))));
+        assert!(matches!(result, Err(crate::Error::CsvImport(_))));
         let (_, total) = crate::BalanceChecks::find_all_with_pagination(0, 10, &pool)
             .await
             .unwrap();
@@ -198,7 +197,7 @@ mod tests {
 
         let result = crate::BalanceChecks::import_csv(account_id, Cursor::new(csv), &pool).await;
 
-        assert!(matches!(result, Err(crate::DatabaseError::CsvImport(_))));
+        assert!(matches!(result, Err(crate::Error::CsvImport(_))));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

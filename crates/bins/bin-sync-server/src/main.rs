@@ -36,7 +36,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = config::Config::parse_for_sync_server(cli.config.path.as_deref())?;
 
     let telemetry_level = Some(&config.telemetry_config().telemetry_level());
-    telemetry::init(telemetry_level)?;
+    let log_file_path = config.telemetry_config().log_file_path();
+    // Held for the lifetime of `main` -- dropping it stops the background worker that
+    // flushes buffered log lines to `log_file_path` (when configured).
+    let _log_guard = telemetry::init(telemetry_level, log_file_path)?;
     tracing::info!("Starting Sync Server with config: {:#?}", config);
 
     // The Sync Server's own durable Change Set log (ADR-0009) -- reuses lib-database's

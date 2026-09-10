@@ -361,7 +361,7 @@ impl TransactionDetailScreen {
         mut form: lib_database::Transactions,
         payee_name: String,
         original: Option<lib_database::Transactions>,
-    ) -> lib_database::DatabaseResult<lib_database::Transactions> {
+    ) -> lib_database::Result<lib_database::Transactions> {
         let pool = db::connect().await?;
 
         form.payee_id = if payee_name.is_empty() {

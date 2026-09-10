@@ -11,7 +11,7 @@ impl crate::Payees {
     pub async fn find_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let payee = sqlx::query_as!(
             crate::Payees,
             r#"
@@ -41,7 +41,7 @@ impl crate::Payees {
     pub async fn find_by_name(
         name: &str,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let payee = sqlx::query_as!(
             crate::Payees,
             r#"
@@ -67,7 +67,7 @@ impl crate::Payees {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find all Payees: ", level = "debug", skip(pool))]
-    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Vec<Self>> {
+    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let payees = sqlx::query_as!(
             crate::Payees,
             r#"
@@ -94,7 +94,7 @@ impl crate::Payees {
     #[tracing::instrument(name = "Find all active Payees: ", level = "debug", skip(pool))]
     pub async fn find_all_active(
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let payees = sqlx::query_as!(
             crate::Payees,
             r#"
@@ -124,7 +124,7 @@ impl crate::Payees {
         offset: i64,
         limit: i64,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i64)> {
+    ) -> crate::Result<(Vec<Self>, i64)> {
         let payees = sqlx::query_as!(
             crate::Payees,
             r#"

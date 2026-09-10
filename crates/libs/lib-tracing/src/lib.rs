@@ -1,5 +1,3 @@
-//TODO: Add log file export
-
 mod error;
 mod init;
 mod levels;
@@ -16,4 +14,4 @@ pub use init::init;
 /// Result type alias for telemetry operations.
 /// This type simplifies function signatures by standardizing the return type for
 /// operations that result in a `TelemetryError`.
-pub type TelemetryResult<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;

@@ -19,8 +19,9 @@
 use std::sync::Arc;
 
 use bin_sync_server::auth;
+use lib_config::DatabaseConfig;
 use lib_core::{HlcClock, RowID};
-use lib_database::{DatabaseConfig, DatabaseConnection};
+use lib_database::DatabaseConnection;
 use lib_rpc::{
     ChangeSet as ProtoChangeSet, PullRequest, PushRequest, SyncService, SyncServiceClient,
     SyncServiceServer, UtilitiesService, UtilitiesServiceServer,

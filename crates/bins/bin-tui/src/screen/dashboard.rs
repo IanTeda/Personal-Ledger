@@ -157,7 +157,7 @@ impl Screen for DashboardScreen {
                     let balance = account.balance(&pool).await?;
                     balances.push((account.id, balance));
                 }
-                Ok::<_, lib_database::DatabaseError>(balances)
+                Ok::<_, lib_database::Error>(balances)
             }
             .await;
             let action = match action {

@@ -75,7 +75,7 @@ impl crate::Categories {
         ),
         err
     )]
-    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         tracing::debug!(
             category_id = %self.id,
             category_name = %self.name,
@@ -110,7 +110,7 @@ impl crate::Categories {
                 category_id = %self.id,
                 "Category update failed - category not found"
             );
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Category with id {} not found",
                 self.id
             )));
@@ -226,7 +226,7 @@ impl crate::Categories {
     pub async fn update_many(
         categories: &[Self],
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let category_count = categories.len();
 
         if category_count == 0 {
@@ -282,7 +282,7 @@ impl crate::Categories {
                     category_index = %index,
                     "Category not found during bulk update, rolling back transaction"
                 );
-                return Err(crate::DatabaseError::NotFound(format!(
+                return Err(crate::Error::NotFound(format!(
                     "Category with id {} not found",
                     category.id
                 )));
@@ -403,7 +403,7 @@ impl crate::Categories {
         id: domain::RowID,
         is_active: bool,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         tracing::debug!(
             category_id = %id,
             target_active_status = %is_active,
@@ -429,7 +429,7 @@ impl crate::Categories {
                 target_active_status = %is_active,
                 "Category active status update failed - category not found"
             );
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Category with id {} not found",
                 id
             )));
@@ -582,7 +582,7 @@ mod tests {
 
             let error = result.unwrap_err();
             match error {
-                crate::DatabaseError::NotFound(msg) => {
+                crate::Error::NotFound(msg) => {
                     assert!(msg.contains(&category.id.to_string()));
                 }
                 _ => panic!("Expected NotFound error, got {:?}", error),
@@ -691,7 +691,7 @@ mod tests {
 
             let error = result.unwrap_err();
             match error {
-                crate::DatabaseError::NotFound(msg) => {
+                crate::Error::NotFound(msg) => {
                     assert!(msg.contains(&nonexistent.id.to_string()));
                 }
                 _ => panic!("Expected NotFound error, got {:?}", error),
@@ -800,7 +800,7 @@ mod tests {
 
             let error = result.unwrap_err();
             match error {
-                crate::DatabaseError::NotFound(msg) => {
+                crate::Error::NotFound(msg) => {
                     assert!(msg.contains(&fake_id.to_string()));
                 }
                 _ => panic!("Expected NotFound error, got {:?}", error),

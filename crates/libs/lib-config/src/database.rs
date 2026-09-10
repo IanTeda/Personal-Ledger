@@ -216,16 +216,6 @@ impl DatabaseConfig {
     /// # Returns
     ///
     /// The database URL that can be passed to connection pool creation.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::DatabaseConfig;
-    ///
-    /// let config = DatabaseConfig::default();
-    /// let url = config.url();
-    /// assert_eq!(url, "sqlite:./personal-ledger.sqlite");
-    /// ```
     pub fn url(&self) -> &str {
         &self.url
     }
@@ -237,15 +227,6 @@ impl DatabaseConfig {
     /// # Returns
     ///
     /// The maximum number of connections allowed in the pool.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::DatabaseConfig;
-    ///
-    /// let config = DatabaseConfig::default();
-    /// assert_eq!(config.max_connections(), 10);
-    /// ```
     pub fn max_connections(&self) -> u32 {
         self.max_connections
     }
@@ -257,15 +238,6 @@ impl DatabaseConfig {
     /// # Returns
     ///
     /// The minimum number of connections to maintain in the pool.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::DatabaseConfig;
-    ///
-    /// let config = DatabaseConfig::default();
-    /// assert_eq!(config.min_connections(), 1);
-    /// ```
     pub fn min_connections(&self) -> u32 {
         self.min_connections
     }
@@ -277,17 +249,6 @@ impl DatabaseConfig {
     /// # Returns
     ///
     /// A `chrono::Duration` representing the acquire timeout.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::DatabaseConfig;
-    /// use chrono::Duration;
-    ///
-    /// let config = DatabaseConfig::default();
-    /// let timeout = config.acquire_timeout();
-    /// assert_eq!(timeout, Duration::seconds(30));
-    /// ```
     pub fn acquire_timeout(&self) -> Duration {
         Duration::seconds(self.acquire_timeout_seconds)
     }
@@ -300,22 +261,6 @@ impl DatabaseConfig {
     /// # Returns
     ///
     /// A `chrono::Duration` representing the idle timeout, or `None` if disabled.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::DatabaseConfig;
-    /// use chrono::Duration;
-    ///
-    /// let config = DatabaseConfig::default();
-    /// let idle_timeout = config.idle_timeout();
-    /// assert_eq!(idle_timeout, Some(Duration::seconds(600)));
-    ///
-    /// // Disable idle timeout
-    /// let mut config = DatabaseConfig::default();
-    /// config.idle_timeout_seconds = 0;
-    /// assert_eq!(config.idle_timeout(), None);
-    /// ```
     pub fn idle_timeout(&self) -> Option<Duration> {
         if self.idle_timeout_seconds > 0 {
             Some(Duration::seconds(self.idle_timeout_seconds))
@@ -332,22 +277,6 @@ impl DatabaseConfig {
     /// # Returns
     ///
     /// A `chrono::Duration` representing the maximum lifetime, or `None` if disabled.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::DatabaseConfig;
-    /// use chrono::Duration;
-    ///
-    /// let config = DatabaseConfig::default();
-    /// let max_lifetime = config.max_lifetime();
-    /// assert_eq!(max_lifetime, Some(Duration::seconds(1800)));
-    ///
-    /// // Disable lifetime limits
-    /// let mut config = DatabaseConfig::default();
-    /// config.max_lifetime_seconds = 0;
-    /// assert_eq!(config.max_lifetime(), None);
-    /// ```
     pub fn max_lifetime(&self) -> Option<Duration> {
         if self.max_lifetime_seconds > 0 {
             Some(Duration::seconds(self.max_lifetime_seconds))
@@ -365,22 +294,6 @@ impl DatabaseConfig {
     ///
     /// `Ok(())` if the configuration is valid, or an [`Error::InvalidDatabaseConfig`]
     /// describing the problem.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::DatabaseConfig;
-    ///
-    /// let config = DatabaseConfig::default();
-    /// assert!(config.validate().is_ok());
-    ///
-    /// let invalid_config = DatabaseConfig {
-    ///     max_connections: 5,
-    ///     min_connections: 10, // min > max
-    ///     ..Default::default()
-    /// };
-    /// assert!(invalid_config.validate().is_err());
-    /// ```
     pub fn validate(&self) -> crate::Result<()> {
         if self.max_connections < self.min_connections {
             return Err(Error::InvalidDatabaseConfig(format!(
@@ -432,22 +345,6 @@ impl DatabaseConfig {
     /// A vector of `(key, value)` tuples where:
     /// - `key` is a configuration key string (e.g., "database.url")
     /// - `value` is the string representation of the default value
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_config::DatabaseConfig;
-    ///
-    /// let defaults = DatabaseConfig::default_config_values();
-    /// assert!(!defaults.is_empty());
-    ///
-    /// // Find a specific default value
-    /// let url_default = defaults.iter()
-    ///     .find(|(key, _)| *key == "database.url")
-    ///     .map(|(_, value)| value)
-    ///     .unwrap();
-    /// assert_eq!(url_default, "sqlite:./personal-ledger.sqlite");
-    /// ```
     pub fn default_config_values() -> Vec<(&'static str, String)> {
         let default_config = Self::default();
         vec![

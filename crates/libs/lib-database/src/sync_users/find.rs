@@ -16,7 +16,7 @@ impl crate::SyncUser {
     pub async fn find_by_username(
         username: &str,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let sync_user = sqlx::query_as!(
             crate::SyncUser,
             r#"
@@ -46,7 +46,7 @@ impl crate::SyncUser {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find the single SyncUser: ", level = "debug", skip(pool))]
-    pub async fn find_only(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Option<Self>> {
+    pub async fn find_only(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Option<Self>> {
         let sync_user = sqlx::query_as!(
             crate::SyncUser,
             r#"

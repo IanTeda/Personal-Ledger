@@ -16,7 +16,7 @@ impl crate::Budgets {
         skip(self, pool),
         fields(id = %self.id),
     )]
-    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"
                 UPDATE budgets
@@ -32,14 +32,14 @@ impl crate::Budgets {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Budget {} not found",
                 self.id
             )));
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Budget {} not found after update", self.id))
+            crate::Error::NotFound(format!("Budget {} not found after update", self.id))
         })
     }
 
@@ -53,7 +53,7 @@ impl crate::Budgets {
         id: lib_core::RowID,
         is_active: bool,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"UPDATE budgets SET is_active = ? WHERE id = ?"#,
             is_active,
@@ -63,14 +63,12 @@ impl crate::Budgets {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
-                "Budget {id} not found"
-            )));
+            return Err(crate::Error::NotFound(format!("Budget {id} not found")));
         }
 
-        Self::find_by_id(id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Budget {id} not found after update"))
-        })
+        Self::find_by_id(id, pool)
+            .await?
+            .ok_or_else(|| crate::Error::NotFound(format!("Budget {id} not found after update")))
     }
 }
 
@@ -108,7 +106,7 @@ mod tests {
     async fn update_errors_when_budget_missing(pool: SqlitePool) {
         let budget = crate::Budgets::mock(lib_core::RowID::new(), lib_core::RowID::new());
         let result = budget.update(&pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

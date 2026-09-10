@@ -17,15 +17,13 @@ impl crate::Units {
     pub async fn delete_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<()> {
+    ) -> crate::Result<()> {
         let result = sqlx::query!(r#"DELETE FROM units WHERE id = ?"#, id)
             .execute(pool)
             .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
-                "Unit {id} not found"
-            )));
+            return Err(crate::Error::NotFound(format!("Unit {id} not found")));
         }
 
         Ok(())
@@ -41,7 +39,7 @@ impl crate::Units {
     pub async fn delete_many_by_id(
         ids: &[domain::RowID],
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<()> {
+    ) -> crate::Result<()> {
         let mut tx = pool.begin().await?;
 
         for id in ids {
@@ -50,9 +48,7 @@ impl crate::Units {
                 .await?;
 
             if result.rows_affected() == 0 {
-                return Err(crate::DatabaseError::NotFound(format!(
-                    "Unit {id} not found"
-                )));
+                return Err(crate::Error::NotFound(format!("Unit {id} not found")));
             }
         }
 
@@ -82,7 +78,7 @@ mod tests {
     #[sqlx::test(migrations = "migrations/client")]
     async fn delete_by_id_errors_when_missing(pool: SqlitePool) {
         let result = crate::Units::delete_by_id(lib_core::RowID::new(), &pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

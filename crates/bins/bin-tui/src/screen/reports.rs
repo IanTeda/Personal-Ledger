@@ -346,7 +346,7 @@ impl ReportsScreen {
                     let progress = budget.current_progress(&pool).await?;
                     results.push((budget.id, progress));
                 }
-                Ok::<_, lib_database::DatabaseError>(results)
+                Ok::<_, lib_database::Error>(results)
             }
             .await;
             let action = match action {
@@ -378,7 +378,7 @@ impl ReportsScreen {
                     let account = lib_database::Accounts::find_by_id(check.account_id, &pool)
                         .await?
                         .ok_or_else(|| {
-                            lib_database::DatabaseError::NotFound(format!(
+                            lib_database::Error::NotFound(format!(
                                 "Account {} not found for Balance Check {}",
                                 check.account_id, check.id
                             ))
@@ -386,7 +386,7 @@ impl ReportsScreen {
                     let balance = account.balance_as_of(check.date, &pool).await?;
                     results.push((check.id, balance));
                 }
-                Ok::<_, lib_database::DatabaseError>(results)
+                Ok::<_, lib_database::Error>(results)
             }
             .await;
             let action = match action {
@@ -562,7 +562,7 @@ impl Screen for ReportsScreen {
                     let balance = account.balance(&pool).await?;
                     balances.push((account.id, balance));
                 }
-                Ok::<_, lib_database::DatabaseError>(balances)
+                Ok::<_, lib_database::Error>(balances)
             }
             .await;
             let action = match action {

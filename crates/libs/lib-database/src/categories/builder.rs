@@ -6,7 +6,7 @@
 //! creating category rows should be ergonomic and explicit.
 
 use super::Categories;
-use crate::DatabaseError;
+use crate::Error;
 
 /// Fluent builder for [`Categories`] rows.
 ///
@@ -182,14 +182,14 @@ impl CategoriesBuilder {
         self
     }
     /// Build the [`Categories`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<Categories> {
-        let name = self.name.ok_or(DatabaseError::CategoryBuilder(
+    pub fn build(self) -> crate::Result<Categories> {
+        let name = self.name.ok_or(Error::CategoryBuilder(
             "category name is required but was not set".to_string(),
         ))?;
-        let category_type = self.category_type.ok_or(DatabaseError::CategoryBuilder(
+        let category_type = self.category_type.ok_or(Error::CategoryBuilder(
             "category type is required but was not set".to_string(),
         ))?;
-        let code = self.code.ok_or(DatabaseError::CategoryBuilder(
+        let code = self.code.ok_or(Error::CategoryBuilder(
             "category code is required but was not set".to_string(),
         ))?;
 
@@ -270,7 +270,7 @@ mod tests {
             .build();
         assert_eq!(
             result.unwrap_err(),
-            DatabaseError::CategoryBuilder("category name is required but was not set".to_string())
+            Error::CategoryBuilder("category name is required but was not set".to_string())
         );
     }
 
@@ -279,7 +279,7 @@ mod tests {
         let result = CategoriesBuilder::new().with_name("Travel").build();
         assert_eq!(
             result.unwrap_err(),
-            DatabaseError::CategoryBuilder("category type is required but was not set".to_string())
+            Error::CategoryBuilder("category type is required but was not set".to_string())
         );
     }
 
@@ -291,7 +291,7 @@ mod tests {
             .build();
         assert_eq!(
             result.unwrap_err(),
-            DatabaseError::CategoryBuilder("category code is required but was not set".to_string())
+            Error::CategoryBuilder("category code is required but was not set".to_string())
         );
     }
 

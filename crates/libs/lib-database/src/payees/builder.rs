@@ -4,7 +4,7 @@
 //! [`crate::accounts::AccountsBuilder`]'s shape.
 
 use super::Payees;
-use crate::DatabaseError;
+use crate::Error;
 
 /// Fluent builder for [`Payees`] rows.
 #[derive(Debug, Default, Clone)]
@@ -65,8 +65,8 @@ impl PayeesBuilder {
     }
 
     /// Build the [`Payees`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<Payees> {
-        let name = self.name.ok_or(DatabaseError::PayeesBuilder(
+    pub fn build(self) -> crate::Result<Payees> {
+        let name = self.name.ok_or(Error::PayeesBuilder(
             "name is required but was not set".to_string(),
         ))?;
 

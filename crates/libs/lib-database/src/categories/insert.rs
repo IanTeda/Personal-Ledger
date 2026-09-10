@@ -205,7 +205,7 @@ impl crate::Categories {
             updated_on = % self.updated_on,
         ),
     )]
-    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         tracing::trace!(
             "Starting single category insert operation for category: {} (id: {})",
             self.code,
@@ -461,7 +461,7 @@ impl crate::Categories {
     pub async fn insert_many(
         categories: &[Self],
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let category_count = categories.len();
 
         if category_count == 0 {
@@ -740,7 +740,7 @@ impl crate::Categories {
     pub async fn insert_or_update(
         category: &Self,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         tracing::trace!(
             "Starting upsert operation for category: {} (id: {})",
             category.code,

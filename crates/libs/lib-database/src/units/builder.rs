@@ -4,7 +4,7 @@
 //! [`crate::categories::CategoriesBuilder`]'s shape.
 
 use super::Units;
-use crate::DatabaseError;
+use crate::Error;
 
 /// Fluent builder for [`Units`] rows.
 #[derive(Debug, Default, Clone)]
@@ -89,11 +89,11 @@ impl UnitsBuilder {
     }
 
     /// Build the [`Units`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<Units> {
-        let code = self.code.ok_or(DatabaseError::UnitsBuilder(
+    pub fn build(self) -> crate::Result<Units> {
+        let code = self.code.ok_or(Error::UnitsBuilder(
             "code is required but was not set".to_string(),
         ))?;
-        let name = self.name.ok_or(DatabaseError::UnitsBuilder(
+        let name = self.name.ok_or(Error::UnitsBuilder(
             "name is required but was not set".to_string(),
         ))?;
 

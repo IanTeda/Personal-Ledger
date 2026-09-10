@@ -22,7 +22,7 @@ impl crate::ChangeSet {
             client_id = % self.client_id,
         ),
     )]
-    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         tracing::trace!(
             "Starting Change Set insert for {}.{}.{} (id: {})",
             self.table_name,

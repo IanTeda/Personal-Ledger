@@ -4,7 +4,7 @@
 //! [`crate::units::UnitsBuilder`]'s shape.
 
 use super::Accounts;
-use crate::DatabaseError;
+use crate::Error;
 
 /// Fluent builder for [`Accounts`] rows.
 #[derive(Debug, Default, Clone)]
@@ -89,14 +89,14 @@ impl AccountsBuilder {
     }
 
     /// Build the [`Accounts`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<Accounts> {
-        let name = self.name.ok_or(DatabaseError::AccountsBuilder(
+    pub fn build(self) -> crate::Result<Accounts> {
+        let name = self.name.ok_or(Error::AccountsBuilder(
             "name is required but was not set".to_string(),
         ))?;
-        let unit_id = self.unit_id.ok_or(DatabaseError::AccountsBuilder(
+        let unit_id = self.unit_id.ok_or(Error::AccountsBuilder(
             "unit_id is required but was not set".to_string(),
         ))?;
-        let starting_balance = self.starting_balance.ok_or(DatabaseError::AccountsBuilder(
+        let starting_balance = self.starting_balance.ok_or(Error::AccountsBuilder(
             "starting_balance is required but was not set".to_string(),
         ))?;
 

@@ -22,10 +22,10 @@ impl crate::Payees {
         id: domain::RowID,
         new_name: &str,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         let current = Self::find_by_id(id, pool)
             .await?
-            .ok_or_else(|| crate::DatabaseError::NotFound(format!("Payee {id} not found")))?;
+            .ok_or_else(|| crate::Error::NotFound(format!("Payee {id} not found")))?;
 
         if current.name.eq_ignore_ascii_case(new_name) {
             return Ok(current);
@@ -50,9 +50,9 @@ impl crate::Payees {
 
         tx.commit().await?;
 
-        Self::find_by_id(id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Payee {id} not found after rename"))
-        })
+        Self::find_by_id(id, pool)
+            .await?
+            .ok_or_else(|| crate::Error::NotFound(format!("Payee {id} not found after rename")))
     }
 
     /// Activate or deactivate a Payee by id.
@@ -65,7 +65,7 @@ impl crate::Payees {
         id: domain::RowID,
         is_active: bool,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"UPDATE payees SET is_active = ? WHERE id = ?"#,
             is_active,
@@ -75,14 +75,12 @@ impl crate::Payees {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
-                "Payee {id} not found"
-            )));
+            return Err(crate::Error::NotFound(format!("Payee {id} not found")));
         }
 
-        Self::find_by_id(id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Payee {id} not found after update"))
-        })
+        Self::find_by_id(id, pool)
+            .await?
+            .ok_or_else(|| crate::Error::NotFound(format!("Payee {id} not found after update")))
     }
 }
 
@@ -131,7 +129,7 @@ mod tests {
     #[sqlx::test(migrations = "migrations/client")]
     async fn rename_errors_when_payee_missing(pool: SqlitePool) {
         let result = crate::Payees::rename(lib_core::RowID::new(), "New Name", &pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

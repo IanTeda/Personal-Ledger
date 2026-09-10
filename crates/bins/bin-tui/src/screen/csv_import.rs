@@ -130,10 +130,10 @@ impl CsvImportScreen {
     async fn run_import(
         account_id: lib_core::RowID,
         path: String,
-    ) -> lib_database::DatabaseResult<Vec<lib_database::BalanceChecks>> {
+    ) -> lib_database::Result<Vec<lib_database::BalanceChecks>> {
         let pool = db::connect().await?;
         let file = std::fs::File::open(&path).map_err(|err| {
-            lib_database::DatabaseError::CsvImport(format!("could not open {path}: {err}"))
+            lib_database::Error::CsvImport(format!("could not open {path}: {err}"))
         })?;
         lib_database::BalanceChecks::import_csv(account_id, file, &pool).await
     }

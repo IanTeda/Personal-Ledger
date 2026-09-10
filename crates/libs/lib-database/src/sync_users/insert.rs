@@ -17,7 +17,7 @@ impl crate::SyncUser {
         skip(self, pool),
         fields(id = % self.id, username = % self.username),
     )]
-    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         tracing::trace!(
             "Starting SyncUser insert for {} (id: {})",
             self.username,

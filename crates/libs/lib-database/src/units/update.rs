@@ -17,7 +17,7 @@ impl crate::Units {
         skip(self, pool),
         fields(id = %self.id, code = %self.code),
     )]
-    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"
                 UPDATE units
@@ -35,14 +35,14 @@ impl crate::Units {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Unit {} not found",
                 self.id
             )));
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Unit {} not found after update", self.id))
+            crate::Error::NotFound(format!("Unit {} not found after update", self.id))
         })
     }
 
@@ -56,7 +56,7 @@ impl crate::Units {
         id: domain::RowID,
         is_active: bool,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"UPDATE units SET is_active = ? WHERE id = ?"#,
             is_active,
@@ -66,14 +66,12 @@ impl crate::Units {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
-                "Unit {id} not found"
-            )));
+            return Err(crate::Error::NotFound(format!("Unit {id} not found")));
         }
 
-        Self::find_by_id(id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Unit {id} not found after update"))
-        })
+        Self::find_by_id(id, pool)
+            .await?
+            .ok_or_else(|| crate::Error::NotFound(format!("Unit {id} not found after update")))
     }
 }
 
@@ -97,7 +95,7 @@ mod tests {
     async fn update_errors_when_unit_missing(pool: SqlitePool) {
         let unit = crate::Units::mock();
         let result = unit.update(&pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

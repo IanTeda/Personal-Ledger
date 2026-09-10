@@ -22,7 +22,7 @@ impl crate::Categories {
         start: chrono::NaiveDate,
         end: chrono::NaiveDate,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<(lib_core::RowID, lib_core::Money)>> {
+    ) -> crate::Result<Vec<(lib_core::RowID, lib_core::Money)>> {
         let categories = Self::find_all_active(pool).await?;
 
         let mut totals = Vec::with_capacity(categories.len());

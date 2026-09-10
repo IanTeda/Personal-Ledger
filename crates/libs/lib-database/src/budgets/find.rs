@@ -16,7 +16,7 @@ impl crate::Budgets {
     pub async fn find_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let budget = sqlx::query_as!(
             crate::Budgets,
             r#"
@@ -45,7 +45,7 @@ impl crate::Budgets {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find all Budgets: ", level = "debug", skip(pool))]
-    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Vec<Self>> {
+    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let budgets = sqlx::query_as!(
             crate::Budgets,
             r#"
@@ -75,7 +75,7 @@ impl crate::Budgets {
     #[tracing::instrument(name = "Find all active Budgets: ", level = "debug", skip(pool))]
     pub async fn find_all_active(
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let budgets = sqlx::query_as!(
             crate::Budgets,
             r#"
@@ -108,7 +108,7 @@ impl crate::Budgets {
         offset: i64,
         limit: i64,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i64)> {
+    ) -> crate::Result<(Vec<Self>, i64)> {
         let budgets = sqlx::query_as!(
             crate::Budgets,
             r#"

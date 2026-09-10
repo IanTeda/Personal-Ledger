@@ -1,4 +1,3 @@
-
 //! # RPC Error Types
 //!
 //! This module defines error types used throughout the RPC layer of the Personal Ledger.
@@ -106,7 +105,7 @@ pub enum RpcError {
     ///
     /// **HTTP Status**: 500 Internal Server Error
     #[error("Database error: {0}")]
-    Database(#[from] lib_database::DatabaseError),
+    Database(#[from] lib_database::Error),
 
     /// Client provided an invalid argument to an RPC method.
     ///
@@ -154,10 +153,16 @@ pub enum RpcError {
 impl From<RpcError> for tonic::Status {
     fn from(err: RpcError) -> Self {
         match err {
-            RpcError::Connection(e) => tonic::Status::unavailable(format!("Connection error: {}", e)),
-            RpcError::Grpc(status) => tonic::Status::new(status.code(), status.message().to_string()),
+            RpcError::Connection(e) => {
+                tonic::Status::unavailable(format!("Connection error: {}", e))
+            }
+            RpcError::Grpc(status) => {
+                tonic::Status::new(status.code(), status.message().to_string())
+            }
             RpcError::Client(msg) => tonic::Status::internal(msg),
-            RpcError::Database(db_err) => tonic::Status::internal(format!("Database error: {}", db_err)),
+            RpcError::Database(db_err) => {
+                tonic::Status::internal(format!("Database error: {}", db_err))
+            }
             RpcError::InvalidArgument(msg) => tonic::Status::invalid_argument(msg),
             RpcError::Validation(msg) => tonic::Status::invalid_argument(msg),
         }

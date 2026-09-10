@@ -38,7 +38,7 @@ impl Error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::TelemetryResult;
+    use crate::Result;
     use fake::Fake;
     use fake::faker::lorem::en::Sentence;
 
@@ -85,14 +85,14 @@ mod tests {
     #[test]
     fn test_telemetry_result_type_alias() {
         // Test that TelemetryResult works as expected
-        let result: TelemetryResult<i32> = Ok(42);
+        let result: Result<i32> = Ok(42);
         assert!(result.is_ok());
         if let Ok(value) = result {
             assert_eq!(value, 42);
         }
 
         let error_message = Sentence(2..5).fake::<String>();
-        let error_result: TelemetryResult<i32> = Err(Error::generic(error_message));
+        let error_result: Result<i32> = Err(Error::generic(error_message));
         assert!(error_result.is_err());
     }
 }

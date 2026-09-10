@@ -21,10 +21,7 @@ impl crate::Accounts {
         skip(self, pool),
         fields(id = %self.id),
     )]
-    pub async fn balance(
-        &self,
-        pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<lib_core::Money> {
+    pub async fn balance(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<lib_core::Money> {
         let amounts = sqlx::query_scalar!(
             r#"SELECT amount AS "amount!: lib_core::Money" FROM transactions WHERE account_id = ?"#,
             self.id
@@ -56,7 +53,7 @@ impl crate::Accounts {
         &self,
         as_of: chrono::NaiveDate,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<lib_core::Money> {
+    ) -> crate::Result<lib_core::Money> {
         let amounts = sqlx::query_scalar!(
             r#"
                 SELECT amount AS "amount!: lib_core::Money"

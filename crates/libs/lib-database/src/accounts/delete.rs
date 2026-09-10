@@ -18,15 +18,13 @@ impl crate::Accounts {
     pub async fn delete_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<()> {
+    ) -> crate::Result<()> {
         let result = sqlx::query!(r#"DELETE FROM accounts WHERE id = ?"#, id)
             .execute(pool)
             .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
-                "Account {id} not found"
-            )));
+            return Err(crate::Error::NotFound(format!("Account {id} not found")));
         }
 
         Ok(())
@@ -61,6 +59,6 @@ mod tests {
     #[sqlx::test(migrations = "migrations/client")]
     async fn delete_by_id_errors_when_missing(pool: SqlitePool) {
         let result = crate::Accounts::delete_by_id(lib_core::RowID::new(), &pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 }

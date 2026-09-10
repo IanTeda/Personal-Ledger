@@ -17,10 +17,10 @@ impl crate::Payees {
     pub async fn resolve_or_create(
         name: &str,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         let name = name.trim();
         if name.is_empty() {
-            return Err(crate::DatabaseError::Validation(
+            return Err(crate::Error::Validation(
                 "Payee name must not be empty".to_string(),
             ));
         }
@@ -105,6 +105,6 @@ mod tests {
     #[sqlx::test(migrations = "migrations/client")]
     async fn resolve_or_create_rejects_a_blank_name(pool: SqlitePool) {
         let result = crate::Payees::resolve_or_create("   ", &pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::Validation(_))));
+        assert!(matches!(result, Err(crate::Error::Validation(_))));
     }
 }

@@ -73,12 +73,12 @@ impl CategoriesListScreen {
         self.error = None;
     }
 
-    async fn load() -> lib_database::DatabaseResult<Vec<lib_database::Categories>> {
+    async fn load() -> lib_database::Result<Vec<lib_database::Categories>> {
         let pool = db::connect().await?;
         lib_database::Categories::find_all(&pool).await
     }
 
-    async fn delete(id: lib_core::RowID) -> lib_database::DatabaseResult<()> {
+    async fn delete(id: lib_core::RowID) -> lib_database::Result<()> {
         let pool = db::connect().await?;
         lib_database::Categories::delete_by_id(id, &pool).await
     }

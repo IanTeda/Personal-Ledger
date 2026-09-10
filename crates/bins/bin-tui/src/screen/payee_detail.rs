@@ -109,7 +109,7 @@ impl PayeeDetailScreen {
         name: String,
         is_active: bool,
         original: Option<lib_database::Payees>,
-    ) -> lib_database::DatabaseResult<lib_database::Payees> {
+    ) -> lib_database::Result<lib_database::Payees> {
         let pool = db::connect().await?;
 
         let Some(id) = editing_id else {

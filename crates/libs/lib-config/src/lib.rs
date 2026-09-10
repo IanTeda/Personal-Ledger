@@ -12,6 +12,7 @@
 //! - [`database`] - Database connection pool configuration, re-exported by `lib-database`
 //! - [`sync_server`] - Sync-Server-only configuration (bind address), not read by Clients
 //! - [`tracing`] - Tracing/telemetry configuration
+//! - [`keybindings`] - Keyboard shortcut configuration, read by the TUI/Desktop Clients
 //! - [`cli`] - Shared `--config`/`-c` CLI argument, flattened into each binary's own parser
 //!
 //! ## Client vs Sync Server
@@ -26,15 +27,16 @@
 mod cli;
 mod database;
 mod error;
+mod keybindings;
 mod ledger;
 mod sync_server;
 mod tracing;
 
 /// Re-export settings [`Error`] type.
-pub use error::Error;
+pub(crate) use error::Error;
 
 /// Re-export [`Result`] type alias used across configuration module.
-pub type Result<T> = std::result::Result<T, Error>;
+pub(crate) type Result<T> = std::result::Result<T, Error>;
 
 /// The top-level application configuration type, shared by all three consumers.
 pub use ledger::LedgerConfig as Config;
@@ -50,6 +52,9 @@ pub use sync_server::SyncServerConfig;
 
 /// Telemetry configuration.
 pub use tracing::TracingConfig;
+
+/// Keyboard shortcut configuration, read by the TUI/Desktop Clients.
+pub use keybindings::KeyBindingConfig;
 
 /// Shared `--config`/`-c` CLI argument, flattened into each binary's own `clap::Parser`.
 pub use cli::ConfigArgs;

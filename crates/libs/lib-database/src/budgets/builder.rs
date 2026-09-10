@@ -4,7 +4,7 @@
 //! [`crate::accounts::AccountsBuilder`]'s shape.
 
 use super::Budgets;
-use crate::DatabaseError;
+use crate::Error;
 
 /// Fluent builder for [`Budgets`] rows.
 #[derive(Debug, Default, Clone)]
@@ -89,14 +89,14 @@ impl BudgetsBuilder {
     }
 
     /// Build the [`Budgets`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<Budgets> {
-        let category_id = self.category_id.ok_or(DatabaseError::BudgetsBuilder(
+    pub fn build(self) -> crate::Result<Budgets> {
+        let category_id = self.category_id.ok_or(Error::BudgetsBuilder(
             "category_id is required but was not set".to_string(),
         ))?;
-        let unit_id = self.unit_id.ok_or(DatabaseError::BudgetsBuilder(
+        let unit_id = self.unit_id.ok_or(Error::BudgetsBuilder(
             "unit_id is required but was not set".to_string(),
         ))?;
-        let limit_amount = self.limit_amount.ok_or(DatabaseError::BudgetsBuilder(
+        let limit_amount = self.limit_amount.ok_or(Error::BudgetsBuilder(
             "limit_amount is required but was not set".to_string(),
         ))?;
 

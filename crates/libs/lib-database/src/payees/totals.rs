@@ -26,7 +26,7 @@ impl crate::Payees {
         start: chrono::NaiveDate,
         end: chrono::NaiveDate,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<(lib_core::RowID, lib_core::Money)>> {
+    ) -> crate::Result<Vec<(lib_core::RowID, lib_core::Money)>> {
         let rows: Vec<(lib_core::RowID, lib_core::Money)> = match scope {
             crate::TransactionScope::Unit(unit_id) => sqlx::query!(
                 r#"

@@ -11,7 +11,7 @@ impl crate::Transactions {
     pub async fn find_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let transaction = sqlx::query_as!(
             crate::Transactions,
             r#"
@@ -42,7 +42,7 @@ impl crate::Transactions {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find all Transactions: ", level = "debug", skip(pool))]
-    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Vec<Self>> {
+    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let transactions = sqlx::query_as!(
             crate::Transactions,
             r#"
@@ -80,7 +80,7 @@ impl crate::Transactions {
         offset: i64,
         limit: i64,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i64)> {
+    ) -> crate::Result<(Vec<Self>, i64)> {
         let transactions = sqlx::query_as!(
             crate::Transactions,
             r#"

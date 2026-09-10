@@ -22,7 +22,7 @@ impl crate::SyncUser {
         id: domain::RowID,
         refresh_token_hash: Option<&str>,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"UPDATE sync_users SET refresh_token_hash = ? WHERE id = ?"#,
             refresh_token_hash,
@@ -32,9 +32,7 @@ impl crate::SyncUser {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
-                "SyncUser {id} not found"
-            )));
+            return Err(crate::Error::NotFound(format!("SyncUser {id} not found")));
         }
 
         let sync_user = sqlx::query_as!(
@@ -95,6 +93,6 @@ mod tests {
             crate::SyncUser::update_refresh_token_hash(lib_core::RowID::new(), Some("x"), &pool)
                 .await;
 
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 }

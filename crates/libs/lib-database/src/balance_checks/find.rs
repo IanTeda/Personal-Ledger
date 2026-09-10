@@ -16,7 +16,7 @@ impl crate::BalanceChecks {
     pub async fn find_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Option<Self>> {
+    ) -> crate::Result<Option<Self>> {
         let balance_check = sqlx::query_as!(
             crate::BalanceChecks,
             r#"
@@ -43,7 +43,7 @@ impl crate::BalanceChecks {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find all Balance Checks: ", level = "debug", skip(pool))]
-    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Vec<Self>> {
+    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let balance_checks = sqlx::query_as!(
             crate::BalanceChecks,
             r#"
@@ -77,7 +77,7 @@ impl crate::BalanceChecks {
         offset: i64,
         limit: i64,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<(Vec<Self>, i64)> {
+    ) -> crate::Result<(Vec<Self>, i64)> {
         let balance_checks = sqlx::query_as!(
             crate::BalanceChecks,
             r#"

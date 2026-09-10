@@ -13,7 +13,7 @@ impl crate::BalanceChecks {
         skip(self, pool),
         fields(id = %self.id, account_id = %self.account_id),
     )]
-    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let insert_result = sqlx::query!(
             r#"
                 INSERT INTO balance_checks (id, account_id, date, asserted_balance, created_on, updated_on)
@@ -46,10 +46,7 @@ impl crate::BalanceChecks {
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!(
-                "Balance Check {} not found after insert",
-                self.id
-            ))
+            crate::Error::NotFound(format!("Balance Check {} not found after insert", self.id))
         })
     }
 }

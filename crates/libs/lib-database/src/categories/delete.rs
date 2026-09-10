@@ -58,7 +58,7 @@ impl crate::Categories {
         ),
         err
     )]
-    pub async fn delete(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<()> {
+    pub async fn delete(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<()> {
         tracing::trace!(
             category_id = %self.id,
             category_code = %self.code,
@@ -80,7 +80,7 @@ impl crate::Categories {
                 category_id = %self.id,
                 "Category deletion failed - category not found"
             );
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Category with id {} not found",
                 self.id
             )));
@@ -140,7 +140,7 @@ impl crate::Categories {
     pub async fn delete_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<()> {
+    ) -> crate::Result<()> {
         tracing::trace!(
             category_id = %id,
             "Starting category deletion by ID operation"
@@ -161,7 +161,7 @@ impl crate::Categories {
                 category_id = %id,
                 "Category deletion by ID failed - category not found"
             );
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Category with id {} not found",
                 id
             )));
@@ -224,7 +224,7 @@ impl crate::Categories {
     pub async fn delete_many_by_id(
         ids: &[domain::RowID],
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<()> {
+    ) -> crate::Result<()> {
         let category_count = ids.len();
 
         if category_count == 0 {
@@ -262,7 +262,7 @@ impl crate::Categories {
                     category_id = %id,
                     "Category not found during bulk delete, rolling back transaction"
                 );
-                return Err(crate::DatabaseError::NotFound(format!(
+                return Err(crate::Error::NotFound(format!(
                     "Category with id {} not found",
                     id
                 )));
@@ -322,7 +322,7 @@ impl crate::Categories {
         fields(operation = "delete_inactive"),
         err
     )]
-    pub async fn delete_inactive(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<u64> {
+    pub async fn delete_inactive(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<u64> {
         tracing::trace!("Starting delete inactive categories operation");
 
         let delete_query = sqlx::query!(
@@ -385,7 +385,7 @@ impl crate::Categories {
     pub async fn delete_by_code(
         code: &str,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<()> {
+    ) -> crate::Result<()> {
         tracing::trace!(
             category_code = %code,
             "Starting category deletion by code operation"
@@ -406,7 +406,7 @@ impl crate::Categories {
                 category_code = %code,
                 "Category deletion by code failed - category not found"
             );
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Category with code '{}' not found",
                 code
             )));
@@ -465,7 +465,7 @@ impl crate::Categories {
     pub async fn delete_by_url_slug(
         slug: &domain::UrlSlug,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<()> {
+    ) -> crate::Result<()> {
         tracing::trace!(
             category_slug = %slug.as_str(),
             "Starting category deletion by URL slug operation"
@@ -488,7 +488,7 @@ impl crate::Categories {
                 category_slug = %slug.as_str(),
                 "Category deletion by URL slug failed - category not found"
             );
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Category with URL slug '{}' not found",
                 slug.as_str()
             )));
@@ -545,7 +545,7 @@ impl crate::Categories {
         fields(operation = "delete_all"),
         err
     )]
-    pub async fn delete_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<u64> {
+    pub async fn delete_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<u64> {
         tracing::trace!("Starting delete all categories operation");
 
         let delete_query = sqlx::query!(
@@ -623,7 +623,7 @@ mod tests {
 
             // Verify deletion by trying to delete again (should fail)
             let result2 = category.delete(&pool).await;
-            assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
+            assert!(matches!(result2, Err(crate::Error::NotFound(_))));
         }
 
         #[sqlx::test(migrations = "migrations/client")]
@@ -631,7 +631,7 @@ mod tests {
             let category = crate::Categories::mock();
 
             let result = category.delete(&pool).await;
-            assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+            assert!(matches!(result, Err(crate::Error::NotFound(_))));
         }
 
         #[sqlx::test(migrations = "migrations/client")]
@@ -644,7 +644,7 @@ mod tests {
 
             // Verify deletion by trying to delete again
             let result2 = crate::Categories::delete_by_id(id, &pool).await;
-            assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
+            assert!(matches!(result2, Err(crate::Error::NotFound(_))));
         }
 
         #[sqlx::test(migrations = "migrations/client")]
@@ -657,7 +657,7 @@ mod tests {
 
             // Verify deletion by trying to delete again
             let result2 = crate::Categories::delete_by_code(&category.code, &pool).await;
-            assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
+            assert!(matches!(result2, Err(crate::Error::NotFound(_))));
         }
 
         #[sqlx::test(migrations = "migrations/client")]
@@ -675,7 +675,7 @@ mod tests {
             let result2 =
                 crate::Categories::delete_by_url_slug(category.url_slug.as_ref().unwrap(), &pool)
                     .await;
-            assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
+            assert!(matches!(result2, Err(crate::Error::NotFound(_))));
         }
 
         /// Property-based test: Delete operations handle varied mock data
@@ -695,7 +695,7 @@ mod tests {
 
                 // Verify deletion
                 let result2 = crate::Categories::delete_by_id(category.id, &pool).await;
-                assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
+                assert!(matches!(result2, Err(crate::Error::NotFound(_))));
             }
         }
 
@@ -704,11 +704,11 @@ mod tests {
         async fn test_delete_by_code_edge_cases(pool: SqlitePool) {
             // Non-existent code
             let result = crate::Categories::delete_by_code("NON.EXISTENT.CODE", &pool).await;
-            assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+            assert!(matches!(result, Err(crate::Error::NotFound(_))));
 
             // Empty code (if allowed by validation, but should fail)
             let result = crate::Categories::delete_by_code("", &pool).await;
-            assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+            assert!(matches!(result, Err(crate::Error::NotFound(_))));
         }
 
         #[sqlx::test(migrations = "migrations/client")]
@@ -716,7 +716,7 @@ mod tests {
             // Non-existent slug
             let slug = lib_core::UrlSlug::from("non-existent-slug");
             let result = crate::Categories::delete_by_url_slug(&slug, &pool).await;
-            assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+            assert!(matches!(result, Err(crate::Error::NotFound(_))));
         }
     }
 
@@ -741,7 +741,7 @@ mod tests {
             // Verify all deleted by trying to delete again
             for &id in &ids {
                 let result2 = crate::Categories::delete_by_id(id, &pool).await;
-                assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
+                assert!(matches!(result2, Err(crate::Error::NotFound(_))));
             }
         }
 
@@ -754,7 +754,7 @@ mod tests {
             let ids = vec![valid_id, invalid_id];
             let result = crate::Categories::delete_many_by_id(&ids, &pool).await;
 
-            assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+            assert!(matches!(result, Err(crate::Error::NotFound(_))));
         }
 
         /// Edge case: Empty ID list
@@ -794,7 +794,7 @@ mod tests {
                 // Verify all deleted
                 for &id in &ids {
                     let result2 = crate::Categories::delete_by_id(id, &pool).await;
-                    assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
+                    assert!(matches!(result2, Err(crate::Error::NotFound(_))));
                 }
             }
         }

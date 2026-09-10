@@ -27,7 +27,7 @@ impl crate::Preferences {
     )]
     pub async fn get_or_create_default(
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         if let Some(existing) = Self::find_only(pool).await? {
             return Ok(existing);
         }
@@ -42,9 +42,7 @@ impl crate::Preferences {
                     .with_decimal_places(2)
                     .build()
                     .map_err(|e| {
-                        crate::DatabaseError::Generic(format!(
-                            "Failed to build default USD Unit: {e}"
-                        ))
+                        crate::Error::Generic(format!("Failed to build default USD Unit: {e}"))
                     })?;
                 usd.insert(pool).await?
             }
@@ -77,9 +75,9 @@ impl crate::Preferences {
             );
         }
 
-        Self::find_only(pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound("Preferences not found after insert".to_string())
-        })
+        Self::find_only(pool)
+            .await?
+            .ok_or_else(|| crate::Error::NotFound("Preferences not found after insert".to_string()))
     }
 
     /// Replace this Preferences row's editable fields (`default_unit_id`, `colour_theme`,
@@ -97,7 +95,7 @@ impl crate::Preferences {
         skip(self, pool),
         fields(id = %self.id),
     )]
-    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"
                 UPDATE preferences
@@ -114,17 +112,14 @@ impl crate::Preferences {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Preferences {} not found",
                 self.id
             )));
         }
 
         Self::find_only(pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!(
-                "Preferences {} not found after update",
-                self.id
-            ))
+            crate::Error::NotFound(format!("Preferences {} not found after update", self.id))
         })
     }
 }
@@ -206,7 +201,7 @@ mod tests {
     async fn update_errors_when_preferences_missing(pool: SqlitePool) {
         let preferences = crate::Preferences::mock();
         let result = preferences.update(&pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

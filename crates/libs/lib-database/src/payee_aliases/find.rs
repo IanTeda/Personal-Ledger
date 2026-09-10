@@ -9,7 +9,7 @@ impl crate::PayeeAliases {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find all Payee Aliases: ", level = "debug", skip(pool))]
-    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Vec<Self>> {
+    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let aliases = sqlx::query_as!(
             crate::PayeeAliases,
             r#"
@@ -34,7 +34,7 @@ impl crate::PayeeAliases {
     pub async fn find_all_for_payee(
         payee_id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let aliases = sqlx::query_as!(
             crate::PayeeAliases,
             r#"

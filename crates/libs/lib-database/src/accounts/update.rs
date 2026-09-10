@@ -19,7 +19,7 @@ impl crate::Accounts {
         skip(self, pool),
         fields(id = %self.id, name = %self.name),
     )]
-    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"
                 UPDATE accounts
@@ -35,14 +35,14 @@ impl crate::Accounts {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Account {} not found",
                 self.id
             )));
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Account {} not found after update", self.id))
+            crate::Error::NotFound(format!("Account {} not found after update", self.id))
         })
     }
 
@@ -56,7 +56,7 @@ impl crate::Accounts {
         id: domain::RowID,
         is_active: bool,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"UPDATE accounts SET is_active = ? WHERE id = ?"#,
             is_active,
@@ -66,14 +66,12 @@ impl crate::Accounts {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
-                "Account {id} not found"
-            )));
+            return Err(crate::Error::NotFound(format!("Account {id} not found")));
         }
 
-        Self::find_by_id(id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Account {id} not found after update"))
-        })
+        Self::find_by_id(id, pool)
+            .await?
+            .ok_or_else(|| crate::Error::NotFound(format!("Account {id} not found after update")))
     }
 }
 
@@ -102,7 +100,7 @@ mod tests {
     async fn update_errors_when_account_missing(pool: SqlitePool) {
         let account = crate::Accounts::mock(lib_core::RowID::new());
         let result = account.update(&pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

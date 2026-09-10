@@ -123,12 +123,12 @@ impl BudgetsListScreen {
         self.error = None;
     }
 
-    async fn load() -> lib_database::DatabaseResult<Vec<lib_database::Budgets>> {
+    async fn load() -> lib_database::Result<Vec<lib_database::Budgets>> {
         let pool = db::connect().await?;
         lib_database::Budgets::find_all_active(&pool).await
     }
 
-    async fn delete(id: lib_core::RowID) -> lib_database::DatabaseResult<()> {
+    async fn delete(id: lib_core::RowID) -> lib_database::Result<()> {
         let pool = db::connect().await?;
         lib_database::Budgets::delete_by_id(id, &pool).await
     }
@@ -136,7 +136,7 @@ impl BudgetsListScreen {
     /// Computes progress for every given Budget, in order, against one connection.
     async fn load_progress(
         budgets: Vec<lib_database::Budgets>,
-    ) -> lib_database::DatabaseResult<Vec<(lib_core::RowID, lib_database::BudgetProgress)>> {
+    ) -> lib_database::Result<Vec<(lib_core::RowID, lib_database::BudgetProgress)>> {
         let pool = db::connect().await?;
         let mut results = Vec::with_capacity(budgets.len());
         for budget in budgets {

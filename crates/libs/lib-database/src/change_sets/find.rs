@@ -25,7 +25,7 @@ impl crate::ChangeSet {
         since_id: Option<domain::RowID>,
         limit: i64,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    ) -> crate::Result<Vec<Self>> {
         let change_sets = match since_id {
             Some(since_id) => {
                 sqlx::query_as!(

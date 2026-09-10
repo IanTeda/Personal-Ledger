@@ -4,7 +4,7 @@
 //! [`crate::accounts::AccountsBuilder`]'s shape.
 
 use super::Transactions;
-use crate::DatabaseError;
+use crate::Error;
 
 /// Fluent builder for [`Transactions`] rows.
 #[derive(Debug, Default, Clone)]
@@ -102,17 +102,17 @@ impl TransactionsBuilder {
     }
 
     /// Build the [`Transactions`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<Transactions> {
-        let date = self.date.ok_or(DatabaseError::TransactionsBuilder(
+    pub fn build(self) -> crate::Result<Transactions> {
+        let date = self.date.ok_or(Error::TransactionsBuilder(
             "date is required but was not set".to_string(),
         ))?;
-        let amount = self.amount.ok_or(DatabaseError::TransactionsBuilder(
+        let amount = self.amount.ok_or(Error::TransactionsBuilder(
             "amount is required but was not set".to_string(),
         ))?;
-        let category_id = self.category_id.ok_or(DatabaseError::TransactionsBuilder(
+        let category_id = self.category_id.ok_or(Error::TransactionsBuilder(
             "category_id is required but was not set".to_string(),
         ))?;
-        let account_id = self.account_id.ok_or(DatabaseError::TransactionsBuilder(
+        let account_id = self.account_id.ok_or(Error::TransactionsBuilder(
             "account_id is required but was not set".to_string(),
         ))?;
 

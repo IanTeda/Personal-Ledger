@@ -16,7 +16,7 @@ impl crate::BalanceChecks {
         skip(self, pool),
         fields(id = %self.id),
     )]
-    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"
                 UPDATE balance_checks
@@ -31,17 +31,14 @@ impl crate::BalanceChecks {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Balance Check {} not found",
                 self.id
             )));
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!(
-                "Balance Check {} not found after update",
-                self.id
-            ))
+            crate::Error::NotFound(format!("Balance Check {} not found after update", self.id))
         })
     }
 }
@@ -78,6 +75,6 @@ mod tests {
     async fn update_errors_when_balance_check_missing(pool: SqlitePool) {
         let balance_check = crate::BalanceChecks::mock(lib_core::RowID::new());
         let result = balance_check.update(&pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 }

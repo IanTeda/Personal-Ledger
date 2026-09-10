@@ -5,7 +5,7 @@
 //! Client-side code assembling Change Sets from a local edit before pushing them.
 
 use super::ChangeSet;
-use crate::DatabaseError;
+use crate::Error;
 
 /// Fluent builder for [`ChangeSet`] rows.
 #[derive(Debug, Default, Clone)]
@@ -95,20 +95,20 @@ impl ChangeSetBuilder {
     }
 
     /// Build the [`ChangeSet`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<ChangeSet> {
-        let table_name = self.table_name.ok_or(DatabaseError::ChangeSetBuilder(
+    pub fn build(self) -> crate::Result<ChangeSet> {
+        let table_name = self.table_name.ok_or(Error::ChangeSetBuilder(
             "table_name is required but was not set".to_string(),
         ))?;
-        let row_id = self.row_id.ok_or(DatabaseError::ChangeSetBuilder(
+        let row_id = self.row_id.ok_or(Error::ChangeSetBuilder(
             "row_id is required but was not set".to_string(),
         ))?;
-        let field_name = self.field_name.ok_or(DatabaseError::ChangeSetBuilder(
+        let field_name = self.field_name.ok_or(Error::ChangeSetBuilder(
             "field_name is required but was not set".to_string(),
         ))?;
-        let hlc = self.hlc.ok_or(DatabaseError::ChangeSetBuilder(
+        let hlc = self.hlc.ok_or(Error::ChangeSetBuilder(
             "hlc is required but was not set".to_string(),
         ))?;
-        let client_id = self.client_id.ok_or(DatabaseError::ChangeSetBuilder(
+        let client_id = self.client_id.ok_or(Error::ChangeSetBuilder(
             "client_id is required but was not set".to_string(),
         ))?;
 

@@ -12,13 +12,13 @@ impl crate::BalanceChecks {
     pub async fn delete_by_id(
         id: domain::RowID,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<()> {
+    ) -> crate::Result<()> {
         let result = sqlx::query!(r#"DELETE FROM balance_checks WHERE id = ?"#, id)
             .execute(pool)
             .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Balance Check {id} not found"
             )));
         }
@@ -63,6 +63,6 @@ mod tests {
     #[sqlx::test(migrations = "migrations/client")]
     async fn delete_by_id_errors_when_missing(pool: SqlitePool) {
         let result = crate::BalanceChecks::delete_by_id(lib_core::RowID::new(), &pool).await;
-        assert!(matches!(result, Err(crate::DatabaseError::NotFound(_))));
+        assert!(matches!(result, Err(crate::Error::NotFound(_))));
     }
 }

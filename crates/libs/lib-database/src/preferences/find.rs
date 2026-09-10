@@ -10,7 +10,7 @@ impl crate::Preferences {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find the Preferences row: ", level = "debug", skip(pool))]
-    pub async fn find_only(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Option<Self>> {
+    pub async fn find_only(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Option<Self>> {
         let preferences = sqlx::query_as!(
             crate::Preferences,
             r#"

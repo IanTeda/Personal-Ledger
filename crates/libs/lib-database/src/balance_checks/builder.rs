@@ -4,7 +4,7 @@
 //! [`crate::accounts::AccountsBuilder`]'s shape.
 
 use super::BalanceChecks;
-use crate::DatabaseError;
+use crate::Error;
 
 /// Fluent builder for [`BalanceChecks`] rows.
 #[derive(Debug, Default, Clone)]
@@ -73,18 +73,16 @@ impl BalanceChecksBuilder {
     }
 
     /// Build the [`BalanceChecks`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<BalanceChecks> {
-        let account_id = self.account_id.ok_or(DatabaseError::BalanceChecksBuilder(
+    pub fn build(self) -> crate::Result<BalanceChecks> {
+        let account_id = self.account_id.ok_or(Error::BalanceChecksBuilder(
             "account_id is required but was not set".to_string(),
         ))?;
-        let date = self.date.ok_or(DatabaseError::BalanceChecksBuilder(
+        let date = self.date.ok_or(Error::BalanceChecksBuilder(
             "date is required but was not set".to_string(),
         ))?;
-        let asserted_balance = self
-            .asserted_balance
-            .ok_or(DatabaseError::BalanceChecksBuilder(
-                "asserted_balance is required but was not set".to_string(),
-            ))?;
+        let asserted_balance = self.asserted_balance.ok_or(Error::BalanceChecksBuilder(
+            "asserted_balance is required but was not set".to_string(),
+        ))?;
 
         Ok(BalanceChecks {
             // clippy's unwrap_or_default suggestion is WRONG here: RowID::default()

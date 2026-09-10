@@ -4,7 +4,7 @@
 //! [`crate::categories::CategoriesBuilder`]'s shape.
 
 use super::SyncUser;
-use crate::DatabaseError;
+use crate::Error;
 
 /// Fluent builder for [`SyncUser`] rows.
 #[derive(Debug, Default, Clone)]
@@ -73,11 +73,11 @@ impl SyncUserBuilder {
     }
 
     /// Build the [`SyncUser`], returning an error when required fields are missing.
-    pub fn build(self) -> crate::DatabaseResult<SyncUser> {
-        let username = self.username.ok_or(DatabaseError::SyncUserBuilder(
+    pub fn build(self) -> crate::Result<SyncUser> {
+        let username = self.username.ok_or(Error::SyncUserBuilder(
             "username is required but was not set".to_string(),
         ))?;
-        let password_hash = self.password_hash.ok_or(DatabaseError::SyncUserBuilder(
+        let password_hash = self.password_hash.ok_or(Error::SyncUserBuilder(
             "password_hash is required but was not set".to_string(),
         ))?;
 

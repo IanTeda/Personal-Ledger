@@ -15,7 +15,7 @@ impl crate::Accounts {
         skip(self, pool),
         fields(id = %self.id, name = %self.name),
     )]
-    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let insert_result = sqlx::query!(
             r#"
                 INSERT INTO accounts (id, name, account_type, unit_id, starting_balance, is_active, created_on, updated_on)
@@ -50,7 +50,7 @@ impl crate::Accounts {
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Account {} not found after insert", self.id))
+            crate::Error::NotFound(format!("Account {} not found after insert", self.id))
         })
     }
 }

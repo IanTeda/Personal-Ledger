@@ -39,6 +39,7 @@
 //! ```ini
 //! [telemetry]
 //! telemetry_level = "debug"
+//! log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 //!
 //! [database]
 //! url = "sqlite:./personal-ledger.db"
@@ -51,6 +52,12 @@
 //! # Only read by bin-sync-server, via `LedgerConfig::parse_for_sync_server`.
 //! [sync-server]
 //! bind_address = "0.0.0.0:50051"
+//!
+//! # Only read by bin-tui/bin-desktop; merged into the Sync Server's config but never used.
+//! [keybindings]
+//! super_key = "ctrl"
+//! quit = "ctrl+c"
+//! back = "esc"
 //! ```
 
 use std::path::{Path, PathBuf};
@@ -70,9 +77,14 @@ pub struct LedgerConfig {
     #[serde(alias = "Database")]
     pub database: crate::DatabaseConfig,
 
+    /// Keyboard shortcut configuration, read by the TUI/Desktop Clients. Populated from the
+    /// `[keybindings]` section; the Sync Server merges its defaults in but never reads them.
+    #[serde(alias = "Keybindings", alias = "KeyBindings")]
+    pub keybindings: crate::KeyBindingConfig,
+
     /// Sync-Server-only settings. Populated from the `[sync-server]` section (see
     /// [`Self::normalise_ini`] for the `-`/`_` translation); never read by Clients.
-    #[serde(alias = "SyncServer", alias = "Sync-Server")]
+    #[serde(alias = "SyncServer", alias = "Sync-Server", alias = "sync-server")]
     pub sync_server: crate::SyncServerConfig,
 
     /// Telemetry configuration.
@@ -98,7 +110,7 @@ impl LedgerConfig {
     /// # Errors
     /// Returns an error if any present config file can't be read/parsed, or if the merged
     /// result doesn't deserialize into a valid `LedgerConfig`.
-    pub fn parse(config_file: Option<&Path>) -> super::Result<LedgerConfig> {
+    pub fn parse(config_file: Option<&Path>) -> crate::Result<LedgerConfig> {
         let mut config_builder = Self::defaults_builder()?;
 
         if let Some(system_config) = Self::get_system_config_path().filter(|p| p.exists()) {
@@ -133,7 +145,7 @@ impl LedgerConfig {
     /// # Errors
     /// Returns an error if the explicit config file (when given) can't be read/parsed, or if
     /// the merged result doesn't deserialize into a valid `LedgerConfig`.
-    pub fn parse_for_sync_server(config_file: Option<&Path>) -> super::Result<LedgerConfig> {
+    pub fn parse_for_sync_server(config_file: Option<&Path>) -> crate::Result<LedgerConfig> {
         let config_builder = Self::defaults_builder()?;
         let config_builder = Self::add_explicit_and_env(config_builder, config_file)?;
         Self::build(config_builder)
@@ -141,7 +153,7 @@ impl LedgerConfig {
 
     /// Seed a fresh layered builder with every section's built-in defaults (lowest
     /// precedence) -- shared by both [`Self::parse`] and [`Self::parse_for_sync_server`].
-    fn defaults_builder() -> super::Result<ConfigBuilder<DefaultState>> {
+    fn defaults_builder() -> crate::Result<ConfigBuilder<DefaultState>> {
         let mut config_builder = Config::builder();
 
         for (key, value) in crate::TracingConfig::default_config_values() {
@@ -156,6 +168,10 @@ impl LedgerConfig {
             config_builder = config_builder.set_default(key, value)?;
         }
 
+        for (key, value) in crate::KeyBindingConfig::default_config_values() {
+            config_builder = config_builder.set_default(key, value)?;
+        }
+
         Ok(config_builder)
     }
 
@@ -165,7 +181,7 @@ impl LedgerConfig {
     fn add_explicit_and_env(
         config_builder: ConfigBuilder<DefaultState>,
         config_file: Option<&Path>,
-    ) -> super::Result<ConfigBuilder<DefaultState>> {
+    ) -> crate::Result<ConfigBuilder<DefaultState>> {
         let mut config_builder = config_builder;
 
         if let Some(explicit_config) = config_file.filter(|p| p.exists()) {
@@ -181,7 +197,7 @@ impl LedgerConfig {
     fn add_ini_source(
         config_builder: ConfigBuilder<DefaultState>,
         path: &Path,
-    ) -> super::Result<ConfigBuilder<DefaultState>> {
+    ) -> crate::Result<ConfigBuilder<DefaultState>> {
         let normalised = Self::normalise_ini(path)?;
         Ok(config_builder.add_source(config::File::from_str(&normalised, config::FileFormat::Ini)))
     }
@@ -190,9 +206,9 @@ impl LedgerConfig {
     /// `[telemetry]` are equivalent) and with `-` translated to `_` (so `[sync-server]`
     /// matches the `sync_server` field/serde alias -- INI section names commonly use
     /// hyphens, but Rust field names can't).
-    fn normalise_ini(p: &Path) -> super::Result<String> {
+    fn normalise_ini(p: &Path) -> crate::Result<String> {
         let content = std::fs::read_to_string(p).map_err(|e| {
-            super::Error::Validation(format!("Could not read config file {:?}: {}", p, e))
+            crate::Error::Validation(format!("Could not read config file {:?}: {}", p, e))
         })?;
 
         let normalised = content
@@ -213,7 +229,7 @@ impl LedgerConfig {
     }
 
     /// Build and deserialize the layered `config::Config` into a `LedgerConfig`.
-    fn build(config_builder: ConfigBuilder<DefaultState>) -> super::Result<LedgerConfig> {
+    fn build(config_builder: ConfigBuilder<DefaultState>) -> crate::Result<LedgerConfig> {
         let config = config_builder.build()?;
         let ledger_config: LedgerConfig = config.try_deserialize()?;
         Ok(ledger_config)
@@ -299,9 +315,9 @@ impl LedgerConfig {
     /// that contains a config file.
     ///
     /// Returns an error if the current directory cannot be determined.
-    fn get_cwd_config_path() -> Result<PathBuf, super::Error> {
+    fn get_cwd_config_path() -> crate::Result<PathBuf> {
         let cwd = std::env::current_dir().map_err(|e| {
-            super::Error::Validation(format!(
+            crate::Error::Validation(format!(
                 "Could not get current directory for config loading: {}",
                 e
             ))
@@ -325,6 +341,11 @@ impl LedgerConfig {
     /// Get the Sync-Server-only configuration.
     pub fn sync_server_config(&self) -> &crate::SyncServerConfig {
         &self.sync_server
+    }
+
+    /// Get the key binding configuration.
+    pub fn keybindings_config(&self) -> &crate::KeyBindingConfig {
+        &self.keybindings
     }
 }
 

@@ -48,7 +48,14 @@ pub enum Error {
     /// values, missing required fields, or security misconfigurations with
     /// the telemetry.
     #[error("Invalid telemetry config: {0}")]
-    InvalidTelemetryConfig(String),
+    InvalidTracingConfig(String),
+
+    /// Error indicating an invalid key binding configuration.
+    ///
+    /// This is used when two commands are bound to the same key, leaving one
+    /// of them unreachable.
+    #[error("Invalid key binding config: {0}")]
+    InvalidKeyBindingConfig(String),
 }
 
 #[cfg(test)]

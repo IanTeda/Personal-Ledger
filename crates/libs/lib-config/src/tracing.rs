@@ -10,6 +10,7 @@
 //!
 //! The `TracingConfig` struct encapsulates all tracing-related config:
 //! - **Log Level**: Controls the verbosity of tracing output (OFF, ERROR, WARN, INFO, DEBUG, TRACE)
+//! - **Log File Path**: Optional file that tracing output is also written to, alongside the console
 //! - **Default Behavior**: Provides sensible defaults for production use
 
 /// Default enabled state if none is provided.
@@ -56,11 +57,16 @@ pub struct TracingConfig {
     /// - `INFO`: General information (default)
     /// - `DEBUG`: Detailed debugging information
     /// - `TRACE`: Very detailed execution tracing
-    #[serde(rename = "telemetry_level")]
     pub level: lib_tracing::Levels,
 
     /// Whether to show configuration at startup.
     pub show_config_at_startup: bool,
+
+    /// Optional path to a file that tracing output should also be written to, in addition
+    /// to the console. Defaults to `None` (console output only) when the key is absent
+    /// from every configuration source.
+    #[serde(default)]
+    pub log_file_path: Option<std::path::PathBuf>,
 }
 
 impl Default for TracingConfig {
@@ -69,12 +75,14 @@ impl Default for TracingConfig {
     /// The default configuration uses `INFO` level logging, which provides
     /// a good balance between observability and performance for production use.
     /// This level shows general application flow, important events, and
-    /// non-critical warnings while avoiding excessive detail.
+    /// non-critical warnings while avoiding excessive detail. File logging is
+    /// disabled by default.
     fn default() -> Self {
         Self {
             enabled: DEFAULT_ENABLED,
             level: DEFAULT_TRACING_LEVEL,
             show_config_at_startup: SHOW_CONFIG_AT_STARTUP,
+            log_file_path: None,
         }
     }
 }
@@ -92,6 +100,14 @@ impl TracingConfig {
     /// to `lib_tracing::init()`.
     pub fn telemetry_level(&self) -> lib_tracing::Levels {
         self.level
+    }
+
+    /// Get the configured log file path, if any.
+    ///
+    /// Returns `None` when file logging is disabled, in which case
+    /// [`lib_tracing::init`] only writes telemetry to the console.
+    pub fn log_file_path(&self) -> Option<&std::path::Path> {
+        self.log_file_path.as_deref()
     }
 
     /// Get the default configuration values as key-value pairs, for seeding a layered
@@ -123,6 +139,37 @@ mod tests {
         assert!(config.enabled);
         assert_eq!(config.level, Levels::INFO);
         assert!(!config.show_config_at_startup);
+        assert_eq!(config.log_file_path(), None);
+    }
+
+    #[test]
+    fn log_file_path_returns_configured_path() {
+        let config = TracingConfig {
+            log_file_path: Some(std::path::PathBuf::from("/var/log/personal-ledger.log")),
+            ..Default::default()
+        };
+        assert_eq!(
+            config.log_file_path(),
+            Some(std::path::Path::new("/var/log/personal-ledger.log"))
+        );
+    }
+
+    #[test]
+    fn deserialize_without_log_file_path_defaults_to_none() {
+        let json =
+            r#"{"enabled": true, "telemetry_level": "info", "show_config_at_startup": false}"#;
+        let config: TracingConfig = serde_json::from_str(json).expect("deserialize TracingConfig");
+        assert_eq!(config.log_file_path(), None);
+    }
+
+    #[test]
+    fn deserialize_with_explicit_log_file_path() {
+        let json = r#"{"enabled": true, "telemetry_level": "info", "show_config_at_startup": false, "log_file_path": "personal-ledger.log"}"#;
+        let config: TracingConfig = serde_json::from_str(json).expect("deserialize TracingConfig");
+        assert_eq!(
+            config.log_file_path(),
+            Some(std::path::Path::new("personal-ledger.log"))
+        );
     }
 
     #[test]
@@ -131,6 +178,7 @@ mod tests {
             enabled: true,
             level: Levels::DEBUG,
             show_config_at_startup: false,
+            log_file_path: None,
         };
         assert_eq!(config.telemetry_level(), Levels::DEBUG);
     }
@@ -149,6 +197,7 @@ mod tests {
                 enabled: true,
                 level,
                 show_config_at_startup: false,
+                log_file_path: None,
             };
             assert_eq!(config.telemetry_level(), level);
         }
@@ -160,6 +209,7 @@ mod tests {
             enabled: false,
             level: Levels::TRACE,
             show_config_at_startup: true,
+            log_file_path: None,
         };
         assert_eq!(config.clone(), config);
     }
@@ -224,6 +274,7 @@ mod tests {
             enabled: true,
             level: Levels::WARN,
             show_config_at_startup: true,
+            log_file_path: None,
         };
         let json = serde_json::to_string(&config).expect("serialize TracingConfig");
         let deserialized: TracingConfig =

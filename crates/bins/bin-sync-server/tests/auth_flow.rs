@@ -18,7 +18,8 @@ use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use lib_database::{DatabaseConfig, DatabaseConnection, SyncUser};
+use lib_config::DatabaseConfig;
+use lib_database::{DatabaseConnection, SyncUser};
 use lib_rpc::{
     PullRequest, SyncService, SyncServiceClient, SyncServiceServer, UtilitiesService,
     UtilitiesServiceServer,

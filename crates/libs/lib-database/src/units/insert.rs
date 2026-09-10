@@ -14,7 +14,7 @@ impl crate::Units {
         skip(self, pool),
         fields(id = %self.id, code = %self.code),
     )]
-    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
+    pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         let insert_result = sqlx::query!(
             r#"
                 INSERT INTO units (id, code, name, unit_kind, decimal_places, is_active, created_on, updated_on)
@@ -49,7 +49,7 @@ impl crate::Units {
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Unit {} not found after insert", self.id))
+            crate::Error::NotFound(format!("Unit {} not found after insert", self.id))
         })
     }
 }

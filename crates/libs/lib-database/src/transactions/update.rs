@@ -18,33 +18,28 @@ impl crate::Transactions {
     /// would move it to an Account denominated in a different Unit, or
     /// [`crate::DatabaseError::NotFound`] if no Transaction exists with this `id`.
     #[tracing::instrument(name = "Update Transaction: ", level = "debug", skip(self, pool), fields(id = %self.id))]
-    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
-        let current = Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Transaction {} not found", self.id))
-        })?;
+    pub async fn update(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
+        let current = Self::find_by_id(self.id, pool)
+            .await?
+            .ok_or_else(|| crate::Error::NotFound(format!("Transaction {} not found", self.id)))?;
 
         if current.status == domain::TransactionStatus::Reconciled {
-            return Err(crate::DatabaseError::TransactionReconciled(
-                self.id.to_string(),
-            ));
+            return Err(crate::Error::TransactionReconciled(self.id.to_string()));
         }
 
         if self.account_id != current.account_id {
             let old_account = crate::Accounts::find_by_id(current.account_id, pool)
                 .await?
                 .ok_or_else(|| {
-                    crate::DatabaseError::NotFound(format!(
-                        "Account {} not found",
-                        current.account_id
-                    ))
+                    crate::Error::NotFound(format!("Account {} not found", current.account_id))
                 })?;
             let new_account = crate::Accounts::find_by_id(self.account_id, pool)
                 .await?
                 .ok_or_else(|| {
-                    crate::DatabaseError::NotFound(format!("Account {} not found", self.account_id))
+                    crate::Error::NotFound(format!("Account {} not found", self.account_id))
                 })?;
             if old_account.unit_id != new_account.unit_id {
-                return Err(crate::DatabaseError::TransactionCrossUnitMove(
+                return Err(crate::Error::TransactionCrossUnitMove(
                     self.id.to_string(),
                     self.account_id.to_string(),
                 ));
@@ -69,17 +64,14 @@ impl crate::Transactions {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Transaction {} not found",
                 self.id
             )));
         }
 
         Self::find_by_id(self.id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!(
-                "Transaction {} not found after update",
-                self.id
-            ))
+            crate::Error::NotFound(format!("Transaction {} not found after update", self.id))
         })
     }
 
@@ -93,7 +85,7 @@ impl crate::Transactions {
         id: domain::RowID,
         status: domain::TransactionStatus,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"UPDATE transactions SET status = ? WHERE id = ?"#,
             status,
@@ -103,13 +95,13 @@ impl crate::Transactions {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Transaction {id} not found"
             )));
         }
 
         Self::find_by_id(id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Transaction {id} not found after update"))
+            crate::Error::NotFound(format!("Transaction {id} not found after update"))
         })
     }
 
@@ -123,7 +115,7 @@ impl crate::Transactions {
         id: domain::RowID,
         is_flagged: bool,
         pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Self> {
+    ) -> crate::Result<Self> {
         let result = sqlx::query!(
             r#"UPDATE transactions SET is_flagged = ? WHERE id = ?"#,
             is_flagged,
@@ -133,13 +125,13 @@ impl crate::Transactions {
         .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!(
+            return Err(crate::Error::NotFound(format!(
                 "Transaction {id} not found"
             )));
         }
 
         Self::find_by_id(id, pool).await?.ok_or_else(|| {
-            crate::DatabaseError::NotFound(format!("Transaction {id} not found after update"))
+            crate::Error::NotFound(format!("Transaction {id} not found after update"))
         })
     }
 }
@@ -190,7 +182,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(crate::DatabaseError::TransactionReconciled(_))
+            Err(crate::Error::TransactionReconciled(_))
         ));
     }
 
@@ -262,7 +254,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(crate::DatabaseError::TransactionCrossUnitMove(_, _))
+            Err(crate::Error::TransactionCrossUnitMove(_, _))
         ));
     }
 
