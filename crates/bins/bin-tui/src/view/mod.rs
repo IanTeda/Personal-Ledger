@@ -13,6 +13,7 @@ pub mod dashboard;
 pub mod help;
 pub mod payees;
 pub mod reports;
+pub mod settings;
 pub mod transactions;
 pub mod units;
 
@@ -89,6 +90,10 @@ pub enum Action {
     /// `g r`, or `Enter` on the command popup's `report list` command — opens the placeholder
     /// Reports view.
     OpenReports,
+    /// `g s`, or `Enter` on the command popup's `settings` command — opens the Settings view
+    /// (`docs/ux/tui/settings/README.md` §4a — the "at rest" wireframe only; the
+    /// database-backed registry, in-place editor and base-unit guard are later work).
+    OpenSettings,
     /// `g t`, or `Enter` on the command popup's `txn recent` command — opens the placeholder
     /// Transactions view.
     OpenTransactions,

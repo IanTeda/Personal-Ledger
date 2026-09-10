@@ -17,8 +17,7 @@ use lib_tracing as telemetry;
 
 /// Bootstrap account credentials for this feasibility cycle -- ADR-0010 fixes the
 /// Sync Server's user store at exactly one account; real credential provisioning is
-/// deliberately deferred, the same "config surface still undecided" scope call this
-/// file already made for the bind address.
+/// deliberately deferred as out of scope for this cycle.
 const BOOTSTRAP_USERNAME: &str = "admin";
 const BOOTSTRAP_PASSWORD: &str = "change-me";
 
@@ -70,9 +69,7 @@ async fn main() -> SyncServerResult<()> {
         signing_key: SecretString::from(signing_key_material),
     };
 
-    // Placeholder bind address -- the Sync Server's own config surface (host/port, TLS) is
-    // still undecided.
-    let addr: std::net::SocketAddr = "0.0.0.0:50051".parse()?;
+    let addr: std::net::SocketAddr = config.sync_server_config().bind_address().parse()?;
 
     // `SyncService` (Push/Pull) is behind the auth interceptor -- FC-SYNC-007 protects
     // the sync endpoints; `UtilitiesService`/Ping stays open as a basic liveness check.

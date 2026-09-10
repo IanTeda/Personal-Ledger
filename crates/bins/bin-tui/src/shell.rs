@@ -27,7 +27,8 @@ use crate::{
     view::{
         Action, View, accounts::AccountsView, balance_checks::BalanceChecksView,
         budgets::BudgetsView, categories::CategoriesView, dashboard::DashboardView, help::HelpView,
-        payees::PayeesView, reports::ReportsView, transactions::TransactionsView, units::UnitsView,
+        payees::PayeesView, reports::ReportsView, settings::SettingsView,
+        transactions::TransactionsView, units::UnitsView,
     },
 };
 
@@ -151,6 +152,7 @@ impl Shell {
                         KeyCode::Char('k') => Some(Action::OpenBalanceChecks),
                         KeyCode::Char('p') => Some(Action::OpenPayees),
                         KeyCode::Char('r') => Some(Action::OpenReports),
+                        KeyCode::Char('s') => Some(Action::OpenSettings),
                         KeyCode::Char('t') => Some(Action::OpenTransactions),
                         KeyCode::Char('u') => Some(Action::OpenUnits),
                         _ => None,
@@ -207,6 +209,7 @@ impl Shell {
                 Some("payee list") => Some(Action::OpenPayees),
                 Some("quit") => Some(Action::Quit),
                 Some("report list") => Some(Action::OpenReports),
+                Some("settings") => Some(Action::OpenSettings),
                 Some("txn recent") => Some(Action::OpenTransactions),
                 _ => None,
             },
@@ -267,6 +270,7 @@ impl Shell {
             Action::OpenHelp => self.open(HelpView::new()),
             Action::OpenPayees => self.open(PayeesView::new()),
             Action::OpenReports => self.open(ReportsView::new()),
+            Action::OpenSettings => self.open(SettingsView::new()),
             Action::OpenTransactions => self.open(TransactionsView::new()),
         }
     }
@@ -767,6 +771,7 @@ mod tests {
             ('k', "Balance Checks"),
             ('p', "Payees"),
             ('r', "Reports"),
+            ('s', "Settings"),
             ('t', "Transactions"),
             ('u', "Units & Prices"),
         ];
@@ -880,6 +885,7 @@ mod tests {
             ("help", "Help"),
             ("payee list", "Payees"),
             ("report list", "Reports"),
+            ("settings", "Settings"),
             ("txn recent", "Transactions"),
         ];
 

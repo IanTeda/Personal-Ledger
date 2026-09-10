@@ -7,8 +7,8 @@
 //! This is data only: no action registry, no `:help`/footer/keymap generation, and (bar
 //! `Shell` special-casing `Enter` on each domain's "list" command — `unit`, `dashboard`,
 //! `account list`, `check list`, `budget list`, `category list`, `help`, `payee list`,
-//! `quit`, `report list`, `txn recent` — every one of which now has a real, if still
-//! wireframe-stage, effect behind it) no key dispatch. `Chord` models each command's eventual
+//! `quit`, `report list`, `settings`, `txn recent` — every one of which now has a real, if
+//! still wireframe-stage, effect behind it) no key dispatch. `Chord` models each command's eventual
 //! binding as typed data so a later dispatch ticket is additive (it consumes the same value
 //! already sitting here) rather than needing its own binding representation.
 
@@ -21,6 +21,7 @@ mod help;
 mod payees;
 mod quit;
 mod reports;
+mod settings;
 mod transactions;
 mod units;
 
@@ -108,6 +109,10 @@ pub const DOMAINS: &[Domain] = &[
     Domain {
         name: "Reports",
         commands: reports::COMMANDS,
+    },
+    Domain {
+        name: "Settings",
+        commands: settings::COMMANDS,
     },
     Domain {
         name: "Transactions",
