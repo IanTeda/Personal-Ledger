@@ -19,7 +19,7 @@
 //! ## Example
 //!
 //! ```rust
-//! use lib_config::LedgerConfig;
+//! use lib_config::Config as LedgerConfig;
 //!
 //! let config = LedgerConfig::parse(None).expect("Failed to load config");
 //!
@@ -37,8 +37,8 @@
 //! ## Configuration File Example
 //!
 //! ```ini
-//! [telemetry]
-//! telemetry_level = "debug"
+//! [tracing]
+//! level = "debug"
 //! log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 //!
 //! [database]
@@ -88,8 +88,8 @@ pub struct LedgerConfig {
     pub sync_server: crate::SyncServerConfig,
 
     /// Telemetry configuration.
-    #[serde(alias = "Telemetry")]
-    pub telemetry: crate::TracingConfig,
+    #[serde(alias = "Tracing")]
+    pub tracing: crate::TracingConfig,
 }
 
 impl LedgerConfig {
@@ -177,7 +177,7 @@ impl LedgerConfig {
 
     /// Add the explicit config file (if given and it exists) and environment variable
     /// overrides -- the two highest-precedence tiers, shared by both entry points. Env vars
-    /// (e.g. `PERSONAL_LEDGER_TELEMETRY__TELEMETRY_LEVEL=debug`) always come last/highest.
+    /// (e.g. `PERSONAL_LEDGER_TRACING__LEVEL=debug`) always come last/highest.
     fn add_explicit_and_env(
         config_builder: ConfigBuilder<DefaultState>,
         config_file: Option<&Path>,
@@ -202,8 +202,8 @@ impl LedgerConfig {
         Ok(config_builder.add_source(config::File::from_str(&normalised, config::FileFormat::Ini)))
     }
 
-    /// Read an INI file and normalise its section headers: lower-cased (so `[Telemetry]`/
-    /// `[telemetry]` are equivalent) and with `-` translated to `_` (so `[sync-server]`
+    /// Read an INI file and normalise its section headers: lower-cased (so `[Tracing]`/
+    /// `[tracing]` are equivalent) and with `-` translated to `_` (so `[sync-server]`
     /// matches the `sync_server` field/serde alias -- INI section names commonly use
     /// hyphens, but Rust field names can't).
     fn normalise_ini(p: &Path) -> crate::Result<String> {
@@ -330,7 +330,7 @@ impl LedgerConfig {
 
     /// Get the telemetry configuration.
     pub fn telemetry_config(&self) -> &crate::TracingConfig {
-        &self.telemetry
+        &self.tracing
     }
 
     /// Get the database configuration.
@@ -431,8 +431,8 @@ mod tests {
         in_empty_cwd(|| {
             let config = LedgerConfig::parse(None).unwrap();
             assert_eq!(
-                config.telemetry.telemetry_level(),
-                crate::TracingConfig::default().telemetry_level()
+                config.tracing.level(),
+                crate::TracingConfig::default().level()
             );
             assert_eq!(
                 config.database.url(),
@@ -470,8 +470,8 @@ mod tests {
         let config_file = temp_dir.path().join("test.conf");
 
         let config_content = r#"
-        [telemetry]
-        telemetry_level = "debug"
+        [tracing]
+        level = "debug"
 
         [database]
         url = "sqlite:test.db"
@@ -480,10 +480,7 @@ mod tests {
         fs::write(&config_file, config_content).unwrap();
 
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
-        assert_eq!(
-            config.telemetry.telemetry_level(),
-            lib_tracing::Levels::DEBUG
-        );
+        assert_eq!(config.tracing.level(), lib_tracing::Levels::DEBUG);
         assert_eq!(config.database.url(), "sqlite:test.db");
         assert_eq!(config.database.max_connections(), 20);
     }
@@ -512,8 +509,8 @@ mod tests {
             fs::write(
                 &cwd_config_file,
                 r#"
-                [telemetry]
-                telemetry_level = "warn"
+                [tracing]
+                level = "warn"
                 "#,
             )
             .unwrap();
@@ -521,8 +518,8 @@ mod tests {
             // A Client (`parse`) would pick this up; the Sync Server must not.
             let config = LedgerConfig::parse_for_sync_server(None).unwrap();
             assert_eq!(
-                config.telemetry.telemetry_level(),
-                crate::TracingConfig::default().telemetry_level()
+                config.tracing.level(),
+                crate::TracingConfig::default().level()
             );
         });
     }
@@ -542,8 +539,8 @@ mod tests {
         let config_file = temp_dir.path().join("test.conf");
 
         let config_content = r#"
-        [telemetry]
-        telemetry_level = "info"
+        [tracing]
+        level = "info"
 
         [database]
         url = "sqlite:custom.db"
@@ -551,10 +548,7 @@ mod tests {
         fs::write(&config_file, config_content).unwrap();
 
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
-        assert_eq!(
-            config.telemetry.telemetry_level(),
-            lib_tracing::Levels::INFO
-        );
+        assert_eq!(config.tracing.level(), lib_tracing::Levels::INFO);
         assert_eq!(config.database.url(), "sqlite:custom.db");
     }
 
@@ -565,8 +559,8 @@ mod tests {
 
         // Missing closing bracket -- malformed INI.
         let config_content = r#"
-        [telemetry
-        telemetry_level = "debug"
+        [tracing
+        level = "debug"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
@@ -580,8 +574,8 @@ mod tests {
         let config_file = temp_dir.path().join("invalid_level.conf");
 
         let config_content = r#"
-        [telemetry]
-        telemetry_level = "invalid"
+        [tracing]
+        level = "invalid"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
@@ -598,8 +592,8 @@ mod tests {
             fs::write(
                 &cwd_config_file,
                 r#"
-                [Telemetry]
-                telemetry_level = "warn"
+                [Tracing]
+                level = "warn"
 
                 [Database]
                 max_connections = 5
@@ -611,8 +605,8 @@ mod tests {
             fs::write(
                 &explicit_file,
                 r#"
-                [Telemetry]
-                telemetry_level = "debug"
+                [Tracing]
+                level = "debug"
 
                 [Database]
                 max_connections = 15
@@ -621,10 +615,7 @@ mod tests {
             .unwrap();
 
             let config = LedgerConfig::parse(Some(&explicit_file)).unwrap();
-            assert_eq!(
-                config.telemetry.telemetry_level(),
-                lib_tracing::Levels::DEBUG
-            );
+            assert_eq!(config.tracing.level(), lib_tracing::Levels::DEBUG);
             assert_eq!(config.database.max_connections(), 15);
         });
     }
