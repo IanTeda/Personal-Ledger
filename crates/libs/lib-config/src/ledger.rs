@@ -56,8 +56,6 @@
 use std::path::{Path, PathBuf};
 
 use config::{Config, ConfigBuilder, builder::DefaultState};
-use lib_database as database;
-use lib_telemetry as telemetry;
 
 /// Application name used for configuration directories, file names, and environment
 /// variable prefixes.
@@ -69,16 +67,17 @@ const ENV_PREFIX: &str = "PERSONAL_LEDGER";
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct LedgerConfig {
-    #[serde(alias = "Telemetry")]
-    pub telemetry: telemetry::TelemetryConfig,
-
     #[serde(alias = "Database")]
-    pub database: database::DatabaseConfig,
+    pub database: crate::DatabaseConfig,
 
     /// Sync-Server-only settings. Populated from the `[sync-server]` section (see
     /// [`Self::normalise_ini`] for the `-`/`_` translation); never read by Clients.
     #[serde(alias = "SyncServer", alias = "Sync-Server")]
     pub sync_server: crate::SyncServerConfig,
+
+    /// Telemetry configuration.
+    #[serde(alias = "Telemetry")]
+    pub telemetry: crate::TracingConfig,
 }
 
 impl LedgerConfig {
@@ -99,7 +98,7 @@ impl LedgerConfig {
     /// # Errors
     /// Returns an error if any present config file can't be read/parsed, or if the merged
     /// result doesn't deserialize into a valid `LedgerConfig`.
-    pub fn parse(config_file: Option<&Path>) -> super::ConfigResult<LedgerConfig> {
+    pub fn parse(config_file: Option<&Path>) -> super::Result<LedgerConfig> {
         let mut config_builder = Self::defaults_builder()?;
 
         if let Some(system_config) = Self::get_system_config_path().filter(|p| p.exists()) {
@@ -134,7 +133,7 @@ impl LedgerConfig {
     /// # Errors
     /// Returns an error if the explicit config file (when given) can't be read/parsed, or if
     /// the merged result doesn't deserialize into a valid `LedgerConfig`.
-    pub fn parse_for_sync_server(config_file: Option<&Path>) -> super::ConfigResult<LedgerConfig> {
+    pub fn parse_for_sync_server(config_file: Option<&Path>) -> super::Result<LedgerConfig> {
         let config_builder = Self::defaults_builder()?;
         let config_builder = Self::add_explicit_and_env(config_builder, config_file)?;
         Self::build(config_builder)
@@ -142,15 +141,14 @@ impl LedgerConfig {
 
     /// Seed a fresh layered builder with every section's built-in defaults (lowest
     /// precedence) -- shared by both [`Self::parse`] and [`Self::parse_for_sync_server`].
-    fn defaults_builder() -> super::ConfigResult<ConfigBuilder<DefaultState>> {
-        let default_telemetry_level = telemetry::TelemetryConfig::default().telemetry_level();
+    fn defaults_builder() -> super::Result<ConfigBuilder<DefaultState>> {
+        let mut config_builder = Config::builder();
 
-        let mut config_builder = Config::builder().set_default(
-            "telemetry.telemetry_level",
-            default_telemetry_level.to_string(),
-        )?;
+        for (key, value) in crate::TracingConfig::default_config_values() {
+            config_builder = config_builder.set_default(key, value)?;
+        }
 
-        for (key, value) in database::DatabaseConfig::default_config_values() {
+        for (key, value) in crate::DatabaseConfig::default_config_values() {
             config_builder = config_builder.set_default(key, value)?;
         }
 
@@ -167,7 +165,7 @@ impl LedgerConfig {
     fn add_explicit_and_env(
         config_builder: ConfigBuilder<DefaultState>,
         config_file: Option<&Path>,
-    ) -> super::ConfigResult<ConfigBuilder<DefaultState>> {
+    ) -> super::Result<ConfigBuilder<DefaultState>> {
         let mut config_builder = config_builder;
 
         if let Some(explicit_config) = config_file.filter(|p| p.exists()) {
@@ -183,7 +181,7 @@ impl LedgerConfig {
     fn add_ini_source(
         config_builder: ConfigBuilder<DefaultState>,
         path: &Path,
-    ) -> super::ConfigResult<ConfigBuilder<DefaultState>> {
+    ) -> super::Result<ConfigBuilder<DefaultState>> {
         let normalised = Self::normalise_ini(path)?;
         Ok(config_builder.add_source(config::File::from_str(&normalised, config::FileFormat::Ini)))
     }
@@ -192,9 +190,9 @@ impl LedgerConfig {
     /// `[telemetry]` are equivalent) and with `-` translated to `_` (so `[sync-server]`
     /// matches the `sync_server` field/serde alias -- INI section names commonly use
     /// hyphens, but Rust field names can't).
-    fn normalise_ini(p: &Path) -> super::ConfigResult<String> {
+    fn normalise_ini(p: &Path) -> super::Result<String> {
         let content = std::fs::read_to_string(p).map_err(|e| {
-            super::ConfigError::Validation(format!("Could not read config file {:?}: {}", p, e))
+            super::Error::Validation(format!("Could not read config file {:?}: {}", p, e))
         })?;
 
         let normalised = content
@@ -215,7 +213,7 @@ impl LedgerConfig {
     }
 
     /// Build and deserialize the layered `config::Config` into a `LedgerConfig`.
-    fn build(config_builder: ConfigBuilder<DefaultState>) -> super::ConfigResult<LedgerConfig> {
+    fn build(config_builder: ConfigBuilder<DefaultState>) -> super::Result<LedgerConfig> {
         let config = config_builder.build()?;
         let ledger_config: LedgerConfig = config.try_deserialize()?;
         Ok(ledger_config)
@@ -301,9 +299,9 @@ impl LedgerConfig {
     /// that contains a config file.
     ///
     /// Returns an error if the current directory cannot be determined.
-    fn get_cwd_config_path() -> Result<PathBuf, super::ConfigError> {
+    fn get_cwd_config_path() -> Result<PathBuf, super::Error> {
         let cwd = std::env::current_dir().map_err(|e| {
-            super::ConfigError::Validation(format!(
+            super::Error::Validation(format!(
                 "Could not get current directory for config loading: {}",
                 e
             ))
@@ -315,12 +313,12 @@ impl LedgerConfig {
     }
 
     /// Get the telemetry configuration.
-    pub fn telemetry_config(&self) -> &lib_telemetry::TelemetryConfig {
+    pub fn telemetry_config(&self) -> &crate::TracingConfig {
         &self.telemetry
     }
 
     /// Get the database configuration.
-    pub fn database_config(&self) -> &lib_database::DatabaseConfig {
+    pub fn database_config(&self) -> &crate::DatabaseConfig {
         &self.database
     }
 
@@ -413,15 +411,15 @@ mod tests {
             let config = LedgerConfig::parse(None).unwrap();
             assert_eq!(
                 config.telemetry.telemetry_level(),
-                telemetry::TelemetryConfig::default().telemetry_level()
+                crate::TracingConfig::default().telemetry_level()
             );
             assert_eq!(
                 config.database.url(),
-                database::DatabaseConfig::default().url()
+                crate::DatabaseConfig::default().url()
             );
             assert_eq!(
                 config.database.max_connections(),
-                database::DatabaseConfig::default().max_connections()
+                crate::DatabaseConfig::default().max_connections()
             );
             assert_eq!(
                 config.sync_server.bind_address(),
@@ -440,7 +438,7 @@ mod tests {
             );
             assert_eq!(
                 config.database.url(),
-                database::DatabaseConfig::default().url()
+                crate::DatabaseConfig::default().url()
             );
         });
     }
@@ -463,7 +461,7 @@ mod tests {
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(
             config.telemetry.telemetry_level(),
-            telemetry::TelemetryLevels::DEBUG
+            lib_tracing::TelemetryLevels::DEBUG
         );
         assert_eq!(config.database.url(), "sqlite:test.db");
         assert_eq!(config.database.max_connections(), 20);
@@ -503,7 +501,7 @@ mod tests {
             let config = LedgerConfig::parse_for_sync_server(None).unwrap();
             assert_eq!(
                 config.telemetry.telemetry_level(),
-                telemetry::TelemetryConfig::default().telemetry_level()
+                crate::TracingConfig::default().telemetry_level()
             );
         });
     }
@@ -534,7 +532,7 @@ mod tests {
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(
             config.telemetry.telemetry_level(),
-            telemetry::TelemetryLevels::INFO
+            lib_tracing::TelemetryLevels::INFO
         );
         assert_eq!(config.database.url(), "sqlite:custom.db");
     }
@@ -604,7 +602,7 @@ mod tests {
             let config = LedgerConfig::parse(Some(&explicit_file)).unwrap();
             assert_eq!(
                 config.telemetry.telemetry_level(),
-                telemetry::TelemetryLevels::DEBUG
+                lib_tracing::TelemetryLevels::DEBUG
             );
             assert_eq!(config.database.max_connections(), 15);
         });

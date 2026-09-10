@@ -9,6 +9,7 @@ migrations = "migrations/client"
 
 [dependencies]
 ## -- Internal Dependencies --
+lib_config = { path = "../../../crates/libs/lib-config" }
 lib_core = { path = "../../../crates/libs/lib-core" }
 
 ## -- Workspace Shared Dependencies --

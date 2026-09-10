@@ -23,7 +23,9 @@ impl crate::Transactions {
             .await?;
 
         if result.rows_affected() == 0 {
-            return Err(crate::DatabaseError::NotFound(format!("Transaction {id} not found")));
+            return Err(crate::DatabaseError::NotFound(format!(
+                "Transaction {id} not found"
+            )));
         }
 
         Ok(())
@@ -49,7 +51,9 @@ mod tests {
             .await
             .unwrap();
 
-        crate::Transactions::delete_by_id(transaction.id, &pool).await.unwrap();
+        crate::Transactions::delete_by_id(transaction.id, &pool)
+            .await
+            .unwrap();
 
         assert!(
             crate::Transactions::find_by_id(transaction.id, &pool)

@@ -123,7 +123,6 @@ pub use preferences::Preferences;
 pub mod change_sets;
 pub use change_sets::ChangeSet;
 
-mod config;
 /// Database configuration settings for connection pool management.
 ///
 /// `DatabaseConfig` encapsulates all database-related settings including connection pool
@@ -161,8 +160,10 @@ mod config;
 /// - Configuration files (INI/TOML format)
 /// - Programmatic construction
 ///
-/// See the [`config`] module for detailed configuration options and examples.
-pub use config::DatabaseConfig;
+/// The type itself lives in `lib_config` alongside `TracingConfig`/`SyncServerConfig` (all
+/// layered-config sections in one crate); re-exported here since `DatabaseConnection::new`
+/// is its main consumer. See [`lib_config::DatabaseConfig`] for the full API docs.
+pub use lib_config::DatabaseConfig;
 
 mod error;
 /// Core error type for all database operations.

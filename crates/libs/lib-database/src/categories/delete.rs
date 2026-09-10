@@ -15,9 +15,7 @@
 
 use lib_core as domain;
 
-
 impl crate::Categories {
-
     /// Deletes the current category instance from the database.
     ///
     /// This method permanently removes the category record associated with this instance.
@@ -324,9 +322,7 @@ impl crate::Categories {
         fields(operation = "delete_inactive"),
         err
     )]
-    pub async fn delete_inactive(
-        pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<u64> {
+    pub async fn delete_inactive(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<u64> {
         tracing::trace!("Starting delete inactive categories operation");
 
         let delete_query = sqlx::query!(
@@ -549,9 +545,7 @@ impl crate::Categories {
         fields(operation = "delete_all"),
         err
     )]
-    pub async fn delete_all(
-        pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<u64> {
+    pub async fn delete_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<u64> {
         tracing::trace!("Starting delete all categories operation");
 
         let delete_query = sqlx::query!(
@@ -574,11 +568,14 @@ impl crate::Categories {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::SqlitePool;
     use fake::Fake;
+    use sqlx::SqlitePool;
 
     /// Helper function to insert a test category
-    async fn insert_test_category(pool: &SqlitePool, category: &crate::Categories) -> domain::RowID {
+    async fn insert_test_category(
+        pool: &SqlitePool,
+        category: &crate::Categories,
+    ) -> domain::RowID {
         let id_str = category.id.to_string();
         let url_slug_str = category.url_slug.as_ref().map(|s| s.to_string());
         let category_type_str = category.category_type.as_str();
@@ -669,11 +666,15 @@ mod tests {
             category.url_slug = Some(domain::UrlSlug::from("test-slug"));
             insert_test_category(&pool, &category).await;
 
-            let result = crate::Categories::delete_by_url_slug(category.url_slug.as_ref().unwrap(), &pool).await;
+            let result =
+                crate::Categories::delete_by_url_slug(category.url_slug.as_ref().unwrap(), &pool)
+                    .await;
             assert!(result.is_ok());
 
             // Verify deletion by trying to delete again
-            let result2 = crate::Categories::delete_by_url_slug(category.url_slug.as_ref().unwrap(), &pool).await;
+            let result2 =
+                crate::Categories::delete_by_url_slug(category.url_slug.as_ref().unwrap(), &pool)
+                    .await;
             assert!(matches!(result2, Err(crate::DatabaseError::NotFound(_))));
         }
 
@@ -776,13 +777,19 @@ mod tests {
                     // Ensure unique identifiers for this test
                     category.code = format!("DEL{:03}.RND{:03}.TST", i, j);
                     category.name = format!("Test Category {} {}", i, j);
-                    category.url_slug = Some(lib_core::UrlSlug::from(format!("test-category-{}-{}", i, j)));
+                    category.url_slug = Some(lib_core::UrlSlug::from(format!(
+                        "test-category-{}-{}",
+                        i, j
+                    )));
                     let id = insert_test_category(&pool, &category).await;
                     ids.push(id);
                 }
 
                 let result = crate::Categories::delete_many_by_id(&ids, &pool).await;
-                assert!(result.is_ok(), "Bulk delete should succeed for random mock data");
+                assert!(
+                    result.is_ok(),
+                    "Bulk delete should succeed for random mock data"
+                );
 
                 // Verify all deleted
                 for &id in &ids {
@@ -845,7 +852,10 @@ mod tests {
                     // Ensure unique identifiers
                     category.code = format!("INA{:03}.RND{:03}.TST", i, j);
                     category.name = format!("Inactive Test {} {}", i, j);
-                    category.url_slug = Some(lib_core::UrlSlug::from(format!("inactive-test-{}-{}", i, j)));
+                    category.url_slug = Some(lib_core::UrlSlug::from(format!(
+                        "inactive-test-{}-{}",
+                        i, j
+                    )));
                     if category.is_active {
                         active_count += 1;
                     } else {
@@ -908,7 +918,10 @@ mod tests {
                 }
             }
 
-            assert!(has_description && has_none_description, "Description should be randomised");
+            assert!(
+                has_description && has_none_description,
+                "Description should be randomised"
+            );
             assert!(has_icon && has_none_icon, "Icon should be randomised");
         }
     }

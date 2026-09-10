@@ -45,7 +45,9 @@ mod tests {
 
     #[sqlx::test(migrations = "migrations/client")]
     async fn find_only_returns_the_created_row(pool: SqlitePool) {
-        let created = crate::Preferences::get_or_create_default(&pool).await.unwrap();
+        let created = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
 
         let found = crate::Preferences::find_only(&pool).await.unwrap();
 

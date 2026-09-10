@@ -11,7 +11,7 @@ use tonic::service::Routes;
 
 use lib_config as config;
 use lib_rpc::{SyncService, SyncServiceServer, UtilitiesService, UtilitiesServiceServer};
-use lib_telemetry as telemetry;
+use lib_tracing as telemetry;
 
 /// Bootstrap account credentials for this feasibility cycle -- ADR-0010 fixes the
 /// Sync Server's user store at exactly one account; real credential provisioning is

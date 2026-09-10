@@ -1,5 +1,5 @@
 [package]
-name = "lib_telemetry"
+name = "lib_tracing"
 version = "0.1.0"
 edition = "2024"
 

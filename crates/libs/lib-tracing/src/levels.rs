@@ -9,7 +9,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use lib_telemetry::TelemetryLevels;
+//! use lib_tracing::TelemetryLevels;
 //!
 //! // Parse from string (useful for config files)
 //! let level: TelemetryLevels = serde_json::from_str("\"debug\"").unwrap();
@@ -41,7 +41,7 @@
 /// # Examples
 ///
 /// ```rust
-/// use lib_telemetry::TelemetryLevels;
+/// use lib_tracing::TelemetryLevels;
 ///
 /// // Default level
 /// let default_level = TelemetryLevels::default();
@@ -104,7 +104,7 @@ impl From<TelemetryLevels> for tracing::level_filters::LevelFilter {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_telemetry::TelemetryLevels;
+    /// use lib_tracing::TelemetryLevels;
     /// use tracing::level_filters::LevelFilter;
     ///
     /// let telemetry_level = TelemetryLevels::INFO;
@@ -133,7 +133,7 @@ impl std::fmt::Display for TelemetryLevels {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_telemetry::TelemetryLevels;
+    /// use lib_tracing::TelemetryLevels;
     ///
     /// assert_eq!(format!("{}", TelemetryLevels::INFO), "info");
     /// assert_eq!(format!("{}", TelemetryLevels::DEBUG), "debug");

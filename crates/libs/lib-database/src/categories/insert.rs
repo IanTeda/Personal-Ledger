@@ -206,10 +206,19 @@ impl crate::Categories {
         ),
     )]
     pub async fn insert(&self, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Self> {
-        tracing::trace!("Starting single category insert operation for category: {} (id: {})", self.code, self.id);
+        tracing::trace!(
+            "Starting single category insert operation for category: {} (id: {})",
+            self.code,
+            self.id
+        );
 
         // Validate input data before database operations
-        tracing::debug!("Validating category data before insert: code={}, type={}, active={}", self.code, self.category_type, self.is_active);
+        tracing::debug!(
+            "Validating category data before insert: code={}, type={}, active={}",
+            self.code,
+            self.category_type,
+            self.is_active
+        );
 
         // 1) INSERT: SQLite uses `?` placeholders and does not reliably support
         // `RETURNING *` for compile-time checked macros. Execute the insert first.
@@ -235,22 +244,41 @@ impl crate::Categories {
         let insert_result = insert_query.execute(pool).await;
         match insert_result {
             Ok(result) => {
-                tracing::trace!("INSERT query executed successfully for category: {} (rows affected: {})", self.code, result.rows_affected());
+                tracing::trace!(
+                    "INSERT query executed successfully for category: {} (rows affected: {})",
+                    self.code,
+                    result.rows_affected()
+                );
                 if result.rows_affected() != 1 {
-                    tracing::warn!("INSERT operation affected {} rows instead of 1 for category: {}", result.rows_affected(), self.code);
+                    tracing::warn!(
+                        "INSERT operation affected {} rows instead of 1 for category: {}",
+                        result.rows_affected(),
+                        self.code
+                    );
                 }
             }
             Err(e) => {
-                tracing::error!("Failed to insert category: {} (id: {}) - {}", self.code, self.id, e);
+                tracing::error!(
+                    "Failed to insert category: {} (id: {}) - {}",
+                    self.code,
+                    self.id,
+                    e
+                );
                 return Err(e.into());
             }
         }
 
-        tracing::debug!("Category inserted successfully, retrieving inserted record: {}", self.id);
+        tracing::debug!(
+            "Category inserted successfully, retrieving inserted record: {}",
+            self.id
+        );
 
         // 2) SELECT: Read back the inserted row with explicit type annotations
         // for UUID and chrono types to avoid NULL/mapping issues in SQLite.
-        tracing::trace!("Executing SELECT query to retrieve inserted category: {}", self.id);
+        tracing::trace!(
+            "Executing SELECT query to retrieve inserted category: {}",
+            self.id
+        );
         let category = match sqlx::query_as!(
             crate::Categories,
             r#"
@@ -272,19 +300,38 @@ impl crate::Categories {
             self.id
         )
         .fetch_one(pool)
-        .await {
+        .await
+        {
             Ok(cat) => {
-                tracing::trace!("SELECT query completed, retrieved category: {} (id: {})", cat.code, cat.id);
+                tracing::trace!(
+                    "SELECT query completed, retrieved category: {} (id: {})",
+                    cat.code,
+                    cat.id
+                );
                 cat
             }
             Err(e) => {
-                tracing::error!("Failed to retrieve inserted category: {} (id: {}) - {}", self.code, self.id, e);
+                tracing::error!(
+                    "Failed to retrieve inserted category: {} (id: {}) - {}",
+                    self.code,
+                    self.id,
+                    e
+                );
                 return Err(e.into());
             }
         };
 
-        tracing::info!("✅ Category '{}' inserted successfully with ID: {}", category.code, category.id);
-        tracing::debug!("Category details: type={}, active={}, created={}", category.category_type, category.is_active, category.created_on);
+        tracing::info!(
+            "✅ Category '{}' inserted successfully with ID: {}",
+            category.code,
+            category.id
+        );
+        tracing::debug!(
+            "Category details: type={}, active={}, created={}",
+            category.category_type,
+            category.is_active,
+            category.created_on
+        );
 
         Ok(category)
     }
@@ -422,8 +469,14 @@ impl crate::Categories {
             return Ok(Vec::new());
         }
 
-        tracing::info!("🚀 Starting bulk insert operation for {} categories", category_count);
-        tracing::debug!("Bulk insert categories: {:?}", categories.iter().map(|c| &c.code).collect::<Vec<_>>());
+        tracing::info!(
+            "🚀 Starting bulk insert operation for {} categories",
+            category_count
+        );
+        tracing::debug!(
+            "Bulk insert categories: {:?}",
+            categories.iter().map(|c| &c.code).collect::<Vec<_>>()
+        );
 
         // Use a transaction for atomicity
         tracing::trace!("Beginning database transaction for bulk insert");
@@ -444,7 +497,13 @@ impl crate::Categories {
 
         for (index, category) in categories.iter().enumerate() {
             let position = index + 1;
-            tracing::trace!("Processing category {} of {}: {} (id: {})", position, category_count, category.code, category.id);
+            tracing::trace!(
+                "Processing category {} of {}: {} (id: {})",
+                position,
+                category_count,
+                category.code,
+                category.id
+            );
 
             // Insert each category
             let insert_query = sqlx::query!(
@@ -467,21 +526,38 @@ impl crate::Categories {
 
             match insert_query.execute(&mut *tx).await {
                 Ok(result) => {
-                    tracing::trace!("INSERT query executed for category: {} (rows affected: {})", category.code, result.rows_affected());
+                    tracing::trace!(
+                        "INSERT query executed for category: {} (rows affected: {})",
+                        category.code,
+                        result.rows_affected()
+                    );
                     if result.rows_affected() != 1 {
-                        tracing::warn!("INSERT operation affected {} rows instead of 1 for category: {}", result.rows_affected(), category.code);
+                        tracing::warn!(
+                            "INSERT operation affected {} rows instead of 1 for category: {}",
+                            result.rows_affected(),
+                            category.code
+                        );
                     }
                     success_count += 1;
                 }
                 Err(e) => {
-                    tracing::error!("Failed to insert category {}: {} (id: {}) - {}", position, category.code, category.id, e);
+                    tracing::error!(
+                        "Failed to insert category {}: {} (id: {}) - {}",
+                        position,
+                        category.code,
+                        category.id,
+                        e
+                    );
                     error_count += 1;
                     // Continue processing other categories but track errors
                 }
             }
 
             // Read back the inserted category
-            tracing::trace!("Retrieving inserted category from database: {}", category.id);
+            tracing::trace!(
+                "Retrieving inserted category from database: {}",
+                category.id
+            );
             match sqlx::query_as!(
                 crate::Categories,
                 r#"
@@ -503,20 +579,33 @@ impl crate::Categories {
                 category.id
             )
             .fetch_one(&mut *tx)
-            .await {
+            .await
+            {
                 Ok(inserted) => {
-                    tracing::trace!("Retrieved inserted category: {} (id: {})", inserted.code, inserted.id);
+                    tracing::trace!(
+                        "Retrieved inserted category: {} (id: {})",
+                        inserted.code,
+                        inserted.id
+                    );
                     inserted_categories.push(inserted);
                 }
                 Err(e) => {
-                    tracing::error!("Failed to retrieve inserted category: {} (id: {}) - {}", category.code, category.id, e);
+                    tracing::error!(
+                        "Failed to retrieve inserted category: {} (id: {}) - {}",
+                        category.code,
+                        category.id,
+                        e
+                    );
                     // If we can't retrieve it, we still want to track the error but continue
                 }
             }
         }
 
         // Commit the transaction
-        tracing::trace!("Committing database transaction after processing {} categories", category_count);
+        tracing::trace!(
+            "Committing database transaction after processing {} categories",
+            category_count
+        );
         match tx.commit().await {
             Ok(_) => {
                 tracing::trace!("Database transaction committed successfully");
@@ -528,13 +617,28 @@ impl crate::Categories {
         }
 
         let inserted_count = inserted_categories.len();
-        tracing::info!("✅ Bulk insert completed: {} categories processed, {} inserted successfully, {} errors", category_count, inserted_count, error_count);
+        tracing::info!(
+            "✅ Bulk insert completed: {} categories processed, {} inserted successfully, {} errors",
+            category_count,
+            inserted_count,
+            error_count
+        );
 
         if error_count > 0 {
-            tracing::warn!("Bulk insert completed with {} errors out of {} total categories", error_count, category_count);
+            tracing::warn!(
+                "Bulk insert completed with {} errors out of {} total categories",
+                error_count,
+                category_count
+            );
         }
 
-        tracing::debug!("Successfully inserted categories: {:?}", inserted_categories.iter().map(|c| &c.code).collect::<Vec<_>>());
+        tracing::debug!(
+            "Successfully inserted categories: {:?}",
+            inserted_categories
+                .iter()
+                .map(|c| &c.code)
+                .collect::<Vec<_>>()
+        );
 
         Ok(inserted_categories)
     }
@@ -637,8 +741,17 @@ impl crate::Categories {
         category: &Self,
         pool: &sqlx::Pool<sqlx::Sqlite>,
     ) -> crate::DatabaseResult<Self> {
-        tracing::trace!("Starting upsert operation for category: {} (id: {})", category.code, category.id);
-        tracing::debug!("Upsert category details: type={}, active={}, updated={}", category.category_type, category.is_active, category.updated_on);
+        tracing::trace!(
+            "Starting upsert operation for category: {} (id: {})",
+            category.code,
+            category.id
+        );
+        tracing::debug!(
+            "Upsert category details: type={}, active={}, updated={}",
+            category.category_type,
+            category.is_active,
+            category.updated_on
+        );
 
         // Use SQLite's UPSERT syntax (INSERT ... ON CONFLICT)
         tracing::trace!("Executing UPSERT query for category: {}", category.id);
@@ -674,7 +787,11 @@ impl crate::Categories {
         let upsert_result = upsert_query.execute(pool).await;
         let operation_type = match upsert_result {
             Ok(result) => {
-                tracing::trace!("UPSERT query executed successfully for category: {} (rows affected: {})", category.code, result.rows_affected());
+                tracing::trace!(
+                    "UPSERT query executed successfully for category: {} (rows affected: {})",
+                    category.code,
+                    result.rows_affected()
+                );
 
                 // Determine if this was an INSERT or UPDATE based on rows affected
                 match result.rows_affected() {
@@ -687,19 +804,31 @@ impl crate::Categories {
                         "UPDATE"
                     }
                     other => {
-                        tracing::warn!("UPSERT operation affected {} rows (expected 1 or 2) for category: {}", other, category.code);
+                        tracing::warn!(
+                            "UPSERT operation affected {} rows (expected 1 or 2) for category: {}",
+                            other,
+                            category.code
+                        );
                         "UNKNOWN"
                     }
                 }
             }
             Err(e) => {
-                tracing::error!("Failed to upsert category: {} (id: {}) - {}", category.code, category.id, e);
+                tracing::error!(
+                    "Failed to upsert category: {} (id: {}) - {}",
+                    category.code,
+                    category.id,
+                    e
+                );
                 return Err(e.into());
             }
         };
 
         // Read back the inserted/updated category
-        tracing::trace!("Retrieving upserted category from database: {}", category.id);
+        tracing::trace!(
+            "Retrieving upserted category from database: {}",
+            category.id
+        );
         let result = match sqlx::query_as!(
             crate::Categories,
             r#"
@@ -721,19 +850,35 @@ impl crate::Categories {
             category.id
         )
         .fetch_one(pool)
-        .await {
+        .await
+        {
             Ok(cat) => {
                 tracing::trace!("Retrieved upserted category: {} (id: {})", cat.code, cat.id);
                 cat
             }
             Err(e) => {
-                tracing::error!("Failed to retrieve upserted category: {} (id: {}) - {}", category.code, category.id, e);
+                tracing::error!(
+                    "Failed to retrieve upserted category: {} (id: {}) - {}",
+                    category.code,
+                    category.id,
+                    e
+                );
                 return Err(e.into());
             }
         };
 
-        tracing::info!("✅ Category '{}' {}d successfully (ID: {})", result.code, operation_type, result.id);
-        tracing::debug!("Final category state: type={}, active={}, updated={}", result.category_type, result.is_active, result.updated_on);
+        tracing::info!(
+            "✅ Category '{}' {}d successfully (ID: {})",
+            result.code,
+            operation_type,
+            result.id
+        );
+        tracing::debug!(
+            "Final category state: type={}, active={}, updated={}",
+            result.category_type,
+            result.is_active,
+            result.updated_on
+        );
 
         Ok(result)
     }
@@ -753,11 +898,11 @@ impl crate::Categories {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib_core::{RowID, UrlSlug, HexColor, CategoryTypes};
-    use sqlx::SqlitePool;
     use fake::Fake;
-    use fake::faker::lorem::en::{Words, Sentence};
     use fake::faker::boolean::en::Boolean;
+    use fake::faker::lorem::en::{Sentence, Words};
+    use lib_core::{CategoryTypes, HexColor, RowID, UrlSlug};
+    use sqlx::SqlitePool;
 
     /// Helper function to create a test category with random data.
     ///
@@ -773,7 +918,8 @@ mod tests {
             None
         };
 
-        let code = format!("{:03}.{:03}.{:03}",
+        let code = format!(
+            "{:03}.{:03}.{:03}",
             fake::rand::random::<u8>() % 100,
             fake::rand::random::<u8>() % 100,
             fake::rand::random::<u8>() % 100
@@ -828,7 +974,10 @@ mod tests {
     /// Creates a random category, inserts it into the database, and returns the inserted category.
     async fn insert_test_category(pool: &SqlitePool) -> crate::Categories {
         let category = create_random_category();
-        category.insert(pool).await.expect("Failed to insert test category")
+        category
+            .insert(pool)
+            .await
+            .expect("Failed to insert test category")
     }
 
     /// Helper function to insert multiple test categories and return them.
@@ -972,7 +1121,7 @@ mod tests {
 
         // Try to insert another category with the same code
         let category2 = crate::Categories {
-            id: RowID::new(), // Different ID
+            id: RowID::new(),             // Different ID
             code: category1.code.clone(), // Same code
             name: "Different Name".to_string(),
             description: category1.description.clone(),
@@ -1012,11 +1161,15 @@ mod tests {
 
         // Verify all categories exist in database
         for category in &inserted {
-            let exists = sqlx::query!("SELECT COUNT(*) as count FROM categories WHERE id = ?", category.id)
-                .fetch_one(&pool)
-                .await
-                .unwrap()
-                .count > 0;
+            let exists = sqlx::query!(
+                "SELECT COUNT(*) as count FROM categories WHERE id = ?",
+                category.id
+            )
+            .fetch_one(&pool)
+            .await
+            .unwrap()
+            .count
+                > 0;
             assert!(exists, "Category should exist in database");
         }
     }
@@ -1032,7 +1185,11 @@ mod tests {
         assert!(result.is_ok(), "Empty bulk insert should succeed");
 
         let inserted = result.unwrap();
-        assert_eq!(inserted.len(), 0, "Should return empty vector for empty input");
+        assert_eq!(
+            inserted.len(),
+            0,
+            "Should return empty vector for empty input"
+        );
     }
 
     /// Tests bulk insertion with large number of categories.
@@ -1067,7 +1224,10 @@ mod tests {
 
         let inserted = result.unwrap();
         // Should have inserted 2 categories (first and third), second failed due to duplicate
-        assert!(!inserted.is_empty(), "Should insert at least some categories");
+        assert!(
+            !inserted.is_empty(),
+            "Should insert at least some categories"
+        );
         assert!(inserted.len() <= 3, "Should not insert more than attempted");
     }
 
@@ -1086,11 +1246,15 @@ mod tests {
         assert_eq!(upserted.code, category.code);
 
         // Verify it exists in database
-        let exists = sqlx::query!("SELECT COUNT(*) as count FROM categories WHERE id = ?", category.id)
-            .fetch_one(&pool)
-            .await
-            .unwrap()
-            .count > 0;
+        let exists = sqlx::query!(
+            "SELECT COUNT(*) as count FROM categories WHERE id = ?",
+            category.id
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .count
+            > 0;
         assert!(exists, "Category should exist in database");
     }
 
@@ -1115,14 +1279,20 @@ mod tests {
         let upserted = result.unwrap();
         assert_eq!(upserted.id, original.id);
         assert_eq!(upserted.name, "Updated Name");
-        assert_eq!(upserted.description, Some("Updated description".to_string()));
+        assert_eq!(
+            upserted.description,
+            Some("Updated description".to_string())
+        );
 
         // Verify only one record exists (not a duplicate)
-        let count = sqlx::query!("SELECT COUNT(*) as count FROM categories WHERE id = ?", original.id)
-            .fetch_one(&pool)
-            .await
-            .unwrap()
-            .count;
+        let count = sqlx::query!(
+            "SELECT COUNT(*) as count FROM categories WHERE id = ?",
+            original.id
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .count;
         assert_eq!(count, 1, "Should have exactly one record with this ID");
     }
 
@@ -1195,7 +1365,8 @@ mod tests {
             let category_type_name = category_type.as_str().to_string();
             let category = crate::Categories {
                 id: RowID::new(),
-                code: format!("{:03}.{:03}.{:03}",
+                code: format!(
+                    "{:03}.{:03}.{:03}",
                     fake::rand::random::<u8>() % 100,
                     fake::rand::random::<u8>() % 100,
                     fake::rand::random::<u8>() % 100
@@ -1212,7 +1383,11 @@ mod tests {
             };
 
             let result = category.insert(&pool).await;
-            assert!(result.is_ok(), "Should be able to insert {} category", category_type_name);
+            assert!(
+                result.is_ok(),
+                "Should be able to insert {} category",
+                category_type_name
+            );
         }
     }
 
@@ -1310,7 +1485,9 @@ mod tests {
     async fn test_bulk_insert_data_integrity(pool: SqlitePool) {
         let originals = create_random_categories(3);
 
-        let inserted = crate::Categories::insert_many(&originals, &pool).await.unwrap();
+        let inserted = crate::Categories::insert_many(&originals, &pool)
+            .await
+            .unwrap();
 
         assert_eq!(inserted.len(), originals.len());
 

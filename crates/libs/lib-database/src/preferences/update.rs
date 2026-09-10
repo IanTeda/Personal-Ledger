@@ -20,7 +20,11 @@ impl crate::Preferences {
     ///
     /// # Errors
     /// Returns an error if seeding the default Unit or inserting the Preferences row fails.
-    #[tracing::instrument(name = "Get or create the Preferences row: ", level = "debug", skip(pool))]
+    #[tracing::instrument(
+        name = "Get or create the Preferences row: ",
+        level = "debug",
+        skip(pool)
+    )]
     pub async fn get_or_create_default(
         pool: &sqlx::Pool<sqlx::Sqlite>,
     ) -> crate::DatabaseResult<Self> {
@@ -131,9 +135,14 @@ mod tests {
 
     #[sqlx::test(migrations = "migrations/client")]
     async fn get_or_create_default_seeds_a_usd_unit_and_preferences_row(pool: SqlitePool) {
-        let preferences = crate::Preferences::get_or_create_default(&pool).await.unwrap();
+        let preferences = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
 
-        let usd = crate::Units::find_by_code("USD", &pool).await.unwrap().unwrap();
+        let usd = crate::Units::find_by_code("USD", &pool)
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(preferences.default_unit_id, Some(usd.id));
         assert_eq!(usd.name, "US Dollar");
         assert_eq!(usd.decimal_places, 2);
@@ -141,8 +150,12 @@ mod tests {
 
     #[sqlx::test(migrations = "migrations/client")]
     async fn get_or_create_default_is_idempotent(pool: SqlitePool) {
-        let first = crate::Preferences::get_or_create_default(&pool).await.unwrap();
-        let second = crate::Preferences::get_or_create_default(&pool).await.unwrap();
+        let first = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
+        let second = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
 
         assert_eq!(first.id, second.id);
 
@@ -165,20 +178,27 @@ mod tests {
             .await
             .unwrap();
 
-        let preferences = crate::Preferences::get_or_create_default(&pool).await.unwrap();
+        let preferences = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
 
         assert_eq!(preferences.default_unit_id, Some(existing_usd.id));
     }
 
     #[sqlx::test(migrations = "migrations/client")]
     async fn update_replaces_editable_fields(pool: SqlitePool) {
-        let mut preferences = crate::Preferences::get_or_create_default(&pool).await.unwrap();
+        let mut preferences = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
         preferences.colour_theme = lib_core::HexColor::from_rgb(0, 255, 0);
         preferences.date_format = lib_core::DateFormat::Iso;
 
         let updated = preferences.update(&pool).await.unwrap();
 
-        assert_eq!(updated.colour_theme, lib_core::HexColor::from_rgb(0, 255, 0));
+        assert_eq!(
+            updated.colour_theme,
+            lib_core::HexColor::from_rgb(0, 255, 0)
+        );
         assert_eq!(updated.date_format, lib_core::DateFormat::Iso);
     }
 
@@ -191,10 +211,14 @@ mod tests {
 
     #[sqlx::test(migrations = "migrations/client")]
     async fn hard_deleting_the_default_unit_clears_default_unit_id_via_fk(pool: SqlitePool) {
-        let preferences = crate::Preferences::get_or_create_default(&pool).await.unwrap();
+        let preferences = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
         let default_unit_id = preferences.default_unit_id.unwrap();
 
-        crate::Units::delete_by_id(default_unit_id, &pool).await.unwrap();
+        crate::Units::delete_by_id(default_unit_id, &pool)
+            .await
+            .unwrap();
 
         let reloaded = crate::Preferences::find_only(&pool).await.unwrap().unwrap();
         assert_eq!(
@@ -205,7 +229,9 @@ mod tests {
 
     #[sqlx::test(migrations = "migrations/client")]
     async fn update_clears_default_unit_id_when_set_to_none(pool: SqlitePool) {
-        let mut preferences = crate::Preferences::get_or_create_default(&pool).await.unwrap();
+        let mut preferences = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
         preferences.default_unit_id = None;
 
         let updated = preferences.update(&pool).await.unwrap();

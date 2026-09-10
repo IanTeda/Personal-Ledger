@@ -5,10 +5,10 @@ edition = "2024"
 
 [dependencies]
 ## -- Internal Dependencies --
-lib_database = { path = "../../../crates/libs/lib-database" }
-lib_telemetry = { path = "../../../crates/libs/lib-telemetry" }
+lib_tracing = { path = "../../../crates/libs/lib-tracing" }
 
 ## -- Workspace Shared Dependencies --
+chrono = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }

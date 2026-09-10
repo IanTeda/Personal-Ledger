@@ -300,11 +300,7 @@ impl Categories {
         use fake::faker::lorem::en::Word;
 
         let is_some: bool = Boolean(50).fake(); // 50% chance of Some
-        if is_some {
-            Some(Word().fake())
-        } else {
-            None
-        }
+        if is_some { Some(Word().fake()) } else { None }
     }
 
     /// Generates a mock active status with 80% probability of being active.
@@ -380,7 +376,10 @@ mod tests {
             }
         }
 
-        assert!(has_some_description && has_none_description, "Description should randomise");
+        assert!(
+            has_some_description && has_none_description,
+            "Description should randomise"
+        );
         assert!(has_some_icon && has_none_icon, "Icon should randomise");
         assert!(has_inactive, "is_active should sometimes be false");
     }

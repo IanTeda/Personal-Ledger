@@ -225,9 +225,7 @@ impl crate::Categories {
     ///
     /// # Tracing
     /// Logs INFO with the number of categories retrieved.
-    pub async fn find_all(
-        pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::DatabaseResult<Vec<Self>> {
+    pub async fn find_all(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::DatabaseResult<Vec<Self>> {
         let categories = sqlx::query_as!(
             crate::Categories,
             r#"
@@ -294,7 +292,10 @@ impl crate::Categories {
         .fetch_all(pool)
         .await?;
 
-        tracing::info!("Retrieved {} active categories from database", categories.len());
+        tracing::info!(
+            "Retrieved {} active categories from database",
+            categories.len()
+        );
 
         Ok(categories)
     }
@@ -399,7 +400,11 @@ impl crate::Categories {
         .fetch_all(pool)
         .await?;
 
-        tracing::info!("Retrieved {} categories of type {} from database", categories.len(), category_type);
+        tracing::info!(
+            "Retrieved {} categories of type {} from database",
+            categories.len(),
+            category_type
+        );
 
         Ok(categories)
     }
@@ -446,7 +451,11 @@ impl crate::Categories {
         .fetch_all(pool)
         .await?;
 
-        tracing::info!("Retrieved {} active categories of type {} from database", categories.len(), category_type);
+        tracing::info!(
+            "Retrieved {} active categories of type {} from database",
+            categories.len(),
+            category_type
+        );
 
         Ok(categories)
     }
@@ -494,7 +503,8 @@ impl crate::Categories {
             "Executing paginated query for all categories"
         );
 
-        let (categories, total_count) = Self::find_all_with_pagination_internal(offset, limit, pool).await?;
+        let (categories, total_count) =
+            Self::find_all_with_pagination_internal(offset, limit, pool).await?;
 
         tracing::info!(
             offset = %offset,
@@ -550,7 +560,8 @@ impl crate::Categories {
             "Executing paginated query for active categories"
         );
 
-        let (categories, total_count) = Self::find_all_active_with_pagination_internal(offset, limit, pool).await?;
+        let (categories, total_count) =
+            Self::find_all_active_with_pagination_internal(offset, limit, pool).await?;
 
         tracing::info!(
             offset = %offset,
@@ -606,7 +617,8 @@ impl crate::Categories {
             "Executing paginated query for inactive categories"
         );
 
-        let (categories, total_count) = Self::find_all_inactive_with_pagination_internal(offset, limit, pool).await?;
+        let (categories, total_count) =
+            Self::find_all_inactive_with_pagination_internal(offset, limit, pool).await?;
 
         tracing::info!(
             offset = %offset,
@@ -669,7 +681,8 @@ impl crate::Categories {
             "Executing paginated query for categories by type"
         );
 
-        let (categories, total_count) = Self::find_by_type_with_pagination_internal(category_type, offset, limit, pool).await?;
+        let (categories, total_count) =
+            Self::find_by_type_with_pagination_internal(category_type, offset, limit, pool).await?;
 
         tracing::info!(
             category_type = %category_type_str,
@@ -733,7 +746,9 @@ impl crate::Categories {
             "Executing paginated query for active categories by type"
         );
 
-        let (categories, total_count) = Self::find_active_by_type_with_pagination_internal(category_type, offset, limit, pool).await?;
+        let (categories, total_count) =
+            Self::find_active_by_type_with_pagination_internal(category_type, offset, limit, pool)
+                .await?;
 
         tracing::info!(
             category_type = %category_type_str,
@@ -780,7 +795,8 @@ impl crate::Categories {
 
         let (categories, total_count) = match (category_type_filter, is_active_filter) {
             (Some(category_type), Some(_is_active)) => {
-                Self::find_active_by_type_with_pagination(category_type, offset, limit, pool).await?
+                Self::find_active_by_type_with_pagination(category_type, offset, limit, pool)
+                    .await?
             }
             (Some(category_type), None) => {
                 Self::find_by_type_with_pagination(category_type, offset, limit, pool).await?
@@ -792,9 +808,7 @@ impl crate::Categories {
                     Self::find_inactive_with_pagination(offset, limit, pool).await?
                 }
             }
-            (None, None) => {
-                Self::find_all_with_pagination(offset, limit, pool).await?
-            }
+            (None, None) => Self::find_all_with_pagination(offset, limit, pool).await?,
         };
 
         Ok((categories, total_count))
@@ -844,9 +858,10 @@ impl crate::Categories {
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
     ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
-        let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE is_active = true")
-            .fetch_one(pool)
-            .await?;
+        let total_count: i32 =
+            sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE is_active = true")
+                .fetch_one(pool)
+                .await?;
 
         let categories = sqlx::query_as!(
             crate::Categories,
@@ -883,9 +898,10 @@ impl crate::Categories {
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
     ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
-        let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE is_active = false")
-            .fetch_one(pool)
-            .await?;
+        let total_count: i32 =
+            sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE is_active = false")
+                .fetch_one(pool)
+                .await?;
 
         let categories = sqlx::query_as!(
             crate::Categories,
@@ -923,10 +939,11 @@ impl crate::Categories {
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
     ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
-        let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE category_type = ?")
-            .bind(&category_type)
-            .fetch_one(pool)
-            .await?;
+        let total_count: i32 =
+            sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE category_type = ?")
+                .bind(&category_type)
+                .fetch_one(pool)
+                .await?;
 
         let categories = sqlx::query_as!(
             crate::Categories,
@@ -965,10 +982,12 @@ impl crate::Categories {
         limit: i32,
         pool: &sqlx::Pool<sqlx::Sqlite>,
     ) -> crate::DatabaseResult<(Vec<Self>, i32)> {
-        let total_count: i32 = sqlx::query_scalar("SELECT COUNT(*) as count FROM categories WHERE category_type = ? AND is_active = true")
-            .bind(&category_type)
-            .fetch_one(pool)
-            .await?;
+        let total_count: i32 = sqlx::query_scalar(
+            "SELECT COUNT(*) as count FROM categories WHERE category_type = ? AND is_active = true",
+        )
+        .bind(&category_type)
+        .fetch_one(pool)
+        .await?;
 
         let categories = sqlx::query_as!(
             crate::Categories,
@@ -1004,11 +1023,14 @@ impl crate::Categories {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::SqlitePool;
     use fake::Fake;
+    use sqlx::SqlitePool;
 
     /// Helper function to insert a test category
-    async fn insert_test_category(pool: &SqlitePool, category: &crate::Categories) -> domain::RowID {
+    async fn insert_test_category(
+        pool: &SqlitePool,
+        category: &crate::Categories,
+    ) -> domain::RowID {
         let id_str = category.id.to_string();
         let url_slug_str = category.url_slug.as_ref().map(|s| s.to_string());
         let category_type_str = category.category_type.as_str();
@@ -1076,7 +1098,9 @@ mod tests {
             category.url_slug = Some(domain::UrlSlug::from("test-slug"));
             insert_test_category(&pool, &category).await;
 
-            let result = crate::Categories::find_by_url_slug(category.url_slug.as_ref().unwrap(), &pool).await;
+            let result =
+                crate::Categories::find_by_url_slug(category.url_slug.as_ref().unwrap(), &pool)
+                    .await;
             assert!(result.is_ok());
             let found = result.unwrap();
             assert!(found.is_some());
@@ -1150,7 +1174,10 @@ mod tests {
                 insert_test_category(&pool, &category).await;
             }
 
-            let (categories, total_count) = crate::Categories::find_all_with_pagination(0, 2, &pool).await.unwrap();
+            let (categories, total_count) =
+                crate::Categories::find_all_with_pagination(0, 2, &pool)
+                    .await
+                    .unwrap();
             assert_eq!(categories.len(), 2);
             assert!(total_count >= 5);
         }
@@ -1164,7 +1191,10 @@ mod tests {
                 insert_test_category(&pool, &category).await;
             }
 
-            let (categories, total_count) = crate::Categories::find_active_with_pagination(0, 2, &pool).await.unwrap();
+            let (categories, total_count) =
+                crate::Categories::find_active_with_pagination(0, 2, &pool)
+                    .await
+                    .unwrap();
             assert!(categories.len() <= 2);
             assert!(categories.iter().all(|c| c.is_active));
             assert!(total_count >= 3); // At least 3 active categories
@@ -1179,7 +1209,10 @@ mod tests {
                 insert_test_category(&pool, &category).await;
             }
 
-            let (categories, total_count) = crate::Categories::find_inactive_with_pagination(0, 2, &pool).await.unwrap();
+            let (categories, total_count) =
+                crate::Categories::find_inactive_with_pagination(0, 2, &pool)
+                    .await
+                    .unwrap();
             assert!(categories.len() <= 2);
             assert!(categories.iter().all(|c| !c.is_active));
             assert!(total_count >= 2); // At least 2 inactive categories

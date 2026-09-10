@@ -6,15 +6,12 @@
 
 use config::ConfigError as ConfigLibError;
 
-/// Result type alias used across configuration module.
-pub type ConfigResult<T> = std::result::Result<T, ConfigError>;
-
 #[derive(thiserror::Error, Debug)]
 /// Errors produced while loading or validating configuration.
 ///
 /// `ConfigError` wraps the `config` crate's errors and provides a couple of
 /// convenience variants for validation and address-parsing failures.
-pub enum ConfigError {
+pub enum Error {
     /// Error from the underlying config crate during file loading or parsing.
     ///
     /// This wraps errors from the `config` crate such as file not found,
@@ -32,9 +29,26 @@ pub enum ConfigError {
     /// Error indicating an invalid server address format.
     ///
     /// This is used for configuration validation failures such as invalid
-    /// values, missing required fields, or security misconfigurations.
+    /// values, missing required fields, or security misconfigurations with
+    /// the server address.
     #[error("Invalid server address: {0}")]
     InvalidServerAddress(#[from] std::net::AddrParseError),
+
+    /// Error indicating an invalid database configuration.
+    ///
+    /// This is used for configuration validation failures such as invalid
+    /// values, missing required fields, or security misconfigurations with
+    /// the database.
+    #[error("Invalid database config: {0}")]
+    InvalidDatabaseConfig(String),
+
+    /// Error indicating an invalid telemetry configuration.
+    ///
+    /// This is used for configuration validation failures such as invalid
+    /// values, missing required fields, or security misconfigurations with
+    /// the telemetry.
+    #[error("Invalid telemetry config: {0}")]
+    InvalidTelemetryConfig(String),
 }
 
 #[cfg(test)]
@@ -46,7 +60,7 @@ mod tests {
 
     #[test]
     fn validation_variant_formats_as_expected() {
-        let err = ConfigError::Validation("missing field x".into());
+        let err = Error::Validation("missing field x".into());
         assert_eq!(err.to_string(), "Invalid configuration: missing field x");
     }
 
@@ -54,7 +68,7 @@ mod tests {
     fn invalid_server_address_variant_formats_as_expected() {
         // produce an AddrParseError from an intentionally invalid socket addr
         let parse_err = "not_an_ip:80".parse::<SocketAddr>().unwrap_err();
-        let err = ConfigError::InvalidServerAddress(parse_err);
+        let err = Error::InvalidServerAddress(parse_err);
         let s = err.to_string();
         assert!(s.starts_with("Invalid server address:"));
     }
@@ -72,7 +86,7 @@ mod tests {
             .add_source(config::File::from(path).format(config::FileFormat::Json));
 
         let cfg_err = builder.build().expect_err("expected config build to fail");
-        let err = ConfigError::Parsing(cfg_err);
+        let err = Error::Parsing(cfg_err);
         let s = err.to_string();
         assert!(s.starts_with("Configuration parsing error:"));
     }

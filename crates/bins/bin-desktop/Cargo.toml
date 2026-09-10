@@ -15,7 +15,7 @@ path = "src/main.rs"
 lib_config = { path = "../../libs/lib-config" }
 lib_database = { path = "../../libs/lib-database" }
 lib_core = { path = "../../libs/lib-core" }
-lib_telemetry = { path = "../../libs/lib-telemetry" }
+lib_tracing = { path = "../../libs/lib-tracing" }
 
 ## -- Workspace Dependencies --
 chrono = { workspace = true }

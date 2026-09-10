@@ -5,7 +5,7 @@ description: Add or review tracing::instrument spans and log statements in this 
 
 # Tracing
 
-Add consistent, useful `tracing` telemetry using the levels and patterns this codebase follows (`lib_telemetry`'s `TelemetryLevels`, consumed by `server`'s `telemetry::init`).
+Add consistent, useful `tracing` tracing using the levels and patterns this codebase follows (`lib_tracing`'s `Levels`, consumed by `server`'s `tracing::init`).
 
 ## Levels, highest to lowest priority
 

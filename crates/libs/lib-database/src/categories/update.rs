@@ -1,4 +1,3 @@
-
 //! Category update operations for the Personal Ledger database.
 //!
 //! This module provides functionality for updating category records in the SQLite database.
@@ -576,7 +575,10 @@ mod tests {
 
             // Try to update a category that doesn't exist
             let result = category.update(&pool).await;
-            assert!(result.is_err(), "Update should fail for nonexistent category");
+            assert!(
+                result.is_err(),
+                "Update should fail for nonexistent category"
+            );
 
             let error = result.unwrap_err();
             match error {
@@ -682,7 +684,10 @@ mod tests {
 
             // Bulk update should fail due to nonexistent category
             let result = Categories::update_many(&all_categories, &pool).await;
-            assert!(result.is_err(), "Bulk update should fail if any category not found");
+            assert!(
+                result.is_err(),
+                "Bulk update should fail if any category not found"
+            );
 
             let error = result.unwrap_err();
             match error {
@@ -739,8 +744,10 @@ mod tests {
                 .unwrap();
 
                 // The category should still have its original name, not the modified one
-                assert_ne!(current.name, original.name,
-                    "Category should not have been updated due to transaction rollback");
+                assert_ne!(
+                    current.name, original.name,
+                    "Category should not have been updated due to transaction rollback"
+                );
             }
         }
     }
@@ -786,7 +793,10 @@ mod tests {
             let fake_id = domain::RowID::mock();
 
             let result = Categories::update_active_status(fake_id, true, &pool).await;
-            assert!(result.is_err(), "Update should fail for nonexistent category");
+            assert!(
+                result.is_err(),
+                "Update should fail for nonexistent category"
+            );
 
             let error = result.unwrap_err();
             match error {
@@ -850,7 +860,10 @@ mod tests {
                 // Ensure unique identifiers for this test
                 original.code = format!("STATUS{:03}.ABC.DEF", i);
                 original.name = format!("Status Test Category {}", i); // Ensure unique name
-                original.url_slug = Some(lib_core::UrlSlug::from(format!("status-test-category-{}", i)));
+                original.url_slug = Some(lib_core::UrlSlug::from(format!(
+                    "status-test-category-{}",
+                    i
+                )));
 
                 insert_test_category(&pool, &original).await;
 
@@ -871,4 +884,3 @@ mod tests {
         }
     }
 }
-

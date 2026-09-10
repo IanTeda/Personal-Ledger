@@ -26,7 +26,7 @@ dead_code = { level = "allow", priority = -1 }
 # Workspace configuration for managing multiple crates in the personal-ledger project
 [workspace]
 
-# Resolver version for dependency resolution (3 = new resolver for improved optional/dev 
+# Resolver version for dependency resolution (3 = new resolver for improved optional/dev
 # dep handling). Minimum required Cargo version for resolver 3 is 1.51.
 resolver = "3"
 
@@ -41,7 +41,7 @@ members = [
   "./crates/bins/bin-tui",
   "./crates/libs/lib-config",
   "./crates/libs/lib-database",
-  "./crates/libs/lib-telemetry",
+  "./crates/libs/lib-tracing",
   "./crates/libs/lib-rpc",
 ]
 

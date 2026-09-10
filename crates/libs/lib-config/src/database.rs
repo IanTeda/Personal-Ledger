@@ -1,4 +1,3 @@
-
 //! # Database Configuration
 //!
 //! This module provides configuration structures for the database connection pool in the Personal Ledger application.
@@ -17,7 +16,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use lib_database::DatabaseConfig;
+//! use lib_config::DatabaseConfig;
 //!
 //! // Create default configuration
 //! let config = DatabaseConfig::default();
@@ -27,7 +26,7 @@
 //! let max_conn = config.max_connections();
 //!
 //! // Use with connection pool
-//! # // Note: This would normally require DatabaseConnection
+//! # // Note: This would normally require lib_database::DatabaseConnection
 //! # // let connection = DatabaseConnection::new(config).await?;
 //! ```
 //!
@@ -61,8 +60,8 @@
 //! PERSONAL_LEDGER_DATABASE__MAX_LIFETIME_SECONDS=3600
 //! ```
 
+use crate::Error;
 use chrono::Duration;
-use crate::{DatabaseResult, DatabaseError};
 
 /// Default database URL for SQLite database.
 ///
@@ -121,7 +120,7 @@ const DEFAULT_MAX_LIFETIME_SECONDS: i64 = 1800;
 /// # Examples
 ///
 /// ```rust
-/// use lib_database::DatabaseConfig;
+/// use lib_config::DatabaseConfig;
 ///
 /// // Default configuration
 /// let config = DatabaseConfig::default();
@@ -191,7 +190,7 @@ impl Default for DatabaseConfig {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_database::DatabaseConfig;
+    /// use lib_config::DatabaseConfig;
     ///
     /// let config = DatabaseConfig::default();
     /// assert_eq!(config.url(), "sqlite:./personal-ledger.sqlite");
@@ -221,7 +220,7 @@ impl DatabaseConfig {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_database::DatabaseConfig;
+    /// use lib_config::DatabaseConfig;
     ///
     /// let config = DatabaseConfig::default();
     /// let url = config.url();
@@ -242,7 +241,7 @@ impl DatabaseConfig {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_database::DatabaseConfig;
+    /// use lib_config::DatabaseConfig;
     ///
     /// let config = DatabaseConfig::default();
     /// assert_eq!(config.max_connections(), 10);
@@ -262,7 +261,7 @@ impl DatabaseConfig {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_database::DatabaseConfig;
+    /// use lib_config::DatabaseConfig;
     ///
     /// let config = DatabaseConfig::default();
     /// assert_eq!(config.min_connections(), 1);
@@ -282,7 +281,7 @@ impl DatabaseConfig {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_database::DatabaseConfig;
+    /// use lib_config::DatabaseConfig;
     /// use chrono::Duration;
     ///
     /// let config = DatabaseConfig::default();
@@ -305,7 +304,7 @@ impl DatabaseConfig {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_database::DatabaseConfig;
+    /// use lib_config::DatabaseConfig;
     /// use chrono::Duration;
     ///
     /// let config = DatabaseConfig::default();
@@ -337,7 +336,7 @@ impl DatabaseConfig {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_database::DatabaseConfig;
+    /// use lib_config::DatabaseConfig;
     /// use chrono::Duration;
     ///
     /// let config = DatabaseConfig::default();
@@ -357,19 +356,20 @@ impl DatabaseConfig {
         }
     }
 
-    /// Validate the configuration.
+    /// Validate the database configuration.
     ///
     /// Checks that all configuration values are valid and consistent.
     /// This should be called before using the configuration to create a connection pool.
     ///
     /// # Returns
     ///
-    /// `Ok(())` if the configuration is valid, or a `DatabaseError::Validation` describing the problem.
+    /// `Ok(())` if the configuration is valid, or an [`Error::InvalidDatabaseConfig`]
+    /// describing the problem.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use lib_database::DatabaseConfig;
+    /// use lib_config::DatabaseConfig;
     ///
     /// let config = DatabaseConfig::default();
     /// assert!(config.validate().is_ok());
@@ -381,36 +381,36 @@ impl DatabaseConfig {
     /// };
     /// assert!(invalid_config.validate().is_err());
     /// ```
-    pub fn validate(&self) -> DatabaseResult<()> {
+    pub fn validate(&self) -> crate::Result<()> {
         if self.max_connections < self.min_connections {
-            return Err(DatabaseError::Validation(format!(
+            return Err(Error::InvalidDatabaseConfig(format!(
                 "max_connections ({}) must be >= min_connections ({})",
                 self.max_connections, self.min_connections
             )));
         }
 
         if self.acquire_timeout_seconds <= 0 {
-            return Err(DatabaseError::Validation(
-                "acquire_timeout_seconds must be positive".to_string()
+            return Err(Error::InvalidDatabaseConfig(
+                "acquire_timeout_seconds must be positive".to_string(),
             ));
         }
 
         if self.idle_timeout_seconds < 0 {
-            return Err(DatabaseError::Validation(
-                "idle_timeout_seconds must be non-negative".to_string()
+            return Err(Error::InvalidDatabaseConfig(
+                "idle_timeout_seconds must be non-negative".to_string(),
             ));
         }
 
         if self.max_lifetime_seconds < 0 {
-            return Err(DatabaseError::Validation(
-                "max_lifetime_seconds must be non-negative".to_string()
+            return Err(Error::InvalidDatabaseConfig(
+                "max_lifetime_seconds must be non-negative".to_string(),
             ));
         }
 
         // Basic URL validation for SQLite
         if !self.url.starts_with("sqlite:") {
-            return Err(DatabaseError::Validation(
-                "URL must start with 'sqlite:'".to_string()
+            return Err(Error::InvalidDatabaseConfig(
+                "URL must start with 'sqlite:'".to_string(),
             ));
         }
 
@@ -436,7 +436,7 @@ impl DatabaseConfig {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_database::DatabaseConfig;
+    /// use lib_config::DatabaseConfig;
     ///
     /// let defaults = DatabaseConfig::default_config_values();
     /// assert!(!defaults.is_empty());
@@ -452,11 +452,26 @@ impl DatabaseConfig {
         let default_config = Self::default();
         vec![
             ("database.url", default_config.url().to_string()),
-            ("database.max_connections", default_config.max_connections().to_string()),
-            ("database.min_connections", default_config.min_connections().to_string()),
-            ("database.acquire_timeout_seconds", default_config.acquire_timeout_seconds.to_string()),
-            ("database.idle_timeout_seconds", default_config.idle_timeout_seconds.to_string()),
-            ("database.max_lifetime_seconds", default_config.max_lifetime_seconds.to_string()),
+            (
+                "database.max_connections",
+                default_config.max_connections().to_string(),
+            ),
+            (
+                "database.min_connections",
+                default_config.min_connections().to_string(),
+            ),
+            (
+                "database.acquire_timeout_seconds",
+                default_config.acquire_timeout_seconds.to_string(),
+            ),
+            (
+                "database.idle_timeout_seconds",
+                default_config.idle_timeout_seconds.to_string(),
+            ),
+            (
+                "database.max_lifetime_seconds",
+                default_config.max_lifetime_seconds.to_string(),
+            ),
         ]
     }
 }
@@ -471,9 +486,18 @@ mod tests {
         assert_eq!(config.url(), DEFAULT_URL);
         assert_eq!(config.max_connections(), DEFAULT_MAX_CONNECTIONS);
         assert_eq!(config.min_connections(), DEFAULT_MIN_CONNECTIONS);
-        assert_eq!(config.acquire_timeout(), Duration::seconds(DEFAULT_ACQUIRE_TIMEOUT_SECONDS));
-        assert_eq!(config.idle_timeout(), Some(Duration::seconds(DEFAULT_IDLE_TIMEOUT_SECONDS)));
-        assert_eq!(config.max_lifetime(), Some(Duration::seconds(DEFAULT_MAX_LIFETIME_SECONDS)));
+        assert_eq!(
+            config.acquire_timeout(),
+            Duration::seconds(DEFAULT_ACQUIRE_TIMEOUT_SECONDS)
+        );
+        assert_eq!(
+            config.idle_timeout(),
+            Some(Duration::seconds(DEFAULT_IDLE_TIMEOUT_SECONDS))
+        );
+        assert_eq!(
+            config.max_lifetime(),
+            Some(Duration::seconds(DEFAULT_MAX_LIFETIME_SECONDS))
+        );
     }
 
     #[test]
@@ -528,7 +552,7 @@ mod tests {
         };
         let result = config.validate();
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::Validation(_))));
+        assert!(matches!(result, Err(Error::InvalidDatabaseConfig(_))));
     }
 
     #[test]
@@ -539,7 +563,7 @@ mod tests {
         };
         let result = config.validate();
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::Validation(_))));
+        assert!(matches!(result, Err(Error::InvalidDatabaseConfig(_))));
     }
 
     #[test]
@@ -550,7 +574,7 @@ mod tests {
         };
         let result = config.validate();
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::Validation(_))));
+        assert!(matches!(result, Err(Error::InvalidDatabaseConfig(_))));
     }
 
     #[test]
@@ -561,7 +585,7 @@ mod tests {
         };
         let result = config.validate();
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::Validation(_))));
+        assert!(matches!(result, Err(Error::InvalidDatabaseConfig(_))));
     }
 
     #[test]
@@ -572,7 +596,7 @@ mod tests {
         };
         let result = config.validate();
         assert!(result.is_err());
-        assert!(matches!(result, Err(DatabaseError::Validation(_))));
+        assert!(matches!(result, Err(Error::InvalidDatabaseConfig(_))));
     }
 
     #[test]
@@ -626,14 +650,28 @@ mod tests {
         ];
 
         for key in expected_keys {
-            assert!(defaults.iter().any(|(k, _)| *k == key), "Missing key: {}", key);
+            assert!(
+                defaults.iter().any(|(k, _)| *k == key),
+                "Missing key: {}",
+                key
+            );
         }
 
         // Check specific values
-        let url_value = defaults.iter().find(|(k, _)| *k == "database.url").unwrap().1.clone();
+        let url_value = defaults
+            .iter()
+            .find(|(k, _)| *k == "database.url")
+            .unwrap()
+            .1
+            .clone();
         assert_eq!(url_value, DEFAULT_URL);
 
-        let max_conn_value = defaults.iter().find(|(k, _)| *k == "database.max_connections").unwrap().1.clone();
+        let max_conn_value = defaults
+            .iter()
+            .find(|(k, _)| *k == "database.max_connections")
+            .unwrap()
+            .1
+            .clone();
         assert_eq!(max_conn_value, DEFAULT_MAX_CONNECTIONS.to_string());
     }
 }
