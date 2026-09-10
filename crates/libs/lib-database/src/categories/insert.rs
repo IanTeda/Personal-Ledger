@@ -769,8 +769,22 @@ mod tests {
     /// Helper function to create multiple random test categories.
     ///
     /// Generates a specified number of categories with varied data for bulk operation testing.
+    /// The batch index is folded into each category's `code`, `name`, and `url_slug` to
+    /// guarantee no two categories in the same batch collide on any of those `UNIQUE` columns --
+    /// `create_random_category`'s fake data is drawn from limited-cardinality sources (a small
+    /// lorem word list for `name`, a 1,000,000-combination `code`), so a batch of ~20 has a real
+    /// birthday-paradox chance of a collision, which `insert_many`'s duplicate-skipping logic
+    /// silently absorbs, intermittently failing an exact-count assertion.
     fn create_random_categories(count: usize) -> Vec<crate::Categories> {
-        (0..count).map(|_| create_random_category()).collect()
+        (0..count)
+            .map(|index| {
+                let mut category = create_random_category();
+                category.code = format!("{}.{:04}", category.code, index);
+                category.name = format!("{} {:04}", category.name, index);
+                category.url_slug = Some(UrlSlug::from(category.name.clone()));
+                category
+            })
+            .collect()
     }
 
     /// Helper function to insert a test category and return it.

@@ -91,10 +91,24 @@ impl crate::ChangeSet {
 mod tests {
     use sqlx::SqlitePool;
 
+    /// `ChangeSet::mock()`'s `id` comes from `RowID::mock()`, which embeds a uniformly
+    /// random timestamp anywhere since the Unix epoch (for realistic, historically-spread
+    /// test data) rather than the current time -- so two `mock()` calls have no guaranteed
+    /// relative order. Production code never sees this: `RowID::new()` uses
+    /// `Uuid::now_v7()`, which the `uuid` crate guarantees is ordered by creation time
+    /// within a process. Tests that exercise ordering must override `mock()`'s `id` with
+    /// a real `RowID::new()` to get that guarantee.
+    fn mock_change_set_with_fresh_id() -> crate::ChangeSet {
+        crate::ChangeSet {
+            id: lib_core::RowID::new(),
+            ..crate::ChangeSet::mock()
+        }
+    }
+
     #[sqlx::test(migrations = "migrations/sync-server")]
     async fn find_since_none_returns_everything_oldest_first(pool: SqlitePool) {
-        let first = crate::ChangeSet::mock().insert(&pool).await.unwrap();
-        let second = crate::ChangeSet::mock().insert(&pool).await.unwrap();
+        let first = mock_change_set_with_fresh_id().insert(&pool).await.unwrap();
+        let second = mock_change_set_with_fresh_id().insert(&pool).await.unwrap();
 
         let found = crate::ChangeSet::find_since(None, 100, &pool)
             .await
@@ -111,8 +125,8 @@ mod tests {
 
     #[sqlx::test(migrations = "migrations/sync-server")]
     async fn find_since_a_cursor_excludes_earlier_change_sets(pool: SqlitePool) {
-        let first = crate::ChangeSet::mock().insert(&pool).await.unwrap();
-        let second = crate::ChangeSet::mock().insert(&pool).await.unwrap();
+        let first = mock_change_set_with_fresh_id().insert(&pool).await.unwrap();
+        let second = mock_change_set_with_fresh_id().insert(&pool).await.unwrap();
 
         let found = crate::ChangeSet::find_since(Some(first.id), 100, &pool)
             .await
