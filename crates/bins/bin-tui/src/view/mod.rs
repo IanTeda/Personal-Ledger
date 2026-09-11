@@ -94,8 +94,8 @@ pub enum Action {
     /// `g b`, or `Enter` on the command popup's `budget list [period]` command — opens the
     /// placeholder Budgets view.
     OpenBudgets,
-    /// `g c`, or `Enter` on the command popup's `category list` command — opens the
-    /// placeholder Categories view.
+    /// `g c`, or `Enter` on the command popup's `cat` command — opens the Categories view
+    /// (`view::categories::CategoriesView`, "Categories screen, views and popup", issue #106).
     OpenCategories,
     /// `?`, or `Enter` on the command popup's `help` command — opens the placeholder Help
     /// view.
@@ -245,6 +245,15 @@ pub trait View {
     /// without downcasting the `Box<dyn View>` trait object. Mutation still goes through
     /// `View::update` (`Action::MoveCategory`/`CreateCategoryChild`), never through this.
     fn category_store(&self) -> Option<&dyn CategoryStore> {
+        None
+    }
+
+    /// The currently-selected category, if this view is `CategoriesView` and has one — lets
+    /// `Shell` dispatch the `:cat` command grammar's `new`/`edit`/`move`/`archive` entries
+    /// (`popup::command::commands::categories`) against the tree's own selection, the same
+    /// target its `n`/`e`/`m`/`a` keys already act on, since the command popup has no real
+    /// typed-argument resolution to supply a `<cat>` from instead.
+    fn category_selection(&self) -> Option<RowID> {
         None
     }
 }

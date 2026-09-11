@@ -230,6 +230,41 @@ impl Shell {
                 Some("unit delete <code>") => Some(Action::OpenDeleteUnitPopup),
                 Some("dashboard") => Some(Action::OpenDashboard),
                 Some("settings") => Some(Action::OpenSettings),
+                Some("cat") => Some(Action::OpenCategories),
+                // The command popup has no real typed-argument resolution (`popup::command::
+                // commands::categories`'s own module doc), so `<cat>`/`<parent>`/`<name>` all
+                // mean "the Categories tree's current selection" here — the same target its
+                // own `n`/`e`/`m`/`a` keys act on. Falls back to the ordinary "not yet built"
+                // message when there isn't one (Categories isn't the active view), rather than
+                // silently doing nothing.
+                Some(name @ "cat new <name> [parent]") => self
+                    .view
+                    .category_selection()
+                    .map(Action::OpenCategoryNewPopup)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "cat edit <cat>") => self
+                    .view
+                    .category_selection()
+                    .map(Action::OpenCategoryEditPopup)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "cat move <cat> <parent>") => self
+                    .view
+                    .category_selection()
+                    .map(Action::OpenCategoryMovePopup)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "cat archive <cat>") => self
+                    .view
+                    .category_selection()
+                    .and_then(|id| {
+                        let node = self.view.category_store()?.find(id)?;
+                        Some(Action::UpdateCategory {
+                            id,
+                            name: node.name.clone(),
+                            note: node.note.clone(),
+                            active: false,
+                        })
+                    })
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
                 Some(name) => Some(Action::CommandPopupSetNotYetBuilt(name)),
                 None => None,
             },
@@ -1164,14 +1199,14 @@ mod tests {
 
     #[test]
     fn selecting_each_no_longer_dispatched_list_command_and_pressing_enter_shows_not_yet_built() {
-        // These 8 used to navigate to an empty placeholder box on `Enter`; per this ticket
-        // they now show the "not yet built" message like every other undispatched command,
-        // and the popup stays open rather than navigating anywhere.
+        // These used to navigate to an empty placeholder box on `Enter`; per this ticket they
+        // now show the "not yet built" message like every other undispatched command, and the
+        // popup stays open rather than navigating anywhere. `category list` (now `cat`) is no
+        // longer one of them — "Categories: :cat command grammar" gave it real dispatch.
         let cases: &[&str] = &[
             "account list",
             "check list",
             "budget list",
-            "category list",
             "help",
             "payee list",
             "report list",
@@ -2248,5 +2283,155 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell with the edit popup open should not error");
+    }
+
+    /// Filters the open command popup down to `filter`, then presses `Enter` — the action
+    /// dispatching whatever's now highlighted.
+    fn select_and_enter(shell: &mut Shell, filter: &str) -> Action {
+        for c in filter.chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+        shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on a filtered-to-one command always maps to an action")
+    }
+
+    #[test]
+    fn selecting_the_cat_command_and_pressing_enter_opens_the_categories_view() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        // "cat" alone is ambiguous (it also substring-matches e.g. `budget new <category>
+        // <limit>`) — "categories" (the domain name) narrows to just this domain's own eight
+        // commands, with the bare `cat` first among them.
+        let action = select_and_enter(&mut shell, "categories");
+        assert_eq!(action, Action::OpenCategories);
+    }
+
+    #[test]
+    fn selecting_cat_new_while_categories_is_active_opens_the_new_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let income = category_id_by_name(&shell, "Income");
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "cat new");
+        assert_eq!(action, Action::OpenCategoryNewPopup(income));
+    }
+
+    #[test]
+    fn selecting_cat_edit_while_categories_is_active_opens_the_edit_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let income = category_id_by_name(&shell, "Income");
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "cat edit");
+        assert_eq!(action, Action::OpenCategoryEditPopup(income));
+    }
+
+    #[test]
+    fn selecting_cat_move_while_categories_is_active_opens_the_move_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let income = category_id_by_name(&shell, "Income");
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "cat move");
+        assert_eq!(action, Action::OpenCategoryMovePopup(income));
+    }
+
+    #[test]
+    fn selecting_cat_archive_while_categories_is_active_archives_the_selection_immediately() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        // Move the tree selection off the default Income root (`cat archive` would just
+        // refuse it, via `set_active`'s own `IsRoot` check) onto its first child.
+        let move_down = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('j'),
+                KeyModifiers::NONE,
+            )))
+            .expect("j always maps to an action");
+        shell.update(move_down);
+        let investments = category_id_by_name(&shell, "Investments");
+        assert!(
+            shell
+                .view
+                .category_store()
+                .unwrap()
+                .find(investments)
+                .unwrap()
+                .active
+        );
+
+        shell.update(Action::OpenCommandPopup);
+        let action = select_and_enter(&mut shell, "cat archive");
+        assert_eq!(
+            action,
+            Action::UpdateCategory {
+                id: investments,
+                name: "Investments".to_string(),
+                note: None,
+                active: false,
+            }
+        );
+
+        shell.update(action);
+        assert!(
+            !shell
+                .view
+                .category_store()
+                .unwrap()
+                .find(investments)
+                .unwrap()
+                .active
+        );
+    }
+
+    #[test]
+    fn cat_new_edit_move_and_archive_fall_back_to_not_yet_built_when_categories_is_not_active() {
+        for (filter, name) in [
+            ("cat new", "cat new <name> [parent]"),
+            ("cat edit", "cat edit <cat>"),
+            ("cat move", "cat move <cat> <parent>"),
+            ("cat archive", "cat archive <cat>"),
+        ] {
+            let mut shell = Shell::new();
+            shell.update(Action::OpenCommandPopup);
+            let action = select_and_enter(&mut shell, filter);
+            assert_eq!(
+                action,
+                Action::CommandPopupSetNotYetBuilt(name),
+                "{filter} should fall back when Categories isn't the active view"
+            );
+        }
+    }
+
+    #[test]
+    fn cat_rename_merge_and_tree_always_show_not_yet_built() {
+        for (filter, name) in [
+            ("cat rename", "cat rename <cat> <name>"),
+            ("cat merge", "cat merge <from> <into>"),
+            ("cat tree", "cat tree [root]"),
+        ] {
+            let mut shell = Shell::new();
+            shell.update(Action::OpenCategories); // even with Categories active...
+            shell.update(Action::OpenCommandPopup);
+            let action = select_and_enter(&mut shell, filter);
+            assert_eq!(
+                action,
+                Action::CommandPopupSetNotYetBuilt(name),
+                "{filter} should have no real dispatch yet"
+            );
+        }
     }
 }

@@ -534,6 +534,10 @@ impl View for CategoriesView {
     fn category_store(&self) -> Option<&dyn CategoryStore> {
         Some(&self.store)
     }
+
+    fn category_selection(&self) -> Option<RowID> {
+        Some(self.selected)
+    }
 }
 
 impl CategoriesView {
