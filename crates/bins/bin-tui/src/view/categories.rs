@@ -62,6 +62,10 @@ fn chart_end_month() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 9, 1).expect("fixed literal is a valid date")
 }
 
+/// Width of the left pane (tree + summary) — matches `view::units`'s own `LEFT_COLUMN_WIDTH`,
+/// so the two screens' left columns line up rather than each picking their own width.
+const LEFT_PANE_WIDTH: u16 = 46;
+
 /// Width of the tree's `N` (direct child count) column.
 const TREE_N_WIDTH: u16 = 2;
 
@@ -528,7 +532,8 @@ impl View for CategoriesView {
 
         let columns = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(41), Constraint::Min(0)])
+            .constraints([Constraint::Length(LEFT_PANE_WIDTH), Constraint::Min(0)])
+            .spacing(2)
             .split(rows[1]);
 
         self.render_left_pane(frame, columns[0]);
@@ -1455,6 +1460,42 @@ mod tests {
     }
 
     #[test]
+    fn left_pane_is_46_wide_with_a_2_col_gap_before_the_right_pane() {
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        let view = CategoriesView::new();
+        terminal
+            .draw(|frame| view.view(frame, frame.area()))
+            .expect("rendering should not error");
+
+        let buffer = terminal.backend().buffer();
+        let row_text = |y: u16| -> String {
+            let mut row = String::new();
+            for x in 0..buffer.area.width {
+                row.push_str(buffer[(x, y)].symbol());
+            }
+            row
+        };
+        // The tree header and the "DIRECT SPEND" heading are both the first row of their own
+        // pane, so they land on the same absolute row.
+        let header_row = (0..buffer.area.height)
+            .find(|&y| row_text(y).contains("DIRECT SPEND"))
+            .expect("DIRECT SPEND heading should be on some row");
+        assert!(
+            row_text(header_row).contains("tree"),
+            "the left pane's tree header should be on the same row as DIRECT SPEND"
+        );
+
+        for x in LEFT_PANE_WIDTH..LEFT_PANE_WIDTH + 2 {
+            assert_eq!(
+                buffer[(x, header_row)].symbol().trim(),
+                "",
+                "expected a blank 2-column gap between the left and right panes at x={x}"
+            );
+        }
+    }
+
+    #[test]
     fn title_is_categories() {
         assert_eq!(CategoriesView::new().title(), "Categories");
     }
@@ -1650,9 +1691,9 @@ mod tests {
 
     #[test]
     fn archived_row_renders_dim_with_an_archived_suffix() {
-        // A short-named leaf (`Bonus`, not `Restaurants`) — the 41-col left pane's name
-        // column is narrow enough at depth 3 that a longer name plus " · archived" would
-        // truncate before the suffix, which would defeat the point of this assertion.
+        // A short-named leaf (`Bonus`, not `Restaurants`) — the left pane's name column is
+        // narrow enough at depth 3 that a longer name plus " · archived" would truncate before
+        // the suffix, which would defeat the point of this assertion.
         let mut view = CategoriesView::new();
         let salary = find_by_name(&view, "Salary");
         let bonus = find_by_name(&view, "Bonus");
@@ -1698,9 +1739,9 @@ mod tests {
         );
         assert!(text.contains("none · leaf"), "children field missing");
         assert!(text.contains("148 · direct"), "transactions field missing");
-        // The 41-col pane's summary box only leaves ~15 chars for a value after the label
-        // column, so a long note truncates — check a prefix short enough to survive that,
-        // not the full "supermarket, greengrocer".
+        // The summary box only leaves ~20 chars for a value after the label column, so a
+        // long note still truncates — check a prefix short enough to survive that, not the
+        // full "supermarket, greengrocer".
         assert!(text.contains("supermarket"), "note missing");
         assert!(text.contains("[×] · offered"), "active field missing");
     }
@@ -1745,13 +1786,13 @@ mod tests {
 
         let buffer = terminal.backend().buffer();
         let row_is_reversed = |y: u16| -> bool {
-            (0..41).any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
+            (0..LEFT_PANE_WIDTH).any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
         };
         let row_containing = |needle: &str| -> u16 {
             (0..buffer.area.height)
                 .find(|&y| {
                     let mut row = String::new();
-                    for x in 0..41 {
+                    for x in 0..LEFT_PANE_WIDTH {
                         row.push_str(buffer[(x, y)].symbol());
                     }
                     row.contains(needle)
