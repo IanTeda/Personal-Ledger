@@ -76,8 +76,9 @@ const TREE_ROLLUP_WIDTH: u16 = 8;
 const SUMMARY_LABEL_WIDTH: usize = 22;
 
 /// Height of the right pane's spend-chart section: heading, rule, the plot itself, then the
-/// first/avg/last labels beneath it.
-const SPEND_CHART_HEIGHT: u16 = 11;
+/// first/avg/last labels beneath it — matches `view::units`'s own `WEEKLY_CLOSE_HEIGHT`, the
+/// closest existing chart section, so the two screens' charts read at the same scale.
+const SPEND_CHART_HEIGHT: u16 = 12;
 
 /// Width of the transactions list's `DATE` column.
 const TXN_DATE_WIDTH: u16 = 6;
