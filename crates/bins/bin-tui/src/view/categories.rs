@@ -1756,9 +1756,9 @@ mod tests {
         let text = render(&view);
         assert!(text.contains("direct 12m"), "direct label missing");
         assert!(text.contains("rollup 12m"), "rollup label missing");
-        assert!(text.contains("18 240.4"), "rollup value missing");
+        assert!(text.contains("24 120.4"), "rollup value missing");
         assert!(
-            text.contains("2 · parent"),
+            text.contains("4 · parent"),
             "children field missing for a parent"
         );
     }
@@ -1978,7 +1978,7 @@ mod tests {
         );
 
         let food = find_by_name(&view, "Food");
-        assert_eq!(view.subtree_transaction_count(food), 148 + 62);
+        assert_eq!(view.subtree_transaction_count(food), 148 + 62 + 58 + 104);
     }
 
     #[test]
@@ -2015,8 +2015,8 @@ mod tests {
             "direct count missing for a category with no direct postings"
         );
         assert!(
-            text.contains("210 in subtree"),
-            "subtree count missing (148 groceries + 62 restaurants)"
+            text.contains("372 in subtree"),
+            "subtree count missing (148 groceries + 62 restaurants + 58 takeaway + 104 coffee)"
         );
     }
 }

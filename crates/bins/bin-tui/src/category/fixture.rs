@@ -6,11 +6,13 @@
 //! multi-level structure for fold/unfold and depth to mean anything. Leaf `direct` amounts are
 //! chosen so a subtree's derived `rollup` lands on the handoff's own displayed total wherever
 //! the handoff shows enough of that subtree to check (`Housing`, `Transport`, `Health`,
-//! `Salary`, `Investments` all land exactly; `Food`'s only differs by the cents the handoff's
-//! narrow `12M` tree column truncates away — see the summary-box example, which does show
-//! `Groceries`' cents). Root-level totals (`Income`/`Expenses`) are **not** forced to match —
-//! rollup is derived, not stored, so it's whatever its children actually sum to; the handoff's
-//! own totals don't quite sum either; it's hand-drawn wireframe, not a spreadsheet.
+//! `Salary`, `Investments` all land exactly). `Food` deliberately diverges further, carrying
+//! two extra invented leaves (`Takeaway`, `Coffee`) beyond the handoff's own `Groceries`/
+//! `Restaurants` pair, so the tree has a branch with more than two children to demo folding
+//! against — its rollup is no longer close to the handoff's own `18 240` figure at all.
+//! Root-level totals (`Income`/`Expenses`) are **not** forced to match — rollup is derived,
+//! not stored, so it's whatever its children actually sum to; the handoff's own totals don't
+//! quite sum either; it's hand-drawn wireframe, not a spreadsheet.
 
 use lib_core::{Money, RowID};
 
@@ -111,6 +113,8 @@ impl CategoryFixture {
         let food = id();
         let groceries = id();
         let restaurants = id();
+        let takeaway = id();
+        let coffee = id();
         let transport = id();
         let fuel = id();
         let public_transit = id();
@@ -208,6 +212,15 @@ impl CategoryFixture {
                 None,
                 money(5_760, 0),
                 62,
+            ),
+            node(takeaway, Some(food), "Takeaway", None, money(4_320, 0), 58),
+            node(
+                coffee,
+                Some(food),
+                "Coffee",
+                Some("daily flat white habit"),
+                money(1_560, 0),
+                104,
             ),
             node(
                 transport,
@@ -474,7 +487,8 @@ mod tests {
     fn rollup_of_a_parent_sums_its_descendants() {
         let store = CategoryFixture::new();
         let food = find_by_name(&store, "Food");
-        assert_eq!(store.rollup(food.id).to_string(), "18240.4");
+        // Groceries 12480.40 + Restaurants 5760 + Takeaway 4320 + Coffee 1560.
+        assert_eq!(store.rollup(food.id).to_string(), "24120.4");
     }
 
     #[test]
