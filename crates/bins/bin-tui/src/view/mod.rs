@@ -152,6 +152,34 @@ pub enum Action {
     /// creates a missing parent inline". Carries an owned `String` (the typed name), which is
     /// why `Action` no longer derives `Copy` — see this enum's own doc comment.
     CreateCategoryChild { parent: RowID, name: String },
+    /// `n` (child of the tree selection) / `N` (sibling of it) on a Categories tree row —
+    /// opens the new popup (`crate::popup::category::new_popup`, "Categories: 5c new popup").
+    /// `CategoriesView::handle_key` resolves which parent `n`/`N` prefill before this is ever
+    /// dispatched, so this only ever carries the one, already-resolved id.
+    OpenCategoryNewPopup(RowID),
+    /// A printable character typed while the Category new popup is open — routed to whichever
+    /// of its fields (`name`/`parent`/`note`/`active`) currently has focus.
+    CategoryNewPopupInput(char),
+    /// `Backspace` while the Category new popup is open — removes the last character of
+    /// whichever field has focus.
+    CategoryNewPopupBackspace,
+    /// `Tab` while the Category new popup is open — completes the `parent` field's last path
+    /// segment when it has focus and a candidate exists, otherwise advances focus to the next
+    /// field (reconciling the handoff's "`parent` ... `tab` to change" with its own "`tab`
+    /// next field").
+    CategoryNewPopupTab,
+    /// `Ctrl+S`/`Ctrl+A` on the Category new popup, once its draft validates (a resolved
+    /// `parent`, a non-empty `name`, no sibling clash) — `Shell` resolves the popup's current
+    /// fields into this concrete pair before dispatching, the same way `MoveCategory` does.
+    /// `close_after` is `false` for `Ctrl+A` ("create and start another sibling" — the popup
+    /// stays open, reset for the next name), `true` for `Ctrl+S`.
+    CreateCategory {
+        parent: RowID,
+        name: String,
+        note: Option<String>,
+        active: bool,
+        close_after: bool,
+    },
 }
 
 /// The single view `Shell` hosts at a time.

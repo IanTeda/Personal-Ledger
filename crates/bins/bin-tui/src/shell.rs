@@ -20,7 +20,7 @@ use crate::{
     event::{Event, EventHandler},
     popup::{
         Dim,
-        category::{CategoryPopup, move_popup::MovePopup},
+        category::{CategoryPopup, move_popup::MovePopup, new_popup::NewPopup},
         command::CommandPopup,
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
     },
@@ -236,37 +236,66 @@ impl Shell {
         }
     }
 
-    /// Routes a key while the Category popup is open. `Esc` closes it; typing and `Backspace`
-    /// drive its `new parent` input; `Tab` completes the last path segment. `Ctrl+N`/`Ctrl+S`
-    /// resolve the input against the active view's `CategoryStore` (`View::category_store`)
-    /// right here — into a concrete, `Copy`-friendly `Action::CreateCategoryChild`/
-    /// `Action::MoveCategory` — rather than carrying the raw typed text any further; see
-    /// `popup::category::move_popup`'s module doc for why. Either resolves to `None` (a no-op)
-    /// when the current input doesn't yet support that action.
+    /// Routes a key while a Category popup is open, resolving it into a concrete `Action`
+    /// right here against the active view's `CategoryStore` (`View::category_store`) rather
+    /// than carrying raw typed text any further — see `popup::category::move_popup`'s module
+    /// doc for why. `Esc` closes either popup; otherwise the two have different field sets, so
+    /// each gets its own arm. A create/move that doesn't yet validate resolves to `None` (a
+    /// no-op) rather than a doomed `Action`.
     fn map_category_popup_key(&self, key: KeyEvent) -> Option<Action> {
-        let Some(CategoryPopup::Move(popup)) = &self.category_popup else {
-            return None;
-        };
         let store = self.view.category_store()?;
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
 
-        match key.code {
-            KeyCode::Esc => Some(Action::CloseCategoryPopup),
-            KeyCode::Backspace => Some(Action::CategoryMovePopupBackspace),
-            KeyCode::Tab => Some(Action::CategoryMovePopupTab),
-            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => popup
-                .creatable(store)
-                .map(|(parent, name)| Action::CreateCategoryChild { parent, name }),
-            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => popup
-                .resolved_parent(store)
-                .filter(|new_parent| store.validate_move(popup.moving_id(), *new_parent).is_ok())
-                .map(|new_parent| Action::MoveCategory {
-                    id: popup.moving_id(),
-                    new_parent,
-                }),
-            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
-                Some(Action::CategoryMovePopupInput(c))
-            }
-            _ => None,
+        match &self.category_popup {
+            Some(CategoryPopup::Move(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::CloseCategoryPopup),
+                KeyCode::Backspace => Some(Action::CategoryMovePopupBackspace),
+                KeyCode::Tab => Some(Action::CategoryMovePopupTab),
+                KeyCode::Char('n') if ctrl => popup
+                    .creatable(store)
+                    .map(|(parent, name)| Action::CreateCategoryChild { parent, name }),
+                KeyCode::Char('s') if ctrl => popup
+                    .resolved_parent(store)
+                    .filter(|new_parent| {
+                        store.validate_move(popup.moving_id(), *new_parent).is_ok()
+                    })
+                    .map(|new_parent| Action::MoveCategory {
+                        id: popup.moving_id(),
+                        new_parent,
+                    }),
+                KeyCode::Char(c) if !ctrl => Some(Action::CategoryMovePopupInput(c)),
+                _ => None,
+            },
+            Some(CategoryPopup::New(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::CloseCategoryPopup),
+                KeyCode::Backspace => Some(Action::CategoryNewPopupBackspace),
+                KeyCode::Tab => Some(Action::CategoryNewPopupTab),
+                KeyCode::Char('s') if ctrl => {
+                    popup
+                        .create_fields(store)
+                        .map(|(parent, name, note, active)| Action::CreateCategory {
+                            parent,
+                            name,
+                            note,
+                            active,
+                            close_after: true,
+                        })
+                }
+                KeyCode::Char('a') if ctrl => {
+                    popup
+                        .create_fields(store)
+                        .map(|(parent, name, note, active)| Action::CreateCategory {
+                            parent,
+                            name,
+                            note,
+                            active,
+                            close_after: false,
+                        })
+                }
+                KeyCode::Char(c) if !ctrl => Some(Action::CategoryNewPopupInput(c)),
+                _ => None,
+            },
+            None => None,
         }
     }
 
@@ -366,7 +395,7 @@ impl Shell {
                     popup.tab_complete(store);
                 }
             }
-            // `MoveCategory`/`CreateCategoryChild` were already validated in
+            // `MoveCategory`/`CreateCategoryChild`/`CreateCategory` were already validated in
             // `map_category_popup_key` against the store `Shell` itself has no other access
             // to — relaying to the active `View`'s own `update` is where the mutation actually
             // happens (`CategoriesView::update`, "Categories: fixture data seam and mutable
@@ -376,6 +405,38 @@ impl Shell {
                 self.category_popup = None;
             }
             Action::CreateCategoryChild { .. } => self.view.update(&action),
+            Action::OpenCategoryNewPopup(id) => {
+                if let Some(store) = self.view.category_store() {
+                    self.category_popup = Some(CategoryPopup::New(NewPopup::new(store, id)));
+                }
+                self.command_popup = None;
+                self.unit_popup = None;
+            }
+            Action::CategoryNewPopupInput(c) => {
+                if let Some(CategoryPopup::New(popup)) = &mut self.category_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::CategoryNewPopupBackspace => {
+                if let Some(CategoryPopup::New(popup)) = &mut self.category_popup {
+                    popup.backspace();
+                }
+            }
+            Action::CategoryNewPopupTab => {
+                if let Some(store) = self.view.category_store()
+                    && let Some(CategoryPopup::New(popup)) = &mut self.category_popup
+                {
+                    popup.tab(store);
+                }
+            }
+            Action::CreateCategory { close_after, .. } => {
+                self.view.update(&action);
+                if close_after {
+                    self.category_popup = None;
+                } else if let Some(CategoryPopup::New(popup)) = &mut self.category_popup {
+                    popup.reset_for_next_sibling();
+                }
+            }
         }
     }
 
@@ -466,7 +527,9 @@ impl Shell {
         } else if unit_popup_open {
             Line::from(" esc close unit form ").style(Style::default().fg(Color::DarkGray))
         } else if category_popup_open {
-            Line::from(" esc close move form ").style(Style::default().fg(Color::DarkGray))
+            // Generic across Move/New (and, later, Edit) — mirrors `unit_popup`'s own footer,
+            // which likewise doesn't tailor its wording per form variant.
+            Line::from(" esc close category form ").style(Style::default().fg(Color::DarkGray))
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             Line::from(vec![
@@ -1809,5 +1872,167 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell with the move popup open should not error");
+    }
+
+    #[test]
+    fn n_on_the_categories_view_opens_the_new_popup_for_a_child_of_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        assert!(shell.category_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('n'),
+                KeyModifiers::NONE,
+            )))
+            .expect("n on the categories view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.category_popup, Some(CategoryPopup::New(_))));
+    }
+
+    #[test]
+    fn shift_n_on_a_root_selection_does_nothing() {
+        // The default selection is the Income root, which has no parent for a sibling to
+        // attach under.
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('N'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.category_popup.is_none());
+    }
+
+    #[test]
+    fn typing_a_name_and_ctrl_s_creates_the_category_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let food = category_id_by_name(&shell, "Food");
+        let original_count = shell.view.category_store().unwrap().nodes().len();
+
+        shell.update(Action::OpenCategoryNewPopup(food));
+        for c in "Snacks".chars() {
+            shell.update(Action::CategoryNewPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.category_popup.is_none(),
+            "popup should close after ctrl+s"
+        );
+        let store = shell.view.category_store().unwrap();
+        assert_eq!(store.nodes().len(), original_count + 1);
+        let snacks = store
+            .nodes()
+            .iter()
+            .find(|node| node.name == "Snacks")
+            .expect("Snacks should now exist");
+        assert_eq!(snacks.parent_id, Some(food));
+    }
+
+    #[test]
+    fn ctrl_s_does_nothing_while_the_name_is_empty() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let food = category_id_by_name(&shell, "Food");
+        shell.update(Action::OpenCategoryNewPopup(food));
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.category_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn ctrl_s_does_nothing_on_a_case_insensitive_sibling_clash() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let food = category_id_by_name(&shell, "Food");
+        shell.update(Action::OpenCategoryNewPopup(food));
+        for c in "groceries".chars() {
+            // Food already has "Groceries".
+            shell.update(Action::CategoryNewPopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+    }
+
+    #[test]
+    fn ctrl_a_creates_and_keeps_the_popup_open_reset_for_another_sibling() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let food = category_id_by_name(&shell, "Food");
+
+        shell.update(Action::OpenCategoryNewPopup(food));
+        for c in "Snacks".chars() {
+            shell.update(Action::CategoryNewPopupInput(c));
+        }
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+a with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.category_popup.is_some(),
+            "popup should stay open after ctrl+a"
+        );
+        let store = shell.view.category_store().unwrap();
+        assert!(store.nodes().iter().any(|node| node.name == "Snacks"));
+
+        // The popup should be reset (name cleared) but still targeting Food, so a second
+        // sibling can be typed straight away.
+        for c in "Drinks".chars() {
+            shell.update(Action::CategoryNewPopupInput(c));
+        }
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with the second sibling's valid draft always maps to an action");
+        shell.update(action);
+
+        let store = shell.view.category_store().unwrap();
+        let drinks = store
+            .nodes()
+            .iter()
+            .find(|node| node.name == "Drinks")
+            .expect("Drinks should now exist");
+        assert_eq!(drinks.parent_id, Some(food));
+        assert!(shell.category_popup.is_none());
+    }
+
+    #[test]
+    fn renders_the_open_category_new_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let food = category_id_by_name(&shell, "Food");
+        shell.update(Action::OpenCategoryNewPopup(food));
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the new popup open should not error");
     }
 }

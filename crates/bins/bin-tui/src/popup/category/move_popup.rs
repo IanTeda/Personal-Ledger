@@ -25,6 +25,7 @@ use ratatui::{
 
 use lib_core::RowID;
 
+use super::path::{Resolution, ancestor_names, completions, resolve, tab_complete};
 use crate::category::CategoryStore;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
@@ -56,18 +57,6 @@ pub struct MovePopup {
     input: String,
 }
 
-/// What the currently-typed `input` resolves to.
-enum Resolution {
-    /// Every path segment matched an existing category — `RowID` is its id.
-    Existing(RowID),
-    /// Every segment but the last matched; the last (`name`) doesn't exist yet under the
-    /// matched `parent` — `^n` can create it.
-    Creatable { parent: RowID, name: String },
-    /// The path doesn't match anything, and doesn't leave exactly one creatable segment
-    /// either (e.g. more than one missing level, or no matching root at all).
-    Invalid,
-}
-
 impl MovePopup {
     /// Opens a popup moving `moving_id`, prefilling `input` with its current parent's path —
     /// continuing to type from there covers the common case of moving to a sibling or a
@@ -97,13 +86,7 @@ impl MovePopup {
     /// name (alphabetical, case-insensitive) — a narrow-to-one-candidate step, not full
     /// argument completion, mirroring the command popup's own `Tab` semantics.
     pub fn tab_complete(&mut self, store: &dyn CategoryStore) {
-        let Some(candidate) = completions(store, &self.input).into_iter().next() else {
-            return;
-        };
-        let mut segments: Vec<&str> = self.input.split('/').collect();
-        segments.pop();
-        segments.push(&candidate);
-        self.input = segments.join("/");
+        self.input = tab_complete(store, &self.input);
     }
 
     /// The existing category `input` currently resolves to, if any — what `^s` would move
@@ -436,80 +419,6 @@ fn render_footer_hints(frame: &mut Frame, area: Rect) {
         spans.push(Span::styled(*label, label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
-}
-
-/// `id`'s ancestor names, root to self, lowercase — the shared basis for both the `from`
-/// field's spaced display and the `new parent` input's compact one.
-fn ancestor_names(store: &dyn CategoryStore, id: RowID) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut current = store.find(id);
-    while let Some(node) = current {
-        names.push(node.name.to_lowercase());
-        current = node.parent_id.and_then(|parent_id| store.find(parent_id));
-    }
-    names.reverse();
-    names
-}
-
-/// Resolves `input` (a `/`-separated path, matched case-insensitively segment by segment
-/// against root names then descendant names) against `store`. Only ever reports one missing
-/// segment as creatable — a path missing more than one level in a row is `Invalid`, per the
-/// handoff's own single-level "`^n` creates a missing parent inline" (not a whole missing
-/// chain).
-fn resolve(store: &dyn CategoryStore, input: &str) -> Resolution {
-    let segments: Vec<&str> = input
-        .split('/')
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .collect();
-    let Some((first, rest)) = segments.split_first() else {
-        return Resolution::Invalid;
-    };
-
-    let Some(mut current_id) = store
-        .nodes()
-        .iter()
-        .find(|node| node.parent_id.is_none() && node.name.eq_ignore_ascii_case(first))
-        .map(|node| node.id)
-    else {
-        return Resolution::Invalid;
-    };
-
-    for (index, segment) in rest.iter().enumerate() {
-        let children = store.children(current_id);
-        match children
-            .iter()
-            .find(|child| child.name.eq_ignore_ascii_case(segment))
-        {
-            Some(child) => current_id = child.id,
-            None if index == rest.len() - 1 => {
-                return Resolution::Creatable {
-                    parent: current_id,
-                    name: (*segment).to_string(),
-                };
-            }
-            None => return Resolution::Invalid,
-        }
-    }
-
-    Resolution::Existing(current_id)
-}
-
-/// Candidate category names sharing `input`'s last segment as a case-insensitive prefix,
-/// sorted, deduplicated, capped to a handful — the `completion` row and what `Tab` accepts
-/// the first of.
-fn completions(store: &dyn CategoryStore, input: &str) -> Vec<String> {
-    let last_segment = input.rsplit('/').next().unwrap_or("").to_lowercase();
-    let mut names: Vec<String> = store
-        .nodes()
-        .iter()
-        .filter(|node| node.name.to_lowercase().starts_with(&last_segment))
-        .map(|node| node.name.clone())
-        .collect();
-    names.sort_by_key(|name| name.to_lowercase());
-    names.dedup();
-    names.truncate(4);
-    names
 }
 
 /// Computes a centred popup `Rect` sized to `content_rows` plus its top/bottom border —

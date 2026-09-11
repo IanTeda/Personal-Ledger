@@ -432,6 +432,15 @@ impl View for CategoriesView {
                 Some(Action::NoOp)
             }
             KeyCode::Char('m') => Some(Action::OpenCategoryMovePopup(self.selected)),
+            // `n`: new child of the selection. `N`: new sibling of it — its parent, or a
+            // no-op when the selection is a root (roots have no parent to attach a sibling
+            // under; there are only ever the two fixed ones).
+            KeyCode::Char('n') => Some(Action::OpenCategoryNewPopup(self.selected)),
+            KeyCode::Char('N') => self
+                .store
+                .find(self.selected)
+                .and_then(|node| node.parent_id)
+                .map(Action::OpenCategoryNewPopup),
             _ => None,
         }
     }
@@ -446,6 +455,21 @@ impl View for CategoriesView {
             }
             Action::CreateCategoryChild { parent, name } => {
                 let _ = self.store.insert(*parent, name.clone(), None);
+            }
+            Action::CreateCategory {
+                parent,
+                name,
+                note,
+                active,
+                ..
+            } => {
+                if let Ok(id) = self.store.insert(*parent, name.clone(), note.clone())
+                    && !active
+                {
+                    // `insert` always creates active — flip it off if the draft's `active`
+                    // checkbox was unticked (rare; `[×]` is the handoff's own default).
+                    let _ = self.store.set_active(id, false);
+                }
             }
             _ => {}
         }
