@@ -7,6 +7,7 @@
 
 mod action;
 mod app;
+mod category;
 mod db;
 mod error;
 mod event;
