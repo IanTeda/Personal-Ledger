@@ -18,8 +18,11 @@ pub mod transactions;
 pub mod units;
 
 use crossterm::event::KeyEvent;
+use lib_core::RowID;
 use ratatui::{Frame, layout::Rect};
 use tokio::sync::mpsc::UnboundedSender;
+
+use crate::category::CategoryStore;
 
 /// A message `Shell` or the active `View` reacts to. Deliberately minimal for now — the full
 /// action registry the command window will dispatch through (ADR-0013) is later work; this
@@ -29,8 +32,12 @@ use tokio::sync::mpsc::UnboundedSender;
 /// rather than the active `View` — they exist here because `Shell`'s event loop only redraws
 /// in response to an `Action`, and every `View::update` implementation ignores variants it
 /// doesn't care about, so adding shell-chrome messages alongside `Quit`/`Tick` costs a `View`
-/// nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// nothing. The `CategoryMovePopup*`/`MoveCategory`/`CreateCategoryChild` variants are the
+/// `Category`-domain popup's own equivalent (`crate::popup::category`), and are the reason
+/// this enum no longer derives `Copy` — `CreateCategoryChild` carries an owned `String` (a
+/// typed category name), which a `Copy` type can't. Every other variant still copies for
+/// free; only code that actually needs one of these two now needs to `.clone()`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
     /// A periodic tick, driving redraws even without input.
     Tick,
@@ -114,12 +121,37 @@ pub enum Action {
     /// `Quit` today, but through its own variant so a future confirm-before-quit check (once
     /// any view holds dirty/unsaved state) can be inserted without re-plumbing the keybinding.
     GracefulQuit,
-    /// A key a `View` handled entirely by mutating its own local state (e.g. the Categories
-    /// tree's selection, fold set or archived-visibility toggle — `crate::category`'s
-    /// state-ownership decision keeps that mutation inside the `View`, never routed through a
-    /// data-carrying `Action`) — distinct from returning `None`, which `Shell::run`'s event
-    /// loop treats as "nothing happened" and skips the next redraw for.
+    /// A key a `View` (or `Shell`, for the Category popup's own text-editing keys) handled
+    /// entirely by mutating local state directly, with nothing further to relay — distinct
+    /// from returning `None`, which `Shell::run`'s event loop treats as "nothing happened" and
+    /// skips the next redraw for.
     NoOp,
+    /// `m` on a Categories tree row — opens the move popup (`crate::popup::category::
+    /// move_popup`, "Categories: 5b move popup") for the given category.
+    OpenCategoryMovePopup(RowID),
+    /// `Esc` while the Category popup is open — closes it without moving anything.
+    CloseCategoryPopup,
+    /// A printable character typed while the Category move popup's `new parent` field has
+    /// focus (its only field) — appended to its input buffer.
+    CategoryMovePopupInput(char),
+    /// `Backspace` while the Category move popup is open — removes the last character of its
+    /// input.
+    CategoryMovePopupBackspace,
+    /// `Tab` while the Category move popup is open — completes the input's last path segment
+    /// against the first matching category name, per the handoff's "new parent completes on
+    /// full paths".
+    CategoryMovePopupTab,
+    /// `Ctrl+S` on the Category move popup, once its typed path resolves to an existing
+    /// category `validate_move` accepts — `Shell` resolves the input against the active
+    /// view's `CategoryStore` (via `View::category_store`) into this concrete, `Copy`-friendly
+    /// pair before dispatching, so only this variant (not the raw typed text) ever needs to
+    /// reach a `View::update`.
+    MoveCategory { id: RowID, new_parent: RowID },
+    /// `Ctrl+N` on the Category move popup, when its typed path's last segment doesn't exist
+    /// yet under an otherwise-resolved parent — creates it inline, per the handoff's "`^n`
+    /// creates a missing parent inline". Carries an owned `String` (the typed name), which is
+    /// why `Action` no longer derives `Copy` — see this enum's own doc comment.
+    CreateCategoryChild { parent: RowID, name: String },
 }
 
 /// The single view `Shell` hosts at a time.
@@ -146,4 +178,13 @@ pub trait View {
 
     /// Short name for the view, shown in the shell's status line.
     fn title(&self) -> &'static str;
+
+    /// Read-only access to this view's Category tree, if it has one — `Some` only for
+    /// `view::categories::CategoriesView`. Lets `Shell` render and resolve the Category
+    /// popup's live preview/validation (it needs the tree; `Shell` itself doesn't own one)
+    /// without downcasting the `Box<dyn View>` trait object. Mutation still goes through
+    /// `View::update` (`Action::MoveCategory`/`CreateCategoryChild`), never through this.
+    fn category_store(&self) -> Option<&dyn CategoryStore> {
+        None
+    }
 }

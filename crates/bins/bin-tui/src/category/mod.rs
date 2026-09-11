@@ -104,6 +104,24 @@ pub trait CategoryStore {
     /// `id`'s inherited kind, derived from its root's name.
     fn kind(&self, id: RowID) -> Option<CategoryKind>;
 
+    /// `id`'s depth, roots counted as depth `1` — matches the handoff's own depth numbering
+    /// (`expenses/food/groceries` is depth `3`; a default implementation since it only ever
+    /// needs `find`, not the underlying storage.
+    fn depth(&self, id: RowID) -> u32 {
+        let mut depth = 1;
+        let mut current = self.find(id);
+        while let Some(node) = current {
+            match node.parent_id {
+                Some(parent_id) => {
+                    depth += 1;
+                    current = self.find(parent_id);
+                }
+                None => break,
+            }
+        }
+        depth
+    }
+
     /// Every id in `id`'s own subtree, `id` itself included — the set a move's cycle check,
     /// and a future merge/delete's "has descendants" check, both need.
     fn descendants(&self, id: RowID) -> Vec<RowID>;
@@ -119,6 +137,12 @@ pub trait CategoryStore {
     ) -> Result<RowID, CategoryError>;
 
     fn rename(&mut self, id: RowID, name: String) -> Result<(), CategoryError>;
+
+    /// Checks whether `move_to(id, new_parent)` would succeed, without mutating anything —
+    /// `move_to` itself calls this first. The seam the Move popup ("Categories: 5b move
+    /// popup") previews refusals against live, as the user types, rather than only
+    /// discovering them on submit.
+    fn validate_move(&self, id: RowID, new_parent: RowID) -> Result<(), CategoryError>;
 
     fn move_to(&mut self, id: RowID, new_parent: RowID) -> Result<(), CategoryError>;
 

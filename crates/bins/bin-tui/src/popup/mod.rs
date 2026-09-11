@@ -8,6 +8,7 @@
 //! [`Dim`] is shared by every popup: the view behind an open overlay "stays visible and
 //! heavily dimmed", never hidden or cleared, per §3a.
 
+pub mod category;
 pub mod command;
 pub mod unit;
 

@@ -20,6 +20,7 @@ use crate::{
     event::{Event, EventHandler},
     popup::{
         Dim,
+        category::{CategoryPopup, move_popup::MovePopup},
         command::CommandPopup,
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
     },
@@ -57,6 +58,12 @@ pub struct Shell {
     /// one unit form is ever open at a time, hence the single `Option<UnitPopup>` rather than
     /// one field per form.
     unit_popup: Option<UnitPopup>,
+    /// The Category-domain popup (`crate::popup::category`) — `Some` while one is open. Owned
+    /// here, mirroring `unit_popup`, per "Categories: 5b move popup"'s own instruction to
+    /// follow `popup::unit`'s structure — even though the tree it acts on lives inside
+    /// `CategoriesView`, not here; see `popup::category::move_popup`'s module doc for how it
+    /// still reaches it. Mutually exclusive with `command_popup`/`unit_popup`.
+    category_popup: Option<CategoryPopup>,
     /// `true` after a lone `g` keypress with no completing chord yet — the leader half of the
     /// `g <letter>` jump chords in `docs/ux/tui/README.md`'s "Jumps" table (e.g. `g d`
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
@@ -84,6 +91,7 @@ impl Shell {
             action_tx,
             command_popup: None,
             unit_popup: None,
+            category_popup: None,
             pending_leader: false,
             view_stack: Vec::new(),
         }
@@ -124,9 +132,10 @@ impl Shell {
     }
 
     /// Translates a raw terminal event into an [`Action`]. Precedence: `Ctrl+C` always quits,
-    /// even mid-chord; then, while the command popup or a unit form is open, it takes every
-    /// other key over the active view (per §3a, the view behind it is inert while it's up);
-    /// then a pending `g` leader consumes the very next key as its chord completion (or aborts
+    /// even mid-chord; then, while the command popup, a unit form, or the Category popup is
+    /// open, it takes every other key over the active view (per §3a, the view behind it is
+    /// inert while it's up); then a pending `g` leader consumes the very next key as its chord
+    /// completion (or aborts
     /// silently if it doesn't complete one); otherwise `Ctrl+;` opens the command popup,
     /// `Ctrl+U` opens the placeholder Units view directly, `?` opens the placeholder Help
     /// view, `Esc` pops the view-navigation stack ([`Action::PopView`]), `Q` (shift) quits,
@@ -148,6 +157,9 @@ impl Shell {
                 }
                 if self.unit_popup.is_some() {
                     return map_unit_popup_key(key);
+                }
+                if self.category_popup.is_some() {
+                    return self.map_category_popup_key(key);
                 }
                 if self.pending_leader {
                     self.pending_leader = false;
@@ -224,6 +236,40 @@ impl Shell {
         }
     }
 
+    /// Routes a key while the Category popup is open. `Esc` closes it; typing and `Backspace`
+    /// drive its `new parent` input; `Tab` completes the last path segment. `Ctrl+N`/`Ctrl+S`
+    /// resolve the input against the active view's `CategoryStore` (`View::category_store`)
+    /// right here — into a concrete, `Copy`-friendly `Action::CreateCategoryChild`/
+    /// `Action::MoveCategory` — rather than carrying the raw typed text any further; see
+    /// `popup::category::move_popup`'s module doc for why. Either resolves to `None` (a no-op)
+    /// when the current input doesn't yet support that action.
+    fn map_category_popup_key(&self, key: KeyEvent) -> Option<Action> {
+        let Some(CategoryPopup::Move(popup)) = &self.category_popup else {
+            return None;
+        };
+        let store = self.view.category_store()?;
+
+        match key.code {
+            KeyCode::Esc => Some(Action::CloseCategoryPopup),
+            KeyCode::Backspace => Some(Action::CategoryMovePopupBackspace),
+            KeyCode::Tab => Some(Action::CategoryMovePopupTab),
+            KeyCode::Char('n') if key.modifiers.contains(KeyModifiers::CONTROL) => popup
+                .creatable(store)
+                .map(|(parent, name)| Action::CreateCategoryChild { parent, name }),
+            KeyCode::Char('s') if key.modifiers.contains(KeyModifiers::CONTROL) => popup
+                .resolved_parent(store)
+                .filter(|new_parent| store.validate_move(popup.moving_id(), *new_parent).is_ok())
+                .map(|new_parent| Action::MoveCategory {
+                    id: popup.moving_id(),
+                    new_parent,
+                }),
+            KeyCode::Char(c) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                Some(Action::CategoryMovePopupInput(c))
+            }
+            _ => None,
+        }
+    }
+
     /// Applies an [`Action`] to shell state.
     fn update(&mut self, action: Action) {
         match action {
@@ -295,6 +341,41 @@ impl Shell {
             Action::OpenSettings => self.open(SettingsView::new()),
             Action::OpenTransactions => self.open(TransactionsView::new()),
             Action::NoOp => {}
+            Action::OpenCategoryMovePopup(id) => {
+                if let Some(store) = self.view.category_store() {
+                    self.category_popup = Some(CategoryPopup::Move(MovePopup::new(store, id)));
+                }
+                self.command_popup = None;
+                self.unit_popup = None;
+            }
+            Action::CloseCategoryPopup => self.category_popup = None,
+            Action::CategoryMovePopupInput(c) => {
+                if let Some(CategoryPopup::Move(popup)) = &mut self.category_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::CategoryMovePopupBackspace => {
+                if let Some(CategoryPopup::Move(popup)) = &mut self.category_popup {
+                    popup.backspace();
+                }
+            }
+            Action::CategoryMovePopupTab => {
+                if let Some(store) = self.view.category_store()
+                    && let Some(CategoryPopup::Move(popup)) = &mut self.category_popup
+                {
+                    popup.tab_complete(store);
+                }
+            }
+            // `MoveCategory`/`CreateCategoryChild` were already validated in
+            // `map_category_popup_key` against the store `Shell` itself has no other access
+            // to — relaying to the active `View`'s own `update` is where the mutation actually
+            // happens (`CategoriesView::update`, "Categories: fixture data seam and mutable
+            // View state pattern"'s state-ownership decision).
+            Action::MoveCategory { .. } => {
+                self.view.update(&action);
+                self.category_popup = None;
+            }
+            Action::CreateCategoryChild { .. } => self.view.update(&action),
         }
     }
 
@@ -311,6 +392,7 @@ impl Shell {
         if view.title() == self.view.title() {
             self.command_popup = None;
             self.unit_popup = None;
+            self.category_popup = None;
             return;
         }
 
@@ -326,6 +408,7 @@ impl Shell {
 
         self.command_popup = None;
         self.unit_popup = None;
+        self.category_popup = None;
     }
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
@@ -343,14 +426,16 @@ impl Shell {
 
         let command_popup_open = self.command_popup.is_some();
         let unit_popup_open = self.unit_popup.is_some();
+        let category_popup_open = self.category_popup.is_some();
 
         // Header Frame — the status line names the mode whenever it isn't the resting
         // NORMAL state, per `docs/ux/tui/README.md`'s "show the mode ... whenever it is not
-        // NORMAL" — `COMMAND` for the command popup, `INSERT` for a unit form, per "Modal,
-        // vim-flavoured ... INSERT only inside forms ... COMMAND while the palette is open".
+        // NORMAL" — `COMMAND` for the command popup, `INSERT` for a unit form or the Category
+        // popup (it has a text field too), per "Modal, vim-flavoured ... INSERT only inside
+        // forms ... COMMAND while the palette is open".
         let mode = if command_popup_open {
             " · COMMAND"
-        } else if unit_popup_open {
+        } else if unit_popup_open || category_popup_open {
             " · INSERT"
         } else {
             ""
@@ -380,6 +465,8 @@ impl Shell {
                 .style(Style::default().fg(Color::DarkGray))
         } else if unit_popup_open {
             Line::from(" esc close unit form ").style(Style::default().fg(Color::DarkGray))
+        } else if category_popup_open {
+            Line::from(" esc close move form ").style(Style::default().fg(Color::DarkGray))
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             Line::from(vec![
@@ -402,6 +489,11 @@ impl Shell {
         } else if let Some(popup) = &self.unit_popup {
             frame.render_widget(Dim, rows[1]);
             popup.render(frame, frame.area());
+        } else if let Some(popup) = &self.category_popup {
+            frame.render_widget(Dim, rows[1]);
+            if let Some(store) = self.view.category_store() {
+                popup.render(frame, frame.area(), store);
+            }
         }
     }
 }
@@ -1493,5 +1585,229 @@ mod tests {
         )));
         assert_eq!(action, Some(Action::CommandPopupInput('q')));
         assert!(!shell.should_quit);
+    }
+
+    fn category_id_by_name(shell: &Shell, name: &str) -> lib_core::RowID {
+        shell
+            .view
+            .category_store()
+            .expect("Categories view should expose its store")
+            .nodes()
+            .iter()
+            .find(|node| node.name == name)
+            .unwrap_or_else(|| panic!("fixture should seed a category named {name}"))
+            .id
+    }
+
+    #[test]
+    fn m_on_the_categories_view_opens_the_move_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        assert!(shell.category_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('m'),
+                KeyModifiers::NONE,
+            )))
+            .expect("m on the categories view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.category_popup, Some(CategoryPopup::Move(_))));
+    }
+
+    #[test]
+    fn esc_closes_an_open_category_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        shell.update(Action::OpenCategoryMovePopup(groceries));
+        assert!(shell.category_popup.is_some());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
+            .expect("esc while open always maps to an action");
+        shell.update(action);
+
+        assert!(shell.category_popup.is_none());
+    }
+
+    #[test]
+    fn other_keys_become_typed_input_while_the_move_popup_is_open() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        shell.update(Action::OpenCategoryMovePopup(groceries));
+
+        // 'j' moves the tree selection on the bare view; while the popup is open it's typed
+        // input for the `new parent` field instead.
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('j'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(action, Some(Action::CategoryMovePopupInput('j')));
+    }
+
+    #[test]
+    fn opening_the_move_popup_closes_an_open_command_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        shell.update(Action::OpenCommandPopup);
+        assert!(shell.command_popup.is_some());
+
+        shell.update(Action::OpenCategoryMovePopup(groceries));
+
+        assert!(shell.category_popup.is_some());
+        assert!(shell.command_popup.is_none());
+    }
+
+    #[test]
+    fn typing_a_valid_path_and_ctrl_s_moves_the_category_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        let transport = category_id_by_name(&shell, "Transport");
+
+        shell.update(Action::OpenCategoryMovePopup(groceries));
+        // Clear the prefilled "expenses/food" and type a different, valid existing path.
+        for _ in 0.."expenses/food".chars().count() {
+            shell.update(Action::CategoryMovePopupBackspace);
+        }
+        for c in "expenses/transport".chars() {
+            shell.update(Action::CategoryMovePopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid resolved path always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.category_popup.is_none(),
+            "popup should close after a successful move"
+        );
+        let store = shell.view.category_store().unwrap();
+        assert_eq!(store.find(groceries).unwrap().parent_id, Some(transport));
+    }
+
+    #[test]
+    fn ctrl_s_does_nothing_while_the_path_is_unresolved() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        shell.update(Action::OpenCategoryMovePopup(groceries));
+        for _ in 0.."expenses/food".chars().count() {
+            shell.update(Action::CategoryMovePopupBackspace);
+        }
+        for c in "not/a/real/path".chars() {
+            shell.update(Action::CategoryMovePopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.category_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn ctrl_s_refuses_a_cycle_even_when_the_path_resolves() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let food = category_id_by_name(&shell, "Food");
+        shell.update(Action::OpenCategoryMovePopup(food));
+        // Food's prefilled input is its current parent's path ("expenses"); replace it with
+        // its own descendant Groceries' path — a cycle.
+        for _ in 0.."expenses".chars().count() {
+            shell.update(Action::CategoryMovePopupBackspace);
+        }
+        for c in "expenses/food/groceries".chars() {
+            shell.update(Action::CategoryMovePopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(
+            action, None,
+            "a cycle should never resolve to a MoveCategory action"
+        );
+    }
+
+    #[test]
+    fn ctrl_n_creates_the_missing_segment_then_ctrl_s_moves_into_it() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        let food = category_id_by_name(&shell, "Food");
+        let original_count = shell.view.category_store().unwrap().nodes().len();
+
+        shell.update(Action::OpenCategoryMovePopup(groceries));
+        for _ in 0.."expenses/food".chars().count() {
+            shell.update(Action::CategoryMovePopupBackspace);
+        }
+        for c in "expenses/food/daily".chars() {
+            shell.update(Action::CategoryMovePopupInput(c));
+        }
+
+        let create_action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('n'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+n with a creatable path always maps to an action");
+        shell.update(create_action);
+
+        let daily_id = {
+            let store = shell.view.category_store().unwrap();
+            assert_eq!(
+                store.nodes().len(),
+                original_count + 1,
+                "daily should now exist"
+            );
+            let daily = store
+                .nodes()
+                .iter()
+                .find(|node| node.name == "daily")
+                .expect("ctrl+n should have created daily");
+            assert_eq!(daily.parent_id, Some(food));
+            daily.id
+        };
+        assert!(
+            shell.category_popup.is_some(),
+            "popup should stay open after ^n"
+        );
+
+        let move_action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s now resolves since daily exists");
+        shell.update(move_action);
+
+        let store = shell.view.category_store().unwrap();
+        assert_eq!(store.find(groceries).unwrap().parent_id, Some(daily_id));
+    }
+
+    #[test]
+    fn renders_the_open_category_move_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        shell.update(Action::OpenCategoryMovePopup(groceries));
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the move popup open should not error");
     }
 }

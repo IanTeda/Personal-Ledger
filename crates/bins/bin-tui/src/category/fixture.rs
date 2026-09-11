@@ -370,7 +370,7 @@ impl CategoryStore for CategoryFixture {
         Ok(())
     }
 
-    fn move_to(&mut self, id: RowID, new_parent: RowID) -> Result<(), CategoryError> {
+    fn validate_move(&self, id: RowID, new_parent: RowID) -> Result<(), CategoryError> {
         let Some(this) = self.find(id) else {
             return Err(CategoryError::NotFound);
         };
@@ -401,6 +401,12 @@ impl CategoryStore for CategoryFixture {
                 });
             }
         }
+
+        Ok(())
+    }
+
+    fn move_to(&mut self, id: RowID, new_parent: RowID) -> Result<(), CategoryError> {
+        self.validate_move(id, new_parent)?;
 
         let Some(this) = self.nodes.iter_mut().find(|node| node.id == id) else {
             return Err(CategoryError::NotFound);

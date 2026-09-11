@@ -181,29 +181,11 @@ impl CategoriesView {
         !self.store.children(id).is_empty()
     }
 
-    /// `id`'s depth, roots counted as depth `1` — matches the handoff's own depth numbering
-    /// (`expenses/food/groceries` is depth `3`, confirmed by the summary box's own worked
-    /// example).
-    fn depth_of(&self, id: RowID) -> u32 {
-        let mut depth = 1;
-        let mut current = self.store.find(id);
-        while let Some(node) = current {
-            match node.parent_id {
-                Some(parent_id) => {
-                    depth += 1;
-                    current = self.store.find(parent_id);
-                }
-                None => break,
-            }
-        }
-        depth
-    }
-
     fn max_depth(&self) -> u32 {
         self.store
             .nodes()
             .iter()
-            .map(|node| self.depth_of(node.id))
+            .map(|node| self.store.depth(node.id))
             .max()
             .unwrap_or(1)
     }
@@ -449,11 +431,25 @@ impl View for CategoriesView {
                 self.show_subtree = !self.show_subtree;
                 Some(Action::NoOp)
             }
+            KeyCode::Char('m') => Some(Action::OpenCategoryMovePopup(self.selected)),
             _ => None,
         }
     }
 
-    fn update(&mut self, _action: &Action) {}
+    /// Reacts to the Category popup's own confirmed writes (`Shell` relays these after
+    /// resolving them against `category_store()` — see `crate::popup::category::move_popup`'s
+    /// module doc for the full round trip). Every other `Action` variant is ignored.
+    fn update(&mut self, action: &Action) {
+        match action {
+            Action::MoveCategory { id, new_parent } => {
+                let _ = self.store.move_to(*id, *new_parent);
+            }
+            Action::CreateCategoryChild { parent, name } => {
+                let _ = self.store.insert(*parent, name.clone(), None);
+            }
+            _ => {}
+        }
+    }
 
     fn view(&self, frame: &mut Frame, area: Rect) {
         let columns = Layout::default()
@@ -467,6 +463,10 @@ impl View for CategoriesView {
 
     fn title(&self) -> &'static str {
         "Categories"
+    }
+
+    fn category_store(&self) -> Option<&dyn CategoryStore> {
+        Some(&self.store)
     }
 }
 
@@ -618,7 +618,7 @@ impl CategoriesView {
         frame.render_widget(
             summary_field_line(
                 "kind · depth",
-                &format!("{kind} · {}", self.depth_of(node.id)),
+                &format!("{kind} · {}", self.store.depth(node.id)),
             ),
             rows[row],
         );
