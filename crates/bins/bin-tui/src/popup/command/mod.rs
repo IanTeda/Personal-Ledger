@@ -177,14 +177,21 @@ impl CommandPopup {
     }
 
     /// Every command matching the current input, case-insensitively against its `:name`,
-    /// description or owning domain — the flat list a non-empty input filters down to.
-    fn filtered(&self) -> impl Iterator<Item = (&'static str, &'static commands::Command)> + '_ {
+    /// description or owning domain — ranked so a `:name` that exactly matches or starts with
+    /// the input leads (e.g. typing `category` should surface the bare `:category` command
+    /// before `budget new <category> <limit>`, whose name only contains it mid-string),
+    /// falling back to `DOMAINS` order for ties.
+    fn filtered(&self) -> Vec<(&'static str, &'static commands::Command)> {
         let needle = self.input.to_lowercase();
-        commands::all().filter(move |(domain, command)| {
-            command.name.to_lowercase().contains(&needle)
-                || command.description.to_lowercase().contains(&needle)
-                || domain.to_lowercase().contains(&needle)
-        })
+        let mut matches: Vec<_> = commands::all()
+            .filter(|(domain, command)| {
+                command.name.to_lowercase().contains(&needle)
+                    || command.description.to_lowercase().contains(&needle)
+                    || domain.to_lowercase().contains(&needle)
+            })
+            .collect();
+        matches.sort_by_key(|(_, command)| name_match_rank(&command.name.to_lowercase(), &needle));
+        matches
     }
 
     /// How many rows are actually selectable right now — every command at rest, or only the
@@ -193,7 +200,7 @@ impl CommandPopup {
         if self.input.is_empty() {
             commands::total_commands()
         } else {
-            self.filtered().count()
+            self.filtered().len()
         }
     }
 
@@ -215,6 +222,7 @@ impl CommandPopup {
             rows
         } else {
             self.filtered()
+                .into_iter()
                 .map(|(domain, command)| Row::Entry { domain, command })
                 .collect()
         }
@@ -377,6 +385,19 @@ impl CommandPopup {
                 }
             }
         }
+    }
+}
+
+/// Ranks a (lowercased) command name against a (lowercased) needle for `CommandPopup::filtered`:
+/// `0` for an exact match, `1` for a name that starts with the needle, `2` for everything else
+/// (a match found only mid-name, or only in the description/domain). Lower sorts first.
+fn name_match_rank(name: &str, needle: &str) -> u8 {
+    if name == needle {
+        0
+    } else if name.starts_with(needle) {
+        1
+    } else {
+        2
     }
 }
 
@@ -692,6 +713,15 @@ mod tests {
             popup.arg_preview().as_deref(),
             Some("<code> — VDHG · etf · Vanguard Diversified High Growth")
         );
+    }
+
+    #[test]
+    fn an_exact_name_match_outranks_a_command_that_only_contains_it_mid_name() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "category");
+        // `budget new <category> <limit>` also matches (its name contains "category"), but the
+        // bare `:category` command is an exact match and should lead regardless of domain order.
+        assert_eq!(popup.selected_command_name(), Some("category"));
     }
 
     #[test]
