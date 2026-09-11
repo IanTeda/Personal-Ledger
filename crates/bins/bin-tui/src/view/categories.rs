@@ -136,9 +136,12 @@ pub struct CategoriesView {
     /// `za`/`zR`/`zM` chord — mirrors `Shell`'s own `pending_leader` for `g <letter>`, but
     /// local to this `View` since `Shell` only recognises its own single-letter leader.
     pending_z: bool,
-    /// `s` toggles this — the transactions list shows the selected category's own direct
-    /// transactions when `false`, or every transaction in its subtree (each row gaining a
-    /// category column) when `true`, per the handoff's "5a — Categories screen" right pane.
+    /// `s` toggles this — a manual preference for whether the transactions list and spend
+    /// chart show the selected category's own direct data or its whole subtree, per the
+    /// handoff's "5a — Categories screen" right pane. Only the *effective* mode
+    /// (`effective_show_subtree`) actually decides what renders: a parent always shows its
+    /// subtree regardless of this flag, since a parent's own direct data is `0` in this
+    /// fixture and "direct only" would just be an empty list and a flat zero line.
     show_subtree: bool,
     /// `Some` right after `X` on a tree row — merge has no real logic yet ("Not yet designed"
     /// in the handoff), so this replaces the tree header's stats with the "not yet built"
@@ -780,8 +783,11 @@ impl CategoriesView {
     }
 
     /// The direct-spend line chart: a trailing `CHART_MONTHS`-month window, per the handoff's
-    /// "5a — Categories screen" right pane. Plots `direct` spend, never rollup — a parent's
-    /// rollup line would otherwise silently include its children and contradict the tree.
+    /// "5a — Categories screen" right pane. Plots the selected node's own `direct` spend when
+    /// it's a leaf; for a parent — whose own `direct` is typically `0` in this fixture, and
+    /// even when it isn't, a lone direct line would hide its children's spend entirely — plots
+    /// the whole subtree's combined series instead (`rollup_series`), so selecting a branch
+    /// always shows something. The heading names which one is showing.
     fn render_spend_chart(&self, frame: &mut Frame, area: Rect, node: &CategoryNode) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
@@ -793,10 +799,15 @@ impl CategoriesView {
             ])
             .split(area);
 
-        render_chart_heading(frame, rows[0]);
+        let is_subtree = self.has_children(node.id);
+        render_chart_heading(frame, rows[0], is_subtree);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
-        let series = direct_series(node);
+        let series = if is_subtree {
+            self.rollup_series(node.id)
+        } else {
+            direct_series(node)
+        };
         let points: Vec<(f64, f64)> = series
             .iter()
             .enumerate()
@@ -841,10 +852,11 @@ impl CategoriesView {
     /// `CATEGORY` column (at `PAYEE`'s expense) in subtree mode — "the one time PAYEE gives up
     /// width", per the handoff.
     fn render_transactions(&self, frame: &mut Frame, area: Rect, node: &CategoryNode) {
-        let rows = self.transaction_rows(node);
+        let show_subtree = self.effective_show_subtree(node.id);
+        let rows = self.transaction_rows(node, show_subtree);
         let direct_count = node.transaction_count;
         let subtree_count = self.subtree_transaction_count(node.id);
-        let total = if self.show_subtree {
+        let total = if show_subtree {
             direct_count + subtree_count
         } else {
             direct_count
@@ -871,8 +883,8 @@ impl CategoriesView {
 
         render_transactions_heading(frame, sections[0], rows.len(), total);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-        render_transactions_column_header(frame, sections[2], self.show_subtree);
-        render_transaction_rows(frame, sections[3], &rows, self.show_subtree);
+        render_transactions_column_header(frame, sections[2], show_subtree);
+        render_transaction_rows(frame, sections[3], &rows, show_subtree);
         render_transactions_footer(frame, sections[4], direct_count, subtree_count);
 
         let rows_scrollbar_area = Rect {
@@ -901,12 +913,23 @@ impl CategoriesView {
             .sum()
     }
 
+    /// Whether the transactions list and spend chart should show `id`'s whole subtree rather
+    /// than just its own direct data — `s` toggles a manual preference, but a parent always
+    /// shows its subtree regardless of that preference: a parent's own `direct` is `0` in this
+    /// fixture, so "direct only" would just be an empty list and a flat zero line, which isn't
+    /// a mode worth being able to force. `s` still matters for a leaf, where direct and
+    /// subtree differ only cosmetically (the `CATEGORY` column, footer wording) but the toggle
+    /// stays meaningful to press.
+    fn effective_show_subtree(&self, id: RowID) -> bool {
+        self.show_subtree || self.has_children(id)
+    }
+
     /// The rows this list currently shows: just `node`'s own (direct mode), or every
     /// descendant's too (subtree mode, each row keeping its own category's name) — capped to
     /// the newest 10, per the handoff's "10 of 148 · newest first" (no further pagination
     /// controls built here).
-    fn transaction_rows(&self, node: &CategoryNode) -> Vec<TransactionRow> {
-        let mut rows = if self.show_subtree {
+    fn transaction_rows(&self, node: &CategoryNode, show_subtree: bool) -> Vec<TransactionRow> {
+        let mut rows = if show_subtree {
             self.store
                 .descendants(node.id)
                 .into_iter()
@@ -919,6 +942,23 @@ impl CategoriesView {
         rows.sort_by_key(|row| std::cmp::Reverse(row.date));
         rows.truncate(10);
         rows
+    }
+
+    /// `node_id`'s subtree, direct-spend series combined month by month
+    /// (`direct_series(descendant)` summed across `descendants(node_id)`, `node_id` itself
+    /// included) — what the spend chart plots for a parent, per `render_spend_chart`'s own
+    /// doc.
+    fn rollup_series(&self, node_id: RowID) -> [f64; CHART_MONTHS] {
+        let mut total = [0.0_f64; CHART_MONTHS];
+        for descendant_id in self.store.descendants(node_id) {
+            if let Some(descendant) = self.store.find(descendant_id) {
+                let series = direct_series(descendant);
+                for (slot, value) in total.iter_mut().zip(series.iter()) {
+                    *slot += value;
+                }
+            }
+        }
+        total
     }
 }
 
@@ -1100,10 +1140,17 @@ fn group_thousands(plain: &str) -> String {
     }
 }
 
-/// The "DIRECT SPEND" heading over the chart, with the trailing window as its dim tag — the
-/// handoff's own "the header says so" call-out that this plots direct, never rollup.
-fn render_chart_heading(frame: &mut Frame, area: Rect) {
+/// The "DIRECT SPEND"/"SUBTREE SPEND" heading over the chart, with the trailing window as its
+/// dim tag — names which series is plotted, per the handoff's own "the header says so" call-out
+/// (originally about never silently plotting rollup; `render_spend_chart`'s own doc covers why
+/// a parent's rollup is shown here instead, and why that's not "silent").
+fn render_chart_heading(frame: &mut Frame, area: Rect, is_subtree: bool) {
     let dim = Style::default().add_modifier(Modifier::DIM);
+    let label = if is_subtree {
+        "SUBTREE SPEND"
+    } else {
+        "DIRECT SPEND"
+    };
     let tag = format!(
         "{} – {}",
         format_month(chart_month(0)),
@@ -1116,10 +1163,7 @@ fn render_chart_heading(frame: &mut Frame, area: Rect) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(
-        Paragraph::new(Span::styled("DIRECT SPEND", dim)),
-        columns[0],
-    );
+    frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -1477,14 +1521,15 @@ mod tests {
             }
             row
         };
-        // The tree header and the "DIRECT SPEND" heading are both the first row of their own
-        // pane, so they land on the same absolute row.
+        // The tree header and the chart heading ("DIRECT SPEND"/"SUBTREE SPEND", depending on
+        // whether the default selection is a leaf or a parent) are both the first row of their
+        // own pane, so they land on the same absolute row.
         let header_row = (0..buffer.area.height)
-            .find(|&y| row_text(y).contains("DIRECT SPEND"))
-            .expect("DIRECT SPEND heading should be on some row");
+            .find(|&y| row_text(y).contains("SPEND"))
+            .expect("a chart heading should be on some row");
         assert!(
             row_text(header_row).contains("tree"),
-            "the left pane's tree header should be on the same row as DIRECT SPEND"
+            "the left pane's tree header should be on the same row as the chart heading"
         );
 
         for x in LEFT_PANE_WIDTH..LEFT_PANE_WIDTH + 2 {
@@ -1891,6 +1936,51 @@ mod tests {
     }
 
     #[test]
+    fn a_parent_shows_a_subtree_spend_chart_instead_of_a_flat_zero_line() {
+        let mut view = CategoriesView::new();
+        let food = find_by_name(&view, "Food");
+        view.selected = food;
+
+        let text = render(&view);
+        assert!(
+            text.contains("SUBTREE SPEND"),
+            "chart heading should name subtree mode for a parent"
+        );
+        assert!(
+            !text.contains("DIRECT SPEND"),
+            "a parent shouldn't show the direct-only heading"
+        );
+
+        // Food's own `direct` is 0 in this fixture, so a flat zero line would carry no
+        // braille glyphs at all — confirms the chart is actually plotting the subtree's
+        // combined series, not silently falling back to an empty direct one.
+        assert!(
+            text.contains(['⠉', '⠊', '⠔', '⠒', '⣀', '⡠']),
+            "subtree spend line chart missing"
+        );
+    }
+
+    #[test]
+    fn rollup_series_sums_every_descendants_direct_series() {
+        let view = CategoriesView::new();
+        let food = find_by_name(&view, "Food");
+
+        let series = view.rollup_series(food);
+        let total: f64 = series.iter().sum();
+        let expected: f64 = view
+            .store
+            .descendants(food)
+            .into_iter()
+            .filter_map(|id| view.store.find(id))
+            .map(|node| money_to_f64(&node.direct))
+            .sum();
+        assert!(
+            (total - expected).abs() < 0.01,
+            "rollup series should sum to the subtree's combined direct amount, got {total} vs {expected}"
+        );
+    }
+
+    #[test]
     fn direct_series_sums_to_the_nodes_direct_amount() {
         let view = CategoriesView::new();
         let groceries = view
@@ -1950,7 +2040,7 @@ mod tests {
         view.selected = groceries;
 
         let node = view.store.find(groceries).unwrap().clone();
-        let rows = view.transaction_rows(&node);
+        let rows = view.transaction_rows(&node, false);
         assert_eq!(rows.len(), 10);
         assert!(rows.windows(2).all(|pair| pair[0].date >= pair[1].date));
     }
@@ -1982,9 +2072,9 @@ mod tests {
     }
 
     #[test]
-    fn transactions_list_gains_a_category_column_only_in_subtree_mode() {
+    fn a_leaf_only_gains_the_category_column_once_s_is_pressed() {
         let mut view = CategoriesView::new();
-        view.selected = find_by_name(&view, "Food");
+        view.selected = find_by_name(&view, "Groceries");
 
         let direct_text = render(&view);
         assert!(
@@ -1996,10 +2086,22 @@ mod tests {
         let subtree_text = render(&view);
         assert!(
             subtree_text.contains("CATEGORY"),
-            "category column missing in subtree mode"
+            "category column missing once s is pressed"
+        );
+    }
+
+    #[test]
+    fn a_parent_always_shows_the_category_column_regardless_of_s() {
+        let mut view = CategoriesView::new();
+        view.selected = find_by_name(&view, "Food");
+
+        let text = render(&view);
+        assert!(
+            text.contains("CATEGORY"),
+            "a parent should show the subtree's category column without needing s"
         );
         assert!(
-            subtree_text.contains("Groceries"),
+            text.contains("Groceries"),
             "a descendant's category name missing"
         );
     }
