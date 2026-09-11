@@ -294,6 +294,7 @@ impl Shell {
             Action::OpenReports => self.open(ReportsView::new()),
             Action::OpenSettings => self.open(SettingsView::new()),
             Action::OpenTransactions => self.open(TransactionsView::new()),
+            Action::NoOp => {}
         }
     }
 

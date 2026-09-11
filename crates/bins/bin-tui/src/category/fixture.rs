@@ -39,6 +39,20 @@ fn money(dollars: i64, cents: i64) -> Money {
     Money(BigDecimal::from(dollars) + BigDecimal::from(cents) / BigDecimal::from(100))
 }
 
+/// A leaf's `first_posted`/`last_posted` derived from `transaction_count` alone (`None` for a
+/// parent's zero), so seed calls don't need two more positional dates threaded through every
+/// row — deterministic and plausible, not meant to be checked against specific values.
+fn posting_dates(transaction_count: u32) -> (Option<chrono::NaiveDate>, Option<chrono::NaiveDate>) {
+    use chrono::{Months, NaiveDate};
+
+    if transaction_count == 0 {
+        return (None, None);
+    }
+    let last = NaiveDate::from_ymd_opt(2026, 9, 8).expect("fixed literal is a valid date");
+    let first = last - Months::new(transaction_count.min(24));
+    (Some(first), Some(last))
+}
+
 fn node(
     id: RowID,
     parent_id: Option<RowID>,
@@ -47,6 +61,7 @@ fn node(
     direct: Money,
     transaction_count: u32,
 ) -> CategoryNode {
+    let (first_posted, last_posted) = posting_dates(transaction_count);
     CategoryNode {
         id,
         parent_id,
@@ -55,6 +70,8 @@ fn node(
         active: true,
         direct,
         transaction_count,
+        first_posted,
+        last_posted,
     }
 }
 

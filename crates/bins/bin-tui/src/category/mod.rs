@@ -47,8 +47,11 @@ impl CategoryKind {
 /// handoff's `category` table shape (`parent_id`/`name`/`note`/`active`) plus `direct`, the
 /// amount posted straight to this node; `rollup` (direct plus every descendant's rollup) is
 /// derived by [`CategoryStore::rollup`], never stored, exactly like the handoff's recursive
-/// CTE. `transaction_count` is a direct-only count, matching `direct` — see the handoff's
-/// summary box `transactions 148 · direct` row.
+/// CTE. `transaction_count`, `first_posted` and `last_posted` are direct-only, matching
+/// `direct` — see the handoff's summary box `transactions 148 · direct` and `first · last`
+/// rows. `first_posted`/`last_posted` are `None` exactly when `transaction_count` is `0`; a
+/// full per-transaction fixture (for the 5a right pane's transactions list) is a later
+/// ticket's job, this is only the two dates the summary box itself needs.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CategoryNode {
     pub id: RowID,
@@ -58,6 +61,8 @@ pub struct CategoryNode {
     pub active: bool,
     pub direct: Money,
     pub transaction_count: u32,
+    pub first_posted: Option<chrono::NaiveDate>,
+    pub last_posted: Option<chrono::NaiveDate>,
 }
 
 /// Everything [`CategoryStore::move_to`], `insert` and `rename` can refuse, per the handoff's

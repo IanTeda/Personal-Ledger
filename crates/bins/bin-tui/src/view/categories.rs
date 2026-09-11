@@ -1,22 +1,93 @@
-//! The Categories `View`, hosted by `Shell` (ADR-0013). Rendering is still wireframe stage: a
-//! single bordered box proving the navigation path — the command popup's `category list`
-//! entry and the global `g c` jump chord both land here — before the real tree/summary/chart/
-//! transactions content is built out ("Categories: 5a screen — tree pane and summary box
-//! (left pane)" onward). It already owns real, mutable state: the `CategoryFixture` seeded
-//! tree from `crate::category`, per that map's "in-memory mutable fixture" decision — later
-//! tickets build the rendering and key handling on top of what's already wired here.
+//! The Categories `View`, hosted by `Shell` (ADR-0013). Left pane only, per
+//! `docs/ux/tui/categories/README.md` "5a — Categories screen": the tree (box-drawing guides,
+//! session-local fold state, `N`/`12M` columns) and the summary box for whichever node is
+//! selected. The right pane (direct-spend chart, transactions list) is a separate ticket
+//! ("Categories: 5a screen — spend chart and transactions list (right pane)") and is left
+//! blank here.
+//!
+//! Real, interactive state — not a wireframe: `store` ([`CategoryFixture`], from "Categories:
+//! fixture data seam and mutable View state pattern") genuinely holds the tree, and
+//! `selected`/`folded`/`show_archived` are mutated directly in [`CategoriesView::handle_key`],
+//! per that ticket's state-ownership decision. Every key handled this way returns
+//! [`Action::NoOp`] rather than `None`, so `Shell`'s event loop still redraws immediately
+//! instead of waiting for the next `Tick`.
+//!
+//! **Keys not wired here**: `n`/`N`/`m`/`e`/`r`/`X`/`a`/`tab` all reach a popup, the command
+//! grammar, or the transactions list — each a later ticket's own concern (see the "Categories
+//! screen, views and popup" map, issue #106). Also not wired: a bare `g` for "jump to top" —
+//! `Shell::map_event` already claims a bare, unmodified `g` globally as its own view-jump
+//! leader (`g c`, `g u`, ...) before any `View::handle_key` ever sees it, so the handoff's
+//! `g`/`G` top/bottom pair uses `Home`/`G` here instead; `/` filtering is left for later too.
 
-use ratatui::{Frame, layout::Rect, widgets::Block};
+use chrono::NaiveDate;
+use crossterm::event::{KeyCode, KeyEvent};
+use lib_core::{Money, RowID};
+use ratatui::{
+    Frame,
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    style::{Modifier, Style},
+    text::{Line, Span},
+    widgets::{
+        Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    },
+};
 
-use crate::category::CategoryFixture;
+use crate::category::{CategoryFixture, CategoryNode, CategoryStore};
 use crate::view::{Action, View};
 
-/// The Categories `View`. Owns the fixture Category tree directly — no navigation stack
-/// action carries it, per `crate::category`'s state-ownership decision — so a future screen's
-/// `handle_key` can mutate `store` in place (fold, new, move, edit) without any `Action`
-/// plumbing beyond what already signals opening/closing this `View` and its popups.
+/// Width of the tree's `N` (direct child count) column.
+const TREE_N_WIDTH: u16 = 2;
+
+/// Width of the tree's `12M` (rollup) column.
+const TREE_ROLLUP_WIDTH: u16 = 8;
+
+/// Width of the summary box's label column, e.g. `"direct · rollup 12m   "`.
+const SUMMARY_LABEL_WIDTH: usize = 22;
+
+/// One visible line in the rendered tree: either a category row, or the blank spacer line the
+/// handoff draws between the `INCOME` and `EXPENSES` root sections.
+enum TreeLine {
+    Blank,
+    Node(TreeRow),
+}
+
+/// One category's rendered tree row — already resolved against fold/archived state, so
+/// rendering never re-touches `CategoryStore`.
+struct TreeRow {
+    id: RowID,
+    /// Everything before the name: for a root, just its fold glyph (`▾`/`▸`); for a
+    /// descendant, the ancestor guide plus this row's own connector plus its glyph (`├─▾`) or,
+    /// for a leaf, a filler dash in the glyph's place (`├──`) so the line reads unbroken
+    /// ("nothing for a leaf" per the handoff, drawn rather than left blank). Rendered dim, per
+    /// the shell's "dim: guides" style role.
+    prefix: String,
+    name: String,
+    is_root: bool,
+    is_leaf: bool,
+    child_count: usize,
+    rollup: Money,
+    archived: bool,
+}
+
+/// The Categories `View`. Owns the fixture Category tree directly — no navigation-stack
+/// `Action` carries it, per `crate::category`'s state-ownership decision — so `handle_key`
+/// mutates `store`/`selected`/`folded`/`show_archived` in place (fold, archived-visibility,
+/// selection; new/edit/move mutate it too, once their own tickets wire the keys that reach
+/// them).
 pub struct CategoriesView {
     store: CategoryFixture,
+    selected: RowID,
+    /// Ids currently folded (children hidden). Session-local, never persisted, per the
+    /// handoff's "Fold state is per-node, session-local (not a DB column)". Roots start absent
+    /// (expanded); every other node starts present (folded), per "Roots default expanded,
+    /// everything else folded on first open."
+    folded: Vec<RowID>,
+    /// `za` toggles this — archived categories are hidden unless it's `true`.
+    show_archived: bool,
+    /// `true` right after a lone `z`, awaiting the `a`/`R`/`M` that completes the
+    /// `za`/`zR`/`zM` chord — mirrors `Shell`'s own `pending_leader` for `g <letter>`, but
+    /// local to this `View` since `Shell` only recognises its own single-letter leader.
+    pending_z: bool,
 }
 
 impl Default for CategoriesView {
@@ -27,17 +98,320 @@ impl Default for CategoriesView {
 
 impl CategoriesView {
     pub fn new() -> Self {
+        let store = CategoryFixture::new();
+        // "Roots default expanded, everything else folded on first open" — only non-root
+        // parents go in the initial folded set; a leaf has no fold state to speak of (checked
+        // via `has_children` everywhere this set is consulted, but there's no reason to carry
+        // meaningless entries for it).
+        let folded = store
+            .nodes()
+            .iter()
+            .filter(|node| node.parent_id.is_some() && !store.children(node.id).is_empty())
+            .map(|node| node.id)
+            .collect();
+        let selected = store
+            .nodes()
+            .iter()
+            .find(|node| node.parent_id.is_none())
+            .map(|node| node.id)
+            .expect("CategoryFixture always seeds at least one root");
+
         Self {
-            store: CategoryFixture::new(),
+            store,
+            selected,
+            folded,
+            show_archived: false,
+            pending_z: false,
+        }
+    }
+
+    fn is_folded(&self, id: RowID) -> bool {
+        self.folded.contains(&id)
+    }
+
+    fn has_children(&self, id: RowID) -> bool {
+        !self.store.children(id).is_empty()
+    }
+
+    /// `id`'s depth, roots counted as depth `1` — matches the handoff's own depth numbering
+    /// (`expenses/food/groceries` is depth `3`, confirmed by the summary box's own worked
+    /// example).
+    fn depth_of(&self, id: RowID) -> u32 {
+        let mut depth = 1;
+        let mut current = self.store.find(id);
+        while let Some(node) = current {
+            match node.parent_id {
+                Some(parent_id) => {
+                    depth += 1;
+                    current = self.store.find(parent_id);
+                }
+                None => break,
+            }
+        }
+        depth
+    }
+
+    fn max_depth(&self) -> u32 {
+        self.store
+            .nodes()
+            .iter()
+            .map(|node| self.depth_of(node.id))
+            .max()
+            .unwrap_or(1)
+    }
+
+    /// `id`'s full path, lowercase and `/`-joined root-to-self, e.g. `"expenses / food /
+    /// groceries"`.
+    fn path_of(&self, id: RowID) -> String {
+        let mut segments = Vec::new();
+        let mut current = self.store.find(id);
+        while let Some(node) = current {
+            segments.push(node.name.to_lowercase());
+            current = node
+                .parent_id
+                .and_then(|parent_id| self.store.find(parent_id));
+        }
+        segments.reverse();
+        segments.join(" / ")
+    }
+
+    /// Every currently-visible line, roots to leaves, respecting fold and archived-visibility
+    /// state — the single source of truth both rendering and selection movement walk.
+    fn visible_lines(&self) -> Vec<TreeLine> {
+        let mut lines = Vec::new();
+        let root_ids: Vec<RowID> = self
+            .store
+            .nodes()
+            .iter()
+            .filter(|node| node.parent_id.is_none())
+            .map(|node| node.id)
+            .collect();
+
+        for (index, root_id) in root_ids.iter().enumerate() {
+            if index > 0 {
+                lines.push(TreeLine::Blank);
+            }
+            let root = self
+                .store
+                .find(*root_id)
+                .expect("root id came from this store's own nodes()");
+            let glyph = self.fold_glyph_or_dash(root.id);
+            lines.push(TreeLine::Node(TreeRow {
+                id: root.id,
+                prefix: glyph.to_string(),
+                name: root.name.to_uppercase(),
+                is_root: true,
+                is_leaf: !self.has_children(root.id),
+                child_count: self.store.children(root.id).len(),
+                rollup: self.store.rollup(root.id),
+                archived: false, // roots can never be archived (CategoryStore::set_active refuses IsRoot)
+            }));
+
+            if self.has_children(root.id) && !self.is_folded(root.id) {
+                self.push_children(root.id, "", &mut lines);
+            }
+        }
+
+        lines
+    }
+
+    fn fold_glyph_or_dash(&self, id: RowID) -> char {
+        if !self.has_children(id) {
+            '─'
+        } else if self.is_folded(id) {
+            '▸'
+        } else {
+            '▾'
+        }
+    }
+
+    /// Appends `parent`'s visible children (and, recursively, their own visible children) to
+    /// `lines`. `ancestor_prefix` carries only the continuation columns above this level
+    /// (`"│ "`/`"  "` per ancestor) — this level's own connector (`"├─"`/`"└─"`) is added here.
+    fn push_children(&self, parent: RowID, ancestor_prefix: &str, lines: &mut Vec<TreeLine>) {
+        let mut children: Vec<&CategoryNode> = self.store.children(parent);
+        if !self.show_archived {
+            children.retain(|child| child.active);
+        }
+        children.sort_by_key(|child| child.name.to_lowercase());
+
+        let count = children.len();
+        for (index, child) in children.into_iter().enumerate() {
+            let is_last = index + 1 == count;
+            let connector = if is_last { "└─" } else { "├─" };
+            let glyph = self.fold_glyph_or_dash(child.id);
+            let prefix = format!("{ancestor_prefix}{connector}{glyph}");
+
+            lines.push(TreeLine::Node(TreeRow {
+                id: child.id,
+                prefix,
+                name: child.name.clone(),
+                is_root: false,
+                is_leaf: !self.has_children(child.id),
+                child_count: self.store.children(child.id).len(),
+                rollup: self.store.rollup(child.id),
+                archived: !child.active,
+            }));
+
+            if self.has_children(child.id) && !self.is_folded(child.id) {
+                let next_prefix = format!("{ancestor_prefix}{}", if is_last { "  " } else { "│ " });
+                self.push_children(child.id, &next_prefix, lines);
+            }
+        }
+    }
+
+    fn visible_node_ids(&self) -> Vec<RowID> {
+        self.visible_lines()
+            .into_iter()
+            .filter_map(|line| match line {
+                TreeLine::Node(row) => Some(row.id),
+                TreeLine::Blank => None,
+            })
+            .collect()
+    }
+
+    fn move_selection(&mut self, delta: isize) {
+        let visible = self.visible_node_ids();
+        let Some(current_index) = visible.iter().position(|id| *id == self.selected) else {
+            return;
+        };
+        let next_index = (current_index as isize + delta).clamp(0, visible.len() as isize - 1);
+        self.selected = visible[next_index as usize];
+    }
+
+    fn select_first(&mut self) {
+        if let Some(first) = self.visible_node_ids().first() {
+            self.selected = *first;
+        }
+    }
+
+    fn select_last(&mut self) {
+        if let Some(last) = self.visible_node_ids().last() {
+            self.selected = *last;
+        }
+    }
+
+    /// `h`: folds the selected node if it's an expanded parent; otherwise (a leaf, or an
+    /// already-folded parent — "nothing left to fold here") moves the selection to its parent,
+    /// per the handoff's "h on a leaf jumps to its parent".
+    fn fold_selected_or_jump_to_parent(&mut self) {
+        if self.has_children(self.selected) && !self.is_folded(self.selected) {
+            self.folded.push(self.selected);
+            return;
+        }
+        if let Some(parent_id) = self.store.find(self.selected).and_then(|n| n.parent_id) {
+            self.selected = parent_id;
+        }
+    }
+
+    /// `l`: unfolds the selected node if it's a folded parent; otherwise a no-op.
+    fn unfold_selected(&mut self) {
+        if self.has_children(self.selected) && self.is_folded(self.selected) {
+            self.folded.retain(|id| *id != self.selected);
+        }
+    }
+
+    /// `zR`: unfolds everything.
+    fn unfold_all(&mut self) {
+        self.folded.clear();
+    }
+
+    /// `zM`: folds every node that has children, roots included.
+    fn fold_all(&mut self) {
+        self.folded = self
+            .store
+            .nodes()
+            .iter()
+            .filter(|node| self.has_children(node.id))
+            .map(|node| node.id)
+            .collect();
+    }
+
+    /// Called after any operation that could hide the selected node (folding it away, or
+    /// toggling archived-visibility while an archived node is selected) — walks up to the
+    /// nearest visible ancestor rather than leaving `selected` pointing at a hidden row.
+    fn recover_selection(&mut self) {
+        let visible = self.visible_node_ids();
+        if visible.contains(&self.selected) {
+            return;
+        }
+        let mut current = self.store.find(self.selected).and_then(|n| n.parent_id);
+        while let Some(id) = current {
+            if visible.contains(&id) {
+                self.selected = id;
+                return;
+            }
+            current = self.store.find(id).and_then(|n| n.parent_id);
+        }
+        // Every ancestor is somehow hidden too (shouldn't happen — roots are always visible
+        // and never archived) — fall back to the first visible row rather than leaving a
+        // dangling selection.
+        if let Some(first) = visible.first() {
+            self.selected = *first;
         }
     }
 }
 
 impl View for CategoriesView {
+    fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
+        if self.pending_z {
+            self.pending_z = false;
+            match key.code {
+                KeyCode::Char('a') => self.show_archived = !self.show_archived,
+                KeyCode::Char('R') => self.unfold_all(),
+                KeyCode::Char('M') => self.fold_all(),
+                _ => return Some(Action::NoOp), // aborted chord, nothing changed
+            }
+            self.recover_selection();
+            return Some(Action::NoOp);
+        }
+
+        match key.code {
+            KeyCode::Char('z') => {
+                self.pending_z = true;
+                None
+            }
+            KeyCode::Char('j') | KeyCode::Down => {
+                self.move_selection(1);
+                Some(Action::NoOp)
+            }
+            KeyCode::Char('k') | KeyCode::Up => {
+                self.move_selection(-1);
+                Some(Action::NoOp)
+            }
+            KeyCode::Char('h') | KeyCode::Left => {
+                self.fold_selected_or_jump_to_parent();
+                Some(Action::NoOp)
+            }
+            KeyCode::Char('l') | KeyCode::Right => {
+                self.unfold_selected();
+                Some(Action::NoOp)
+            }
+            // Bare `g` is Shell's own view-jump leader (see the module doc) and never reaches
+            // here, so `Home` stands in for the handoff's lowercase `g` ("top").
+            KeyCode::Home => {
+                self.select_first();
+                Some(Action::NoOp)
+            }
+            KeyCode::Char('G') | KeyCode::End => {
+                self.select_last();
+                Some(Action::NoOp)
+            }
+            _ => None,
+        }
+    }
+
     fn update(&mut self, _action: &Action) {}
 
     fn view(&self, frame: &mut Frame, area: Rect) {
-        frame.render_widget(Block::bordered().title(" Categories "), area);
+        let columns = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(41), Constraint::Min(0)])
+            .split(area);
+
+        self.render_left_pane(frame, columns[0]);
+        // columns[1] (the spend chart and transactions list) is deliberately left blank —
+        // "Categories: 5a screen — spend chart and transactions list (right pane)"'s job.
     }
 
     fn title(&self) -> &'static str {
@@ -45,22 +419,423 @@ impl View for CategoriesView {
     }
 }
 
+impl CategoriesView {
+    fn render_left_pane(&self, frame: &mut Frame, area: Rect) {
+        let node = self
+            .store
+            .find(self.selected)
+            .expect("selected always points at a real node in this store");
+        let rollup = self.store.rollup(self.selected);
+        let merged = node.direct == rollup;
+
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Min(0),
+                Constraint::Length(summary_section_height(merged)),
+            ])
+            .split(area);
+
+        self.render_tree(frame, rows[0]);
+        self.render_summary(frame, rows[1], node, &rollup, merged);
+    }
+
+    /// The tree list: its `tree N of M · depth D · K folded` header, a rule, the `N`/`12M`
+    /// column header, then the rows themselves with a scrollbar riding the right edge.
+    fn render_tree(&self, frame: &mut Frame, area: Rect) {
+        let split = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(0), Constraint::Length(1)])
+            .spacing(1)
+            .split(area);
+        let content_area = split[0];
+        let scrollbar_column = split[1];
+
+        let sections = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // header
+                Constraint::Length(1), // rule
+                Constraint::Length(1), // column header
+                Constraint::Min(0),    // rows
+            ])
+            .split(content_area);
+
+        let lines = self.visible_lines();
+        let visible_count = lines
+            .iter()
+            .filter(|line| matches!(line, TreeLine::Node(_)))
+            .count();
+        let folded_with_children = self
+            .folded
+            .iter()
+            .filter(|id| self.has_children(**id))
+            .count();
+
+        self.render_tree_header(frame, sections[0], visible_count, folded_with_children);
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
+        render_tree_column_header(frame, sections[2]);
+        render_tree_rows(frame, sections[3], &lines, self.selected);
+
+        let rows_scrollbar_area = Rect {
+            y: sections[3].y,
+            height: sections[3].height,
+            ..scrollbar_column
+        };
+        let total = self.store.nodes().len();
+        let mut scrollbar_state = ScrollbarState::new(total)
+            .viewport_content_length(visible_count)
+            .position(0);
+        let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None);
+        frame.render_stateful_widget(scrollbar, rows_scrollbar_area, &mut scrollbar_state);
+    }
+
+    fn render_tree_header(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        visible_count: usize,
+        folded_count: usize,
+    ) {
+        let total = self.store.nodes().len();
+        let text = format!(
+            "tree {visible_count} of {total} · depth {} · {folded_count} folded",
+            self.max_depth()
+        );
+        let dim = Style::default().add_modifier(Modifier::DIM);
+        frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
+    }
+
+    /// The summary box beneath the tree, for whichever node is selected — see the handoff's
+    /// own worked example (`docs/ux/tui/categories/README.md` "Summary box").
+    fn render_summary(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        node: &CategoryNode,
+        rollup: &Money,
+        merged: bool,
+    ) {
+        let block = Block::bordered().padding(Padding::horizontal(1));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+
+        let money_rows = if merged { 1 } else { 2 };
+        let mut constraints = vec![Constraint::Length(1), Constraint::Length(1)]; // path, rule
+        constraints.extend(std::iter::repeat_n(Constraint::Length(1), money_rows));
+        constraints.push(Constraint::Length(1)); // rule
+        constraints.extend(std::iter::repeat_n(Constraint::Length(1), 6)); // kind·depth, children, transactions, first·last, note, active
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(inner);
+
+        let mut row = 0usize;
+        frame.render_widget(Paragraph::new(self.path_of(node.id)), rows[row]);
+        row += 1;
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[row]);
+        row += 1;
+
+        if merged {
+            frame.render_widget(
+                summary_field_line("direct · rollup 12m", &format_money(rollup)),
+                rows[row],
+            );
+            row += 1;
+        } else {
+            frame.render_widget(
+                summary_field_line("direct 12m", &format_money(&node.direct)),
+                rows[row],
+            );
+            row += 1;
+            frame.render_widget(
+                summary_field_line("rollup 12m", &format_money(rollup)),
+                rows[row],
+            );
+            row += 1;
+        }
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[row]);
+        row += 1;
+
+        let kind = self
+            .store
+            .kind(node.id)
+            .map(|kind| kind.as_str())
+            .unwrap_or("—");
+        frame.render_widget(
+            summary_field_line(
+                "kind · depth",
+                &format!("{kind} · {}", self.depth_of(node.id)),
+            ),
+            rows[row],
+        );
+        row += 1;
+
+        let child_count = self.store.children(node.id).len();
+        let children_text = if child_count == 0 {
+            "none · leaf".to_string()
+        } else {
+            format!("{child_count} · parent")
+        };
+        frame.render_widget(summary_field_line("children", &children_text), rows[row]);
+        row += 1;
+
+        let transactions_text = if node.transaction_count == 0 {
+            "none".to_string()
+        } else {
+            format!("{} · direct", node.transaction_count)
+        };
+        frame.render_widget(
+            summary_field_line("transactions", &transactions_text),
+            rows[row],
+        );
+        row += 1;
+
+        let first_last = match (node.first_posted, node.last_posted) {
+            (Some(first), Some(last)) => {
+                format!("{} · {}", format_date(first), format_date(last))
+            }
+            _ => "none".to_string(),
+        };
+        frame.render_widget(summary_field_line("first · last", &first_last), rows[row]);
+        row += 1;
+
+        frame.render_widget(
+            summary_field_line("note", node.note.as_deref().unwrap_or("—")),
+            rows[row],
+        );
+        row += 1;
+
+        let active_text = if node.active {
+            "[×] · offered"
+        } else {
+            "[ ] · not offered"
+        };
+        frame.render_widget(summary_field_line("active", active_text), rows[row]);
+    }
+}
+
+/// The `N`/`12M` column header row, dim, per the handoff's "Column heads dim and uppercase".
+fn render_tree_column_header(frame: &mut Frame, area: Rect) {
+    let columns = tree_row_columns(area);
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    frame.render_widget(
+        Paragraph::new(Span::styled("N", dim)).alignment(Alignment::Right),
+        columns[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled("12M", dim)).alignment(Alignment::Right),
+        columns[2],
+    );
+}
+
+fn render_tree_rows(frame: &mut Frame, area: Rect, lines: &[TreeLine], selected: RowID) {
+    let visible = lines.len().min(area.height as usize);
+    let row_constraints: Vec<Constraint> =
+        std::iter::repeat_n(Constraint::Length(1), visible).collect();
+    let row_areas = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(row_constraints)
+        .split(area);
+
+    for (line, row_area) in lines.iter().zip(row_areas.iter()) {
+        if let TreeLine::Node(row) = line {
+            render_tree_row(frame, *row_area, row, row.id == selected);
+        }
+    }
+}
+
+fn render_tree_row(frame: &mut Frame, area: Rect, row: &TreeRow, selected: bool) {
+    if selected {
+        frame.render_widget(
+            Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
+            area,
+        );
+    }
+
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    let bold = Style::default().add_modifier(Modifier::BOLD);
+    let prefix_style = if selected { Style::default() } else { dim };
+    let name_style = if row.is_root {
+        bold
+    } else if row.archived && !selected {
+        dim
+    } else {
+        Style::default()
+    };
+
+    let columns = tree_row_columns(area);
+    let name_columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(row.prefix.chars().count() as u16 + 1),
+            Constraint::Min(0),
+        ])
+        .split(columns[0]);
+
+    frame.render_widget(
+        Paragraph::new(Span::styled(&row.prefix, prefix_style)),
+        name_columns[0],
+    );
+    let name_text = if row.archived {
+        format!("{} · archived", row.name)
+    } else {
+        row.name.clone()
+    };
+    frame.render_widget(
+        Paragraph::new(Span::styled(name_text, name_style)),
+        name_columns[1],
+    );
+
+    let n_style = if selected { Style::default() } else { dim };
+    let n_text = if row.is_leaf {
+        "—".to_string()
+    } else {
+        row.child_count.to_string()
+    };
+    frame.render_widget(
+        Paragraph::new(Span::styled(n_text, n_style)).alignment(Alignment::Right),
+        columns[1],
+    );
+
+    let rollup_style = if selected { Style::default() } else { n_style };
+    frame.render_widget(
+        Paragraph::new(Span::styled(format_money_whole(&row.rollup), rollup_style))
+            .alignment(Alignment::Right),
+        columns[2],
+    );
+}
+
+/// Splits a tree row (or its column header) into name (`Min(0)`) / `N` / `12M` columns.
+fn tree_row_columns(area: Rect) -> [Rect; 3] {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(TREE_N_WIDTH),
+            Constraint::Length(TREE_ROLLUP_WIDTH),
+        ])
+        .spacing(1)
+        .split(area);
+    [columns[0], columns[1], columns[2]]
+}
+
+/// One `label   value` summary row, the label padded to [`SUMMARY_LABEL_WIDTH`] and dimmed —
+/// mirrors `view::units`'s own `summary_field_line`.
+fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    Paragraph::new(Line::from(vec![
+        Span::styled(format!("{label:<SUMMARY_LABEL_WIDTH$}"), dim),
+        Span::raw(value),
+    ]))
+}
+
+/// Height of the summary box's bordered content: path, a rule, the direct/rollup row(s), a
+/// rule, then the six fixed fields (`kind · depth`, `children`, `transactions`, `first ·
+/// last`, `note`, `active`).
+fn summary_section_height(merged: bool) -> u16 {
+    let money_rows = if merged { 1 } else { 2 };
+    let content_rows = 2 + money_rows + 1 + 6;
+    content_rows + 2 // top/bottom border
+}
+
+fn format_date(date: NaiveDate) -> String {
+    date.format("%d %b").to_string().to_lowercase()
+}
+
+/// Formats a `Money` amount with a space thousands-separator, keeping decimals only when the
+/// amount actually has a fractional part (e.g. `142100` -> `"142 100"`, `12480.40` ->
+/// `"12 480.40"`) — used by the summary box, where full precision matters.
+fn format_money(value: &Money) -> String {
+    let normalized = if value.0.is_integer() {
+        value.0.with_scale(0)
+    } else {
+        value.0.with_scale(2)
+    };
+    group_thousands(&normalized.to_plain_string())
+}
+
+/// Formats a `Money` amount rounded to whole dollars, with a space thousands-separator — used
+/// by the tree's narrow `12M` column, which the handoff draws without cents (see
+/// `CategoryFixture`'s own module doc on `Food`'s rollup).
+fn format_money_whole(value: &Money) -> String {
+    group_thousands(&value.0.with_scale(0).to_plain_string())
+}
+
+fn group_thousands(plain: &str) -> String {
+    let (sign, rest) = match plain.strip_prefix('-') {
+        Some(rest) => ("-", rest),
+        None => ("", plain),
+    };
+    let (int_part, frac_part) = match rest.split_once('.') {
+        Some((int_part, frac_part)) => (int_part, Some(frac_part)),
+        None => (rest, None),
+    };
+
+    let mut grouped: String = int_part
+        .chars()
+        .rev()
+        .enumerate()
+        .flat_map(|(index, ch)| {
+            let mut chars = Vec::with_capacity(2);
+            if index != 0 && index % 3 == 0 {
+                chars.push(' ');
+            }
+            chars.push(ch);
+            chars
+        })
+        .collect();
+    grouped = grouped.chars().rev().collect();
+
+    match frac_part {
+        Some(frac_part) => format!("{sign}{grouped}.{frac_part}"),
+        None => format!("{sign}{grouped}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
-    use crate::category::CategoryStore;
+
+    fn key(code: KeyCode) -> KeyEvent {
+        KeyEvent::new(code, KeyModifiers::NONE)
+    }
+
+    fn render(view: &CategoriesView) -> String {
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| view.view(frame, frame.area()))
+            .expect("rendering the Categories view should not error");
+
+        let buffer = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+            text.push('\n');
+        }
+        text
+    }
+
+    fn find_by_name(view: &CategoriesView, name: &str) -> RowID {
+        view.store
+            .nodes()
+            .iter()
+            .find(|node| node.name == name)
+            .unwrap_or_else(|| panic!("fixture should seed a category named {name}"))
+            .id
+    }
 
     #[test]
     fn renders_without_panicking() {
-        let view = CategoriesView::new();
-        let backend = TestBackend::new(96, 30);
-        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
-
-        terminal
-            .draw(|frame| view.view(frame, frame.area()))
-            .expect("rendering the placeholder Categories view should not error");
+        render(&CategoriesView::new());
     }
 
     #[test]
@@ -78,5 +853,316 @@ mod tests {
             .filter(|node| node.parent_id.is_none())
             .collect();
         assert_eq!(roots.len(), 2);
+    }
+
+    #[test]
+    fn starts_with_roots_and_their_immediate_children_visible() {
+        // "Roots default expanded, everything else folded on first open": the roots' own
+        // children show as rows (2 for Income, 4 for Expenses), but not any grandchildren.
+        let view = CategoriesView::new();
+        assert_eq!(view.visible_node_ids().len(), 2 + 2 + 4);
+    }
+
+    #[test]
+    fn starts_selected_on_the_income_root() {
+        let view = CategoriesView::new();
+        let income = find_by_name(&view, "Income");
+        assert_eq!(view.selected, income);
+    }
+
+    #[test]
+    fn shows_both_root_names_uppercase_and_bold() {
+        let text = render(&CategoriesView::new());
+        assert!(text.contains("INCOME"), "INCOME root missing");
+        assert!(text.contains("EXPENSES"), "EXPENSES root missing");
+    }
+
+    #[test]
+    fn shows_the_tree_header_and_column_header() {
+        let view = CategoriesView::new();
+        let total = view.store.nodes().len();
+        let text = render(&view);
+        assert!(
+            text.contains(&format!("tree 8 of {total}")),
+            "tree header missing"
+        );
+        assert!(
+            text.contains("depth 4"),
+            "depth stat missing (Housing/Mortgage/Interest is 4)"
+        );
+        assert!(text.contains('N'), "N column header missing");
+        assert!(text.contains("12M"), "12M column header missing");
+    }
+
+    #[test]
+    fn j_and_k_move_the_selection_between_visible_rows() {
+        let mut view = CategoriesView::new();
+        let income = find_by_name(&view, "Income");
+        let second_visible = view.visible_node_ids()[1];
+        assert_eq!(view.selected, income);
+
+        view.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(view.selected, second_visible);
+
+        view.handle_key(key(KeyCode::Char('k')));
+        assert_eq!(view.selected, income);
+    }
+
+    #[test]
+    fn j_returns_no_op_so_shell_redraws_immediately() {
+        let mut view = CategoriesView::new();
+        assert_eq!(view.handle_key(key(KeyCode::Char('j'))), Some(Action::NoOp));
+    }
+
+    #[test]
+    fn move_selection_clamps_rather_than_wraps() {
+        let mut view = CategoriesView::new();
+        let income = find_by_name(&view, "Income");
+        view.handle_key(key(KeyCode::Char('k'))); // already at the top
+        assert_eq!(view.selected, income);
+    }
+
+    #[test]
+    fn l_unfolds_a_folded_node_and_reveals_its_children() {
+        let mut view = CategoriesView::new();
+        let salary = find_by_name(&view, "Salary"); // starts folded, per "everything else folded"
+        view.selected = salary;
+        let before = view.visible_node_ids().len();
+
+        view.handle_key(key(KeyCode::Char('l')));
+        // Salary unfolds to reveal Primary Job and Bonus.
+        assert_eq!(view.visible_node_ids().len(), before + 2);
+    }
+
+    #[test]
+    fn h_folds_an_expanded_selected_node() {
+        let mut view = CategoriesView::new();
+        let salary = find_by_name(&view, "Salary");
+        view.selected = salary;
+        let before = view.visible_node_ids().len();
+
+        view.handle_key(key(KeyCode::Char('l'))); // unfold Salary
+        assert_eq!(view.visible_node_ids().len(), before + 2);
+
+        view.handle_key(key(KeyCode::Char('h'))); // fold it back
+        assert_eq!(view.visible_node_ids().len(), before);
+    }
+
+    #[test]
+    fn h_on_a_leaf_jumps_to_its_parent() {
+        let mut view = CategoriesView::new();
+        let salary = find_by_name(&view, "Salary");
+        let primary_job = find_by_name(&view, "Primary Job");
+        view.selected = primary_job;
+
+        view.handle_key(key(KeyCode::Char('h')));
+        assert_eq!(view.selected, salary);
+    }
+
+    #[test]
+    fn h_on_an_already_folded_parent_jumps_to_its_parent() {
+        let mut view = CategoriesView::new();
+        let income = find_by_name(&view, "Income");
+        let salary = find_by_name(&view, "Salary");
+        view.selected = salary; // Salary starts folded (default on first open)
+
+        view.handle_key(key(KeyCode::Char('h')));
+        assert_eq!(view.selected, income);
+    }
+
+    #[test]
+    fn z_then_capital_r_unfolds_everything() {
+        let mut view = CategoriesView::new();
+        view.handle_key(key(KeyCode::Char('z')));
+        view.handle_key(key(KeyCode::Char('R')));
+
+        assert!(view.folded.is_empty());
+        // Every node except the two roots is now a visible line.
+        assert_eq!(view.visible_node_ids().len(), view.store.nodes().len());
+    }
+
+    #[test]
+    fn z_then_capital_m_folds_everything_including_roots() {
+        let mut view = CategoriesView::new();
+        view.handle_key(key(KeyCode::Char('z')));
+        view.handle_key(key(KeyCode::Char('M')));
+
+        assert_eq!(
+            view.visible_node_ids().len(),
+            2,
+            "only the two roots remain visible"
+        );
+    }
+
+    #[test]
+    fn folding_away_the_selection_recovers_to_the_nearest_visible_ancestor() {
+        let mut view = CategoriesView::new();
+        let income = find_by_name(&view, "Income");
+        let salary = find_by_name(&view, "Salary");
+        view.selected = salary;
+
+        view.handle_key(key(KeyCode::Char('z')));
+        view.handle_key(key(KeyCode::Char('M'))); // fold everything, including Income
+
+        assert_eq!(view.selected, income);
+    }
+
+    #[test]
+    fn za_toggles_archived_visibility_and_recovers_a_hidden_selection() {
+        let mut view = CategoriesView::new();
+        let food = find_by_name(&view, "Food");
+        let restaurants = find_by_name(&view, "Restaurants");
+        view.store
+            .set_active(restaurants, false)
+            .expect("archiving a non-root should succeed");
+        view.folded.retain(|id| *id != food); // unfold Food so Restaurants can show once shown at all
+        view.selected = restaurants; // archived + show_archived: false, so this starts hidden
+
+        view.handle_key(key(KeyCode::Char('z')));
+        view.handle_key(key(KeyCode::Char('a'))); // za: show archived
+        assert!(view.show_archived);
+        assert!(view.visible_node_ids().contains(&restaurants));
+
+        view.handle_key(key(KeyCode::Char('z')));
+        view.handle_key(key(KeyCode::Char('a'))); // za: hide archived again
+        assert!(!view.show_archived);
+        assert_eq!(
+            view.selected, food,
+            "selection should recover to Food, restaurants' parent"
+        );
+    }
+
+    #[test]
+    fn archived_row_renders_dim_with_an_archived_suffix() {
+        // A short-named leaf (`Bonus`, not `Restaurants`) — the 41-col left pane's name
+        // column is narrow enough at depth 3 that a longer name plus " · archived" would
+        // truncate before the suffix, which would defeat the point of this assertion.
+        let mut view = CategoriesView::new();
+        let salary = find_by_name(&view, "Salary");
+        let bonus = find_by_name(&view, "Bonus");
+        view.store
+            .set_active(bonus, false)
+            .expect("archiving a non-root should succeed");
+        view.folded.retain(|id| *id != salary); // unfold Salary so Bonus actually renders
+        view.show_archived = true;
+
+        let text = render(&view);
+        assert!(text.contains("Bonus · archived"), "archived suffix missing");
+    }
+
+    #[test]
+    fn home_and_g_select_the_first_and_last_visible_rows() {
+        let mut view = CategoriesView::new();
+        let income = find_by_name(&view, "Income");
+        let last_visible = *view.visible_node_ids().last().unwrap();
+
+        view.handle_key(key(KeyCode::Char('G')));
+        assert_eq!(view.selected, last_visible);
+
+        view.handle_key(key(KeyCode::Home));
+        assert_eq!(view.selected, income);
+    }
+
+    #[test]
+    fn summary_box_shows_the_selected_category_and_merges_direct_and_rollup_for_a_leaf() {
+        let mut view = CategoriesView::new();
+        let groceries = find_by_name(&view, "Groceries");
+        view.selected = groceries;
+
+        let text = render(&view);
+        assert!(text.contains("expenses / food / groceries"), "path missing");
+        assert!(
+            text.contains("direct · rollup 12m"),
+            "merged direct/rollup label missing"
+        );
+        assert!(text.contains("12 480.40"), "exact rollup value missing");
+        assert!(
+            text.contains("expense · 3"),
+            "kind · depth missing (groceries is depth 3)"
+        );
+        assert!(text.contains("none · leaf"), "children field missing");
+        assert!(text.contains("148 · direct"), "transactions field missing");
+        // The 41-col pane's summary box only leaves ~15 chars for a value after the label
+        // column, so a long note truncates — check a prefix short enough to survive that,
+        // not the full "supermarket, greengrocer".
+        assert!(text.contains("supermarket"), "note missing");
+        assert!(text.contains("[×] · offered"), "active field missing");
+    }
+
+    #[test]
+    fn summary_box_splits_direct_and_rollup_when_they_differ() {
+        let mut view = CategoriesView::new();
+        let food = find_by_name(&view, "Food");
+        view.selected = food;
+
+        let text = render(&view);
+        assert!(text.contains("direct 12m"), "direct label missing");
+        assert!(text.contains("rollup 12m"), "rollup label missing");
+        assert!(text.contains("18 240.4"), "rollup value missing");
+        assert!(
+            text.contains("2 · parent"),
+            "children field missing for a parent"
+        );
+    }
+
+    #[test]
+    fn summary_box_shows_none_for_a_parents_own_first_last_and_transactions() {
+        let mut view = CategoriesView::new();
+        let food = find_by_name(&view, "Food");
+        view.selected = food;
+
+        let text = render(&view);
+        assert!(
+            text.contains("none"),
+            "expected a 'none' field for a node with no direct postings"
+        );
+    }
+
+    #[test]
+    fn selected_row_renders_reversed() {
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        let view = CategoriesView::new();
+        terminal
+            .draw(|frame| view.view(frame, frame.area()))
+            .expect("rendering should not error");
+
+        let buffer = terminal.backend().buffer();
+        let row_is_reversed = |y: u16| -> bool {
+            (0..41).any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
+        };
+        let row_containing = |needle: &str| -> u16 {
+            (0..buffer.area.height)
+                .find(|&y| {
+                    let mut row = String::new();
+                    for x in 0..41 {
+                        row.push_str(buffer[(x, y)].symbol());
+                    }
+                    row.contains(needle)
+                })
+                .unwrap_or_else(|| panic!("no row contains {needle:?}"))
+        };
+
+        assert!(
+            row_is_reversed(row_containing("INCOME")),
+            "the selected Income root should render reversed"
+        );
+    }
+
+    #[test]
+    fn other_keys_fall_through_to_the_shell() {
+        let mut view = CategoriesView::new();
+        assert_eq!(view.handle_key(key(KeyCode::Char('x'))), None);
+    }
+
+    #[test]
+    fn format_money_keeps_decimals_only_when_the_amount_has_a_fractional_part() {
+        assert_eq!(format_money(&"142100".parse().unwrap()), "142 100");
+        assert_eq!(format_money(&"12480.40".parse().unwrap()), "12 480.40");
+    }
+
+    #[test]
+    fn format_money_whole_always_drops_decimals() {
+        assert_eq!(format_money_whole(&"12480.40".parse().unwrap()), "12 480");
     }
 }

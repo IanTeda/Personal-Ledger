@@ -114,6 +114,12 @@ pub enum Action {
     /// `Quit` today, but through its own variant so a future confirm-before-quit check (once
     /// any view holds dirty/unsaved state) can be inserted without re-plumbing the keybinding.
     GracefulQuit,
+    /// A key a `View` handled entirely by mutating its own local state (e.g. the Categories
+    /// tree's selection, fold set or archived-visibility toggle — `crate::category`'s
+    /// state-ownership decision keeps that mutation inside the `View`, never routed through a
+    /// data-carrying `Action`) — distinct from returning `None`, which `Shell::run`'s event
+    /// loop treats as "nothing happened" and skips the next redraw for.
+    NoOp,
 }
 
 /// The single view `Shell` hosts at a time.
