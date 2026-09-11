@@ -518,10 +518,18 @@ impl View for CategoriesView {
     }
 
     fn view(&self, frame: &mut Frame, area: Rect) {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .split(area);
+        // rows[0] is left blank — breathing space between the shell's title bar and the tree/
+        // summary and spend-chart/transactions boxes, matching `view::units`/`view::dashboard`'s
+        // own leading spacer row.
+
         let columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(41), Constraint::Min(0)])
-            .split(area);
+            .split(rows[1]);
 
         self.render_left_pane(frame, columns[0]);
         self.render_right_pane(frame, columns[1]);
@@ -1420,6 +1428,30 @@ mod tests {
     #[test]
     fn renders_without_panicking() {
         render(&CategoriesView::new());
+    }
+
+    #[test]
+    fn leaves_a_blank_row_between_the_shells_title_bar_and_the_tree() {
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        let view = CategoriesView::new();
+        terminal
+            .draw(|frame| view.view(frame, frame.area()))
+            .expect("rendering should not error");
+
+        let buffer = terminal.backend().buffer();
+        let row_is_blank = |y: u16| -> bool {
+            (0..buffer.area.width).all(|x| buffer[(x, y)].symbol().trim().is_empty())
+        };
+        assert!(
+            row_is_blank(0),
+            "row 0 should be a blank spacer, matching view::units/view::dashboard's own \
+             leading breathing-space row"
+        );
+        assert!(
+            !row_is_blank(1),
+            "row 1 should hold real content (the tree header)"
+        );
     }
 
     #[test]
