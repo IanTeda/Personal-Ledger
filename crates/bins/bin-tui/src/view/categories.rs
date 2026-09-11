@@ -848,9 +848,9 @@ impl CategoriesView {
         render_chart_labels(frame, rows[3], &series, avg);
     }
 
-    /// The transactions list: `DATE`/`PAYEE`/`ACCOUNT`/`AMOUNT` in direct mode, gaining a
-    /// `CATEGORY` column (at `PAYEE`'s expense) in subtree mode — "the one time PAYEE gives up
-    /// width", per the handoff.
+    /// The transactions list: `DATE`/`ACCOUNT`/`PAYEE`/`AMOUNT` in direct mode, gaining a
+    /// `CATEGORY` column (at `PAYEE`'s expense) in subtree mode — `PAYEE` is the flexible
+    /// `Min(0)` column, so it's the one that gives up width, per the handoff.
     fn render_transactions(&self, frame: &mut Frame, area: Rect, node: &CategoryNode) {
         let show_subtree = self.effective_show_subtree(node.id);
         let rows = self.transaction_rows(node, show_subtree);
@@ -1241,15 +1241,19 @@ fn render_transactions_heading(frame: &mut Frame, area: Rect, shown: usize, tota
 /// Splits a transactions row (or its column header) into `DATE`/`PAYEE`/`ACCOUNT`/(`CATEGORY`
 /// only in subtree mode)/`AMOUNT` columns — "the one time PAYEE gives up width", per the
 /// handoff.
-fn transaction_columns(area: Rect, show_category: bool) -> (Rect, Rect, Rect, Option<Rect>, Rect) {
+/// Splits a transactions row (or its column header) into `DATE` / `ACCOUNT` / (`CATEGORY`
+/// only in subtree mode) / `PAYEE` (fill) / `AMOUNT` columns, in that left-to-right order —
+/// the fixed identifying columns (date, account, category) grouped on the left, the free-text
+/// `PAYEE` taking whatever width is left, `AMOUNT` right-aligned at the far edge.
+fn transaction_columns(area: Rect, show_category: bool) -> (Rect, Rect, Option<Rect>, Rect, Rect) {
     let mut constraints = vec![
         Constraint::Length(TXN_DATE_WIDTH),
-        Constraint::Min(0),
         Constraint::Length(TXN_ACCOUNT_WIDTH),
     ];
     if show_category {
         constraints.push(Constraint::Length(TXN_CATEGORY_WIDTH));
     }
+    constraints.push(Constraint::Min(0));
     constraints.push(Constraint::Length(TXN_AMOUNT_WIDTH));
 
     let columns = Layout::default()
@@ -1262,24 +1266,24 @@ fn transaction_columns(area: Rect, show_category: bool) -> (Rect, Rect, Rect, Op
         (
             columns[0],
             columns[1],
-            columns[2],
-            Some(columns[3]),
+            Some(columns[2]),
+            columns[3],
             columns[4],
         )
     } else {
-        (columns[0], columns[1], columns[2], None, columns[3])
+        (columns[0], columns[1], None, columns[2], columns[3])
     }
 }
 
 fn render_transactions_column_header(frame: &mut Frame, area: Rect, show_category: bool) {
-    let (date, payee, account, category, amount) = transaction_columns(area, show_category);
+    let (date, account, category, payee, amount) = transaction_columns(area, show_category);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(Paragraph::new(Span::styled("DATE", dim)), date);
-    frame.render_widget(Paragraph::new(Span::styled("PAYEE", dim)), payee);
     frame.render_widget(Paragraph::new(Span::styled("ACCOUNT", dim)), account);
     if let Some(category_area) = category {
         frame.render_widget(Paragraph::new(Span::styled("CATEGORY", dim)), category_area);
     }
+    frame.render_widget(Paragraph::new(Span::styled("PAYEE", dim)), payee);
     frame.render_widget(
         Paragraph::new(Span::styled("AMOUNT", dim)).alignment(Alignment::Right),
         amount,
@@ -1301,14 +1305,14 @@ fn render_transaction_rows(
         .split(area);
 
     for (row, row_area) in rows.iter().zip(row_areas.iter()) {
-        let (date, payee, account, category, amount) =
+        let (date, account, category, payee, amount) =
             transaction_columns(*row_area, show_category);
         frame.render_widget(Paragraph::new(format_date(row.date)), date);
-        frame.render_widget(Paragraph::new(row.payee), payee);
         frame.render_widget(Paragraph::new(row.account), account);
         if let Some(category_area) = category {
             frame.render_widget(Paragraph::new(row.category_name.as_str()), category_area);
         }
+        frame.render_widget(Paragraph::new(row.payee), payee);
         frame.render_widget(
             Paragraph::new(format_money(&row.amount)).alignment(Alignment::Right),
             amount,
