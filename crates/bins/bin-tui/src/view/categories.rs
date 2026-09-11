@@ -1259,7 +1259,7 @@ fn transaction_columns(area: Rect, show_category: bool) -> (Rect, Rect, Option<R
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints(constraints)
-        .spacing(1)
+        .spacing(2)
         .split(area);
 
     if show_category {
