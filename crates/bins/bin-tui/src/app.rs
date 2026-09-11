@@ -24,10 +24,9 @@ use crate::{
         Screen, account_detail::AccountDetailScreen, accounts_list::AccountsListScreen,
         balance_check_detail::BalanceCheckDetailScreen,
         balance_checks_list::BalanceChecksListScreen, budget_detail::BudgetDetailScreen,
-        budgets_list::BudgetsListScreen, categories_list::CategoriesListScreen,
-        category_detail::CategoryDetailScreen, csv_import::CsvImportScreen,
-        dashboard::DashboardScreen, help::HelpScreen, payee_detail::PayeeDetailScreen,
-        payees_list::PayeesListScreen, reports::ReportsScreen, settings::SettingsScreen,
+        budgets_list::BudgetsListScreen, csv_import::CsvImportScreen, dashboard::DashboardScreen,
+        help::HelpScreen, payee_detail::PayeeDetailScreen, payees_list::PayeesListScreen,
+        reports::ReportsScreen, settings::SettingsScreen,
         transaction_detail::TransactionDetailScreen, transactions_list::TransactionsListScreen,
         unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
     },
@@ -155,13 +154,6 @@ impl App {
             Action::OpenUnitDetail(Some(unit)) => {
                 self.push(Box::new(UnitDetailScreen::new_edit(unit)))
             }
-            Action::OpenCategories => self.push(Box::new(CategoriesListScreen::new())),
-            Action::OpenCategoryDetail(None) => {
-                self.push(Box::new(CategoryDetailScreen::new_create()))
-            }
-            Action::OpenCategoryDetail(Some(category)) => {
-                self.push(Box::new(CategoryDetailScreen::new_edit(category)))
-            }
             Action::OpenAccounts => self.push(Box::new(AccountsListScreen::new())),
             Action::OpenAccountDetail(None) => {
                 self.push(Box::new(AccountDetailScreen::new_create()))
@@ -207,8 +199,6 @@ impl App {
             // Accounts list screen if one happens to be on the stack too.
             Action::CategoriesLoaded(_)
             | Action::CategoriesLoadFailed(_)
-            | Action::CategoryDeleted(_)
-            | Action::CategoryDeleteFailed(_)
             | Action::UnitsLoaded(_)
             | Action::UnitsLoadFailed(_)
             | Action::UnitDeleted(_)
@@ -252,7 +242,6 @@ impl App {
             // A successful save returns to whichever list screen the detail screen was
             // pushed from, after that list has absorbed the new/updated row.
             Action::UnitSaved(_) => self.broadcast_and_pop_detail(&action, "Unit"),
-            Action::CategorySaved(_) => self.broadcast_and_pop_detail(&action, "Category"),
             Action::AccountSaved(_) => self.broadcast_and_pop_detail(&action, "Account"),
             Action::TransactionSaved(_) => self.broadcast_and_pop_detail(&action, "Transaction"),
             Action::PayeeSaved(_) => self.broadcast_and_pop_detail(&action, "Payee"),
@@ -260,7 +249,6 @@ impl App {
             Action::BudgetSaved(_) => self.broadcast_and_pop_detail(&action, "Budget"),
             // A failed save stays on the detail screen so the user can fix and retry.
             Action::UnitSaveFailed(_)
-            | Action::CategorySaveFailed(_)
             | Action::AccountSaveFailed(_)
             | Action::TransactionSaveFailed(_)
             | Action::PayeeSaveFailed(_)
@@ -437,47 +425,6 @@ mod tests {
         let mut app = App::new();
         app.update(Action::NoOp);
         assert_eq!(app.stack.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn open_categories_pushes_the_categories_list_screen() {
-        let mut app = App::new();
-        app.update(Action::OpenCategories);
-        assert_eq!(app.stack.last().unwrap().title(), "Categories");
-    }
-
-    #[tokio::test]
-    async fn open_category_detail_pushes_the_category_screen() {
-        let mut app = App::new();
-        app.update(Action::OpenCategoryDetail(None));
-        assert_eq!(app.stack.last().unwrap().title(), "Category");
-    }
-
-    #[tokio::test]
-    async fn category_saved_pops_back_from_the_detail_screen() {
-        let mut app = App::new();
-        app.update(Action::OpenCategories);
-        app.update(Action::OpenCategoryDetail(None));
-        assert_eq!(app.stack.len(), 3);
-
-        let now = chrono::Utc::now();
-        let category = lib_database::Categories {
-            id: lib_core::RowID::new(),
-            code: "FOO.BAR.BAZ".to_string(),
-            name: "Groceries".to_string(),
-            description: None,
-            url_slug: None,
-            category_type: lib_core::CategoryTypes::Expense,
-            color: None,
-            icon: None,
-            is_active: true,
-            created_on: now,
-            updated_on: now,
-        };
-        app.update(Action::CategorySaved(category));
-
-        assert_eq!(app.stack.len(), 2);
-        assert_eq!(app.stack.last().unwrap().title(), "Categories");
     }
 
     #[tokio::test]

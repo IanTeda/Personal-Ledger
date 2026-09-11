@@ -50,8 +50,12 @@ fn areas() -> Vec<Area> {
         },
         Area {
             name: "Categories",
-            action: Some(Action::OpenCategories),
-            not_yet_built_hint: "",
+            // Retired along with `crate::screen::categories_list`/`category_detail` (this
+            // whole App/Screen stack is dead code, unreferenced from `main.rs` per ADR-0013)
+            // — the real Categories screen is being rebuilt under `crate::view::categories`,
+            // see the "Categories screen, views and popup" Wayfinder map (issue #106).
+            action: None,
+            not_yet_built_hint: "moved to the new Shell/View screen",
         },
         Area {
             name: "Accounts",

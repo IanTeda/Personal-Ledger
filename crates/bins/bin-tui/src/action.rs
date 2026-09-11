@@ -40,11 +40,6 @@ pub enum Action {
     /// Push the Units create/edit screen — `None` starts an empty (create) form, `Some`
     /// pre-fills it with an existing Unit's fields (edit).
     OpenUnitDetail(Option<lib_database::Units>),
-    /// Push the Categories list screen.
-    OpenCategories,
-    /// Push the Categories create/edit screen — `None` starts an empty (create) form, `Some`
-    /// pre-fills it with an existing Category's fields (edit).
-    OpenCategoryDetail(Option<lib_database::Categories>),
     /// Push the Accounts list screen.
     OpenAccounts,
     /// Push the Accounts create/edit screen — `None` starts an empty (create) form, `Some`
@@ -80,19 +75,15 @@ pub enum Action {
     /// further for `App` to do — distinct from returning `None`, which would let the key
     /// fall through to the global `Esc`/`?` bindings.
     NoOp,
-    /// The Categories list screen finished loading every Category (originally the
-    /// feasibility-cycle FC-TUI-005 demo's action; reused as-is for the real screen).
+    /// Every Category, loaded for use as reference/picker data by another screen (a
+    /// Transaction's Category field, a Budget's Category field, the Category-total report,
+    /// ...) — not by a Categories list/detail screen of its own, which was retired along with
+    /// the rest of the dead App/Screen stack (see the "Categories screen, views and popup"
+    /// Wayfinder map, issue #106; the real Categories screen lives under
+    /// `crate::view::categories` instead).
     CategoriesLoaded(Vec<lib_database::Categories>),
-    /// The Categories list screen failed to load Categories.
+    /// A Categories load failed.
     CategoriesLoadFailed(String),
-    /// The Categories detail screen successfully saved (inserted or updated) a Category.
-    CategorySaved(lib_database::Categories),
-    /// The Categories detail screen failed to save a Category.
-    CategorySaveFailed(String),
-    /// The Categories list screen successfully deleted a Category.
-    CategoryDeleted(lib_core::RowID),
-    /// The Categories list screen failed to delete a Category.
-    CategoryDeleteFailed(String),
     /// The Units list screen finished loading every Unit.
     UnitsLoaded(Vec<lib_database::Units>),
     /// The Units list screen failed to load Units.
