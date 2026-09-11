@@ -1,4 +1,4 @@
-//! The "edit" popup — `e` on a Categories tree row, or `:cat edit <cat>`
+//! The "edit" popup — `e` on a Categories tree row, or `:category edit <cat>`
 //! (`docs/ux/tui/categories/README.md` "5d — Edit"). Genuinely interactive and genuinely
 //! mutates the tree, the same as `move_popup`/`new_popup` (see `move_popup`'s own module doc
 //! for the full `Shell`/`CategoriesView` round trip every Category popup follows).
@@ -54,7 +54,7 @@ impl Field {
     }
 }
 
-/// The `:cat edit` popup's own draft state, prefilled from the category being edited.
+/// The `:category edit` popup's own draft state, prefilled from the category being edited.
 pub struct EditPopup {
     editing_id: RowID,
     name: String,
@@ -292,13 +292,13 @@ fn dim() -> Style {
     Style::default().add_modifier(Modifier::DIM)
 }
 
-/// The title row: "edit" flush left, the `:cat edit` command tag dim and right-aligned —
+/// The title row: "edit" flush left, the `:category edit` command tag dim and right-aligned —
 /// replaced by the "not yet built" fallback while `X` was just pressed.
 fn render_title(frame: &mut Frame, area: Rect, show_not_yet_built: bool) {
     let tag = if show_not_yet_built {
-        ":cat merge — not yet built".to_string()
+        ":category merge — not yet built".to_string()
     } else {
-        ":cat edit".to_string()
+        ":category edit".to_string()
     };
     let columns = Layout::default()
         .direction(Direction::Horizontal)

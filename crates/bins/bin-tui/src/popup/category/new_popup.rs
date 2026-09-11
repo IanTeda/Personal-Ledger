@@ -1,5 +1,5 @@
 //! The "new" popup — `n` (child of the selection) / `N` (sibling of it) on a Categories tree
-//! row, or `:cat new <name> [parent]` (`docs/ux/tui/categories/README.md` "5c — New").
+//! row, or `:category new <name> [parent]` (`docs/ux/tui/categories/README.md` "5c — New").
 //! Genuinely interactive and genuinely mutates the tree, the same as `move_popup` (see its own
 //! module doc for the full `Shell`/`CategoriesView` round trip this popup follows too) — the
 //! `parent` field reuses `super::path` verbatim, per the handoff's own "same widget as 5b".
@@ -51,7 +51,7 @@ impl Field {
     }
 }
 
-/// The `:cat new` popup's own draft state. `kind`/`depth` are never stored here — both are
+/// The `:category new` popup's own draft state. `kind`/`depth` are never stored here — both are
 /// derived live from `parent_input`'s resolution, per the handoff's "kind cannot be set here".
 pub struct NewPopup {
     name: String,
@@ -279,9 +279,9 @@ fn dim() -> Style {
     Style::default().add_modifier(Modifier::DIM)
 }
 
-/// The title row: "new" flush left, the `:cat new` command dim and right-aligned.
+/// The title row: "new" flush left, the `:category new` command dim and right-aligned.
 fn render_title(frame: &mut Frame, area: Rect) {
-    let tag = ":cat new";
+    let tag = ":category new";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([

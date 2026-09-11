@@ -1,4 +1,4 @@
-//! The "move" popup — `m` on a Categories tree row, or `:cat move <cat> <parent>`
+//! The "move" popup — `m` on a Categories tree row, or `:category move <cat> <parent>`
 //! (`docs/ux/tui/categories/README.md` "5b — Move"). Genuinely interactive and genuinely
 //! mutates the tree, unlike `popup::unit`'s forms (still wireframe-only) — the only thing
 //! stopping this popup being wireframe-only too is that "Categories: fixture data seam and
@@ -48,7 +48,7 @@ const LABEL_WIDTH: u16 = "transactions".len() as u16 + 1;
 /// great many children.
 const MAX_LANDING_CHILDREN: usize = 6;
 
-/// The `:cat move` popup's own draft state — just the typed `new parent` path. Everything
+/// The `:category move` popup's own draft state — just the typed `new parent` path. Everything
 /// else (whether it resolves, what it would refuse, what "lands as" shows) is recomputed live
 /// against the store on every render/keystroke rather than cached here, so it can never go
 /// stale while the popup is open.
@@ -222,10 +222,10 @@ impl MovePopup {
     }
 }
 
-/// The title row: "move" flush left, the `:cat move` command dim and right-aligned — echoing
+/// The title row: "move" flush left, the `:category move` command dim and right-aligned — echoing
 /// `popup::unit::new`'s own title-row convention.
 fn render_title(frame: &mut Frame, area: Rect) {
-    let tag = ":cat move";
+    let tag = ":category move";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([

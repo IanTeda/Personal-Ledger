@@ -249,7 +249,7 @@ pub trait View {
     }
 
     /// The currently-selected category, if this view is `CategoriesView` and has one — lets
-    /// `Shell` dispatch the `:cat` command grammar's `new`/`edit`/`move`/`archive` entries
+    /// `Shell` dispatch the `:category` command grammar's `new`/`edit`/`move`/`archive` entries
     /// (`popup::command::commands::categories`) against the tree's own selection, the same
     /// target its `n`/`e`/`m`/`a` keys already act on, since the command popup has no real
     /// typed-argument resolution to supply a `<cat>` from instead.
