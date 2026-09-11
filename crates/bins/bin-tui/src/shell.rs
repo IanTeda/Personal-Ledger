@@ -20,7 +20,9 @@ use crate::{
     event::{Event, EventHandler},
     popup::{
         Dim,
-        category::{CategoryPopup, move_popup::MovePopup, new_popup::NewPopup},
+        category::{
+            CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
+        },
         command::CommandPopup,
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
     },
@@ -295,6 +297,35 @@ impl Shell {
                 KeyCode::Char(c) if !ctrl => Some(Action::CategoryNewPopupInput(c)),
                 _ => None,
             },
+            Some(CategoryPopup::Edit(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::CloseCategoryPopup),
+                KeyCode::Backspace => Some(Action::CategoryEditPopupBackspace),
+                KeyCode::Tab => Some(Action::CategoryEditPopupTab),
+                KeyCode::Char('s') if ctrl => {
+                    popup.save_fields(store).map(|(id, name, note, active)| {
+                        Action::UpdateCategory {
+                            id,
+                            name,
+                            note,
+                            active,
+                        }
+                    })
+                }
+                KeyCode::Char('a') if ctrl => {
+                    popup.archive_fields(store).map(|(id, name, note, active)| {
+                        Action::UpdateCategory {
+                            id,
+                            name,
+                            note,
+                            active,
+                        }
+                    })
+                }
+                // `X` (no `Ctrl`, matching the handoff's own bare key) — merge stub.
+                KeyCode::Char('X') if !ctrl => Some(Action::CategoryMerge),
+                KeyCode::Char(c) if !ctrl => Some(Action::CategoryEditPopupInput(c)),
+                _ => None,
+            },
             None => None,
         }
     }
@@ -436,6 +467,41 @@ impl Shell {
                 } else if let Some(CategoryPopup::New(popup)) = &mut self.category_popup {
                     popup.reset_for_next_sibling();
                 }
+            }
+            Action::OpenCategoryEditPopup(id) => {
+                if let Some(store) = self.view.category_store() {
+                    self.category_popup = Some(CategoryPopup::Edit(EditPopup::new(store, id)));
+                }
+                self.command_popup = None;
+                self.unit_popup = None;
+            }
+            Action::CategoryEditPopupInput(c) => {
+                if let Some(CategoryPopup::Edit(popup)) = &mut self.category_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::CategoryEditPopupBackspace => {
+                if let Some(CategoryPopup::Edit(popup)) = &mut self.category_popup {
+                    popup.backspace();
+                }
+            }
+            Action::CategoryEditPopupTab => {
+                if let Some(CategoryPopup::Edit(popup)) = &mut self.category_popup {
+                    popup.tab();
+                }
+            }
+            Action::CategoryMerge => {
+                if let Some(CategoryPopup::Edit(popup)) = &mut self.category_popup {
+                    popup.trigger_not_yet_built();
+                }
+                // The tree screen's own bare `X` never reaches `Shell` at all — `CategoriesView
+                // ::handle_key` sets its `merge_hint` directly and returns `Action::NoOp`
+                // instead, since it already owns the state that needs to change. This arm only
+                // exists for the Edit popup's `X`, which `Shell` (not `CategoriesView`) owns.
+            }
+            Action::UpdateCategory { .. } => {
+                self.view.update(&action);
+                self.category_popup = None;
             }
         }
     }
@@ -2034,5 +2100,153 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell with the new popup open should not error");
+    }
+
+    #[test]
+    fn e_on_the_categories_view_opens_the_edit_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        assert!(shell.category_popup.is_none());
+
+        // The default selection is the Income root, which `e` refuses (no editable name/
+        // note/active) — move onto one of its children first.
+        let move_down = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('j'),
+                KeyModifiers::NONE,
+            )))
+            .expect("j always maps to an action");
+        shell.update(move_down);
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('e'),
+                KeyModifiers::NONE,
+            )))
+            .expect("e on a non-root category always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.category_popup, Some(CategoryPopup::Edit(_))));
+    }
+
+    #[test]
+    fn typing_a_new_name_and_ctrl_s_renames_the_category_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+
+        shell.update(Action::OpenCategoryEditPopup(groceries));
+        for _ in 0.."Groceries".chars().count() {
+            shell.update(Action::CategoryEditPopupBackspace);
+        }
+        for c in "Fresh Food".chars() {
+            shell.update(Action::CategoryEditPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.category_popup.is_none(),
+            "popup should close after ctrl+s"
+        );
+        let store = shell.view.category_store().unwrap();
+        assert_eq!(store.find(groceries).unwrap().name, "Fresh Food");
+        assert_eq!(
+            store.find(groceries).unwrap().note.as_deref(),
+            Some("supermarket, greengrocer"),
+            "note should be preserved, not cleared, by an unrelated rename"
+        );
+    }
+
+    #[test]
+    fn ctrl_s_does_nothing_while_the_edit_name_is_empty() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        shell.update(Action::OpenCategoryEditPopup(groceries));
+        for _ in 0.."Groceries".chars().count() {
+            shell.update(Action::CategoryEditPopupBackspace);
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.category_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn ctrl_a_archives_the_category_keeping_the_typed_name_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        shell.update(Action::OpenCategoryEditPopup(groceries));
+        assert!(
+            shell
+                .view
+                .category_store()
+                .unwrap()
+                .find(groceries)
+                .unwrap()
+                .active
+        );
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+a with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(shell.category_popup.is_none());
+        let store = shell.view.category_store().unwrap();
+        assert_eq!(store.find(groceries).unwrap().name, "Groceries");
+        assert!(!store.find(groceries).unwrap().active);
+    }
+
+    #[test]
+    fn capital_x_on_the_edit_popup_shows_a_not_yet_built_hint_and_does_not_mutate() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        shell.update(Action::OpenCategoryEditPopup(groceries));
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('X'),
+                KeyModifiers::NONE,
+            )))
+            .expect("X on the edit popup always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.category_popup.is_some(),
+            "the not-yet-built fallback shouldn't close the popup"
+        );
+        let store = shell.view.category_store().unwrap();
+        assert!(store.find(groceries).unwrap().active);
+    }
+
+    #[test]
+    fn renders_the_open_category_edit_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCategories);
+        let groceries = category_id_by_name(&shell, "Groceries");
+        shell.update(Action::OpenCategoryEditPopup(groceries));
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the edit popup open should not error");
     }
 }

@@ -370,6 +370,17 @@ impl CategoryStore for CategoryFixture {
         Ok(())
     }
 
+    fn set_note(&mut self, id: RowID, note: Option<String>) -> Result<(), CategoryError> {
+        if self.is_root(id) {
+            return Err(CategoryError::IsRoot);
+        }
+        let Some(this) = self.nodes.iter_mut().find(|node| node.id == id) else {
+            return Err(CategoryError::NotFound);
+        };
+        this.note = note;
+        Ok(())
+    }
+
     fn validate_move(&self, id: RowID, new_parent: RowID) -> Result<(), CategoryError> {
         let Some(this) = self.find(id) else {
             return Err(CategoryError::NotFound);
@@ -561,6 +572,39 @@ mod tests {
             .rename(restaurants, "Dining".to_string())
             .expect("rename should succeed");
         assert_eq!(store.find(restaurants).unwrap().name, "Dining");
+    }
+
+    #[test]
+    fn set_note_rejects_a_root() {
+        let mut store = CategoryFixture::new();
+        let income = find_by_name(&store, "Income").id;
+        assert_eq!(
+            store.set_note(income, Some("nope".to_string())),
+            Err(CategoryError::IsRoot)
+        );
+    }
+
+    #[test]
+    fn set_note_replaces_the_notes_value_including_clearing_it() {
+        let mut store = CategoryFixture::new();
+        let groceries = find_by_name(&store, "Groceries").id;
+        assert_eq!(
+            store.find(groceries).unwrap().note.as_deref(),
+            Some("supermarket, greengrocer")
+        );
+
+        store
+            .set_note(groceries, Some("new note".to_string()))
+            .expect("set_note should succeed");
+        assert_eq!(
+            store.find(groceries).unwrap().note.as_deref(),
+            Some("new note")
+        );
+
+        store
+            .set_note(groceries, None)
+            .expect("clearing the note should succeed");
+        assert_eq!(store.find(groceries).unwrap().note, None);
     }
 
     #[test]

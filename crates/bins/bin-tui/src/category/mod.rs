@@ -138,6 +138,10 @@ pub trait CategoryStore {
 
     fn rename(&mut self, id: RowID, name: String) -> Result<(), CategoryError>;
 
+    /// Sets `note` directly — free text, no uniqueness or other validation, per the handoff's
+    /// "5d — Edit" field table.
+    fn set_note(&mut self, id: RowID, note: Option<String>) -> Result<(), CategoryError>;
+
     /// Checks whether `move_to(id, new_parent)` would succeed, without mutating anything —
     /// `move_to` itself calls this first. The seam the Move popup ("Categories: 5b move
     /// popup") previews refusals against live, as the user types, rather than only

@@ -1,7 +1,7 @@
 //! Category-domain popups: floating overlays acting on the Category tree
 //! (`docs/ux/tui/categories/README.md`), hosted by `Shell` the same way `crate::popup::unit`
-//! is. `move_popup` (5b) and `new_popup` (5c) exist so far; `edit` (5d) joins this enum in its
-//! own ticket ("Categories: 5d edit popup").
+//! is. `move_popup` (5b), `new_popup` (5c) and `edit_popup` (5d) — every popup this map's
+//! Destination named is now built.
 //!
 //! Unlike `popup::unit`'s forms (still wireframe-only, "no draft state yet"), these popups are
 //! genuinely interactive and genuinely mutate the tree — see `move_popup`'s own module doc for
@@ -9,6 +9,7 @@
 //! `/`-separated path resolution both `move_popup`'s `new parent` and `new_popup`'s `parent`
 //! fields share.
 
+pub mod edit_popup;
 pub mod move_popup;
 pub mod new_popup;
 pub mod path;
@@ -22,6 +23,7 @@ use crate::category::CategoryStore;
 pub enum CategoryPopup {
     Move(move_popup::MovePopup),
     New(new_popup::NewPopup),
+    Edit(edit_popup::EditPopup),
 }
 
 impl CategoryPopup {
@@ -31,6 +33,7 @@ impl CategoryPopup {
         match self {
             CategoryPopup::Move(popup) => popup.render(frame, area, store),
             CategoryPopup::New(popup) => popup.render(frame, area, store),
+            CategoryPopup::Edit(popup) => popup.render(frame, area, store),
         }
     }
 }

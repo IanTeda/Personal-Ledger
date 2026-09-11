@@ -180,6 +180,38 @@ pub enum Action {
         active: bool,
         close_after: bool,
     },
+    /// `e` on a Categories tree row — opens the edit popup (`crate::popup::category::
+    /// edit_popup`, "Categories: 5d edit popup"). Never dispatched for a root
+    /// (`CategoriesView::handle_key` refuses it there — roots have no editable name/note/
+    /// active).
+    OpenCategoryEditPopup(RowID),
+    /// A printable character typed while the Category edit popup is open — routed to
+    /// whichever of its fields (`name`/`note`/`active`) currently has focus.
+    CategoryEditPopupInput(char),
+    /// `Backspace` while the Category edit popup is open.
+    CategoryEditPopupBackspace,
+    /// `Tab` while the Category edit popup is open — advances focus to the next field (no
+    /// path to complete, unlike Move/New's `parent` field).
+    CategoryEditPopupTab,
+    /// `X` while the Category edit popup is open, or on a Categories tree row directly —
+    /// merge has no real logic yet ("Not yet designed" in the handoff), so this only shows
+    /// the "not yet built" fallback (in the popup's own title tag, or
+    /// `CategoriesView::merge_hint` on the bare tree).
+    CategoryMerge,
+    /// `Ctrl+S` (save the draft as typed) or `Ctrl+A` (save it, but with `active` forced
+    /// `false` regardless of the checkbox — the handoff's own soft-delete path, "archiving
+    /// keeps all N transactions and totals; it only stops the category being offered") on the
+    /// Category edit popup, once the draft validates (a non-empty `name`, no sibling clash) —
+    /// `Shell` resolves the popup's current fields into this pair the same way
+    /// `MoveCategory`/`CreateCategory` do. `a` on a Categories tree row reaches the same
+    /// underlying `CategoryStore::set_active`, but directly (no popup, no draft to carry), so
+    /// it never goes through this variant.
+    UpdateCategory {
+        id: RowID,
+        name: String,
+        note: Option<String>,
+        active: bool,
+    },
 }
 
 /// The single view `Shell` hosts at a time.

@@ -135,6 +135,11 @@ pub struct CategoriesView {
     /// transactions when `false`, or every transaction in its subtree (each row gaining a
     /// category column) when `true`, per the handoff's "5a — Categories screen" right pane.
     show_subtree: bool,
+    /// `Some` right after `X` on a tree row — merge has no real logic yet ("Not yet designed"
+    /// in the handoff), so this replaces the tree header's stats with the "not yet built"
+    /// fallback until any other key is pressed (`handle_key` clears it unconditionally before
+    /// matching, then sets it again only if the new key is another `X`).
+    merge_hint: Option<&'static str>,
 }
 
 impl Default for CategoriesView {
@@ -170,6 +175,7 @@ impl CategoriesView {
             show_archived: false,
             pending_z: false,
             show_subtree: false,
+            merge_hint: None,
         }
     }
 
@@ -384,6 +390,10 @@ impl CategoriesView {
 
 impl View for CategoriesView {
     fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
+        // Any key dismisses a showing merge "not yet built" hint; the `X` arm below sets it
+        // straight back if that's the key that was just pressed.
+        self.merge_hint = None;
+
         if self.pending_z {
             self.pending_z = false;
             match key.code {
@@ -441,6 +451,28 @@ impl View for CategoriesView {
                 .find(self.selected)
                 .and_then(|node| node.parent_id)
                 .map(Action::OpenCategoryNewPopup),
+            // `e`: opens the edit popup — never for a root (it has no editable name/note/
+            // active), same guard as `N`.
+            KeyCode::Char('e') => self.store.find(self.selected).and_then(|node| {
+                if node.parent_id.is_none() {
+                    None
+                } else {
+                    Some(Action::OpenCategoryEditPopup(self.selected))
+                }
+            }),
+            // `a`: archives the selection directly — no popup, no draft to carry, per the
+            // handoff's own quick soft-delete path. Silently no-ops on a root
+            // (`CategoryStore::set_active` refuses `IsRoot`).
+            KeyCode::Char('a') => {
+                let _ = self.store.set_active(self.selected, false);
+                Some(Action::NoOp)
+            }
+            // `X`: merge has no real logic yet ("Not yet designed" in the handoff) — shows the
+            // "not yet built" fallback in the tree header instead.
+            KeyCode::Char('X') => {
+                self.merge_hint = Some("X merge — not yet built");
+                Some(Action::NoOp)
+            }
             _ => None,
         }
     }
@@ -470,6 +502,16 @@ impl View for CategoriesView {
                     // checkbox was unticked (rare; `[×]` is the handoff's own default).
                     let _ = self.store.set_active(id, false);
                 }
+            }
+            Action::UpdateCategory {
+                id,
+                name,
+                note,
+                active,
+            } => {
+                let _ = self.store.rename(*id, name.clone());
+                let _ = self.store.set_note(*id, note.clone());
+                let _ = self.store.set_active(*id, *active);
             }
             _ => {}
         }
@@ -574,13 +616,22 @@ impl CategoriesView {
         visible_count: usize,
         folded_count: usize,
     ) {
-        let total = self.store.nodes().len();
-        let text = format!(
-            "tree {visible_count} of {total} · depth {} · {folded_count} folded",
-            self.max_depth()
-        );
-        let dim = Style::default().add_modifier(Modifier::DIM);
-        frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
+        let text = match self.merge_hint {
+            Some(hint) => hint.to_string(),
+            None => {
+                let total = self.store.nodes().len();
+                format!(
+                    "tree {visible_count} of {total} · depth {} · {folded_count} folded",
+                    self.max_depth()
+                )
+            }
+        };
+        let style = if self.merge_hint.is_some() {
+            Style::default().fg(ACCENT)
+        } else {
+            Style::default().add_modifier(Modifier::DIM)
+        };
+        frame.render_widget(Paragraph::new(Span::styled(text, style)), area);
     }
 
     /// The summary box beneath the tree, for whichever node is selected — see the handoff's
@@ -1682,6 +1733,55 @@ mod tests {
     fn other_keys_fall_through_to_the_shell() {
         let mut view = CategoriesView::new();
         assert_eq!(view.handle_key(key(KeyCode::Char('x'))), None);
+    }
+
+    #[test]
+    fn e_opens_the_edit_popup_for_a_non_root_selection() {
+        let mut view = CategoriesView::new();
+        let groceries = find_by_name(&view, "Groceries");
+        view.selected = groceries;
+
+        assert_eq!(
+            view.handle_key(key(KeyCode::Char('e'))),
+            Some(Action::OpenCategoryEditPopup(groceries))
+        );
+    }
+
+    #[test]
+    fn e_on_a_root_selection_does_nothing() {
+        let mut view = CategoriesView::new();
+        assert_eq!(view.handle_key(key(KeyCode::Char('e'))), None);
+    }
+
+    #[test]
+    fn a_archives_the_selection_directly_with_no_popup() {
+        let mut view = CategoriesView::new();
+        let groceries = find_by_name(&view, "Groceries");
+        view.selected = groceries;
+
+        let action = view.handle_key(key(KeyCode::Char('a')));
+        assert_eq!(action, Some(Action::NoOp));
+        assert!(!view.store.find(groceries).unwrap().active);
+    }
+
+    #[test]
+    fn a_on_a_root_selection_does_nothing_to_the_store() {
+        let mut view = CategoriesView::new();
+        let income = find_by_name(&view, "Income");
+        view.selected = income;
+
+        view.handle_key(key(KeyCode::Char('a')));
+        assert!(view.store.find(income).unwrap().active);
+    }
+
+    #[test]
+    fn capital_x_shows_a_not_yet_built_hint_until_another_key_clears_it() {
+        let mut view = CategoriesView::new();
+        assert_eq!(view.handle_key(key(KeyCode::Char('X'))), Some(Action::NoOp));
+        assert!(render(&view).contains("not yet built"));
+
+        view.handle_key(key(KeyCode::Char('j')));
+        assert!(!render(&view).contains("not yet built"));
     }
 
     #[test]
