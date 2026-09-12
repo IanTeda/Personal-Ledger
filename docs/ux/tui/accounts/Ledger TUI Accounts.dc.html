@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="../_ds/modernist-4aa36bd2-9125-4b41-bcc8-a319ca5ae354/styles.css">
+<script src="../_ds/modernist-4aa36bd2-9125-4b41-bcc8-a319ca5ae354/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+body{margin:0;background:var(--color-bg,#f3f2f2);color:var(--color-text,#201e1d);font-family:Archivo,system-ui,sans-serif}
+a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(--color-accent-700,#ae1800)}
+.dv-turn{padding:40px 44px 32px;border-bottom:2px solid rgba(32,30,29,.4);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+.dv-tid{font:700 10px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:#201e1d;color:#f3f2f2;text-decoration:none}
+.dv-tname{font:800 13px/1.2 Archivo,sans-serif;letter-spacing:-.01em}
+.dv-sub{font:400 11px/1.5 Archivo,sans-serif;color:#7d7979;margin:0 0 20px;max-width:78ch}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:700 10.5px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:rgba(32,30,29,.09);color:#201e1d;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.35 Archivo,sans-serif;color:#605d5d}
+.dv-olabel b{font-weight:800;color:#201e1d}
+.dv-card{max-width:100%;background:#fff;border:2px solid #201e1d;overflow:hidden}
+.dv-opt:target .dv-oid{background:#ec3013;color:#fff}
+.dv-next{margin:26px 0 0;font:400 11px/1.6 Archivo,sans-serif;color:#7d7979}
+.dv-rowhd{font:800 9.5px Archivo,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:#7d7979;margin:34px 0 14px;padding-bottom:5px;border-bottom:2px solid rgba(32,30,29,.4)}
+/* ── terminal primitives ── */
+.t{background:#fff;color:#201e1d;font:400 11px/1.5 JetBrains Mono,ui-monospace,Menlo,monospace;display:flex;flex-direction:column}
+.tbar{display:flex;justify-content:space-between;gap:12px;background:#201e1d;color:#f3f2f2;padding:3px 8px;font-size:10px;letter-spacing:.03em}
+.tbar b{font-weight:700}
+.tabs{display:flex;gap:0;border-bottom:1px solid #bab6b6;font-size:10px;background:#f8f4f4}
+.tab{padding:3px 11px;color:#7d7979;border-right:1px solid #d7d3d3}
+.tab.on{background:#ec3013;color:#fff;font-weight:700}
+.tk{margin-top:auto;background:#eae7e7;border-top:1px solid #bab6b6;padding:3px 8px;font-size:10px;color:#605d5d;display:flex;gap:13px;flex-wrap:wrap}
+.k{background:#201e1d;color:#f3f2f2;padding:0 3px;margin-right:3px}
+.tbody{display:flex;min-height:0;flex:1}
+.sb{width:172px;flex:none;border-right:1px solid #bab6b6;padding:6px 8px}
+.pane{flex:1;min-width:0;padding:7px 9px}
+.pane+.pane{border-left:1px solid #bab6b6}
+.hd{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#7d7979;border-bottom:1px solid #d7d3d3;padding-bottom:2px;margin:0 0 5px;display:flex;justify-content:space-between}
+.hd.tight{margin-top:9px}
+.row{display:grid;gap:7px;padding:.5px 0;align-items:baseline}
+.row>span{white-space:nowrap;overflow:hidden}
+.sel{background:#201e1d;color:#f3f2f2;margin:0 -9px;padding:.5px 9px}
+.sel .mut,.sel .neg{color:#ffc4b8}
+.mut{color:#9b9797}.neg{color:#ec3013}.pos{color:#201e1d}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+.box{border:1px solid #bab6b6;padding:5px 7px}
+.box.foc{border:2px solid #ec3013;padding:4px 6px}
+.big{font:700 22px/1.1 JetBrains Mono,monospace;letter-spacing:-.02em}
+.cells{display:grid;gap:0;border:1px solid #bab6b6}
+.cells>div{padding:5px 7px;border-right:1px solid #d7d3d3}
+.cells>div:last-child{border-right:0}
+.lab{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#7d7979}
+.lc{display:flex;align-items:flex-end;gap:1px;height:66px;margin:4px 0 2px}
+.lcb{flex:1;border-top:2px solid #ec3013;min-height:2px}
+.lcb.g{border-top-color:#bab6b6}
+.dnt{width:88px;height:88px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center}
+.dnt>i{width:46px;height:46px;border-radius:50%;background:#fff;display:block}
+.sw{width:8px;height:8px;display:inline-block;margin-right:5px}
+.bn{background:#ec3013;height:9px;display:block}
+.bp{background:#201e1d;height:9px;display:block}
+.cs{display:flex;align-items:stretch;gap:3px;height:84px;margin:4px 0}
+.csc{position:relative;flex:1}
+.csw{position:absolute;left:50%;width:1px;background:#605d5d;transform:translateX(-50%)}
+.csb{position:absolute;left:1px;right:1px;border:1px solid #201e1d;background:#fff}
+.csb.d{background:#ec3013;border-color:#ec3013}
+.bt{position:relative;height:10px;background:#eae7e7;flex:1}
+.btf{position:absolute;left:0;top:0;bottom:0;background:#9b9797}
+.btf.ov{background:#ec3013}
+.btm{position:absolute;top:-3px;bottom:-3px;width:1px;background:#201e1d}
+.cmd{border-top:2px solid #201e1d;padding:3px 8px;font-size:11px;background:#f8f4f4}
+.cmd i{background:#ec3013;color:#fff;font-style:normal;padding:0 2px}
+.ovl{border:2px solid #201e1d;background:#fff;box-shadow:8px 8px 0 rgba(32,30,29,.14)}
+.note{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#ec3013}
+/* dark terminal variant */
+.dk .t{background:#161413;color:#eae7e7}
+.dk .dv-card,.dk.dv-card{border-color:#201e1d}
+.dk .tk{background:#201e1d;border-top-color:#444141;color:#9b9797}
+.dk .tabs{background:#201e1d;border-bottom-color:#444141}
+.dk .sb,.dk .pane+.pane{border-color:#444141}
+.dk .hd{border-bottom-color:#444141;color:#9b9797}
+.dk .box{border-color:#605d5d}
+.dk .sel{background:#eae7e7;color:#161413}
+.dk .sel .mut,.dk .sel .neg{color:#ae1800}
+.dk .mut{color:#7d7979}.dk .pos{color:#eae7e7}
+.dk .cells,.dk .cells>div{border-color:#444141}
+.dk .dnt>i{background:#161413}
+.dk .csb{border-color:#eae7e7;background:#161413}
+.dk .bp{background:#eae7e7}
+.dk .bt{background:#2c2928}
+.dk .btf{background:#605d5d}
+.dk .btm{background:#eae7e7}
+.dk .cmd{background:#201e1d;border-top-color:#605d5d}
+.dk .ovl{background:#161413;border-color:#eae7e7}
+.dk .lcb.g{border-top-color:#605d5d}
+</style></helmet>
+
+<section class="dv-turn {{ themeClass }}" id="t7">
+<div class="dv-thd"><a class="dv-tid" href="#t7">accounts</a><span class="dv-tname">Accounts — list, new, edit, delete</span></div>
+<p class="dv-sub">An account is <b>where money sits</b>, denominated in exactly one unit that is <b>fixed at creation</b> — and the ledger never converts between units, so the list groups by the five fixed types (cash, bank, credit card, investment, loan) and its totals are stated <b>per unit</b>, never as one number. Balance is not a column in the table: it is <b>starting balance plus every transaction</b>, recomputed on read, which is why the starting balance is the one field whose edit warns. Delete carries the same weight — an account with transactions is not removed, its transactions are moved to another account <b>of the same unit</b> first.</p>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="7a">
+<div class="dv-olabel"><a class="dv-oid" href="#7a">7a</a><span><b>Accounts.</b> Grouped by type, subtotalled per unit; the selected account drives its balance line and its ledger.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; accounts / everyday spending</span><span>9 accounts &nbsp;·&nbsp; 7 active &nbsp;·&nbsp; base AUD</span></div>
+  <div class="tbody">
+    <div class="pane" style="flex:none;width:300px">
+      <div class="hd">accounts <span>9 · by type · 2 hidden</span></div>
+      <div style="position:relative;padding-right:12px">
+      <div style="position:absolute;right:0;top:0;bottom:0;width:6px"><i style="position:absolute;left:1px;right:1px;top:0;bottom:0;background:#e2dede"></i><i style="position:absolute;left:1px;right:1px;top:0;height:64%;background:#605d5d"></i></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px;padding:1px 0"><span class="mut">ACCOUNT</span><span class="mut">UNIT</span><span class="mut n">BALANCE</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px;padding:1px 0"><span style="font-weight:700">CASH</span><span class="mut">2</span><span class="n" style="font-weight:700">320.40</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px"><span class="mut">├ Wallet</span><span class="mut">AUD</span><span class="n mut">320.40</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px"><span class="mut">└ Travel cash</span><span class="mut">USD</span><span class="n mut">1 500.00</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px;padding:2px 0 1px"><span style="font-weight:700">BANK</span><span class="mut">2</span><span class="n" style="font-weight:700">28 640.15</span></div>
+      <div class="row sel" style="grid-template-columns:1fr 34px 80px;margin:0 0 0 -9px"><span>├ Everyday Spending</span><span>AUD</span><span class="n" style="font-weight:700">4 210.65</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px"><span class="mut">└ Mortgage Offset</span><span class="mut">AUD</span><span class="n mut">24 429.50</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px;padding:2px 0 1px"><span style="font-weight:700">CREDIT CARD</span><span class="mut">1</span><span class="n neg" style="font-weight:700">−1 284.30</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px"><span class="mut">└ Amex Platinum</span><span class="mut">AUD</span><span class="n neg">−1 284.30</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px;padding:2px 0 1px"><span style="font-weight:700">INVESTMENT</span><span class="mut">2</span><span class="n mut">mixed units</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px"><span class="mut">├ Vanguard VDHG</span><span class="mut">VDHG</span><span class="n mut">412.4800</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px"><span class="mut">└ Cold wallet</span><span class="mut">BTC</span><span class="n mut">0.18400000</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px;padding:2px 0 1px"><span style="font-weight:700">LOAN</span><span class="mut">1</span><span class="n neg" style="font-weight:700">−612 400.00</span></div>
+      <div class="row" style="grid-template-columns:1fr 34px 80px"><span class="mut">└ Home Loan</span><span class="mut">AUD</span><span class="n neg">−612 400.00</span></div>
+      </div>
+      <div class="hd tight">everyday spending <span class="note">e edit</span></div>
+      <div class="box" style="padding:5px 7px">
+        <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span class="mut">bank · AUD · start 1 000.00</span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0;border-top:1px solid #d7d3d3;border-bottom:1px solid #d7d3d3"><span class="lab" style="margin:0">balance now · computed</span><span class="n" style="font-weight:700">4 210.65</span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0"><span class="mut">transactions</span><span class="n">1 284 <span class="mut">· 12 open</span></span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0"><span class="mut">last check</span><span>31 aug <span class="mut">· var</span> 0.00</span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0"><span class="mut">active</span><span>[×] <span class="mut">· offered when posting</span></span></div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="hd">balance <span>month end · oct 24 – sep 26 · AUD</span></div>
+      <svg viewBox="0 0 360 52" preserveAspectRatio="none" style="display:block;width:100%;height:52px;margin:3px 0 1px">
+        <line x1="0" y1="51" x2="360" y2="51" stroke="#d7d3d3" stroke-width="1"></line>
+        <line x1="0" y1="30" x2="360" y2="30" stroke="#e2dede" stroke-width="1" stroke-dasharray="2 3"></line>
+        <polyline points="0.0,44 15.7,40 31.3,43 47.0,35 62.6,38 78.3,30 93.9,34 109.6,27 125.2,33 140.9,24 156.5,29 172.2,21 187.8,26 203.5,18 219.1,24 234.8,16 250.4,22 266.1,13 281.7,19 297.4,12 313.0,17 328.7,9 344.3,15 360.0,11" fill="none" stroke="#ec3013" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline>
+        <circle cx="360" cy="11" r="2" fill="#201e1d"></circle>
+      </svg>
+      <div class="row" style="grid-template-columns:1fr auto auto;gap:12px;padding-bottom:2px"><span class="mut">oct 24 &nbsp;1 000</span><span class="mut">low 640 · mar 25</span><span class="mut">sep 26 &nbsp;4 211</span></div>
+      <div class="hd tight">ledger <span>10 of 1 284 · newest first</span></div>
+      <div style="position:relative;padding-right:12px">
+        <div style="position:absolute;right:0;top:0;bottom:0;width:6px"><i style="position:absolute;left:1px;right:1px;top:0;bottom:0;background:#e2dede"></i><i style="position:absolute;left:1px;right:1px;top:0;height:10%;background:#605d5d"></i></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">S</span><span class="mut">DATE</span><span class="mut">PAYEE</span><span class="mut n">AMOUNT</span><span class="mut n">BALANCE</span></div>
+        <div class="row sel" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 9px 1px 0;margin:0 -9px 0 0"><span>○</span><span>08 sep</span><span>Woolworths</span><span class="n">−184.20</span><span class="n">4 210.65</span></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">○</span><span>06 sep</span><span class="mut">Coles Central</span><span class="n neg">−62.85</span><span class="n mut">4 394.85</span></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">○</span><span>04 sep</span><span class="mut">Sunrise Payroll</span><span class="n">+3 180.00</span><span class="n mut">4 457.70</span></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">✓</span><span>01 sep</span><span class="mut">Origin Energy</span><span class="n neg">−241.55</span><span class="n mut">1 277.70</span></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">✓</span><span>31 aug</span><span class="mut">Transfer → Offset</span><span class="n neg">−500.00</span><span class="n mut">1 519.25</span></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">✓</span><span>28 aug</span><span class="mut">Aldi Marrickville</span><span class="n neg">−74.10</span><span class="n mut">2 019.25</span></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">✓</span><span>26 aug</span><span class="mut">Telstra</span><span class="n neg">−89.00</span><span class="n mut">2 093.35</span></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">✓</span><span>22 aug</span><span class="mut">Coles Central</span><span class="n neg">−148.05</span><span class="n mut">2 182.35</span></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">✓</span><span>21 aug</span><span class="mut">Sunrise Payroll</span><span class="n">+3 180.00</span><span class="n mut">2 330.40</span></div>
+        <div class="row" style="grid-template-columns:10px 42px 1fr 62px 62px;padding:1px 0"><span class="mut">✓</span><span>19 aug</span><span class="mut">Harris Farm</span><span class="n neg">−57.40</span><span class="n mut">−849.60</span></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr auto;border-top:1px solid #d7d3d3;margin-top:3px;padding-top:3px"><span class="mut">○ open · ✓ reconciled &nbsp;·&nbsp; 12 open</span><span class="mut"><span class="k">enter</span>open ledger</span></div>
+      <div class="row" style="grid-template-columns:1fr;margin-top:2px"><span class="mut">net AUD 84 210.15 &nbsp;·&nbsp; USD, VDHG, BTC held separately</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">:acct new &lt;name&gt; &lt;type&gt; &lt;unit&gt; &nbsp;·&nbsp; :acct delete &lt;name&gt;</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">enter</span>ledger</span><span><span class="k">n</span>new</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">a</span>off</span><span><span class="k">b</span>check</span><span><span class="k">tab</span>focus</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="7b">
+<div class="dv-olabel"><a class="dv-oid" href="#7b">7b</a><span><b>New.</b> <code>n</code> — type is a five-way pick and unit is the one choice that can never be revised.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:380px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; accounts</span><span>INSERT &nbsp;·&nbsp; new account</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">accounts <span>9 · by type</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span>BANK</span><span class="n mut">28 640.15</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">├ Everyday Spending</span><span class="n mut">4 210.65</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">└ Mortgage Offset</span><span class="n mut">24 429.50</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span>CREDIT CARD</span><span class="n mut">−1 284.30</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">└ Amex Platinum</span><span class="n mut">−1 284.30</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:7%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>new account</span><span class="mut">:acct new</span></div>
+    <div style="padding:4px 8px">
+      <div class="row" style="grid-template-columns:84px 1fr;padding:1px 0"><span class="mut">name</span><span>Travel Card<span class="neg">▌</span></span></div>
+      <div class="box foc" style="margin:3px 0;padding:3px 5px">
+        <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">type</span><span>cash &nbsp;bank &nbsp;<span style="background:#201e1d;color:#f3f2f2;padding:0 2px">credit card</span> &nbsp;loan</span></div>
+        <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut"></span><span class="mut">investment &nbsp;·&nbsp; h/l or first letter</span></div>
+      </div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:1px 0"><span class="mut">unit</span><span>AUD <span class="mut">· tab to change · 6 units</span></span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:1px 0"><span class="mut">starting bal</span><span>0.00 <span class="mut">· AUD · 2 dp</span></span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:1px 0"><span class="mut">active</span><span>[×] <span class="mut">· offer it when posting</span></span></div>
+      <div class="hd tight" style="margin-top:4px">what this fixes</div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">unit cannot change afterwards — transactions</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">never cross units. To hold a second unit,</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">make a second account.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 0"><span class="mut">balance is never stored: it is the starting</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">balance plus every transaction, on read.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 1px"><span class="note">name need not be unique — ids are</span></div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">tab</span>next field</span><span><span class="k">^s</span>create</span><span><span class="k">^a</span>create &amp; another</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close new form</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="7c">
+<div class="dv-olabel"><a class="dv-oid" href="#7c">7c</a><span><b>Edit.</b> Name, type and active only — FR.13 fixes unit and starting balance at creation, and the form says so rather than hiding them.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:380px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; accounts / everyday spending</span><span>INSERT &nbsp;·&nbsp; edit account</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">accounts <span>9 · by type</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span>BANK</span><span class="n mut">28 640.15</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">├ Everyday Spending</span><span class="n mut">4 210.65</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">└ Mortgage Offset</span><span class="n mut">24 429.50</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span>CREDIT CARD</span><span class="n mut">−1 284.30</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">└ Amex Platinum</span><span class="n mut">−1 284.30</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:6%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>edit &nbsp;Everyday Spending</span><span class="mut">:acct edit</span></div>
+    <div style="padding:4px 8px">
+      <div class="row" style="grid-template-columns:84px 1fr;padding:1px 0"><span class="mut">name</span><span>Everyday Spending<span class="neg">▌</span></span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:1px 0"><span class="mut">type</span><span>cash &nbsp;<span style="background:#201e1d;color:#f3f2f2;padding:0 2px">bank</span> &nbsp;credit card &nbsp;loan</span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:1px 0"><span class="mut">active</span><span>[×] <span class="mut">· clear to deactivate</span></span></div>
+      <div class="hd tight" style="margin-top:4px">fixed at creation <span class="note">FR.13</span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">unit</span><span class="mut">AUD</span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">starting bal</span><span class="mut">1 000.00</span></div>
+      <div class="hd tight" style="margin-top:4px">computed</div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">balance now</span><span class="mut">4 210.65 · not stored</span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">transactions</span><span class="mut">1 284 · <span class="k">enter</span>ledger</span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">created</span><span class="mut">14 oct 2024 · upd 08 sep 26</span></div>
+      <div class="box" style="margin:3px 0 1px;padding:3px 5px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">name and type are labels — nothing derives</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">from them, so renaming is always safe.</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:1px 0 0"><span class="neg">correct a wrong opening balance with an</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="neg">adjusting transaction, not by rewriting it</span></div>
+      </div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">tab</span>next field</span><span><span class="k">^s</span>save</span><span><span class="k">^a</span>deactivate</span><span><span class="k">^d</span>delete</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close edit form</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="7d">
+<div class="dv-olabel"><a class="dv-oid" href="#7d">7d</a><span><b>Delete.</b> The transactions have to land somewhere first — same unit only — and the name is the confirm.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:380px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; accounts / everyday spending</span><span>INSERT &nbsp;·&nbsp; delete account</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">accounts <span>9 · by type</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span>BANK</span><span class="n mut">28 640.15</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">├ Everyday Spending</span><span class="n mut">4 210.65</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">└ Mortgage Offset</span><span class="n mut">24 429.50</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span>CREDIT CARD</span><span class="n mut">−1 284.30</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">└ Amex Platinum</span><span class="n mut">−1 284.30</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:5%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>delete &nbsp;Everyday Spending</span><span class="mut">:acct delete</span></div>
+    <div style="padding:4px 8px">
+      <div class="row" style="grid-template-columns:84px 1fr;padding:1px 0"><span class="mut">holds</span><span>1 284 txns <span class="mut">· 4 210.65 AUD</span></span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:1px 0"><span class="mut"></span><span class="mut">12 unreconciled · 8 balance checks</span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:2px 0 0"><span class="mut">transactions</span><span class="mut">( ) delete them too <span class="neg">· refused</span></span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut"></span><span>(•) move to another account</span></div>
+      <div class="box foc" style="margin:3px 0;padding:3px 5px">
+        <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">move to</span><span>Mortgage Offset<span class="neg">▌</span></span></div>
+        <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">candidates</span><span class="mut">AUD only · 4 of 9 &nbsp;· tab</span></div>
+      </div>
+      <div class="hd tight" style="margin-top:2px">after</div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">into</span><span>Mortgage Offset</span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">its balance</span><span>24 429.50 → <span style="font-weight:700">28 640.15</span></span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">moves</span><span class="mut">1 284 txns · status kept</span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">loses</span><span class="mut">8 balance checks · they assert a</span></div>
+      <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut"></span><span class="mut">balance this account no longer has</span></div>
+      <div class="box" style="margin:3px 0 1px;padding:3px 5px">
+        <div class="row" style="grid-template-columns:84px 1fr;padding:0"><span class="mut">confirm</span><span>Everyday Spending<span class="neg">▌</span></span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:1px 0 0"><span class="neg">deletion is permanent and not synced back</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut"><span class="k">a</span>deactivate instead — keeps everything readable</span></div>
+      </div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">tab</span>next field</span><span><span class="k">^s</span>delete</span><span><span class="k">a</span>deactivate</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close delete form</span></div>
+</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next" style="display:none">Try next: "the account ledger behind <a class="dv-oid" href="#7a">7a</a>'s enter" · "balance check and reconcile" · "hand <a class="dv-oid" href="#7a">7</a> off to Claude Code"</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;terminal&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;\&quot;light\&quot; | \&quot;dark\&quot;&quot;,&quot;section&quot;:&quot;Wireframe&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: (this.props.terminal ?? "light") === "dark" ? "dk" : "" };
+  }
+}
+</script>
+</body>
+</html>
