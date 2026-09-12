@@ -5,6 +5,7 @@
 //! still compile — see the ADR — but are no longer referenced here; each of their real
 //! screens is migrated into `view/` behind its own redesign pass.
 
+mod account;
 mod action;
 mod app;
 mod category;
