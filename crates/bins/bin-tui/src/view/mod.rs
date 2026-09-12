@@ -107,9 +107,21 @@ pub enum Action {
     /// Reports view.
     OpenReports,
     /// `g s`, or `Enter` on the command popup's `settings` command — opens the Settings view
-    /// (`docs/ux/tui/settings/README.md` §4a — the "at rest" wireframe only; the
-    /// database-backed registry, in-place editor and base-unit guard are later work).
+    /// (`docs/ux/tui/settings/README.md` §4a — the "at rest" wireframe, plus the §4b/§4c popups
+    /// below; the database-backed registry behind either is later work).
     OpenSettings,
+    /// `e` on the Settings view — opens the in-place editor popup over the `general.negatives`
+    /// worked example (`docs/ux/tui/settings/README.md` §4b, "Editing in place").
+    OpenEditSettingPopup,
+    /// `enter` on the Settings view — opens the base-unit guard overlay over the `general.
+    /// base_unit` worked example (`docs/ux/tui/settings/README.md` §4c, "Base unit guard").
+    /// Bound to a key of its own rather than reached by committing an §4b edit, since there is
+    /// no real "currently selected setting" state yet to route a generic commit through —
+    /// `view::settings::SettingsView`'s own module doc says more.
+    OpenBaseUnitGuardPopup,
+    /// `Esc` while a settings popup (the §4b editor or the §4c guard) is open — closes it
+    /// without committing anything.
+    CloseSettingsPopup,
     /// `g t`, or `Enter` on the command popup's `txn recent` command — opens the placeholder
     /// Transactions view.
     OpenTransactions,

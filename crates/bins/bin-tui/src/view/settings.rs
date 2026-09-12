@@ -1,16 +1,30 @@
 //! The Settings `View`, hosted by `Shell` (ADR-0013). Wireframe stage: the two-pane layout
-//! from `docs/ux/tui/settings/README.md` §4a ("Settings at rest") — a fixed 28-col left pane
-//! (groups list, "where values live" box, reset block) beside a `Min(0)` right pane (settings
-//! list, selected explainer, settings table, command hint row) — so the overall pane structure
-//! and proportions can be checked before the database-backed registry, in-place editor (§4b)
-//! and base-unit guard (§4c) are built out.
+//! from `docs/ux/tui/settings/README.md` §4a ("Settings at rest") — a fixed left pane (groups
+//! list, "where values live" box, reset block) beside a `Min(0)` right pane (settings list,
+//! selected explainer, settings table, command hint row) — so the overall pane structure and
+//! proportions can be checked before the database-backed registry behind it is built out. The
+//! left pane is widened to `view::units`'s own `LEFT_COLUMN_WIDTH` past §4a's own "28 cols
+//! fixed", so the two views' left columns line up when switching between them.
+//!
+//! `e` and `enter` reach `crate::popup::settings`'s two popups — §4b's in-place editor and
+//! §4c's base-unit guard. Neither is routed through a "currently selected setting": this view
+//! has no real row-navigation state yet (`SETTINGS`'s own `selected` flag is hardcoded to
+//! `base unit`, not driven by `j`/`k`), so unlike a real build — where `enter` on any row opens
+//! §4b, and only committing `general.base_unit` specifically detours through §4c — each popup
+//! here gets its own fixed key and always shows its own worked example (`e` → §4b's
+//! `general.negatives`, `enter` → §4c's `general.base_unit`, matching the one row this view's
+//! fake data actually marks selected). This mirrors `view::units`'s own `n`/`e`/`d` opening
+//! fixed forms regardless of "real" selection.
 
+use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState},
+    widgets::{
+        Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+    },
 };
 
 use crate::view::{Action, View};
@@ -19,16 +33,20 @@ use crate::view::{Action, View};
 /// the override dot, the "3 overridden" figure and a setting's `consequence` warning.
 const ACCENT: Color = Color::Red;
 
-/// Width of the left pane — "left 28 cols fixed" per §4a's terminal geometry.
-const LEFT_COLUMN_WIDTH: u16 = 28;
+/// Width of the left pane — widened past §4a's own "left 28 cols fixed" terminal geometry to
+/// match `view::units`'s `LEFT_COLUMN_WIDTH`, so the two views' left columns share the same
+/// width.
+const LEFT_COLUMN_WIDTH: u16 = 46;
 
 /// Rows inside the groups list: a "GROUPS" heading, its rule, then one row per group.
 const GROUPS_SECTION_HEIGHT: u16 = 1 + 1 + GROUPS.len() as u16;
 
 /// Rows inside the "where values live" box: a heading (carrying the `H log` tag), its rule,
-/// then the nine lines of §4a's own worked example — title, rule, three override/default/
-/// last-commit facts, rule, then the two bootstrap-config lines.
-const WHERE_VALUES_SECTION_HEIGHT: u16 = 1 + 1 + 9;
+/// the bordered box's own top/bottom border, then the seven content lines — title, three
+/// override/default/last-commit facts, a rule, then the bootstrap-config line. Trimmed from
+/// §4a's own nine lines (which had a rule after the title and a two-line bootstrap footer) to
+/// recoup the 2 rows the border costs, so the box still fits the view's 96×30-cell minimum.
+const WHERE_VALUES_SECTION_HEIGHT: u16 = 1 + 1 + 2 + 7;
 
 /// Rows inside the reset block: a heading (carrying the "deletes the row" note), its rule,
 /// then the `r`/`R` key hint lines.
@@ -79,6 +97,18 @@ impl SettingsView {
 }
 
 impl View for SettingsView {
+    /// `e` opens the §4b in-place editor over `general.negatives`, `enter` opens the §4c
+    /// base-unit guard over `general.base_unit` — see this module's own doc comment for why
+    /// these are fixed keys rather than acting on a "currently selected" row. Everything else
+    /// falls through to `Shell`'s global keys.
+    fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
+        match key.code {
+            KeyCode::Char('e') => Some(Action::OpenEditSettingPopup),
+            KeyCode::Enter => Some(Action::OpenBaseUnitGuardPopup),
+            _ => None,
+        }
+    }
+
     fn update(&mut self, _action: &Action) {}
 
     fn view(&self, frame: &mut Frame, area: Rect) {
@@ -105,13 +135,17 @@ impl View for SettingsView {
 }
 
 /// The left pane, top to bottom: the groups list, the "where values live" box, the reset
-/// block — §4a's own order.
+/// block — §4a's own order. The gap above "where values live" is `Min(1)` rather than a fixed
+/// spacer, so any extra terminal height collects there instead of as dead space below the
+/// reset block — pinning "where values live" and reset to the bottom of the pane, the same
+/// "extra height grows the element above, not a fixed-height one" technique `view::units` uses
+/// for its own summary box.
 fn render_left_pane(frame: &mut Frame, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(GROUPS_SECTION_HEIGHT),
-            Constraint::Length(1), // spacer
+            Constraint::Min(1), // spacer — grows to push the box below toward the bottom
             Constraint::Length(WHERE_VALUES_SECTION_HEIGHT),
             Constraint::Length(1), // spacer
             Constraint::Length(RESET_SECTION_HEIGHT),
@@ -233,20 +267,26 @@ struct WhereValuesFact {
     accent: bool,
 }
 
-/// The "where values live" box: heading, rule, then §4a's own worked example verbatim — the
-/// model stated on screen, because a user cannot otherwise tell where a value came from.
+/// The "where values live" box: heading, rule, then a bordered `Block` holding §4a's own
+/// worked example verbatim — the model stated on screen, because a user cannot otherwise tell
+/// where a value came from. The border echoes `view::units`'s summary box, so both left-column
+/// boxes read as the same kind of element.
 fn render_where_values_live(frame: &mut Frame, area: Rect) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1), // heading
             Constraint::Length(1), // rule
-            Constraint::Min(0),    // content
+            Constraint::Min(0),    // bordered box
         ])
         .split(area);
 
     render_heading(frame, sections[0], "WHERE VALUES LIVE", "H log");
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
+
+    let block = Block::bordered().padding(Padding::horizontal(1));
+    let inner = block.inner(sections[2]);
+    frame.render_widget(block, sections[2]);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
     let facts: [WhereValuesFact; 3] = [
@@ -266,23 +306,23 @@ fn render_where_values_live(frame: &mut Frame, area: Rect) {
             accent: false,
         },
     ];
-    let bootstrap = WhereValuesFact {
-        label: "bootstrap",
-        value: "4 keys",
-        accent: false,
-    };
-
     let mut lines: Vec<Line<'static>> = vec![
         Line::from(Span::styled("ledger.db · table", dim)),
         Line::from("settings"),
-        rule(sections[2].width),
     ];
     lines.extend(facts.iter().map(where_values_fact_line));
-    lines.push(rule(sections[2].width));
-    lines.push(where_values_fact_line(&bootstrap));
-    lines.push(Line::from(Span::styled("ledger.toml · read-only", dim)));
+    // The rule above the bootstrap line is kept even under the tighter height budget the
+    // border leaves — it separates the mutable `settings` store from the read-only bootstrap
+    // file, "different things [that] must not read as one list" (§4a) — but the bootstrap
+    // count and file note are merged onto one line (rather than §4a's own two) to recoup the
+    // 2 rows the border itself costs against the view's 96-col-minimum row budget.
+    lines.push(rule(inner.width));
+    lines.push(Line::from(vec![
+        Span::raw("bootstrap 4 keys"),
+        Span::styled(" · ledger.toml read-only", dim),
+    ]));
 
-    frame.render_widget(Paragraph::new(lines), sections[2]);
+    frame.render_widget(Paragraph::new(lines), inner);
 }
 
 /// One `label   value` line, the label padded to `WHERE_VALUES_LABEL_WIDTH` and dimmed; the
@@ -359,24 +399,39 @@ fn rule(width: u16) -> Line<'static> {
 }
 
 /// The right pane, top to bottom: the settings list, the "selected" explainer, the settings
-/// table block, the command hint row — §4a's own order.
+/// table block, the command hint row — §4a's own order. The gap above "selected" is `Min(1)`
+/// rather than a fixed spacer, so any extra terminal height collects there instead of as dead
+/// space below the command hint row — pinning "selected", the settings table and the command
+/// hint to the bottom of the pane, the same technique `render_left_pane` uses to pin "where
+/// values live" and reset.
+///
+/// Because only one constraint per pane is flexible, a pinned section's row is always `pane
+/// height - (that section's own height + everything fixed below it)`, independent of the
+/// fixed block above the flexible gap — so "selected" lines up with `render_left_pane`'s
+/// "where values live" heading at every terminal height only because the fixed total below
+/// each (§4a's own content plus the spacers between) is the same 16 rows on both sides. The
+/// two spacers here (2, then 1 — rather than the single 1-row gaps §4a draws) are sized to hit
+/// that 16, not for their own sake; touching `SELECTED_SECTION_HEIGHT`, `SETTINGS_TABLE_HEIGHT`
+/// or `WHERE_VALUES_SECTION_HEIGHT` will throw the alignment off and need a matching change
+/// here (or in `render_left_pane`) to restore it.
 fn render_right_pane(frame: &mut Frame, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(SETTINGS_LIST_HEIGHT),
-            Constraint::Length(1), // spacer
+            Constraint::Min(1), // spacer — grows to push everything below toward the bottom
             Constraint::Length(SELECTED_SECTION_HEIGHT),
-            Constraint::Length(1), // spacer
+            Constraint::Length(2), // spacer
             Constraint::Length(SETTINGS_TABLE_HEIGHT),
-            Constraint::Min(0),
+            Constraint::Length(1), // spacer
+            Constraint::Length(1), // command hint row
         ])
         .split(area);
 
     render_settings_list(frame, rows[0]);
     render_selected(frame, rows[2]);
     render_settings_table(frame, rows[4]);
-    render_command_hint(frame, rows[5]);
+    render_command_hint(frame, rows[6]);
 }
 
 /// One row in the settings list — matches §4a's own eight `general` settings verbatim.
@@ -553,12 +608,15 @@ struct SelectedFact {
 }
 
 /// The "selected" box's `explain` prose for `general.base_unit`, matching the registry
-/// entry's own `explain` field — the two lines that name what the setting does before its
-/// facts do.
-const SELECTED_EXPLAIN: &str = "which unit every total, chart and report converts into";
+/// entry's own `explain` field — the line that names what the setting does before its facts
+/// do. Kept short enough to fit the right pane's width at the view's 96-col minimum now that
+/// the left pane matches `view::units`'s wider `LEFT_COLUMN_WIDTH`.
+const SELECTED_EXPLAIN: &str = "which unit every total and report converts into";
 
 /// The "selected" box's facts for `general.base_unit`, resolved against live data in the real
-/// build (`accepts` is a query, not static text) — here, §4a's own worked example.
+/// build (`accepts` is a query, not static text) — here, §4a's own worked example, `accepts`
+/// trimmed to fit the right pane's width at the view's 96-col minimum now that the left pane
+/// matches `view::units`'s wider `LEFT_COLUMN_WIDTH`.
 const SELECTED_FACTS: &[SelectedFact] = &[
     SelectedFact {
         label: "default",
@@ -567,7 +625,7 @@ const SELECTED_FACTS: &[SelectedFact] = &[
     },
     SelectedFact {
         label: "accepts",
-        value: "any active currency unit — 2 available",
+        value: "active currency unit — 2 available",
         accent: false,
     },
     SelectedFact {
@@ -729,9 +787,11 @@ fn table_row_columns(area: Rect) -> [Rect; 3] {
     [columns[0], columns[1], columns[2]]
 }
 
-/// The command hint row: dim, bottom of the pane, matching §4a's own example verbatim — every
-/// setting must be settable both ways, and this is how the user learns the `:set` form.
-const COMMAND_HINT: &str = ":set base <unit> · :set negatives brackets · :settings log";
+/// The command hint row: dim, bottom of the pane — every setting must be settable both ways,
+/// and this is how the user learns the `:set` form. Trimmed from §4a's own three-example
+/// version to fit the right pane's width at the view's 96-col minimum now that the left pane
+/// matches `view::units`'s wider `LEFT_COLUMN_WIDTH`.
+const COMMAND_HINT: &str = ":set base <unit> · :settings log";
 
 fn render_command_hint(frame: &mut Frame, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
@@ -740,9 +800,31 @@ fn render_command_hint(frame: &mut Frame, area: Rect) {
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyModifiers;
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
+
+    #[test]
+    fn e_opens_the_edit_setting_popup() {
+        let mut view = SettingsView::new();
+        let action = view.handle_key(KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::OpenEditSettingPopup));
+    }
+
+    #[test]
+    fn enter_opens_the_base_unit_guard_popup() {
+        let mut view = SettingsView::new();
+        let action = view.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert_eq!(action, Some(Action::OpenBaseUnitGuardPopup));
+    }
+
+    #[test]
+    fn other_keys_fall_through_to_the_shell() {
+        let mut view = SettingsView::new();
+        let action = view.handle_key(KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE));
+        assert_eq!(action, None);
+    }
 
     fn render(view: &SettingsView) -> String {
         let backend = TestBackend::new(96, 30);
@@ -932,5 +1014,159 @@ mod tests {
         let text = render(&SettingsView::new());
 
         assert!(text.contains(COMMAND_HINT), "command hint row missing");
+    }
+
+    #[test]
+    fn where_values_live_box_is_bordered_and_shows_its_full_content_at_the_96x30_minimum() {
+        // Regression guard: adding the border around this box costs 2 rows against the view's
+        // 96x30-cell minimum, which previously clipped the last lines of its content
+        // (`WHERE_VALUES_SECTION_HEIGHT` didn't yet account for the border) with no test
+        // catching it, since none of these strings were asserted on before.
+        let text = render(&SettingsView::new());
+
+        assert!(text.contains(['┌', '┐', '└', '┘']), "box border missing");
+        assert!(text.contains("ledger.db · table"), "table line missing");
+        assert!(text.contains("settings"), "table name missing");
+        assert!(text.contains("overrides"), "overrides fact missing");
+        assert!(text.contains("3 rows"), "overrides value missing");
+        assert!(text.contains("defaults"), "defaults fact missing");
+        assert!(text.contains("42 in code"), "defaults value missing");
+        assert!(text.contains("last commit"), "last commit fact missing");
+        assert!(text.contains("14:02"), "last commit value missing");
+        assert!(
+            text.contains("bootstrap 4 keys"),
+            "bootstrap fact missing — likely clipped by the box running out of height"
+        );
+        assert!(
+            text.contains("ledger.toml read-only"),
+            "bootstrap file note missing — likely clipped by the box running out of height"
+        );
+    }
+
+    #[test]
+    fn extra_terminal_height_pushes_where_values_live_and_reset_toward_the_bottom() {
+        // Taller than the 96x30 minimum: the gap between the groups list and "where values
+        // live" should grow to absorb the extra height, pinning "where values live" and reset
+        // to the bottom of the pane — this view's own `render()` (a fixed 96x30) can't tell
+        // that apart from a fixed-position layout, so this test needs its own taller backend.
+        let height = 45;
+        let backend = TestBackend::new(96, height);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| SettingsView::new().view(frame, frame.area()))
+            .expect("drawing the settings view should not error");
+
+        let buffer = terminal.backend().buffer();
+        let row_containing = |needle: &str| -> u16 {
+            (0..buffer.area.height)
+                .find(|&y| {
+                    let mut row = String::new();
+                    for x in 0..LEFT_COLUMN_WIDTH {
+                        row.push_str(buffer[(x, y)].symbol());
+                    }
+                    row.contains(needle)
+                })
+                .unwrap_or_else(|| panic!("no row contains {needle:?}"))
+        };
+
+        // The reset block is the pane's last section and this test draws the view directly
+        // into the full backend area (as `render()` does, bypassing `Shell::draw`'s own
+        // status/rule/footer rows), so the pane's own last row is the buffer's last row —
+        // the reset block's last hint line should land exactly there, with no dead blank rows
+        // beneath it.
+        assert_eq!(
+            row_containing("whole group"),
+            height - 1,
+            "reset block's last hint line should end at the pane's own last row, not float \
+             above blank space"
+        );
+
+        let where_values_heading_row = row_containing("WHERE VALUES LIVE");
+        assert!(
+            where_values_heading_row > GROUPS_SECTION_HEIGHT + 5,
+            "where values live should have moved well past the groups list on a taller terminal"
+        );
+    }
+
+    #[test]
+    fn extra_terminal_height_pushes_selected_and_the_command_hint_toward_the_bottom() {
+        // The right pane's own version of the previous test: the gap above "selected" should
+        // grow on a taller terminal, pinning "selected", the settings table and the command
+        // hint row to the bottom of the pane instead of leaving them just below the settings
+        // list with dead space beneath the command hint.
+        let height = 45;
+        let backend = TestBackend::new(96, height);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| SettingsView::new().view(frame, frame.area()))
+            .expect("drawing the settings view should not error");
+
+        let buffer = terminal.backend().buffer();
+        // Scoped past the left column (plus its 2-cell gap): "SETTINGS" also appears as this
+        // pane's own list heading, so scanning the full row width could match the wrong one.
+        let row_containing = |needle: &str| -> u16 {
+            (0..buffer.area.height)
+                .find(|&y| {
+                    let mut row = String::new();
+                    for x in LEFT_COLUMN_WIDTH + 2..buffer.area.width {
+                        row.push_str(buffer[(x, y)].symbol());
+                    }
+                    row.contains(needle)
+                })
+                .unwrap_or_else(|| panic!("no row contains {needle:?}"))
+        };
+
+        // The command hint row is the pane's last section, and this test draws the view
+        // directly into the full backend area (bypassing `Shell::draw`'s status/rule/footer
+        // rows, as `render()` does), so the pane's own last row is the buffer's last row — the
+        // command hint should land exactly there, with no dead blank rows beneath it.
+        assert_eq!(
+            row_containing(":set base"),
+            height - 1,
+            "command hint row should end at the pane's own last row, not float above blank \
+             space"
+        );
+
+        let selected_heading_row = row_containing("SELECTED");
+        assert!(
+            selected_heading_row > SETTINGS_LIST_HEIGHT + 5,
+            "selected should have moved well past the settings list on a taller terminal"
+        );
+    }
+
+    #[test]
+    fn where_values_live_and_selected_headings_line_up_on_a_taller_terminal() {
+        // Both panes are pinned to the bottom of the same-height column, so their headings
+        // only land on the same row because the fixed total below each one (its own section
+        // plus the spacers down to the pane's bottom) is equal — see `render_right_pane`'s own
+        // doc comment. This is a deliberately tuned invariant, not an emergent one: a future
+        // change to `WHERE_VALUES_SECTION_HEIGHT`, `SELECTED_SECTION_HEIGHT` or
+        // `SETTINGS_TABLE_HEIGHT` (or the spacers around them) needs a matching adjustment on
+        // the other side, and this test is what would catch a missed one.
+        let height = 45;
+        let backend = TestBackend::new(96, height);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| SettingsView::new().view(frame, frame.area()))
+            .expect("drawing the settings view should not error");
+
+        let buffer = terminal.backend().buffer();
+        let row_containing = |needle: &str| -> u16 {
+            (0..buffer.area.height)
+                .find(|&y| {
+                    let mut row = String::new();
+                    for x in 0..buffer.area.width {
+                        row.push_str(buffer[(x, y)].symbol());
+                    }
+                    row.contains(needle)
+                })
+                .unwrap_or_else(|| panic!("no row contains {needle:?}"))
+        };
+
+        assert_eq!(
+            row_containing("WHERE VALUES LIVE"),
+            row_containing("SELECTED"),
+            "the two boxes' headings should land on the same row"
+        );
     }
 }

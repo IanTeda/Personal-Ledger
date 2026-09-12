@@ -90,11 +90,11 @@ Drawn at **96 × 30 cells** (one cell ≈ 6.6 × 16.5 px in the HTML), inside th
 
 ```
 row 0        status line     "ledger · settings / general"   right: "3 overridden · ✓ committed 14:02"
-rows 1..n-2  two panes       left 28 cols fixed · right Min(0)
+rows 1..n-2  two panes       left 46 cols fixed · right Min(0)
 row n-1      keybind hints   j/k setting · tab groups↔settings · enter edit · r drop override · u undo commit · H change log
 ```
 
-`Layout::horizontal([Constraint::Length(28), Constraint::Min(0)])`. Both panes are stacks of `Constraint::Length` blocks over a `Min(0)` list — no fixed heights on anything holding a list.
+`Layout::horizontal([Constraint::Length(46), Constraint::Min(0)])` — widened from this view's own original 28 cols to match the units view's left column, so the two screens' left panes line up when switching between them. Both panes are stacks of `Constraint::Length` blocks over a `Min(0)` list — no fixed heights on anything holding a list.
 
 Degrade below 96 columns: drop the NOTE column → drop the `settings table` block → collapse the groups pane into a header breadcrumb reachable with `h`.
 
@@ -102,31 +102,37 @@ Degrade below 96 columns: drop the NOTE column → drop the `settings table` blo
 
 ## 4a — Settings at rest
 
-### Left pane (28 cols)
+### Left pane (46 cols)
 
-**`groups` list** — 7 rows, each `label` + right-aligned override-eligible count (`general 8`, `display 7`, `units & prices 6`, `files & backup 5`, `reconcile 4`, `keys 12`, `about —`). Selected row is a full-width reversed block. `about` has no settings and carries `—`; it is a view, not a group.
+**`groups` list** — 7 rows, each `label` + right-aligned override-eligible count (`general 8`, `display 7`, `units & prices 6`, `files & backup 5`, `reconcile 4`, `keys 12`, `about —`). Selected row is a full-width reversed block. `about` has no settings and carries `—`; it is a view, not a group. Fixed height at the top of the pane.
 
-**`where values live` box** — the model, stated on screen, because a user cannot otherwise tell where a value came from:
+**`where values live` box** — the model, stated on screen, because a user cannot otherwise tell where a value came from. A bordered `Block` (echoing the units view's summary box) frames the content, horizontal padding 1:
 
 ```
-ledger.db · table
-settings
-─────────────────────
-overrides       3 rows      ← accent
-defaults        42 in code
-last commit     14:02
-─────────────────────
-bootstrap       4 keys
-ledger.toml · read-only
+┌──────────────────────────────────────────┐
+│ ledger.db · table                         │
+│ settings                                  │
+│ overrides       3 rows      ← accent      │
+│ defaults        42 in code                │
+│ last commit     14:02                     │
+│ ────────────────────────────────────────  │
+│ bootstrap 4 keys · ledger.toml read-only  │
+└──────────────────────────────────────────┘
 ```
 
-The header carries `H log`. The rule above `bootstrap` separates the mutable store from the static file — they are different things and must not read as one list.
+The header (above the box) carries `H log`. The rule above the bootstrap line separates the mutable store from the static file — they are different things and must not read as one list. Trimmed from an earlier two-rule, nine-line draft (a rule after the title, `bootstrap`/`ledger.toml` on separate lines) to recoup the 2 rows the border itself costs, so the box still fits the screen's 96×30-cell minimum.
+
+The gap between the groups list and this box is `Constraint::Min(1)`, not a fixed spacer — any terminal height beyond the 96×30 minimum collects there, so "where values live" and the reset block below it are pushed down and pinned to the bottom of the pane, rather than leaving dead blank space under the reset block on a taller terminal (the same "extra height grows the flexible element, not a fixed one" technique the units view uses for its own summary box).
 
 **`reset` block** — header note `deletes the row`, then `r this setting` / `R whole group`. The note is the important word: it tells the user reset is a deletion, not a write.
 
 ### Right pane
 
-**Settings list** — four columns: a 1-col override gutter, `SETTING` (18 cols), `VALUE` (14 cols), `NOTE` (Min(0), dim). Column heads dim and uppercase. Selected row is a full-width reversed block. The gutter holds `·` in the accent where a row exists in `settings`, blank otherwise.
+Like the left pane, only the settings list is fixed height, at the top; the gap above `selected` is `Min(1)`, not a fixed spacer, so extra terminal height collects there and `selected`, the settings table and the command hint row are pushed down and pinned to the bottom of the pane, rather than sitting just below the settings list with dead space beneath the command hint on a taller terminal.
+
+`selected`'s heading lines up with the left pane's `where values live` heading at every terminal height — deliberately, not by accident: the fixed row count from each heading down to the bottom of its own pane is tuned to match (16 rows on both sides), which is what actually pins two independently-flexible sections to the same row, not the size of whatever's above them. The two gaps around the settings table (2 rows, then 1, rather than a single 1-row gap) exist to hit that number; a future change to any of these sections' heights needs a matching change on the other side to keep the headings aligned (`render_right_pane`'s own doc comment in `settings.rs` spells out the arithmetic).
+
+**Settings list** — four columns: a 1-col override gutter, `SETTING` (18 cols), `VALUE` (14 cols), `NOTE` (Min(0), dim). Column heads dim and uppercase. Selected row is a full-width reversed block. The gutter holds `·` in the accent where a row exists in `settings`, blank otherwise. With the left pane now 46 cols (widened to match the units view), `NOTE` gets noticeably less room at the 96-col minimum than the fixed columns beside it — acceptable at this wireframe stage, but worth widening the minimum terminal geometry if the note text needs to stay unabbreviated.
 
 The eight `general` settings as drawn:
 
@@ -143,11 +149,11 @@ The eight `general` settings as drawn:
 
 ● = overridden (row exists). `VALUE` renders the setting **as it will appear in the app**, not as it is stored — `negatives` shows `−1 234.56`, not `minus`; `date input` shows `dd/mm/yyyy`, not `dmy`. The stored form is shown separately, below.
 
-**`selected` box** — the registry entry's `explain` prose (two lines max), then a ruled block of facts:
+**`selected` box** — the registry entry's `explain` prose (one line at the 96-col minimum now that the left pane is 46 cols wide — e.g. `which unit every total and report converts into`), then a ruled block of facts:
 
 ```
 default        USD
-accepts        any active currency unit — 2 available
+accepts        active currency unit — 2 available
 changing it    re-converts every historical total     ← accent
 ```
 
@@ -157,11 +163,13 @@ changing it    re-converts every historical total     ← accent
 
 This block is the answer to "what will `git diff` on my ledger show" now that there is no config file to diff. Keep it.
 
-**Command hint row** — dim, bottom of the pane: `:set base <unit> · :set negatives brackets · :settings log`.
+**Command hint row** — dim, bottom of the pane: `:set base <unit> · :settings log` — trimmed from a third `:set negatives brackets` example to fit the right pane at the 96-col minimum now that the left pane is 46 cols wide.
 
 ---
 
 ## 4b — Editing in place
+
+**Implementation status**: `crate::popup::settings::edit::EditSettingPopup`, wireframe stage. Opens on `e` from the Settings view rather than `enter` on a selected row — that view has no real row-navigation yet, so `e`/`enter` are fixed keys that always show this section's own `general.negatives` example, the same simplification `view::units`'s own `n`/`e`/`d` already make (see `view::settings`'s own module doc). It's a centred floating overlay (`popup::unit`'s own "`Clear` + bordered `Block`" treatment) rather than this section's literal "in the row's position, no dialog" — reworking the settings list's row layout to host it in place is a larger change than this stage needs. The status line gets a `· EDIT` mode tag rather than replacing the whole title with `EDIT · uncommitted` (the shell's status line is a flat title everywhere, not this view's own breadcrumb). The focused box's content is trimmed from the ASCII block below (its `was` label reads `current` here, and rules/blank lines between sub-sections are dropped) specifically to keep the popup shorter than the screen's own 96×30-cell minimum — see `EditSettingPopup`'s own `CONTENT_ROWS` doc comment.
 
 `enter` on a row opens the editor **in the row's position** — the list above and below stays put and dims, and the opened row becomes a bordered focused box. No dialog, no separate screen. The status line shows `EDIT · uncommitted` and the breadcrumb extends to `settings / general / negatives`.
 
@@ -199,6 +207,8 @@ Keys: `←→` choose · `enter` commit · `esc` revert · `r` drop override.
 ---
 
 ## 4c — Base unit guard
+
+**Implementation status**: `crate::popup::settings::guard::BaseUnitGuardPopup`, wireframe stage — every figure is this section's own worked example, not a real query. Opens on `enter` from the Settings view directly (rather than by committing an §4b edit for `general.base_unit` specifically) for the same "no real row-navigation yet" reason §4b's own implementation-status note gives; `base unit` happens to be the one row this view's fake data marks selected. The status line gets a `· CONFIRM` mode tag rather than the literal `confirm base unit` text, matching §4b's own status-line simplification.
 
 `general.base_unit` is the one `general` setting with `affects: ClearDerived`. Its commit is a single row like any other, but it invalidates every cached total — so it routes through a **centred floating overlay** (`Clear` + bordered `Block`, ~78% width, anchored in the top third) over the dimmed settings view, exactly like the shell's palette. Status line: `confirm base unit`.
 

@@ -24,6 +24,7 @@ use crate::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
         command::CommandPopup,
+        settings::{SettingsPopup, edit::EditSettingPopup, guard::BaseUnitGuardPopup},
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
     },
     tui::Tui,
@@ -66,6 +67,10 @@ pub struct Shell {
     /// `CategoriesView`, not here; see `popup::category::move_popup`'s module doc for how it
     /// still reaches it. Mutually exclusive with `command_popup`/`unit_popup`.
     category_popup: Option<CategoryPopup>,
+    /// The Settings-domain popup (`crate::popup::settings`) — `Some` while one is open. Owned
+    /// here, mirroring `unit_popup`. Mutually exclusive with `command_popup`/`unit_popup`/
+    /// `category_popup`.
+    settings_popup: Option<SettingsPopup>,
     /// `true` after a lone `g` keypress with no completing chord yet — the leader half of the
     /// `g <letter>` jump chords in `docs/ux/tui/README.md`'s "Jumps" table (e.g. `g d`
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
@@ -94,6 +99,7 @@ impl Shell {
             command_popup: None,
             unit_popup: None,
             category_popup: None,
+            settings_popup: None,
             pending_leader: false,
             view_stack: Vec::new(),
         }
@@ -134,9 +140,10 @@ impl Shell {
     }
 
     /// Translates a raw terminal event into an [`Action`]. Precedence: `Ctrl+C` always quits,
-    /// even mid-chord; then, while the command popup, a unit form, or the Category popup is
-    /// open, it takes every other key over the active view (per §3a, the view behind it is
-    /// inert while it's up); then a pending `g` leader consumes the very next key as its chord
+    /// even mid-chord; then, while the command popup, a unit form, the Category popup, or a
+    /// settings popup is open, it takes every other key over the active view (per §3a, the view
+    /// behind it is inert while it's up); then a pending `g` leader consumes the very next key
+    /// as its chord
     /// completion (or aborts
     /// silently if it doesn't complete one); otherwise `Ctrl+;` opens the command popup,
     /// `Ctrl+U` opens the placeholder Units view directly, `?` opens the placeholder Help
@@ -162,6 +169,9 @@ impl Shell {
                 }
                 if self.category_popup.is_some() {
                     return self.map_category_popup_key(key);
+                }
+                if self.settings_popup.is_some() {
+                    return map_settings_popup_key(key);
                 }
                 if self.pending_leader {
                     self.pending_leader = false;
@@ -424,6 +434,15 @@ impl Shell {
                 self.command_popup = None;
             }
             Action::CloseUnitPopup => self.unit_popup = None,
+            Action::OpenEditSettingPopup => {
+                self.settings_popup = Some(SettingsPopup::Edit(EditSettingPopup::new()));
+                self.command_popup = None;
+            }
+            Action::OpenBaseUnitGuardPopup => {
+                self.settings_popup = Some(SettingsPopup::BaseUnitGuard(BaseUnitGuardPopup::new()));
+                self.command_popup = None;
+            }
+            Action::CloseSettingsPopup => self.settings_popup = None,
             Action::OpenUnits => self.open(UnitsView::new()),
             Action::OpenDashboard => self.open(DashboardView::new()),
             Action::OpenAccounts => self.open(AccountsView::new()),
@@ -442,6 +461,7 @@ impl Shell {
                 }
                 self.command_popup = None;
                 self.unit_popup = None;
+                self.settings_popup = None;
             }
             Action::CloseCategoryPopup => self.category_popup = None,
             Action::CategoryMovePopupInput(c) => {
@@ -477,6 +497,7 @@ impl Shell {
                 }
                 self.command_popup = None;
                 self.unit_popup = None;
+                self.settings_popup = None;
             }
             Action::CategoryNewPopupInput(c) => {
                 if let Some(CategoryPopup::New(popup)) = &mut self.category_popup {
@@ -509,6 +530,7 @@ impl Shell {
                 }
                 self.command_popup = None;
                 self.unit_popup = None;
+                self.settings_popup = None;
             }
             Action::CategoryEditPopupInput(c) => {
                 if let Some(CategoryPopup::Edit(popup)) = &mut self.category_popup {
@@ -555,6 +577,7 @@ impl Shell {
             self.command_popup = None;
             self.unit_popup = None;
             self.category_popup = None;
+            self.settings_popup = None;
             return;
         }
 
@@ -571,6 +594,7 @@ impl Shell {
         self.command_popup = None;
         self.unit_popup = None;
         self.category_popup = None;
+        self.settings_popup = None;
     }
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
@@ -589,16 +613,27 @@ impl Shell {
         let command_popup_open = self.command_popup.is_some();
         let unit_popup_open = self.unit_popup.is_some();
         let category_popup_open = self.category_popup.is_some();
+        let edit_setting_popup_open = matches!(self.settings_popup, Some(SettingsPopup::Edit(_)));
+        let base_unit_guard_popup_open =
+            matches!(self.settings_popup, Some(SettingsPopup::BaseUnitGuard(_)));
 
         // Header Frame — the status line names the mode whenever it isn't the resting
         // NORMAL state, per `docs/ux/tui/README.md`'s "show the mode ... whenever it is not
         // NORMAL" — `COMMAND` for the command popup, `INSERT` for a unit form or the Category
         // popup (it has a text field too), per "Modal, vim-flavoured ... INSERT only inside
-        // forms ... COMMAND while the palette is open".
+        // forms ... COMMAND while the palette is open". `EDIT`/`CONFIRM` for the settings popups
+        // match `docs/ux/tui/settings/README.md` §4b's own "`EDIT · uncommitted`" and §4c's own
+        // "`confirm base unit`" status line text (the `uncommitted`/`base unit` half of each
+        // isn't reproduced here — the shell's status line is a flat title, not the design's own
+        // breadcrumb, the same simplification every other view already makes).
         let mode = if command_popup_open {
             " · COMMAND"
         } else if unit_popup_open || category_popup_open {
             " · INSERT"
+        } else if edit_setting_popup_open {
+            " · EDIT"
+        } else if base_unit_guard_popup_open {
+            " · CONFIRM"
         } else {
             ""
         };
@@ -631,6 +666,10 @@ impl Shell {
             // Generic across Move/New (and, later, Edit) — mirrors `unit_popup`'s own footer,
             // which likewise doesn't tailor its wording per form variant.
             Line::from(" esc close category form ").style(Style::default().fg(Color::DarkGray))
+        } else if edit_setting_popup_open {
+            Line::from(" esc close edit form ").style(Style::default().fg(Color::DarkGray))
+        } else if base_unit_guard_popup_open {
+            Line::from(" esc close dialog ").style(Style::default().fg(Color::DarkGray))
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             Line::from(vec![
@@ -658,6 +697,9 @@ impl Shell {
             if let Some(store) = self.view.category_store() {
                 popup.render(frame, frame.area(), store);
             }
+        } else if let Some(popup) = &self.settings_popup {
+            frame.render_widget(Dim, rows[1]);
+            popup.render(frame, frame.area());
         }
     }
 }
@@ -716,6 +758,16 @@ fn is_graceful_quit(key: KeyEvent) -> bool {
 fn map_unit_popup_key(key: KeyEvent) -> Option<Action> {
     match key.code {
         KeyCode::Esc => Some(Action::CloseUnitPopup),
+        _ => None,
+    }
+}
+
+/// Routes a key while a settings popup (the §4b editor or the §4c guard) is open. Only `Esc`
+/// does anything yet, mirroring [`map_unit_popup_key`] — no field is editable and nothing
+/// commits until the settings registry lands.
+fn map_settings_popup_key(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Esc => Some(Action::CloseSettingsPopup),
         _ => None,
     }
 }
@@ -1360,6 +1412,154 @@ mod tests {
         shell.update(Action::OpenDeleteUnitPopup);
 
         assert!(matches!(shell.unit_popup, Some(UnitPopup::Delete(_))));
+    }
+
+    #[test]
+    fn e_on_the_settings_view_opens_the_edit_setting_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenSettings);
+        assert!(shell.settings_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('e'),
+                KeyModifiers::NONE,
+            )))
+            .expect("e on the settings view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.settings_popup, Some(SettingsPopup::Edit(_))));
+    }
+
+    #[test]
+    fn enter_on_the_settings_view_opens_the_base_unit_guard_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenSettings);
+        assert!(shell.settings_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on the settings view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(
+            shell.settings_popup,
+            Some(SettingsPopup::BaseUnitGuard(_))
+        ));
+    }
+
+    #[test]
+    fn esc_closes_an_open_settings_popup() {
+        for open in [Action::OpenEditSettingPopup, Action::OpenBaseUnitGuardPopup] {
+            let mut shell = Shell::new();
+            shell.update(open);
+
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)))
+                .expect("esc while open always maps to an action");
+            shell.update(action);
+
+            assert!(shell.settings_popup.is_none());
+        }
+    }
+
+    #[test]
+    fn other_keys_are_swallowed_while_a_settings_popup_is_open() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenEditSettingPopup);
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('e'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(action, None);
+    }
+
+    #[test]
+    fn opening_a_settings_popup_closes_an_open_command_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        assert!(shell.command_popup.is_some());
+
+        shell.update(Action::OpenEditSettingPopup);
+
+        assert!(shell.settings_popup.is_some());
+        assert!(shell.command_popup.is_none());
+    }
+
+    #[test]
+    fn opening_a_settings_popup_replaces_any_other_open_settings_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenEditSettingPopup);
+        assert!(matches!(shell.settings_popup, Some(SettingsPopup::Edit(_))));
+
+        shell.update(Action::OpenBaseUnitGuardPopup);
+
+        assert!(matches!(
+            shell.settings_popup,
+            Some(SettingsPopup::BaseUnitGuard(_))
+        ));
+    }
+
+    #[test]
+    fn leaving_the_settings_view_closes_an_open_settings_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenSettings);
+        shell.update(Action::OpenEditSettingPopup);
+        assert!(shell.settings_popup.is_some());
+
+        shell.update(Action::OpenDashboard);
+
+        assert!(shell.settings_popup.is_none());
+    }
+
+    #[test]
+    fn status_line_and_footer_reflect_the_open_settings_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenSettings);
+        shell.update(Action::OpenEditSettingPopup);
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the edit popup open should not error");
+
+        let buffer = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+        }
+        assert!(text.contains("· EDIT"), "expected the EDIT mode tag");
+        assert!(
+            text.contains("esc close edit form"),
+            "expected the edit popup's own footer hint"
+        );
+
+        shell.update(Action::OpenBaseUnitGuardPopup);
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the guard popup open should not error");
+
+        let buffer = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+        }
+        assert!(text.contains("· CONFIRM"), "expected the CONFIRM mode tag");
+        assert!(
+            text.contains("esc close dialog"),
+            "expected the guard popup's own footer hint"
+        );
     }
 
     #[test]

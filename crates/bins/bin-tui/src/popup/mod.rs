@@ -10,6 +10,7 @@
 
 pub mod category;
 pub mod command;
+pub mod settings;
 pub mod unit;
 
 use ratatui::{
