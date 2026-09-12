@@ -139,7 +139,9 @@ itself.
 **Category**:
 A user-defined label (e.g. "Groceries", "Salary") used to classify a Transaction,
 carrying exactly one Category Type.
-_Avoid_: Tag, group.
+_Avoid_: Group. Tag was once considered a synonym for Category and rejected on those
+grounds; Tag is now its own independent entity (see below), not a revival of that
+rejected idea.
 
 **Category Type**:
 One of the five fixed accounting classifications a Category carries: asset, liability,
@@ -174,11 +176,26 @@ alias-authoring UI yet. See
 _Avoid_: Rename, history — a Payee Alias is the *record* a rename leaves behind, not
 the act of renaming itself.
 
+**Tag**:
+A user-defined, freeform label attached to any number of Transactions, independent of
+their Category and Payee — for cross-cutting totals a fixed, exactly-one classification
+can't express (e.g. "Japan Trip 2026" spanning several Categories and Payees). Globally
+unique (case-insensitive) and soft-deleted via `is_active` like Unit/Category/Account/
+Payee, but with no rename-alias history (unlike Payee) — nothing auto-creates a Tag from
+parsed import text that would later need reconciling under a rename, so an in-place
+rename is enough. A Tag's total sums cleanly only when every Transaction carrying it
+shares one Unit; a Tag spanning mixed Units reports per-Unit subtotals rather than a
+summed cross-Unit figure, the same rule Accounts' type-grouped subtotals already follow
+(see `docs/ux/tui/accounts/README.md`). See
+[ADR-0015](docs/adr/0015-tag-as-independent-transaction-label.md).
+_Avoid_: Label — too generic, collides with a UI form field's own label. Category —
+Category is exactly-one and required per Transaction; Tag is many-to-many and optional.
+
 **Transaction**:
 A single-entry record of an amount moving against exactly one Account, exactly one
-Category, and optionally one Payee, on a date, carrying a Transaction Status and,
-independently, a Flagged marker. Personal Ledger is deliberately single-entry, not
-double-entry (see
+Category, optionally one Payee, and any number of Tags, on a date, carrying a
+Transaction Status and, independently, a Flagged marker. Personal Ledger is
+deliberately single-entry, not double-entry (see
 [ADR-0001](docs/adr/0001-single-entry-not-double-entry.md)) — a Transaction is one row,
 not a balanced pair.
 _Avoid_: Posting, entry, ledger entry — these imply the balanced debit/credit pairs of
