@@ -789,9 +789,10 @@ fn tagged_spend_window_tag() -> String {
     )
 }
 
-/// The sparkline itself: a plain line plus an accent-coloured marker on the final (current)
-/// month — mirrors `view::accounts::render_balance_chart`'s own `Chart`/`Dataset` treatment,
-/// without its account-specific "start" anchor (a spend series has none).
+/// The sparkline itself — mirrors `view::dashboard::render_net_worth_chart`'s own line-graph
+/// treatment exactly: one accent-coloured `Dataset` (not a plain line plus a separate
+/// last-point marker), and x-axis labels at the first/middle/last month so the chart reads as
+/// a graph on its own, without needing the footer line beneath it for orientation.
 fn render_spend_chart(frame: &mut Frame, area: Rect, series: &[f64]) {
     let points: Vec<(f64, f64)> = series
         .iter()
@@ -803,22 +804,26 @@ fn render_spend_chart(frame: &mut Frame, area: Rect, series: &[f64]) {
     let max = series.iter().copied().fold(f64::NEG_INFINITY, f64::max);
     let margin = (max - min).abs().max(1.0) * 0.1;
 
-    let line = Dataset::default()
+    let dataset = Dataset::default()
         .marker(symbols::Marker::Braille)
         .graph_type(GraphType::Line)
-        .style(Style::default())
+        .style(Style::default().fg(ACCENT))
         .data(&points);
 
     let last_index = series.len() - 1;
-    let last_point = [(last_index as f64, series[last_index])];
-    let last_point_marker = Dataset::default()
-        .marker(symbols::Marker::Braille)
-        .graph_type(GraphType::Scatter)
-        .style(Style::default().fg(ACCENT))
-        .data(&last_point);
+    let mid_index = last_index / 2;
+    let x_labels = [
+        format_month(spend_chart_month(0)),
+        format_month(spend_chart_month(mid_index)),
+        format_month(spend_chart_month(last_index)),
+    ];
 
-    let chart = Chart::new(vec![line, last_point_marker])
-        .x_axis(Axis::default().bounds([0.0, last_index as f64]))
+    let chart = Chart::new(vec![dataset])
+        .x_axis(
+            Axis::default()
+                .bounds([0.0, last_index as f64])
+                .labels(x_labels),
+        )
         .y_axis(Axis::default().bounds([min - margin, max + margin]));
     frame.render_widget(chart, area);
 }
@@ -1270,6 +1275,18 @@ mod tests {
         assert!(text.contains("monthly ·"));
         assert!(text.contains("first used"));
         assert!(text.contains("peak"));
+    }
+
+    #[test]
+    fn tagged_spend_chart_shows_x_axis_month_labels_like_the_dashboards_own_chart() {
+        let mut view = TagsView::new();
+        view.selected = find_id(&view, "Tax Deductible");
+        let text = render(&view);
+
+        // Mirrors `view::dashboard::render_net_worth_chart`'s own first/middle/last x-axis
+        // labels — the chart should read as a graph on its own, not just a footer statement.
+        assert!(text.contains("oct 24"));
+        assert!(text.contains("sep 26"));
     }
 
     #[test]
