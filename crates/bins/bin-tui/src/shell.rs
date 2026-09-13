@@ -20,7 +20,9 @@ use crate::{
     event::{Event, EventHandler},
     popup::{
         Dim,
-        account::{AccountPopup, edit::EditAccountPopup, new::NewAccountPopup},
+        account::{
+            AccountPopup, delete::DeleteAccountPopup, edit::EditAccountPopup, new::NewAccountPopup,
+        },
         category::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
@@ -459,7 +461,30 @@ impl Shell {
                             active,
                         })
                 }
+                KeyCode::Char('d') if ctrl => {
+                    Some(Action::OpenAccountDeletePopup(popup.editing_id()))
+                }
                 KeyCode::Char(c) if !ctrl => Some(Action::AccountEditPopupInput(c)),
+                _ => None,
+            },
+            Some(AccountPopup::Delete(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::CloseAccountPopup),
+                KeyCode::Backspace => Some(Action::AccountDeletePopupBackspace),
+                KeyCode::Tab => Some(Action::AccountDeletePopupTab),
+                KeyCode::Char('s') if ctrl => popup
+                    .delete_fields(store)
+                    .map(|(id, target)| Action::DeleteAccount { id, target }),
+                KeyCode::Char('a') if ctrl => {
+                    popup
+                        .deactivate_fields(store)
+                        .map(|(id, name, account_type, active)| Action::UpdateAccount {
+                            id,
+                            name,
+                            account_type: account_type.as_str().to_string(),
+                            active,
+                        })
+                }
+                KeyCode::Char(c) if !ctrl => Some(Action::AccountDeletePopupInput(c)),
                 _ => None,
             },
             None => None,
@@ -729,6 +754,37 @@ impl Shell {
                 }
             }
             Action::UpdateAccount { .. } => {
+                self.view.update(&action);
+                self.account_popup = None;
+            }
+            Action::OpenAccountDeletePopup(id) => {
+                if let Some(store) = self.view.account_store() {
+                    self.account_popup =
+                        Some(AccountPopup::Delete(DeleteAccountPopup::new(store, id)));
+                }
+                self.command_popup = None;
+                self.unit_popup = None;
+                self.category_popup = None;
+                self.settings_popup = None;
+            }
+            Action::AccountDeletePopupInput(c) => {
+                if let Some(AccountPopup::Delete(popup)) = &mut self.account_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::AccountDeletePopupBackspace => {
+                if let Some(AccountPopup::Delete(popup)) = &mut self.account_popup {
+                    popup.backspace();
+                }
+            }
+            Action::AccountDeletePopupTab => {
+                if let Some(store) = self.view.account_store()
+                    && let Some(AccountPopup::Delete(popup)) = &mut self.account_popup
+                {
+                    popup.tab(store);
+                }
+            }
+            Action::DeleteAccount { .. } => {
                 self.view.update(&action);
                 self.account_popup = None;
             }
@@ -2862,6 +2918,167 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell with the account edit popup open should not error");
+    }
+
+    #[test]
+    fn d_on_the_accounts_view_opens_the_delete_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        assert!(shell.account_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('d'),
+                KeyModifiers::NONE,
+            )))
+            .expect("d on the accounts view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.account_popup, Some(AccountPopup::Delete(_))));
+    }
+
+    #[test]
+    fn ctrl_d_from_the_edit_popup_swaps_to_the_delete_popup_for_the_same_account() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        shell.update(Action::OpenAccountEditPopup(wallet));
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('d'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+d from the edit popup always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.account_popup, Some(AccountPopup::Delete(_))));
+    }
+
+    #[test]
+    fn esc_closes_the_delete_popup_without_deleting_anything() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        shell.update(Action::OpenAccountDeletePopup(wallet));
+        for c in "Wallet".chars() {
+            shell.update(Action::AccountDeletePopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action while the popup is open"));
+
+        assert!(shell.account_popup.is_none());
+        assert!(account_exists(&shell, "Wallet"));
+    }
+
+    #[test]
+    fn typing_the_exact_name_and_ctrl_s_deletes_an_empty_account() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        let original_count = shell.view.account_store().unwrap().accounts().len();
+
+        shell.update(Action::OpenAccountDeletePopup(wallet));
+        for c in "Wallet".chars() {
+            shell.update(Action::AccountDeletePopupInput(c));
+        }
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(shell.account_popup.is_none());
+        let store = shell.view.account_store().unwrap();
+        assert_eq!(store.accounts().len(), original_count - 1);
+        assert!(!account_exists(&shell, "Wallet"));
+    }
+
+    #[test]
+    fn delete_ctrl_s_does_nothing_on_a_non_empty_account_without_a_transfer_target() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let everyday = account_id_by_name(&shell, "Everyday Spending");
+        shell.update(Action::OpenAccountDeletePopup(everyday));
+        for c in "Everyday Spending".chars() {
+            shell.update(Action::AccountDeletePopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None, "no transfer target resolved yet");
+        assert!(account_exists(&shell, "Everyday Spending"));
+    }
+
+    #[test]
+    fn typing_a_target_and_the_exact_name_transfers_then_deletes_a_non_empty_account() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let everyday = account_id_by_name(&shell, "Everyday Spending");
+        let mortgage_offset = account_id_by_name(&shell, "Mortgage Offset");
+
+        shell.update(Action::OpenAccountDeletePopup(everyday));
+        for c in "Mortgage Offset".chars() {
+            shell.update(Action::AccountDeletePopupInput(c));
+        }
+        shell.update(Action::AccountDeletePopupTab); // move to -> confirm
+        for c in "Everyday Spending".chars() {
+            shell.update(Action::AccountDeletePopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft and resolved target always maps to an action");
+        shell.update(action);
+
+        assert!(shell.account_popup.is_none());
+        let store = shell.view.account_store().unwrap();
+        assert!(store.find(everyday).is_none());
+        let target = store.find(mortgage_offset).expect("target survives");
+        assert_eq!(target.transaction_count, 60 + 1_284);
+    }
+
+    #[test]
+    fn ctrl_a_from_the_delete_popup_deactivates_instead_of_deleting() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        shell.update(Action::OpenAccountDeletePopup(wallet));
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+a always maps to an action while the delete popup is open");
+        shell.update(action);
+
+        assert!(shell.account_popup.is_none());
+        let store = shell.view.account_store().unwrap();
+        assert!(account_exists(&shell, "Wallet"), "deactivated, not deleted");
+        assert!(!store.find(wallet).unwrap().is_active);
+    }
+
+    #[test]
+    fn renders_the_open_account_delete_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let everyday = account_id_by_name(&shell, "Everyday Spending");
+        shell.update(Action::OpenAccountDeletePopup(everyday));
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the account delete popup open should not error");
     }
 
     #[test]

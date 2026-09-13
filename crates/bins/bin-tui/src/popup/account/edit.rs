@@ -12,10 +12,8 @@
 //! actual remedy (an adjusting transaction), which is why it's accented here, not just
 //! informational.
 //!
-//! **`^d` (delete) isn't wired here** — the handoff's own footer lists it, but "Accounts: 7d
-//! delete popup" (the popup it would open) doesn't exist yet as of this ticket. Rather than
-//! show a hint for a key that does nothing, the footer only lists `tab`/`^s`/`^a`/`esc`; a
-//! future ticket adds `^d` back in the same change that wires it.
+//! **`^d` (delete)** hands straight off to `crate::popup::account::delete` — `Shell` swaps
+//! this popup for that one rather than this struct knowing anything about deletion itself.
 
 use lib_core::{AccountType, Money, RowID};
 use ratatui::{
@@ -423,6 +421,7 @@ fn render_footer_hints(frame: &mut Frame, area: Rect) {
         ("tab", "next field"),
         ("^s", "save"),
         ("^a", "deactivate"),
+        ("^d", "delete"),
         ("esc", "cancel"),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
@@ -683,20 +682,16 @@ mod tests {
     }
 
     #[test]
-    fn shows_the_closing_note_and_footer_hints_without_ctrl_d() {
+    fn shows_the_closing_note_and_footer_hints_including_ctrl_d() {
         let store = AccountFixture::new();
         let everyday = find_id(&store, "Everyday Spending");
         let text = render(&EditAccountPopup::new(&store, everyday), &store);
 
         assert!(text.contains("nothing derives"));
         assert!(text.contains("adjusting transaction"));
-        for key in ["tab", "^s", "^a", "esc"] {
+        for key in ["tab", "^s", "^a", "^d", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }
-        assert!(
-            !text.contains("^d"),
-            "^d shouldn't be hinted until the delete popup it opens exists"
-        );
     }
 
     #[test]

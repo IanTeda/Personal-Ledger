@@ -4,6 +4,7 @@
 //! `popup::unit`'s own forms ("no draft state yet"), it's genuinely interactive and genuinely
 //! mutates the fixture, mirroring `popup::category`'s own new/edit/move popups.
 
+pub mod delete;
 pub mod edit;
 pub mod new;
 
@@ -16,15 +17,18 @@ use crate::account::AccountStore;
 pub enum AccountPopup {
     New(new::NewAccountPopup),
     Edit(edit::EditAccountPopup),
+    Delete(delete::DeleteAccountPopup),
 }
 
 impl AccountPopup {
     /// Renders whichever form is open, against the live Account list `store` — `new`'s `unit`
-    /// field completion and `edit`'s computed section both need read access to it.
+    /// field completion, `edit`'s computed section, and `delete`'s transfer-candidate/preview
+    /// all need read access to it.
     pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn AccountStore) {
         match self {
             AccountPopup::New(popup) => popup.render(frame, area, store),
             AccountPopup::Edit(popup) => popup.render(frame, area, store),
+            AccountPopup::Delete(popup) => popup.render(frame, area, store),
         }
     }
 }

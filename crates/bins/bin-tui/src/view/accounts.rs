@@ -13,17 +13,17 @@
 //! `None`, so `Shell`'s event loop still redraws immediately instead of waiting for the next
 //! `Tick`.
 //!
-//! **Keys not wired here**: `d`/`a`/`b` all reach a popup or the command grammar — each a
-//! later ticket's own concern (see the "Accounts screen, views and popup" map, issue #115).
-//! `n`/`e` open the new/edit popups (`crate::popup::account::new`/`edit`) — `Shell` owns
+//! **Keys not wired here**: `a`/`b` reach the command grammar — a later ticket's own concern
+//! (see the "Accounts screen, views and popup" map, issue #115). `n`/`e`/`d` open the
+//! new/edit/delete popups (`crate::popup::account::new`/`edit`/`delete`) — `Shell` owns
 //! them, not this `View`, mirroring `view::categories`'s own `m`/`n`/`e` (this `View` only
 //! ever resolves *which* key to turn into `Action::OpenAccountNewPopup`/
-//! `OpenAccountEditPopup`; the popups themselves, and the `Action::CreateAccount`/
-//! `UpdateAccount` that eventually land back in [`AccountsView::update`], are `Shell`'s
-//! concern). Also not wired: `tab` (focus the ledger list) and `enter` (move focus into it
-//! too, per the handoff's "no separate ledger screen" decision) — the ledger here is a static
-//! display, not yet its own navigable focus, the same simplification `view::categories`'s own
-//! transactions list makes.
+//! `OpenAccountEditPopup`/`OpenAccountDeletePopup`; the popups themselves, and the
+//! `Action::CreateAccount`/`UpdateAccount`/`DeleteAccount` that eventually land back in
+//! [`AccountsView::update`], are `Shell`'s concern). Also not wired: `tab` (focus the ledger
+//! list) and `enter` (move focus into it too, per the handoff's "no separate ledger screen"
+//! decision) — the ledger here is a static display, not yet its own navigable focus, the same
+//! simplification `view::categories`'s own transactions list makes.
 //!
 //! **The ledger's running `BALANCE` column has no filter or non-date-sort state to react
 //! to**: this map's own scope (issue #115's Notes and Out of scope) ships the inline ledger
@@ -344,6 +344,7 @@ impl View for AccountsView {
             }
             KeyCode::Char('n') => Some(Action::OpenAccountNewPopup),
             KeyCode::Char('e') => Some(Action::OpenAccountEditPopup(self.selected)),
+            KeyCode::Char('d') => Some(Action::OpenAccountDeletePopup(self.selected)),
             _ => None,
         }
     }
@@ -386,6 +387,15 @@ impl View for AccountsView {
             } => {
                 let account_type = AccountType::from_str(account_type).unwrap_or_default();
                 let _ = self.store.update(*id, name.clone(), account_type, *active);
+            }
+            // `#[allow]`: clippy's own `collapsible_match` fix would move the `delete` call
+            // into a match guard, which makes this read as a pure predicate when it's actually
+            // the mutation — kept as a plain nested `if` for that reason.
+            #[allow(clippy::collapsible_match)]
+            Action::DeleteAccount { id, target } => {
+                if self.store.delete(*id, *target).is_ok() {
+                    self.recover_selection();
+                }
             }
             _ => {}
         }

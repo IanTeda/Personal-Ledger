@@ -294,6 +294,26 @@ pub enum Action {
         account_type: String,
         active: bool,
     },
+    /// `d` on an Accounts list row, or `Ctrl+D` from the edit popup — opens the delete popup
+    /// (`crate::popup::account::delete`, "Accounts: 7d delete popup") for the given account.
+    OpenAccountDeletePopup(RowID),
+    /// A printable character typed while the Account delete popup is open — routed to
+    /// whichever of its fields (`move to`/`confirm`) currently has focus.
+    AccountDeletePopupInput(char),
+    AccountDeletePopupBackspace,
+    /// `Tab` while the Account delete popup is open — completes `move to` against a transfer
+    /// candidate's name when it has focus and one exists, otherwise advances focus (a no-op
+    /// on an empty account, which has no `move to` field to cycle to).
+    AccountDeletePopupTab,
+    /// `Ctrl+S` on the Account delete popup, once its draft validates (the account's name
+    /// typed exactly, plus a resolved same-Unit transfer target when the account isn't empty)
+    /// — `Shell` resolves the popup's current fields into this pair before dispatching.
+    /// `target` is `None` exactly when the account was empty, matching
+    /// `AccountStore::delete`'s own signature.
+    DeleteAccount {
+        id: RowID,
+        target: Option<RowID>,
+    },
 }
 
 /// The single view `Shell` hosts at a time.
