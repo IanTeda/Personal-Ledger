@@ -17,11 +17,16 @@
 //! transactions` is still a wireframe), mirroring `view::tags`'s own identical limitation and
 //! its "any subsequent key clears a showing message" rule.
 //!
-//! **Keys not wired here**: `n`/`e`/`m`/`c`/`d` — the new/edit/rename-matches/delete popups are
-//! later tickets in this same map (8b–8e); this `View` only builds what 8a itself specifies.
-//! `a` (toggle active) is likewise deferred — it has no popup to open, but routing it through
-//! an `Action` the way `view::accounts`'s own bare `a` does needs an `Action::SetPayeeActive`
-//! variant this ticket has no other use for yet.
+//! **`n` opens the new-payee popup** (`crate::popup::payee::new`, "Payees: 8b new popup") —
+//! `Shell` owns the popup itself, mirroring `view::accounts`'s own `n`/`e`/`d`; this `View`
+//! only ever resolves *which* key to turn into [`Action::OpenPayeeNewPopup`], and reacts to the
+//! eventual [`Action::CreatePayee`] in [`PayeesView::update`].
+//!
+//! **Keys not wired here**: `e`/`m`/`c`/`d` — the edit/rename-matches/delete popups are later
+//! tickets in this same map (8c–8e); this `View` only builds what 8a and 8b themselves
+//! specify. `a` (toggle active) is likewise deferred — it has no popup to open, but routing it
+//! through an `Action` the way `view::accounts`'s own bare `a` does needs an
+//! `Action::SetPayeeActive` variant this ticket has no other use for yet.
 //!
 //! **List, not a grouped tree**: unlike Accounts/Categories, Payees has no classification
 //! dimension to group by — the README's own 8a is a flat list, **sorted by `abs(total)`
@@ -302,11 +307,40 @@ impl View for PayeesView {
                 self.select_last();
                 Some(Action::NoOp)
             }
+            // `n` — opens the new-payee popup (`crate::popup::payee::new`, "Payees: 8b new
+            // popup"). `Shell` owns the popup itself, mirroring `view::accounts`'s own `n`;
+            // this `View` only ever resolves *which* key to turn into
+            // `Action::OpenPayeeNewPopup`.
+            KeyCode::Char('n') => Some(Action::OpenPayeeNewPopup),
             _ => None,
         }
     }
 
-    fn update(&mut self, _action: &Action) {}
+    /// Reacts to the Payee popup's own confirmed create (`Shell` relays this after resolving
+    /// it against `payee_store()` — see `crate::popup::payee::new`'s own module doc). Every
+    /// other `Action` variant is ignored.
+    fn update(&mut self, action: &Action) {
+        if let Action::CreatePayee {
+            name,
+            website,
+            icon_url,
+            icon_derived,
+            default_category_path,
+            active,
+            ..
+        } = action
+            && let Ok(id) = self.store.create(
+                name.clone(),
+                website.clone(),
+                icon_url.clone(),
+                *icon_derived,
+                default_category_path.clone(),
+                *active,
+            )
+        {
+            self.selected = id;
+        }
+    }
 
     fn view(&self, frame: &mut Frame, area: Rect) {
         let rows = Layout::default()
@@ -328,6 +362,14 @@ impl View for PayeesView {
 
     fn title(&self) -> &'static str {
         "Payees"
+    }
+
+    fn payee_store(&self) -> Option<&dyn PayeeStore> {
+        Some(&self.store)
+    }
+
+    fn payee_selection(&self) -> Option<RowID> {
+        Some(self.selected)
     }
 }
 

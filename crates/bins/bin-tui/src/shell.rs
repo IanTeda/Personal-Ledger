@@ -27,6 +27,7 @@ use crate::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
         command::CommandPopup,
+        payee::{PayeePopup, new::NewPayeePopup},
         settings::{SettingsPopup, edit::EditSettingPopup, guard::BaseUnitGuardPopup},
         tag::{TagPopup, edit::EditTagPopup, new::NewTagPopup},
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
@@ -85,6 +86,11 @@ pub struct Shell {
     /// `View::tag_store`, not on anything `Shell` owns directly. Mutually exclusive with every
     /// other popup field.
     tag_popup: Option<TagPopup>,
+    /// The Payee-domain popup (`crate::popup::payee`) — `Some` while one is open. Owned here,
+    /// mirroring `account_popup`/`tag_popup`: it acts on `PayeesView`'s own fixture, reached via
+    /// `View::payee_store`, not on anything `Shell` owns directly. Mutually exclusive with
+    /// every other popup field.
+    payee_popup: Option<PayeePopup>,
     /// `true` after a lone `g` keypress with no completing chord yet — the leader half of the
     /// `g <letter>` jump chords in `docs/ux/tui/README.md`'s "Jumps" table (e.g. `g d`
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
@@ -116,6 +122,7 @@ impl Shell {
             settings_popup: None,
             account_popup: None,
             tag_popup: None,
+            payee_popup: None,
             pending_leader: false,
             view_stack: Vec::new(),
         }
@@ -194,6 +201,9 @@ impl Shell {
                 }
                 if self.tag_popup.is_some() {
                     return self.map_tag_popup_key(key);
+                }
+                if self.payee_popup.is_some() {
+                    return self.map_payee_popup_key(key);
                 }
                 if self.pending_leader {
                     self.pending_leader = false;
@@ -630,6 +640,52 @@ impl Shell {
         }
     }
 
+    /// Routes a key while the Payee popup is open, resolving it into a concrete `Action` right
+    /// here against the active view's `PayeeStore` (`View::payee_store`) — mirrors
+    /// `map_account_popup_key`/`map_tag_popup_key`. A create that doesn't yet validate resolves
+    /// to `None` (a no-op) rather than a doomed `Action`.
+    fn map_payee_popup_key(&self, key: KeyEvent) -> Option<Action> {
+        let store = self.view.payee_store()?;
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+
+        match &self.payee_popup {
+            Some(PayeePopup::New(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::ClosePayeePopup),
+                KeyCode::Backspace => Some(Action::PayeeNewPopupBackspace),
+                KeyCode::Tab => Some(Action::PayeeNewPopupTab),
+                KeyCode::Char('s') if ctrl => popup.create_fields(store).map(
+                    |(name, website, icon_url, icon_derived, default_category_path, active)| {
+                        Action::CreatePayee {
+                            name,
+                            website,
+                            icon_url,
+                            icon_derived,
+                            default_category_path,
+                            active,
+                            close_after: true,
+                        }
+                    },
+                ),
+                KeyCode::Char('a') if ctrl => popup.create_fields(store).map(
+                    |(name, website, icon_url, icon_derived, default_category_path, active)| {
+                        Action::CreatePayee {
+                            name,
+                            website,
+                            icon_url,
+                            icon_derived,
+                            default_category_path,
+                            active,
+                            close_after: false,
+                        }
+                    },
+                ),
+                KeyCode::Char(c) if !ctrl => Some(Action::PayeeNewPopupInput(c)),
+                _ => None,
+            },
+            None => None,
+        }
+    }
+
     /// Applies an [`Action`] to shell state.
     fn update(&mut self, action: Action) {
         match action {
@@ -996,6 +1052,41 @@ impl Shell {
             // `Action::SetAccountActive` above.
             Action::SetTagActive { .. } => self.view.update(&action),
             Action::ArmTagDelete => self.view.update(&action),
+            Action::OpenPayeeNewPopup => {
+                self.payee_popup = Some(PayeePopup::New(NewPayeePopup::new()));
+                self.command_popup = None;
+                self.unit_popup = None;
+                self.category_popup = None;
+                self.settings_popup = None;
+                self.account_popup = None;
+                self.tag_popup = None;
+            }
+            Action::ClosePayeePopup => self.payee_popup = None,
+            Action::PayeeNewPopupInput(c) => {
+                if let Some(PayeePopup::New(popup)) = &mut self.payee_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::PayeeNewPopupBackspace => {
+                if let Some(PayeePopup::New(popup)) = &mut self.payee_popup {
+                    popup.backspace();
+                }
+            }
+            Action::PayeeNewPopupTab => {
+                if let Some(store) = self.view.payee_store()
+                    && let Some(PayeePopup::New(popup)) = &mut self.payee_popup
+                {
+                    popup.tab(store);
+                }
+            }
+            Action::CreatePayee { close_after, .. } => {
+                self.view.update(&action);
+                if close_after {
+                    self.payee_popup = None;
+                } else if let Some(PayeePopup::New(popup)) = &mut self.payee_popup {
+                    popup.reset_for_next_payee();
+                }
+            }
         }
     }
 
@@ -1033,6 +1124,7 @@ impl Shell {
         self.settings_popup = None;
         self.account_popup = None;
         self.tag_popup = None;
+        self.payee_popup = None;
     }
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
@@ -1056,6 +1148,7 @@ impl Shell {
             matches!(self.settings_popup, Some(SettingsPopup::BaseUnitGuard(_)));
         let account_popup_open = self.account_popup.is_some();
         let tag_popup_open = self.tag_popup.is_some();
+        let payee_popup_open = self.payee_popup.is_some();
 
         // Header Frame — the status line names the mode whenever it isn't the resting
         // NORMAL state, per `docs/ux/tui/README.md`'s "show the mode ... whenever it is not
@@ -1068,7 +1161,12 @@ impl Shell {
         // breadcrumb, the same simplification every other view already makes).
         let mode = if command_popup_open {
             " · COMMAND"
-        } else if unit_popup_open || category_popup_open || account_popup_open || tag_popup_open {
+        } else if unit_popup_open
+            || category_popup_open
+            || account_popup_open
+            || tag_popup_open
+            || payee_popup_open
+        {
             " · INSERT"
         } else if edit_setting_popup_open {
             " · EDIT"
@@ -1114,6 +1212,8 @@ impl Shell {
             Line::from(" esc close account form ").style(Style::default().fg(Color::DarkGray))
         } else if tag_popup_open {
             Line::from(" esc close tag form ").style(Style::default().fg(Color::DarkGray))
+        } else if payee_popup_open {
+            Line::from(" esc close payee form ").style(Style::default().fg(Color::DarkGray))
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             Line::from(vec![
@@ -1152,6 +1252,11 @@ impl Shell {
         } else if let Some(popup) = &self.tag_popup {
             frame.render_widget(Dim, rows[1]);
             if let Some(store) = self.view.tag_store() {
+                popup.render(frame, frame.area(), store);
+            }
+        } else if let Some(popup) = &self.payee_popup {
+            frame.render_widget(Dim, rows[1]);
+            if let Some(store) = self.view.payee_store() {
                 popup.render(frame, frame.area(), store);
             }
         }
@@ -2474,6 +2579,16 @@ mod tests {
             .accounts()
             .iter()
             .any(|account| account.name == name)
+    }
+
+    fn payee_exists(shell: &Shell, name: &str) -> bool {
+        shell
+            .view
+            .payee_store()
+            .expect("Payees view should expose its store")
+            .payees()
+            .iter()
+            .any(|payee| payee.name == name)
     }
 
     fn account_id_by_name(shell: &Shell, name: &str) -> lib_core::RowID {
@@ -4257,5 +4372,142 @@ mod tests {
         shell.update(Action::OpenCommandPopup);
         let action = select_and_enter(&mut shell, "tag new");
         assert_eq!(action, Action::CommandPopupSetNotYetBuilt("tag new <name>"));
+    }
+
+    #[test]
+    fn n_on_the_payees_view_opens_the_new_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        assert!(shell.payee_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('n'),
+                KeyModifiers::NONE,
+            )))
+            .expect("n on the payees view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.payee_popup, Some(PayeePopup::New(_))));
+    }
+
+    #[test]
+    fn esc_closes_the_payee_popup_without_creating_anything() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let original_count = shell.view.payee_store().unwrap().payees().len();
+
+        shell.update(Action::OpenPayeeNewPopup);
+        for c in "New Vendor".chars() {
+            shell.update(Action::PayeeNewPopupInput(c));
+        }
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action while the popup is open"));
+
+        assert!(shell.payee_popup.is_none());
+        assert_eq!(
+            shell.view.payee_store().unwrap().payees().len(),
+            original_count
+        );
+        assert!(!payee_exists(&shell, "New Vendor"));
+    }
+
+    #[test]
+    fn typing_a_name_then_ctrl_s_creates_the_payee_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let original_count = shell.view.payee_store().unwrap().payees().len();
+
+        shell.update(Action::OpenPayeeNewPopup);
+        for c in "New Vendor".chars() {
+            shell.update(Action::PayeeNewPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.payee_popup.is_none(),
+            "popup should close after ctrl+s"
+        );
+        let store = shell.view.payee_store().unwrap();
+        assert_eq!(store.payees().len(), original_count + 1);
+        assert!(payee_exists(&shell, "New Vendor"));
+    }
+
+    #[test]
+    fn payee_ctrl_s_does_nothing_while_the_name_is_empty() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        shell.update(Action::OpenPayeeNewPopup);
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.payee_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn payee_ctrl_s_does_nothing_while_the_name_collides() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        shell.update(Action::OpenPayeeNewPopup);
+        // "Woolworths" is one of `PayeeFixture`'s own seeded payees.
+        for c in "Woolworths".chars() {
+            shell.update(Action::PayeeNewPopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None, "a colliding name should never validate");
+        assert!(shell.payee_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn ctrl_a_creates_and_keeps_the_payee_popup_open_reset_for_another_payee() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+
+        shell.update(Action::OpenPayeeNewPopup);
+        for c in "First Vendor".chars() {
+            shell.update(Action::PayeeNewPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+a with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.payee_popup.is_some(),
+            "popup should stay open after ctrl+a"
+        );
+        assert!(payee_exists(&shell, "First Vendor"));
+
+        for c in "Second Vendor".chars() {
+            shell.update(Action::PayeeNewPopupInput(c));
+        }
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(shell.payee_popup.is_none());
+        assert!(payee_exists(&shell, "Second Vendor"));
     }
 }

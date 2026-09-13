@@ -254,3 +254,18 @@ pub trait PayeeStore {
     /// own algorithm, short of the final create) against typed text.
     fn resolve(&self, text: &str) -> PayeeResolution;
 }
+
+/// Every distinct category path currently in use as some Payee's `default_category_path`,
+/// sorted — the `default` field's completion source for the New/Edit popups. Mirrors
+/// `crate::account::known_units`: `view::categories` has no shared store another `View` can
+/// reach into (`Shell` hosts one `View` at a time), so "every path a Payee already defaults to"
+/// is the only real candidate list available at this map's fidelity.
+pub fn known_category_paths(payees: &[Payee]) -> Vec<String> {
+    let mut paths: Vec<String> = payees
+        .iter()
+        .filter_map(|payee| payee.default_category_path.clone())
+        .collect();
+    paths.sort();
+    paths.dedup();
+    paths
+}

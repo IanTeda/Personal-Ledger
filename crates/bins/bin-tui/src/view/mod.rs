@@ -25,6 +25,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::account::AccountStore;
 use crate::category::CategoryStore;
+use crate::payee::PayeeStore;
 use crate::tag::TagStore;
 
 /// A message `Shell` or the active `View` reacts to. Deliberately minimal for now — the full
@@ -389,6 +390,35 @@ pub enum Action {
     /// selected. Still needs `y` on the Tags view itself to actually delete — this command
     /// never deletes on its own, per `popup::command::commands::tags`'s own module doc.
     ArmTagDelete,
+    /// `n` on the Payees list, or `:payee new <name>` — opens the new-payee popup
+    /// (`crate::popup::payee::new`, "Payees: 8b new popup").
+    OpenPayeeNewPopup,
+    /// `Esc` while the Payee popup is open — closes it without creating anything.
+    ClosePayeePopup,
+    /// A printable character typed while the Payee new popup is open — routed to whichever of
+    /// its text fields (`name`/`website`/`icon url`/`default`) currently has focus; a no-op on
+    /// the `icon derive`/`active` checkboxes, whose space-toggle is handled inside the popup's
+    /// own `push_char`.
+    PayeeNewPopupInput(char),
+    PayeeNewPopupBackspace,
+    /// `Tab` — completes the `default` field against a known category path when it has focus
+    /// and a candidate exists, otherwise advances focus (skipping `icon url` while `[×] derive
+    /// from website` is checked).
+    PayeeNewPopupTab,
+    /// `Ctrl+S`/`Ctrl+A` on the Payee new popup, once its draft validates (a non-empty `name`
+    /// with no case-insensitive collision against an existing Payee) — `Shell` resolves the
+    /// popup's current fields into this concrete variant before dispatching, mirroring
+    /// `CreateAccount`/`CreateTag`. `close_after` is `false` for `Ctrl+A` ("create and start
+    /// another" — the popup stays open, every field reset), `true` for `Ctrl+S`.
+    CreatePayee {
+        name: String,
+        website: Option<String>,
+        icon_url: Option<String>,
+        icon_derived: bool,
+        default_category_path: Option<String>,
+        active: bool,
+        close_after: bool,
+    },
 }
 
 /// The single view `Shell` hosts at a time.
@@ -467,6 +497,21 @@ pub trait View {
     /// its `e`/`d` keys already act on, since the command popup has no real typed-argument
     /// resolution to supply a `<tag>` from instead. Mirrors `account_selection`.
     fn tag_selection(&self) -> Option<RowID> {
+        None
+    }
+
+    /// Read-only access to this view's Payee list, if it has one — `Some` only for
+    /// `view::payees::PayeesView`. Mirrors `account_store`/`tag_store`: lets `Shell` resolve
+    /// the Payee new popup's name-collision check and `default` field completion against the
+    /// live fixture without downcasting the `Box<dyn View>` trait object.
+    fn payee_store(&self) -> Option<&dyn PayeeStore> {
+        None
+    }
+
+    /// The currently-selected Payee, if this view is `PayeesView` and has one — lets `Shell`
+    /// dispatch a future `:payee` command grammar entry against the list's own selection, the
+    /// same target its own keys act on. Mirrors `account_selection`/`tag_selection`.
+    fn payee_selection(&self) -> Option<RowID> {
         None
     }
 }
