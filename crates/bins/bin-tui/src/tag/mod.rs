@@ -19,13 +19,21 @@
 //! lives inside whichever `View`/popup struct owns it, mutated directly in its own
 //! `handle_key`/`update` — never routed through `crate::view::Action`, mirroring
 //! `crate::category`'s/`crate::account`'s own decision.
+//!
+//! **The right-pane widgets** (`view::tags`'s own "Tagged spend"/"Where it lands"/
+//! "Transactions", issue #133) are backed by [`TagTransaction`] rows [`TagStore::transactions`]
+//! generates on demand from a Tag's own `category_pool` — a handful of real leaf category
+//! paths copied, as plain display strings, from a temporary `crate::category::CategoryFixture`
+//! at fixture-construction time (see `fixture::expense_leaf_paths`). This is exactly
+//! `tagged_transaction_count`'s own precedent, extended: fixture-only simulation, never a real
+//! join back to Category or a real Transaction.
 
 mod fixture;
 
 pub use fixture::TagFixture;
 
 use chrono::NaiveDate;
-use lib_core::RowID;
+use lib_core::{Money, RowID};
 
 /// One Tag — a freeform, globally-unique label a user can attach to any number of
 /// Transactions, independent of their Category and Payee (`CONTEXT.md`, ADR-0015).
@@ -39,8 +47,29 @@ pub struct Tag {
     /// How many Transactions this Tag is attached to — fixture-simulated, see this module's
     /// own doc. Shown in the summary box and in the delete confirm line ("N transactions will
     /// lose this tag"); never gates deletion, per the map's own "delete is never refused"
-    /// decision.
+    /// decision. Always equals `TagStore::transactions(id).len()`, by construction.
     pub tagged_transaction_count: u32,
+    /// Real leaf category paths (e.g. `"food/restaurants"`) this Tag's simulated transactions
+    /// are drawn from — private, fixture-internal input to [`fixture::transactions_for`], never
+    /// part of the public API surface (unlike `tagged_transaction_count`, nothing outside
+    /// `crate::tag` reads this directly; `TagStore::transactions`/`category_breakdown`/
+    /// `monthly_spend` are the real seam). Empty for a Tag with no transactions.
+    category_pool: Vec<String>,
+}
+
+/// One fixture-simulated transaction attributed to a Tag, generated on demand by
+/// [`TagStore::transactions`] — never stored, mirroring `crate::account::AccountTransaction`'s
+/// own "generate, don't store" precedent.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TagTransaction {
+    pub date: NaiveDate,
+    pub payee: &'static str,
+    /// A real leaf category path, copied as plain display text — see this module's own doc.
+    pub category_path: String,
+    /// How many *other* Tags this (fake) transaction also carries — the overlap
+    /// `view::tags`'s own footer statement ("N of M carry another tag") is about.
+    pub other_tags: u32,
+    pub amount: Money,
 }
 
 /// Everything [`TagStore::create`]/[`TagStore::update`] can refuse — just the one rule, per
@@ -81,4 +110,23 @@ pub trait TagStore {
     /// lose a label; unlike deleting an Account, nothing is orphaned or destroyed, per the
     /// map's own decision.
     fn delete(&mut self, id: RowID) -> Result<(), TagError>;
+
+    /// The Tag's fixture-simulated transaction rows, newest first — generated on demand,
+    /// deterministically seeded from the Tag's own id (mirroring `AccountStore::ledger`), not
+    /// stored. Empty for a Tag with `tagged_transaction_count == 0`. Every other right-pane
+    /// widget (`category_breakdown`, `monthly_spend`) derives from exactly these rows, so the
+    /// three stay internally consistent by construction rather than needing to agree by hand.
+    fn transactions(&self, id: RowID) -> Vec<TagTransaction>;
+
+    /// The Tag's spend grouped by `TagTransaction::category_path`, biggest total first —
+    /// derived from [`TagStore::transactions`], for "Where it lands". Empty for a Tag with no
+    /// transactions.
+    fn category_breakdown(&self, id: RowID) -> Vec<(String, Money)>;
+
+    /// Month-end spend totals for the trailing `months` months ending at `as_of`'s own month
+    /// (inclusive), one pass over [`TagStore::transactions`] — not `months` separate queries.
+    /// Oldest month first, for "Tagged spend"'s sparkline. Every entry is `0` for a Tag with no
+    /// transactions in that month (or none at all), rather than a gap — the flat run before a
+    /// Tag's first use is the point, per the design doc this widget is drawn from.
+    fn monthly_spend(&self, id: RowID, months: usize, as_of: NaiveDate) -> Vec<Money>;
 }
