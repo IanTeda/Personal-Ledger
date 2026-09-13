@@ -202,6 +202,10 @@ impl Shell {
                         KeyCode::Char('b') => Some(Action::OpenBudgets),
                         KeyCode::Char('c') => Some(Action::OpenCategories),
                         KeyCode::Char('d') => Some(Action::OpenDashboard),
+                        // `t` is already Transactions', so Tags gets the leader key doubled
+                        // instead — the one letter left unclaimed once every other domain had
+                        // already taken its own initial.
+                        KeyCode::Char('g') => Some(Action::OpenTags),
                         KeyCode::Char('k') => Some(Action::OpenBalanceChecks),
                         KeyCode::Char('p') => Some(Action::OpenPayees),
                         KeyCode::Char('r') => Some(Action::OpenReports),
@@ -1582,12 +1586,38 @@ mod tests {
     }
 
     #[test]
+    fn g_then_g_opens_the_tags_view() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenUnits);
+        assert_eq!(shell.view.title(), "Units & Prices");
+
+        let armed = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('g'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(armed, None, "a lone `g` arms the leader without an action");
+        assert!(shell.pending_leader);
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('g'),
+                KeyModifiers::NONE,
+            )))
+            .expect("the second `g` completing the `g g` chord always maps to an action");
+        shell.update(action);
+
+        assert_eq!(shell.view.title(), "Tags");
+        assert!(!shell.pending_leader);
+    }
+
+    #[test]
     fn g_then_letter_opens_the_matching_view() {
         let cases: &[(char, &str)] = &[
             ('a', "Accounts"),
             ('b', "Budgets"),
             ('c', "Categories"),
             ('d', "Dashboard"),
+            ('g', "Tags"),
             ('k', "Balance Checks"),
             ('p', "Payees"),
             ('r', "Reports"),

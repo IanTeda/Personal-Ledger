@@ -325,12 +325,12 @@ pub enum Action {
         id: RowID,
         active: bool,
     },
-    /// `Enter` on the command popup's `tag` entry — opens the Tags catalog screen
+    /// `g g`, or `Enter` on the command popup's `tag` entry — opens the Tags catalog screen
     /// (`view::tags::TagsView`, "Tags: screen — list, summary box, and lightweight delete").
-    /// No `g`-jump chord or Dashboard menu row exist for this yet — the map's own destination
-    /// never named one, only the command grammar ("Tags: :tag command grammar") — so this is
-    /// unreachable from a live key until that ticket lands; tests construct it directly, the
-    /// same way every other domain's screen ticket could before its own jump chord existed.
+    /// Every other domain claimed its own initial as a `g <letter>` chord; Transactions
+    /// already has `t`, so Tags doubles the leader key itself instead, once the letter
+    /// shortage became a real discoverability gap (nothing on Dashboard or in the jump table
+    /// otherwise pointed at `:tag` at all).
     OpenTags,
     /// `n` on the Tags list — opens the new-tag popup (`crate::popup::tag::new`, "Tags: new
     /// popup").

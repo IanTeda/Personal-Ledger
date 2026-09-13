@@ -24,8 +24,9 @@
 //! than `y` aborts the arm with no mutation; `y` calls `TagStore::delete` unconditionally (it's
 //! never refused, per the map's own decision that removing a Tag is harmless and reversible).
 //!
-//! **No `g`-jump chord or Dashboard row exist yet** — see [`Action::OpenTags`]'s own doc for
-//! why; this `View` is fully built and tested, just not yet reachable from a live key.
+//! **Reachable via `g g`** (`Shell`'s own leader chord, doubled — see [`Action::OpenTags`]'s
+//! own doc for why) or `:tag` in the command popup. No Dashboard menu row exists; Dashboard has
+//! no per-domain menu at all, only headline widgets.
 //!
 //! **`n`/`e` open the new/edit-tag popups** (`crate::popup::tag::new`/`edit`, "Tags: new
 //! popup"/"Tags: edit popup") — `Shell` owns the popups themselves, mirroring `view::
