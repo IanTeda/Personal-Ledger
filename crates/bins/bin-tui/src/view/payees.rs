@@ -1,42 +1,52 @@
 //! The Payees `View`, hosted by `Shell` (ADR-0013). Per `docs/ux/tui/payees/README.md`
-//! "8a — Payees screen": the left pane, built here, is the spend-ordered curation-queue list
-//! and the selected Payee's six-line record box ("Payees: 8a screen — list pane and record box
-//! (left pane)"); the right pane (category mix, transactions) is a bordered placeholder for the
-//! next ticket ("Payees: 8a screen — category mix and transactions (right pane)").
+//! "8a — Payees screen": the left pane is the spend-ordered curation-queue list and the
+//! selected Payee's six-line record box ("Payees: 8a screen — list pane and record box (left
+//! pane)"); the right pane, built here, is that same selection's category mix and transactions
+//! ("Payees: 8a screen — category mix and transactions (right pane)").
 //!
 //! Real, interactive state — not a wireframe: `store` ([`PayeeFixture`], from "Payees: fixture
 //! data seam and mutable View state pattern") genuinely holds the Payee list, and
-//! `selected`/`show_inactive`/`filter` are mutated directly in [`PayeesView::handle_key`],
-//! mirroring `crate::account`'s/`view::accounts`'s own state-ownership decision. Every key
-//! handled this way returns [`Action::NoOp`] rather than `None`, so `Shell`'s event loop still
-//! redraws immediately instead of waiting for the next `Tick`.
+//! `selected`/`show_inactive`/`filter`/`transactions_not_yet_built` are mutated directly in
+//! [`PayeesView::handle_key`], mirroring `crate::account`'s/`view::accounts`'s own
+//! state-ownership decision. Every key handled this way returns [`Action::NoOp`] rather than
+//! `None`, so `Shell`'s event loop still redraws immediately instead of waiting for the next
+//! `Tick`.
 //!
-//! **Keys not wired here**: `n`/`e`/`m`/`c`/`d`/`enter` — the new/edit/rename-matches/delete
-//! popups and the filtered-transactions jump are later tickets in this same map (8b–8e, and
-//! the right pane); this `View` only builds the list and record box the README's own 8a
-//! specifies for this ticket. `a` (toggle active) is likewise deferred — it has no popup to
-//! open, but routing it through an `Action` the way `view::accounts`'s own bare `a` does needs
-//! an `Action::SetPayeeActive` variant this ticket has no other use for yet.
+//! **`enter` can only show [`PayeesView::transactions_not_yet_built`]'s message, not actually
+//! jump anywhere** — the real filtered Transactions view doesn't exist yet (`view::
+//! transactions` is still a wireframe), mirroring `view::tags`'s own identical limitation and
+//! its "any subsequent key clears a showing message" rule.
+//!
+//! **Keys not wired here**: `n`/`e`/`m`/`c`/`d` — the new/edit/rename-matches/delete popups are
+//! later tickets in this same map (8b–8e); this `View` only builds what 8a itself specifies.
+//! `a` (toggle active) is likewise deferred — it has no popup to open, but routing it through
+//! an `Action` the way `view::accounts`'s own bare `a` does needs an `Action::SetPayeeActive`
+//! variant this ticket has no other use for yet.
 //!
 //! **List, not a grouped tree**: unlike Accounts/Categories, Payees has no classification
 //! dimension to group by — the README's own 8a is a flat list, **sorted by `abs(total)`
 //! descending**, not by name (today's dead `screen::payees_list` sorted by name; this
 //! deliberately replaces that).
 
+use bigdecimal::BigDecimal;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
         Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
     },
 };
 
-use crate::payee::{Payee, PayeeFixture, PayeeStore};
+use crate::payee::{Payee, PayeeCategoryShare, PayeeFixture, PayeeStore, PayeeTransaction};
 use crate::view::{Action, View};
 use lib_core::{Money, RowID};
+
+/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used for
+/// negative totals and the conflict flag.
+const ACCENT: Color = Color::Red;
 
 /// Width of the left pane (list + record box), per the handoff's own `Layout::horizontal([
 /// Constraint::Length(41), Constraint::Min(0)])`.
@@ -62,6 +72,34 @@ const RECORD_CONTENT_ROWS: u16 = 6;
 /// backend yet.
 const BASE_UNIT_CODE: &str = "AUD";
 
+/// How many category-mix rows render before rolling the rest into an `N more` row, mirroring
+/// `view::tags`'s own `CATEGORY_ROWS_SHOWN` — a Payee's own mix rarely runs past a handful of
+/// categories, but the cap (and roll-up) keeps the section a fixed height regardless.
+const CATEGORY_ROWS_SHOWN: usize = 4;
+
+/// Widest a category-mix bar is ever drawn, per the handoff's own "max 16 cells".
+const BAR_MAX_CELLS: usize = 16;
+
+/// Width of the category-mix / transactions `CATEGORY` label column.
+const CATEGORY_LABEL_WIDTH: u16 = 20;
+
+/// Width of the category-mix section's right-aligned amount column.
+const MIX_AMOUNT_WIDTH: u16 = 10;
+
+/// Height of the category mix section: heading, rule, [`CATEGORY_ROWS_SHOWN`] bar rows plus an
+/// `N more` roll-up row, then the default-agreement footer line.
+const CATEGORY_MIX_HEIGHT: u16 = 1 + 1 + (CATEGORY_ROWS_SHOWN as u16 + 1) + 1;
+
+/// How many of a Payee's newest transaction rows the right pane ever shows — no pagination
+/// controls exist yet, matching `view::accounts`'s own capped ledger.
+const TRANSACTIONS_VISIBLE_ROWS: usize = 10;
+
+/// Width of the transactions list's `DATE` column.
+const TXN_DATE_WIDTH: u16 = 6;
+
+/// Width of the transactions list's right-aligned, signed `AMOUNT` column.
+const TXN_AMOUNT_WIDTH: u16 = 9;
+
 /// The Payees `View`. Owns the fixture Payee list directly — no navigation-stack `Action`
 /// carries it, per `crate::payee`'s state-ownership decision — so `handle_key` mutates
 /// `store`/`selected`/`show_inactive`/`filter` in place.
@@ -78,6 +116,10 @@ pub struct PayeesView {
     filter: String,
     /// `true` while `/`'s input buffer has focus.
     filtering: bool,
+    /// `true` right after `enter` — shows "opening filtered Transactions — not yet built" in
+    /// the transactions section instead of jumping anywhere, mirroring `view::tags`'s own
+    /// identical flag.
+    transactions_not_yet_built: bool,
 }
 
 impl Default for PayeesView {
@@ -101,6 +143,7 @@ impl PayeesView {
             pending_z: false,
             filter: String::new(),
             filtering: false,
+            transactions_not_yet_built: false,
         }
     }
 
@@ -223,10 +266,18 @@ impl View for PayeesView {
             return Some(Action::NoOp);
         }
 
+        // Any key reaching here other than the `Enter` arm below clears a showing "not yet
+        // built" message — mirrors `view::tags`'s own identical rule.
+        self.transactions_not_yet_built = false;
+
         match key.code {
             KeyCode::Char('z') => {
                 self.pending_z = true;
                 None
+            }
+            KeyCode::Enter => {
+                self.transactions_not_yet_built = true;
+                Some(Action::NoOp)
             }
             KeyCode::Char('/') => {
                 self.filtering = true;
@@ -272,7 +323,7 @@ impl View for PayeesView {
             .split(rows[1]);
 
         self.render_left_pane(frame, columns[0]);
-        frame.render_widget(Block::bordered().title(" Payees "), columns[1]);
+        self.render_right_pane(frame, columns[1]);
     }
 
     fn title(&self) -> &'static str {
@@ -341,7 +392,7 @@ impl PayeesView {
 
         let (flag_area, name_area, match_area, total_area) = list_row_columns(area);
         let dim = Style::default().add_modifier(Modifier::DIM);
-        let accent = Style::default().fg(ratatui::style::Color::Red);
+        let accent = Style::default().fg(ACCENT);
 
         if let Some(flag) = self.flag_for(payee) {
             let style = if flag == '!' { accent } else { dim };
@@ -471,6 +522,174 @@ impl PayeesView {
         let matches_text = format!("{} · m manage", self.store.aliases(payee.id).len());
         frame.render_widget(record_field_line("matches", &matches_text), rows[6]);
     }
+
+    /// The right pane: category mix, then transactions — nothing renders when no Payee is
+    /// selected (an all-filtered-out list), mirroring `view::tags`'s own identical fallback.
+    fn render_right_pane(&self, frame: &mut Frame, area: Rect) {
+        let Some(payee) = self.selected_payee() else {
+            return;
+        };
+
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(CATEGORY_MIX_HEIGHT),
+                Constraint::Length(1), // spacer
+                Constraint::Min(0),    // transactions
+            ])
+            .split(area);
+
+        self.render_category_mix(frame, rows[0], payee);
+        self.render_transactions(frame, rows[2], payee);
+    }
+
+    /// The category mix, biggest first, as proportional block-glyph bars — this is the
+    /// justification for the default category, per the handoff's own "it is why `c` sits next
+    /// to it".
+    fn render_category_mix(&self, frame: &mut Frame, area: Rect, payee: &Payee) {
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1),                              // heading
+                Constraint::Length(1),                              // rule
+                Constraint::Length(CATEGORY_ROWS_SHOWN as u16 + 1), // bar rows incl. roll-up
+                Constraint::Length(1),                              // agreement footer line
+            ])
+            .split(area);
+
+        let mix = self.store.category_mix(payee.id);
+        let heading_tag = if mix.is_empty() {
+            String::new()
+        } else {
+            format!("{} categories", mix.len())
+        };
+        render_section_heading(frame, rows[0], "CATEGORY MIX", &heading_tag);
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
+
+        if mix.is_empty() {
+            let dim = Style::default().add_modifier(Modifier::DIM);
+            frame.render_widget(
+                Paragraph::new(Span::styled("no transactions yet", dim)),
+                rows[2],
+            );
+        } else {
+            let shown = mix.len().min(CATEGORY_ROWS_SHOWN);
+            let bar_rows = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints(vec![Constraint::Length(1); CATEGORY_ROWS_SHOWN + 1])
+                .split(rows[2]);
+
+            for (index, row) in mix[..shown].iter().enumerate() {
+                render_mix_bar(
+                    frame,
+                    bar_rows[index],
+                    &row.category_path,
+                    row.share,
+                    &row.amount,
+                );
+            }
+            if mix.len() > shown {
+                let rest_share: f64 = mix[shown..].iter().map(|row| row.share).sum();
+                let rest_amount: BigDecimal =
+                    mix[shown..].iter().map(|row| row.amount.0.clone()).sum();
+                let label = format!("{} more", mix.len() - shown);
+                render_mix_bar(
+                    frame,
+                    bar_rows[shown],
+                    &label,
+                    rest_share,
+                    &Money(rest_amount),
+                );
+            }
+        }
+
+        render_default_agreement_line(frame, rows[3], payee, &mix);
+    }
+
+    /// The Payee's transaction rows, newest first, capped to [`TRANSACTIONS_VISIBLE_ROWS`] —
+    /// mirrors `view::accounts::render_ledger`'s own column/heading/footer shape.
+    fn render_transactions(&self, frame: &mut Frame, area: Rect, payee: &Payee) {
+        let all_rows = self.store.transactions(payee.id);
+        let total = all_rows.len();
+        let visible_count = all_rows.len().min(TRANSACTIONS_VISIBLE_ROWS);
+        let visible = &all_rows[..visible_count];
+
+        let sections = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(1), // heading
+                Constraint::Length(1), // rule
+                Constraint::Length(1), // column header
+                Constraint::Min(0),    // rows
+                Constraint::Length(1), // status legend
+                Constraint::Length(1), // spacer
+                Constraint::Length(1), // span
+                Constraint::Length(1), // explanatory line
+            ])
+            .split(area);
+
+        let heading_tag = format!("{visible_count} of {total} · newest first");
+        render_section_heading(frame, sections[0], "TRANSACTIONS", &heading_tag);
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
+        render_txn_column_header(frame, sections[2]);
+
+        let row_count = visible.len().min(sections[3].height as usize);
+        let row_areas = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(vec![Constraint::Length(1); row_count])
+            .split(sections[3]);
+        for (row, row_area) in visible.iter().zip(row_areas.iter()) {
+            render_txn_row(frame, *row_area, row);
+        }
+
+        let dim = Style::default().add_modifier(Modifier::DIM);
+        frame.render_widget(
+            Paragraph::new(Span::styled("○ open · ✓ reconciled", dim)),
+            sections[4],
+        );
+
+        self.render_transactions_footer(frame, sections[6], payee, &all_rows);
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                "payees are created by typing them on a transaction",
+                dim,
+            )),
+            sections[7],
+        );
+    }
+
+    /// The not-yet-built message while [`Self::transactions_not_yet_built`] is set, or the
+    /// `N txns · first → last` span otherwise — never both, mirroring `view::tags`'s own
+    /// "exactly one of the possibilities" shape.
+    fn render_transactions_footer(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        payee: &Payee,
+        rows: &[PayeeTransaction],
+    ) {
+        if self.transactions_not_yet_built {
+            frame.render_widget(
+                Paragraph::new("opening filtered Transactions — not yet built"),
+                area,
+            );
+            return;
+        }
+
+        let dim = Style::default().add_modifier(Modifier::DIM);
+        let text = match (payee.first_posted, payee.last_posted) {
+            (Some(first), Some(last)) => {
+                format!(
+                    "{} txns · {} → {}",
+                    rows.len(),
+                    format_month(first),
+                    format_month(last)
+                )
+            }
+            _ => "no transactions yet".to_string(),
+        };
+        frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
+    }
 }
 
 /// Splits a list row (or its column header) into flag(1) / name(`Min(0)`) / `M` / `TOTAL`
@@ -560,6 +779,153 @@ fn group_thousands(plain: &str) -> String {
         Some(frac_part) => format!("{sign}{grouped}.{frac_part}"),
         None => format!("{sign}{grouped}"),
     }
+}
+
+/// A section heading row shared by both right-pane widgets: the label flush left (dim), a
+/// short dim tag right-aligned — mirrors `view::tags::render_section_heading`.
+fn render_section_heading(frame: &mut Frame, area: Rect, label: &str, tag: &str) {
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Min(0),
+            Constraint::Length(tag.chars().count() as u16),
+        ])
+        .split(area);
+    frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
+        columns[1],
+    );
+}
+
+/// One category-mix row: a category-path label, a proportional block-glyph bar (`█` full
+/// cells, `▌` a half-cell remainder — the handoff's own two glyphs, giving the bar half-cell
+/// resolution rather than just rounding to the nearest whole cell) plus its percentage, and the
+/// right-aligned signed amount.
+fn render_mix_bar(frame: &mut Frame, area: Rect, label: &str, share: f64, amount: &Money) {
+    let pct = (share * 100.0).round() as i64;
+    let scaled = share * BAR_MAX_CELLS as f64;
+    let full_cells = scaled.floor() as usize;
+    let has_half_cell = scaled.fract() >= 0.5;
+    let bar = format!(
+        "{}{}",
+        "█".repeat(full_cells),
+        if has_half_cell { "▌" } else { "" }
+    );
+
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(CATEGORY_LABEL_WIDTH),
+            Constraint::Min(0),
+            Constraint::Length(MIX_AMOUNT_WIDTH),
+        ])
+        .spacing(1)
+        .split(area);
+
+    frame.render_widget(Paragraph::new(label.to_string()), columns[0]);
+    frame.render_widget(Paragraph::new(format!("{bar} {pct}%")), columns[1]);
+    let is_negative = amount.0 < 0;
+    let amount_style = if is_negative {
+        Style::default().fg(ACCENT)
+    } else {
+        Style::default()
+    };
+    frame.render_widget(
+        Paragraph::new(Span::styled(format_money(amount), amount_style))
+            .alignment(Alignment::Right),
+        columns[2],
+    );
+}
+
+/// States whether the Payee's stored `default_category_path` agrees with what its own category
+/// mix actually shows — never silently overriding either, per the handoff's own "where the mix
+/// and the stored default disagree, say so rather than silently overriding either". A Payee
+/// with no default and a mix spread across several categories is the handoff's own "should have
+/// no default at all" case, stated plainly rather than flagged as wrong.
+fn render_default_agreement_line(
+    frame: &mut Frame,
+    area: Rect,
+    payee: &Payee,
+    mix: &[PayeeCategoryShare],
+) {
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    let top = mix.first();
+    let text = match (&payee.default_category_path, top) {
+        (Some(default), Some(top)) if *default == top.category_path => {
+            format!(
+                "default follows the mix · {}% {}",
+                (top.share * 100.0).round() as i64,
+                top.category_path
+            )
+        }
+        // Deliberately doesn't restate `default` itself — the record box one pane over
+        // already shows it, and a long category path on both sides of the line would overflow
+        // the right pane's real width for anything but the shortest names.
+        (Some(_), Some(top)) => {
+            format!(
+                "disagrees with the mix · {}% {}",
+                (top.share * 100.0).round() as i64,
+                top.category_path
+            )
+        }
+        (Some(_), None) => "default set · no transactions yet to check against".to_string(),
+        (None, Some(_)) => format!("no default set · mix spans {} categories", mix.len()),
+        (None, None) => "no default set · no transactions yet".to_string(),
+    };
+    frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
+}
+
+/// Splits a transactions row (or its column header) into status-glyph(1) / `DATE` /
+/// `CATEGORY`(`Min(0)`) / `AMOUNT` columns.
+fn txn_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect) {
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(TXN_DATE_WIDTH),
+            Constraint::Min(0),
+            Constraint::Length(TXN_AMOUNT_WIDTH),
+        ])
+        .spacing(1)
+        .split(area);
+    (columns[0], columns[1], columns[2], columns[3])
+}
+
+fn render_txn_column_header(frame: &mut Frame, area: Rect) {
+    let (_, date, category, amount) = txn_row_columns(area);
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    frame.render_widget(Paragraph::new(Span::styled("DATE", dim)), date);
+    frame.render_widget(Paragraph::new(Span::styled("CATEGORY", dim)), category);
+    frame.render_widget(
+        Paragraph::new(Span::styled("AMOUNT", dim)).alignment(Alignment::Right),
+        amount,
+    );
+}
+
+fn render_txn_row(frame: &mut Frame, area: Rect, row: &PayeeTransaction) {
+    let (glyph_area, date_area, category_area, amount_area) = txn_row_columns(area);
+
+    frame.render_widget(Paragraph::new(row.status.glyph().to_string()), glyph_area);
+    frame.render_widget(Paragraph::new(format_date(row.date)), date_area);
+    frame.render_widget(Paragraph::new(row.category_path.clone()), category_area);
+
+    let is_negative = row.amount.0 < 0;
+    let amount_style = if is_negative {
+        Style::default().fg(ACCENT)
+    } else {
+        Style::default()
+    };
+    frame.render_widget(
+        Paragraph::new(Span::styled(format_money(&row.amount), amount_style))
+            .alignment(Alignment::Right),
+        amount_area,
+    );
+}
+
+fn format_date(date: chrono::NaiveDate) -> String {
+    date.format("%d %b").to_string().to_lowercase()
 }
 
 #[cfg(test)]
@@ -821,5 +1187,125 @@ mod tests {
         view.handle_key(key(KeyCode::Char('j')));
         let after = render(&view);
         assert_ne!(before, after);
+    }
+
+    /// Renders a single mix bar into an isolated buffer and counts its glyphs — mirrors
+    /// `view::tags`'s own `render_bar` test helper.
+    fn mix_bar_glyphs(share: f64) -> (usize, usize) {
+        // Wide enough that the bar column itself (`Min(0)`, after the label and amount
+        // columns) never clips a full 16-cell bar.
+        let backend = TestBackend::new(60, 1);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| {
+                render_mix_bar(
+                    frame,
+                    frame.area(),
+                    "test",
+                    share,
+                    &Money(BigDecimal::from(1)),
+                )
+            })
+            .expect("rendering a bar row should not error");
+        let buffer = terminal.backend().buffer();
+        let mut line = String::new();
+        for x in 0..buffer.area.width {
+            line.push_str(buffer[(x, 0)].symbol());
+        }
+        (line.matches('█').count(), line.matches('▌').count())
+    }
+
+    #[test]
+    fn mix_bar_is_proportional_and_capped_at_bar_max_cells() {
+        assert_eq!(mix_bar_glyphs(1.0), (BAR_MAX_CELLS, 0));
+        assert_eq!(mix_bar_glyphs(0.0), (0, 0));
+        // 0.5 * 16 = 8.0 exactly — no remainder, so no half-cell glyph.
+        assert_eq!(mix_bar_glyphs(0.5), (8, 0));
+        // 0.84 * 16 = 13.44 — 13 full cells, and the 0.44 remainder is under half a cell.
+        assert_eq!(mix_bar_glyphs(0.84), (13, 0));
+        // 0.55 * 16 = 8.8 — 8 full cells, and the 0.8 remainder rounds up to a half-cell glyph.
+        assert_eq!(mix_bar_glyphs(0.55), (8, 1));
+    }
+
+    #[test]
+    fn category_mix_heading_shows_the_category_count() {
+        let mut view = PayeesView::new();
+        view.selected = find_id(&view, "Woolworths");
+        let text = render(&view);
+        assert!(text.contains("3 categories"));
+    }
+
+    #[test]
+    fn woolworths_mix_agrees_with_its_stored_default() {
+        let mut view = PayeesView::new();
+        view.selected = find_id(&view, "Woolworths");
+        let mix = view.store.category_mix(view.selected);
+        let top = mix.first().expect("woolworths has a mix");
+        let expected_pct = format!("{}%", (top.share * 100.0).round() as i64);
+
+        let text = render(&view);
+        assert!(text.contains("default follows the mix"));
+        assert!(text.contains(&expected_pct));
+        assert!(text.contains("food/groceries"));
+    }
+
+    #[test]
+    fn bunnings_warehouse_mix_disagrees_with_its_stored_default() {
+        let mut view = PayeesView::new();
+        view.selected = find_id(&view, "Bunnings Warehouse");
+        let text = render(&view);
+        assert!(text.contains("disagrees with the mix"));
+    }
+
+    #[test]
+    fn coles_central_has_no_default_and_its_mix_is_stated_as_spread() {
+        let mut view = PayeesView::new();
+        view.selected = find_id(&view, "Coles Central");
+        let text = render(&view);
+        assert!(text.contains("no default set"));
+        assert!(text.contains("mix spans"));
+    }
+
+    #[test]
+    fn transactions_show_a_status_glyph_and_a_legend() {
+        let mut view = PayeesView::new();
+        view.selected = find_id(&view, "Woolworths");
+        let rows = view.store.transactions(view.selected);
+        assert!(!rows.is_empty());
+        for row in &rows {
+            assert!(row.status.glyph() == '○' || row.status.glyph() == '✓');
+        }
+
+        let text = render(&view);
+        assert!(text.contains("○ open · ✓ reconciled"));
+    }
+
+    #[test]
+    fn transactions_span_shows_count_and_date_range() {
+        let mut view = PayeesView::new();
+        view.selected = find_id(&view, "Woolworths");
+        let text = render(&view);
+        assert!(text.contains("184 txns"));
+        assert!(text.contains("oct 24"));
+        assert!(text.contains("sep 26"));
+    }
+
+    #[test]
+    fn footer_states_the_screens_own_misreading_warning() {
+        let view = PayeesView::new();
+        let text = render(&view);
+        assert!(text.contains("payees are created by typing them on a transaction"));
+    }
+
+    #[test]
+    fn enter_shows_a_not_yet_built_message_and_any_other_key_clears_it() {
+        let mut view = PayeesView::new();
+        view.handle_key(key(KeyCode::Enter));
+        assert!(view.transactions_not_yet_built);
+        let text = render(&view);
+        assert!(text.contains("opening filtered Transactions — not yet built"));
+
+        view.handle_key(key(KeyCode::Char('j')));
+        assert!(!view.transactions_not_yet_built);
     }
 }
