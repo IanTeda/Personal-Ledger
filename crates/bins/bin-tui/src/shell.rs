@@ -337,6 +337,40 @@ impl Shell {
                 // Balance Check/reconcile is out of this map's destination entirely (README
                 // §*Not yet designed*), so it's never special-cased, same as Categories' own
                 // "rename"/"merge"/"tree".
+                Some("tag") => Some(Action::OpenTags),
+                // Mirrors the Accounts arm above — `tag new` has no selection prerequisite,
+                // only the guard that Tags is actually the active view.
+                Some(name @ "tag new <name>") => {
+                    if self.view.tag_store().is_some() {
+                        Some(Action::OpenTagNewPopup)
+                    } else {
+                        Some(Action::CommandPopupSetNotYetBuilt(name))
+                    }
+                }
+                Some(name @ "tag edit <tag>") => self
+                    .view
+                    .tag_selection()
+                    .map(Action::OpenTagEditPopup)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "tag off <tag>") => self
+                    .view
+                    .tag_selection()
+                    .map(|id| Action::SetTagActive { id, active: false })
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "tag on <tag>") => self
+                    .view
+                    .tag_selection()
+                    .map(|id| Action::SetTagActive { id, active: true })
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                // "tag delete <tag>" only arms the same lightweight confirm the bare `d` key
+                // does (`popup::command::commands::tags`'s own module doc) — it never deletes
+                // on its own, so this carries no id, just the same guard every other Tags
+                // entry above uses.
+                Some(name @ "tag delete <tag>") => self
+                    .view
+                    .tag_selection()
+                    .map(|_| Action::ArmTagDelete)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
                 Some(name) => Some(Action::CommandPopupSetNotYetBuilt(name)),
                 None => None,
             },
@@ -954,6 +988,10 @@ impl Shell {
                 self.view.update(&action);
                 self.tag_popup = None;
             }
+            // No popup involved — both relay straight through to `TagsView::update`, mirroring
+            // `Action::SetAccountActive` above.
+            Action::SetTagActive { .. } => self.view.update(&action),
+            Action::ArmTagDelete => self.view.update(&action),
         }
     }
 
@@ -4044,5 +4082,150 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell with the tag edit popup open should not error");
+    }
+
+    #[test]
+    fn selecting_tag_opens_the_tags_view() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        let action = select_and_enter(&mut shell, "tag");
+        assert_eq!(action, Action::OpenTags);
+    }
+
+    #[test]
+    fn selecting_tag_new_opens_the_new_popup_even_without_a_selection_prerequisite() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "tag new");
+        assert_eq!(action, Action::OpenTagNewPopup);
+    }
+
+    #[test]
+    fn selecting_tag_edit_while_tags_is_active_opens_the_edit_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let home_renovation = tag_id_by_name(&shell, "Home Renovation");
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "tag edit");
+        assert_eq!(action, Action::OpenTagEditPopup(home_renovation));
+    }
+
+    #[test]
+    fn selecting_tag_off_while_tags_is_active_deactivates_the_selection_immediately() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let home_renovation = tag_id_by_name(&shell, "Home Renovation");
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "tag off");
+        assert_eq!(
+            action,
+            Action::SetTagActive {
+                id: home_renovation,
+                active: false
+            }
+        );
+        shell.update(action);
+        assert!(
+            !shell
+                .view
+                .tag_store()
+                .unwrap()
+                .find(home_renovation)
+                .unwrap()
+                .is_active
+        );
+    }
+
+    #[test]
+    fn selecting_tag_on_while_tags_is_active_reactivates_the_selection_immediately() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let home_renovation = tag_id_by_name(&shell, "Home Renovation");
+        // `za` first, so deactivating Home Renovation below doesn't hide it and move the
+        // selection away — mirrors `selecting_account_on_while_accounts_is_active_
+        // reactivates_the_selection_immediately`'s own reasoning.
+        shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('z'),
+            KeyModifiers::NONE,
+        )));
+        shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::NONE,
+        )));
+
+        shell.update(Action::SetTagActive {
+            id: home_renovation,
+            active: false,
+        });
+        assert_eq!(
+            shell.view.tag_selection(),
+            Some(home_renovation),
+            "za should have kept Home Renovation selected"
+        );
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "tag on");
+        assert_eq!(
+            action,
+            Action::SetTagActive {
+                id: home_renovation,
+                active: true
+            }
+        );
+        shell.update(action);
+        assert!(
+            shell
+                .view
+                .tag_store()
+                .unwrap()
+                .find(home_renovation)
+                .unwrap()
+                .is_active
+        );
+    }
+
+    #[test]
+    fn selecting_tag_delete_while_tags_is_active_arms_the_same_confirm_the_bare_d_key_does() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let before_count = shell.view.tag_store().unwrap().tags().len();
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "tag delete");
+        assert_eq!(action, Action::ArmTagDelete);
+        shell.update(action);
+
+        // Arming alone never deletes anything — only `y` on the Tags view itself does.
+        assert_eq!(shell.view.tag_store().unwrap().tags().len(), before_count);
+    }
+
+    #[test]
+    fn tag_new_edit_off_on_and_delete_fall_back_to_not_yet_built_when_tags_is_not_active() {
+        for (filter, name) in [
+            ("tag edit", "tag edit <tag>"),
+            ("tag off", "tag off <tag>"),
+            ("tag on", "tag on <tag>"),
+            ("tag delete", "tag delete <tag>"),
+        ] {
+            let mut shell = Shell::new();
+            shell.update(Action::OpenCommandPopup);
+            let action = select_and_enter(&mut shell, filter);
+            assert_eq!(
+                action,
+                Action::CommandPopupSetNotYetBuilt(name),
+                "{filter} should fall back when Tags isn't the active view"
+            );
+        }
+
+        // "tag new" is the one exception — it has no selection prerequisite, so it falls back
+        // only when Tags itself isn't active, which is exactly this case.
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        let action = select_and_enter(&mut shell, "tag new");
+        assert_eq!(action, Action::CommandPopupSetNotYetBuilt("tag new <name>"));
     }
 }

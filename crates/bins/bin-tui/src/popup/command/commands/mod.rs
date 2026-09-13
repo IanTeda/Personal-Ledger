@@ -24,6 +24,7 @@ mod payees;
 mod quit;
 mod reports;
 mod settings;
+mod tags;
 mod transactions;
 mod units;
 
@@ -127,6 +128,10 @@ pub const DOMAINS: &[Domain] = &[
     Domain {
         name: "Settings",
         commands: settings::COMMANDS,
+    },
+    Domain {
+        name: "Tags",
+        commands: tags::COMMANDS,
     },
     Domain {
         name: "Transactions",

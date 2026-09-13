@@ -374,6 +374,21 @@ pub enum Action {
         name: String,
         active: bool,
     },
+    /// `Enter` on the command popup's `tag off <tag>`/`tag on <tag>` entries — reaches
+    /// `TagStore::set_active` directly, the same way `SetAccountActive` does for Accounts
+    /// (`TagsView::update` is the only place that calls it). No bare key reaches this yet —
+    /// unlike Accounts, the Tags list has no bare `a` key of its own — so today this is only
+    /// ever dispatched from the command grammar.
+    SetTagActive {
+        id: RowID,
+        active: bool,
+    },
+    /// `Enter` on the command popup's `tag delete <tag>` entry — arms the exact same
+    /// lightweight delete-confirm state the Tags list's own bare `d` key does
+    /// (`TagsView::handle_key`'s `pending_delete`), against whatever the list currently has
+    /// selected. Still needs `y` on the Tags view itself to actually delete — this command
+    /// never deletes on its own, per `popup::command::commands::tags`'s own module doc.
+    ArmTagDelete,
 }
 
 /// The single view `Shell` hosts at a time.
@@ -443,6 +458,15 @@ pub trait View {
     /// the Tag popups' uniqueness validation against the live fixture without downcasting the
     /// `Box<dyn View>` trait object.
     fn tag_store(&self) -> Option<&dyn TagStore> {
+        None
+    }
+
+    /// The currently-selected Tag, if this view is `TagsView` and has one — lets `Shell`
+    /// dispatch the `:tag` command grammar's `edit`/`off`/`on`/`delete` entries
+    /// (`popup::command::commands::tags`) against the list's own selection, the same target
+    /// its `e`/`d` keys already act on, since the command popup has no real typed-argument
+    /// resolution to supply a `<tag>` from instead. Mirrors `account_selection`.
+    fn tag_selection(&self) -> Option<RowID> {
         None
     }
 }

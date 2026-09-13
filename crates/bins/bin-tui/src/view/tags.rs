@@ -24,6 +24,13 @@
 //! accounts`'s own `n`/`e`/`d`; this `View` only ever resolves *which* key to turn into
 //! [`Action::OpenTagNewPopup`]/[`Action::OpenTagEditPopup`], and reacts to the eventual
 //! [`Action::CreateTag`]/[`Action::UpdateTag`] in [`TagsView::update`].
+//!
+//! **The `:tag` command grammar** (`popup::command::commands::tags`, "Tags: :tag command
+//! grammar") reaches these exact same code paths rather than a parallel one: `tag off`/`tag
+//! on` dispatch [`Action::SetTagActive`], handled here identically to [`Action::UpdateTag`]'s
+//! own `TagStore::set_active` call; `tag delete` dispatches [`Action::ArmTagDelete`], which
+//! just sets `pending_delete = true` — the exact same state bare `d` arms, still gated behind
+//! `y` on this view before anything is actually deleted.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::RowID;
@@ -247,6 +254,12 @@ impl View for TagsView {
             Action::UpdateTag { id, name, active } => {
                 let _ = self.store.update(*id, name.clone(), *active);
             }
+            Action::SetTagActive { id, active } => {
+                if self.store.set_active(*id, *active).is_ok() {
+                    self.recover_selection();
+                }
+            }
+            Action::ArmTagDelete => self.pending_delete = true,
             _ => {}
         }
     }
@@ -294,6 +307,10 @@ impl View for TagsView {
 
     fn tag_store(&self) -> Option<&dyn TagStore> {
         Some(&self.store)
+    }
+
+    fn tag_selection(&self) -> Option<RowID> {
+        Some(self.selected)
     }
 }
 
@@ -606,6 +623,41 @@ mod tests {
             view.handle_key(key(KeyCode::Char('e'))),
             Some(Action::OpenTagEditPopup(selected))
         );
+    }
+
+    #[test]
+    fn tag_selection_returns_the_current_selection() {
+        let view = TagsView::new();
+        assert_eq!(view.tag_selection(), Some(view.selected));
+    }
+
+    #[test]
+    fn set_tag_active_deactivates_and_recovers_selection() {
+        let mut view = TagsView::new();
+        let home_renovation = find_id(&view, "Home Renovation");
+        view.selected = home_renovation;
+
+        view.update(&Action::SetTagActive {
+            id: home_renovation,
+            active: false,
+        });
+
+        let tag = view.store.find(home_renovation).expect("still exists");
+        assert!(!tag.is_active);
+        // Deactivating the selected tag hides it (show_inactive defaults to false), so
+        // recover_selection should have moved `selected` onto a still-visible tag.
+        assert_ne!(view.selected, home_renovation);
+    }
+
+    #[test]
+    fn arm_tag_delete_sets_pending_delete_without_mutating() {
+        let mut view = TagsView::new();
+        let before_count = view.store.tags().len();
+
+        view.update(&Action::ArmTagDelete);
+
+        assert!(view.pending_delete);
+        assert_eq!(view.store.tags().len(), before_count);
     }
 
     #[test]
