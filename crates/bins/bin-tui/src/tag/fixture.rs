@@ -23,10 +23,10 @@ use lib_core::{Money, RowID};
 use super::{Tag, TagError, TagStore, TagTransaction};
 use crate::category::{CategoryFixture, CategoryStore};
 
-/// The fixture's fixed "now" — matches `crate::account::fixture`'s own `2026-09-08`, so
-/// anything cross-referencing multiple screens' fixtures (none do yet, but a future one might)
-/// agrees on what "today" is.
-const FIXTURE_NOW: NaiveDate = match NaiveDate::from_ymd_opt(2026, 9, 8) {
+/// The fixture's fixed "now" — matches `crate::account::fixture`'s own `2026-09-08`. `pub` so
+/// `view::tags` can pin its own "Tagged spend" chart window to the same date, mirroring
+/// `crate::account::fixture::FIXTURE_NOW`'s own re-export for exactly that reason.
+pub const FIXTURE_NOW: NaiveDate = match NaiveDate::from_ymd_opt(2026, 9, 8) {
     Some(date) => date,
     None => panic!("fixed literal is a valid date"),
 };
@@ -305,13 +305,18 @@ impl TagFixture {
                 "transport/public",
             ],
         );
+        // Six categories, not four — `Tax Deductible` is the tag `view::tags`'s own "Where it
+        // lands" tests exercise the `> CATEGORY_ROWS_SHOWN` roll-up against, so its pool needs
+        // to be genuinely wider than the widget's own top-4 cutoff.
         let deductible_pool = pool_containing(
             &leaves,
             &[
                 "transport/fuel",
+                "transport/parking",
                 "health/pharmacy",
-                "housing/insurance",
                 "health/gp",
+                "health/dental",
+                "housing/insurance",
             ],
         );
 

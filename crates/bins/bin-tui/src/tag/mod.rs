@@ -30,7 +30,7 @@
 
 mod fixture;
 
-pub use fixture::TagFixture;
+pub use fixture::{FIXTURE_NOW, TagFixture};
 
 use chrono::NaiveDate;
 use lib_core::{Money, RowID};
