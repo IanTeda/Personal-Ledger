@@ -498,6 +498,32 @@ pub enum Action {
         typed: String,
         mode: AliasMode,
     },
+    /// `d` on a Payees list row, or `^d` from the edit popup — opens the delete popup
+    /// (`crate::popup::payee::delete`, "Payees: 8e delete popup") for the given Payee.
+    OpenPayeeDeletePopup(RowID),
+    /// A printable character typed while the Payee delete popup's `confirm` field has focus —
+    /// routed to it; a no-op on the `action` radio, whose space-toggle is handled inside the
+    /// popup's own `push_char`.
+    PayeeDeletePopupInput(char),
+    PayeeDeletePopupBackspace,
+    /// `Tab` while the Payee delete popup is open — advances focus between the `action` radio
+    /// and `confirm`.
+    PayeeDeletePopupTab,
+    /// Bare `a` on a Payees list row, or `Ctrl+S` on the delete popup with `(•) deactivate`
+    /// selected — deactivates the Payee directly, mirroring `Action::SetAccountActive`'s own
+    /// "no popup, no draft to carry" shape. `PayeesView::update` is the only place that calls
+    /// `PayeeStore::set_active`, so the bare key and the popup's own commit reach the exact
+    /// same code path.
+    SetPayeeActive {
+        id: RowID,
+        active: bool,
+    },
+    /// `Ctrl+S` on the Payee delete popup with `( ) delete` selected, once it validates (the
+    /// Payee holds no transaction or alias — the database's own foreign-key pragma would
+    /// refuse it otherwise — and `confirm` exactly matches its name) — `Shell` checks this via
+    /// `crate::popup::payee::delete::DeletePayeePopup::commit` before ever producing this
+    /// action.
+    DeletePayee(RowID),
 }
 
 /// The single view `Shell` hosts at a time.

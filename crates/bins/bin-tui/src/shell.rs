@@ -29,8 +29,8 @@ use crate::{
         },
         command::CommandPopup,
         payee::{
-            PayeePopup, edit::EditPayeePopup, matches::ComposeCommit, matches::PayeeMatchesPopup,
-            new::NewPayeePopup,
+            PayeePopup, delete::DeleteCommit, delete::DeletePayeePopup, edit::EditPayeePopup,
+            matches::ComposeCommit, matches::PayeeMatchesPopup, new::NewPayeePopup,
         },
         settings::{SettingsPopup, edit::EditSettingPopup, guard::BaseUnitGuardPopup},
         tag::{TagPopup, edit::EditTagPopup, new::NewTagPopup},
@@ -716,12 +716,13 @@ impl Shell {
                         }
                     },
                 ),
-                // `m` jumps to the rename-matches popup (8d), now that it exists — mirrors
-                // `popup::account::edit`'s own `^d` hand-off to its delete popup. `^d` (the
-                // Payee delete popup, 8e) still isn't wired — see `popup::payee::edit`'s own
-                // module doc.
+                // `m`/`^d` jump to the rename-matches (8d) / delete (8e) popups, mirroring
+                // `popup::account::edit`'s own `^d` hand-off to its delete popup.
                 KeyCode::Char('m') if !ctrl => {
                     Some(Action::OpenPayeeMatchesPopup(popup.editing_id()))
+                }
+                KeyCode::Char('d') if ctrl => {
+                    Some(Action::OpenPayeeDeletePopup(popup.editing_id()))
                 }
                 KeyCode::Char(c) if !ctrl => Some(Action::PayeeEditPopupInput(c)),
                 _ => None,
@@ -784,6 +785,20 @@ impl Shell {
                     }
                 }
             }
+            Some(PayeePopup::Delete(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::ClosePayeePopup),
+                KeyCode::Backspace => Some(Action::PayeeDeletePopupBackspace),
+                KeyCode::Tab => Some(Action::PayeeDeletePopupTab),
+                KeyCode::Char('m') if !ctrl && !popup.confirm_field_focused() => {
+                    Some(Action::OpenPayeeMatchesPopup(popup.editing_id()))
+                }
+                KeyCode::Char('s') if ctrl => popup.commit(store).map(|commit| match commit {
+                    DeleteCommit::Deactivate(id) => Action::SetPayeeActive { id, active: false },
+                    DeleteCommit::Delete(id) => Action::DeletePayee(id),
+                }),
+                KeyCode::Char(c) if !ctrl => Some(Action::PayeeDeletePopupInput(c)),
+                _ => None,
+            },
             None => None,
         }
     }
@@ -1293,6 +1308,43 @@ impl Shell {
                 if let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup {
                     popup.cancel_compose();
                 }
+            }
+            Action::OpenPayeeDeletePopup(id) => {
+                if let Some(store) = self.view.payee_store() {
+                    self.payee_popup = Some(PayeePopup::Delete(DeletePayeePopup::new(store, id)));
+                }
+                self.command_popup = None;
+                self.unit_popup = None;
+                self.category_popup = None;
+                self.settings_popup = None;
+                self.account_popup = None;
+                self.tag_popup = None;
+            }
+            Action::PayeeDeletePopupInput(c) => {
+                if let Some(PayeePopup::Delete(popup)) = &mut self.payee_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::PayeeDeletePopupBackspace => {
+                if let Some(PayeePopup::Delete(popup)) = &mut self.payee_popup {
+                    popup.backspace();
+                }
+            }
+            Action::PayeeDeletePopupTab => {
+                if let Some(PayeePopup::Delete(popup)) = &mut self.payee_popup {
+                    popup.tab();
+                }
+            }
+            // No popup involved when dispatched from the list's own bare `a` — relays
+            // straight through to `PayeesView::update`, mirroring `Action::SetAccountActive`.
+            // When dispatched from the delete popup's own `^s`, also closes it.
+            Action::SetPayeeActive { .. } => {
+                self.view.update(&action);
+                self.payee_popup = None;
+            }
+            Action::DeletePayee(_) => {
+                self.view.update(&action);
+                self.payee_popup = None;
             }
         }
     }
@@ -5033,5 +5085,230 @@ mod tests {
         let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
         shell.update(action.expect("esc always maps to an action"));
         assert!(shell.payee_popup.is_none());
+    }
+
+    #[test]
+    fn bare_a_on_the_payees_view_deactivates_the_selection_directly() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let selected = shell
+            .view
+            .payee_selection()
+            .expect("the payees view always starts with a selection");
+        assert!(
+            shell
+                .view
+                .payee_store()
+                .unwrap()
+                .find(selected)
+                .unwrap()
+                .is_active
+        );
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::NONE,
+            )))
+            .expect("a on the payees view always maps to an action");
+        shell.update(action);
+
+        assert!(shell.payee_popup.is_none(), "no popup involved");
+        assert!(
+            !shell
+                .view
+                .payee_store()
+                .unwrap()
+                .find(selected)
+                .unwrap()
+                .is_active
+        );
+    }
+
+    #[test]
+    fn d_on_the_payees_view_opens_the_delete_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        assert!(shell.payee_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('d'),
+                KeyModifiers::NONE,
+            )))
+            .expect("d on the payees view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.payee_popup, Some(PayeePopup::Delete(_))));
+    }
+
+    #[test]
+    fn ctrl_d_on_the_payee_edit_popup_jumps_to_the_delete_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        shell.update(Action::OpenPayeeEditPopup(woolworths));
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('d'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+d always maps to an action while the edit popup is open");
+        shell.update(action);
+
+        assert!(matches!(shell.payee_popup, Some(PayeePopup::Delete(_))));
+    }
+
+    #[test]
+    fn ctrl_s_on_the_delete_popup_deactivates_by_default() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        shell.update(Action::OpenPayeeDeletePopup(woolworths));
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with deactivate preselected always maps to an action");
+        shell.update(action);
+
+        assert!(shell.payee_popup.is_none());
+        assert!(
+            !shell
+                .view
+                .payee_store()
+                .unwrap()
+                .find(woolworths)
+                .unwrap()
+                .is_active
+        );
+    }
+
+    #[test]
+    fn a_referenced_payee_can_never_be_switched_to_delete_via_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        shell.update(Action::OpenPayeeDeletePopup(woolworths));
+
+        // Space on the `action` field would normally toggle the radio, but a referenced
+        // payee can never select `delete` — the popup itself refuses the switch.
+        shell.update(Action::PayeeDeletePopupInput(' '));
+        shell.update(Action::PayeeDeletePopupTab); // action -> confirm
+        for c in "Woolworths".chars() {
+            shell.update(Action::PayeeDeletePopupInput(c));
+        }
+
+        // Even with the exact name typed, ctrl+s never deletes it — deactivate is still the
+        // only thing selected.
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with deactivate selected always maps to an action");
+        shell.update(action);
+
+        let store = shell.view.payee_store().unwrap();
+        assert!(store.find(woolworths).is_some(), "still there, not deleted");
+        assert!(
+            !store.find(woolworths).unwrap().is_active,
+            "deactivated instead"
+        );
+    }
+
+    #[test]
+    fn deleting_an_unreferenced_payee_requires_the_exact_name_and_removes_it() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+
+        // "Old Vendor" is inactive and hidden by default — reveal it with `za` before it can
+        // be found by name.
+        // The lone `z` only arms the chord (`PayeesView::handle_key` mutates its own
+        // `pending_z` in place and returns `None` — there's nothing for `Shell` to dispatch
+        // yet); the following `a` completes it and does map to an action.
+        shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('z'),
+            KeyModifiers::NONE,
+        )));
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::NONE,
+            )))
+            .expect("completing the za chord always maps to an action");
+        shell.update(action);
+
+        let old_vendor = payee_id_by_name(&shell, "Old Vendor");
+        shell.update(Action::OpenPayeeDeletePopup(old_vendor));
+        shell.update(Action::PayeeDeletePopupInput(' ')); // select delete — now allowed
+        shell.update(Action::PayeeDeletePopupTab); // action -> confirm
+        for c in "Old Vendor".chars() {
+            shell.update(Action::PayeeDeletePopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid delete draft always maps to an action");
+        shell.update(action);
+
+        assert!(shell.payee_popup.is_none());
+        assert!(shell.view.payee_store().unwrap().find(old_vendor).is_none());
+    }
+
+    #[test]
+    fn m_on_the_delete_popup_jumps_to_the_matches_popup_but_not_while_typing_confirm() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        shell.update(Action::OpenPayeeDeletePopup(woolworths));
+        shell.update(Action::PayeeDeletePopupTab); // action -> confirm
+
+        // `m` while `confirm` has focus must be typed, not hijacked — "Woolworths" itself
+        // has no `m`, but a future Payee name could, so this proves the guard rather than
+        // relying on the fixture's own names never containing one.
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('m'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(action, Some(Action::PayeeDeletePopupInput('m')));
+
+        shell.update(Action::PayeeDeletePopupTab); // confirm -> action
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('m'),
+                KeyModifiers::NONE,
+            )))
+            .expect("m on the action field always maps to an action");
+        shell.update(action);
+        assert!(matches!(shell.payee_popup, Some(PayeePopup::Matches(_))));
+    }
+
+    #[test]
+    fn esc_closes_the_delete_popup_without_mutating_anything() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        shell.update(Action::OpenPayeeDeletePopup(woolworths));
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action while the popup is open"));
+
+        assert!(shell.payee_popup.is_none());
+        assert!(
+            shell
+                .view
+                .payee_store()
+                .unwrap()
+                .find(woolworths)
+                .unwrap()
+                .is_active
+        );
     }
 }

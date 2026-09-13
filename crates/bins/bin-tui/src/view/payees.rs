@@ -17,20 +17,22 @@
 //! transactions` is still a wireframe), mirroring `view::tags`'s own identical limitation and
 //! its "any subsequent key clears a showing message" rule.
 //!
-//! **`n`/`e`/`m` open the new/edit/rename-matches popups**
-//! (`crate::popup::payee::new`/`edit`/`matches`, "Payees: 8b new popup"/"8c edit popup"/"8d
-//! rename matches popup") — `Shell` owns the popups themselves, mirroring `view::accounts`'s
-//! own `n`/`e`/`d`; this `View` only ever resolves *which* key to turn into
-//! [`Action::OpenPayeeNewPopup`]/[`Action::OpenPayeeEditPopup`]/
-//! [`Action::OpenPayeeMatchesPopup`], and reacts to the eventual
-//! [`Action::CreatePayee`]/[`Action::UpdatePayee`]/[`Action::AddPayeeAlias`]/
-//! [`Action::ReplacePayeeAlias`]/[`Action::RemovePayeeAlias`] in [`PayeesView::update`].
+//! **`n`/`e`/`m`/`d` open the new/edit/rename-matches/delete popups**
+//! (`crate::popup::payee::new`/`edit`/`matches`/`delete`, "Payees: 8b new popup"/"8c edit
+//! popup"/"8d rename matches popup"/"8e delete popup") — `Shell` owns the popups themselves,
+//! mirroring `view::accounts`'s own `n`/`e`/`d`; this `View` only ever resolves *which* key to
+//! turn into [`Action::OpenPayeeNewPopup`]/[`Action::OpenPayeeEditPopup`]/
+//! [`Action::OpenPayeeMatchesPopup`]/[`Action::OpenPayeeDeletePopup`], and reacts to the
+//! eventual [`Action::CreatePayee`]/[`Action::UpdatePayee`]/[`Action::AddPayeeAlias`]/
+//! [`Action::ReplacePayeeAlias`]/[`Action::RemovePayeeAlias`]/[`Action::SetPayeeActive`]/
+//! [`Action::DeletePayee`] in [`PayeesView::update`]. **`a` deactivates the selection
+//! directly** — no popup, no draft to carry, mirroring `view::accounts`'s own bare `a` and
+//! routed through the same [`Action::SetPayeeActive`] the delete popup's own `(•) deactivate`
+//! commit reaches.
 //!
-//! **Keys not wired here**: `c`/`d` — the delete popup is a later ticket in this same map
-//! (8e); this `View` only builds what 8a/8b/8c/8d themselves specify. `a` (toggle active) is
-//! likewise deferred — it has no popup to open, but routing it through an
-//! `Action` the way `view::accounts`'s own bare `a` does needs an `Action::SetPayeeActive`
-//! variant this ticket has no other use for yet.
+//! **`c` (set default category directly from the list) isn't wired** — the README's own 8a
+//! footer names it, but nothing in this map's destination specifies its own popup or inline
+//! editor for it; out of scope here.
 //!
 //! **List, not a grouped tree**: unlike Accounts/Categories, Payees has no classification
 //! dimension to group by — the README's own 8a is a flat list, **sorted by `abs(total)`
@@ -323,6 +325,17 @@ impl View for PayeesView {
             // 8d rename matches popup"). `Shell` owns the popup itself, mirroring
             // `view::accounts`'s own `n`/`e`/`d`.
             KeyCode::Char('m') => Some(Action::OpenPayeeMatchesPopup(self.selected)),
+            // `d` — opens the delete popup (`crate::popup::payee::delete`, "Payees: 8e delete
+            // popup"). `Shell` owns the popup itself, mirroring `view::accounts`'s own `d`.
+            KeyCode::Char('d') => Some(Action::OpenPayeeDeletePopup(self.selected)),
+            // `a` — deactivates the selection directly, per the handoff's own "a off". No
+            // popup, no draft to carry, mirroring `view::accounts`'s own bare `a`. Routed
+            // through `Action::SetPayeeActive` (not mutated here in place) so the delete
+            // popup's own `(•) deactivate` commit reaches the exact same code path.
+            KeyCode::Char('a') => Some(Action::SetPayeeActive {
+                id: self.selected,
+                active: false,
+            }),
             _ => None,
         }
     }
@@ -399,6 +412,18 @@ impl View for PayeesView {
             }
             Action::RemovePayeeAlias(alias_id) => {
                 let _ = self.store.remove_alias(*alias_id);
+            }
+            Action::SetPayeeActive { id, active } => {
+                let _ = self.store.set_active(*id, *active);
+            }
+            // `#[allow]`: mirrors `view::accounts::AccountsView::update`'s own identical
+            // rationale for `Action::DeleteAccount` — kept as a plain nested `if` since this
+            // is the mutation, not a pure predicate clippy's own guard suggestion would imply.
+            #[allow(clippy::collapsible_match)]
+            Action::DeletePayee(id) => {
+                if self.store.delete(*id).is_ok() {
+                    self.recover_selection();
+                }
             }
             _ => {}
         }

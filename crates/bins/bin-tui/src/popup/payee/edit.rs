@@ -21,12 +21,9 @@
 //! who clears `website` after an icon was derived from it simply stops being flagged as
 //! derived — there's nothing left to derive from.
 //!
-//! **`m` jumps to `crate::popup::payee::matches`** ("Payees: 8d rename matches popup"), now
-//! that it exists — `Shell` swaps this popup for that one, mirroring
-//! `popup::account::edit`'s own `^d` hand-off to its delete popup. **`^d` isn't wired yet** —
-//! its target (`crate::popup::payee::delete`, "Payees: 8e delete popup") doesn't exist yet,
-//! the same situation `popup::account::edit`'s own `^d` was in before "Accounts: 7d delete
-//! popup" landed.
+//! **`m`/`^d` jump to `crate::popup::payee::matches`/`delete`** ("Payees: 8d rename matches
+//! popup"/"8e delete popup") — `Shell` swaps this popup for that one, mirroring
+//! `popup::account::edit`'s own `^d` hand-off to its delete popup.
 
 use lib_core::RowID;
 use ratatui::{
@@ -498,6 +495,7 @@ fn render_footer_hints(frame: &mut Frame, area: Rect) {
         ("^s", "save"),
         ("^a", "deactivate"),
         ("m", "matches"),
+        ("^d", "delete"),
         ("esc", "cancel"),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
@@ -743,11 +741,9 @@ mod tests {
 
         assert!(text.contains("created"));
         assert!(text.contains("2024"));
-        for key in ["tab", "^s", "^a", "m", "esc"] {
+        for key in ["tab", "^s", "^a", "m", "^d", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }
-        // `^d` isn't wired yet — see this module's own doc.
-        assert!(!text.contains("^d"));
     }
 
     #[test]

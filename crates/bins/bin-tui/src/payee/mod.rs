@@ -32,7 +32,7 @@
 
 mod fixture;
 
-pub use fixture::{FIXTURE_NOW, PayeeFixture};
+pub use fixture::PayeeFixture;
 
 use chrono::NaiveDate;
 use lib_core::{Money, RowID};
