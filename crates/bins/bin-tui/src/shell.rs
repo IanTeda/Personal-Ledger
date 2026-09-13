@@ -28,6 +28,7 @@ use crate::{
         },
         command::CommandPopup,
         settings::{SettingsPopup, edit::EditSettingPopup, guard::BaseUnitGuardPopup},
+        tag::{TagPopup, new::NewTagPopup},
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
     },
     tui::Tui,
@@ -79,6 +80,11 @@ pub struct Shell {
     /// `View::account_store`, not on anything `Shell` owns directly. Mutually exclusive with
     /// every other popup field.
     account_popup: Option<AccountPopup>,
+    /// The Tag-domain popup (`crate::popup::tag`) — `Some` while one is open. Owned here,
+    /// mirroring `account_popup`: it acts on `TagsView`'s own fixture, reached via
+    /// `View::tag_store`, not on anything `Shell` owns directly. Mutually exclusive with every
+    /// other popup field.
+    tag_popup: Option<TagPopup>,
     /// `true` after a lone `g` keypress with no completing chord yet — the leader half of the
     /// `g <letter>` jump chords in `docs/ux/tui/README.md`'s "Jumps" table (e.g. `g d`
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
@@ -109,6 +115,7 @@ impl Shell {
             category_popup: None,
             settings_popup: None,
             account_popup: None,
+            tag_popup: None,
             pending_leader: false,
             view_stack: Vec::new(),
         }
@@ -184,6 +191,9 @@ impl Shell {
                 }
                 if self.account_popup.is_some() {
                     return self.map_account_popup_key(key);
+                }
+                if self.tag_popup.is_some() {
+                    return self.map_tag_popup_key(key);
                 }
                 if self.pending_leader {
                     self.pending_leader = false;
@@ -531,6 +541,44 @@ impl Shell {
         }
     }
 
+    /// Routes a key while the Tag popup is open, resolving it into a concrete `Action` right
+    /// here against the active view's `TagStore` (`View::tag_store`) — mirrors
+    /// `map_account_popup_key`. A create that doesn't yet validate resolves to `None` (a
+    /// no-op) rather than a doomed `Action`.
+    fn map_tag_popup_key(&self, key: KeyEvent) -> Option<Action> {
+        let store = self.view.tag_store()?;
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+
+        match &self.tag_popup {
+            Some(TagPopup::New(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::CloseTagPopup),
+                KeyCode::Backspace => Some(Action::TagNewPopupBackspace),
+                KeyCode::Tab => Some(Action::TagNewPopupTab),
+                KeyCode::Char('s') if ctrl => {
+                    popup
+                        .create_fields(store)
+                        .map(|(name, active)| Action::CreateTag {
+                            name,
+                            active,
+                            close_after: true,
+                        })
+                }
+                KeyCode::Char('a') if ctrl => {
+                    popup
+                        .create_fields(store)
+                        .map(|(name, active)| Action::CreateTag {
+                            name,
+                            active,
+                            close_after: false,
+                        })
+                }
+                KeyCode::Char(c) if !ctrl => Some(Action::TagNewPopupInput(c)),
+                _ => None,
+            },
+            None => None,
+        }
+    }
+
     /// Applies an [`Action`] to shell state.
     fn update(&mut self, action: Action) {
         match action {
@@ -832,6 +880,38 @@ impl Shell {
             // straight through to `AccountsView::update`.
             Action::SetAccountActive { .. } => self.view.update(&action),
             Action::OpenTags => self.open(TagsView::new()),
+            Action::OpenTagNewPopup => {
+                self.tag_popup = Some(TagPopup::New(NewTagPopup::new()));
+                self.command_popup = None;
+                self.unit_popup = None;
+                self.category_popup = None;
+                self.settings_popup = None;
+                self.account_popup = None;
+            }
+            Action::CloseTagPopup => self.tag_popup = None,
+            Action::TagNewPopupInput(c) => {
+                if let Some(TagPopup::New(popup)) = &mut self.tag_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::TagNewPopupBackspace => {
+                if let Some(TagPopup::New(popup)) = &mut self.tag_popup {
+                    popup.backspace();
+                }
+            }
+            Action::TagNewPopupTab => {
+                if let Some(TagPopup::New(popup)) = &mut self.tag_popup {
+                    popup.tab();
+                }
+            }
+            Action::CreateTag { close_after, .. } => {
+                self.view.update(&action);
+                if close_after {
+                    self.tag_popup = None;
+                } else if let Some(TagPopup::New(popup)) = &mut self.tag_popup {
+                    popup.reset_for_next_tag();
+                }
+            }
         }
     }
 
@@ -868,6 +948,7 @@ impl Shell {
         self.category_popup = None;
         self.settings_popup = None;
         self.account_popup = None;
+        self.tag_popup = None;
     }
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
@@ -890,6 +971,7 @@ impl Shell {
         let base_unit_guard_popup_open =
             matches!(self.settings_popup, Some(SettingsPopup::BaseUnitGuard(_)));
         let account_popup_open = self.account_popup.is_some();
+        let tag_popup_open = self.tag_popup.is_some();
 
         // Header Frame — the status line names the mode whenever it isn't the resting
         // NORMAL state, per `docs/ux/tui/README.md`'s "show the mode ... whenever it is not
@@ -902,7 +984,7 @@ impl Shell {
         // breadcrumb, the same simplification every other view already makes).
         let mode = if command_popup_open {
             " · COMMAND"
-        } else if unit_popup_open || category_popup_open || account_popup_open {
+        } else if unit_popup_open || category_popup_open || account_popup_open || tag_popup_open {
             " · INSERT"
         } else if edit_setting_popup_open {
             " · EDIT"
@@ -946,6 +1028,8 @@ impl Shell {
             Line::from(" esc close dialog ").style(Style::default().fg(Color::DarkGray))
         } else if account_popup_open {
             Line::from(" esc close account form ").style(Style::default().fg(Color::DarkGray))
+        } else if tag_popup_open {
+            Line::from(" esc close tag form ").style(Style::default().fg(Color::DarkGray))
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             Line::from(vec![
@@ -979,6 +1063,11 @@ impl Shell {
         } else if let Some(popup) = &self.account_popup {
             frame.render_widget(Dim, rows[1]);
             if let Some(store) = self.view.account_store() {
+                popup.render(frame, frame.area(), store);
+            }
+        } else if let Some(popup) = &self.tag_popup {
+            frame.render_widget(Dim, rows[1]);
+            if let Some(store) = self.view.tag_store() {
                 popup.render(frame, frame.area(), store);
             }
         }
@@ -2243,6 +2332,16 @@ mod tests {
             .find(|node| node.name == name)
             .unwrap_or_else(|| panic!("fixture should seed a category named {name}"))
             .id
+    }
+
+    fn tag_exists(shell: &Shell, name: &str) -> bool {
+        shell
+            .view
+            .tag_store()
+            .expect("Tags view should expose its store")
+            .tags()
+            .iter()
+            .any(|tag| tag.name == name)
     }
 
     fn account_exists(shell: &Shell, name: &str) -> bool {
@@ -3598,5 +3697,151 @@ mod tests {
             Action::CommandPopupSetNotYetBuilt("account check <acct> <amount> [date]"),
             "account check should have no real dispatch — reconcile is out of this map's destination"
         );
+    }
+
+    #[test]
+    fn n_on_the_tags_view_opens_the_new_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        assert!(shell.tag_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('n'),
+                KeyModifiers::NONE,
+            )))
+            .expect("n on the tags view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.tag_popup, Some(TagPopup::New(_))));
+    }
+
+    #[test]
+    fn esc_closes_the_tag_popup_without_creating_anything() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let original_count = shell.view.tag_store().unwrap().tags().len();
+
+        shell.update(Action::OpenTagNewPopup);
+        for c in "Side Project".chars() {
+            shell.update(Action::TagNewPopupInput(c));
+        }
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action while the popup is open"));
+
+        assert!(shell.tag_popup.is_none());
+        assert_eq!(shell.view.tag_store().unwrap().tags().len(), original_count);
+        assert!(!tag_exists(&shell, "Side Project"));
+    }
+
+    #[test]
+    fn typing_a_name_then_ctrl_s_creates_the_tag_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let original_count = shell.view.tag_store().unwrap().tags().len();
+
+        shell.update(Action::OpenTagNewPopup);
+        for c in "Side Project".chars() {
+            shell.update(Action::TagNewPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(shell.tag_popup.is_none(), "popup should close after ctrl+s");
+        let store = shell.view.tag_store().unwrap();
+        assert_eq!(store.tags().len(), original_count + 1);
+        assert!(tag_exists(&shell, "Side Project"));
+    }
+
+    #[test]
+    fn tag_ctrl_s_does_nothing_while_the_name_is_empty() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        shell.update(Action::OpenTagNewPopup);
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.tag_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn tag_ctrl_s_does_nothing_while_the_name_clashes_case_insensitively() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        shell.update(Action::OpenTagNewPopup);
+        // The fixture seeds "Japan Trip 2026" — a clash regardless of case.
+        for c in "japan trip 2026".chars() {
+            shell.update(Action::TagNewPopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(
+            action, None,
+            "a case-insensitive clash should never validate"
+        );
+    }
+
+    #[test]
+    fn ctrl_a_creates_and_keeps_the_tag_popup_open_reset_for_another_tag() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+
+        shell.update(Action::OpenTagNewPopup);
+        for c in "First".chars() {
+            shell.update(Action::TagNewPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+a with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.tag_popup.is_some(),
+            "popup should stay open after ctrl+a"
+        );
+        assert!(tag_exists(&shell, "First"));
+
+        for c in "Second".chars() {
+            shell.update(Action::TagNewPopupInput(c));
+        }
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with the second tag's valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(tag_exists(&shell, "Second"));
+        assert!(shell.tag_popup.is_none());
+    }
+
+    #[test]
+    fn renders_the_open_tag_new_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        shell.update(Action::OpenTagNewPopup);
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the tag popup open should not error");
     }
 }

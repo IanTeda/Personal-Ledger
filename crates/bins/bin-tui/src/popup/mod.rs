@@ -12,6 +12,7 @@ pub mod account;
 pub mod category;
 pub mod command;
 pub mod settings;
+pub mod tag;
 pub mod unit;
 
 use ratatui::{

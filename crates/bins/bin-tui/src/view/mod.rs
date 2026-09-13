@@ -332,6 +332,29 @@ pub enum Action {
     /// unreachable from a live key until that ticket lands; tests construct it directly, the
     /// same way every other domain's screen ticket could before its own jump chord existed.
     OpenTags,
+    /// `n` on the Tags list — opens the new-tag popup (`crate::popup::tag::new`, "Tags: new
+    /// popup").
+    OpenTagNewPopup,
+    /// `Esc` while a Tag popup is open — closes it without creating anything.
+    CloseTagPopup,
+    /// A printable character typed while the Tag new popup's `name` field has focus — routed
+    /// to it; a no-op on the `active` field, which isn't text (the space-toggle on it is
+    /// handled inside the popup's own `push_char`).
+    TagNewPopupInput(char),
+    TagNewPopupBackspace,
+    /// `Tab` while the Tag new popup is open — advances focus to the other field (no
+    /// completion to apply, unlike `popup::account::new`'s `unit` field).
+    TagNewPopupTab,
+    /// `Ctrl+S`/`Ctrl+A` on the Tag new popup, once its draft validates (a non-empty `name`
+    /// with no case-insensitive clash) — `Shell` resolves the popup's current fields into this
+    /// pair before dispatching, mirroring `CreateAccount`. `close_after` is `false` for
+    /// `Ctrl+A` ("create and start another" — the popup stays open, reset for the next Tag),
+    /// `true` for `Ctrl+S`.
+    CreateTag {
+        name: String,
+        active: bool,
+        close_after: bool,
+    },
 }
 
 /// The single view `Shell` hosts at a time.

@@ -18,6 +18,11 @@
 //!
 //! **No `g`-jump chord or Dashboard row exist yet** — see [`Action::OpenTags`]'s own doc for
 //! why; this `View` is fully built and tested, just not yet reachable from a live key.
+//!
+//! **`n` opens the new-tag popup** (`crate::popup::tag::new`, "Tags: new popup") — `Shell`
+//! owns the popup itself, mirroring `view::accounts`'s own `n`/`e`/`d`; this `View` only ever
+//! resolves *which* key to turn into [`Action::OpenTagNewPopup`], and reacts to the eventual
+//! [`Action::CreateTag`] in [`TagsView::update`].
 
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::RowID;
@@ -222,11 +227,21 @@ impl View for TagsView {
                 self.pending_delete = true;
                 Some(Action::NoOp)
             }
+            KeyCode::Char('n') => Some(Action::OpenTagNewPopup),
             _ => None,
         }
     }
 
-    fn update(&mut self, _action: &Action) {}
+    /// Reacts to the Tag new popup's own confirmed create (`Shell` relays this after resolving
+    /// it against `tag_store()` — see `crate::popup::tag::new`'s own module doc). Every other
+    /// `Action` variant is ignored.
+    fn update(&mut self, action: &Action) {
+        if let Action::CreateTag { name, active, .. } = action
+            && let Ok(id) = self.store.create(name.clone(), *active)
+        {
+            self.selected = id;
+        }
+    }
 
     fn view(&self, frame: &mut Frame, area: Rect) {
         // The heading/delete-confirm row spans the *full* width, not just `PANE_WIDTH` — a
@@ -534,6 +549,45 @@ mod tests {
         let visible = view.visible_tags();
         assert_eq!(visible.len(), 1);
         assert_eq!(visible[0].name, "Japan Trip 2026");
+    }
+
+    #[test]
+    fn n_opens_the_new_tag_popup() {
+        let mut view = TagsView::new();
+        assert_eq!(
+            view.handle_key(key(KeyCode::Char('n'))),
+            Some(Action::OpenTagNewPopup)
+        );
+    }
+
+    #[test]
+    fn create_tag_selects_the_newly_created_tag() {
+        let mut view = TagsView::new();
+        let before_count = view.store.tags().len();
+
+        view.update(&Action::CreateTag {
+            name: "Wedding".to_string(),
+            active: true,
+            close_after: true,
+        });
+
+        assert_eq!(view.store.tags().len(), before_count + 1);
+        let selected = view.selected_tag().expect("a selection exists");
+        assert_eq!(selected.name, "Wedding");
+    }
+
+    #[test]
+    fn create_tag_ignores_a_duplicate_name_without_mutating() {
+        let mut view = TagsView::new();
+        let before_count = view.store.tags().len();
+
+        view.update(&Action::CreateTag {
+            name: "Japan Trip 2026".to_string(),
+            active: true,
+            close_after: true,
+        });
+
+        assert_eq!(view.store.tags().len(), before_count);
     }
 
     #[test]
