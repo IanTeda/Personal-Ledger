@@ -19,10 +19,11 @@
 //! **No `g`-jump chord or Dashboard row exist yet** — see [`Action::OpenTags`]'s own doc for
 //! why; this `View` is fully built and tested, just not yet reachable from a live key.
 //!
-//! **`n` opens the new-tag popup** (`crate::popup::tag::new`, "Tags: new popup") — `Shell`
-//! owns the popup itself, mirroring `view::accounts`'s own `n`/`e`/`d`; this `View` only ever
-//! resolves *which* key to turn into [`Action::OpenTagNewPopup`], and reacts to the eventual
-//! [`Action::CreateTag`] in [`TagsView::update`].
+//! **`n`/`e` open the new/edit-tag popups** (`crate::popup::tag::new`/`edit`, "Tags: new
+//! popup"/"Tags: edit popup") — `Shell` owns the popups themselves, mirroring `view::
+//! accounts`'s own `n`/`e`/`d`; this `View` only ever resolves *which* key to turn into
+//! [`Action::OpenTagNewPopup`]/[`Action::OpenTagEditPopup`], and reacts to the eventual
+//! [`Action::CreateTag`]/[`Action::UpdateTag`] in [`TagsView::update`].
 
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::RowID;
@@ -228,18 +229,25 @@ impl View for TagsView {
                 Some(Action::NoOp)
             }
             KeyCode::Char('n') => Some(Action::OpenTagNewPopup),
+            KeyCode::Char('e') => Some(Action::OpenTagEditPopup(self.selected)),
             _ => None,
         }
     }
 
-    /// Reacts to the Tag new popup's own confirmed create (`Shell` relays this after resolving
-    /// it against `tag_store()` — see `crate::popup::tag::new`'s own module doc). Every other
-    /// `Action` variant is ignored.
+    /// Reacts to the Tag new/edit popups' own confirmed create/save (`Shell` relays these
+    /// after resolving them against `tag_store()` — see `crate::popup::tag::new`/`edit`'s own
+    /// module docs). Every other `Action` variant is ignored.
     fn update(&mut self, action: &Action) {
-        if let Action::CreateTag { name, active, .. } = action
-            && let Ok(id) = self.store.create(name.clone(), *active)
-        {
-            self.selected = id;
+        match action {
+            Action::CreateTag { name, active, .. } => {
+                if let Ok(id) = self.store.create(name.clone(), *active) {
+                    self.selected = id;
+                }
+            }
+            Action::UpdateTag { id, name, active } => {
+                let _ = self.store.update(*id, name.clone(), *active);
+            }
+            _ => {}
         }
     }
 
@@ -588,6 +596,32 @@ mod tests {
         });
 
         assert_eq!(view.store.tags().len(), before_count);
+    }
+
+    #[test]
+    fn e_opens_the_edit_tag_popup_for_the_selection() {
+        let mut view = TagsView::new();
+        let selected = view.selected;
+        assert_eq!(
+            view.handle_key(key(KeyCode::Char('e'))),
+            Some(Action::OpenTagEditPopup(selected))
+        );
+    }
+
+    #[test]
+    fn update_tag_renames_and_deactivates_through_the_store_seam() {
+        let mut view = TagsView::new();
+        let home_renovation = find_id(&view, "Home Renovation");
+
+        view.update(&Action::UpdateTag {
+            id: home_renovation,
+            name: "Reno 2026".to_string(),
+            active: false,
+        });
+
+        let tag = view.store.find(home_renovation).expect("still exists");
+        assert_eq!(tag.name, "Reno 2026");
+        assert!(!tag.is_active);
     }
 
     #[test]

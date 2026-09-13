@@ -355,6 +355,25 @@ pub enum Action {
         active: bool,
         close_after: bool,
     },
+    /// `e` on a Tags list row — opens the edit popup (`crate::popup::tag::edit`, "Tags: edit
+    /// popup") for the given Tag.
+    OpenTagEditPopup(RowID),
+    /// A printable character typed while the Tag edit popup's `name` field has focus — routed
+    /// to it; a no-op on `active`, mirroring `TagNewPopupInput`.
+    TagEditPopupInput(char),
+    TagEditPopupBackspace,
+    /// `Tab` while the Tag edit popup is open — advances focus to the other field.
+    TagEditPopupTab,
+    /// `Ctrl+S` (save as typed) or `Ctrl+A` (save, but with `active` forced `false` regardless
+    /// of the checkbox — the ticket's own "`^a` deactivates without requiring the checkbox to
+    /// be toggled first") on the Tag edit popup, once its draft validates (a non-empty `name`
+    /// with no case-insensitive clash against another Tag) — `Shell` resolves the popup's
+    /// current fields into this pair before dispatching, mirroring `UpdateAccount`.
+    UpdateTag {
+        id: RowID,
+        name: String,
+        active: bool,
+    },
 }
 
 /// The single view `Shell` hosts at a time.

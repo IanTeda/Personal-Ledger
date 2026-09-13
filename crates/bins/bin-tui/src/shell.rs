@@ -28,7 +28,7 @@ use crate::{
         },
         command::CommandPopup,
         settings::{SettingsPopup, edit::EditSettingPopup, guard::BaseUnitGuardPopup},
-        tag::{TagPopup, new::NewTagPopup},
+        tag::{TagPopup, edit::EditTagPopup, new::NewTagPopup},
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
     },
     tui::Tui,
@@ -575,6 +575,19 @@ impl Shell {
                 KeyCode::Char(c) if !ctrl => Some(Action::TagNewPopupInput(c)),
                 _ => None,
             },
+            Some(TagPopup::Edit(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::CloseTagPopup),
+                KeyCode::Backspace => Some(Action::TagEditPopupBackspace),
+                KeyCode::Tab => Some(Action::TagEditPopupTab),
+                KeyCode::Char('s') if ctrl => popup
+                    .save_fields(store)
+                    .map(|(id, name, active)| Action::UpdateTag { id, name, active }),
+                KeyCode::Char('a') if ctrl => popup
+                    .deactivate_fields(store)
+                    .map(|(id, name, active)| Action::UpdateTag { id, name, active }),
+                KeyCode::Char(c) if !ctrl => Some(Action::TagEditPopupInput(c)),
+                _ => None,
+            },
             None => None,
         }
     }
@@ -911,6 +924,35 @@ impl Shell {
                 } else if let Some(TagPopup::New(popup)) = &mut self.tag_popup {
                     popup.reset_for_next_tag();
                 }
+            }
+            Action::OpenTagEditPopup(id) => {
+                if let Some(store) = self.view.tag_store() {
+                    self.tag_popup = Some(TagPopup::Edit(EditTagPopup::new(store, id)));
+                }
+                self.command_popup = None;
+                self.unit_popup = None;
+                self.category_popup = None;
+                self.settings_popup = None;
+                self.account_popup = None;
+            }
+            Action::TagEditPopupInput(c) => {
+                if let Some(TagPopup::Edit(popup)) = &mut self.tag_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::TagEditPopupBackspace => {
+                if let Some(TagPopup::Edit(popup)) = &mut self.tag_popup {
+                    popup.backspace();
+                }
+            }
+            Action::TagEditPopupTab => {
+                if let Some(TagPopup::Edit(popup)) = &mut self.tag_popup {
+                    popup.tab();
+                }
+            }
+            Action::UpdateTag { .. } => {
+                self.view.update(&action);
+                self.tag_popup = None;
             }
         }
     }
@@ -2342,6 +2384,18 @@ mod tests {
             .tags()
             .iter()
             .any(|tag| tag.name == name)
+    }
+
+    fn tag_id_by_name(shell: &Shell, name: &str) -> lib_core::RowID {
+        shell
+            .view
+            .tag_store()
+            .expect("Tags view should expose its store")
+            .tags()
+            .iter()
+            .find(|tag| tag.name == name)
+            .unwrap_or_else(|| panic!("fixture should seed a tag named {name}"))
+            .id
     }
 
     fn account_exists(shell: &Shell, name: &str) -> bool {
@@ -3843,5 +3897,152 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell with the tag popup open should not error");
+    }
+
+    #[test]
+    fn e_on_the_tags_view_opens_the_edit_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        assert!(shell.tag_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('e'),
+                KeyModifiers::NONE,
+            )))
+            .expect("e on the tags view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.tag_popup, Some(TagPopup::Edit(_))));
+    }
+
+    #[test]
+    fn esc_closes_the_tag_edit_popup_without_changing_anything() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let home_renovation = tag_id_by_name(&shell, "Home Renovation");
+
+        shell.update(Action::OpenTagEditPopup(home_renovation));
+        for c in "!!!".chars() {
+            shell.update(Action::TagEditPopupInput(c));
+        }
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action while the popup is open"));
+
+        assert!(shell.tag_popup.is_none());
+        let store = shell.view.tag_store().unwrap();
+        assert_eq!(store.find(home_renovation).unwrap().name, "Home Renovation");
+    }
+
+    #[test]
+    fn typing_a_new_name_and_ctrl_s_renames_the_tag_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let home_renovation = tag_id_by_name(&shell, "Home Renovation");
+
+        shell.update(Action::OpenTagEditPopup(home_renovation));
+        for c in " Reno".chars() {
+            shell.update(Action::TagEditPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(shell.tag_popup.is_none(), "popup should close after ctrl+s");
+        let store = shell.view.tag_store().unwrap();
+        assert_eq!(
+            store.find(home_renovation).unwrap().name,
+            "Home Renovation Reno"
+        );
+    }
+
+    #[test]
+    fn tag_edit_ctrl_s_does_nothing_while_the_name_is_empty() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let home_renovation = tag_id_by_name(&shell, "Home Renovation");
+        shell.update(Action::OpenTagEditPopup(home_renovation));
+        for _ in 0.."Home Renovation".chars().count() {
+            shell.update(Action::TagEditPopupBackspace);
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.tag_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn tag_edit_ctrl_s_does_nothing_while_the_rename_clashes_case_insensitively() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let home_renovation = tag_id_by_name(&shell, "Home Renovation");
+        shell.update(Action::OpenTagEditPopup(home_renovation));
+        for _ in 0.."Home Renovation".chars().count() {
+            shell.update(Action::TagEditPopupBackspace);
+        }
+        // The fixture seeds "Tax Deductible" — a clash regardless of case.
+        for c in "tax deductible".chars() {
+            shell.update(Action::TagEditPopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(
+            action, None,
+            "a case-insensitive clash should never validate"
+        );
+    }
+
+    #[test]
+    fn ctrl_a_deactivates_the_tag_without_toggling_the_checkbox_first_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let home_renovation = tag_id_by_name(&shell, "Home Renovation");
+        assert!(
+            shell
+                .view
+                .tag_store()
+                .unwrap()
+                .find(home_renovation)
+                .unwrap()
+                .is_active
+        );
+
+        shell.update(Action::OpenTagEditPopup(home_renovation));
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+a with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(shell.tag_popup.is_none());
+        let store = shell.view.tag_store().unwrap();
+        assert!(!store.find(home_renovation).unwrap().is_active);
+    }
+
+    #[test]
+    fn renders_the_open_tag_edit_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let home_renovation = tag_id_by_name(&shell, "Home Renovation");
+        shell.update(Action::OpenTagEditPopup(home_renovation));
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the tag edit popup open should not error");
     }
 }
