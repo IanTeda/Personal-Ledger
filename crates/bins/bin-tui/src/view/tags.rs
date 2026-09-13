@@ -84,9 +84,10 @@ const SUMMARY_CONTENT_ROWS: u16 = 4;
 const SPEND_MONTHS: usize = 24;
 
 /// Height of the "Tagged spend" section: heading, rule, the chart itself, then the footer
-/// stats line — mirrors `view::accounts::BALANCE_CHART_HEIGHT`, just one footer line instead
-/// of three (Tag has no "low point" worth calling out the way a balance line does).
-const TAGGED_SPEND_HEIGHT: u16 = 9;
+/// stats line — matches `view::categories::SPEND_CHART_HEIGHT`/`view::accounts::
+/// BALANCE_CHART_HEIGHT` exactly, so every domain's own spend/balance chart reads at the same
+/// scale (`view::accounts`'s own doc states this convention explicitly).
+const TAGGED_SPEND_HEIGHT: u16 = 12;
 
 /// How many category rows "Where it lands" shows before rolling the rest into an "N more" row
 /// — per `docs/ux/tui/tags/README.md`'s own "top 4 plus an `N more` roll-up".
