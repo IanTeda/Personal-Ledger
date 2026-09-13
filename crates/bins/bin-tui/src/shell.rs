@@ -389,6 +389,45 @@ impl Shell {
                     .tag_selection()
                     .map(|_| Action::ArmTagDelete)
                     .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some("payee") => Some(Action::OpenPayees),
+                // Mirrors the Accounts/Tags arms above — `payee new` has no selection
+                // prerequisite, only the guard that Payees is actually the active view.
+                Some(name @ "payee new <name>") => {
+                    if self.view.payee_store().is_some() {
+                        Some(Action::OpenPayeeNewPopup)
+                    } else {
+                        Some(Action::CommandPopupSetNotYetBuilt(name))
+                    }
+                }
+                Some(name @ "payee edit <payee>") => self
+                    .view
+                    .payee_selection()
+                    .map(Action::OpenPayeeEditPopup)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "payee match <payee>") => self
+                    .view
+                    .payee_selection()
+                    .map(Action::OpenPayeeMatchesPopup)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "payee off <payee>") => self
+                    .view
+                    .payee_selection()
+                    .map(|id| Action::SetPayeeActive { id, active: false })
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "payee on <payee>") => self
+                    .view
+                    .payee_selection()
+                    .map(|id| Action::SetPayeeActive { id, active: true })
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "payee delete <payee>") => self
+                    .view
+                    .payee_selection()
+                    .map(Action::OpenPayeeDeletePopup)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                // "payee rename <payee> <new>"/"payee match add <payee> <text>"/"payee
+                // default <payee> <category>" fall through to the catch-all below — each
+                // needs a typed argument (a new name, alias text, or category) the command
+                // popup can't resolve yet, matching Categories' own "rename"/"merge"/"tree".
                 Some(name) => Some(Action::CommandPopupSetNotYetBuilt(name)),
                 None => None,
             },
@@ -2097,15 +2136,14 @@ mod tests {
     fn selecting_each_no_longer_dispatched_list_command_and_pressing_enter_shows_not_yet_built() {
         // These used to navigate to an empty placeholder box on `Enter`; per this ticket they
         // now show the "not yet built" message like every other undispatched command, and the
-        // popup stays open rather than navigating anywhere. `category list` (now `category`)
-        // and `account list` (now `account`) are no longer among them — "Categories:
-        // :category command grammar" and "Accounts: :acct command grammar" gave them real
-        // dispatch.
+        // popup stays open rather than navigating anywhere. `category list` (now `category`),
+        // `account list` (now `account`) and `payee list` (now bare `payee`) are no longer
+        // among them — "Categories: :category command grammar", "Accounts: :acct command
+        // grammar" and fixing the `:payee` command gave them real dispatch.
         let cases: &[&str] = &[
             "check list",
             "budget list",
             "help",
-            "payee list",
             "report list",
             "txn recent",
         ];
@@ -5310,5 +5348,167 @@ mod tests {
                 .unwrap()
                 .is_active
         );
+    }
+
+    #[test]
+    fn selecting_the_payee_command_and_pressing_enter_opens_the_payees_view() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        // "payee" alone is ambiguous (it substring-matches "payee new <name>" etc. before the
+        // bare "payee" entry) — "payees" narrows to just this domain's own commands, with the
+        // bare "payee" entry first among them.
+        let action = select_and_enter(&mut shell, "payees");
+        assert_eq!(action, Action::OpenPayees);
+    }
+
+    #[test]
+    fn selecting_payee_new_opens_the_new_popup_even_without_a_selection_prerequisite() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "payee new");
+        assert_eq!(action, Action::OpenPayeeNewPopup);
+    }
+
+    #[test]
+    fn selecting_payee_edit_while_payees_is_active_opens_the_edit_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let selected = shell.view.payee_selection().unwrap();
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "payee edit");
+        assert_eq!(action, Action::OpenPayeeEditPopup(selected));
+    }
+
+    #[test]
+    fn selecting_payee_match_while_payees_is_active_opens_the_matches_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let selected = shell.view.payee_selection().unwrap();
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "payee match");
+        assert_eq!(action, Action::OpenPayeeMatchesPopup(selected));
+    }
+
+    #[test]
+    fn selecting_payee_delete_while_payees_is_active_opens_the_delete_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let selected = shell.view.payee_selection().unwrap();
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "payee delete");
+        assert_eq!(action, Action::OpenPayeeDeletePopup(selected));
+    }
+
+    #[test]
+    fn selecting_payee_off_while_payees_is_active_deactivates_the_selection_immediately() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let selected = shell.view.payee_selection().unwrap();
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "payee off");
+        assert_eq!(
+            action,
+            Action::SetPayeeActive {
+                id: selected,
+                active: false
+            }
+        );
+        shell.update(action);
+        assert!(
+            !shell
+                .view
+                .payee_store()
+                .unwrap()
+                .find(selected)
+                .unwrap()
+                .is_active
+        );
+    }
+
+    #[test]
+    fn selecting_payee_on_while_payees_is_active_reactivates_the_selection_immediately() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let selected = shell.view.payee_selection().unwrap();
+        shell.update(Action::SetPayeeActive {
+            id: selected,
+            active: false,
+        });
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "payee on");
+        assert_eq!(
+            action,
+            Action::SetPayeeActive {
+                id: selected,
+                active: true
+            }
+        );
+        shell.update(action);
+        assert!(
+            shell
+                .view
+                .payee_store()
+                .unwrap()
+                .find(selected)
+                .unwrap()
+                .is_active
+        );
+    }
+
+    #[test]
+    fn payee_new_edit_match_off_on_and_delete_fall_back_to_not_yet_built_when_payees_is_not_active()
+    {
+        for (filter, name) in [
+            ("payee edit", "payee edit <payee>"),
+            ("payee match", "payee match <payee>"),
+            ("payee off", "payee off <payee>"),
+            ("payee on", "payee on <payee>"),
+            ("payee delete", "payee delete <payee>"),
+        ] {
+            let mut shell = Shell::new();
+            shell.update(Action::OpenCommandPopup);
+            let action = select_and_enter(&mut shell, filter);
+            assert_eq!(
+                action,
+                Action::CommandPopupSetNotYetBuilt(name),
+                "{filter} should fall back when Payees isn't the active view"
+            );
+        }
+
+        // "payee new" is the one exception — it has no selection prerequisite, so it falls
+        // back only when Payees itself isn't active, which is exactly this case.
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        let action = select_and_enter(&mut shell, "payee new");
+        assert_eq!(
+            action,
+            Action::CommandPopupSetNotYetBuilt("payee new <name>")
+        );
+    }
+
+    #[test]
+    fn payee_rename_match_add_and_default_always_fall_back_to_not_yet_built() {
+        for (filter, name) in [
+            ("payee rename", "payee rename <payee> <new>"),
+            ("payee match add", "payee match add <payee> <text>"),
+            ("payee default", "payee default <payee> <category>"),
+        ] {
+            let mut shell = Shell::new();
+            shell.update(Action::OpenPayees);
+            shell.update(Action::OpenCommandPopup);
+            let action = select_and_enter(&mut shell, filter);
+            assert_eq!(
+                action,
+                Action::CommandPopupSetNotYetBuilt(name),
+                "{filter} needs a typed argument the command popup can't resolve yet"
+            );
+        }
     }
 }
