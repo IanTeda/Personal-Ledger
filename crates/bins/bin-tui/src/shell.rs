@@ -18,6 +18,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     event::{Event, EventHandler},
+    payee::AliasSource,
     popup::{
         Dim,
         account::{
@@ -27,7 +28,10 @@ use crate::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
         command::CommandPopup,
-        payee::{PayeePopup, edit::EditPayeePopup, new::NewPayeePopup},
+        payee::{
+            PayeePopup, edit::EditPayeePopup, matches::ComposeCommit, matches::PayeeMatchesPopup,
+            new::NewPayeePopup,
+        },
         settings::{SettingsPopup, edit::EditSettingPopup, guard::BaseUnitGuardPopup},
         tag::{TagPopup, edit::EditTagPopup, new::NewTagPopup},
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
@@ -712,10 +716,74 @@ impl Shell {
                         }
                     },
                 ),
-                // `m`/`^d` aren't wired yet — see `popup::payee::edit`'s own module doc.
+                // `m` jumps to the rename-matches popup (8d), now that it exists — mirrors
+                // `popup::account::edit`'s own `^d` hand-off to its delete popup. `^d` (the
+                // Payee delete popup, 8e) still isn't wired — see `popup::payee::edit`'s own
+                // module doc.
+                KeyCode::Char('m') if !ctrl => {
+                    Some(Action::OpenPayeeMatchesPopup(popup.editing_id()))
+                }
                 KeyCode::Char(c) if !ctrl => Some(Action::PayeeEditPopupInput(c)),
                 _ => None,
             },
+            Some(PayeePopup::Matches(popup)) => {
+                if popup.is_composing() {
+                    match key.code {
+                        KeyCode::Esc => Some(Action::PayeeMatchesPopupCancelCompose),
+                        KeyCode::Backspace => Some(Action::PayeeMatchesPopupBackspace),
+                        KeyCode::Tab => Some(Action::PayeeMatchesPopupToggleMode),
+                        KeyCode::Char('s') if ctrl => {
+                            popup.commit(store).map(|commit| match commit {
+                                ComposeCommit::Add {
+                                    payee_id,
+                                    typed,
+                                    mode,
+                                } => Action::AddPayeeAlias {
+                                    payee_id,
+                                    typed,
+                                    mode,
+                                },
+                                ComposeCommit::Replace {
+                                    old_alias_id,
+                                    payee_id,
+                                    typed,
+                                    mode,
+                                } => Action::ReplacePayeeAlias {
+                                    old_alias_id,
+                                    payee_id,
+                                    typed,
+                                    mode,
+                                },
+                            })
+                        }
+                        KeyCode::Char(c) if !ctrl => Some(Action::PayeeMatchesPopupInput(c)),
+                        _ => None,
+                    }
+                } else {
+                    match key.code {
+                        KeyCode::Esc => Some(Action::ClosePayeePopup),
+                        KeyCode::Char('j') | KeyCode::Down => {
+                            Some(Action::PayeeMatchesPopupMoveDown)
+                        }
+                        KeyCode::Char('k') | KeyCode::Up => Some(Action::PayeeMatchesPopupMoveUp),
+                        KeyCode::Char('a') => Some(Action::PayeeMatchesPopupBeginAdd),
+                        KeyCode::Char('t') => Some(Action::PayeeMatchesPopupBeginTest),
+                        // `e`/`d` only ever produce an action for a `source = Manual` row —
+                        // a `source = Rename` row's protection is stated once, permanently, in
+                        // the popup's own closing note rather than a per-keypress refusal (see
+                        // `popup::payee::matches`'s own module doc).
+                        KeyCode::Char('e') => popup
+                            .selected_alias(store)
+                            .filter(|alias| alias.source == AliasSource::Manual)
+                            .map(|_| Action::PayeeMatchesPopupBeginEdit),
+                        KeyCode::Char('d') => popup
+                            .selected_alias(store)
+                            .filter(|alias| alias.source == AliasSource::Manual)
+                            .map(|alias| Action::RemovePayeeAlias(alias.id)),
+                        _ => None,
+                    }
+                }
+            }
             None => None,
         }
     }
@@ -1152,6 +1220,79 @@ impl Shell {
             Action::UpdatePayee { .. } => {
                 self.view.update(&action);
                 self.payee_popup = None;
+            }
+            Action::OpenPayeeMatchesPopup(id) => {
+                self.payee_popup = Some(PayeePopup::Matches(PayeeMatchesPopup::new(id)));
+                self.command_popup = None;
+                self.unit_popup = None;
+                self.category_popup = None;
+                self.settings_popup = None;
+                self.account_popup = None;
+                self.tag_popup = None;
+            }
+            Action::PayeeMatchesPopupMoveUp => {
+                if let Some(store) = self.view.payee_store()
+                    && let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup
+                {
+                    popup.move_up(store);
+                }
+            }
+            Action::PayeeMatchesPopupMoveDown => {
+                if let Some(store) = self.view.payee_store()
+                    && let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup
+                {
+                    popup.move_down(store);
+                }
+            }
+            Action::PayeeMatchesPopupBeginAdd => {
+                if let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup {
+                    popup.begin_add();
+                }
+            }
+            Action::PayeeMatchesPopupBeginEdit => {
+                if let Some(store) = self.view.payee_store()
+                    && let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup
+                {
+                    popup.begin_edit(store);
+                }
+            }
+            Action::PayeeMatchesPopupBeginTest => {
+                if let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup {
+                    popup.begin_test();
+                }
+            }
+            Action::PayeeMatchesPopupCancelCompose => {
+                if let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup {
+                    popup.cancel_compose();
+                }
+            }
+            Action::PayeeMatchesPopupInput(c) => {
+                if let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::PayeeMatchesPopupBackspace => {
+                if let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup {
+                    popup.backspace();
+                }
+            }
+            Action::PayeeMatchesPopupToggleMode => {
+                if let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup {
+                    popup.toggle_mode();
+                }
+            }
+            // `RemovePayeeAlias`/`AddPayeeAlias`/`ReplacePayeeAlias` were already validated in
+            // `map_payee_popup_key` against the store `Shell` itself has no other access to —
+            // relaying to the active `View`'s own `update` is where the mutation actually
+            // happens, mirroring `Action::MoveCategory`'s own identical pattern. The popup
+            // itself only needs its compose slot cleared afterwards; its list re-reads the
+            // store fresh on the very next render.
+            Action::RemovePayeeAlias(_) => self.view.update(&action),
+            Action::AddPayeeAlias { .. } | Action::ReplacePayeeAlias { .. } => {
+                self.view.update(&action);
+                if let Some(PayeePopup::Matches(popup)) = &mut self.payee_popup {
+                    popup.cancel_compose();
+                }
             }
         }
     }
@@ -4711,5 +4852,186 @@ mod tests {
         assert!(shell.payee_popup.is_none());
         let store = shell.view.payee_store().unwrap();
         assert!(!store.find(woolworths).unwrap().is_active);
+    }
+
+    #[test]
+    fn m_on_the_payees_view_opens_the_matches_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        assert!(shell.payee_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('m'),
+                KeyModifiers::NONE,
+            )))
+            .expect("m on the payees view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.payee_popup, Some(PayeePopup::Matches(_))));
+    }
+
+    #[test]
+    fn m_on_the_payee_edit_popup_jumps_to_the_matches_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        shell.update(Action::OpenPayeeEditPopup(woolworths));
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('m'),
+                KeyModifiers::NONE,
+            )))
+            .expect("m always maps to an action while the edit popup is open");
+        shell.update(action);
+
+        assert!(matches!(shell.payee_popup, Some(PayeePopup::Matches(_))));
+    }
+
+    #[test]
+    fn adding_a_fresh_pattern_saves_it_as_a_manual_alias_and_returns_to_the_list() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let coles_central = payee_id_by_name(&shell, "Coles Central");
+        let aliases_before = shell
+            .view
+            .payee_store()
+            .unwrap()
+            .aliases(coles_central)
+            .len();
+
+        shell.update(Action::OpenPayeeMatchesPopup(coles_central));
+        shell.update(Action::PayeeMatchesPopupBeginAdd);
+        for c in "Coles Supermarket".chars() {
+            shell.update(Action::PayeeMatchesPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        let store = shell.view.payee_store().unwrap();
+        let aliases = store.aliases(coles_central);
+        assert_eq!(aliases.len(), aliases_before + 1);
+        assert!(
+            aliases
+                .iter()
+                .any(|alias| alias.pattern == "(?i)^Coles Supermarket$")
+        );
+        // The popup stays open (list mode), just with its compose slot cleared.
+        assert!(matches!(shell.payee_popup, Some(PayeePopup::Matches(_))));
+    }
+
+    #[test]
+    fn adding_a_colliding_pattern_does_nothing() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let coles_central = payee_id_by_name(&shell, "Coles Central");
+
+        shell.update(Action::OpenPayeeMatchesPopup(coles_central));
+        shell.update(Action::PayeeMatchesPopupBeginAdd);
+        for c in "Woolworths".chars() {
+            shell.update(Action::PayeeMatchesPopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None, "a colliding pattern should never validate");
+    }
+
+    #[test]
+    fn d_removes_a_manual_alias_but_refuses_on_a_rename_sourced_one() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        let aliases_before = shell.view.payee_store().unwrap().aliases(woolworths).len();
+
+        shell.update(Action::OpenPayeeMatchesPopup(woolworths));
+        // Selection starts on index 0 — the seeded rename alias.
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('d'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(
+            action, None,
+            "removing a rename-sourced alias should refuse"
+        );
+        assert_eq!(
+            shell.view.payee_store().unwrap().aliases(woolworths).len(),
+            aliases_before
+        );
+
+        // Move to index 1 — the seeded manual alias — and remove it for real.
+        shell.update(Action::PayeeMatchesPopupMoveDown);
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('d'),
+                KeyModifiers::NONE,
+            )))
+            .expect("removing a manual alias always maps to an action");
+        shell.update(action);
+
+        assert_eq!(
+            shell.view.payee_store().unwrap().aliases(woolworths).len(),
+            aliases_before - 1
+        );
+    }
+
+    #[test]
+    fn e_refuses_on_a_rename_sourced_alias_and_edits_a_manual_one() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+
+        shell.update(Action::OpenPayeeMatchesPopup(woolworths));
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('e'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(action, None, "editing a rename-sourced alias should refuse");
+
+        shell.update(Action::PayeeMatchesPopupMoveDown); // onto the manual alias
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('e'),
+                KeyModifiers::NONE,
+            )))
+            .expect("editing a manual alias always maps to an action");
+        shell.update(action);
+
+        let Some(PayeePopup::Matches(popup)) = &shell.payee_popup else {
+            panic!("expected the matches popup to still be open, composing");
+        };
+        assert!(popup.is_composing());
+    }
+
+    #[test]
+    fn esc_cancels_the_compose_draft_without_closing_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        shell.update(Action::OpenPayeeMatchesPopup(woolworths));
+        shell.update(Action::PayeeMatchesPopupBeginAdd);
+        shell.update(Action::PayeeMatchesPopupInput('x'));
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action while composing"));
+
+        let Some(PayeePopup::Matches(popup)) = &shell.payee_popup else {
+            panic!("expected the matches popup to still be open");
+        };
+        assert!(!popup.is_composing());
+
+        // A second `Esc`, with nothing composing, closes the popup itself.
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action"));
+        assert!(shell.payee_popup.is_none());
     }
 }

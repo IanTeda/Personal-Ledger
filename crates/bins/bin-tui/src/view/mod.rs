@@ -25,7 +25,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::account::AccountStore;
 use crate::category::CategoryStore;
-use crate::payee::PayeeStore;
+use crate::payee::{AliasMode, PayeeStore};
 use crate::tag::TagStore;
 
 /// A message `Shell` or the active `View` reacts to. Deliberately minimal for now — the full
@@ -446,6 +446,57 @@ pub enum Action {
         icon_derived: bool,
         default_category_path: Option<String>,
         active: bool,
+    },
+    /// `m` on a Payees list row, or from the edit popup — opens the rename-matches popup
+    /// (`crate::popup::payee::matches`, "Payees: 8d rename matches popup") for the given
+    /// Payee.
+    OpenPayeeMatchesPopup(RowID),
+    /// `↑`/`↓` (or `k`/`j`) while the Payee matches popup's list has focus — moves the
+    /// selection among the Payee's own aliases.
+    PayeeMatchesPopupMoveUp,
+    PayeeMatchesPopupMoveDown,
+    /// `a` — starts composing a brand-new manual alias.
+    PayeeMatchesPopupBeginAdd,
+    /// `e` on a `source = Manual` row — starts composing a replacement for it, prefilled from
+    /// its current pattern. Never dispatched for a `source = Rename` row (`PayeeMatchesPopup`
+    /// itself refuses to produce this action there — see its own module doc); the row's own
+    /// protection is stated in the popup's permanent footnote instead of a per-keypress
+    /// refusal message.
+    PayeeMatchesPopupBeginEdit,
+    /// `t` — starts composing arbitrary text purely to preview what it would resolve to
+    /// (`PayeeStore::resolve`), with no intent to save anything.
+    PayeeMatchesPopupBeginTest,
+    /// `Esc` while composing (add/edit/test) — discards the draft and returns focus to the
+    /// list, without closing the popup itself (`Esc` with no compose in progress closes the
+    /// popup instead, via the ordinary `ClosePayeePopup`).
+    PayeeMatchesPopupCancelCompose,
+    /// A printable character typed while composing — appended to the draft's typed text.
+    PayeeMatchesPopupInput(char),
+    PayeeMatchesPopupBackspace,
+    /// `Tab` while composing — toggles the `as` control between `exact text` and `regex`.
+    PayeeMatchesPopupToggleMode,
+    /// `d` on a `source = Manual` row — removes it. Never dispatched for a `source = Rename`
+    /// row, mirroring `PayeeMatchesPopupBeginEdit`'s own guard.
+    RemovePayeeAlias(RowID),
+    /// `Ctrl+S` while composing a brand-new alias, once the typed text compiles to a pattern
+    /// that doesn't collide with another Payee (`Shell` checks this against
+    /// `PayeeStore::conflicting_holder` before ever producing this action, mirroring
+    /// `CreatePayee`'s own name-collision guard).
+    AddPayeeAlias {
+        payee_id: RowID,
+        typed: String,
+        mode: AliasMode,
+    },
+    /// `Ctrl+S` while composing a replacement for an existing `source = Manual` alias —
+    /// removes `old_alias_id` and adds the newly-typed one in its place, the closest this
+    /// fixture-only model comes to an in-place edit (there is no `PayeeStore::update_alias`;
+    /// see `crate::popup::payee::matches`'s own module doc for why that's an acceptable
+    /// trade-off here). Guarded the same way as `AddPayeeAlias`.
+    ReplacePayeeAlias {
+        old_alias_id: RowID,
+        payee_id: RowID,
+        typed: String,
+        mode: AliasMode,
     },
 }
 

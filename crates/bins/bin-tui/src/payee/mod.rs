@@ -199,6 +199,14 @@ pub trait PayeeStore {
     /// wins, in arbitrary order" limitation rather than solving a harder problem it doesn't.
     fn conflict_partners(&self, id: RowID) -> Vec<RowID>;
 
+    /// The name of the other Payee `pattern` would collide with if added to `payee_id` right
+    /// now, if any — matches that other Payee's exact name, or duplicates one of their own
+    /// alias patterns verbatim. The read-only half of [`PayeeStore::add_alias`]'s own
+    /// collision check (see [`PayeeStore::conflict_partners`]'s own doc on what "collides"
+    /// means here), exposed so a compose-in-progress popup (8d) can preview the same refusal
+    /// before committing.
+    fn conflicting_holder(&self, payee_id: RowID, pattern: &str) -> Option<String>;
+
     /// Creates a new Payee, or `Err(PayeeError::DuplicateName)` on a case-insensitive name
     /// clash (active or not).
     #[allow(clippy::too_many_arguments)]

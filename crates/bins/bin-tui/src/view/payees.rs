@@ -17,15 +17,18 @@
 //! transactions` is still a wireframe), mirroring `view::tags`'s own identical limitation and
 //! its "any subsequent key clears a showing message" rule.
 //!
-//! **`n`/`e` open the new/edit popups** (`crate::popup::payee::new`/`edit`, "Payees: 8b new
-//! popup"/"8c edit popup") — `Shell` owns the popups themselves, mirroring `view::accounts`'s
+//! **`n`/`e`/`m` open the new/edit/rename-matches popups**
+//! (`crate::popup::payee::new`/`edit`/`matches`, "Payees: 8b new popup"/"8c edit popup"/"8d
+//! rename matches popup") — `Shell` owns the popups themselves, mirroring `view::accounts`'s
 //! own `n`/`e`/`d`; this `View` only ever resolves *which* key to turn into
-//! [`Action::OpenPayeeNewPopup`]/[`Action::OpenPayeeEditPopup`], and reacts to the eventual
-//! [`Action::CreatePayee`]/[`Action::UpdatePayee`] in [`PayeesView::update`].
+//! [`Action::OpenPayeeNewPopup`]/[`Action::OpenPayeeEditPopup`]/
+//! [`Action::OpenPayeeMatchesPopup`], and reacts to the eventual
+//! [`Action::CreatePayee`]/[`Action::UpdatePayee`]/[`Action::AddPayeeAlias`]/
+//! [`Action::ReplacePayeeAlias`]/[`Action::RemovePayeeAlias`] in [`PayeesView::update`].
 //!
-//! **Keys not wired here**: `m`/`c`/`d` — the rename-matches/delete popups are later tickets
-//! in this same map (8d/8e); this `View` only builds what 8a/8b/8c themselves specify. `a`
-//! (toggle active) is likewise deferred — it has no popup to open, but routing it through an
+//! **Keys not wired here**: `c`/`d` — the delete popup is a later ticket in this same map
+//! (8e); this `View` only builds what 8a/8b/8c/8d themselves specify. `a` (toggle active) is
+//! likewise deferred — it has no popup to open, but routing it through an
 //! `Action` the way `view::accounts`'s own bare `a` does needs an `Action::SetPayeeActive`
 //! variant this ticket has no other use for yet.
 //!
@@ -316,13 +319,18 @@ impl View for PayeesView {
             // `e` — opens the edit popup (`crate::popup::payee::edit`, "Payees: 8c edit
             // popup"). `Shell` owns the popup itself, mirroring `view::accounts`'s own `e`.
             KeyCode::Char('e') => Some(Action::OpenPayeeEditPopup(self.selected)),
+            // `m` — opens the rename-matches popup (`crate::popup::payee::matches`, "Payees:
+            // 8d rename matches popup"). `Shell` owns the popup itself, mirroring
+            // `view::accounts`'s own `n`/`e`/`d`.
+            KeyCode::Char('m') => Some(Action::OpenPayeeMatchesPopup(self.selected)),
             _ => None,
         }
     }
 
-    /// Reacts to the Payee popup's own confirmed create/save (`Shell` relays these after
-    /// resolving them against `payee_store()` — see `crate::popup::payee::new`/`edit`'s own
-    /// module docs). Every other `Action` variant is ignored.
+    /// Reacts to the Payee popup's own confirmed create/save/alias mutation (`Shell` relays
+    /// these after resolving them against `payee_store()` — see
+    /// `crate::popup::payee::new`/`edit`/`matches`'s own module docs). Every other `Action`
+    /// variant is ignored.
     fn update(&mut self, action: &Action) {
         match action {
             Action::CreatePayee {
@@ -367,6 +375,30 @@ impl View for PayeesView {
                     default_category_path.clone(),
                 );
                 let _ = self.store.set_active(*id, *active);
+            }
+            // `AddPayeeAlias`/`ReplacePayeeAlias`/`RemovePayeeAlias` are only ever dispatched
+            // once `Shell`'s key routing (`map_payee_popup_key`) has already checked they'll
+            // succeed against the read-only store (a collision refusal, or a `source =
+            // Rename` guard, means no action is produced at all) — see
+            // `crate::popup::payee::matches`'s own module doc.
+            Action::AddPayeeAlias {
+                payee_id,
+                typed,
+                mode,
+            } => {
+                let _ = self.store.add_alias(*payee_id, typed, *mode);
+            }
+            Action::ReplacePayeeAlias {
+                old_alias_id,
+                payee_id,
+                typed,
+                mode,
+            } => {
+                let _ = self.store.remove_alias(*old_alias_id);
+                let _ = self.store.add_alias(*payee_id, typed, *mode);
+            }
+            Action::RemovePayeeAlias(alias_id) => {
+                let _ = self.store.remove_alias(*alias_id);
             }
             _ => {}
         }

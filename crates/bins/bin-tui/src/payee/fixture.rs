@@ -730,6 +730,21 @@ impl PayeeStore for PayeeFixture {
         Ok(())
     }
 
+    fn conflicting_holder(&self, payee_id: RowID, pattern: &str) -> Option<String> {
+        self.payees
+            .iter()
+            .filter(|other| other.id != payee_id)
+            .find_map(|other| {
+                let matches_their_name =
+                    regex::Regex::new(pattern).is_ok_and(|re| re.is_match(&other.name));
+                let duplicates_their_pattern = self
+                    .aliases(other.id)
+                    .iter()
+                    .any(|alias| alias.pattern == pattern);
+                (matches_their_name || duplicates_their_pattern).then(|| other.name.clone())
+            })
+    }
+
     fn add_alias(
         &mut self,
         payee_id: RowID,
@@ -742,25 +757,8 @@ impl PayeeStore for PayeeFixture {
             AliasMode::Regex => typed.to_string(),
         };
 
-        for other in self.payees.iter().filter(|payee| payee.id != payee_id) {
-            let matches_their_name =
-                regex::Regex::new(&pattern).is_ok_and(|re| re.is_match(&other.name));
-            if matches_their_name {
-                return Err(PayeeError::PatternCollision {
-                    pattern,
-                    other: other.name.clone(),
-                });
-            }
-            let duplicates_their_pattern = self
-                .aliases(other.id)
-                .iter()
-                .any(|alias| alias.pattern == pattern);
-            if duplicates_their_pattern {
-                return Err(PayeeError::PatternCollision {
-                    pattern,
-                    other: other.name.clone(),
-                });
-            }
+        if let Some(other) = self.conflicting_holder(payee_id, &pattern) {
+            return Err(PayeeError::PatternCollision { pattern, other });
         }
 
         let id = RowID::new();
@@ -1022,6 +1020,21 @@ mod tests {
                 pattern: "(?i)^Woolworths$".to_string(),
                 other: "Woolworths".to_string(),
             })
+        );
+    }
+
+    #[test]
+    fn conflicting_holder_names_the_payee_a_pattern_would_collide_with() {
+        let store = PayeeFixture::new();
+        let coles_central = find_by_name(&store, "Coles Central").id;
+
+        assert_eq!(
+            store.conflicting_holder(coles_central, "(?i)^Woolworths$"),
+            Some("Woolworths".to_string())
+        );
+        assert_eq!(
+            store.conflicting_holder(coles_central, "(?i)^Something Unrelated$"),
+            None
         );
     }
 
