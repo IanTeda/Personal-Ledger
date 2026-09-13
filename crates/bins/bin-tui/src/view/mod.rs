@@ -14,6 +14,7 @@ pub mod help;
 pub mod payees;
 pub mod reports;
 pub mod settings;
+pub mod tags;
 pub mod transactions;
 pub mod units;
 
@@ -24,6 +25,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::account::AccountStore;
 use crate::category::CategoryStore;
+use crate::tag::TagStore;
 
 /// A message `Shell` or the active `View` reacts to. Deliberately minimal for now — the full
 /// action registry the command window will dispatch through (ADR-0013) is later work; this
@@ -323,6 +325,13 @@ pub enum Action {
         id: RowID,
         active: bool,
     },
+    /// `Enter` on the command popup's `tag` entry — opens the Tags catalog screen
+    /// (`view::tags::TagsView`, "Tags: screen — list, summary box, and lightweight delete").
+    /// No `g`-jump chord or Dashboard menu row exist for this yet — the map's own destination
+    /// never named one, only the command grammar ("Tags: :tag command grammar") — so this is
+    /// unreachable from a live key until that ticket lands; tests construct it directly, the
+    /// same way every other domain's screen ticket could before its own jump chord existed.
+    OpenTags,
 }
 
 /// The single view `Shell` hosts at a time.
@@ -384,6 +393,14 @@ pub trait View {
     /// typed-argument resolution to supply an `<acct>` from instead. Mirrors
     /// `category_selection`.
     fn account_selection(&self) -> Option<RowID> {
+        None
+    }
+
+    /// Read-only access to this view's Tag list, if it has one — `Some` only for
+    /// `view::tags::TagsView`. Mirrors `account_store`/`category_store`: lets `Shell` resolve
+    /// the Tag popups' uniqueness validation against the live fixture without downcasting the
+    /// `Box<dyn View>` trait object.
+    fn tag_store(&self) -> Option<&dyn TagStore> {
         None
     }
 }

@@ -34,7 +34,7 @@ use crate::{
     view::{
         Action, View, accounts::AccountsView, balance_checks::BalanceChecksView,
         budgets::BudgetsView, categories::CategoriesView, dashboard::DashboardView, help::HelpView,
-        payees::PayeesView, reports::ReportsView, settings::SettingsView,
+        payees::PayeesView, reports::ReportsView, settings::SettingsView, tags::TagsView,
         transactions::TransactionsView, units::UnitsView,
     },
 };
@@ -831,6 +831,7 @@ impl Shell {
             // No popup involved — `a` on the list and `:account off`/`on` both just relay
             // straight through to `AccountsView::update`.
             Action::SetAccountActive { .. } => self.view.update(&action),
+            Action::OpenTags => self.open(TagsView::new()),
         }
     }
 
