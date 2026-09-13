@@ -27,7 +27,7 @@ use crate::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
         command::CommandPopup,
-        payee::{PayeePopup, new::NewPayeePopup},
+        payee::{PayeePopup, edit::EditPayeePopup, new::NewPayeePopup},
         settings::{SettingsPopup, edit::EditSettingPopup, guard::BaseUnitGuardPopup},
         tag::{TagPopup, edit::EditTagPopup, new::NewTagPopup},
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
@@ -682,6 +682,40 @@ impl Shell {
                 KeyCode::Char(c) if !ctrl => Some(Action::PayeeNewPopupInput(c)),
                 _ => None,
             },
+            Some(PayeePopup::Edit(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::ClosePayeePopup),
+                KeyCode::Backspace => Some(Action::PayeeEditPopupBackspace),
+                KeyCode::Tab => Some(Action::PayeeEditPopupTab),
+                KeyCode::Char('s') if ctrl => popup.save_fields(store).map(
+                    |(id, name, website, icon_url, icon_derived, default_category_path, active)| {
+                        Action::UpdatePayee {
+                            id,
+                            name,
+                            website,
+                            icon_url,
+                            icon_derived,
+                            default_category_path,
+                            active,
+                        }
+                    },
+                ),
+                KeyCode::Char('a') if ctrl => popup.deactivate_fields(store).map(
+                    |(id, name, website, icon_url, icon_derived, default_category_path, active)| {
+                        Action::UpdatePayee {
+                            id,
+                            name,
+                            website,
+                            icon_url,
+                            icon_derived,
+                            default_category_path,
+                            active,
+                        }
+                    },
+                ),
+                // `m`/`^d` aren't wired yet — see `popup::payee::edit`'s own module doc.
+                KeyCode::Char(c) if !ctrl => Some(Action::PayeeEditPopupInput(c)),
+                _ => None,
+            },
             None => None,
         }
     }
@@ -1086,6 +1120,38 @@ impl Shell {
                 } else if let Some(PayeePopup::New(popup)) = &mut self.payee_popup {
                     popup.reset_for_next_payee();
                 }
+            }
+            Action::OpenPayeeEditPopup(id) => {
+                if let Some(store) = self.view.payee_store() {
+                    self.payee_popup = Some(PayeePopup::Edit(EditPayeePopup::new(store, id)));
+                }
+                self.command_popup = None;
+                self.unit_popup = None;
+                self.category_popup = None;
+                self.settings_popup = None;
+                self.account_popup = None;
+                self.tag_popup = None;
+            }
+            Action::PayeeEditPopupInput(c) => {
+                if let Some(PayeePopup::Edit(popup)) = &mut self.payee_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::PayeeEditPopupBackspace => {
+                if let Some(PayeePopup::Edit(popup)) = &mut self.payee_popup {
+                    popup.backspace();
+                }
+            }
+            Action::PayeeEditPopupTab => {
+                if let Some(store) = self.view.payee_store()
+                    && let Some(PayeePopup::Edit(popup)) = &mut self.payee_popup
+                {
+                    popup.tab(store);
+                }
+            }
+            Action::UpdatePayee { .. } => {
+                self.view.update(&action);
+                self.payee_popup = None;
             }
         }
     }
@@ -2600,6 +2666,18 @@ mod tests {
             .iter()
             .find(|account| account.name == name)
             .unwrap_or_else(|| panic!("fixture should seed an account named {name}"))
+            .id
+    }
+
+    fn payee_id_by_name(shell: &Shell, name: &str) -> lib_core::RowID {
+        shell
+            .view
+            .payee_store()
+            .expect("Payees view should expose its store")
+            .payees()
+            .iter()
+            .find(|payee| payee.name == name)
+            .unwrap_or_else(|| panic!("fixture should seed a payee named {name}"))
             .id
     }
 
@@ -4509,5 +4587,129 @@ mod tests {
 
         assert!(shell.payee_popup.is_none());
         assert!(payee_exists(&shell, "Second Vendor"));
+    }
+
+    #[test]
+    fn e_on_the_payees_view_opens_the_edit_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        assert!(shell.payee_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('e'),
+                KeyModifiers::NONE,
+            )))
+            .expect("e on the payees view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.payee_popup, Some(PayeePopup::Edit(_))));
+    }
+
+    #[test]
+    fn esc_closes_the_payee_edit_popup_without_saving_anything() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+
+        shell.update(Action::OpenPayeeEditPopup(woolworths));
+        for c in " Renamed".chars() {
+            shell.update(Action::PayeeEditPopupInput(c));
+        }
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action while the popup is open"));
+
+        assert!(shell.payee_popup.is_none());
+        let store = shell.view.payee_store().unwrap();
+        assert_eq!(store.find(woolworths).unwrap().name, "Woolworths");
+    }
+
+    #[test]
+    fn typing_a_new_name_and_ctrl_s_renames_the_payee_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        let aliases_before = shell.view.payee_store().unwrap().aliases(woolworths).len();
+
+        shell.update(Action::OpenPayeeEditPopup(woolworths));
+        for c in " Group".chars() {
+            shell.update(Action::PayeeEditPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.payee_popup.is_none(),
+            "popup should close after ctrl+s"
+        );
+        let store = shell.view.payee_store().unwrap();
+        assert_eq!(store.find(woolworths).unwrap().name, "Woolworths Group");
+        // The rename should have left a fresh alias behind for the prior name.
+        assert_eq!(store.aliases(woolworths).len(), aliases_before + 1);
+    }
+
+    #[test]
+    fn payee_edit_ctrl_s_does_nothing_while_the_name_is_empty() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        shell.update(Action::OpenPayeeEditPopup(woolworths));
+        for _ in 0.."Woolworths".chars().count() {
+            shell.update(Action::PayeeEditPopupBackspace);
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.payee_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn payee_edit_ctrl_s_does_nothing_while_the_new_name_collides() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let coles_central = payee_id_by_name(&shell, "Coles Central");
+        shell.update(Action::OpenPayeeEditPopup(coles_central));
+        for _ in 0.."Coles Central".chars().count() {
+            shell.update(Action::PayeeEditPopupBackspace);
+        }
+        for c in "Woolworths".chars() {
+            shell.update(Action::PayeeEditPopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None, "a colliding name should never validate");
+        assert!(shell.payee_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn payee_edit_ctrl_a_deactivates_the_payee_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenPayees);
+        let woolworths = payee_id_by_name(&shell, "Woolworths");
+        shell.update(Action::OpenPayeeEditPopup(woolworths));
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+a with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(shell.payee_popup.is_none());
+        let store = shell.view.payee_store().unwrap();
+        assert!(!store.find(woolworths).unwrap().is_active);
     }
 }

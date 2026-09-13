@@ -17,16 +17,17 @@
 //! transactions` is still a wireframe), mirroring `view::tags`'s own identical limitation and
 //! its "any subsequent key clears a showing message" rule.
 //!
-//! **`n` opens the new-payee popup** (`crate::popup::payee::new`, "Payees: 8b new popup") —
-//! `Shell` owns the popup itself, mirroring `view::accounts`'s own `n`/`e`/`d`; this `View`
-//! only ever resolves *which* key to turn into [`Action::OpenPayeeNewPopup`], and reacts to the
-//! eventual [`Action::CreatePayee`] in [`PayeesView::update`].
+//! **`n`/`e` open the new/edit popups** (`crate::popup::payee::new`/`edit`, "Payees: 8b new
+//! popup"/"8c edit popup") — `Shell` owns the popups themselves, mirroring `view::accounts`'s
+//! own `n`/`e`/`d`; this `View` only ever resolves *which* key to turn into
+//! [`Action::OpenPayeeNewPopup`]/[`Action::OpenPayeeEditPopup`], and reacts to the eventual
+//! [`Action::CreatePayee`]/[`Action::UpdatePayee`] in [`PayeesView::update`].
 //!
-//! **Keys not wired here**: `e`/`m`/`c`/`d` — the edit/rename-matches/delete popups are later
-//! tickets in this same map (8c–8e); this `View` only builds what 8a and 8b themselves
-//! specify. `a` (toggle active) is likewise deferred — it has no popup to open, but routing it
-//! through an `Action` the way `view::accounts`'s own bare `a` does needs an
-//! `Action::SetPayeeActive` variant this ticket has no other use for yet.
+//! **Keys not wired here**: `m`/`c`/`d` — the rename-matches/delete popups are later tickets
+//! in this same map (8d/8e); this `View` only builds what 8a/8b/8c themselves specify. `a`
+//! (toggle active) is likewise deferred — it has no popup to open, but routing it through an
+//! `Action` the way `view::accounts`'s own bare `a` does needs an `Action::SetPayeeActive`
+//! variant this ticket has no other use for yet.
 //!
 //! **List, not a grouped tree**: unlike Accounts/Categories, Payees has no classification
 //! dimension to group by — the README's own 8a is a flat list, **sorted by `abs(total)`
@@ -312,33 +313,62 @@ impl View for PayeesView {
             // this `View` only ever resolves *which* key to turn into
             // `Action::OpenPayeeNewPopup`.
             KeyCode::Char('n') => Some(Action::OpenPayeeNewPopup),
+            // `e` — opens the edit popup (`crate::popup::payee::edit`, "Payees: 8c edit
+            // popup"). `Shell` owns the popup itself, mirroring `view::accounts`'s own `e`.
+            KeyCode::Char('e') => Some(Action::OpenPayeeEditPopup(self.selected)),
             _ => None,
         }
     }
 
-    /// Reacts to the Payee popup's own confirmed create (`Shell` relays this after resolving
-    /// it against `payee_store()` — see `crate::popup::payee::new`'s own module doc). Every
-    /// other `Action` variant is ignored.
+    /// Reacts to the Payee popup's own confirmed create/save (`Shell` relays these after
+    /// resolving them against `payee_store()` — see `crate::popup::payee::new`/`edit`'s own
+    /// module docs). Every other `Action` variant is ignored.
     fn update(&mut self, action: &Action) {
-        if let Action::CreatePayee {
-            name,
-            website,
-            icon_url,
-            icon_derived,
-            default_category_path,
-            active,
-            ..
-        } = action
-            && let Ok(id) = self.store.create(
-                name.clone(),
-                website.clone(),
-                icon_url.clone(),
-                *icon_derived,
-                default_category_path.clone(),
-                *active,
-            )
-        {
-            self.selected = id;
+        match action {
+            Action::CreatePayee {
+                name,
+                website,
+                icon_url,
+                icon_derived,
+                default_category_path,
+                active,
+                ..
+            } => {
+                if let Ok(id) = self.store.create(
+                    name.clone(),
+                    website.clone(),
+                    icon_url.clone(),
+                    *icon_derived,
+                    default_category_path.clone(),
+                    *active,
+                ) {
+                    self.selected = id;
+                }
+            }
+            // `UpdatePayee` bundles what the real domain splits into three separate
+            // `PayeeStore` calls (see `Action::UpdatePayee`'s own doc) — a rename first (it
+            // alone can fail on a collision the popup already refused to submit, so this
+            // never actually errors in practice), then the remaining fields, then active.
+            Action::UpdatePayee {
+                id,
+                name,
+                website,
+                icon_url,
+                icon_derived,
+                default_category_path,
+                active,
+            } => {
+                let _ = self.store.rename(*id, name.clone());
+                let _ = self.store.update(
+                    *id,
+                    website.clone(),
+                    icon_url.clone(),
+                    *icon_derived,
+                    default_category_path.clone(),
+                );
+                let _ = self.store.set_active(*id, *active);
+            }
+            _ => {}
         }
     }
 

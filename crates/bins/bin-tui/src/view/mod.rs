@@ -419,6 +419,34 @@ pub enum Action {
         active: bool,
         close_after: bool,
     },
+    /// `e` on a Payees list row — opens the edit popup (`crate::popup::payee::edit`, "Payees:
+    /// 8c edit popup") for the given Payee.
+    OpenPayeeEditPopup(RowID),
+    /// A printable character typed while the Payee edit popup is open — routed to whichever of
+    /// its text fields (`name`/`website`/`icon url`/`default`) currently has focus; a no-op on
+    /// the `active` checkbox, whose space-toggle is handled inside the popup's own
+    /// `push_char`.
+    PayeeEditPopupInput(char),
+    PayeeEditPopupBackspace,
+    /// `Tab` — completes the `default` field against a known category path when it has focus
+    /// and a candidate exists, otherwise advances focus.
+    PayeeEditPopupTab,
+    /// `Ctrl+S` (save as typed) or `Ctrl+A` (save, but with `active` forced `false` regardless
+    /// of the checkbox) on the Payee edit popup, once its draft validates (a non-empty `name`
+    /// with no case-insensitive collision against another Payee) — `Shell` resolves the
+    /// popup's current fields into this variant before dispatching, mirroring `UpdateAccount`/
+    /// `UpdateTag`. Bundles what the real domain splits into three separate `PayeeStore` calls
+    /// (`rename`/`update`/`set_active`) into one user-facing intent, the same way
+    /// `UpdateAccount` does for `AccountStore::update`.
+    UpdatePayee {
+        id: RowID,
+        name: String,
+        website: Option<String>,
+        icon_url: Option<String>,
+        icon_derived: bool,
+        default_category_path: Option<String>,
+        active: bool,
+    },
 }
 
 /// The single view `Shell` hosts at a time.
