@@ -22,7 +22,7 @@
 
 mod fixture;
 
-pub use fixture::AccountFixture;
+pub use fixture::{AccountFixture, FIXTURE_NOW};
 
 use chrono::NaiveDate;
 use lib_core::{AccountType, Money, RowID};

@@ -773,6 +773,7 @@ dependencies = [
  "tokio",
  "tui-box-text",
  "tui-piechart",
+ "uuid",
 ]
 
 [[package]]

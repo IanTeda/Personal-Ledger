@@ -33,8 +33,10 @@ use lib_core::{AccountType, Money, RowID};
 
 /// The fixture's fixed "now" — matches `crate::category::fixture`'s own `2026-09-08`, so
 /// anything cross-referencing both screens (the shell's status line, "today") stays
-/// consistent.
-const FIXTURE_NOW: NaiveDate = match NaiveDate::from_ymd_opt(2026, 9, 8) {
+/// consistent. `pub` so `view::accounts` can pin its own balance-chart window to the same
+/// date rather than drifting onto the real `Utc::now()` and disagreeing with this fixture's
+/// own seeded history.
+pub const FIXTURE_NOW: NaiveDate = match NaiveDate::from_ymd_opt(2026, 9, 8) {
     Some(date) => date,
     None => panic!("fixed literal is a valid date"),
 };
@@ -260,10 +262,23 @@ impl AccountFixture {
         let mut next = DateTime::parse_from_rfc3339("2021-01-01T00:00:00Z")
             .expect("fixed literal is a valid RFC3339 timestamp")
             .with_timezone(&Utc);
+        // `RowID::from_timestamp` delegates to `uuid::Uuid::new_v7`, which fills a real UUIDv7's
+        // non-timestamp bits from the OS RNG — two calls with the *same* timestamp still produce
+        // different ids, and every id (and therefore every `seed_from_id`-derived ledger) this
+        // fixture seeds comes out different on every run, contradicting this very module doc's
+        // "deterministic across runs" claim. Build the UUID ourselves instead, via the same
+        // timestamp sequence plus a plain incrementing counter standing in for the random bits
+        // — deterministic, and still sorts by creation order like a real v7 id would.
+        let mut counter: u64 = 0;
         let mut id = move || {
-            let this = next;
+            let millis = next.timestamp_millis() as u64;
             next += chrono::Duration::seconds(1);
-            RowID::from_timestamp(this)
+            counter += 1;
+            let mut counter_bytes = [0u8; 10];
+            counter_bytes[2..10].copy_from_slice(&counter.to_be_bytes());
+            let uuid =
+                uuid::Builder::from_unix_timestamp_millis(millis, &counter_bytes).into_uuid();
+            RowID::from_uuid(uuid)
         };
 
         let aud = || unit("AUD", 2);

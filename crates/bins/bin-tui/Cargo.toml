@@ -31,6 +31,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tui-box-text = { workspace = true }
 tui-piechart = { workspace = true }
+uuid = { workspace = true }
 
 [lints]
 workspace = true
