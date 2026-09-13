@@ -267,6 +267,33 @@ pub enum Action {
         active: bool,
         close_after: bool,
     },
+    /// `e` on an Accounts list row — opens the edit popup
+    /// (`crate::popup::account::edit`, "Accounts: 7c edit popup") for the given account.
+    OpenAccountEditPopup(RowID),
+    /// A printable character typed while the Account edit popup is open — routed to
+    /// whichever of its fields (`name`/`type`/`active`) currently has focus.
+    AccountEditPopupInput(char),
+    AccountEditPopupBackspace,
+    /// `Tab` while the Account edit popup is open — advances focus to the next field (no
+    /// completion to apply, unlike the new popup's `unit` field).
+    AccountEditPopupTab,
+    /// `h` while the Account edit popup's `type` field has focus — steps the five-way pick
+    /// back one.
+    AccountEditPopupTypeLeft,
+    /// `l` — steps the five-way `type` pick forward one.
+    AccountEditPopupTypeRight,
+    /// `Ctrl+S` (save as typed) or `Ctrl+A` (save, but with `active` forced `false`
+    /// regardless of the checkbox — the handoff's own "`^a` deactivate") on the Account edit
+    /// popup, once its draft validates (a non-empty `name`) — `Shell` resolves the popup's
+    /// current fields into this pair, mirroring `UpdateCategory`. `account_type` is carried
+    /// as a plain `String` for the same reason `CreateAccount` does (`Action` derives `Eq`;
+    /// `lib_core::AccountType` doesn't).
+    UpdateAccount {
+        id: RowID,
+        name: String,
+        account_type: String,
+        active: bool,
+    },
 }
 
 /// The single view `Shell` hosts at a time.

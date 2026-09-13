@@ -20,7 +20,7 @@ use crate::{
     event::{Event, EventHandler},
     popup::{
         Dim,
-        account::{AccountPopup, new::NewAccountPopup},
+        account::{AccountPopup, edit::EditAccountPopup, new::NewAccountPopup},
         category::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
@@ -429,6 +429,39 @@ impl Shell {
                 KeyCode::Char(c) if !ctrl => Some(Action::AccountNewPopupInput(c)),
                 _ => None,
             },
+            Some(AccountPopup::Edit(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::CloseAccountPopup),
+                KeyCode::Backspace => Some(Action::AccountEditPopupBackspace),
+                KeyCode::Tab => Some(Action::AccountEditPopupTab),
+                KeyCode::Char('h') if !ctrl && popup.type_field_focused() => {
+                    Some(Action::AccountEditPopupTypeLeft)
+                }
+                KeyCode::Char('l') if !ctrl && popup.type_field_focused() => {
+                    Some(Action::AccountEditPopupTypeRight)
+                }
+                KeyCode::Char('s') if ctrl => {
+                    popup.save_fields().map(|(id, name, account_type, active)| {
+                        Action::UpdateAccount {
+                            id,
+                            name,
+                            account_type: account_type.as_str().to_string(),
+                            active,
+                        }
+                    })
+                }
+                KeyCode::Char('a') if ctrl => {
+                    popup
+                        .deactivate_fields()
+                        .map(|(id, name, account_type, active)| Action::UpdateAccount {
+                            id,
+                            name,
+                            account_type: account_type.as_str().to_string(),
+                            active,
+                        })
+                }
+                KeyCode::Char(c) if !ctrl => Some(Action::AccountEditPopupInput(c)),
+                _ => None,
+            },
             None => None,
         }
     }
@@ -660,6 +693,44 @@ impl Shell {
                 } else if let Some(AccountPopup::New(popup)) = &mut self.account_popup {
                     popup.reset_for_next_account();
                 }
+            }
+            Action::OpenAccountEditPopup(id) => {
+                if let Some(store) = self.view.account_store() {
+                    self.account_popup = Some(AccountPopup::Edit(EditAccountPopup::new(store, id)));
+                }
+                self.command_popup = None;
+                self.unit_popup = None;
+                self.category_popup = None;
+                self.settings_popup = None;
+            }
+            Action::AccountEditPopupInput(c) => {
+                if let Some(AccountPopup::Edit(popup)) = &mut self.account_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::AccountEditPopupBackspace => {
+                if let Some(AccountPopup::Edit(popup)) = &mut self.account_popup {
+                    popup.backspace();
+                }
+            }
+            Action::AccountEditPopupTab => {
+                if let Some(AccountPopup::Edit(popup)) = &mut self.account_popup {
+                    popup.tab();
+                }
+            }
+            Action::AccountEditPopupTypeLeft => {
+                if let Some(AccountPopup::Edit(popup)) = &mut self.account_popup {
+                    popup.type_left();
+                }
+            }
+            Action::AccountEditPopupTypeRight => {
+                if let Some(AccountPopup::Edit(popup)) = &mut self.account_popup {
+                    popup.type_right();
+                }
+            }
+            Action::UpdateAccount { .. } => {
+                self.view.update(&action);
+                self.account_popup = None;
             }
         }
     }
@@ -2084,6 +2155,18 @@ mod tests {
             .any(|account| account.name == name)
     }
 
+    fn account_id_by_name(shell: &Shell, name: &str) -> lib_core::RowID {
+        shell
+            .view
+            .account_store()
+            .expect("Accounts view should expose its store")
+            .accounts()
+            .iter()
+            .find(|account| account.name == name)
+            .unwrap_or_else(|| panic!("fixture should seed an account named {name}"))
+            .id
+    }
+
     #[test]
     fn m_on_the_categories_view_opens_the_move_popup() {
         let mut shell = Shell::new();
@@ -2625,6 +2708,160 @@ mod tests {
         terminal
             .draw(|frame| shell.draw(frame))
             .expect("drawing the shell with the account popup open should not error");
+    }
+
+    #[test]
+    fn e_on_the_accounts_view_opens_the_edit_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        assert!(shell.account_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('e'),
+                KeyModifiers::NONE,
+            )))
+            .expect("e on the accounts view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.account_popup, Some(AccountPopup::Edit(_))));
+    }
+
+    #[test]
+    fn esc_closes_the_account_edit_popup_without_changing_anything() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+
+        shell.update(Action::OpenAccountEditPopup(wallet));
+        for c in "!!!".chars() {
+            shell.update(Action::AccountEditPopupInput(c));
+        }
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action while the popup is open"));
+
+        assert!(shell.account_popup.is_none());
+        let store = shell.view.account_store().unwrap();
+        assert_eq!(store.find(wallet).unwrap().name, "Wallet");
+    }
+
+    #[test]
+    fn typing_a_new_name_and_ctrl_s_renames_the_account_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+
+        shell.update(Action::OpenAccountEditPopup(wallet));
+        for c in " Renamed".chars() {
+            shell.update(Action::AccountEditPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.account_popup.is_none(),
+            "popup should close after ctrl+s"
+        );
+        let store = shell.view.account_store().unwrap();
+        assert_eq!(store.find(wallet).unwrap().name, "Wallet Renamed");
+    }
+
+    #[test]
+    fn edit_ctrl_s_does_nothing_while_the_name_is_empty() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        shell.update(Action::OpenAccountEditPopup(wallet));
+        for _ in 0.."Wallet".chars().count() {
+            shell.update(Action::AccountEditPopupBackspace);
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.account_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn h_on_the_type_field_steps_the_account_type_pick() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let everyday = account_id_by_name(&shell, "Everyday Spending"); // Bank
+        shell.update(Action::OpenAccountEditPopup(everyday));
+        shell.update(Action::AccountEditPopupTab); // name -> type
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('l'),
+                KeyModifiers::NONE,
+            )))
+            .expect("l on a focused type field always maps to an action");
+        shell.update(action);
+
+        let ctrl_s = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(ctrl_s);
+
+        let store = shell.view.account_store().unwrap();
+        assert_eq!(
+            store.find(everyday).unwrap().account_type,
+            lib_core::AccountType::CreditCard
+        );
+    }
+
+    #[test]
+    fn ctrl_a_deactivates_the_account_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        assert!(
+            shell
+                .view
+                .account_store()
+                .unwrap()
+                .find(wallet)
+                .unwrap()
+                .is_active
+        );
+
+        shell.update(Action::OpenAccountEditPopup(wallet));
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+a with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(shell.account_popup.is_none());
+        let store = shell.view.account_store().unwrap();
+        assert!(!store.find(wallet).unwrap().is_active);
+    }
+
+    #[test]
+    fn renders_the_open_account_edit_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        shell.update(Action::OpenAccountEditPopup(wallet));
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the account edit popup open should not error");
     }
 
     #[test]

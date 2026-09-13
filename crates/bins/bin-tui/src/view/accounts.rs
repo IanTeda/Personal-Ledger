@@ -13,16 +13,17 @@
 //! `None`, so `Shell`'s event loop still redraws immediately instead of waiting for the next
 //! `Tick`.
 //!
-//! **Keys not wired here**: `e`/`d`/`a`/`b` all reach a popup or the command grammar — each a
+//! **Keys not wired here**: `d`/`a`/`b` all reach a popup or the command grammar — each a
 //! later ticket's own concern (see the "Accounts screen, views and popup" map, issue #115).
-//! `n` opens the new-account popup (`crate::popup::account::new`, "Accounts: 7b new popup") —
-//! `Shell` owns it, not this `View`, mirroring `view::categories`'s own `m`/`n`/`e` (this
-//! `View` only ever resolves *which* key to turn into `Action::OpenAccountNewPopup`; the popup
-//! itself, and the `Action::CreateAccount` that eventually lands back in [`AccountsView::
-//! update`], are `Shell`'s concern). Also not wired: `tab` (focus the ledger list) and `enter`
-//! (move focus into it too, per the handoff's "no separate ledger screen" decision) — the
-//! ledger here is a static display, not yet its own navigable focus, the same simplification
-//! `view::categories`'s own transactions list makes.
+//! `n`/`e` open the new/edit popups (`crate::popup::account::new`/`edit`) — `Shell` owns
+//! them, not this `View`, mirroring `view::categories`'s own `m`/`n`/`e` (this `View` only
+//! ever resolves *which* key to turn into `Action::OpenAccountNewPopup`/
+//! `OpenAccountEditPopup`; the popups themselves, and the `Action::CreateAccount`/
+//! `UpdateAccount` that eventually land back in [`AccountsView::update`], are `Shell`'s
+//! concern). Also not wired: `tab` (focus the ledger list) and `enter` (move focus into it
+//! too, per the handoff's "no separate ledger screen" decision) — the ledger here is a static
+//! display, not yet its own navigable focus, the same simplification `view::categories`'s own
+//! transactions list makes.
 //!
 //! **The ledger's running `BALANCE` column has no filter or non-date-sort state to react
 //! to**: this map's own scope (issue #115's Notes and Out of scope) ships the inline ledger
@@ -342,38 +343,51 @@ impl View for AccountsView {
                 Some(Action::NoOp)
             }
             KeyCode::Char('n') => Some(Action::OpenAccountNewPopup),
+            KeyCode::Char('e') => Some(Action::OpenAccountEditPopup(self.selected)),
             _ => None,
         }
     }
 
-    /// Reacts to the Account popup's own confirmed create (`Shell` relays this after
-    /// resolving it against `account_store()` — see `crate::popup::account::new`'s module
-    /// doc). Every other `Action` variant is ignored.
+    /// Reacts to the Account popup's own confirmed create/save (`Shell` relays these after
+    /// resolving them against `account_store()` — see `crate::popup::account::new`/`edit`'s
+    /// own module docs). Every other `Action` variant is ignored.
     fn update(&mut self, action: &Action) {
-        if let Action::CreateAccount {
-            name,
-            account_type,
-            unit_code,
-            unit_decimal_places,
-            starting_balance,
-            active,
-            ..
-        } = action
-        {
-            use std::str::FromStr;
-            let account_type = AccountType::from_str(account_type).unwrap_or_default();
-            let unit = AccountUnit {
-                code: unit_code.clone(),
-                decimal_places: *unit_decimal_places,
-            };
-            let id = self.store.create(
-                name.clone(),
+        use std::str::FromStr;
+
+        match action {
+            Action::CreateAccount {
+                name,
                 account_type,
-                unit,
-                starting_balance.clone(),
-                *active,
-            );
-            self.selected = id;
+                unit_code,
+                unit_decimal_places,
+                starting_balance,
+                active,
+                ..
+            } => {
+                let account_type = AccountType::from_str(account_type).unwrap_or_default();
+                let unit = AccountUnit {
+                    code: unit_code.clone(),
+                    decimal_places: *unit_decimal_places,
+                };
+                let id = self.store.create(
+                    name.clone(),
+                    account_type,
+                    unit,
+                    starting_balance.clone(),
+                    *active,
+                );
+                self.selected = id;
+            }
+            Action::UpdateAccount {
+                id,
+                name,
+                account_type,
+                active,
+            } => {
+                let account_type = AccountType::from_str(account_type).unwrap_or_default();
+                let _ = self.store.update(*id, name.clone(), account_type, *active);
+            }
+            _ => {}
         }
     }
 
