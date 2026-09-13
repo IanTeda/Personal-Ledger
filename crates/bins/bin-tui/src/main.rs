@@ -15,6 +15,7 @@ mod event;
 mod popup;
 mod screen;
 mod shell;
+mod tag;
 mod tui;
 mod view;
 
