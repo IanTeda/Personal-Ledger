@@ -12,6 +12,7 @@ mod category;
 mod db;
 mod error;
 mod event;
+mod payee;
 mod popup;
 mod screen;
 mod shell;
