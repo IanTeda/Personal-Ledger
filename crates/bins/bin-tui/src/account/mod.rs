@@ -195,6 +195,26 @@ pub trait AccountStore {
     fn delete(&mut self, id: RowID, target: Option<RowID>) -> Result<(), AccountError>;
 }
 
+/// Every distinct Unit currently used by at least one account, sorted by code. The
+/// placeholder source `popup::account::new`'s `unit` field completes against: `view::units`
+/// has no real store of its own yet (see this module's own doc on why `AccountUnit` is
+/// denormalised rather than joined), so "every Unit a real account already uses" is the only
+/// honest candidate list available at this map's fidelity — a brand-new Unit no account has
+/// used yet can't be picked here until `view::units` is real.
+pub fn known_units(accounts: &[Account]) -> Vec<AccountUnit> {
+    let mut units: Vec<AccountUnit> = Vec::new();
+    for account in accounts {
+        if !units
+            .iter()
+            .any(|existing| existing.code == account.unit.code)
+        {
+            units.push(account.unit.clone());
+        }
+    }
+    units.sort_by(|a, b| a.code.cmp(&b.code));
+    units
+}
+
 /// Whether every account in `accounts` shares one Unit code — the handoff's "a group subtotals
 /// only when every account in it shares the base unit" rule. `None` means mixed (print "mixed
 /// units"); `Some` carries the shared unit so callers can also read its `decimal_places`.

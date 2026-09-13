@@ -18,10 +18,11 @@ pub mod transactions;
 pub mod units;
 
 use crossterm::event::KeyEvent;
-use lib_core::RowID;
+use lib_core::{Money, RowID};
 use ratatui::{Frame, layout::Rect};
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::account::AccountStore;
 use crate::category::CategoryStore;
 
 /// A message `Shell` or the active `View` reacts to. Deliberately minimal for now — the full
@@ -158,12 +159,18 @@ pub enum Action {
     /// view's `CategoryStore` (via `View::category_store`) into this concrete, `Copy`-friendly
     /// pair before dispatching, so only this variant (not the raw typed text) ever needs to
     /// reach a `View::update`.
-    MoveCategory { id: RowID, new_parent: RowID },
+    MoveCategory {
+        id: RowID,
+        new_parent: RowID,
+    },
     /// `Ctrl+N` on the Category move popup, when its typed path's last segment doesn't exist
     /// yet under an otherwise-resolved parent — creates it inline, per the handoff's "`^n`
     /// creates a missing parent inline". Carries an owned `String` (the typed name), which is
     /// why `Action` no longer derives `Copy` — see this enum's own doc comment.
-    CreateCategoryChild { parent: RowID, name: String },
+    CreateCategoryChild {
+        parent: RowID,
+        name: String,
+    },
     /// `n` (child of the tree selection) / `N` (sibling of it) on a Categories tree row —
     /// opens the new popup (`crate::popup::category::new_popup`, "Categories: 5c new popup").
     /// `CategoriesView::handle_key` resolves which parent `n`/`N` prefill before this is ever
@@ -224,6 +231,42 @@ pub enum Action {
         note: Option<String>,
         active: bool,
     },
+    /// `n` on the Accounts list — opens the new-account popup (`crate::popup::account::new`,
+    /// "Accounts: 7b new popup").
+    OpenAccountNewPopup,
+    /// `Esc` while the Account popup is open — closes it without creating anything.
+    CloseAccountPopup,
+    /// A printable character typed while the Account new popup is open — routed to whichever
+    /// of its text fields (`name`/`unit`/`starting balance`) currently has focus; a no-op on
+    /// the `type`/`active` fields, which aren't text (see `AccountNewPopupTypeLeft`/`Right`
+    /// and the space-toggle on `active`, handled inside the popup's own `push_char`).
+    AccountNewPopupInput(char),
+    AccountNewPopupBackspace,
+    /// `Tab` — completes the `unit` field against a known Unit code when it has focus and a
+    /// candidate exists, otherwise advances focus to the next field.
+    AccountNewPopupTab,
+    /// `h` while the Account new popup's `type` field has focus — steps the five-way pick
+    /// back one, per the handoff's "five-way inline pick ... h/l".
+    AccountNewPopupTypeLeft,
+    /// `l` — steps the five-way `type` pick forward one.
+    AccountNewPopupTypeRight,
+    /// `Ctrl+S`/`Ctrl+A` on the Account new popup, once its draft validates (a resolved
+    /// `unit`, a non-empty `name`, a parseable `starting balance`) — `Shell` resolves the
+    /// popup's current fields into this concrete, `Eq`-friendly variant before dispatching,
+    /// the same way `CreateCategory` does. `account_type` is carried as `AccountType::as_str`'s
+    /// own string rather than the enum itself, purely so this variant's fields all stay `Eq`
+    /// (`Action` derives it; `lib_core::AccountType` doesn't) — `AccountsView::update` parses
+    /// it back via `FromStr`. `close_after` is `false` for `Ctrl+A` ("create and start
+    /// another" — the popup stays open, reset for the next account), `true` for `Ctrl+S`.
+    CreateAccount {
+        name: String,
+        account_type: String,
+        unit_code: String,
+        unit_decimal_places: i64,
+        starting_balance: Money,
+        active: bool,
+        close_after: bool,
+    },
 }
 
 /// The single view `Shell` hosts at a time.
@@ -266,6 +309,15 @@ pub trait View {
     /// target its `n`/`e`/`m`/`a` keys already act on, since the command popup has no real
     /// typed-argument resolution to supply a `<cat>` from instead.
     fn category_selection(&self) -> Option<RowID> {
+        None
+    }
+
+    /// Read-only access to this view's Account list, if it has one — `Some` only for
+    /// `view::accounts::AccountsView`. Mirrors `category_store`: lets `Shell` resolve the
+    /// Account popup's completion/validation against the live fixture without downcasting the
+    /// `Box<dyn View>` trait object. Mutation still goes through `View::update`
+    /// (`Action::CreateAccount`), never through this.
+    fn account_store(&self) -> Option<&dyn AccountStore> {
         None
     }
 }

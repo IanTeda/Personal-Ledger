@@ -20,6 +20,7 @@ use crate::{
     event::{Event, EventHandler},
     popup::{
         Dim,
+        account::{AccountPopup, new::NewAccountPopup},
         category::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
@@ -71,6 +72,11 @@ pub struct Shell {
     /// here, mirroring `unit_popup`. Mutually exclusive with `command_popup`/`unit_popup`/
     /// `category_popup`.
     settings_popup: Option<SettingsPopup>,
+    /// The Account-domain popup (`crate::popup::account`) — `Some` while one is open. Owned
+    /// here, mirroring `category_popup`: it acts on `AccountsView`'s own fixture, reached via
+    /// `View::account_store`, not on anything `Shell` owns directly. Mutually exclusive with
+    /// every other popup field.
+    account_popup: Option<AccountPopup>,
     /// `true` after a lone `g` keypress with no completing chord yet — the leader half of the
     /// `g <letter>` jump chords in `docs/ux/tui/README.md`'s "Jumps" table (e.g. `g d`
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
@@ -100,6 +106,7 @@ impl Shell {
             unit_popup: None,
             category_popup: None,
             settings_popup: None,
+            account_popup: None,
             pending_leader: false,
             view_stack: Vec::new(),
         }
@@ -172,6 +179,9 @@ impl Shell {
                 }
                 if self.settings_popup.is_some() {
                     return map_settings_popup_key(key);
+                }
+                if self.account_popup.is_some() {
+                    return self.map_account_popup_key(key);
                 }
                 if self.pending_leader {
                     self.pending_leader = false;
@@ -375,6 +385,54 @@ impl Shell {
         }
     }
 
+    /// Routes a key while the Account popup is open, resolving it into a concrete `Action`
+    /// right here against the active view's `AccountStore` (`View::account_store`) — mirrors
+    /// `map_category_popup_key`. A create that doesn't yet validate resolves to `None` (a
+    /// no-op) rather than a doomed `Action`.
+    fn map_account_popup_key(&self, key: KeyEvent) -> Option<Action> {
+        let store = self.view.account_store()?;
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+
+        match &self.account_popup {
+            Some(AccountPopup::New(popup)) => match key.code {
+                KeyCode::Esc => Some(Action::CloseAccountPopup),
+                KeyCode::Backspace => Some(Action::AccountNewPopupBackspace),
+                KeyCode::Tab => Some(Action::AccountNewPopupTab),
+                KeyCode::Char('h') if !ctrl && popup.type_field_focused() => {
+                    Some(Action::AccountNewPopupTypeLeft)
+                }
+                KeyCode::Char('l') if !ctrl && popup.type_field_focused() => {
+                    Some(Action::AccountNewPopupTypeRight)
+                }
+                KeyCode::Char('s') if ctrl => popup.create_fields(store).map(
+                    |(name, account_type, unit, starting_balance, active)| Action::CreateAccount {
+                        name,
+                        account_type: account_type.as_str().to_string(),
+                        unit_code: unit.code,
+                        unit_decimal_places: unit.decimal_places,
+                        starting_balance,
+                        active,
+                        close_after: true,
+                    },
+                ),
+                KeyCode::Char('a') if ctrl => popup.create_fields(store).map(
+                    |(name, account_type, unit, starting_balance, active)| Action::CreateAccount {
+                        name,
+                        account_type: account_type.as_str().to_string(),
+                        unit_code: unit.code,
+                        unit_decimal_places: unit.decimal_places,
+                        starting_balance,
+                        active,
+                        close_after: false,
+                    },
+                ),
+                KeyCode::Char(c) if !ctrl => Some(Action::AccountNewPopupInput(c)),
+                _ => None,
+            },
+            None => None,
+        }
+    }
+
     /// Applies an [`Action`] to shell state.
     fn update(&mut self, action: Action) {
         match action {
@@ -560,6 +618,49 @@ impl Shell {
                 self.view.update(&action);
                 self.category_popup = None;
             }
+            Action::OpenAccountNewPopup => {
+                self.account_popup = Some(AccountPopup::New(NewAccountPopup::new()));
+                self.command_popup = None;
+                self.unit_popup = None;
+                self.category_popup = None;
+                self.settings_popup = None;
+            }
+            Action::CloseAccountPopup => self.account_popup = None,
+            Action::AccountNewPopupInput(c) => {
+                if let Some(AccountPopup::New(popup)) = &mut self.account_popup {
+                    popup.push_char(c);
+                }
+            }
+            Action::AccountNewPopupBackspace => {
+                if let Some(AccountPopup::New(popup)) = &mut self.account_popup {
+                    popup.backspace();
+                }
+            }
+            Action::AccountNewPopupTab => {
+                if let Some(store) = self.view.account_store()
+                    && let Some(AccountPopup::New(popup)) = &mut self.account_popup
+                {
+                    popup.tab(store);
+                }
+            }
+            Action::AccountNewPopupTypeLeft => {
+                if let Some(AccountPopup::New(popup)) = &mut self.account_popup {
+                    popup.type_left();
+                }
+            }
+            Action::AccountNewPopupTypeRight => {
+                if let Some(AccountPopup::New(popup)) = &mut self.account_popup {
+                    popup.type_right();
+                }
+            }
+            Action::CreateAccount { close_after, .. } => {
+                self.view.update(&action);
+                if close_after {
+                    self.account_popup = None;
+                } else if let Some(AccountPopup::New(popup)) = &mut self.account_popup {
+                    popup.reset_for_next_account();
+                }
+            }
         }
     }
 
@@ -595,6 +696,7 @@ impl Shell {
         self.unit_popup = None;
         self.category_popup = None;
         self.settings_popup = None;
+        self.account_popup = None;
     }
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
@@ -616,6 +718,7 @@ impl Shell {
         let edit_setting_popup_open = matches!(self.settings_popup, Some(SettingsPopup::Edit(_)));
         let base_unit_guard_popup_open =
             matches!(self.settings_popup, Some(SettingsPopup::BaseUnitGuard(_)));
+        let account_popup_open = self.account_popup.is_some();
 
         // Header Frame — the status line names the mode whenever it isn't the resting
         // NORMAL state, per `docs/ux/tui/README.md`'s "show the mode ... whenever it is not
@@ -628,7 +731,7 @@ impl Shell {
         // breadcrumb, the same simplification every other view already makes).
         let mode = if command_popup_open {
             " · COMMAND"
-        } else if unit_popup_open || category_popup_open {
+        } else if unit_popup_open || category_popup_open || account_popup_open {
             " · INSERT"
         } else if edit_setting_popup_open {
             " · EDIT"
@@ -670,6 +773,8 @@ impl Shell {
             Line::from(" esc close edit form ").style(Style::default().fg(Color::DarkGray))
         } else if base_unit_guard_popup_open {
             Line::from(" esc close dialog ").style(Style::default().fg(Color::DarkGray))
+        } else if account_popup_open {
+            Line::from(" esc close account form ").style(Style::default().fg(Color::DarkGray))
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             Line::from(vec![
@@ -700,6 +805,11 @@ impl Shell {
         } else if let Some(popup) = &self.settings_popup {
             frame.render_widget(Dim, rows[1]);
             popup.render(frame, frame.area());
+        } else if let Some(popup) = &self.account_popup {
+            frame.render_widget(Dim, rows[1]);
+            if let Some(store) = self.view.account_store() {
+                popup.render(frame, frame.area(), store);
+            }
         }
     }
 }
@@ -1964,6 +2074,16 @@ mod tests {
             .id
     }
 
+    fn account_exists(shell: &Shell, name: &str) -> bool {
+        shell
+            .view
+            .account_store()
+            .expect("Accounts view should expose its store")
+            .accounts()
+            .iter()
+            .any(|account| account.name == name)
+    }
+
     #[test]
     fn m_on_the_categories_view_opens_the_move_popup() {
         let mut shell = Shell::new();
@@ -2321,6 +2441,190 @@ mod tests {
             .expect("Drinks should now exist");
         assert_eq!(drinks.parent_id, Some(food));
         assert!(shell.category_popup.is_none());
+    }
+
+    #[test]
+    fn n_on_the_accounts_view_opens_the_new_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        assert!(shell.account_popup.is_none());
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('n'),
+                KeyModifiers::NONE,
+            )))
+            .expect("n on the accounts view always maps to an action");
+        shell.update(action);
+
+        assert!(matches!(shell.account_popup, Some(AccountPopup::New(_))));
+    }
+
+    #[test]
+    fn esc_closes_the_account_popup_without_creating_anything() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let original_count = shell.view.account_store().unwrap().accounts().len();
+
+        shell.update(Action::OpenAccountNewPopup);
+        for c in "Side Hustle".chars() {
+            shell.update(Action::AccountNewPopupInput(c));
+        }
+        let action = shell.map_event(Event::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)));
+        shell.update(action.expect("esc always maps to an action while the popup is open"));
+
+        assert!(shell.account_popup.is_none());
+        assert_eq!(
+            shell.view.account_store().unwrap().accounts().len(),
+            original_count
+        );
+        assert!(!account_exists(&shell, "Side Hustle"));
+    }
+
+    #[test]
+    fn typing_a_name_and_unit_then_ctrl_s_creates_the_account_and_closes_the_popup() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let original_count = shell.view.account_store().unwrap().accounts().len();
+
+        shell.update(Action::OpenAccountNewPopup);
+        // Focus starts on `type` (the handoff's own default); cycle is type -> unit ->
+        // starting bal -> active -> name.
+        shell.update(Action::AccountNewPopupTab); // type -> unit
+        for c in "AUD".chars() {
+            shell.update(Action::AccountNewPopupInput(c));
+        }
+        shell.update(Action::AccountNewPopupTab); // unit -> starting bal (exact match, advances)
+        shell.update(Action::AccountNewPopupTab); // starting bal -> active
+        shell.update(Action::AccountNewPopupTab); // active -> name
+        for c in "Side Hustle".chars() {
+            shell.update(Action::AccountNewPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.account_popup.is_none(),
+            "popup should close after ctrl+s"
+        );
+        let store = shell.view.account_store().unwrap();
+        assert_eq!(store.accounts().len(), original_count + 1);
+        assert!(account_exists(&shell, "Side Hustle"));
+    }
+
+    #[test]
+    fn account_ctrl_s_does_nothing_while_the_name_is_empty() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        shell.update(Action::OpenAccountNewPopup);
+        shell.update(Action::AccountNewPopupTab); // off `type`, onto `unit`
+        for c in "AUD".chars() {
+            shell.update(Action::AccountNewPopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None);
+        assert!(shell.account_popup.is_some(), "popup should stay open");
+    }
+
+    #[test]
+    fn ctrl_s_does_nothing_while_the_unit_is_unresolved() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        shell.update(Action::OpenAccountNewPopup);
+        shell.update(Action::AccountNewPopupTab); // type -> unit
+        for c in "ZZZ".chars() {
+            // No known Unit matches "ZZZ" — unlike an empty `unit_input` (which `tab()`
+            // would auto-complete to the alphabetically-first known Unit, since every string
+            // starts with ""), this stays genuinely unresolved across the tabs below.
+            shell.update(Action::AccountNewPopupInput(c));
+        }
+        shell.update(Action::AccountNewPopupTab); // unit (unresolved) -> starting bal
+        shell.update(Action::AccountNewPopupTab); // starting bal -> active
+        shell.update(Action::AccountNewPopupTab); // active -> name
+        for c in "New Account".chars() {
+            shell.update(Action::AccountNewPopupInput(c));
+        }
+
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        assert_eq!(action, None, "an unresolved unit should never validate");
+    }
+
+    #[test]
+    fn ctrl_a_creates_and_keeps_the_popup_open_reset_for_another_account() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+
+        shell.update(Action::OpenAccountNewPopup);
+        shell.update(Action::AccountNewPopupTab); // type -> unit
+        for c in "AUD".chars() {
+            shell.update(Action::AccountNewPopupInput(c));
+        }
+        shell.update(Action::AccountNewPopupTab); // unit -> starting bal
+        shell.update(Action::AccountNewPopupTab); // starting bal -> active
+        shell.update(Action::AccountNewPopupTab); // active -> name
+        for c in "First".chars() {
+            shell.update(Action::AccountNewPopupInput(c));
+        }
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('a'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+a with a valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(
+            shell.account_popup.is_some(),
+            "popup should stay open after ctrl+a"
+        );
+        assert!(account_exists(&shell, "First"));
+
+        // The popup should be reset — name cleared, unit kept, but focus back on `type` (its
+        // own initial-focus convention) — so tab back to `name` before typing the next one.
+        shell.update(Action::AccountNewPopupTab); // type -> unit
+        shell.update(Action::AccountNewPopupTab); // unit (AUD, exact match) -> starting bal
+        shell.update(Action::AccountNewPopupTab); // starting bal -> active
+        shell.update(Action::AccountNewPopupTab); // active -> name
+        for c in "Second".chars() {
+            shell.update(Action::AccountNewPopupInput(c));
+        }
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('s'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+s with the second account's valid draft always maps to an action");
+        shell.update(action);
+
+        assert!(account_exists(&shell, "Second"));
+        assert!(shell.account_popup.is_none());
+    }
+
+    #[test]
+    fn renders_the_open_account_new_popup_without_panicking() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        shell.update(Action::OpenAccountNewPopup);
+
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell with the account popup open should not error");
     }
 
     #[test]
