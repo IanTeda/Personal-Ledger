@@ -40,11 +40,6 @@ pub enum Action {
     /// Push the Units create/edit screen — `None` starts an empty (create) form, `Some`
     /// pre-fills it with an existing Unit's fields (edit).
     OpenUnitDetail(Option<lib_database::Units>),
-    /// Push the Accounts list screen.
-    OpenAccounts,
-    /// Push the Accounts create/edit screen — `None` starts an empty (create) form, `Some`
-    /// pre-fills it with an existing Account's fields (edit).
-    OpenAccountDetail(Option<lib_database::Accounts>),
     /// Push the Transactions list screen.
     OpenTransactions,
     /// Push the Transactions create/edit screen — `None` starts an empty (create) form,
@@ -96,18 +91,15 @@ pub enum Action {
     UnitDeleted(lib_core::RowID),
     /// The Units list screen failed to delete a Unit.
     UnitDeleteFailed(String),
-    /// The Accounts list screen finished loading every Account.
+    /// Every Account, loaded for use as reference/picker data by another screen (a
+    /// Transaction's/Balance Check's/CSV import's Account field, the Dashboard's own
+    /// snapshot, the Account Balance report, ...) — not by an Accounts list/detail screen of
+    /// its own, which was retired along with the rest of the dead App/Screen stack (see
+    /// "Accounts screen, views and popup", issue #115; the real Accounts screen lives under
+    /// `crate::view::accounts` instead).
     AccountsLoaded(Vec<lib_database::Accounts>),
-    /// The Accounts list screen failed to load Accounts.
+    /// An Accounts load failed.
     AccountsLoadFailed(String),
-    /// The Accounts detail screen successfully saved (inserted or updated) an Account.
-    AccountSaved(lib_database::Accounts),
-    /// The Accounts detail screen failed to save an Account.
-    AccountSaveFailed(String),
-    /// The Accounts list screen successfully deleted an Account.
-    AccountDeleted(lib_core::RowID),
-    /// The Accounts list screen failed to delete an Account.
-    AccountDeleteFailed(String),
     /// The Transactions list screen finished loading every Transaction.
     TransactionsLoaded(Vec<lib_database::Transactions>),
     /// The Transactions list screen failed to load Transactions.

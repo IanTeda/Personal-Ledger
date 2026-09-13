@@ -59,8 +59,12 @@ fn areas() -> Vec<Area> {
         },
         Area {
             name: "Accounts",
-            action: Some(Action::OpenAccounts),
-            not_yet_built_hint: "",
+            // Retired along with `crate::screen::accounts_list`/`account_detail` (this whole
+            // App/Screen stack is dead code, unreferenced from `main.rs` per ADR-0013) — the
+            // real Accounts screen is built under `crate::view::accounts`, see "Accounts
+            // screen, views and popup" (issue #115).
+            action: None,
+            not_yet_built_hint: "moved to the new Shell/View screen",
         },
         Area {
             name: "Transactions",

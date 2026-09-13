@@ -21,8 +21,7 @@ use crate::{
     action::{Action, InputMode},
     event::{Event, EventHandler},
     screen::{
-        Screen, account_detail::AccountDetailScreen, accounts_list::AccountsListScreen,
-        balance_check_detail::BalanceCheckDetailScreen,
+        Screen, balance_check_detail::BalanceCheckDetailScreen,
         balance_checks_list::BalanceChecksListScreen, budget_detail::BudgetDetailScreen,
         budgets_list::BudgetsListScreen, csv_import::CsvImportScreen, dashboard::DashboardScreen,
         help::HelpScreen, payee_detail::PayeeDetailScreen, payees_list::PayeesListScreen,
@@ -154,13 +153,12 @@ impl App {
             Action::OpenUnitDetail(Some(unit)) => {
                 self.push(Box::new(UnitDetailScreen::new_edit(unit)))
             }
-            Action::OpenAccounts => self.push(Box::new(AccountsListScreen::new())),
-            Action::OpenAccountDetail(None) => {
-                self.push(Box::new(AccountDetailScreen::new_create()))
-            }
-            Action::OpenAccountDetail(Some(account)) => {
-                self.push(Box::new(AccountDetailScreen::new_edit(account)))
-            }
+            // `Action::OpenAccounts`/`OpenAccountDetail` are gone from `action::Action`
+            // entirely, not just unmatched here — `screen::accounts_list`/`account_detail`
+            // are retired (see "Retire old Screen-architecture Accounts code", issue #123),
+            // `screen::dashboard`'s own menu no longer constructs either (its Accounts row is
+            // `action: None` now), and nothing else ever did. The real Accounts screen lives
+            // under `crate::view::accounts`, reached via `Shell`, not `App`.
             Action::OpenTransactions => self.push(Box::new(TransactionsListScreen::new())),
             Action::OpenTransactionDetail(None) => {
                 self.push(Box::new(TransactionDetailScreen::new_create()))
@@ -205,8 +203,6 @@ impl App {
             | Action::UnitDeleteFailed(_)
             | Action::AccountsLoaded(_)
             | Action::AccountsLoadFailed(_)
-            | Action::AccountDeleted(_)
-            | Action::AccountDeleteFailed(_)
             | Action::TransactionsLoaded(_)
             | Action::TransactionsLoadFailed(_)
             | Action::TransactionDeleted(_)
@@ -242,14 +238,12 @@ impl App {
             // A successful save returns to whichever list screen the detail screen was
             // pushed from, after that list has absorbed the new/updated row.
             Action::UnitSaved(_) => self.broadcast_and_pop_detail(&action, "Unit"),
-            Action::AccountSaved(_) => self.broadcast_and_pop_detail(&action, "Account"),
             Action::TransactionSaved(_) => self.broadcast_and_pop_detail(&action, "Transaction"),
             Action::PayeeSaved(_) => self.broadcast_and_pop_detail(&action, "Payee"),
             Action::BalanceCheckSaved(_) => self.broadcast_and_pop_detail(&action, "Balance Check"),
             Action::BudgetSaved(_) => self.broadcast_and_pop_detail(&action, "Budget"),
             // A failed save stays on the detail screen so the user can fix and retry.
             Action::UnitSaveFailed(_)
-            | Action::AccountSaveFailed(_)
             | Action::TransactionSaveFailed(_)
             | Action::PayeeSaveFailed(_)
             | Action::BalanceCheckSaveFailed(_)
@@ -425,44 +419,6 @@ mod tests {
         let mut app = App::new();
         app.update(Action::NoOp);
         assert_eq!(app.stack.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn open_accounts_pushes_the_accounts_list_screen() {
-        let mut app = App::new();
-        app.update(Action::OpenAccounts);
-        assert_eq!(app.stack.last().unwrap().title(), "Accounts");
-    }
-
-    #[tokio::test]
-    async fn open_account_detail_pushes_the_account_screen() {
-        let mut app = App::new();
-        app.update(Action::OpenAccountDetail(None));
-        assert_eq!(app.stack.last().unwrap().title(), "Account");
-    }
-
-    #[tokio::test]
-    async fn account_saved_pops_back_from_the_detail_screen() {
-        let mut app = App::new();
-        app.update(Action::OpenAccounts);
-        app.update(Action::OpenAccountDetail(None));
-        assert_eq!(app.stack.len(), 3);
-
-        let now = chrono::Utc::now();
-        let account = lib_database::Accounts {
-            id: lib_core::RowID::new(),
-            name: "Everyday Spending".to_string(),
-            account_type: lib_core::AccountType::Cash,
-            unit_id: lib_core::RowID::new(),
-            starting_balance: lib_core::Money::mock(),
-            is_active: true,
-            created_on: now,
-            updated_on: now,
-        };
-        app.update(Action::AccountSaved(account));
-
-        assert_eq!(app.stack.len(), 2);
-        assert_eq!(app.stack.last().unwrap().title(), "Accounts");
     }
 
     #[tokio::test]
