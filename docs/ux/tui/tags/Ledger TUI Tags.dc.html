@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="../_ds/modernist-4aa36bd2-9125-4b41-bcc8-a319ca5ae354/styles.css">
+<script src="../_ds/modernist-4aa36bd2-9125-4b41-bcc8-a319ca5ae354/_ds_bundle.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+body{margin:0;background:var(--color-bg,#f3f2f2);color:var(--color-text,#201e1d);font-family:Archivo,system-ui,sans-serif}
+a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(--color-accent-700,#ae1800)}
+.dv-turn{padding:40px 44px 32px;border-bottom:2px solid rgba(32,30,29,.4);scroll-margin-top:16px}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 6px}
+.dv-tid{font:700 10px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:#201e1d;color:#f3f2f2;text-decoration:none}
+.dv-tname{font:800 13px/1.2 Archivo,sans-serif;letter-spacing:-.01em}
+.dv-sub{font:400 11px/1.5 Archivo,sans-serif;color:#7d7979;margin:0 0 20px;max-width:78ch}
+.dv-opts{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:9px;scroll-margin-top:16px}
+.dv-oid{font:700 10.5px JetBrains Mono,ui-monospace,monospace;padding:3px 7px;background:rgba(32,30,29,.09);color:#201e1d;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11px/1.35 Archivo,sans-serif;color:#605d5d}
+.dv-olabel b{font-weight:800;color:#201e1d}
+.dv-card{max-width:100%;background:#fff;border:2px solid #201e1d;overflow:hidden}
+.dv-opt:target .dv-oid{background:#ec3013;color:#fff}
+.dv-next{margin:26px 0 0;font:400 11px/1.6 Archivo,sans-serif;color:#7d7979}
+.t{background:#fff;color:#201e1d;font:400 11px/1.5 JetBrains Mono,ui-monospace,Menlo,monospace;display:flex;flex-direction:column}
+.tbar{display:flex;justify-content:space-between;gap:12px;background:#201e1d;color:#f3f2f2;padding:3px 8px;font-size:10px;letter-spacing:.03em}
+.tbar b{font-weight:700}
+.tk{margin-top:auto;background:#eae7e7;border-top:1px solid #bab6b6;padding:3px 8px;font-size:10px;color:#605d5d;display:flex;gap:13px;flex-wrap:wrap}
+.k{background:#201e1d;color:#f3f2f2;padding:0 3px;margin-right:3px}
+.tbody{display:flex;min-height:0;flex:1}
+.pane{flex:1;min-width:0;padding:7px 9px}
+.pane+.pane{border-left:1px solid #bab6b6}
+.hd{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:#7d7979;border-bottom:1px solid #d7d3d3;padding-bottom:2px;margin:0 0 5px;display:flex;justify-content:space-between}
+.hd.tight{margin-top:9px}
+.row{display:grid;gap:7px;padding:.5px 0;align-items:baseline}
+.sel{background:#201e1d;color:#f3f2f2;margin:0 -9px;padding:.5px 9px}
+.sel .mut,.sel .neg{color:#ffc4b8}
+.mut{color:#9b9797}.neg{color:#ec3013}.pos{color:#201e1d}
+.n{text-align:right;font-variant-numeric:tabular-nums}
+.box{border:1px solid #bab6b6;padding:5px 7px}
+.box.foc{border:2px solid #ec3013;padding:4px 6px}
+.lab{font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:#7d7979}
+.ovl{border:2px solid #201e1d;background:#fff;box-shadow:8px 8px 0 rgba(32,30,29,.14)}
+.note{font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:#ec3013}
+.dk .t{background:#161413;color:#eae7e7}
+.dk .dv-card,.dk.dv-card{border-color:#201e1d}
+.dk .tk{background:#201e1d;border-top-color:#444141;color:#9b9797}
+.dk .pane+.pane{border-color:#444141}
+.dk .hd{border-bottom-color:#444141;color:#9b9797}
+.dk .box{border-color:#605d5d}
+.dk .sel{background:#eae7e7;color:#161413}
+.dk .sel .mut,.dk .sel .neg{color:#ae1800}
+.dk .mut{color:#7d7979}.dk .pos{color:#eae7e7}
+.dk .ovl{background:#161413;border-color:#eae7e7}
+</style></helmet>
+
+<section class="dv-turn {{ themeClass }}" id="t9">
+<div class="dv-thd"><a class="dv-tid" href="#t9">tags</a><span class="dv-tname">Tags — a flat vocabulary, many per transaction</span></div>
+<p class="dv-sub">A tag is the <b>second axis</b>. A transaction carries exactly one category, and it may carry <b>any number of tags</b> — that many-per-row cardinality is the whole difference, and it makes two things true that the categories view never had to say. First, <b>tag totals overlap</b>: one transaction tagged twice is counted in both rows, so the column does not sum to spend and the screen must say so rather than inviting the addition. Second, there is no tree, no kind and no parent to inherit from — a tag is only a name, so <b>every total on this screen is in one unit</b>, stated once in the status line. A tag reaching a transaction in another unit cannot be folded in, and the count that was left out is shown rather than quietly dropped.</p>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="9a">
+<div class="dv-olabel"><a class="dv-oid" href="#9a">9a</a><span><b>Tags.</b> Flat list by 12m total, the untagged remainder, and how the selected tag cuts across the category tree.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:532px">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; tags / holiday-japan</span><span>8 tags &nbsp;·&nbsp; 12m to sep 26 &nbsp;·&nbsp; AUD only</span></div>
+  <div class="tbody">
+    <div class="pane" style="flex:none;width:300px">
+      <div class="hd">tags <span>8 · by 12m total</span></div>
+      <div class="row" style="grid-template-columns:9px 1fr 24px 66px;padding:1px 0"><span class="mut">F</span><span class="mut">TAG</span><span class="mut n">N</span><span class="mut n">12M</span></div>
+      <div class="row" style="grid-template-columns:9px 1fr 24px 66px"><span></span><span class="mut">tax-deductible</span><span class="n mut">86</span><span class="n mut">9 480</span></div>
+      <div class="row sel" style="grid-template-columns:9px 1fr 24px 66px"><span class="neg">!</span><span>holiday-japan</span><span class="n">41</span><span class="n" style="font-weight:700">7 240</span></div>
+      <div class="row" style="grid-template-columns:9px 1fr 24px 66px"><span></span><span class="mut">investment-property</span><span class="n mut">62</span><span class="n mut">6 118</span></div>
+      <div class="row" style="grid-template-columns:9px 1fr 24px 66px"><span></span><span class="mut">reimbursable</span><span class="n mut">23</span><span class="n mut">2 884</span></div>
+      <div class="row" style="grid-template-columns:9px 1fr 24px 66px"><span></span><span class="mut">medical</span><span class="n mut">31</span><span class="n mut">1 962</span></div>
+      <div class="row" style="grid-template-columns:9px 1fr 24px 66px"><span></span><span class="mut">subscription</span><span class="n mut">96</span><span class="n mut">1 344</span></div>
+      <div class="row" style="grid-template-columns:9px 1fr 24px 66px"><span></span><span class="mut">gift</span><span class="n mut">18</span><span class="n mut">940</span></div>
+      <div class="row" style="grid-template-columns:9px 1fr 24px 66px"><span class="mut">·</span><span class="mut">work-from-home</span><span class="n mut">12</span><span class="n mut">612</span></div>
+      <div class="row" style="grid-template-columns:9px 1fr 24px 66px;border-top:1px solid #d7d3d3;margin-top:2px;padding-top:2px"><span></span><span class="mut">— untagged —</span><span class="n mut">742</span><span class="n mut">88 340</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0"><span class="mut"><span class="neg">!</span> txns outside AUD &nbsp; <span class="mut">·</span> archived &nbsp;·&nbsp; <span class="k">za</span>show</span></div>
+      <div class="hd tight">holiday-japan <span class="note">e edit</span></div>
+      <div class="box" style="padding:5px 7px">
+        <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span class="mut">active · 41 txns · mar 26 → sep 26</span></div>
+        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0;border-top:1px solid #d7d3d3;border-bottom:1px solid #d7d3d3"><span class="lab" style="margin:0">total 12m · AUD</span><span class="n" style="font-weight:700">7 240.55</span></div>
+        <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">spans</span><span>9 categories <span class="mut">· 3 accounts</span></span></div>
+        <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">also tagged</span><span class="mut">tax-deductible 4 · gift 2</span></div>
+        <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">off-unit</span><span class="neg">2 txns in JPY · not in this total</span></div>
+        <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">note</span><span class="mut">apr trip · flights, rail, food</span></div>
+        <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">active</span><span>[×] <span class="mut">· offered when tagging</span></span></div>
+      </div>
+    </div>
+    <div class="pane">
+      <div class="hd">tagged spend <span>monthly · oct 24 – sep 26 · AUD</span></div>
+      <svg viewBox="0 0 360 46" preserveAspectRatio="none" style="display:block;width:100%;height:46px;margin:3px 0 1px">
+        <line x1="0" y1="45" x2="360" y2="45" stroke="#d7d3d3" stroke-width="1"></line>
+        <polyline points="0,45 15.7,45 31.3,45 47,45 62.6,45 78.3,45 93.9,45 109.6,45 125.2,45 140.9,45 156.5,45 172.2,45 187.8,45 203.5,29 219.1,6 234.8,17 250.4,33 266.1,40 281.7,42 297.4,38 313,41 328.7,35 344.3,40 360,37" fill="none" stroke="#ec3013" stroke-width="1.5" vector-effect="non-scaling-stroke"></polyline>
+        <circle cx="360" cy="37" r="2" fill="#201e1d"></circle>
+      </svg>
+      <div class="row" style="grid-template-columns:1fr auto auto;gap:12px;padding-bottom:2px"><span class="mut">first used mar 26</span><span class="mut">peak apr 3 180</span><span class="mut">sep 26 &nbsp;148</span></div>
+      <div class="hd tight">where it lands <span>9 categories · flat tag, deep tree</span></div>
+      <div class="row" style="grid-template-columns:120px 1fr 62px;padding:1px 0"><span class="mut">travel:flights</span><span>█████████████ <span class="mut">41%</span></span><span class="n">2 968.00</span></div>
+      <div class="row" style="grid-template-columns:120px 1fr 62px;padding:1px 0"><span class="mut">travel:lodging</span><span class="mut">████████ <span class="mut">26%</span></span><span class="n mut">1 882.40</span></div>
+      <div class="row" style="grid-template-columns:120px 1fr 62px;padding:1px 0"><span class="mut">food:restaurants</span><span class="mut">█████ <span class="mut">16%</span></span><span class="n mut">1 158.75</span></div>
+      <div class="row" style="grid-template-columns:120px 1fr 62px;padding:1px 0"><span class="mut">transport:rail</span><span class="mut">███ <span class="mut">9%</span></span><span class="n mut">651.20</span></div>
+      <div class="row" style="grid-template-columns:120px 1fr 62px;padding:1px 0"><span class="mut">5 more</span><span class="mut">██ <span class="mut">8%</span></span><span class="n mut">580.20</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 1px;border-top:1px solid #d7d3d3;margin-top:3px"><span class="mut">a tag crosses the tree — that is what it is for</span></div>
+      <div class="hd tight">transactions <span>6 of 41 · newest first</span></div>
+      <div style="position:relative;padding-right:12px">
+        <div style="position:absolute;right:0;top:0;bottom:0;width:6px"><i style="position:absolute;left:1px;right:1px;top:0;bottom:0;background:#e2dede"></i><i style="position:absolute;left:1px;right:1px;top:0;height:15%;background:#605d5d"></i></div>
+        <div class="row" style="grid-template-columns:42px 1fr 74px 14px 58px;padding:1px 0"><span class="mut">DATE</span><span class="mut">PAYEE</span><span class="mut">CATEGORY</span><span class="mut n">T</span><span class="mut n">AMOUNT</span></div>
+        <div class="row sel" style="grid-template-columns:42px 1fr 74px 14px 58px;padding:1px 9px 1px 0;margin:0 -9px 0 0"><span>02 sep</span><span>JR East</span><span>transport:rail</span><span class="n">1</span><span class="n">148.30</span></div>
+        <div class="row" style="grid-template-columns:42px 1fr 74px 14px 58px;padding:1px 0"><span>28 apr</span><span class="mut">Hotel Granvia</span><span class="mut">travel:lodging</span><span class="n mut">1</span><span class="n mut">642.00</span></div>
+        <div class="row" style="grid-template-columns:42px 1fr 74px 14px 58px;padding:1px 0"><span>24 apr</span><span class="mut">Kura Sushi</span><span class="mut">food:restaurants</span><span class="n mut">2</span><span class="n mut">84.60</span></div>
+        <div class="row" style="grid-template-columns:42px 1fr 74px 14px 58px;padding:1px 0"><span>19 apr</span><span class="mut">Qantas</span><span class="mut">travel:flights</span><span class="n mut">1</span><span class="n mut">1 484.00</span></div>
+        <div class="row" style="grid-template-columns:42px 1fr 74px 14px 58px;padding:1px 0"><span>12 apr</span><span class="mut">Suica top-up</span><span class="mut">transport:rail</span><span class="n mut">1</span><span class="n mut">96.40</span></div>
+        <div class="row" style="grid-template-columns:42px 1fr 74px 14px 58px;padding:1px 0"><span>12 mar</span><span class="mut">Qantas</span><span class="mut">travel:flights</span><span class="n mut">2</span><span class="n mut">1 484.00</span></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr auto;border-top:1px solid #d7d3d3;margin-top:3px;padding-top:3px"><span class="neg">12 of 41 carry another tag — rows overlap</span><span class="mut"><span class="k">enter</span>open filtered</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">the 12M column does not sum to spend; untagged does</span></div>
+      <div class="row" style="grid-template-columns:1fr"><span class="mut">:tag apply holiday-japan &lt;filter&gt; &nbsp;·&nbsp; :tag merge &lt;a&gt; &lt;b&gt;</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">enter</span>txns</span><span><span class="k">n</span>new</span><span><span class="k">e</span>edit</span><span><span class="k">A</span>apply</span><span><span class="k">X</span>merge</span><span><span class="k">a</span>archive</span><span><span class="k">/</span>filter</span><span><span class="k">tab</span>list↔txns</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="9b">
+<div class="dv-olabel"><a class="dv-oid" href="#9b">9b</a><span><b>New.</b> <code>n</code> — a name and nothing else. No parent, no kind, no unit to choose; the form says so, because a category form here would ask for three more things.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:400px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; tags</span><span>INSERT &nbsp;·&nbsp; new tag</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">tags <span>8 · by 12m total</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">tax-deductible</span><span class="n mut">9 480</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">holiday-japan</span><span class="n mut">7 240</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">investment-property</span><span class="n mut">6 118</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">reimbursable</span><span class="n mut">2 884</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">medical</span><span class="n mut">1 962</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:7%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>new tag</span><span class="mut">:tag new</span></div>
+    <div style="padding:4px 8px">
+      <div class="box foc" style="margin:0 0 3px;padding:3px 5px">
+        <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">name</span><span>holiday-korea<span class="neg">▌</span></span></div>
+        <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut"></span><span class="mut">unique, case-insensitive · 8 existing</span></div>
+      </div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">note</span><span class="mut">oct trip · optional</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">active</span><span>[×] <span class="mut">· offered when tagging</span></span></div>
+      <div class="hd tight" style="margin-top:4px">what a tag has no place for</div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">parent</span><span class="mut">— the list is flat</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">kind</span><span class="mut">— it takes the category's</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">unit</span><span class="mut">— one unit for all tags: AUD</span></div>
+      <div class="box" style="margin:4px 0 1px;padding:3px 5px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">a tag can also be created inline while tagging a</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">transaction — typing an unknown name offers</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">"create holiday-korea". This form is for seeding</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">a vocabulary before an import lands.</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:1px 0 0"><span class="neg">unlike a payee, a tag is never auto-created —</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="neg">nothing types a tag on your behalf</span></div>
+      </div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">tab</span>next field</span><span><span class="k">^s</span>create</span><span><span class="k">^a</span>create &amp; another</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close new form</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="9c">
+<div class="dv-olabel"><a class="dv-oid" href="#9c">9c</a><span><b>Edit.</b> Rename is free — links join by id, so nothing is rewritten. Delete is refused while used, and hands over to merge.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:400px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; tags / holiday-japan</span><span>INSERT &nbsp;·&nbsp; edit tag</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">tags <span>8 · by 12m total</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">tax-deductible</span><span class="n mut">9 480</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">holiday-japan</span><span class="n mut">7 240</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">investment-property</span><span class="n mut">6 118</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">reimbursable</span><span class="n mut">2 884</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">medical</span><span class="n mut">1 962</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:6%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>edit &nbsp;holiday-japan</span><span class="mut">:tag edit</span></div>
+    <div style="padding:4px 8px">
+      <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">name</span><span>holiday-japan<span class="neg">▌</span></span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut"></span><span class="mut">rename is safe · 41 links join by id</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">note</span><span class="mut">apr trip · flights, rail, food</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">active</span><span>[×] <span class="mut">· clear to archive</span></span></div>
+      <div class="hd tight" style="margin-top:4px">read-only here</div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">tagged</span><span class="mut">41 txns · 9 categories · 3 accounts</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">unit</span><span class="mut">AUD · 2 txns in JPY excluded</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">created</span><span class="mut">12 mar 26 · with its first txn</span></div>
+      <div class="box" style="margin:4px 0 1px;padding:3px 5px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">archiving keeps all 41 links and totals; it only</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">stops the tag being offered while tagging.</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:1px 0 0"><span class="neg">delete is refused while 41 links exist</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">removing the tag from 41 txns is <span class="k">A</span>apply in</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">remove mode; folding it into another is <span class="k">X</span>merge</span></div>
+      </div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">tab</span>next field</span><span><span class="k">^s</span>save</span><span><span class="k">^a</span>archive</span><span><span class="k">X</span>merge</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close edit form</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="9d">
+<div class="dv-olabel"><a class="dv-oid" href="#9d">9d</a><span><b>Merge.</b> <code>X</code> — the one operation whose arithmetic is not obvious: transactions carrying <i>both</i> tags collapse to one link, so the result is smaller than the sum.</span></div>
+<div class="dv-card" style="width:452px">
+<div class="t" style="height:400px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; tags / japan-trip → holiday-japan</span><span>INSERT &nbsp;·&nbsp; merge tag</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">tags <span>9 · by 12m total</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">tax-deductible</span><span class="n mut">9 480</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">holiday-japan</span><span class="n mut">7 240</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">investment-property</span><span class="n mut">6 118</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">japan-trip</span><span class="n mut">1 986</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">medical</span><span class="n mut">1 962</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:6%;right:6%;top:6%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>merge &nbsp;japan-trip</span><span class="mut">:tag merge</span></div>
+    <div style="padding:4px 8px">
+      <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0"><span class="mut">merging</span><span>japan-trip <span class="mut">· 14 txns · 1 986.40</span></span></div>
+      <div class="box foc" style="margin:3px 0;padding:3px 5px">
+        <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">into</span><span>holiday-japan<span class="neg">▌</span></span></div>
+        <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">completion</span><span class="mut">holiday-japan · gift · medical &nbsp;· tab</span></div>
+      </div>
+      <div class="hd tight" style="margin-top:4px">the arithmetic <span class="note">not a sum</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">links moved</span><span>14 <span class="mut">→ holiday-japan</span></span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">deduped</span><span class="neg">6 txns already carry both</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">net new</span><span>8 <span class="mut">links written · 6 dropped</span></span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:1px 0 0;border-top:1px solid #d7d3d3;margin-top:2px"><span class="mut">was</span><span class="mut">41 txns &nbsp;7 240.55</span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="mut">becomes</span><span>49 txns &nbsp;<span style="font-weight:700">8 388.15</span></span></div>
+      <div class="row" style="grid-template-columns:70px 1fr;padding:0"><span class="neg">not</span><span class="neg">55 txns &nbsp;9 226.95 — that double-counts 6</span></div>
+      <div class="box" style="margin:4px 0 1px;padding:3px 5px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">japan-trip is deleted once its last link moves.</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">No transaction is edited — only the join rows</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">between tag and transaction.</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:1px 0 0"><span class="neg">one transaction · irreversible</span></div>
+      </div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">tab</span>complete target</span><span><span class="k">^s</span>merge</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close merge form</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="9e">
+<div class="dv-olabel"><a class="dv-oid" href="#9e">9e</a><span><b>Apply.</b> <code>A</code> — tagging is a bulk act, so the form is a filter plus a verb, and it reports what is already tagged before it writes.</span></div>
+<div class="dv-card" style="width:470px">
+<div class="t" style="height:495px;position:relative">
+  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; tags / holiday-japan / apply</span><span>INSERT &nbsp;·&nbsp; apply to filter</span></div>
+  <div class="pane" style="opacity:.3">
+    <div class="hd">tags <span>8 · by 12m total</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">tax-deductible</span><span class="n mut">9 480</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">holiday-japan</span><span class="n mut">7 240</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">investment-property</span><span class="n mut">6 118</span></div>
+    <div class="row" style="grid-template-columns:1fr 60px"><span class="mut">reimbursable</span><span class="n mut">2 884</span></div>
+  </div>
+  <div class="ovl" style="position:absolute;left:5%;right:5%;top:5%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>apply &nbsp;holiday-japan</span><span class="mut">:tag apply</span></div>
+    <div style="padding:4px 8px">
+      <div class="row" style="grid-template-columns:62px 1fr;padding:1px 0"><span class="mut">verb</span><span>(•) add &nbsp;&nbsp;<span class="mut">( ) remove</span></span></div>
+      <div class="box foc" style="margin:3px 0;padding:3px 5px">
+        <div class="row" style="grid-template-columns:62px 1fr;padding:0"><span class="mut">filter</span><span>payee:"JR East" 26-04..26-05<span class="neg">▌</span></span></div>
+        <div class="row" style="grid-template-columns:62px 1fr;padding:0"><span class="mut">grammar</span><span class="mut">payee: cat: acct: 26-04..26-05 &gt;100</span></div>
+      </div>
+      <div class="hd tight" style="margin-top:4px">matches <span>9 txns · 1 184.60 AUD</span></div>
+      <div class="row" style="grid-template-columns:42px 1fr 62px 14px;padding:1px 0"><span class="mut">DATE</span><span class="mut">PAYEE</span><span class="mut n">AMOUNT</span><span class="mut n">T</span></div>
+      <div class="row sel" style="grid-template-columns:42px 1fr 62px 14px;padding:1px 8px 1px 0;margin:0 -8px 0 0"><span>02 may</span><span>JR East</span><span class="n">248.30</span><span class="n">0</span></div>
+      <div class="row" style="grid-template-columns:42px 1fr 62px 14px;padding:1px 0"><span>28 apr</span><span class="mut">JR East</span><span class="n mut">142.00</span><span class="n mut">0</span></div>
+      <div class="row" style="grid-template-columns:42px 1fr 62px 14px;padding:1px 0"><span>24 apr</span><span class="mut">JR East</span><span class="n mut">96.40</span><span class="n neg">✓</span></div>
+      <div class="row" style="grid-template-columns:42px 1fr 62px 14px;padding:1px 0"><span>19 apr</span><span class="mut">JR East</span><span class="n mut">311.50</span><span class="n mut">0</span></div>
+      <div class="row" style="grid-template-columns:42px 1fr 62px 14px;padding:1px 0"><span class="mut">+5 more</span><span class="mut">JR East</span><span class="n mut">386.40</span><span class="n mut">·</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0"><span class="mut"><span class="neg">✓</span> already carries this tag · skipped, not duplicated</span></div>
+      <div class="hd tight" style="margin-top:4px">on apply</div>
+      <div class="row" style="grid-template-columns:62px 1fr;padding:0"><span class="mut">writes</span><span>7 links <span class="mut">· 2 already tagged</span></span></div>
+      <div class="row" style="grid-template-columns:62px 1fr;padding:0"><span class="mut">holiday-japan</span><span class="mut">41 → 48 txns · 7 240.55 → 8 425.15</span></div>
+      <div class="row" style="grid-template-columns:62px 1fr;padding:0"><span class="mut">other tags</span><span class="mut">untouched — tags do not displace</span></div>
+      <div class="row" style="grid-template-columns:62px 1fr;padding:0"><span class="mut">excluded</span><span class="neg">1 JPY txn matched the filter · not tagged</span></div>
+      <div class="row" style="grid-template-columns:62px 1fr;padding:0"><span class="mut">undo</span><span class="mut">the same filter in remove mode</span></div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">tab</span>next field</span><span><span class="k">space</span>verb</span><span><span class="k">^s</span>apply</span><span><span class="k">esc</span>cancel</span></div>
+  </div>
+  <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close apply form</span></div>
+</div>
+</div>
+</div>
+
+</div>
+</section>
+
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;terminal&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;\&quot;light\&quot; | \&quot;dark\&quot;&quot;,&quot;section&quot;:&quot;Wireframe&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { themeClass: (this.props.terminal ?? "light") === "dark" ? "dk" : "" };
+  }
+}
+
+</script>
+</body>
+</html>
