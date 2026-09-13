@@ -314,6 +314,15 @@ pub enum Action {
         id: RowID,
         target: Option<RowID>,
     },
+    /// Bare `a` on the Accounts list (README's own "a deactivate"), or `Enter` on the command
+    /// popup's `account off <acct>`/`account on <acct>` entries — both reach this one variant
+    /// rather than two different ones, so the keybinding and the command truly share a single
+    /// code path (`AccountsView::update` is the only place that calls
+    /// `AccountStore::set_active`).
+    SetAccountActive {
+        id: RowID,
+        active: bool,
+    },
 }
 
 /// The single view `Shell` hosts at a time.
@@ -365,6 +374,16 @@ pub trait View {
     /// `Box<dyn View>` trait object. Mutation still goes through `View::update`
     /// (`Action::CreateAccount`), never through this.
     fn account_store(&self) -> Option<&dyn AccountStore> {
+        None
+    }
+
+    /// The currently-selected account, if this view is `AccountsView` and has one — lets
+    /// `Shell` dispatch the `:account` command grammar's `edit`/`delete`/`off`/`on` entries
+    /// (`popup::command::commands::accounts`) against the list's own selection, the same
+    /// target its `e`/`d`/`a` keys already act on, since the command popup has no real
+    /// typed-argument resolution to supply an `<acct>` from instead. Mirrors
+    /// `category_selection`.
+    fn account_selection(&self) -> Option<RowID> {
         None
     }
 }

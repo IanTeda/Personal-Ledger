@@ -13,15 +13,20 @@
 //! `None`, so `Shell`'s event loop still redraws immediately instead of waiting for the next
 //! `Tick`.
 //!
-//! **Keys not wired here**: `a`/`b` reach the command grammar — a later ticket's own concern
-//! (see the "Accounts screen, views and popup" map, issue #115). `n`/`e`/`d` open the
+//! **Keys not wired here**: `b` (Balance Check/reconcile) is out of this map's destination
+//! entirely (README §*Not yet designed*) and has no "not yet built" surface of its own to
+//! fall back to outside the command popup (tracked separately as issue #96) — it stays a
+//! silent no-op, like every other domain's own unbuilt bare keys. `n`/`e`/`d` open the
 //! new/edit/delete popups (`crate::popup::account::new`/`edit`/`delete`) — `Shell` owns
 //! them, not this `View`, mirroring `view::categories`'s own `m`/`n`/`e` (this `View` only
 //! ever resolves *which* key to turn into `Action::OpenAccountNewPopup`/
 //! `OpenAccountEditPopup`/`OpenAccountDeletePopup`; the popups themselves, and the
 //! `Action::CreateAccount`/`UpdateAccount`/`DeleteAccount` that eventually land back in
-//! [`AccountsView::update`], are `Shell`'s concern). Also not wired: `tab` (focus the ledger
-//! list) and `enter` (move focus into it too, per the handoff's "no separate ledger screen"
+//! [`AccountsView::update`], are `Shell`'s concern). `a` deactivates the selection directly
+//! (see its own `handle_key` arm) — routed through `Action::SetAccountActive` rather than
+//! mutated here in place, so the `:account off <acct>` command (`popup::command::commands::
+//! accounts`) reaches the exact same code path. Also not wired: `tab` (focus the ledger list)
+//! and `enter` (move focus into it too, per the handoff's "no separate ledger screen"
 //! decision) — the ledger here is a static display, not yet its own navigable focus, the same
 //! simplification `view::categories`'s own transactions list makes.
 //!
@@ -345,6 +350,15 @@ impl View for AccountsView {
             KeyCode::Char('n') => Some(Action::OpenAccountNewPopup),
             KeyCode::Char('e') => Some(Action::OpenAccountEditPopup(self.selected)),
             KeyCode::Char('d') => Some(Action::OpenAccountDeletePopup(self.selected)),
+            // `a`: deactivates the selection directly, per the handoff's own "a deactivate" —
+            // no popup, no draft to carry, mirroring `view::categories`'s own bare `a`. Routed
+            // through `Action::SetAccountActive` (not mutated here in place) so the command
+            // grammar's `account off <acct>` reaches the exact same code path, per "Accounts:
+            // :acct command grammar"'s own done-when.
+            KeyCode::Char('a') => Some(Action::SetAccountActive {
+                id: self.selected,
+                active: false,
+            }),
             _ => None,
         }
     }
@@ -397,6 +411,14 @@ impl View for AccountsView {
                     self.recover_selection();
                 }
             }
+            // `#[allow]`: see the `DeleteAccount` arm above for why this stays a plain nested
+            // `if` rather than clippy's own guard-with-a-side-effect suggestion.
+            #[allow(clippy::collapsible_match)]
+            Action::SetAccountActive { id, active } => {
+                if self.store.set_active(*id, *active).is_ok() {
+                    self.recover_selection();
+                }
+            }
             _ => {}
         }
     }
@@ -426,6 +448,10 @@ impl View for AccountsView {
 
     fn account_store(&self) -> Option<&dyn AccountStore> {
         Some(&self.store)
+    }
+
+    fn account_selection(&self) -> Option<RowID> {
+        Some(self.selected)
     }
 }
 

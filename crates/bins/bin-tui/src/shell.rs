@@ -287,6 +287,46 @@ impl Shell {
                         })
                     })
                     .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some("account") => Some(Action::OpenAccounts),
+                // Mirrors the Categories arm above — the command popup has no real
+                // typed-argument resolution (`popup::command::commands::accounts`'s own module
+                // doc), so `<acct>`/`<name>`/`<type>`/`<unit>` all mean "the Accounts list's
+                // current selection" here, the same target its own `e`/`d`/`a` keys act on.
+                // `account new` doesn't need a selection (it opens blank either way), but still
+                // only opens when the Accounts view is actually active — `account_store`
+                // serves as that guard since there's no selection prerequisite to check
+                // instead.
+                Some(name @ "account new <name> <type> <unit>") => {
+                    if self.view.account_store().is_some() {
+                        Some(Action::OpenAccountNewPopup)
+                    } else {
+                        Some(Action::CommandPopupSetNotYetBuilt(name))
+                    }
+                }
+                Some(name @ "account edit <acct>") => self
+                    .view
+                    .account_selection()
+                    .map(Action::OpenAccountEditPopup)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "account delete <acct> [into <acct>]") => self
+                    .view
+                    .account_selection()
+                    .map(Action::OpenAccountDeletePopup)
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "account off <acct>") => self
+                    .view
+                    .account_selection()
+                    .map(|id| Action::SetAccountActive { id, active: false })
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                Some(name @ "account on <acct>") => self
+                    .view
+                    .account_selection()
+                    .map(|id| Action::SetAccountActive { id, active: true })
+                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+                // "account check <acct> <amount> [date]" falls through to the catch-all below —
+                // Balance Check/reconcile is out of this map's destination entirely (README
+                // §*Not yet designed*), so it's never special-cased, same as Categories' own
+                // "rename"/"merge"/"tree".
                 Some(name) => Some(Action::CommandPopupSetNotYetBuilt(name)),
                 None => None,
             },
@@ -788,6 +828,9 @@ impl Shell {
                 self.view.update(&action);
                 self.account_popup = None;
             }
+            // No popup involved — `a` on the list and `:account off`/`on` both just relay
+            // straight through to `AccountsView::update`.
+            Action::SetAccountActive { .. } => self.view.update(&action),
         }
     }
 
@@ -1491,10 +1534,10 @@ mod tests {
         // These used to navigate to an empty placeholder box on `Enter`; per this ticket they
         // now show the "not yet built" message like every other undispatched command, and the
         // popup stays open rather than navigating anywhere. `category list` (now `category`)
-        // is no longer one of them — "Categories: :category command grammar" gave it real
+        // and `account list` (now `account`) are no longer among them — "Categories:
+        // :category command grammar" and "Accounts: :acct command grammar" gave them real
         // dispatch.
         let cases: &[&str] = &[
-            "account list",
             "check list",
             "budget list",
             "help",
@@ -3393,5 +3436,166 @@ mod tests {
                 "{filter} should have no real dispatch yet"
             );
         }
+    }
+
+    #[test]
+    fn selecting_the_account_command_and_pressing_enter_opens_the_accounts_view() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        // "account" alone is ambiguous too (e.g. it substring-matches "account new <name>
+        // <type> <unit>" before the bare "account" entry) — "accounts" narrows to just this
+        // domain's own seven commands, with the bare "account" entry first among them.
+        let action = select_and_enter(&mut shell, "accounts");
+        assert_eq!(action, Action::OpenAccounts);
+    }
+
+    #[test]
+    fn selecting_account_new_opens_the_new_popup_even_without_a_selection_prerequisite() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "account new");
+        assert_eq!(action, Action::OpenAccountNewPopup);
+    }
+
+    #[test]
+    fn selecting_account_edit_while_accounts_is_active_opens_the_edit_popup_for_the_selection() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "account edit");
+        assert_eq!(action, Action::OpenAccountEditPopup(wallet));
+    }
+
+    #[test]
+    fn selecting_account_delete_while_accounts_is_active_opens_the_delete_popup_for_the_selection()
+    {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "account delete");
+        assert_eq!(action, Action::OpenAccountDeletePopup(wallet));
+    }
+
+    #[test]
+    fn selecting_account_off_while_accounts_is_active_deactivates_the_selection_immediately() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "account off");
+        assert_eq!(
+            action,
+            Action::SetAccountActive {
+                id: wallet,
+                active: false
+            }
+        );
+        shell.update(action);
+        assert!(
+            !shell
+                .view
+                .account_store()
+                .unwrap()
+                .find(wallet)
+                .unwrap()
+                .is_active
+        );
+    }
+
+    #[test]
+    fn selecting_account_on_while_accounts_is_active_reactivates_the_selection_immediately() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        let wallet = account_id_by_name(&shell, "Wallet");
+        // `za` first, so deactivating Wallet below doesn't hide it and move the selection
+        // away — `SetAccountActive`'s own `recover_selection` only moves off a row that's
+        // actually no longer visible.
+        shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('z'),
+            KeyModifiers::NONE,
+        )));
+        shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('a'),
+            KeyModifiers::NONE,
+        )));
+
+        shell.update(Action::SetAccountActive {
+            id: wallet,
+            active: false,
+        });
+        assert_eq!(
+            shell.view.account_selection(),
+            Some(wallet),
+            "za should have kept Wallet selected"
+        );
+        shell.update(Action::OpenCommandPopup);
+
+        let action = select_and_enter(&mut shell, "account on");
+        assert_eq!(
+            action,
+            Action::SetAccountActive {
+                id: wallet,
+                active: true
+            }
+        );
+        shell.update(action);
+        assert!(
+            shell
+                .view
+                .account_store()
+                .unwrap()
+                .find(wallet)
+                .unwrap()
+                .is_active
+        );
+    }
+
+    #[test]
+    fn account_new_edit_delete_off_and_on_fall_back_to_not_yet_built_when_accounts_is_not_active() {
+        for (filter, name) in [
+            ("account edit", "account edit <acct>"),
+            ("account delete", "account delete <acct> [into <acct>]"),
+            ("account off", "account off <acct>"),
+            ("account on", "account on <acct>"),
+        ] {
+            let mut shell = Shell::new();
+            shell.update(Action::OpenCommandPopup);
+            let action = select_and_enter(&mut shell, filter);
+            assert_eq!(
+                action,
+                Action::CommandPopupSetNotYetBuilt(name),
+                "{filter} should fall back when Accounts isn't the active view"
+            );
+        }
+
+        // "account new" is the one exception — it has no selection prerequisite, so it falls
+        // back only when Accounts itself isn't active, which is exactly this case.
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        let action = select_and_enter(&mut shell, "account new");
+        assert_eq!(
+            action,
+            Action::CommandPopupSetNotYetBuilt("account new <name> <type> <unit>")
+        );
+    }
+
+    #[test]
+    fn account_check_always_shows_not_yet_built() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts); // even with Accounts active...
+        shell.update(Action::OpenCommandPopup);
+        let action = select_and_enter(&mut shell, "account check");
+        assert_eq!(
+            action,
+            Action::CommandPopupSetNotYetBuilt("account check <acct> <amount> [date]"),
+            "account check should have no real dispatch — reconcile is out of this map's destination"
+        );
     }
 }
