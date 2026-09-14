@@ -25,6 +25,13 @@ description = "Rebuild and rerun the TUI on file changes"
 run = "cargo watch -c -x 'run --package bin_tui --bin tui'"
 
 
+# -------------------------------[DESKTOP DEVELOPMENT]--------------------------
+
+[tasks.watch-desktop]
+description = "Rebuild and rerun the desktop GUI on file changes"
+run = "cargo watch -c -x 'run --package bin_desktop --bin desktop'"
+
+
 # -------------------------------[MD BOOK]--------------------------------------
 
 [tasks.docs-rustdoc]
