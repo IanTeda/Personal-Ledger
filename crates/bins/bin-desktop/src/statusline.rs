@@ -15,11 +15,20 @@ pub const HEIGHT: gpui::Pixels = px(28.0);
 pub struct StatusLine {
     mode: InputMode,
     noun: Noun,
+    /// Replaces the hint strip when `Some` -- the handoff's "Loading and error states" rule
+    /// ("the hint strip is replaced by the error ... cleared by any keypress"), reused here
+    /// for the `g`-jump prefix's own "flash the hint strip" abort message (`Shell`'s
+    /// `status_message`), not just write failures.
+    status_message: Option<String>,
 }
 
 impl StatusLine {
-    pub fn new(mode: InputMode, noun: Noun) -> Self {
-        Self { mode, noun }
+    pub fn new(mode: InputMode, noun: Noun, status_message: Option<String>) -> Self {
+        Self {
+            mode,
+            noun,
+            status_message,
+        }
     }
 }
 
@@ -38,7 +47,14 @@ impl RenderOnce for StatusLine {
             .text_size(px(11.5))
             .text_color(color::INK_SECONDARY)
             .child(mode_badge(self.mode))
-            .child(hint_strip())
+            .child(match self.status_message {
+                Some(message) => div()
+                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    .text_color(color::ACCENT_TEXT)
+                    .child(message)
+                    .into_any_element(),
+                None => hint_strip().into_any_element(),
+            })
             .child(div().flex_1())
             .child(breadcrumb(self.noun))
     }

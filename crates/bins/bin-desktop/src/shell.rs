@@ -3,11 +3,12 @@
 //! cycling as the real navigation entry point (ADR-0016).
 //!
 //! Assembles the static chrome from `docs/ux/desktop/Shell & Navigation/README.md`'s "1a"
-//! spec (issue #148) and drives it with real keyboard interaction (issue #149): `Tab`/
-//! `Shift-Tab` focus-zone cycling and `j`/`k`/`Down`/`Up`/`gg`/`G`/`Ctrl-d`/`Ctrl-u`/`Enter`
-//! movement, scoped strictly to whichever zone (`NavState::focus`) currently has it. `g`-jump
-//! chords, mode transitions (`:`/`/`/`a`/`?`/`Esc`), and the command palette are separate
-//! build tickets (#150/#151) still to land on the
+//! spec (issue #148) and drives it with real keyboard interaction: `Tab`/`Shift-Tab`
+//! focus-zone cycling and `j`/`k`/`Down`/`Up`/`gg`/`G`/`Ctrl-d`/`Ctrl-u`/`Enter` movement,
+//! scoped strictly to whichever zone (`NavState::focus`) currently has it (issue #149); the
+//! `g`-prefix jump chords (`g d`, `g t`, ...) and the `Normal`/`Insert`/`Command`/`Search`
+//! mode transitions (issue #150). The command palette, `b`'s rail toggle, and `?`'s help
+//! overlay are separate build tickets (#151/#152) still to land on the
 //! [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) map. A
 //! `View` trait mirroring `bin-tui`'s is still deliberately deferred (see ADR-0016):
 //! `Dashboard` is the only real view, and `render_view` below is a plain match rather than a
@@ -18,18 +19,41 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
+use std::time::{Duration, Instant};
+
 use gpui::{
     Context, FocusHandle, Focusable, KeyDownEvent, ScrollHandle, Window, div, point, prelude::*, px,
 };
 
 use crate::{
-    nav::{FocusZone, NavState, Noun},
+    nav::{FocusZone, InputMode, NavState, Noun},
     rail::{self, context::ContextRail, primary::PrimaryRail},
     statusline::StatusLine,
     theme::{color, type_scale},
     topbar::TopBar,
     view::dashboard::Dashboard,
 };
+
+/// The handoff's own "Jumps" timeout: a `g` with no completing chord within this window is
+/// abandoned rather than left waiting indefinitely.
+const PENDING_G_TIMEOUT: Duration = Duration::from_millis(1000);
+
+/// The `g`-prefix jump target for each bound completion key. `Reconcile` is deliberately
+/// absent -- the handoff's own words: "it is a task, not a place."
+fn jump_noun_for_key(key: &str) -> Option<Noun> {
+    match key {
+        "d" => Some(Noun::Dashboard),
+        "t" => Some(Noun::Transactions),
+        "a" => Some(Noun::Accounts),
+        "b" => Some(Noun::Budgets),
+        "r" => Some(Noun::Reports),
+        "c" => Some(Noun::Categories),
+        "p" => Some(Noun::Payees),
+        "u" => Some(Noun::Units),
+        "s" => Some(Noun::Settings),
+        _ => None,
+    }
+}
 
 /// A single semantic movement, parsed once from a keystroke and then dispatched against
 /// whichever zone is focused -- the same physical keys mean different things per zone, but
@@ -61,13 +85,15 @@ pub struct Shell {
     /// Drives the `View` zone's own scroll when it's focused (`Movement::*`) -- rails don't
     /// scroll at all yet (their content always fits; overflow is a future ticket's problem).
     view_scroll_handle: ScrollHandle,
-    /// `true` after a lone `g` keypress with no completing chord yet -- the leader half of
-    /// `gg` ("jump to first"), this ticket's own narrow slice of the handoff's `g`-prefix
-    /// grammar. Cleared by the very next key regardless of whether it completed `gg`, so an
-    /// abandoned `g` never leaks into the next keypress. Ticket #150 replaces this with the
-    /// full `g`-jump grammar (`g d`, `g t`, ...) and its 1000ms timeout -- this field only
-    /// needs to recognise `gg` for the "Movement" rules this ticket covers.
-    pending_g: bool,
+    /// When this `g` was pressed -- `Some` while a completing chord (`gg`, or `g` + a jump
+    /// key) is still possible. Cleared by the next keypress regardless of outcome, so an
+    /// abandoned `g` never leaks into the one after it. Checked against
+    /// [`PENDING_G_TIMEOUT`] rather than driven by a timer: nothing needs to happen on its
+    /// own with no further keypress, so a lazily-checked timestamp is enough.
+    pending_g: Option<Instant>,
+    /// Replaces the status line's hint strip until the next keypress -- currently only the
+    /// `g`-prefix's own "flash the hint strip" abort message (an unbound completion key).
+    status_message: Option<String>,
 }
 
 impl Shell {
@@ -76,7 +102,8 @@ impl Shell {
             nav,
             focus_handle,
             view_scroll_handle: ScrollHandle::new(),
-            pending_g: false,
+            pending_g: None,
+            status_message: None,
         }
     }
 
@@ -88,14 +115,85 @@ impl Shell {
         &self.focus_handle
     }
 
-    /// Routes a keystroke to focus-zone cycling or, via [`Movement`], to whichever zone is
-    /// currently focused. Returns `false` for a keystroke this ticket doesn't handle (nothing
-    /// to redraw).
+    /// Routes a keystroke: `Esc` first (works in any mode, clears a pending `g` before
+    /// leaving the current mode), then -- while a non-`Normal` mode is active -- nothing else
+    /// (mode transitions pre-empt zone/movement handling, and there's no real `Insert`/
+    /// `Command`/`Search` input surface to route keys to yet, see the module doc), then a
+    /// pending `g`'s own completion/abort (before anything else can claim the key, so `g a`
+    /// reaches Accounts rather than bare `a`'s mode entry), then the global mode-entry keys,
+    /// `Tab` cycling, arming a fresh `g`, and finally [`Movement`] dispatched to whichever
+    /// zone is focused. Returns `false` for a keystroke that changed nothing (nothing to
+    /// redraw).
     fn handle_key_down(&mut self, event: &KeyDownEvent) -> bool {
         let keystroke = &event.keystroke;
         let ctrl = keystroke.modifiers.control;
         let shift = keystroke.modifiers.shift;
         let key = keystroke.key.as_str();
+
+        if key == "escape" {
+            if self.pending_g.take().is_some() {
+                return true;
+            }
+            if self.nav.mode() != InputMode::Normal {
+                self.nav.exit_mode();
+                return true;
+            }
+            return false;
+        }
+
+        // The handoff's own precedent for hint-strip messages (`docs/ux/desktop/README.md`'s
+        // "Loading and error states"): any keypress clears one, not just a timer.
+        let had_status_message = self.status_message.take().is_some();
+
+        if self.nav.mode() != InputMode::Normal {
+            return had_status_message;
+        }
+
+        // A pending `g` consumes the very next key unconditionally, completing or aborting
+        // the chord -- checked before the mode-entry keys and `Tab` below so e.g. `g a`
+        // reaches Accounts rather than the bare `a` mode-entry key, and `g` then anything
+        // else never leaks into ordinary handling.
+        if let Some(pending_since) = self.pending_g.take()
+            && pending_since.elapsed() <= PENDING_G_TIMEOUT
+        {
+            if key == "g" && !ctrl && !shift {
+                self.apply_movement(Movement::First);
+                return true;
+            }
+            if !ctrl
+                && !shift
+                && let Some(noun) = jump_noun_for_key(key)
+            {
+                self.nav.set_noun(noun);
+                self.reset_view_scroll();
+                return true;
+            }
+            // The handoff: "`g` + an unbound key is a no-op: clear the pending prefix and
+            // flash the hint strip." `key` itself is consumed doing nothing else -- it
+            // completes (aborts) the chord rather than also being processed as its own
+            // ordinary keystroke.
+            self.status_message = Some(format!("g {key} is not a jump"));
+            return true;
+        }
+        // No pending `g` (or it timed out) -- fall through and process `key` fresh.
+
+        match key {
+            ":" => {
+                self.nav.enter_mode(InputMode::Command);
+                return true;
+            }
+            "/" => {
+                self.nav.enter_mode(InputMode::Search);
+                return true;
+            }
+            // `g a` (above) jumps to Accounts instead -- the pending-`g` branch always runs
+            // first and returns before this match is reached, so the two never collide.
+            "a" if !ctrl && !shift => {
+                self.nav.enter_mode(InputMode::Insert);
+                return true;
+            }
+            _ => {}
+        }
 
         if key == "tab" {
             if shift {
@@ -106,31 +204,30 @@ impl Shell {
             return true;
         }
 
-        let was_pending_g = std::mem::take(&mut self.pending_g);
-        let movement = if was_pending_g && key == "g" && !ctrl && !shift {
-            Some(Movement::First)
-        } else {
-            match key {
-                "g" if !ctrl && !shift => {
-                    self.pending_g = true;
-                    return false;
-                }
-                // `Keystroke::key` is always the lowercase base character -- Shift-g (`G`)
-                // arrives as `key == "g"`, `modifiers.shift == true`, not `key == "G"`.
-                "g" if shift => Some(Movement::Last),
-                "j" | "down" => Some(Movement::Next),
-                "k" | "up" => Some(Movement::Prev),
-                "d" if ctrl => Some(Movement::HalfPageDown),
-                "u" if ctrl => Some(Movement::HalfPageUp),
-                "enter" => Some(Movement::Enter),
-                _ => None,
-            }
+        if key == "g" && !ctrl && !shift {
+            self.pending_g = Some(Instant::now());
+            return had_status_message;
+        }
+
+        let movement = match key {
+            // Bare Shift-`g` (`G`), no pending prefix -- jump to last in the focused zone.
+            "g" if shift => Some(Movement::Last),
+            "j" | "down" => Some(Movement::Next),
+            "k" | "up" => Some(Movement::Prev),
+            "d" if ctrl => Some(Movement::HalfPageDown),
+            "u" if ctrl => Some(Movement::HalfPageUp),
+            "enter" => Some(Movement::Enter),
+            _ => None,
         };
 
         let Some(movement) = movement else {
-            return false;
+            return had_status_message;
         };
+        self.apply_movement(movement);
+        true
+    }
 
+    fn apply_movement(&mut self, movement: Movement) {
         let noun_before = self.nav.noun();
         match self.nav.focus() {
             FocusZone::PrimaryRail => self.apply_primary_rail_movement(movement),
@@ -138,12 +235,15 @@ impl Shell {
             FocusZone::View => self.apply_view_movement(movement),
         }
         if self.nav.noun() != noun_before {
-            // A new noun's view is a different (usually much shorter) length -- carrying over
-            // the old scroll offset could leave it scrolled past all its content, rendering
-            // blank. Every fresh noun starts scrolled to the top.
-            self.view_scroll_handle.set_offset(gpui::Point::default());
+            self.reset_view_scroll();
         }
-        true
+    }
+
+    /// A new noun's view is a different (usually much shorter) length -- carrying over the
+    /// old scroll offset could leave it scrolled past all its content, rendering blank. Every
+    /// fresh noun starts scrolled to the top.
+    fn reset_view_scroll(&mut self) {
+        self.view_scroll_handle.set_offset(gpui::Point::default());
     }
 
     fn apply_primary_rail_movement(&mut self, movement: Movement) {
@@ -263,7 +363,11 @@ impl Render for Shell {
                         &self.view_scroll_handle,
                     )),
             )
-            .child(StatusLine::new(self.nav.mode(), self.nav.noun()))
+            .child(StatusLine::new(
+                self.nav.mode(),
+                self.nav.noun(),
+                self.status_message.clone(),
+            ))
     }
 }
 
