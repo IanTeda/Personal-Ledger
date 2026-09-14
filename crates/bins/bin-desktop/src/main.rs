@@ -103,7 +103,14 @@ async fn main() -> Result<()> {
                         window_bounds: Some(WindowBounds::Windowed(bounds)),
                         ..Default::default()
                     },
-                    move |_window, cx| cx.new(|_cx| Shell::new(nav)),
+                    move |window, cx| {
+                        let focus_handle = cx.focus_handle();
+                        // Grabs keyboard focus for the shell's own key handling (issue #149)
+                        // as soon as the window opens -- nothing else in the window competes
+                        // for it yet.
+                        window.focus(&focus_handle);
+                        cx.new(|_cx| Shell::new(nav, focus_handle))
+                    },
                 )
                 .expect("desktop window must open");
 

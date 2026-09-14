@@ -88,12 +88,18 @@ const SETTINGS_ROW: Row = Row {
 
 #[derive(IntoElement)]
 pub struct PrimaryRail {
+    /// The row drawn selected -- `NavState::primary_highlight`, not `noun` directly, so
+    /// browsing with `j`/`k`/`gg`/`G` updates this rail before `Enter` commits it (see
+    /// `nav::NavState`'s "Primary rail highlight vs. selection" doc).
     active: Noun,
+    /// Whether `FocusZone::PrimaryRail` is the shell's current focus -- draws the 2px ink
+    /// inner edge on this rail's border-facing (right) side when `true`.
+    focused: bool,
 }
 
 impl PrimaryRail {
-    pub fn new(active: Noun) -> Self {
-        Self { active }
+    pub fn new(active: Noun, focused: bool) -> Self {
+        Self { active, focused }
     }
 }
 
@@ -109,7 +115,11 @@ impl RenderOnce for PrimaryRail {
             .pb(px(10.0))
             .bg(color::CHROME)
             .border_r(px(2.0))
-            .border_color(color::STRUCTURAL_RULE)
+            .border_color(if self.focused {
+                color::INK
+            } else {
+                color::STRUCTURAL_RULE
+            })
             .child(group_heading("LEDGER", true))
             .children(LEDGER_GROUP.iter().map(|row| self.render_row(row)))
             .child(group_heading("PLAN", false))

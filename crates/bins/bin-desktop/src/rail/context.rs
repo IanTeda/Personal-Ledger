@@ -69,14 +69,38 @@ const ACCOUNTS: &[Account] = &[
     },
 ];
 
+/// How many context-rail entities the given noun actually has today. Only `Dashboard`'s
+/// account roll-call is real; every other noun with entities (`Noun::has_context_entities`)
+/// still renders a placeholder frame with nothing to move through, so callers driving
+/// keyboard movement (`Shell`) should treat `0` as "movement is a no-op here", not an error.
+pub fn entity_count(noun: Noun) -> usize {
+    match noun {
+        Noun::Dashboard => ACCOUNTS.len(),
+        _ => 0,
+    }
+}
+
 #[derive(IntoElement)]
 pub struct ContextRail {
     noun: Noun,
+    /// The row keyboard movement is currently on (`NavState::context`) -- `None` renders no
+    /// row highlighted.
+    context: Option<usize>,
+    /// Whether `FocusZone::ContextRail` is the shell's current focus -- draws the 2px ink
+    /// inner edge on this rail's border-facing (right) side, and only then tints the current
+    /// row (the handoff defines no persistent "selected" row style for the context rail,
+    /// only a hover tint -- reused here as the closest existing token for "this is where
+    /// keyboard movement is," rather than inventing a new one).
+    focused: bool,
 }
 
 impl ContextRail {
-    pub fn new(noun: Noun) -> Self {
-        Self { noun }
+    pub fn new(noun: Noun, context: Option<usize>, focused: bool) -> Self {
+        Self {
+            noun,
+            context,
+            focused,
+        }
     }
 }
 
@@ -90,17 +114,19 @@ impl RenderOnce for ContextRail {
             .flex_col()
             .bg(color::GROUND)
             .border_r(px(2.0))
-            .border_color(color::STRUCTURAL_RULE);
+            .border_color(if self.focused {
+                color::INK
+            } else {
+                color::STRUCTURAL_RULE
+            });
 
         match self.noun {
             Noun::Dashboard => frame
                 .child(header("ACCOUNTS", &format!("{} active", ACCOUNTS.len())))
-                .children(
-                    ACCOUNTS
-                        .iter()
-                        .enumerate()
-                        .map(|(index, account)| account_row(account, index == ACCOUNTS.len() - 1)),
-                )
+                .children(ACCOUNTS.iter().enumerate().map(|(index, account)| {
+                    let current = self.focused && self.context == Some(index);
+                    account_row(account, index == ACCOUNTS.len() - 1, current)
+                }))
                 .child(div().flex_1())
                 .child(footer("+ new account", ":account new")),
             noun => frame
@@ -140,13 +166,14 @@ fn header(label: &str, count: &str) -> impl IntoElement {
         .child(div().h(px(2.0)).bg(color::STRUCTURAL_RULE))
 }
 
-fn account_row(account: &Account, last: bool) -> impl IntoElement {
+fn account_row(account: &Account, last: bool, current: bool) -> impl IntoElement {
     div()
         .py(px(9.0))
         .px(px(14.0))
         .flex()
         .flex_col()
         .gap(px(2.0))
+        .when(current, |this| this.bg(color::HOVER_TINT))
         .when(!last, |this| {
             this.border_b(px(1.0)).border_color(color::HAIRLINE)
         })

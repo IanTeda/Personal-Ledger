@@ -28,6 +28,48 @@ pub enum Noun {
 }
 
 impl Noun {
+    /// Every noun, in the primary rail's own row order (top to bottom, skipping group
+    /// headings and the divider, which aren't selectable rows).
+    pub const ALL: [Noun; 10] = [
+        Noun::Dashboard,
+        Noun::Transactions,
+        Noun::Accounts,
+        Noun::Reconcile,
+        Noun::Budgets,
+        Noun::Reports,
+        Noun::Categories,
+        Noun::Payees,
+        Noun::Units,
+        Noun::Settings,
+    ];
+
+    fn row_index(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|noun| *noun == self)
+            .expect("Noun::ALL must list every Noun")
+    }
+
+    /// The next row down. Clamps at the last row rather than wrapping -- `gg`/`G` are the
+    /// handoff's own way to jump straight to the first/last row, which would be redundant if
+    /// `j`/`k` also wrapped.
+    pub fn next_row(self) -> Noun {
+        Self::ALL[(self.row_index() + 1).min(Self::ALL.len() - 1)]
+    }
+
+    /// The next row up. See [`Self::next_row`] on why this clamps instead of wrapping.
+    pub fn prev_row(self) -> Noun {
+        Self::ALL[self.row_index().saturating_sub(1)]
+    }
+
+    pub fn first_row() -> Noun {
+        Self::ALL[0]
+    }
+
+    pub fn last_row() -> Noun {
+        Self::ALL[Self::ALL.len() - 1]
+    }
+
     /// Whether this noun's context rail has any entities at all. Only `Settings` doesn't.
     ///
     /// The handoff's own state-machine section (rule 1's parenthetical) lists `Dashboard`
@@ -89,6 +131,17 @@ pub type ContextSelection = Option<usize>;
 /// Owns the primary/context rail state machine. See the module doc and
 /// `docs/ux/desktop/README.md`'s six numbered transition rules -- each is implemented as
 /// exactly one method here, named for the rule it enforces.
+///
+/// **Primary rail highlight vs. selection.** `set_noun` (rule 1) unconditionally moves focus
+/// to `View` -- which would make repeated `j`/`k`/`gg`/`G` browsing on the primary rail
+/// impossible if movement called `set_noun` directly (the first keypress would bounce focus
+/// away). So movement only updates `primary_highlight`, a separate "currently browsed" row;
+/// `Enter` (`commit_primary_highlight`) is the sole path that promotes it into `noun`. This
+/// mirrors what the handoff's "Movement" bullet already implies by describing `Enter` as a
+/// distinct "activate" step, not a side effect of mere navigation. `primary_highlight` is
+/// kept equal to `noun` at every other time (any `set_noun` call, or whenever focus
+/// (re-)enters `PrimaryRail`), so rendering can use it unconditionally as "the row to draw
+/// selected" without needing to know whether a browse is in progress.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NavState {
     noun: Noun,
@@ -99,6 +152,7 @@ pub struct NavState {
     /// Rule 6: the focus zone `exit_mode` restores -- `Some` only while `mode` isn't
     /// `Normal`, set once on the transition away from `Normal` and cleared on the way back.
     pre_mode_focus: Option<FocusZone>,
+    primary_highlight: Noun,
 }
 
 impl Default for NavState {
@@ -114,6 +168,7 @@ impl Default for NavState {
             primary_rail: RailMode::default(),
             mode: InputMode::default(),
             pre_mode_focus: None,
+            primary_highlight: Noun::default(),
         }
     }
 }
@@ -143,12 +198,43 @@ impl NavState {
         self.mode
     }
 
+    pub fn primary_highlight(&self) -> Noun {
+        self.primary_highlight
+    }
+
     /// Rule 1: changing `noun` resets `context` to the noun's first entity (index `0`, or
-    /// `None` for a noun with none) and moves focus to `View`.
+    /// `None` for a noun with none) and moves focus to `View`. Also syncs `primary_highlight`
+    /// -- see the struct doc's "Primary rail highlight vs. selection" note.
     pub fn set_noun(&mut self, noun: Noun) {
         self.noun = noun;
+        self.primary_highlight = noun;
         self.context = noun.has_context_entities().then_some(0);
         self.focus = FocusZone::View;
+    }
+
+    /// `j`/`k`/`Down`/`Up`/`gg`/`G` while the primary rail is focused: moves the browsed row
+    /// without touching `noun` (see the struct doc). Callers should guard these on
+    /// `focus() == FocusZone::PrimaryRail` -- `NavState` doesn't enforce that itself, the same
+    /// way `set_context` doesn't enforce being called only while `ContextRail` is focused.
+    pub fn move_primary_highlight_next(&mut self) {
+        self.primary_highlight = self.primary_highlight.next_row();
+    }
+
+    pub fn move_primary_highlight_prev(&mut self) {
+        self.primary_highlight = self.primary_highlight.prev_row();
+    }
+
+    pub fn move_primary_highlight_first(&mut self) {
+        self.primary_highlight = Noun::first_row();
+    }
+
+    pub fn move_primary_highlight_last(&mut self) {
+        self.primary_highlight = Noun::last_row();
+    }
+
+    /// `Enter` on the primary rail: promotes the browsed row into the committed `noun`.
+    pub fn commit_primary_highlight(&mut self) {
+        self.set_noun(self.primary_highlight);
     }
 
     /// Rule 2: changing `context` never changes `noun` or `focus`.
@@ -159,28 +245,35 @@ impl NavState {
     /// Rule 3: cycles focus forward (`PrimaryRail -> ContextRail -> View -> PrimaryRail`),
     /// skipping `ContextRail` when the active noun has no entities to show there.
     pub fn cycle_focus_forward(&mut self) {
-        self.focus = match self.focus {
+        let next = match self.focus {
             FocusZone::PrimaryRail if self.noun.has_context_entities() => FocusZone::ContextRail,
             FocusZone::PrimaryRail => FocusZone::View,
             FocusZone::ContextRail => FocusZone::View,
             FocusZone::View => FocusZone::PrimaryRail,
         };
+        self.set_focus(next);
     }
 
     /// The reverse of [`Self::cycle_focus_forward`], same skip rule.
     pub fn cycle_focus_backward(&mut self) {
-        self.focus = match self.focus {
+        let next = match self.focus {
             FocusZone::PrimaryRail => FocusZone::View,
             FocusZone::ContextRail => FocusZone::PrimaryRail,
             FocusZone::View if self.noun.has_context_entities() => FocusZone::ContextRail,
             FocusZone::View => FocusZone::PrimaryRail,
         };
+        self.set_focus(next);
     }
 
     /// Sets focus directly -- e.g. `Enter` on the primary rail moves focus to `View` without
-    /// going through a cycle step.
+    /// going through a cycle step. Resets `primary_highlight` to `noun` whenever focus
+    /// (re)enters `PrimaryRail`, so a fresh browse always starts from the committed selection
+    /// (see the struct doc's "Primary rail highlight vs. selection" note).
     pub fn set_focus(&mut self, focus: FocusZone) {
         self.focus = focus;
+        if focus == FocusZone::PrimaryRail {
+            self.primary_highlight = self.noun;
+        }
     }
 
     /// Rule 5: collapsing/expanding the primary rail doesn't touch focus or context -- true
@@ -387,5 +480,59 @@ mod tests {
 
         assert_eq!(nav.mode(), InputMode::Normal);
         assert_eq!(nav.focus(), FocusZone::PrimaryRail);
+    }
+
+    #[test]
+    fn noun_row_order_clamps_at_both_ends() {
+        assert_eq!(Noun::Dashboard.prev_row(), Noun::Dashboard);
+        assert_eq!(Noun::Settings.next_row(), Noun::Settings);
+        assert_eq!(Noun::Dashboard.next_row(), Noun::Transactions);
+        assert_eq!(Noun::Settings.prev_row(), Noun::Units);
+    }
+
+    #[test]
+    fn noun_first_and_last_row() {
+        assert_eq!(Noun::first_row(), Noun::Dashboard);
+        assert_eq!(Noun::last_row(), Noun::Settings);
+    }
+
+    #[test]
+    fn primary_highlight_moves_independently_of_noun_until_committed() {
+        let mut nav = NavState::new();
+        nav.set_focus(FocusZone::PrimaryRail);
+
+        nav.move_primary_highlight_next();
+        nav.move_primary_highlight_next();
+
+        assert_eq!(nav.primary_highlight(), Noun::Accounts);
+        // Browsing never touches the committed noun or moves focus away.
+        assert_eq!(nav.noun(), Noun::Dashboard);
+        assert_eq!(nav.focus(), FocusZone::PrimaryRail);
+
+        nav.commit_primary_highlight();
+
+        assert_eq!(nav.noun(), Noun::Accounts);
+        assert_eq!(nav.focus(), FocusZone::View);
+    }
+
+    #[test]
+    fn primary_highlight_resets_to_noun_when_focus_enters_primary_rail() {
+        let mut nav = NavState::new();
+        nav.set_focus(FocusZone::PrimaryRail);
+        nav.move_primary_highlight_last();
+        assert_eq!(nav.primary_highlight(), Noun::Settings);
+
+        // Leaving without committing, then coming back, starts the browse over.
+        nav.set_focus(FocusZone::View);
+        nav.set_focus(FocusZone::PrimaryRail);
+
+        assert_eq!(nav.primary_highlight(), Noun::Dashboard);
+    }
+
+    #[test]
+    fn set_noun_syncs_primary_highlight() {
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Reports);
+        assert_eq!(nav.primary_highlight(), Noun::Reports);
     }
 }
