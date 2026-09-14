@@ -6,10 +6,12 @@
 //! that work lands (issue #148).
 
 mod assets;
+mod command;
 mod error;
 mod feasibility_demo;
 mod icon;
 mod nav;
+mod palette;
 mod persistence;
 mod rail;
 mod shell;

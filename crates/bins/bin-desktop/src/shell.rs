@@ -22,11 +22,14 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Context, FocusHandle, Focusable, KeyDownEvent, ScrollHandle, Window, div, point, prelude::*, px,
+    Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle, Window, div, point,
+    prelude::*, px,
 };
 
 use crate::{
+    command::Command,
     nav::{FocusZone, InputMode, NavState, Noun},
+    palette::Palette,
     rail::{self, context::ContextRail, primary::PrimaryRail},
     statusline::StatusLine,
     theme::{color, type_scale},
@@ -91,9 +94,14 @@ pub struct Shell {
     /// [`PENDING_G_TIMEOUT`] rather than driven by a timer: nothing needs to happen on its
     /// own with no further keypress, so a lazily-checked timestamp is enough.
     pending_g: Option<Instant>,
-    /// Replaces the status line's hint strip until the next keypress -- currently only the
-    /// `g`-prefix's own "flash the hint strip" abort message (an unbound completion key).
+    /// Replaces the status line's hint strip until the next keypress -- the `g`-prefix's own
+    /// "flash the hint strip" abort message, and the command palette's "not yet built" message
+    /// once it closes back to `Normal` (see [`Self::run_command`]).
     status_message: Option<String>,
+    /// The command palette's own input/selection state -- `Some` only while
+    /// `NavState::mode` is `InputMode::Command`, mirroring `bin-tui`'s own
+    /// `Shell`'s `Option<popup::command::CommandPopup>` (`docs/ux/desktop/README.md`'s Notes).
+    palette: Option<Palette>,
 }
 
 impl Shell {
@@ -104,6 +112,7 @@ impl Shell {
             view_scroll_handle: ScrollHandle::new(),
             pending_g: None,
             status_message: None,
+            palette: None,
         }
     }
 
@@ -135,6 +144,7 @@ impl Shell {
                 return true;
             }
             if self.nav.mode() != InputMode::Normal {
+                self.palette = None;
                 self.nav.exit_mode();
                 return true;
             }
@@ -144,6 +154,14 @@ impl Shell {
         // The handoff's own precedent for hint-strip messages (`docs/ux/desktop/README.md`'s
         // "Loading and error states"): any keypress clears one, not just a timer.
         let had_status_message = self.status_message.take().is_some();
+
+        // Popup-owned keys (mirroring `docs/ux/tui/navigation.md`'s own tier 2): while the
+        // palette is open it owns every keystroke, checked before the "Normal only" gate below
+        // since `Command` is the one non-`Normal` mode with a real input surface to route keys
+        // to today (`Insert`/`Search` don't have one yet -- see the module doc).
+        if self.nav.mode() == InputMode::Command {
+            return self.handle_palette_key(keystroke) || had_status_message;
+        }
 
         if self.nav.mode() != InputMode::Normal {
             return had_status_message;
@@ -180,6 +198,7 @@ impl Shell {
         match key {
             ":" => {
                 self.nav.enter_mode(InputMode::Command);
+                self.palette = Some(Palette::new());
                 return true;
             }
             "/" => {
@@ -314,6 +333,77 @@ impl Shell {
         self.view_scroll_handle
             .set_offset(point(offset.x, px(clamped_y)));
     }
+
+    /// Routes a keystroke while the palette is open (tier 2, "popup-owned keys" -- mirroring
+    /// `docs/ux/tui/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
+    /// selection, `Enter` runs the selected command (see [`Self::run_command`]), and any other
+    /// unmodified, printable key is typed into the query. Everything else is swallowed here
+    /// rather than falling through to the zone/movement handling below -- keeping "the popup
+    /// owns every keystroke" true even for a key (e.g. `Tab`) this palette gives no meaning to.
+    fn handle_palette_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(palette) = self.palette.as_mut() else {
+            return false;
+        };
+
+        match keystroke.key.as_str() {
+            "backspace" => {
+                palette.backspace();
+                true
+            }
+            "up" => {
+                palette.move_up();
+                true
+            }
+            "down" => {
+                palette.move_down();
+                true
+            }
+            "enter" => {
+                let command = palette.selected_command();
+                self.palette = None;
+                self.nav.exit_mode();
+                if let Some(command) = command {
+                    self.run_command(command);
+                }
+                true
+            }
+            _ => {
+                let modifiers = &keystroke.modifiers;
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                match keystroke.key_char.as_deref() {
+                    Some(text) if text.chars().count() == 1 => {
+                        palette.push_char(text.chars().next().expect("checked above"));
+                        true
+                    }
+                    _ => false,
+                }
+            }
+        }
+    }
+
+    /// Runs `command`'s handler if it has one, resetting the view's scroll when it lands on a
+    /// different noun (matching every other navigation entry point -- `g`-jumps, rail `Enter`).
+    /// A command with no handler yet (`Command::handler == None`) shows the same "not yet
+    /// built" message `docs/ux/tui/navigation.md` describes for its own popup, reusing the
+    /// status line's existing `status_message` slot (the "1d" spec's own COMMAND-mode status
+    /// line has no message slot of its own, and the palette has already closed by the time this
+    /// runs -- see the `enter` arm of [`Self::handle_palette_key`]).
+    fn run_command(&mut self, command: &'static Command) {
+        match command.handler {
+            Some(handler) => {
+                let noun_before = self.nav.noun();
+                handler(&mut self.nav);
+                if self.nav.noun() != noun_before {
+                    self.reset_view_scroll();
+                }
+            }
+            None => {
+                self.status_message = Some(format!(":{} — not yet built", command.name));
+            }
+        }
+    }
 }
 
 impl Focusable for Shell {
@@ -325,6 +415,12 @@ impl Focusable for Shell {
 impl Render for Shell {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.nav.focus();
+        // The "1d" spec: "The shell behind the palette drops to 30% opacity." Applied to the
+        // top bar and content row only, not the status line -- that same spec separately
+        // describes the status line's own COMMAND-mode content (the live query, "esc close
+        // command window"), which stays meaningful precisely because it stays legible; only
+        // the navigational chrome the palette visually floats over goes dim.
+        let content_opacity = if self.palette.is_some() { 0.3 } else { 1.0 };
 
         div()
             .size_full()
@@ -340,34 +436,46 @@ impl Render for Shell {
                     cx.notify();
                 }
             }))
-            .child(TopBar::new())
             .child(
                 div()
                     .flex_1()
                     .min_h(px(0.0))
                     .flex()
-                    .child(PrimaryRail::new(
-                        self.nav.primary_highlight(),
-                        focus == FocusZone::PrimaryRail,
-                    ))
-                    .when(self.nav.noun().has_context_entities(), |this| {
-                        this.child(ContextRail::new(
-                            self.nav.noun(),
-                            self.nav.context(),
-                            focus == FocusZone::ContextRail,
-                        ))
-                    })
-                    .child(render_view(
-                        self.nav.noun(),
-                        focus == FocusZone::View,
-                        &self.view_scroll_handle,
-                    )),
+                    .flex_col()
+                    .opacity(content_opacity)
+                    .child(TopBar::new())
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_h(px(0.0))
+                            .flex()
+                            .child(PrimaryRail::new(
+                                self.nav.primary_highlight(),
+                                focus == FocusZone::PrimaryRail,
+                            ))
+                            .when(self.nav.noun().has_context_entities(), |this| {
+                                this.child(ContextRail::new(
+                                    self.nav.noun(),
+                                    self.nav.context(),
+                                    focus == FocusZone::ContextRail,
+                                ))
+                            })
+                            .child(render_view(
+                                self.nav.noun(),
+                                focus == FocusZone::View,
+                                &self.view_scroll_handle,
+                            )),
+                    ),
             )
             .child(StatusLine::new(
                 self.nav.mode(),
                 self.nav.noun(),
                 self.status_message.clone(),
+                self.palette
+                    .as_ref()
+                    .map(|palette| palette.input().to_string()),
             ))
+            .children(self.palette.as_ref().map(Palette::render))
     }
 }
 

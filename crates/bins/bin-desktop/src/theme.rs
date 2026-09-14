@@ -69,6 +69,11 @@ pub mod color {
     /// `ACCENT` doesn't clear 4.5:1 contrast on `GROUND` at body size and below -- use this
     /// instead for accent-colored *text* at 13px or smaller.
     pub const ACCENT_TEXT: Rgba = rgb(0xae1800);
+
+    /// The command palette's own drop shadow: `0 12px 32px rgba(45,43,43,.30)` -- the handoff's
+    /// "Shadows" section names this as the shell's one exception to "nothing else elevates," so
+    /// it earns its own token rather than reusing `STRUCTURAL_RULE`'s different ink/alpha.
+    pub const PALETTE_SHADOW: Rgba = rgba(0x2d2b2b4d);
 }
 
 /// Type scale. Archivo throughout, bundled offline (see `crate::main`'s `add_fonts` call) --
