@@ -7,6 +7,7 @@
 
 ## Domain Context
 
+- [Account Kinds](accounts.md)
 - [Units](units.md)
 
 ## Code Structure

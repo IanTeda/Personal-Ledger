@@ -1,6 +1,6 @@
 # Units
 
-In Personal Ledger, a Unit represents the denomination used to measure value. Every Ledger (Account) balance and every Transaction amount is recorded in a Unit.
+In Personal Ledger, a Unit represents the denomination used to measure value. Every Account balance and every Transaction line (or split line) is recorded in a Unit.
 
 A Unit may represent:
 
