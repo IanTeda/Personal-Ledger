@@ -1,0 +1,11 @@
+# `Shell` replaces the feasibility chart-demo tab bar for desktop navigation
+
+`docs/ux/desktop/Shell & Navigation/` (a Claude Design handoff) and its gpui-facing spec, `docs/ux/desktop/README.md`, describe a persistent-rail, command-palette-driven shell for `bin-desktop` — a different shape from `crates/bins/bin-desktop/src/main.rs`'s current `DesktopApp`/`Screen` pair, a flat `TabBar` cycling six dummy chart/table screens that the closed [Desktop App feasibility map](https://github.com/IanTeda/Personal-Ledger/issues/23) built to prove `gpui-component`'s chart widgets, not to be a real navigation model.
+
+We're replacing rather than extending it, the same call ADR-0013 made for the TUI's equivalent swap (`App`/`Screen` → `Shell`/`View`): `DesktopApp` becomes `Shell`, and the existing feasibility-cycle code — `Screen`, the dummy-data generators, `TransactionTableDelegate`, and the Live Categories SQLite demo, tests included — moves into a new `feasibility_demo` module, `#![allow(dead_code)]`, no longer referenced from `main()` but still compiling. This mirrors the TUI's own `app.rs`/`screen/` treatment exactly: dead code, not a live fallback path, until the pieces it proved are individually reused by real tickets on the [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) map — the `LineChart`/`PieChart` usage in particular is reused as-is for the real Dashboard view's chart band (issue #148).
+
+A `View` trait mirroring `crate::view` in `bin-tui` is deliberately not introduced yet: `Shell` hosts exactly one concrete view (a placeholder) until `NavState` (issue #147) gives it something to actually switch between, and `gpui`'s `Render` trait isn't object-safe the way `bin-tui`'s per-screen `draw(&mut self, frame: &mut Frame)` is — a real `View` type will need `gpui::AnyView` or an equivalent hand-rolled erasure, decided once there's a second view to justify it.
+
+## Considered Options
+
+Keeping the `TabBar`/`Screen` cycling as a secondary navigation surface alongside the new rails was rejected: option 1a (the accepted design) has no tab-bar-shaped navigation at all, so preserving it underneath would mean maintaining two competing navigation shapes for no reader's benefit — the same reasoning ADR-0013 gave for not wrapping the TUI's old stack in `Shell` chrome instead of replacing it.
