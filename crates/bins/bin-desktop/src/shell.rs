@@ -13,15 +13,26 @@
 
 use gpui::{Context, Window, div, prelude::*};
 
-use crate::theme::{color, type_scale};
+use crate::{
+    nav::NavState,
+    theme::{color, type_scale},
+};
 
-/// Owns the shell's render tree. Empty today; gains `NavState` and the chrome modules as the
-/// rest of the map's tickets land.
-pub struct Shell;
+/// Owns the shell's render tree and the live `NavState`. The chrome modules that actually
+/// read `nav` (the rails, the status line) are the rest of the map's tickets; today it's
+/// carried through unused by rendering but already reachable for restart persistence (see
+/// `crate::main`'s `on_app_quit` hook).
+pub struct Shell {
+    nav: NavState,
+}
 
 impl Shell {
-    pub fn new() -> Self {
-        Self
+    pub fn new(nav: NavState) -> Self {
+        Self { nav }
+    }
+
+    pub fn nav(&self) -> &NavState {
+        &self.nav
     }
 }
 

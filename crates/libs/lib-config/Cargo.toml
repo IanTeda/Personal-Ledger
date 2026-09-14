@@ -13,14 +13,16 @@ clap = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 
+## -- Workspace Shared Dependencies (continued) --
+dirs = { workspace = true }
+
 ## -- Library Dependencies --
 config = { version = "0.15.19" }
-dirs = { version = "6.0.0" }
 
 
 [dev-dependencies]
 serde_json = { workspace = true }
-tempfile = "3.10.1"
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

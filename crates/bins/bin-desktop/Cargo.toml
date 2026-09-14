@@ -20,11 +20,17 @@ lib_tracing = { path = "../../libs/lib-tracing" }
 ## -- Workspace Dependencies --
 chrono = { workspace = true }
 clap = { workspace = true }
+dirs = { workspace = true }
 gpui = { workspace = true }
 gpui-component = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

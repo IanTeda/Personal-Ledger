@@ -7,15 +7,18 @@
 
 mod error;
 mod feasibility_demo;
+mod nav;
+mod persistence;
 mod shell;
 mod theme;
 
 use std::borrow::Cow;
 
 use clap::Parser;
-use gpui::{App, Application, Bounds, WindowBounds, WindowOptions, prelude::*, px, size};
+use gpui::{App, Application, Bounds, WindowBounds, WindowOptions, point, prelude::*, px, size};
 
 pub use error::Error;
+use persistence::WindowGeometry;
 use shell::Shell;
 
 /// Crate Result type alias used across the Desktop binary.
@@ -62,18 +65,65 @@ async fn main() -> Result<()> {
             ])
             .expect("bundled Archivo fonts must parse");
 
-        // 1280x800 is the handoff's own window size (`docs/ux/desktop/Shell & Navigation/
-        // README.md`, option 1a) -- kept here even though the chrome it describes isn't
-        // built yet, so the window opens at the right size from the start.
-        let bounds = Bounds::centered(None, size(px(1280.0), px(800.0)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                ..Default::default()
+        // `noun`/`primary_rail`/window geometry survive restart (`docs/ux/desktop/README.md`'s
+        // "State machine"); everything else in `NavState` starts fresh every launch, so there's
+        // nothing else to seed here.
+        let persisted = persistence::load();
+
+        let mut nav = nav::NavState::new();
+        nav.set_noun(persisted.noun);
+        nav.set_primary_rail(persisted.primary_rail);
+
+        // Restore the last saved window geometry; otherwise 1280x800 centered, the handoff's
+        // own window size (`docs/ux/desktop/Shell & Navigation/README.md`, option 1a).
+        let bounds = match persisted.window {
+            Some(WindowGeometry {
+                x,
+                y,
+                width,
+                height,
+            }) => Bounds {
+                origin: point(px(x), px(y)),
+                size: size(px(width), px(height)),
             },
-            move |_window, cx| cx.new(|_cx| Shell::new()),
-        )
-        .unwrap();
+            None => Bounds::centered(None, size(px(1280.0), px(800.0)), cx),
+        };
+
+        let window_handle = cx
+            .open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    ..Default::default()
+                },
+                move |_window, cx| cx.new(|_cx| Shell::new(nav)),
+            )
+            .expect("desktop window must open");
+
+        // No action mutates `NavState` yet (the keybinding/rail-toggle tickets do), so this
+        // currently ever only re-saves whatever `persistence::load` produced -- registered now
+        // anyway so the mechanism is real and exercised, rather than added later as an
+        // afterthought. `on_app_quit`'s `Subscription` must outlive this closure to stay
+        // registered, hence `detach()` (mirroring `cx.spawn(..).detach()` elsewhere in this
+        // crate) rather than binding and dropping it.
+        cx.on_app_quit(move |cx| {
+            let _ = window_handle.update(cx, |shell, window, _cx| {
+                let bounds = window.bounds();
+                let state = persistence::PersistedState {
+                    noun: shell.nav().noun(),
+                    primary_rail: shell.nav().primary_rail(),
+                    window: Some(WindowGeometry {
+                        x: f32::from(bounds.origin.x),
+                        y: f32::from(bounds.origin.y),
+                        width: f32::from(bounds.size.width),
+                        height: f32::from(bounds.size.height),
+                    }),
+                };
+                let _ = persistence::save(&state);
+            });
+            async {}
+        })
+        .detach();
+
         cx.activate(true);
     });
 
