@@ -8,6 +8,9 @@
 mod error;
 mod feasibility_demo;
 mod shell;
+mod theme;
+
+use std::borrow::Cow;
 
 use clap::Parser;
 use gpui::{App, Application, Bounds, WindowBounds, WindowOptions, prelude::*, px, size};
@@ -19,6 +22,13 @@ use shell::Shell;
 ///
 /// Use `crate::Result<T>` for functions that return `T` or a `crate::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Archivo (400/600/800), bundled at compile time rather than fetched from Google Fonts at
+/// runtime the way the handoff's own mockup does -- the client is local-first and must render
+/// offline. See `crates/bins/bin-desktop/assets/fonts/OFL.txt` for the license.
+const ARCHIVO_REGULAR: &[u8] = include_bytes!("../assets/fonts/Archivo-Regular.ttf");
+const ARCHIVO_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/Archivo-SemiBold.ttf");
+const ARCHIVO_EXTRA_BOLD: &[u8] = include_bytes!("../assets/fonts/Archivo-ExtraBold.ttf");
 
 /// Personal Ledger Desktop.
 #[derive(Parser)]
@@ -39,6 +49,18 @@ async fn main() -> Result<()> {
 
     Application::new().run(move |cx: &mut App| {
         gpui_component::init(cx);
+
+        // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
+        // .. }` request resolves against the bundled weights rather than a fallback -- a
+        // missing/corrupt bundled font is a build-time problem, not a recoverable one, hence
+        // `expect` (matching `open_window`'s own `unwrap` below in this same closure).
+        cx.text_system()
+            .add_fonts(vec![
+                Cow::Borrowed(ARCHIVO_REGULAR),
+                Cow::Borrowed(ARCHIVO_SEMIBOLD),
+                Cow::Borrowed(ARCHIVO_EXTRA_BOLD),
+            ])
+            .expect("bundled Archivo fonts must parse");
 
         // 1280x800 is the handoff's own window size (`docs/ux/desktop/Shell & Navigation/
         // README.md`, option 1a) -- kept here even though the chrome it describes isn't

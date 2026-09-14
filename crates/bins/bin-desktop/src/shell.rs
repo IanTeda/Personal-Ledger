@@ -12,7 +12,8 @@
 //! split waits for `NavState`.
 
 use gpui::{Context, Window, div, prelude::*};
-use gpui_component::ActiveTheme;
+
+use crate::theme::{color, type_scale};
 
 /// Owns the shell's render tree. Empty today; gains `NavState` and the chrome modules as the
 /// rest of the map's tickets land.
@@ -25,18 +26,16 @@ impl Shell {
 }
 
 impl Render for Shell {
-    // `cx.theme()`'s background/foreground are a placeholder only -- a plain `div` has no
-    // default fill or text color, so without them the window renders blank. The fixed
-    // Modernist palette (`docs/ux/desktop/README.md`'s "Design tokens") replaces this once
-    // issue #146 lands.
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .size_full()
             .flex()
             .items_center()
             .justify_center()
-            .bg(cx.theme().background)
-            .text_color(cx.theme().foreground)
+            .bg(color::GROUND)
+            .text_color(color::INK)
+            .font_family(type_scale::FONT_FAMILY)
+            .text_size(type_scale::BODY)
             .child("Personal Ledger -- desktop shell scaffold (see docs/ux/desktop/README.md)")
     }
 }
