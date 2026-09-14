@@ -28,12 +28,22 @@ pub enum Noun {
 }
 
 impl Noun {
-    /// Whether this noun's context rail has any entities at all. Only `Dashboard` and
-    /// `Settings` don't (`docs/ux/desktop/README.md` rule 4) -- every other noun's own screen
-    /// isn't built yet (see the placeholder-views ticket), so this says whether a context
-    /// rail *could* exist, not that one renders real data today.
+    /// Whether this noun's context rail has any entities at all. Only `Settings` doesn't.
+    ///
+    /// The handoff's own state-machine section (rule 1's parenthetical) lists `Dashboard`
+    /// alongside `Settings` as having none, but its "Context rail" component spec and its
+    /// own accepted mockup both show Dashboard's context rail populated with the account
+    /// roll-call ("On Dashboard it shows accounts") -- a real, visible, load-bearing context
+    /// rail, not an absent one. Built against the concrete mockup, not the inconsistent
+    /// prose: `Dashboard`'s "first entity" (rule 1) is the first account, same shape as any
+    /// other noun with entities. See `docs/ux/desktop/README.md`'s "Where this differs from
+    /// the handoff".
+    ///
+    /// Every noun besides `Settings` has its own screen still unbuilt (a placeholder-views
+    /// ticket, #153), so this says whether a context rail *could* exist, not that one renders
+    /// real data today.
     pub fn has_context_entities(self) -> bool {
-        !matches!(self, Noun::Dashboard | Noun::Settings)
+        self != Noun::Settings
     }
 }
 
@@ -79,11 +89,7 @@ pub type ContextSelection = Option<usize>;
 /// Owns the primary/context rail state machine. See the module doc and
 /// `docs/ux/desktop/README.md`'s six numbered transition rules -- each is implemented as
 /// exactly one method here, named for the rule it enforces.
-///
-/// `Default` is every launch's starting state: `Dashboard`, no context selection (`Dashboard`
-/// has none), focus in the view, the primary rail expanded, `Normal` mode -- each field's own
-/// default already lines up with that, so it's derived rather than hand-written.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct NavState {
     noun: Noun,
     context: ContextSelection,
@@ -93,6 +99,23 @@ pub struct NavState {
     /// Rule 6: the focus zone `exit_mode` restores -- `Some` only while `mode` isn't
     /// `Normal`, set once on the transition away from `Normal` and cleared on the way back.
     pre_mode_focus: Option<FocusZone>,
+}
+
+impl Default for NavState {
+    /// Every launch's starting state: `Dashboard`, context at its first entity (rule 1 --
+    /// `Dashboard` has entities, see `Noun::has_context_entities`), focus in the view, the
+    /// primary rail expanded, `Normal` mode. Hand-written rather than derived: `context`'s
+    /// own default (`None`) would be wrong for `Dashboard`, which does have entities.
+    fn default() -> Self {
+        Self {
+            noun: Noun::default(),
+            context: Noun::default().has_context_entities().then_some(0),
+            focus: FocusZone::default(),
+            primary_rail: RailMode::default(),
+            mode: InputMode::default(),
+            pre_mode_focus: None,
+        }
+    }
 }
 
 impl NavState {
@@ -204,7 +227,8 @@ mod tests {
     fn default_state_is_dashboard_normal_focus_in_view() {
         let nav = NavState::new();
         assert_eq!(nav.noun(), Noun::Dashboard);
-        assert_eq!(nav.context(), None);
+        // Dashboard has context entities (its account roll-call) -- rule 1's "first entity".
+        assert_eq!(nav.context(), Some(0));
         assert_eq!(nav.focus(), FocusZone::View);
         assert_eq!(nav.primary_rail(), RailMode::Expanded);
         assert_eq!(nav.mode(), InputMode::Normal);
@@ -265,7 +289,8 @@ mod tests {
 
     #[test]
     fn focus_skips_context_rail_when_noun_has_no_entities() {
-        let mut nav = NavState::new(); // Dashboard: no context entities
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Settings); // the one noun with no context entities
         nav.set_focus(FocusZone::PrimaryRail);
 
         nav.cycle_focus_forward();
@@ -276,7 +301,8 @@ mod tests {
 
     #[test]
     fn focus_cycles_backward_skipping_empty_context_rail() {
-        let mut nav = NavState::new(); // Dashboard: no context entities
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Settings); // the one noun with no context entities
         nav.set_focus(FocusZone::PrimaryRail);
 
         nav.cycle_focus_backward();
@@ -287,11 +313,10 @@ mod tests {
 
     // Rule 4
     #[test]
-    fn only_dashboard_and_settings_have_no_context_entities() {
-        for noun in [Noun::Dashboard, Noun::Settings] {
-            assert!(!noun.has_context_entities(), "{noun:?} should have none");
-        }
+    fn only_settings_has_no_context_entities() {
+        assert!(!Noun::Settings.has_context_entities());
         for noun in [
+            Noun::Dashboard,
             Noun::Transactions,
             Noun::Accounts,
             Noun::Reconcile,

@@ -2,26 +2,27 @@
 //! "Component tree"), replacing `feasibility_demo::DesktopApp`'s `TabBar`-driven screen
 //! cycling as the real navigation entry point (ADR-0016).
 //!
-//! This is the skeleton only: `NavState` (the primary/context rail state machine, issue
-//! #147), the design tokens (issue #146), the top bar, both rails, the status line, and the
-//! command palette are separate build tickets on the
-//! [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) map.
-//! `Shell` renders a single placeholder in the meantime so the crate has a real, running
-//! entry point to build the rest of the chrome against, rather than introducing a `View`
-//! trait now for the one concrete view that exists so far -- see ADR-0016's note on why that
-//! split waits for `NavState`.
+//! Assembles the static chrome from `docs/ux/desktop/Shell & Navigation/README.md`'s "1a"
+//! spec (issue #148): top bar / content row (primary rail, context rail, view) / status
+//! line, driven by `NavState`. No interaction yet -- focus cycling, `g`-jumps, mode
+//! transitions, and the command palette are separate build tickets (#149-#151) still to
+//! land on the [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144)
+//! map. A `View` trait mirroring `bin-tui`'s is still deliberately deferred (see ADR-0016):
+//! `Dashboard` is the only real view, and `render_view` below is a plain match rather than a
+//! trait object because there's still only one concrete implementor to dispatch to.
 
 use gpui::{Context, Window, div, prelude::*};
 
 use crate::{
-    nav::NavState,
+    nav::{NavState, Noun},
+    rail::{context::ContextRail, primary::PrimaryRail},
+    statusline::StatusLine,
     theme::{color, type_scale},
+    topbar::TopBar,
+    view::dashboard::Dashboard,
 };
 
-/// Owns the shell's render tree and the live `NavState`. The chrome modules that actually
-/// read `nav` (the rails, the status line) are the rest of the map's tickets; today it's
-/// carried through unused by rendering but already reachable for restart persistence (see
-/// `crate::main`'s `on_app_quit` hook).
+/// Owns the shell's render tree and the live `NavState`.
 pub struct Shell {
     nav: NavState,
 }
@@ -41,12 +42,38 @@ impl Render for Shell {
         div()
             .size_full()
             .flex()
-            .items_center()
-            .justify_center()
+            .flex_col()
             .bg(color::GROUND)
             .text_color(color::INK)
             .font_family(type_scale::FONT_FAMILY)
             .text_size(type_scale::BODY)
-            .child("Personal Ledger -- desktop shell scaffold (see docs/ux/desktop/README.md)")
+            .child(TopBar::new())
+            .child(
+                div()
+                    .flex_1()
+                    .min_h(gpui::px(0.0))
+                    .flex()
+                    .child(PrimaryRail::new(self.nav.noun()))
+                    .when(self.nav.noun().has_context_entities(), |this| {
+                        this.child(ContextRail::new(self.nav.noun()))
+                    })
+                    .child(render_view(self.nav.noun())),
+            )
+            .child(StatusLine::new(self.nav.mode(), self.nav.noun()))
+    }
+}
+
+/// The active noun's own view interior. Only `Dashboard` is real; every other noun is a
+/// placeholder until its own view lands (issue #153).
+fn render_view(noun: Noun) -> gpui::AnyElement {
+    match noun {
+        Noun::Dashboard => Dashboard::new().into_any_element(),
+        other => div()
+            .flex_1()
+            .min_w(gpui::px(0.0))
+            .p(gpui::px(24.0))
+            .text_color(color::INK_TERTIARY)
+            .child(format!("{other:?} -- not yet built (see issue #153)"))
+            .into_any_element(),
     }
 }

@@ -46,14 +46,14 @@ enum FocusZone { PrimaryRail, ContextRail, View }
 
 Transition rules, restated from the handoff's numbered list:
 
-1. `noun` is the single source of truth for the context rail's contents; changing it resets `context` to the noun's first entity (`None` for Dashboard/Settings) and moves focus to `View`.
+1. `noun` is the single source of truth for the context rail's contents; changing it resets `context` to the noun's first entity (`None` only for `Settings` — see "Where this differs from the handoff" below) and moves focus to `View`.
 2. Changing `context` never changes `noun` and never moves focus.
 3. `focus` cycles `PrimaryRail → ContextRail → View → PrimaryRail`, skipping empty zones.
 4. A noun with no entities renders no context rail at all — never an empty rail.
 5. Collapsing the primary rail (`RailMode`) doesn't change focus or selection.
 6. Mode transitions are global and pre-empt zone key handling; `Esc` returns to `Normal` and restores the pre-mode focus zone.
 
-`noun`, `primary_rail`, and window geometry survive restart; `context`, `focus`, and `mode` don't — every launch starts in `Normal` with focus in `View`. The mechanism for that persistence (a small dedicated state file vs. extending `lib_config`) isn't decided yet — `lib_config`'s layered INI config is for static settings, not transient UI state, so it's likely the wrong home; see "Where this differs from the handoff" below.
+`noun`, `primary_rail`, and window geometry survive restart; `context`, `focus`, and `mode` don't — every launch starts in `Normal` with focus in `View`. Persistence is a dedicated JSON file (`src/persistence.rs`) under `dirs::state_dir()` (Linux) or `dirs::data_local_dir()` (macOS/Windows, which have no separate state concept) — not `lib_config`'s layered INI config, which is for static settings, not transient UI state. A missing or corrupt file resolves to the default state rather than a startup error.
 
 ## Keybindings
 
@@ -76,8 +76,9 @@ The palette is driven by a single command registry (`src/command.rs`), not a han
 The handoff's Design Tokens and Assets tables (colors, type, spacing, radius, shadows, Lucide icon names) are the literal specification — "introduce no values outside this set" is a system rule, not a preference, so they're reproduced there rather than duplicated here. Translation notes specific to `gpui`:
 
 - The palette is fixed, not theme-adaptive (no dark-mode variant in the handoff), so it's implemented as plain constants in `src/theme.rs` rather than plumbed through `gpui-component`'s own `ActiveTheme` — that theme system stays scoped to the chart/table widgets it already renders (`LineChart`, `PieChart`, `Table`) from the feasibility cycle.
-- Archivo must be bundled as a font asset and loaded offline at startup — the client is local-first and the handoff's own Google Fonts load is explicitly called out as a mockup-only convenience.
-- The Lucide icon set isn't used anywhere else in this repo yet, and `gpui-component` isn't vendored locally to check what it ships — sourcing them (an icon crate vs. bundled SVGs) is an open item, not yet resolved.
+- Archivo is bundled and loaded offline at startup (`include_bytes!` + `cx.text_system().add_fonts`) — the client is local-first and the handoff's own Google Fonts load is explicitly called out as a mockup-only convenience. Google Fonts only ships Archivo as a variable font now, so the 400/600/800 weights are static instances produced with `fonttools varLib.instancer`.
+- Icon sourcing: `gpui-component`'s `Icon` element ships no SVGs of its own (confirmed from its own README once its source was checked). Every icon this handoff names is bundled as a Lucide SVG under `crates/bins/bin-desktop/assets/icons/` (stroke normalized to 1.5 per the handoff) and served through the app's own `gpui::AssetSource` (`src/assets.rs`) — `align-justify` (Transactions) had to be pulled from an older Lucide release, since current Lucide dropped that exact icon name.
+- Letter-spacing (`.11em` on section kickers, `-.02em`/`-.01em` elsewhere) isn't rendered anywhere in the shell: `gpui` 0.2.2's `Styled` trait has no letter-spacing property. Everything else in the Design Tokens table is exact.
 - The transaction status glyphs (`○ ◐ ● ⚑`) are typographic marks, not icons, and must render identically to the TUI's own (`docs/ux/tui/README.md`).
 
 ## Acceptance criteria
@@ -98,9 +99,11 @@ Restated from the handoff, unchanged — these are what "the shell is built" mea
 ## Where this differs from the handoff
 
 - The handoff's own `docs/ux/desktop/Shell & Navigation/README.md` describes four explored options; only 1a (plus 1a's own collapsed-rail and command-palette states, 1c/1d) is in scope here — 1b is provenance only, kept for its transaction-table column frame and the "a noun's own actions live in the view header" convention, neither of which this document repeats since neither is part of the accepted shell chrome.
-- Restart persistence for `noun`/`primary_rail`/window geometry has no chosen mechanism yet (see "State machine" above) — the handoff doesn't specify one either, since it's a static mockup.
-- Icon sourcing (Lucide via which crate/pipeline) is unresolved, noted above.
+- **`Dashboard` does have context entities.** The handoff's own state-machine section (rule 1's parenthetical, and its "nouns with none" list) names `Dashboard` alongside `Settings` as having no context entities — but its "Context rail" component spec ("On Dashboard it shows accounts") and its own accepted 1a mockup both show Dashboard's context rail populated with a real, load-bearing seven-account roll-call, not an absent rail. That's a genuine inconsistency inside the handoff itself. Built against the concrete, unambiguous mockup: only `Settings` has `Noun::has_context_entities() == false`; `Dashboard`'s "first entity" (rule 1) is the first account, same shape as any other noun with entities.
+- Icon sourcing and Archivo bundling are both resolved, noted above.
 
 ## Current implementation status
 
-Nothing in this document is built yet. `crates/bins/bin-desktop/src/main.rs` is still the FC-DESKTOP feasibility-cycle chart-demo (a `TabBar` over dummy Line/Doughnut/Candlestick/Divergent/Table/Live-Categories screens, closed out by the [Desktop App feasibility map](https://github.com/IanTeda/Personal-Ledger/issues/23)) — real shell/navigation work, deferred by that map's own "Out of scope" note, starts with the Wayfinder map linked at the top of this document. This section will track progress the way `docs/ux/tui/navigation.md`'s own "Current implementation status" section does, once the first piece of chrome lands.
+The static chrome is real and running: `Shell` (`src/shell.rs`) assembles a fixed-pixel `TopBar`, `PrimaryRail` (all ten nouns, grouped, jump-key column, Reconcile badge), a `ContextRail` (Dashboard's own account roll-call is real; every other noun with entities gets a placeholder frame), the Dashboard `View` interior (frame, figures, `LineChart` net-worth chart, hand-rolled in/out bars, `PieChart` donut, budget tracks, needs-attention block — all dummy content per the fidelity note), and a `StatusLine`, all driven by a live `NavState` (`src/nav.rs`) that persists `noun`/`primary_rail`/window geometry across restart (`src/persistence.rs`). `feasibility_demo.rs` (the old `TabBar` chart demo) is kept compiling but disconnected, per ADR-0016.
+
+Not yet built: any interaction (focus cycling, `g`-jumps, mode transitions, the command palette, the collapsed rail) and every other noun's real view interior. Those are separate tickets still open on the map linked at the top of this document — none of the 10 acceptance criteria above are met yet, since all of them depend on interaction this document's "static chrome" phase deliberately doesn't include.

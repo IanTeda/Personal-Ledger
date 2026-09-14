@@ -5,12 +5,18 @@
 //! here; its `gpui-component` chart-widget patterns are reused by the real Dashboard view as
 //! that work lands (issue #148).
 
+mod assets;
 mod error;
 mod feasibility_demo;
+mod icon;
 mod nav;
 mod persistence;
+mod rail;
 mod shell;
+mod statusline;
 mod theme;
+mod topbar;
+mod view;
 
 use std::borrow::Cow;
 
@@ -50,82 +56,84 @@ async fn main() -> Result<()> {
     // flushes buffered log lines to `log_file_path` (when configured).
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
 
-    Application::new().run(move |cx: &mut App| {
-        gpui_component::init(cx);
+    Application::new()
+        .with_assets(assets::Assets)
+        .run(move |cx: &mut App| {
+            gpui_component::init(cx);
 
-        // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
-        // .. }` request resolves against the bundled weights rather than a fallback -- a
-        // missing/corrupt bundled font is a build-time problem, not a recoverable one, hence
-        // `expect` (matching `open_window`'s own `unwrap` below in this same closure).
-        cx.text_system()
-            .add_fonts(vec![
-                Cow::Borrowed(ARCHIVO_REGULAR),
-                Cow::Borrowed(ARCHIVO_SEMIBOLD),
-                Cow::Borrowed(ARCHIVO_EXTRA_BOLD),
-            ])
-            .expect("bundled Archivo fonts must parse");
+            // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
+            // .. }` request resolves against the bundled weights rather than a fallback -- a
+            // missing/corrupt bundled font is a build-time problem, not a recoverable one, hence
+            // `expect` (matching `open_window`'s own `unwrap` below in this same closure).
+            cx.text_system()
+                .add_fonts(vec![
+                    Cow::Borrowed(ARCHIVO_REGULAR),
+                    Cow::Borrowed(ARCHIVO_SEMIBOLD),
+                    Cow::Borrowed(ARCHIVO_EXTRA_BOLD),
+                ])
+                .expect("bundled Archivo fonts must parse");
 
-        // `noun`/`primary_rail`/window geometry survive restart (`docs/ux/desktop/README.md`'s
-        // "State machine"); everything else in `NavState` starts fresh every launch, so there's
-        // nothing else to seed here.
-        let persisted = persistence::load();
+            // `noun`/`primary_rail`/window geometry survive restart (`docs/ux/desktop/README.md`'s
+            // "State machine"); everything else in `NavState` starts fresh every launch, so there's
+            // nothing else to seed here.
+            let persisted = persistence::load();
 
-        let mut nav = nav::NavState::new();
-        nav.set_noun(persisted.noun);
-        nav.set_primary_rail(persisted.primary_rail);
+            let mut nav = nav::NavState::new();
+            nav.set_noun(persisted.noun);
+            nav.set_primary_rail(persisted.primary_rail);
 
-        // Restore the last saved window geometry; otherwise 1280x800 centered, the handoff's
-        // own window size (`docs/ux/desktop/Shell & Navigation/README.md`, option 1a).
-        let bounds = match persisted.window {
-            Some(WindowGeometry {
-                x,
-                y,
-                width,
-                height,
-            }) => Bounds {
-                origin: point(px(x), px(y)),
-                size: size(px(width), px(height)),
-            },
-            None => Bounds::centered(None, size(px(1280.0), px(800.0)), cx),
-        };
-
-        let window_handle = cx
-            .open_window(
-                WindowOptions {
-                    window_bounds: Some(WindowBounds::Windowed(bounds)),
-                    ..Default::default()
+            // Restore the last saved window geometry; otherwise 1280x800 centered, the handoff's
+            // own window size (`docs/ux/desktop/Shell & Navigation/README.md`, option 1a).
+            let bounds = match persisted.window {
+                Some(WindowGeometry {
+                    x,
+                    y,
+                    width,
+                    height,
+                }) => Bounds {
+                    origin: point(px(x), px(y)),
+                    size: size(px(width), px(height)),
                 },
-                move |_window, cx| cx.new(|_cx| Shell::new(nav)),
-            )
-            .expect("desktop window must open");
+                None => Bounds::centered(None, size(px(1280.0), px(800.0)), cx),
+            };
 
-        // No action mutates `NavState` yet (the keybinding/rail-toggle tickets do), so this
-        // currently ever only re-saves whatever `persistence::load` produced -- registered now
-        // anyway so the mechanism is real and exercised, rather than added later as an
-        // afterthought. `on_app_quit`'s `Subscription` must outlive this closure to stay
-        // registered, hence `detach()` (mirroring `cx.spawn(..).detach()` elsewhere in this
-        // crate) rather than binding and dropping it.
-        cx.on_app_quit(move |cx| {
-            let _ = window_handle.update(cx, |shell, window, _cx| {
-                let bounds = window.bounds();
-                let state = persistence::PersistedState {
-                    noun: shell.nav().noun(),
-                    primary_rail: shell.nav().primary_rail(),
-                    window: Some(WindowGeometry {
-                        x: f32::from(bounds.origin.x),
-                        y: f32::from(bounds.origin.y),
-                        width: f32::from(bounds.size.width),
-                        height: f32::from(bounds.size.height),
-                    }),
-                };
-                let _ = persistence::save(&state);
-            });
-            async {}
-        })
-        .detach();
+            let window_handle = cx
+                .open_window(
+                    WindowOptions {
+                        window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        ..Default::default()
+                    },
+                    move |_window, cx| cx.new(|_cx| Shell::new(nav)),
+                )
+                .expect("desktop window must open");
 
-        cx.activate(true);
-    });
+            // No action mutates `NavState` yet (the keybinding/rail-toggle tickets do), so this
+            // currently ever only re-saves whatever `persistence::load` produced -- registered now
+            // anyway so the mechanism is real and exercised, rather than added later as an
+            // afterthought. `on_app_quit`'s `Subscription` must outlive this closure to stay
+            // registered, hence `detach()` (mirroring `cx.spawn(..).detach()` elsewhere in this
+            // crate) rather than binding and dropping it.
+            cx.on_app_quit(move |cx| {
+                let _ = window_handle.update(cx, |shell, window, _cx| {
+                    let bounds = window.bounds();
+                    let state = persistence::PersistedState {
+                        noun: shell.nav().noun(),
+                        primary_rail: shell.nav().primary_rail(),
+                        window: Some(WindowGeometry {
+                            x: f32::from(bounds.origin.x),
+                            y: f32::from(bounds.origin.y),
+                            width: f32::from(bounds.size.width),
+                            height: f32::from(bounds.size.height),
+                        }),
+                    };
+                    let _ = persistence::save(&state);
+                });
+                async {}
+            })
+            .detach();
+
+            cx.activate(true);
+        });
 
     Ok(())
 }
