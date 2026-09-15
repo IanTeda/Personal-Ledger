@@ -18,12 +18,12 @@ pub enum Noun {
     Dashboard,
     Transactions,
     Accounts,
-    Reconcile,
-    Budgets,
-    Reports,
     Categories,
     Payees,
-    Units,
+    Tags,
+    Bills,
+    Budgets,
+    Reports,
     Settings,
 }
 
@@ -34,12 +34,12 @@ impl Noun {
         Noun::Dashboard,
         Noun::Transactions,
         Noun::Accounts,
-        Noun::Reconcile,
-        Noun::Budgets,
-        Noun::Reports,
         Noun::Categories,
         Noun::Payees,
-        Noun::Units,
+        Noun::Tags,
+        Noun::Bills,
+        Noun::Budgets,
+        Noun::Reports,
         Noun::Settings,
     ];
 
@@ -412,12 +412,12 @@ mod tests {
             Noun::Dashboard,
             Noun::Transactions,
             Noun::Accounts,
-            Noun::Reconcile,
-            Noun::Budgets,
-            Noun::Reports,
             Noun::Categories,
             Noun::Payees,
-            Noun::Units,
+            Noun::Tags,
+            Noun::Bills,
+            Noun::Budgets,
+            Noun::Reports,
         ] {
             assert!(noun.has_context_entities(), "{noun:?} should have some");
         }
@@ -487,7 +487,7 @@ mod tests {
         assert_eq!(Noun::Dashboard.prev_row(), Noun::Dashboard);
         assert_eq!(Noun::Settings.next_row(), Noun::Settings);
         assert_eq!(Noun::Dashboard.next_row(), Noun::Transactions);
-        assert_eq!(Noun::Settings.prev_row(), Noun::Units);
+        assert_eq!(Noun::Settings.prev_row(), Noun::Reports);
     }
 
     #[test]

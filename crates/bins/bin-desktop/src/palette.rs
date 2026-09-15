@@ -298,13 +298,13 @@ mod tests {
     #[test]
     fn typing_filters_to_matching_commands_only() {
         let mut palette = Palette::new();
-        for c in "units".chars() {
+        for c in "tags".chars() {
             palette.push_char(c);
         }
         let matches = palette.matches();
         assert!(!matches.is_empty());
         assert!(matches.len() < command::COMMANDS.len());
-        assert!(matches.iter().all(|c| c.name.contains("units")));
+        assert!(matches.iter().all(|c| c.name.contains("tags")));
     }
 
     #[test]

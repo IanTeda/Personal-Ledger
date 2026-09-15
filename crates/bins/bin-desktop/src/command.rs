@@ -52,23 +52,23 @@ fn goto_transactions(nav: &mut NavState) {
 fn goto_accounts(nav: &mut NavState) {
     nav.set_noun(Noun::Accounts);
 }
-fn goto_reconcile(nav: &mut NavState) {
-    nav.set_noun(Noun::Reconcile);
-}
-fn goto_budgets(nav: &mut NavState) {
-    nav.set_noun(Noun::Budgets);
-}
-fn goto_reports(nav: &mut NavState) {
-    nav.set_noun(Noun::Reports);
-}
 fn goto_categories(nav: &mut NavState) {
     nav.set_noun(Noun::Categories);
 }
 fn goto_payees(nav: &mut NavState) {
     nav.set_noun(Noun::Payees);
 }
-fn goto_units(nav: &mut NavState) {
-    nav.set_noun(Noun::Units);
+fn goto_tags(nav: &mut NavState) {
+    nav.set_noun(Noun::Tags);
+}
+fn goto_bills(nav: &mut NavState) {
+    nav.set_noun(Noun::Bills);
+}
+fn goto_budgets(nav: &mut NavState) {
+    nav.set_noun(Noun::Budgets);
+}
+fn goto_reports(nav: &mut NavState) {
+    nav.set_noun(Noun::Reports);
 }
 fn goto_settings(nav: &mut NavState) {
     nav.set_noun(Noun::Settings);
@@ -91,7 +91,7 @@ pub const COMMANDS: &[Command] = &[
         name: "transactions",
         description: "the transaction ledger",
         kind: CommandKind::Navigate,
-        binding: Some("g t"),
+        binding: Some("g l"),
         handler: Some(goto_transactions),
     },
     Command {
@@ -100,28 +100,6 @@ pub const COMMANDS: &[Command] = &[
         kind: CommandKind::Navigate,
         binding: Some("g a"),
         handler: Some(goto_accounts),
-    },
-    Command {
-        name: "reconcile",
-        description: "reconcile a statement balance",
-        kind: CommandKind::Navigate,
-        // Deliberately unbound -- the handoff's own words: "it is a task, not a place."
-        binding: None,
-        handler: Some(goto_reconcile),
-    },
-    Command {
-        name: "budgets",
-        description: "category limits and actuals",
-        kind: CommandKind::Navigate,
-        binding: Some("g b"),
-        handler: Some(goto_budgets),
-    },
-    Command {
-        name: "reports",
-        description: "net worth and variance reports",
-        kind: CommandKind::Navigate,
-        binding: Some("g r"),
-        handler: Some(goto_reports),
     },
     Command {
         name: "categories",
@@ -138,11 +116,32 @@ pub const COMMANDS: &[Command] = &[
         handler: Some(goto_payees),
     },
     Command {
-        name: "units",
-        description: "currencies and tracked units",
+        name: "tags",
+        description: "the tags every transaction can carry any number of",
         kind: CommandKind::Navigate,
-        binding: Some("g u"),
-        handler: Some(goto_units),
+        binding: Some("g t"),
+        handler: Some(goto_tags),
+    },
+    Command {
+        name: "bills",
+        description: "recurring and upcoming bills",
+        kind: CommandKind::Navigate,
+        binding: Some("g w"),
+        handler: Some(goto_bills),
+    },
+    Command {
+        name: "budgets",
+        description: "category limits and actuals",
+        kind: CommandKind::Navigate,
+        binding: Some("g b"),
+        handler: Some(goto_budgets),
+    },
+    Command {
+        name: "reports",
+        description: "net worth and variance reports",
+        kind: CommandKind::Navigate,
+        binding: Some("g r"),
+        handler: Some(goto_reports),
     },
     Command {
         name: "settings",
@@ -189,12 +188,6 @@ mod tests {
                 "no navigate command named {label:?}"
             );
         }
-    }
-
-    #[test]
-    fn reconcile_has_no_binding() {
-        let reconcile = COMMANDS.iter().find(|c| c.name == "reconcile").unwrap();
-        assert_eq!(reconcile.binding, None);
     }
 
     #[test]

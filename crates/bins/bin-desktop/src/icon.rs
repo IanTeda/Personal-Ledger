@@ -11,12 +11,12 @@ pub enum DesktopIcon {
     Dashboard,
     Transactions,
     Accounts,
-    Reconcile,
-    Budgets,
-    Reports,
     Categories,
     Payees,
-    Units,
+    Tags,
+    Bills,
+    Budgets,
+    Reports,
     Settings,
     RailToggle,
     Palette,
@@ -30,12 +30,12 @@ impl DesktopIcon {
             Self::Dashboard => "icons/layout-dashboard.svg",
             Self::Transactions => "icons/align-justify.svg",
             Self::Accounts => "icons/wallet.svg",
-            Self::Reconcile => "icons/check-check.svg",
-            Self::Budgets => "icons/gauge.svg",
-            Self::Reports => "icons/trending-up.svg",
             Self::Categories => "icons/tag.svg",
             Self::Payees => "icons/circle-user.svg",
-            Self::Units => "icons/circle-dollar-sign.svg",
+            Self::Tags => "icons/tags.svg",
+            Self::Bills => "icons/receipt.svg",
+            Self::Budgets => "icons/gauge.svg",
+            Self::Reports => "icons/trending-up.svg",
             Self::Settings => "icons/settings.svg",
             Self::RailToggle => "icons/panel-left.svg",
             Self::Palette => "icons/search.svg",
@@ -51,20 +51,21 @@ impl DesktopIcon {
     }
 }
 
-/// The primary rail's own icon for each noun. `Reconcile` uses `check-check`, matching its
-/// own domain (reconciliation), not a generic "task" glyph.
+/// The primary rail's own icon for each noun. `Tags` uses the plural Lucide `tags` glyph,
+/// distinct from `Categories`' singular `tag` (already bundled and reused there) -- the two
+/// read as siblings without being visually identical.
 impl From<Noun> for DesktopIcon {
     fn from(noun: Noun) -> Self {
         match noun {
             Noun::Dashboard => DesktopIcon::Dashboard,
             Noun::Transactions => DesktopIcon::Transactions,
             Noun::Accounts => DesktopIcon::Accounts,
-            Noun::Reconcile => DesktopIcon::Reconcile,
-            Noun::Budgets => DesktopIcon::Budgets,
-            Noun::Reports => DesktopIcon::Reports,
             Noun::Categories => DesktopIcon::Categories,
             Noun::Payees => DesktopIcon::Payees,
-            Noun::Units => DesktopIcon::Units,
+            Noun::Tags => DesktopIcon::Tags,
+            Noun::Bills => DesktopIcon::Bills,
+            Noun::Budgets => DesktopIcon::Budgets,
+            Noun::Reports => DesktopIcon::Reports,
             Noun::Settings => DesktopIcon::Settings,
         }
     }

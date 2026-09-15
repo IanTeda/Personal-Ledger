@@ -7,8 +7,9 @@
 //! focus-zone cycling and `j`/`k`/`Down`/`Up`/`gg`/`G`/`Ctrl-d`/`Ctrl-u`/`Enter` movement,
 //! scoped strictly to whichever zone (`NavState::focus`) currently has it (issue #149); the
 //! `g`-prefix jump chords (`g d`, `g t`, ...) and the `Normal`/`Insert`/`Command`/`Search`
-//! mode transitions (issue #150). The command palette, `b`'s rail toggle, and `?`'s help
-//! overlay are separate build tickets (#151/#152) still to land on the
+//! mode transitions (issue #150); the command palette (issue #151); the collapsed rail, its
+//! `b`-key/click toggle, and its hover tooltip (issue #152). `?`'s help overlay is a separate
+//! build ticket still to land on the
 //! [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) map. A
 //! `View` trait mirroring `bin-tui`'s is still deliberately deferred (see ADR-0016):
 //! `Dashboard` is the only real view, and `render_view` below is a plain match rather than a
@@ -19,11 +20,12 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle, Window, div, point,
-    prelude::*, px,
+    Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle, Timer, Window, div,
+    point, prelude::*, px,
 };
 
 use crate::{
@@ -33,26 +35,33 @@ use crate::{
     rail::{self, context::ContextRail, primary::PrimaryRail},
     statusline::StatusLine,
     theme::{color, type_scale},
-    topbar::TopBar,
+    topbar::{self, TopBar},
     view::dashboard::Dashboard,
 };
+
+/// The collapsed rail's own hover-reveal delay (`docs/ux/desktop/Shell & Navigation/README.md`'s
+/// "1c" tooltip spec) -- deliberately the same 500ms `gpui`'s own built-in `.tooltip()` uses,
+/// even though this tooltip is hand-rolled (row-anchored, not cursor-anchored -- see
+/// `rail::primary::collapsed_tooltip`'s doc) rather than that builtin.
+const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
 
 /// The handoff's own "Jumps" timeout: a `g` with no completing chord within this window is
 /// abandoned rather than left waiting indefinitely.
 const PENDING_G_TIMEOUT: Duration = Duration::from_millis(1000);
 
-/// The `g`-prefix jump target for each bound completion key. `Reconcile` is deliberately
-/// absent -- the handoff's own words: "it is a task, not a place."
+/// The `g`-prefix jump target for each bound completion key. Every noun has one today --
+/// `Transactions` moved off `g t` onto `g l` to free `t` for the newer `Tags` noun.
 fn jump_noun_for_key(key: &str) -> Option<Noun> {
     match key {
         "d" => Some(Noun::Dashboard),
-        "t" => Some(Noun::Transactions),
+        "l" => Some(Noun::Transactions),
         "a" => Some(Noun::Accounts),
-        "b" => Some(Noun::Budgets),
-        "r" => Some(Noun::Reports),
         "c" => Some(Noun::Categories),
         "p" => Some(Noun::Payees),
-        "u" => Some(Noun::Units),
+        "t" => Some(Noun::Tags),
+        "w" => Some(Noun::Bills),
+        "b" => Some(Noun::Budgets),
+        "r" => Some(Noun::Reports),
         "s" => Some(Noun::Settings),
         _ => None,
     }
@@ -102,6 +111,15 @@ pub struct Shell {
     /// `NavState::mode` is `InputMode::Command`, mirroring `bin-tui`'s own
     /// `Shell`'s `Option<popup::command::CommandPopup>` (`docs/ux/desktop/README.md`'s Notes).
     palette: Option<Palette>,
+    /// The collapsed primary rail's row whose hover has settled past
+    /// [`TOOLTIP_REVEAL_DELAY`] -- `None` while nothing's hovered, the delay hasn't elapsed
+    /// yet, or the rail isn't collapsed (see `rail::primary::PrimaryRail`, which only wires
+    /// hover at all in its collapsed rendering).
+    collapsed_rail_tooltip: Option<Noun>,
+    /// Bumped on every hover transition; a pending reveal timer checks this against the value
+    /// it captured before applying, so hovering a second row (or leaving the rail entirely)
+    /// before the first row's delay elapses can't reveal the wrong tooltip.
+    hover_generation: u64,
 }
 
 impl Shell {
@@ -113,6 +131,8 @@ impl Shell {
             pending_g: None,
             status_message: None,
             palette: None,
+            collapsed_rail_tooltip: None,
+            hover_generation: 0,
         }
     }
 
@@ -209,6 +229,14 @@ impl Shell {
             // first and returns before this match is reached, so the two never collide.
             "a" if !ctrl && !shift => {
                 self.nav.enter_mode(InputMode::Insert);
+                return true;
+            }
+            // Mirrors the TopBar's own rail-toggle button (`Shell::handle_toggle_rail`) --
+            // same action, two entry points. Clears any settled collapsed-rail tooltip: it's
+            // meaningless once the rail that anchors it changes shape.
+            "b" if !ctrl && !shift => {
+                self.nav.toggle_primary_rail();
+                self.collapsed_rail_tooltip = None;
                 return true;
             }
             _ => {}
@@ -404,6 +432,55 @@ impl Shell {
             }
         }
     }
+
+    /// The TopBar's own rail-toggle button (`Shell::render`'s `on_rail_toggle` closure) --
+    /// same action as the `b` key, see [`Self::handle_key_down`].
+    fn handle_toggle_rail(&mut self, cx: &mut Context<Self>) {
+        self.nav.toggle_primary_rail();
+        self.collapsed_rail_tooltip = None;
+        cx.notify();
+    }
+
+    /// A collapsed primary-rail row's raw hover transition (`rail::primary::PrimaryRail`'s
+    /// `on_row_hover`). Leaving a row clears any settled tooltip immediately; entering one
+    /// only reveals its tooltip after [`TOOLTIP_REVEAL_DELAY`], and only if hover hasn't since
+    /// moved elsewhere -- `hover_generation` is the guard: a stale timer whose captured
+    /// generation no longer matches the current one simply does nothing.
+    fn handle_rail_hover(&mut self, noun: Noun, hovered: bool, cx: &mut Context<Self>) {
+        self.hover_generation += 1;
+        if !hovered {
+            self.collapsed_rail_tooltip = None;
+            cx.notify();
+            return;
+        }
+
+        let generation = self.hover_generation;
+        cx.spawn(async move |this, cx| {
+            Timer::after(TOOLTIP_REVEAL_DELAY).await;
+            this.update(cx, |shell, cx| {
+                if shell.hover_generation == generation {
+                    shell.collapsed_rail_tooltip = Some(noun);
+                    cx.notify();
+                }
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    /// A primary-rail row's click (`rail::primary::PrimaryRail`'s `on_row_click`), expanded or
+    /// collapsed alike. A direct `NavState::set_noun`, not a browse-then-commit -- the same
+    /// call `g`-jump (`Self::handle_key_down`'s pending-`g` arm) and the palette
+    /// (`command::COMMANDS`'s `goto_*` handlers) both make, so rail click, `g`-jump and the
+    /// palette land in the same state per acceptance criterion 1.
+    fn handle_rail_click(&mut self, noun: Noun, cx: &mut Context<Self>) {
+        let noun_before = self.nav.noun();
+        self.nav.set_noun(noun);
+        if self.nav.noun() != noun_before {
+            self.reset_view_scroll();
+        }
+        cx.notify();
+    }
 }
 
 impl Focusable for Shell {
@@ -421,6 +498,32 @@ impl Render for Shell {
         // command window"), which stays meaningful precisely because it stays legible; only
         // the navigational chrome the palette visually floats over goes dim.
         let content_opacity = if self.palette.is_some() { 0.3 } else { 1.0 };
+
+        // Both closures go through an `Entity` handle (mirroring `feasibility_demo`'s own
+        // `TabBar::on_click` wiring) rather than `cx.listener`: `on_click`/`on_hover`'s own
+        // signatures are `Fn(_, &mut Window, &mut App)`, with no `&mut Shell` parameter for
+        // `cx.listener` to supply, and the collapsed rail's `on_row_hover` closure additionally
+        // needs to close over each row's own `Noun` -- `PrimaryRail` curries that in per-row
+        // from the single `Rc` given here.
+        let entity = cx.entity();
+        let on_rail_toggle: topbar::OnRailToggle = {
+            let entity = entity.clone();
+            Rc::new(move |_event, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_toggle_rail(cx));
+            })
+        };
+        let on_row_hover: rail::primary::OnRowHover = {
+            let entity = entity.clone();
+            Rc::new(move |noun, hovered, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_rail_hover(noun, hovered, cx));
+            })
+        };
+        let on_row_click: rail::primary::OnRowClick = {
+            let entity = entity.clone();
+            Rc::new(move |noun, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_rail_click(noun, cx));
+            })
+        };
 
         div()
             .size_full()
@@ -443,7 +546,7 @@ impl Render for Shell {
                     .flex()
                     .flex_col()
                     .opacity(content_opacity)
-                    .child(TopBar::new())
+                    .child(TopBar::new(on_rail_toggle))
                     .child(
                         div()
                             .flex_1()
@@ -452,6 +555,10 @@ impl Render for Shell {
                             .child(PrimaryRail::new(
                                 self.nav.primary_highlight(),
                                 focus == FocusZone::PrimaryRail,
+                                self.nav.primary_rail(),
+                                self.collapsed_rail_tooltip,
+                                on_row_hover,
+                                on_row_click,
                             ))
                             .when(self.nav.noun().has_context_entities(), |this| {
                                 this.child(ContextRail::new(

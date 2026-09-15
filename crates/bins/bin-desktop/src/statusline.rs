@@ -140,12 +140,12 @@ fn breadcrumb(noun: Noun) -> impl IntoElement {
         Noun::Dashboard => "dashboard",
         Noun::Transactions => "transactions",
         Noun::Accounts => "accounts",
-        Noun::Reconcile => "reconcile",
-        Noun::Budgets => "budgets",
-        Noun::Reports => "reports",
         Noun::Categories => "categories",
         Noun::Payees => "payees",
-        Noun::Units => "units",
+        Noun::Tags => "tags",
+        Noun::Bills => "bills",
+        Noun::Budgets => "budgets",
+        Noun::Reports => "reports",
         Noun::Settings => "settings",
     };
 

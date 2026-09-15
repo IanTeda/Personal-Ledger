@@ -75,9 +75,18 @@ const ACCOUNTS: &[Account] = &[
 /// keyboard movement (`Shell`) should treat `0` as "movement is a no-op here", not an error.
 pub fn entity_count(noun: Noun) -> usize {
     match noun {
-        Noun::Dashboard => ACCOUNTS.len(),
+        Noun::Dashboard => account_count(),
         _ => 0,
     }
+}
+
+/// Total accounts -- today just `ACCOUNTS.len()`, the same figure Dashboard's own roll-call
+/// shows. Exposed separately from `entity_count` so callers that want "how many accounts
+/// exist" (the primary rail's own Accounts-row count badge) don't have to ask
+/// `entity_count(Noun::Dashboard)` for a number that's conceptually about accounts, not
+/// Dashboard.
+pub fn account_count() -> usize {
+    ACCOUNTS.len()
 }
 
 #[derive(IntoElement)]

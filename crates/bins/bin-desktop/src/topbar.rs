@@ -1,13 +1,15 @@
 //! The shell's top bar (`docs/ux/desktop/Shell & Navigation/README.md`'s "1a" spec, "Top
-//! bar" component): rail toggle, brand mark, palette hint, sync indicator. Static for now --
-//! the rail toggle and palette hint become clickable once mode transitions and the rail
-//! toggle action land (issues #149/#151).
+//! bar" component): rail toggle, brand mark, palette hint, sync indicator. The rail toggle is
+//! clickable (issue #152); the palette hint stays static since palette entry is currently
+//! keyboard-only (`:`), not a click affordance the handoff itself draws as one.
 //!
 //! The mockup draws a "sync" icon next to the sync indicator, but no Lucide name for it
 //! appears in the handoff's own "Assets" table -- rather than invent one outside that table,
 //! the sync indicator here is text-only.
 
-use gpui::{App, Window, div, prelude::*, px};
+use std::rc::Rc;
+
+use gpui::{App, ClickEvent, Window, div, prelude::*, px};
 use gpui_component::Sizable;
 
 use crate::{icon::DesktopIcon, theme::color};
@@ -15,18 +17,18 @@ use crate::{icon::DesktopIcon, theme::color};
 /// Band height: `docs/ux/desktop/Shell & Navigation/README.md`'s "Layout" table.
 pub const HEIGHT: gpui::Pixels = px(48.0);
 
-#[derive(IntoElement)]
-pub struct TopBar;
+/// The rail-toggle button's own click, reported raw -- `Shell::handle_toggle_rail` owns what
+/// it actually does. `Rc` since `TopBar` is rebuilt fresh every render (see the module doc).
+pub type OnRailToggle = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 
-impl TopBar {
-    pub fn new() -> Self {
-        Self
-    }
+#[derive(IntoElement)]
+pub struct TopBar {
+    on_rail_toggle: OnRailToggle,
 }
 
-impl Default for TopBar {
-    fn default() -> Self {
-        Self::new()
+impl TopBar {
+    pub fn new(on_rail_toggle: OnRailToggle) -> Self {
+        Self { on_rail_toggle }
     }
 }
 
@@ -43,7 +45,7 @@ impl RenderOnce for TopBar {
             .bg(color::CHROME)
             .border_b(px(2.0))
             .border_color(color::STRUCTURAL_RULE)
-            .child(rail_toggle())
+            .child(rail_toggle(self.on_rail_toggle))
             .child(brand_mark())
             .child(div().flex_1())
             .child(palette_hint())
@@ -51,13 +53,17 @@ impl RenderOnce for TopBar {
     }
 }
 
-fn rail_toggle() -> impl IntoElement {
+fn rail_toggle(on_rail_toggle: OnRailToggle) -> impl IntoElement {
     div()
+        .id("topbar-rail-toggle")
         .w(px(28.0))
         .h(px(28.0))
         .flex()
         .items_center()
         .justify_center()
+        .cursor_pointer()
+        .hover(|this| this.bg(color::HOVER_TINT))
+        .on_click(move |event, window, cx| on_rail_toggle(event, window, cx))
         .child(
             DesktopIcon::RailToggle
                 .icon()
