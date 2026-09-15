@@ -113,6 +113,16 @@ pub fn init(
     // Try to use runtime level from RUST_LOG env var, fallback to configured default
     let env_filter = EnvFilter::try_from_default_env().unwrap_or(default_env_filter);
 
+    // `calloop` (gpui's Linux/Wayland event loop) emits a TRACE line per dispatched event
+    // source on every frame -- pure event-loop bookkeeping, never useful outside debugging
+    // calloop itself. Capped independently of the configured/`RUST_LOG` level, since a
+    // directive with a target always outranks the global default regardless of verbosity.
+    let env_filter = env_filter.add_directive(
+        "calloop=warn"
+            .parse()
+            .expect("static calloop directive is valid"),
+    );
+
     // ============================================================================
     // Phase 2: Configure Event Collection
     // ============================================================================
