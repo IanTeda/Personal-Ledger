@@ -27,7 +27,7 @@ use crate::{
         category::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
-        command::CommandPopup,
+        command::{CommandPopup, record_history},
         payee::{
             PayeePopup, delete::DeleteCommit, delete::DeletePayeePopup, edit::EditPayeePopup,
             matches::ComposeCommit, matches::PayeeMatchesPopup, new::NewPayeePopup,
@@ -63,6 +63,12 @@ pub struct Shell {
     /// intercepts keys before the view sees them, per `view/mod.rs`'s "shell's own command
     /// window" note.
     command_popup: Option<CommandPopup>,
+    /// Every previously-*run* command's canonical `:name` (most-recent at the front), fed to
+    /// the command popup's own `Ctrl+r` recall (`CommandPopup::recall_history`) — kept here,
+    /// not on `CommandPopup` itself, since `CommandPopup::new()` resets its own state on every
+    /// open and history must survive the popup being closed and reopened. Session-only (lost
+    /// on quit), capped and deduplicated by `popup::command::record_history`.
+    command_history: Vec<String>,
     /// Whichever unit-domain form (`docs/ux/tui/units/README.md` "The forms") is open —
     /// `Some` while one is. Owned here for the same reason as `command_popup`: it floats over
     /// whatever view is on screen and intercepts keys before the view sees them. Mutually
@@ -121,6 +127,7 @@ impl Shell {
             action_rx,
             action_tx,
             command_popup: None,
+            command_history: Vec::new(),
             unit_popup: None,
             category_popup: None,
             settings_popup: None,
@@ -189,6 +196,20 @@ impl Shell {
                     return Some(Action::Quit);
                 }
                 if self.command_popup.is_some() {
+                    // Records the highlighted command's canonical name into history on every
+                    // `Enter` that actually has a row selected — regardless of whether it goes
+                    // on to dispatch a real action or hit the "not yet built" fallback
+                    // (`map_command_popup_key`'s own `Enter` arm decides that separately).
+                    // Nothing recorded on an `Esc`-abort or an empty result set, since neither
+                    // reaches here with a selected name.
+                    if key.code == KeyCode::Enter
+                        && let Some(name) = self
+                            .command_popup
+                            .as_ref()
+                            .and_then(CommandPopup::selected_command_name)
+                    {
+                        record_history(&mut self.command_history, name);
+                    }
                     return self.map_command_popup_key(key);
                 }
                 if self.unit_popup.is_some() {
@@ -259,20 +280,27 @@ impl Shell {
 
     /// Routes a key while the command popup is open. `Ctrl+;` toggles it shut again; `Esc`
     /// closes it; typing, `Backspace` and `↑`/`↓` drive the input buffer and selection; `Tab`
-    /// clears a showing "not yet built" message (completion itself isn't built yet). `Enter`
-    /// runs the highlighted command if it's one of the 6 with real content behind them
+    /// completes the input to the highlighted row's own name up to its first placeholder
+    /// (`CommandPopup::tab`); `Ctrl+r` walks backward through `Shell`'s own `command_history`
+    /// (`Action::CommandPopupHistoryRecall`, applied via `CommandPopup::recall_history`).
+    /// `Enter` runs the highlighted command if it's one of the 6 with real content behind them
     /// (`unit`, `unit new/edit/delete`, `dashboard`, `settings`); on any other command it
     /// shows [`Action::CommandPopupSetNotYetBuilt`] instead — the popup stays open either way.
+    /// `map_event` records the highlighted command's name into history on every `Enter`
+    /// press that has one selected, before this method decides which of those two paths it
+    /// takes.
     fn map_command_popup_key(&self, key: KeyEvent) -> Option<Action> {
         if is_open_command_popup(key) {
             return Some(Action::CloseCommandPopup);
         }
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Esc => Some(Action::CloseCommandPopup),
             KeyCode::Up => Some(Action::CommandPopupMoveUp),
             KeyCode::Down => Some(Action::CommandPopupMoveDown),
             KeyCode::Backspace => Some(Action::CommandPopupBackspace),
             KeyCode::Tab => Some(Action::CommandPopupTab),
+            KeyCode::Char('r') if ctrl => Some(Action::CommandPopupHistoryRecall),
             KeyCode::Enter => match self.command_popup.as_ref()?.selected_command_name() {
                 Some("unit") => Some(Action::OpenUnits),
                 Some("unit new <code> <type>") => Some(Action::OpenNewUnitPopup),
@@ -431,7 +459,7 @@ impl Shell {
                 Some(name) => Some(Action::CommandPopupSetNotYetBuilt(name)),
                 None => None,
             },
-            KeyCode::Char(c) => Some(Action::CommandPopupInput(c)),
+            KeyCode::Char(c) if !ctrl => Some(Action::CommandPopupInput(c)),
             _ => None,
         }
     }
@@ -878,6 +906,12 @@ impl Shell {
             Action::CommandPopupSetNotYetBuilt(name) => {
                 if let Some(popup) = &mut self.command_popup {
                     popup.set_not_yet_built(name);
+                }
+            }
+            Action::CommandPopupHistoryRecall => {
+                let history = &self.command_history;
+                if let Some(popup) = &mut self.command_popup {
+                    popup.recall_history(history);
                 }
             }
             Action::PopView => {
@@ -2118,6 +2152,82 @@ mod tests {
 
         assert!(!shell.should_quit);
         assert!(shell.command_popup.is_some(), "popup should stay open");
+    }
+
+    /// Types every character of `text` into an open command popup via the real `map_event`/
+    /// `update` round trip, mirroring how a key actually reaches the popup.
+    fn type_into_popup(shell: &mut Shell, text: &str) {
+        for c in text.chars() {
+            let action = shell
+                .map_event(Event::Key(KeyEvent::new(
+                    KeyCode::Char(c),
+                    KeyModifiers::NONE,
+                )))
+                .expect("typing a filter character always maps to an action");
+            shell.update(action);
+        }
+    }
+
+    #[test]
+    fn typing_into_the_popup_narrows_the_visible_results() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        let popup = shell.command_popup.as_ref().expect("just opened");
+        let resting_count = popup.selectable_count();
+
+        type_into_popup(&mut shell, "unit");
+
+        let popup = shell.command_popup.as_ref().expect("still open");
+        let filtered_count = popup.selectable_count();
+        assert!(filtered_count > 0);
+        assert!(filtered_count < resting_count);
+    }
+
+    #[test]
+    fn enter_on_a_selected_command_records_it_into_history() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        type_into_popup(&mut shell, "dashboard");
+
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter on a selected command always maps to an action");
+        shell.update(action);
+
+        assert_eq!(shell.command_history, vec!["dashboard".to_string()]);
+    }
+
+    #[test]
+    fn ctrl_r_recall_changes_the_input_buffer() {
+        let mut shell = Shell::new();
+        // Run `dashboard` once via the real Enter round trip so it lands in history, then
+        // reopen a fresh popup (Enter on `dashboard` also closes it, see its own dispatch arm).
+        shell.update(Action::OpenCommandPopup);
+        type_into_popup(&mut shell, "dashboard");
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Enter,
+                KeyModifiers::NONE,
+            )))
+            .expect("enter always maps to an action");
+        shell.update(action);
+        assert_eq!(shell.command_history, vec!["dashboard".to_string()]);
+
+        shell.update(Action::OpenCommandPopup);
+        let action = shell
+            .map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('r'),
+                KeyModifiers::CONTROL,
+            )))
+            .expect("ctrl+r while the popup is open always maps to an action");
+        assert_eq!(action, Action::CommandPopupHistoryRecall);
+        shell.update(action);
+
+        let popup = shell.command_popup.as_ref().expect("still open");
+        assert_eq!(popup.input(), "dashboard");
     }
 
     #[test]

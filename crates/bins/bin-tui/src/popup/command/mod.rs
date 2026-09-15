@@ -19,7 +19,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::Line,
+    text::{Line, Span},
     widgets::{Block, Clear, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
@@ -34,6 +34,28 @@ const DIM: Color = Color::DarkGray;
 /// (like `Color::Black` before it) renders however the user's terminal theme happens to remap
 /// that palette slot, which isn't reliably "dark" on every theme.
 const FOOTER_LABEL: Color = Color::Rgb(90, 90, 90);
+
+/// The rendered highlight for the first literal occurrence of the typed query within a
+/// filtered row (`highlight_range`) — reversed on top of the selected row's own `REVERSED`
+/// modifier, so it reads as a highlighted chip either way, rather than a plain colour that
+/// `REVERSED` would otherwise swap out from under it.
+const MATCH_HIGHLIGHT: Color = Color::Yellow;
+
+/// Session-only cap on `Shell::command_history` — old enough to be useful for `Ctrl+r` recall,
+/// bounded so nothing unbounded accumulates over a long session.
+pub const HISTORY_CAP: usize = 50;
+
+/// Records `name` into `history` (most-recent first) for the command popup's own `Ctrl+r`
+/// recall (`CommandPopup::recall_history`): removes any existing occurrence first, so no name
+/// ever appears twice, inserts it at the front, then truncates to [`HISTORY_CAP`]. Free
+/// function rather than a method on `CommandPopup` itself — the history it mutates lives on
+/// `Shell` (`command_history`), not the popup, since the popup's own state resets every time
+/// it's closed and reopened but history must survive that.
+pub fn record_history(history: &mut Vec<String>, name: &str) {
+    history.retain(|existing| existing != name);
+    history.insert(0, name.to_string());
+    history.truncate(HISTORY_CAP);
+}
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes — back to §3a's own suggested ~78%
 /// after a narrower value read too cramped in practice.
@@ -77,12 +99,22 @@ pub struct CommandPopup {
     /// takes priority over the argument-preview row while it's set, since it only ever
     /// appears right after an `Enter` attempt on the currently-highlighted command.
     not_yet_built: Option<&'static str>,
+    /// Position into `Shell`'s own `command_history` while `Ctrl+r` recall is browsing —
+    /// `None` on a fresh open and whenever any other mutating key (typing, `Backspace`,
+    /// `Tab`) runs, so recall only ever replaces the input buffer directly rather than
+    /// persisting as a separate mode. `0` is the most-recently-run command.
+    history_cursor: Option<usize>,
 }
 
 impl CommandPopup {
     /// Opens a fresh popup with an empty input buffer.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// The current input buffer — the popup's own filter query.
+    pub fn input(&self) -> &str {
+        &self.input
     }
 
     /// Appends a typed character to the input buffer, resetting the selection to the top —
@@ -92,6 +124,7 @@ impl CommandPopup {
         self.input.push(c);
         self.selected = 0;
         self.not_yet_built = None;
+        self.history_cursor = None;
     }
 
     /// Removes the last character of the input buffer, if any, resetting the selection.
@@ -99,6 +132,7 @@ impl CommandPopup {
         self.input.pop();
         self.selected = 0;
         self.not_yet_built = None;
+        self.history_cursor = None;
     }
 
     /// Moves the selection up one row, clamped at the top.
@@ -116,9 +150,48 @@ impl CommandPopup {
         self.not_yet_built = None;
     }
 
-    /// `Tab` while the popup is open — completion isn't built yet, so this only clears a
-    /// showing "not yet built" message, matching every other mutating key.
+    /// `Tab` while the popup is open: completes the input to the selected row's own `:name`,
+    /// truncated at its first `<`/`[` placeholder (trailing whitespace trimmed) — a
+    /// narrow-to-one-match confirmation, not argument entry, since there's no argument-input
+    /// UI yet to complete a value "into". A no-op when nothing is selected (an empty result
+    /// set) or the input already is exactly that text; never cycles between candidates on
+    /// repeated presses the way `↑`/`↓` does — only they change which row it would fill from.
     pub fn tab(&mut self) {
+        self.not_yet_built = None;
+        self.history_cursor = None;
+
+        let Some(command) = self.selected_command() else {
+            return;
+        };
+        let fill = command
+            .name
+            .split(['<', '['])
+            .next()
+            .unwrap_or(command.name)
+            .trim_end()
+            .to_string();
+        if fill != self.input {
+            self.input = fill;
+            self.selected = 0;
+        }
+    }
+
+    /// `Ctrl+r`: walks backward through `history` (index `0` = most recently run), replacing
+    /// the input buffer with each entry in turn. The first press starts browsing at the most
+    /// recent entry; a repeat press advances one further back; already at the oldest entry, it
+    /// pins there rather than wrapping back to the newest. A no-op against an empty history —
+    /// there's nothing to browse.
+    pub fn recall_history(&mut self, history: &[String]) {
+        if history.is_empty() {
+            return;
+        }
+        let next_cursor = match self.history_cursor {
+            None => 0,
+            Some(cursor) => (cursor + 1).min(history.len() - 1),
+        };
+        self.history_cursor = Some(next_cursor);
+        self.input = history[next_cursor].clone();
+        self.selected = 0;
         self.not_yet_built = None;
     }
 
@@ -177,10 +250,10 @@ impl CommandPopup {
     }
 
     /// Every command matching the current input, case-insensitively against its `:name`,
-    /// description or owning domain — ranked so a `:name` that exactly matches or starts with
-    /// the input leads (e.g. typing `category` should surface the bare `:category` command
-    /// before `budget new <category> <limit>`, whose name only contains it mid-string),
-    /// falling back to `DOMAINS` order for ties.
+    /// description or owning domain — ranked into the three tiers `match_rank` assigns (e.g.
+    /// typing `category` should surface the bare `:category` command before `budget new
+    /// <category> <limit>`, whose name only contains it mid-string), falling back to
+    /// `commands::all`'s own fixed display order for ties within a tier.
     fn filtered(&self) -> Vec<(&'static str, &'static commands::Command)> {
         let needle = self.input.to_lowercase();
         let mut matches: Vec<_> = commands::all()
@@ -190,13 +263,38 @@ impl CommandPopup {
                     || domain.to_lowercase().contains(&needle)
             })
             .collect();
-        matches.sort_by_key(|(_, command)| name_match_rank(&command.name.to_lowercase(), &needle));
+        matches.sort_by_key(|(domain, command)| match_rank(domain, command, &needle));
         matches
+    }
+
+    /// The byte range, within a filtered row's own rendered text (`:{name}{binding}
+    /// {description}`), of the current input's first literal, case-insensitive occurrence —
+    /// checked in `name` before `description`, matching `match_rank`'s own tier order. `None`
+    /// at rest (`input` empty, nothing to highlight) or for a domain-only match, which occurs
+    /// in neither field there's text to underline.
+    fn highlight_range(&self, command: &commands::Command) -> Option<(usize, usize)> {
+        if self.input.is_empty() {
+            return None;
+        }
+        let needle = self.input.to_lowercase();
+
+        // The name portion starts right after the leading `:` at byte 1.
+        if let Some(pos) = command.name.to_lowercase().find(&needle) {
+            let start = 1 + pos;
+            return Some((start, start + needle.len()));
+        }
+
+        let description_offset = 1 + command_column_width() + binding_column_width();
+        if let Some(pos) = command.description.to_lowercase().find(&needle) {
+            let start = description_offset + pos;
+            return Some((start, start + needle.len()));
+        }
+        None
     }
 
     /// How many rows are actually selectable right now — every command at rest, or only the
     /// matches while filtering.
-    fn selectable_count(&self) -> usize {
+    pub fn selectable_count(&self) -> usize {
         if self.input.is_empty() {
             commands::total_commands()
         } else {
@@ -376,25 +474,52 @@ impl CommandPopup {
                         description = command.description,
                     );
                     let text = pad_line(&text, line_rows[idx].width);
-                    let style = if row_idx == selected_row {
+                    let base_style = if row_idx == selected_row {
                         Style::default().add_modifier(Modifier::REVERSED)
                     } else {
                         Style::default()
                     };
-                    frame.render_widget(Line::from(text).style(style), line_rows[idx]);
+
+                    let line = match self.highlight_range(command) {
+                        Some((start, end)) if start < end.min(text.len()) => {
+                            let end = end.min(text.len());
+                            let (prefix, rest) = text.split_at(start);
+                            let (matched, suffix) = rest.split_at(end - start);
+                            Line::from(vec![
+                                Span::styled(prefix.to_string(), base_style),
+                                Span::styled(
+                                    matched.to_string(),
+                                    base_style.fg(MATCH_HIGHLIGHT).add_modifier(Modifier::BOLD),
+                                ),
+                                Span::styled(suffix.to_string(), base_style),
+                            ])
+                        }
+                        _ => Line::from(text).style(base_style),
+                    };
+                    frame.render_widget(line, line_rows[idx]);
                 }
             }
         }
     }
 }
 
-/// Ranks a (lowercased) command name against a (lowercased) needle for `CommandPopup::filtered`:
-/// `0` for an exact match, `1` for a name that starts with the needle, `2` for everything else
-/// (a match found only mid-name, or only in the description/domain). Lower sorts first.
-fn name_match_rank(name: &str, needle: &str) -> u8 {
-    if name == needle {
+/// Assigns `command` the single highest tier it qualifies for against a (lowercased) `needle`,
+/// for `CommandPopup::filtered`'s own sort — every command reaching this function already
+/// matched somewhere, per `filtered`'s own filter predicate, so the `else` arm here is always
+/// tier 3, never "no match":
+///
+/// 1. **Leading match**: `command.name`'s lowercased form starts with `needle`.
+/// 2. **Name/domain match**: `needle` appears anywhere in the lowercased name or the owning
+///    `domain`'s own lowercased name (and isn't already tier 1).
+/// 3. **Description-only match**: `needle` appears only in `command.description`.
+///
+/// Lower sorts first; `Vec::sort_by_key`'s stable sort keeps `commands::all`'s own fixed
+/// display order as the tie-break within a tier.
+fn match_rank(domain: &str, command: &commands::Command, needle: &str) -> u8 {
+    let name = command.name.to_lowercase();
+    if name.starts_with(needle) {
         0
-    } else if name.starts_with(needle) {
+    } else if name.contains(needle) || domain.to_lowercase().contains(needle) {
         1
     } else {
         2
@@ -427,8 +552,6 @@ fn binding_column_width() -> usize {
 /// separates it from the candidate list; each key is bold instead, which doesn't depend on
 /// the palette.
 fn footer_hint_line() -> Line<'static> {
-    use ratatui::text::Span;
-
     const HINTS: &[(&str, &str)] = &[
         ("↑↓", "select"),
         ("tab", "complete"),
@@ -820,5 +943,238 @@ mod tests {
         terminal
             .draw(|frame| popup.render(frame, frame.area()))
             .expect("rendering the popup with a not-yet-built message should not error");
+    }
+
+    // --- Ranking tiers (#97's "Ranking") ---
+
+    #[test]
+    fn a_description_only_match_ranks_below_a_name_or_domain_match() {
+        let mut popup = CommandPopup::new();
+        // "asserted" appears only in `report balance-check-variance`'s own description — a
+        // genuine tier-3 match, with no tier-1/2 candidate to also surface for this needle.
+        filter_to(&mut popup, "asserted");
+        assert_eq!(
+            popup.selected_command_name(),
+            Some("report balance-check-variance")
+        );
+    }
+
+    #[test]
+    fn a_name_match_ranks_above_a_description_only_match() {
+        let mut popup = CommandPopup::new();
+        // "unit" is a tier-1 leading match on the bare `unit` command's own name, and also
+        // appears — only as "per-unit" in its own description — on the unrelated `account`
+        // command. The name match must still lead.
+        filter_to(&mut popup, "unit");
+        assert_eq!(popup.selected_command_name(), Some("unit"));
+    }
+
+    // --- Substring emphasis (#97's "Ranking") ---
+
+    #[test]
+    fn highlight_checks_the_name_before_the_description() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "unit");
+        let command = commands::all()
+            .find(|(_, c)| c.name == "unit")
+            .map(|(_, c)| c)
+            .expect("the bare unit command exists");
+
+        let (start, end) = popup
+            .highlight_range(command)
+            .expect("a match should be found");
+
+        // Byte 1 is right after the leading `:` the rendered row always starts with.
+        assert_eq!((start, end), (1, 1 + "unit".len()));
+    }
+
+    #[test]
+    fn highlight_falls_back_to_the_description_when_the_name_does_not_match() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "asserted");
+        let command = popup
+            .selected_command()
+            .expect("the balance-check-variance report command should be selected");
+        assert!(!command.name.to_lowercase().contains("asserted"));
+        let (start, end) = popup
+            .highlight_range(command)
+            .expect("a description match should be found");
+        let description_start = 1 + command_column_width() + binding_column_width();
+        let match_offset = command
+            .description
+            .to_lowercase()
+            .find("asserted")
+            .expect("the description contains the needle");
+        assert_eq!(
+            (start, end),
+            (
+                description_start + match_offset,
+                description_start + match_offset + "asserted".len(),
+            )
+        );
+    }
+
+    #[test]
+    fn highlight_is_none_at_rest() {
+        let popup = CommandPopup::new();
+        let (_, command) = commands::all().next().expect("at least one command exists");
+        assert_eq!(popup.highlight_range(command), None);
+    }
+
+    #[test]
+    fn highlight_is_none_for_a_domain_only_match() {
+        let mut popup = CommandPopup::new();
+        // Filtering by a domain name whose commands' own names/descriptions never repeat it
+        // (e.g. "dashboard" the domain vs. "dashboard" the command name are the same word
+        // here, so use a domain guaranteed not to appear inside its own commands' text).
+        filter_to(&mut popup, "reports");
+        let command = popup
+            .selected_command()
+            .expect("a Reports command should be selected");
+        assert!(!command.name.to_lowercase().contains("reports"));
+        assert!(!command.description.to_lowercase().contains("reports"));
+        assert_eq!(popup.highlight_range(command), None);
+    }
+
+    // --- Tab-complete (#97's "Tab-complete") ---
+
+    #[test]
+    fn tab_completes_the_input_to_the_selected_commands_name_up_to_its_first_placeholder() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "unit ed");
+        assert_eq!(popup.selected_command_name(), Some("unit edit <code>"));
+        assert_eq!(popup.input, "unit ed");
+
+        popup.tab();
+
+        assert_eq!(popup.input, "unit edit");
+    }
+
+    #[test]
+    fn tab_is_a_no_op_when_nothing_is_selected() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "zzz-no-such-command");
+        assert_eq!(popup.selectable_count(), 0);
+
+        popup.tab();
+
+        assert_eq!(popup.input, "zzz-no-such-command");
+    }
+
+    #[test]
+    fn tab_is_a_no_op_once_the_input_already_matches_the_completion() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "unit ed");
+        popup.tab();
+        assert_eq!(popup.input, "unit edit");
+        let selected_before = popup.selected;
+
+        popup.tab();
+
+        // Still idempotent: Tab never cycles between candidates on repeated presses.
+        assert_eq!(popup.input, "unit edit");
+        assert_eq!(popup.selected, selected_before);
+    }
+
+    #[test]
+    fn tab_never_cycles_candidates_on_repeated_presses() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "unit");
+        popup.move_down();
+        popup.tab(); // completes the input and, like any input mutation, resets the selection
+        let settled_selection = popup.selected;
+        let settled_input = popup.input.clone();
+
+        // Further presses must not keep walking through candidates the way `↓` would.
+        popup.tab();
+        popup.tab();
+
+        assert_eq!(popup.selected, settled_selection);
+        assert_eq!(popup.input, settled_input);
+    }
+
+    #[test]
+    fn a_zero_arg_commands_tab_completion_is_its_whole_name() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "dashboard");
+        popup.tab();
+        assert_eq!(popup.input, "dashboard");
+    }
+
+    // --- Ctrl+r history (#97's "Ctrl+r history") ---
+
+    #[test]
+    fn record_history_deduplicates_by_moving_the_existing_entry_to_the_front() {
+        let mut history = vec!["unit".to_string(), "dashboard".to_string()];
+        record_history(&mut history, "dashboard");
+        assert_eq!(history, vec!["dashboard".to_string(), "unit".to_string()]);
+    }
+
+    #[test]
+    fn record_history_inserts_new_entries_at_the_front() {
+        let mut history = vec!["unit".to_string()];
+        record_history(&mut history, "dashboard");
+        assert_eq!(history, vec!["dashboard".to_string(), "unit".to_string()]);
+    }
+
+    #[test]
+    fn record_history_is_capped_evicting_the_oldest_entry() {
+        let mut history: Vec<String> = (0..HISTORY_CAP).map(|n| n.to_string()).collect();
+        record_history(&mut history, "new-command");
+        assert_eq!(history.len(), HISTORY_CAP);
+        assert_eq!(history.first(), Some(&"new-command".to_string()));
+        assert!(!history.contains(&(HISTORY_CAP - 1).to_string()));
+    }
+
+    #[test]
+    fn recall_history_starts_at_the_most_recent_entry() {
+        let mut popup = CommandPopup::new();
+        let history = vec!["dashboard".to_string(), "unit".to_string()];
+        popup.recall_history(&history);
+        assert_eq!(popup.input, "dashboard");
+    }
+
+    #[test]
+    fn recall_history_walks_backward_on_repeated_presses_and_pins_at_the_oldest() {
+        let mut popup = CommandPopup::new();
+        let history = vec!["dashboard".to_string(), "unit".to_string()];
+
+        popup.recall_history(&history);
+        assert_eq!(popup.input, "dashboard");
+        popup.recall_history(&history);
+        assert_eq!(popup.input, "unit");
+        popup.recall_history(&history); // already oldest — pins, no wrap to newest
+        assert_eq!(popup.input, "unit");
+    }
+
+    #[test]
+    fn recall_history_against_an_empty_history_is_a_no_op() {
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "unit");
+        let before = popup.input.clone();
+
+        popup.recall_history(&[]);
+
+        assert_eq!(popup.input, before);
+    }
+
+    #[test]
+    fn typing_backspace_and_tab_exit_history_browsing() {
+        let history = vec!["dashboard".to_string()];
+
+        let mut typing = CommandPopup::new();
+        typing.recall_history(&history);
+        typing.push_char('x');
+        assert_eq!(typing.history_cursor, None);
+
+        let mut backspacing = CommandPopup::new();
+        backspacing.recall_history(&history);
+        backspacing.backspace();
+        assert_eq!(backspacing.history_cursor, None);
+
+        let mut tabbing = CommandPopup::new();
+        tabbing.recall_history(&history);
+        tabbing.tab();
+        assert_eq!(tabbing.history_cursor, None);
     }
 }

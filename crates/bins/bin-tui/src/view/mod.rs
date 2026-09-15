@@ -70,6 +70,11 @@ pub enum Action {
     /// popup's info row, replacing whatever argument preview was showing. The popup stays
     /// open; `Enter` never closes it.
     CommandPopupSetNotYetBuilt(&'static str),
+    /// `Ctrl+r` while the command popup is open — walks backward through `Shell`'s own
+    /// `command_history`, replacing the input buffer with each entry in turn (see
+    /// `crate::popup::command::CommandPopup::recall_history`'s doc for the cursor's own
+    /// behaviour). A no-op against an empty history.
+    CommandPopupHistoryRecall,
     /// `Ctrl+U`, or `Enter` on the command popup's `unit` command — opens the placeholder
     /// Units view (`docs/ux/tui/units/README.md`), the first domain to land a real (if still
     /// wireframe-stage) destination behind the command popup's `unit` entry.
