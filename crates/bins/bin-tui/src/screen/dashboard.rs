@@ -73,8 +73,12 @@ fn areas() -> Vec<Area> {
         },
         Area {
             name: "Payees",
-            action: Some(Action::OpenPayees),
-            not_yet_built_hint: "",
+            // Retired along with `crate::screen::payees_list`/`payee_detail` (this whole
+            // App/Screen stack is dead code, unreferenced from `main.rs` per ADR-0013) — the
+            // real Payees screen is built under `crate::view::payees`, see "Retire old
+            // Screen-architecture Payees code" (issue #143).
+            action: None,
+            not_yet_built_hint: "moved to the new Shell/View screen",
         },
         Area {
             name: "Balance Checks",

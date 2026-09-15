@@ -24,8 +24,7 @@ use crate::{
         Screen, balance_check_detail::BalanceCheckDetailScreen,
         balance_checks_list::BalanceChecksListScreen, budget_detail::BudgetDetailScreen,
         budgets_list::BudgetsListScreen, csv_import::CsvImportScreen, dashboard::DashboardScreen,
-        help::HelpScreen, payee_detail::PayeeDetailScreen, payees_list::PayeesListScreen,
-        reports::ReportsScreen, settings::SettingsScreen,
+        help::HelpScreen, reports::ReportsScreen, settings::SettingsScreen,
         transaction_detail::TransactionDetailScreen, transactions_list::TransactionsListScreen,
         unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
     },
@@ -166,11 +165,15 @@ impl App {
             Action::OpenTransactionDetail(Some(transaction)) => {
                 self.push(Box::new(TransactionDetailScreen::new_edit(transaction)))
             }
-            Action::OpenPayees => self.push(Box::new(PayeesListScreen::new())),
-            Action::OpenPayeeDetail(None) => self.push(Box::new(PayeeDetailScreen::new_create())),
-            Action::OpenPayeeDetail(Some(payee)) => {
-                self.push(Box::new(PayeeDetailScreen::new_edit(payee)))
-            }
+            // `Action::OpenPayees`/`OpenPayeeDetail`/`PayeeSaved`/`PayeeSaveFailed`/
+            // `PayeeDeleted`/`PayeeDeleteFailed` are gone from `action::Action` entirely, not
+            // just unmatched here — `screen::payees_list`/`payee_detail` are retired (see
+            // "Retire old Screen-architecture Payees code", issue #143), `screen::dashboard`'s
+            // own menu no longer constructs `OpenPayees` (its Payees row is `action: None`
+            // now), and nothing else ever did. The real Payees screen lives under
+            // `crate::view::payees`, reached via `Shell`, not `App` — its own `Action` is a
+            // separate `view::Action`, not this module's, so none of this was ever shared with
+            // the live path despite the identical variant names.
             Action::OpenBalanceChecks => self.push(Box::new(BalanceChecksListScreen::new())),
             Action::OpenBalanceCheckDetail(None) => {
                 self.push(Box::new(BalanceCheckDetailScreen::new_create()))
@@ -209,8 +212,6 @@ impl App {
             | Action::TransactionDeleteFailed(_)
             | Action::PayeesLoaded(_)
             | Action::PayeesLoadFailed(_)
-            | Action::PayeeDeleted(_)
-            | Action::PayeeDeleteFailed(_)
             | Action::PayeeAliasesLoaded(_)
             | Action::PayeeAliasesLoadFailed(_)
             | Action::BalanceChecksLoaded(_)
@@ -239,13 +240,11 @@ impl App {
             // pushed from, after that list has absorbed the new/updated row.
             Action::UnitSaved(_) => self.broadcast_and_pop_detail(&action, "Unit"),
             Action::TransactionSaved(_) => self.broadcast_and_pop_detail(&action, "Transaction"),
-            Action::PayeeSaved(_) => self.broadcast_and_pop_detail(&action, "Payee"),
             Action::BalanceCheckSaved(_) => self.broadcast_and_pop_detail(&action, "Balance Check"),
             Action::BudgetSaved(_) => self.broadcast_and_pop_detail(&action, "Budget"),
             // A failed save stays on the detail screen so the user can fix and retry.
             Action::UnitSaveFailed(_)
             | Action::TransactionSaveFailed(_)
-            | Action::PayeeSaveFailed(_)
             | Action::BalanceCheckSaveFailed(_)
             | Action::BudgetSaveFailed(_) => {
                 if let Some(screen) = self.stack.last_mut() {
@@ -459,41 +458,6 @@ mod tests {
 
         assert_eq!(app.stack.len(), 2);
         assert_eq!(app.stack.last().unwrap().title(), "Transactions");
-    }
-
-    #[tokio::test]
-    async fn open_payees_pushes_the_payees_list_screen() {
-        let mut app = App::new();
-        app.update(Action::OpenPayees);
-        assert_eq!(app.stack.last().unwrap().title(), "Payees");
-    }
-
-    #[tokio::test]
-    async fn open_payee_detail_pushes_the_payee_screen() {
-        let mut app = App::new();
-        app.update(Action::OpenPayeeDetail(None));
-        assert_eq!(app.stack.last().unwrap().title(), "Payee");
-    }
-
-    #[tokio::test]
-    async fn payee_saved_pops_back_from_the_detail_screen() {
-        let mut app = App::new();
-        app.update(Action::OpenPayees);
-        app.update(Action::OpenPayeeDetail(None));
-        assert_eq!(app.stack.len(), 3);
-
-        let now = chrono::Utc::now();
-        let payee = lib_database::Payees {
-            id: lib_core::RowID::new(),
-            name: "Woolworths".to_string(),
-            is_active: true,
-            created_on: now,
-            updated_on: now,
-        };
-        app.update(Action::PayeeSaved(payee));
-
-        assert_eq!(app.stack.len(), 2);
-        assert_eq!(app.stack.last().unwrap().title(), "Payees");
     }
 
     #[tokio::test]
