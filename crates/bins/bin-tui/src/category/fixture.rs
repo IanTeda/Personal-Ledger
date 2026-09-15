@@ -78,10 +78,9 @@ fn node(
 }
 
 impl CategoryFixture {
-    /// Seeds the demo tree. Ids are `RowID::from_timestamp` over a fixed, strictly-increasing
-    /// sequence of dates (not `RowID::new()`/`RowID::mock()`) so a fresh fixture is
-    /// deterministic across runs, matching the repo's "deterministic seeds for generated test
-    /// data" convention.
+    /// Seeds the demo tree. Ids are built over a fixed, strictly-increasing sequence of dates
+    /// (not `RowID::new()`/`RowID::mock()`) so a fresh fixture is deterministic across runs,
+    /// matching the repo's "deterministic seeds for generated test data" convention.
     pub fn new() -> Self {
         use chrono::{DateTime, Utc};
 
@@ -89,10 +88,24 @@ impl CategoryFixture {
         let mut next = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
             .expect("fixed literal is a valid RFC3339 timestamp")
             .with_timezone(&Utc);
+        // `RowID::from_timestamp` delegates to `uuid::Uuid::new_v7`, which fills a real UUIDv7's
+        // non-timestamp bits from the OS RNG — two calls with the *same* timestamp still produce
+        // different ids, and every id (and therefore every `seed_from_id`-derived fake chart/
+        // transaction value in `view::categories`) this fixture seeds came out different on every
+        // run, contradicting this very module doc's "deterministic across runs" claim (see issue
+        // #124, and #118's identical fix for `AccountFixture`). Build the UUID ourselves instead,
+        // via the same timestamp sequence plus a plain incrementing counter standing in for the
+        // random bits — deterministic, and still sorts by creation order like a real v7 id would.
+        let mut counter: u64 = 0;
         let mut id = move || {
-            let this = next;
+            let millis = next.timestamp_millis() as u64;
             next += chrono::Duration::seconds(1);
-            RowID::from_timestamp(this)
+            counter += 1;
+            let mut counter_bytes = [0u8; 10];
+            counter_bytes[2..10].copy_from_slice(&counter.to_be_bytes());
+            let uuid =
+                uuid::Builder::from_unix_timestamp_millis(millis, &counter_bytes).into_uuid();
+            RowID::from_uuid(uuid)
         };
 
         let income = id();
@@ -461,6 +474,27 @@ mod tests {
             .iter()
             .find(|node| node.name == name)
             .unwrap_or_else(|| panic!("fixture should seed a category named {name}"))
+    }
+
+    #[test]
+    fn seeded_ids_are_identical_across_repeated_constructions() {
+        // The bug this guards against (#124): `RowID::from_timestamp` used to delegate to
+        // `uuid::Uuid::new_v7`, which fills a v7 UUID's non-timestamp bits from the OS RNG —
+        // two calls against the *same* timestamp still produced different ids, so two fixtures
+        // built even within one process (let alone two separate runs) never actually matched,
+        // despite this module's own "deterministic across runs" claim.
+        let first: Vec<_> = CategoryFixture::new()
+            .nodes()
+            .iter()
+            .map(|node| node.id)
+            .collect();
+        let second: Vec<_> = CategoryFixture::new()
+            .nodes()
+            .iter()
+            .map(|node| node.id)
+            .collect();
+
+        assert_eq!(first, second);
     }
 
     #[test]
