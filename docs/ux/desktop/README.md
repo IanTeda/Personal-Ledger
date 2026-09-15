@@ -2,6 +2,8 @@
 
 This is the gpui-facing spec for the Personal Ledger desktop client's application shell: window chrome, the two navigation rails, the command palette, the status line, and the keyboard model binding them together — the component tree, state machine, keybindings, and acceptance criteria the `docs/ux/desktop/Shell & Navigation/` bundle asks this document to carry. That bundle (`Ledger Desktop Shell.dc.html` + its own `README.md`) is the original Claude Design handoff — high-fidelity, HTML/CSS-shaped, and treated as the picture of the spec rather than the spec itself; this document is what actually gets built, in `gpui` terms, against `crates/bins/bin-desktop`.
 
+`docs/ux/desktop/Settings/` is a second, companion handoff bundle — the `Noun::Settings` view's own ten-pane surface and its four modals — sharing this shell's design tokens and grammar but not yet translated into a `gpui`-terms living spec the way this document translates Shell & Navigation; treat its `README.md` as the current source of truth for that view until it is.
+
 The desktop and TUI clients are visual siblings by deliberate design (see the handoff's own "governing constraint"): both speak `g`-jumps, a `:` command palette, and a modal status line, so a user moving between them re-uses muscle memory. Where the two disagree, `docs/ux/tui/navigation.md` — the TUI's own living reference, playing the same role this document plays here — is the older, decided contract; read it before implementing anything keyboard-shaped.
 
 The full build-out trail for this document lives on the [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) Wayfinder map and its children (issues #145–#154).
