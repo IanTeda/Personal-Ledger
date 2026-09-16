@@ -16,42 +16,24 @@
 //!   working-directory tiers don't correspond to anything meaningful inside a Docker
 //!   container.
 //!
-//! ## Example
-//!
-//! ```rust
-//! use lib_config::Config as LedgerConfig;
-//!
-//! let config = LedgerConfig::parse(None).expect("Failed to load config");
-//!
-//! let telemetry = config.telemetry_config();
-//! println!("Telemetry level: {:?}", telemetry.telemetry_level());
-//!
-//! let database = config.database_config();
-//! println!("Database URL: {}", database.url());
-//!
-//! use std::path::Path;
-//! let config_path = Path::new("custom.conf");
-//! let config = LedgerConfig::parse(Some(config_path)).expect("Failed to load config");
-//! ```
+//! Call [`LedgerConfig::parse`] with `None` to use the file-location search, or
+//! `Some(path)` for an explicit path (still optional -- a missing explicit file falls
+//! back to the rest of the chain rather than erroring); read sections back through
+//! accessors like [`LedgerConfig::personal_ledger_config`].
 //!
 //! ## Configuration File Example
 //!
 //! ```ini
-//! [tracing]
-//! level = "debug"
+//! [personal-ledger]
+//! data = "~/Documents/Personal-Ledger"
+//! file = "~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"
+//! log = "debug"
 //! log_file_path = "/var/log/personal-ledger/personal-ledger.log"
-//!
-//! [database]
-//! url = "sqlite:./personal-ledger.db"
-//! max_connections = 10
-//! min_connections = 1
-//! acquire_timeout_seconds = 30
-//! idle_timeout_seconds = 600
-//! max_lifetime_seconds = 1800
 //!
 //! # Only read by bin-sync-server, via `LedgerConfig::parse_for_sync_server`.
 //! [sync-server]
 //! bind_address = "0.0.0.0:50051"
+//! database_uri = "sqlite:./sync-server.sqlite"
 //!
 //! # Only read by bin-tui/bin-desktop; merged into the Sync Server's config but never used.
 //! [keybindings]
@@ -74,8 +56,14 @@ const ENV_PREFIX: &str = "PERSONAL_LEDGER";
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct LedgerConfig {
-    #[serde(alias = "Database")]
-    pub database: crate::DatabaseConfig,
+    /// Bootstrap/startup settings, not synced across computer systems. Populated from the
+    /// `[Personal-Ledger]` section.
+    #[serde(
+        alias = "PersonalLedger",
+        alias = "Personal-Ledger",
+        alias = "personal-ledger"
+    )]
+    pub personal_ledger: crate::PersonalLedgerConfig,
 
     /// Keyboard shortcut configuration, read by the TUI/Desktop Clients. Populated from the
     /// `[keybindings]` section; the Sync Server merges its defaults in but never reads them.
@@ -86,10 +74,6 @@ pub struct LedgerConfig {
     /// [`Self::normalise_ini`] for the `-`/`_` translation); never read by Clients.
     #[serde(alias = "SyncServer", alias = "Sync-Server", alias = "sync-server")]
     pub sync_server: crate::SyncServerConfig,
-
-    /// Telemetry configuration.
-    #[serde(alias = "Tracing")]
-    pub tracing: crate::TracingConfig,
 }
 
 impl LedgerConfig {
@@ -156,14 +140,6 @@ impl LedgerConfig {
     fn defaults_builder() -> crate::Result<ConfigBuilder<DefaultState>> {
         let mut config_builder = Config::builder();
 
-        for (key, value) in crate::TracingConfig::default_config_values() {
-            config_builder = config_builder.set_default(key, value)?;
-        }
-
-        for (key, value) in crate::DatabaseConfig::default_config_values() {
-            config_builder = config_builder.set_default(key, value)?;
-        }
-
         for (key, value) in crate::SyncServerConfig::default_config_values() {
             config_builder = config_builder.set_default(key, value)?;
         }
@@ -172,12 +148,16 @@ impl LedgerConfig {
             config_builder = config_builder.set_default(key, value)?;
         }
 
+        for (key, value) in crate::PersonalLedgerConfig::default_config_values() {
+            config_builder = config_builder.set_default(key, value)?;
+        }
+
         Ok(config_builder)
     }
 
     /// Add the explicit config file (if given and it exists) and environment variable
     /// overrides -- the two highest-precedence tiers, shared by both entry points. Env vars
-    /// (e.g. `PERSONAL_LEDGER_TRACING__LEVEL=debug`) always come last/highest.
+    /// (e.g. `PERSONAL_LEDGER_PERSONAL_LEDGER__LOG=debug`) always come last/highest.
     fn add_explicit_and_env(
         config_builder: ConfigBuilder<DefaultState>,
         config_file: Option<&Path>,
@@ -202,8 +182,8 @@ impl LedgerConfig {
         Ok(config_builder.add_source(config::File::from_str(&normalised, config::FileFormat::Ini)))
     }
 
-    /// Read an INI file and normalise its section headers: lower-cased (so `[Tracing]`/
-    /// `[tracing]` are equivalent) and with `-` translated to `_` (so `[sync-server]`
+    /// Read an INI file and normalise its section headers: lower-cased (so `[Personal-Ledger]`/
+    /// `[personal-ledger]` are equivalent) and with `-` translated to `_` (so `[sync-server]`
     /// matches the `sync_server` field/serde alias -- INI section names commonly use
     /// hyphens, but Rust field names can't).
     fn normalise_ini(p: &Path) -> crate::Result<String> {
@@ -328,16 +308,6 @@ impl LedgerConfig {
         Ok(dir)
     }
 
-    /// Get the telemetry configuration.
-    pub fn telemetry_config(&self) -> &crate::TracingConfig {
-        &self.tracing
-    }
-
-    /// Get the database configuration.
-    pub fn database_config(&self) -> &crate::DatabaseConfig {
-        &self.database
-    }
-
     /// Get the Sync-Server-only configuration.
     pub fn sync_server_config(&self) -> &crate::SyncServerConfig {
         &self.sync_server
@@ -346,6 +316,11 @@ impl LedgerConfig {
     /// Get the key binding configuration.
     pub fn keybindings_config(&self) -> &crate::KeyBindingConfig {
         &self.keybindings
+    }
+
+    /// Get the Personal Ledger bootstrap/startup configuration.
+    pub fn personal_ledger_config(&self) -> &crate::PersonalLedgerConfig {
+        &self.personal_ledger
     }
 }
 
@@ -431,20 +406,39 @@ mod tests {
         in_empty_cwd(|| {
             let config = LedgerConfig::parse(None).unwrap();
             assert_eq!(
-                config.tracing.level(),
-                crate::TracingConfig::default().level()
+                config.personal_ledger.log(),
+                crate::PersonalLedgerConfig::default().log()
             );
             assert_eq!(
-                config.database.url(),
-                crate::DatabaseConfig::default().url()
+                config.personal_ledger.data(),
+                crate::PersonalLedgerConfig::default().data()
             );
             assert_eq!(
-                config.database.max_connections(),
-                crate::DatabaseConfig::default().max_connections()
+                config.personal_ledger.file(),
+                crate::PersonalLedgerConfig::default().file()
             );
             assert_eq!(
                 config.sync_server.bind_address(),
                 crate::SyncServerConfig::default().bind_address()
+            );
+        });
+    }
+
+    #[test]
+    fn accessors_return_the_parsed_sections() {
+        in_empty_cwd(|| {
+            let config = LedgerConfig::parse(None).unwrap();
+            assert_eq!(
+                config.personal_ledger_config().log(),
+                config.personal_ledger.log()
+            );
+            assert_eq!(
+                config.sync_server_config().bind_address(),
+                config.sync_server.bind_address()
+            );
+            assert_eq!(
+                config.keybindings_config().super_key(),
+                config.keybindings.super_key()
             );
         });
     }
@@ -458,8 +452,8 @@ mod tests {
                 crate::SyncServerConfig::default().bind_address()
             );
             assert_eq!(
-                config.database.url(),
-                crate::DatabaseConfig::default().url()
+                config.sync_server.database_uri(),
+                crate::SyncServerConfig::default().database_uri()
             );
         });
     }
@@ -470,19 +464,18 @@ mod tests {
         let config_file = temp_dir.path().join("test.conf");
 
         let config_content = r#"
-        [tracing]
-        level = "debug"
-
-        [database]
-        url = "sqlite:test.db"
-        max_connections = 20
+        [personal-ledger]
+        file = "/tmp/test-ledger.pldb"
+        log = "debug"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
-        assert_eq!(config.tracing.level(), lib_tracing::Levels::DEBUG);
-        assert_eq!(config.database.url(), "sqlite:test.db");
-        assert_eq!(config.database.max_connections(), 20);
+        assert_eq!(
+            config.personal_ledger.file(),
+            std::path::Path::new("/tmp/test-ledger.pldb")
+        );
+        assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::DEBUG);
     }
 
     #[test]
@@ -493,11 +486,16 @@ mod tests {
         let config_content = r#"
         [sync-server]
         bind_address = "127.0.0.1:9000"
+        database_uri = "sqlite:/tmp/sync-server-test.sqlite"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
         let config = LedgerConfig::parse_for_sync_server(Some(&config_file)).unwrap();
         assert_eq!(config.sync_server.bind_address(), "127.0.0.1:9000");
+        assert_eq!(
+            config.sync_server.database_uri(),
+            "sqlite:/tmp/sync-server-test.sqlite"
+        );
     }
 
     #[test]
@@ -509,8 +507,8 @@ mod tests {
             fs::write(
                 &cwd_config_file,
                 r#"
-                [tracing]
-                level = "warn"
+                [personal-ledger]
+                log = "warn"
                 "#,
             )
             .unwrap();
@@ -518,8 +516,8 @@ mod tests {
             // A Client (`parse`) would pick this up; the Sync Server must not.
             let config = LedgerConfig::parse_for_sync_server(None).unwrap();
             assert_eq!(
-                config.tracing.level(),
-                crate::TracingConfig::default().level()
+                config.personal_ledger.log(),
+                crate::PersonalLedgerConfig::default().log()
             );
         });
     }
@@ -534,22 +532,18 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_case_insensitive_telemetry_section() {
+    fn parse_with_case_insensitive_sections() {
         let temp_dir = TempDir::new().unwrap();
         let config_file = temp_dir.path().join("test.conf");
 
         let config_content = r#"
-        [tracing]
-        level = "info"
-
-        [database]
-        url = "sqlite:custom.db"
+        [Personal-Ledger]
+        log = "warn"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
-        assert_eq!(config.tracing.level(), lib_tracing::Levels::INFO);
-        assert_eq!(config.database.url(), "sqlite:custom.db");
+        assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::WARN);
     }
 
     #[test]
@@ -559,8 +553,8 @@ mod tests {
 
         // Missing closing bracket -- malformed INI.
         let config_content = r#"
-        [tracing
-        level = "debug"
+        [personal-ledger
+        log = "debug"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
@@ -569,13 +563,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_with_invalid_telemetry_level_returns_error() {
+    fn parse_with_invalid_log_level_returns_error() {
         let temp_dir = TempDir::new().unwrap();
         let config_file = temp_dir.path().join("invalid_level.conf");
 
         let config_content = r#"
-        [tracing]
-        level = "invalid"
+        [personal-ledger]
+        log = "invalid"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
@@ -592,11 +586,8 @@ mod tests {
             fs::write(
                 &cwd_config_file,
                 r#"
-                [Tracing]
-                level = "warn"
-
-                [Database]
-                max_connections = 5
+                [Personal-Ledger]
+                log = "warn"
                 "#,
             )
             .unwrap();
@@ -605,18 +596,14 @@ mod tests {
             fs::write(
                 &explicit_file,
                 r#"
-                [Tracing]
-                level = "debug"
-
-                [Database]
-                max_connections = 15
+                [Personal-Ledger]
+                log = "debug"
                 "#,
             )
             .unwrap();
 
             let config = LedgerConfig::parse(Some(&explicit_file)).unwrap();
-            assert_eq!(config.tracing.level(), lib_tracing::Levels::DEBUG);
-            assert_eq!(config.database.max_connections(), 15);
+            assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::DEBUG);
         });
     }
 

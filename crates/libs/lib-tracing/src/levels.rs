@@ -2,18 +2,18 @@
 //!
 //! This module provides a serde-compatible representation of telemetry levels for the telemetry system.
 //!
-//! The `TelemetryLevels` enum serves as a configuration-friendly wrapper around `tracing`'s
+//! The `Levels` enum serves as a configuration-friendly wrapper around `tracing`'s
 //! `LevelFilter`, enabling telemetry level configuration through configuration files, environment
 //! variables, and other serde-compatible sources.
 //!
 //! ## Usage
 //!
 //! ```rust
-//! use lib_tracing::TelemetryLevels;
+//! use lib_tracing::Levels;
 //!
 //! // Parse from string (useful for config files)
-//! let level: TelemetryLevels = serde_json::from_str("\"debug\"").unwrap();
-//! assert_eq!(level, TelemetryLevels::DEBUG);
+//! let level: Levels = serde_json::from_str("\"debug\"").unwrap();
+//! assert_eq!(level, Levels::DEBUG);
 //!
 //! // Convert to tracing LevelFilter for runtime use
 //! let filter = tracing::level_filters::LevelFilter::from(level);
@@ -41,11 +41,11 @@
 /// # Examples
 ///
 /// ```rust
-/// use lib_tracing::TelemetryLevels;
+/// use lib_tracing::Levels;
 ///
 /// // Default level
-/// let default_level = TelemetryLevels::default();
-/// assert_eq!(default_level, TelemetryLevels::WARN);
+/// let default_level = Levels::default();
+/// assert_eq!(default_level, Levels::WARN);
 ///
 /// // Convert to tracing filter
 /// let filter = tracing::level_filters::LevelFilter::from(default_level);
@@ -92,22 +92,22 @@ pub enum Levels {
     TRACE,
 }
 
-/// Conversion from `TelemetryLevels` to `tracing::LevelFilter`.
+/// Conversion from `Levels` to `tracing::LevelFilter`.
 ///
 /// This implementation allows seamless integration with the tracing ecosystem,
 /// enabling configuration-driven telemetry level control throughout the application.
 ///
 /// The conversion is infallible and maintains the same semantic meaning for each level.
 impl From<Levels> for tracing::level_filters::LevelFilter {
-    /// Converts a `TelemetryLevels` to the corresponding `tracing::LevelFilter`.
+    /// Converts a `Levels` to the corresponding `tracing::LevelFilter`.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use lib_tracing::TelemetryLevels;
+    /// use lib_tracing::Levels;
     /// use tracing::level_filters::LevelFilter;
     ///
-    /// let telemetry_level = TelemetryLevels::INFO;
+    /// let telemetry_level = Levels::INFO;
     /// let filter: LevelFilter = telemetry_level.into();
     /// assert_eq!(filter, LevelFilter::INFO);
     /// ```
@@ -133,10 +133,10 @@ impl std::fmt::Display for Levels {
     /// # Examples
     ///
     /// ```rust
-    /// use lib_tracing::TelemetryLevels;
+    /// use lib_tracing::Levels;
     ///
-    /// assert_eq!(format!("{}", TelemetryLevels::INFO), "info");
-    /// assert_eq!(format!("{}", TelemetryLevels::DEBUG), "debug");
+    /// assert_eq!(format!("{}", Levels::INFO), "info");
+    /// assert_eq!(format!("{}", Levels::DEBUG), "debug");
     /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let level_str = match self {
@@ -148,6 +148,40 @@ impl std::fmt::Display for Levels {
             Levels::TRACE => "trace",
         };
         write!(f, "{}", level_str)
+    }
+}
+
+/// Error returned by [`Levels`]'s `FromStr` implementation for an unrecognised level string.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("invalid telemetry level {0:?} (expected one of: off, error, warn, info, debug, trace)")]
+pub struct ParseLevelError(String);
+
+impl std::str::FromStr for Levels {
+    type Err = ParseLevelError;
+
+    /// Parses a level from its lowercase string form -- the same vocabulary as
+    /// [`std::fmt::Display`]/serde, so config files, environment variables, and CLI flags
+    /// (`--log`) all accept the same values. Case-insensitive for CLI ergonomics.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use lib_tracing::Levels;
+    ///
+    /// assert_eq!("debug".parse::<Levels>().unwrap(), Levels::DEBUG);
+    /// assert_eq!("DEBUG".parse::<Levels>().unwrap(), Levels::DEBUG);
+    /// assert!("verbose".parse::<Levels>().is_err());
+    /// ```
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_ascii_lowercase().as_str() {
+            "off" => Ok(Levels::OFF),
+            "error" => Ok(Levels::ERROR),
+            "warn" => Ok(Levels::WARN),
+            "info" => Ok(Levels::INFO),
+            "debug" => Ok(Levels::DEBUG),
+            "trace" => Ok(Levels::TRACE),
+            _ => Err(ParseLevelError(s.to_string())),
+        }
     }
 }
 
@@ -290,5 +324,44 @@ mod tests {
         assert_eq!(format!("{}", Levels::INFO), "info");
         assert_eq!(format!("{}", Levels::DEBUG), "debug");
         assert_eq!(format!("{}", Levels::TRACE), "trace");
+    }
+
+    #[test]
+    fn from_str_parses_every_variant() {
+        assert_eq!("off".parse::<Levels>().unwrap(), Levels::OFF);
+        assert_eq!("error".parse::<Levels>().unwrap(), Levels::ERROR);
+        assert_eq!("warn".parse::<Levels>().unwrap(), Levels::WARN);
+        assert_eq!("info".parse::<Levels>().unwrap(), Levels::INFO);
+        assert_eq!("debug".parse::<Levels>().unwrap(), Levels::DEBUG);
+        assert_eq!("trace".parse::<Levels>().unwrap(), Levels::TRACE);
+    }
+
+    #[test]
+    fn from_str_is_case_insensitive() {
+        assert_eq!("DEBUG".parse::<Levels>().unwrap(), Levels::DEBUG);
+        assert_eq!("Info".parse::<Levels>().unwrap(), Levels::INFO);
+    }
+
+    #[test]
+    fn from_str_rejects_unknown_level() {
+        let err = "verbose".parse::<Levels>().unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "invalid telemetry level \"verbose\" (expected one of: off, error, warn, info, debug, trace)"
+        );
+    }
+
+    #[test]
+    fn display_and_from_str_roundtrip() {
+        for level in [
+            Levels::OFF,
+            Levels::ERROR,
+            Levels::WARN,
+            Levels::INFO,
+            Levels::DEBUG,
+            Levels::TRACE,
+        ] {
+            assert_eq!(level.to_string().parse::<Levels>().unwrap(), level);
+        }
     }
 }

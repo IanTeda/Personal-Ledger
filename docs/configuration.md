@@ -28,13 +28,18 @@ Personal Ledger uses the following order of precedence, from lowest to highest.
   * Platform-specific user config directory
   * Linux/macOS: ~/.config/personal-ledger/personal-ledger.conf
   * Windows: %APPDATA%\personal-ledger\personal-ledger.conf
-6. Environment Variables
+6. Explicit Configuration File
+  * The file pointed to by --config/-c, if given (still layered in below Environment
+    Variables, same as every other file source above)
+7. Environment Variables
   * Prefix: PERSONAL_LEDGER_
-  * Example: PERSONAL_LEDGER_TRACING__LEVEL=debug
-  * Example: PERSONAL_LEDGER_DATABASE__URL=sqlite:/tmp/test.db
+  * Example: PERSONAL_LEDGER_PERSONAL_LEDGER__LOG=debug
+  * Example: PERSONAL_LEDGER_SYNC_SERVER__DATABASE_URI=sqlite:/tmp/test.db
   * Use double underscores (__) to separate nested keys
-7. Environment Variables (highest precedence)
-  * Explicit command line flags  --config/-c 
+8. Explicit Command Line Flags (highest precedence)
+  * --data/-d, --file/-f, --log/-l -- override the `[Personal-Ledger]` section's
+    corresponding setting directly, applied after every source above (including
+    Environment Variables)
 
 ## INI Configuration Format
 
@@ -81,13 +86,13 @@ Points to a configuration directory not in the predefined hierarchy discussed ab
 
 * Type: String (Optional)
 * CLI Flag: --config/-c
-* Default: Refer to above ‘Configuratoin Hierarchy’
+* Default: Refer to above ‘Configuration Hierarchy’
 
 Example:
 
 ```ini
 [Personal-Ledger]
-config_file = "~/.config/personal_ledger.conf"
+config = "~/.config/personal_ledger.conf"
 ```
 
 ```bash
@@ -98,10 +103,10 @@ __data:__
 
 Use a specific directory as the default location for Personal Ledger database files.
 
-* Type: String (Optional)
+* Type: String
 * CLI Flags: --data/-d 
 * Default:
-  * Write out the default data dir location
+  * Defaults to the users `document` folder
 
 Example:
 
@@ -133,12 +138,12 @@ file = "~/Documents/My-Personal-Ledger.pldb"
 personal_ledger --file/-f '~/Documents/My-Personal-Ledger.pldb'
 ```
 
-__debug:__
+__log:__
 
 Controls the verbosity of logging output.
 
 * Type: String
-* CLI Flags:  --debug/-d 
+* CLI Flags:  --log/-l 
 * Valid Values:
   * "trace": Most verbose, includes all internal debugging information
   * "debug": Detailed debugging information
@@ -152,11 +157,25 @@ Example:
 
 ```ini
 [Personal-Ledger]
-debug = "debug"
+log = "debug"
 ```
 
 ```bash
-personal_ledger --debug/-d 'debug'
+personal_ledger --log/-l 'debug'
+```
+
+__log_file_path:__
+
+Optional path to a file that log output should also be written to, in addition to the console. Parent directories are created if they don’t already exist.
+
+* Type: String (Optional)
+* Default: unset (console output only)
+
+Example:
+
+```ini
+[Personal-Ledger]
+log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 ```
 
 ## Keybindings Section
@@ -197,7 +216,7 @@ TODO: Update when starting to work on sync server
 
 bin-sync-server uses a reduced precedence chain instead (ADR-0014): Environment Variables → Explicit Configuration File (--config/-c) → Built-in Defaults. The Current Working Directory/Executable Directory/User/System tiers don’t apply – they don’t correspond to anything meaningful inside a Docker container, the Sync Server’s only deployment target.
 
-The [Sync-Server] section currently has one setting:
+The [Sync-Server] section currently has two settings:
 
 bind_address
 
@@ -206,11 +225,19 @@ The socket address the Sync Server’s gRPC/HTTP listener binds to.
 * Type: String
 * Default: "0.0.0.0:50051"
 
+database_uri
+
+The URI of the Sync Server’s own database (its durable Change Set log, per ADR-0009) — not a Client’s local `[Personal-Ledger] file`; the Sync Server’s database is server-side storage, unrelated to any Client’s local Ledger file. Connection-pool settings (max/min connections, timeouts) are fixed in code, not configurable.
+
+* Type: String
+* Default: "sqlite:./sync-server.sqlite"
+
 Example:
 
 ```ini
 [Sync-Server]
 bind_address = "0.0.0.0:50051"
+database_uri = "sqlite:./sync-server.sqlite"
 ```
 
 * Hardcoded default values in the application code
@@ -237,7 +264,7 @@ Example Configuration File
 [Personal-Ledger]
 
 # Static configuration file (this file)
-config_file = "~/.config/personal_ledger.conf"
+config = "~/.config/personal_ledger.conf"
 
 # Client data directory
 data = "~/Documents/Personal-Ledger"
@@ -247,6 +274,9 @@ file = "~/Documents/My-Personal-Ledger.pldb"
 
 # Client tracing log level
 log = "debug"
+
+# Optional: also write log output to this file, in addition to the console
+# log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 
 
 
@@ -268,11 +298,12 @@ goto_settings = "s"
 # Only read by bin-sync-server -- bin-tui/bin-desktop ignore this section.
 [Sync-Server]
 bind_address = "0.0.0.0:50051"
+database_uri = "sqlite:./sync-server.sqlite"
 ```
 
 
 References
 
-Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: database connection/pool settings, the telemetry level, and (for the Sync Server only) the gRPC bind address. Everything else the user might tweak from inside a running Client — colour theme, date format, decimal/thousands separator, default Unit — is a Preference instead, stored in the Ledger’s own database, not here.
+Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s `[Personal-Ledger] file`, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, decimal/thousands separator, default Unit — is a Preference instead, stored in the Ledger’s own database, not here.
 
 lib-config is shared by all three consumers (bin-tui, bin-desktop, bin-sync-server), but they don’t all see the same sections or search the same locations — see Configuration Hierarchy and Sync Server Section below.

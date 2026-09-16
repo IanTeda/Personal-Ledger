@@ -382,11 +382,7 @@ async fn load_live_categories() -> Result<Vec<lib_database::Categories>> {
 /// Same as [`load_live_categories`], against an explicit database URL -- split out so
 /// tests can point it at an isolated, throwaway SQLite file instead of the shared demo one.
 async fn load_live_categories_from(url: String) -> Result<Vec<lib_database::Categories>> {
-    let config = lib_config::DatabaseConfig {
-        url,
-        ..lib_config::DatabaseConfig::default()
-    };
-    let connection = lib_database::DatabaseConnection::new(config).await?;
+    let connection = lib_database::DatabaseConnection::new(url).await?;
     let pool = connection.pool();
 
     sqlx::migrate!("../../libs/lib-database/migrations/client")
@@ -806,8 +802,8 @@ mod tests {
 async fn run() -> Result<()> {
     let cli = Cli::parse();
     let config = lib_config::Config::parse(cli.config.path.as_deref())?;
-    let telemetry_level = Some(&config.telemetry_config().level());
-    let log_file_path = config.telemetry_config().log_file_path();
+    let telemetry_level = Some(&config.personal_ledger_config().log());
+    let log_file_path = config.personal_ledger_config().log_file_path();
     // Held for the lifetime of `main` -- dropping it stops the background worker that
     // flushes buffered log lines to `log_file_path` (when configured).
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;

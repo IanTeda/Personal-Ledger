@@ -76,16 +76,6 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
 /// left to whichever binary consumes the configuration. `super_key` is the modifier the
 /// application expects held down for global shortcuts, so a binary can decide which of its
 /// own hardcoded shortcuts count as "global" versus screen-local.
-///
-/// # Examples
-///
-/// ```rust
-/// use lib_config::KeyBindingConfig;
-///
-/// let config = KeyBindingConfig::default();
-/// assert_eq!(config.super_key(), "ctrl");
-/// assert_eq!(config.key_for("quit"), Some("ctrl+c"));
-/// ```
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct KeyBindingConfig {
     /// The modifier held down for global shortcuts (`"ctrl"`, `"alt"`, `"shift"`,
@@ -159,7 +149,7 @@ impl KeyBindingConfig {
     }
 
     /// Get the default configuration values as key-value pairs, for seeding a layered
-    /// configuration builder's defaults -- mirrors `DatabaseConfig::default_config_values()`.
+    /// configuration builder's defaults -- mirrors `SyncServerConfig::default_config_values()`.
     pub fn default_config_values() -> Vec<(String, String)> {
         let mut defaults = vec![(
             "keybindings.super_key".to_string(),

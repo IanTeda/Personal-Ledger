@@ -9,11 +9,13 @@
 //!
 //! - [`error`] - Configuration error types
 //! - [`ledger`] - Top-level application configuration, shared by all three consumers
-//! - [`database`] - Database connection pool configuration, re-exported by `lib-database`
-//! - [`sync_server`] - Sync-Server-only configuration (bind address), not read by Clients
-//! - [`tracing`] - Tracing/telemetry configuration
+//! - [`personal_ledger`] - `[Personal-Ledger]` section: data dir, database file, log
+//!   level/file, shared by all three consumers (superseded `[tracing]`/`TracingConfig`)
+//! - [`sync_server`] - Sync-Server-only configuration (bind address, database URI), not
+//!   read by Clients
 //! - [`keybindings`] - Keyboard shortcut configuration, read by the TUI/Desktop Clients
-//! - [`cli`] - Shared `--config`/`-c` CLI argument, flattened into each binary's own parser
+//! - [`cli`] - Shared `--config`/`-c`/`--data`/`-d`/`--file`/`-f`/`--log`/`-l` CLI
+//!   arguments, flattened into each binary's own parser
 //!
 //! ## Client vs Sync Server
 //!
@@ -25,12 +27,11 @@
 //! inside a Docker container.
 
 mod cli;
-mod database;
 mod error;
 mod keybindings;
 mod ledger;
+mod personal_ledger;
 mod sync_server;
-mod tracing;
 
 /// Re-export settings [`Error`] type.
 pub use error::Error;
@@ -41,17 +42,11 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 /// The top-level application configuration type, shared by all three consumers.
 pub use ledger::LedgerConfig as Config;
 
-/// Database connection pool configuration, re-exported by `lib-database` (its own
-/// connection pooling is the only consumer of the type, but the type itself lives here
-/// alongside `TracingConfig`/`SyncServerConfig` so all layered-config sections stay in one
-/// crate).
-pub use database::DatabaseConfig;
+/// Personal Ledger configuration.
+pub use personal_ledger::PersonalLedgerConfig;
 
-/// Sync-Server-only configuration (currently just the bind address).
+/// Sync-Server-only configuration (bind address and database URI).
 pub use sync_server::SyncServerConfig;
-
-/// Telemetry configuration.
-pub use tracing::TracingConfig;
 
 /// Keyboard shortcut configuration, read by the TUI/Desktop Clients.
 pub use keybindings::KeyBindingConfig;

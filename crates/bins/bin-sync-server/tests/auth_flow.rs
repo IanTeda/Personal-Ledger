@@ -18,7 +18,6 @@ use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use lib_config::DatabaseConfig;
 use lib_database::{DatabaseConnection, SyncUser};
 use lib_rpc::{
     PullRequest, SyncService, SyncServiceClient, SyncServiceServer, UtilitiesService,
@@ -34,12 +33,9 @@ const TEST_PASSWORD: &str = "correct horse battery staple";
 /// listener, not two" shape) bound to an ephemeral port, with one bootstrap sync user
 /// seeded.
 async fn spawn_sync_server(db_path: &std::path::Path) -> std::net::SocketAddr {
-    let connection = DatabaseConnection::new(DatabaseConfig {
-        url: format!("sqlite://{}?mode=rwc", db_path.display()),
-        ..DatabaseConfig::default()
-    })
-    .await
-    .expect("Sync Server database connection should establish");
+    let connection = DatabaseConnection::new(format!("sqlite://{}?mode=rwc", db_path.display()))
+        .await
+        .expect("Sync Server database connection should establish");
     let pool = Arc::new(connection.into_pool());
     sqlx::migrate!("../../libs/lib-database/migrations/sync-server")
         .run(&*pool)

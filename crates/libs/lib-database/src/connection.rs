@@ -7,7 +7,8 @@
 //! ## Connection Pool Management
 //!
 //! The `DatabaseConnection` handles the lifecycle of database connections:
-//! - **Pool Creation**: Configures and establishes connection pools based on `DatabaseConfig`
+//! - **Pool Creation**: Establishes a connection pool for the given database URI, with
+//!   fixed pool settings (`MAX_CONNECTIONS`, `MIN_CONNECTIONS`, etc, below)
 //! - **Pool Access**: Provides safe access to the underlying SQLx pool for queries
 //! - **Health Monitoring**: Includes health check functionality for connection validation
 //! - **Resource Management**: Proper cleanup and ownership transfer of pool resources
@@ -18,17 +19,31 @@
 //! ## Architecture Notes
 //!
 //! - Built on top of SQLx's `SqlitePool` for robust connection pooling
-//! - Configurable pool settings through `DatabaseConfig`
+//! - Pool settings (connection limits, timeouts) are fixed, not user-configurable -- the
+//!   database URI itself is the only thing callers vary (a Client's `[Personal-Ledger]
+//!   file`, or the Sync Server's `[Sync-Server] database_uri`)
 //! - Error handling mapped to domain-specific `DatabaseError` types
 //! - Async-first design for non-blocking database operations
 //! - Thread-safe pool access for concurrent operations
 
-#![allow(unused_imports)]
-
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 
-use crate::{Result, Error};
-use lib_config::DatabaseConfig;
+use crate::{Error, Result};
+
+/// Maximum number of connections in the pool.
+const MAX_CONNECTIONS: u32 = 10;
+
+/// Minimum number of connections to maintain in the pool.
+const MIN_CONNECTIONS: u32 = 1;
+
+/// Timeout for acquiring a connection from the pool.
+const ACQUIRE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Idle timeout for pooled connections.
+const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// Maximum lifetime for pooled connections.
+const MAX_LIFETIME: std::time::Duration = std::time::Duration::from_secs(1800);
 
 /// Database connection wrapper providing high-level access to SQLite connection pools.
 ///
@@ -52,22 +67,20 @@ pub struct DatabaseConnection {
     /// The underlying SQLx SQLite connection pool.
     ///
     /// This pool manages multiple database connections with automatic lifecycle
-    /// management, connection reuse, and performance optimizations. The pool
-    /// is configured based on the `DatabaseConfig` provided during construction.
+    /// management, connection reuse, and performance optimizations.
     pool: SqlitePool,
 }
 
 impl DatabaseConnection {
-    /// Create a new database connection with the specified configuration.
+    /// Create a new database connection to the given database URI.
     ///
-    /// This method establishes a connection pool to the SQLite database using the provided
-    /// configuration settings. The pool is configured with connection limits, timeouts,
-    /// and other settings as specified in the `DatabaseConfig`.
+    /// This method establishes a connection pool to the SQLite database at `database_uri`,
+    /// using this module's fixed pool settings (`MAX_CONNECTIONS`, `MIN_CONNECTIONS`, etc).
     ///
     /// # Parameters
     ///
-    /// * `config` - The database configuration containing connection settings, pool limits,
-    ///   and timeout values.
+    /// * `database_uri` - The SQLite connection URI (e.g. `sqlite:./personal-ledger.sqlite`,
+    ///   `sqlite::memory:`).
     ///
     /// # Returns
     ///
@@ -77,22 +90,15 @@ impl DatabaseConnection {
     /// # Errors
     ///
     /// This method will return an error if:
-    /// - The database URL is invalid or unreachable
+    /// - The database URI is invalid or unreachable
     /// - The database file cannot be created or accessed
-    /// - Pool configuration parameters are invalid
-    pub async fn new(config: DatabaseConfig) -> Result<Self> {
+    pub async fn new(database_uri: impl AsRef<str>) -> Result<Self> {
         let pool_options = SqlitePoolOptions::new()
-            .max_connections(config.max_connections())
-            .min_connections(config.min_connections())
-            .acquire_timeout(std::time::Duration::from_secs(
-                config.acquire_timeout().num_seconds() as u64,
-            ))
-            .idle_timeout(std::time::Duration::from_secs(
-                config.idle_timeout_seconds as u64,
-            ))
-            .max_lifetime(std::time::Duration::from_secs(
-                config.max_lifetime_seconds as u64,
-            ))
+            .max_connections(MAX_CONNECTIONS)
+            .min_connections(MIN_CONNECTIONS)
+            .acquire_timeout(ACQUIRE_TIMEOUT)
+            .idle_timeout(IDLE_TIMEOUT)
+            .max_lifetime(MAX_LIFETIME)
             // SQLite's foreign-key enforcement is a per-connection setting, not persisted in
             // the database file -- every pooled connection needs it turned on explicitly, so
             // a REFERENCES clause (accounts.unit_id -> units.id, and every FK after it)
@@ -107,7 +113,7 @@ impl DatabaseConnection {
             });
 
         let pool = pool_options
-            .connect(config.url())
+            .connect(database_uri.as_ref())
             .await
             .map_err(|e| Error::Connection(format!("Failed to connect to database pool: {}", e)))?;
 
@@ -157,42 +163,15 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_database_connection_new_with_default_config() {
+    async fn test_database_connection_new() {
         // Use in-memory database for testing since file-based might not work in test environment
-        let config = DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            ..DatabaseConfig::default()
-        };
-
-        // This should succeed with default config
-        let result = DatabaseConnection::new(config).await;
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_database_connection_new_with_custom_config() {
-        let config = DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            max_connections: 5,
-            min_connections: 1,
-            acquire_timeout_seconds: 10,
-            idle_timeout_seconds: 60,
-            max_lifetime_seconds: 300,
-        };
-
-        // This should succeed with custom config
-        let result = DatabaseConnection::new(config).await;
+        let result = DatabaseConnection::new("sqlite::memory:").await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn test_database_connection_pool_access() {
-        let config = DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            ..DatabaseConfig::default()
-        };
-
-        let connection = DatabaseConnection::new(config).await.unwrap();
+        let connection = DatabaseConnection::new("sqlite::memory:").await.unwrap();
 
         // Test pool() method
         let pool_ref = connection.pool();
@@ -201,12 +180,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_database_connection_into_pool() {
-        let config = DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            ..DatabaseConfig::default()
-        };
-
-        let connection = DatabaseConnection::new(config).await.unwrap();
+        let connection = DatabaseConnection::new("sqlite::memory:").await.unwrap();
 
         // Test into_pool() method
         let pool = connection.into_pool();
@@ -215,12 +189,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_database_connection_health_check() {
-        let config = DatabaseConfig {
-            url: "sqlite::memory:".to_string(),
-            ..DatabaseConfig::default()
-        };
-
-        let connection = DatabaseConnection::new(config).await.unwrap();
+        let connection = DatabaseConnection::new("sqlite::memory:").await.unwrap();
 
         // Test health_check() method
         let result = connection.health_check().await;

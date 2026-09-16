@@ -23,11 +23,7 @@ pub async fn connect() -> crate::Result<sqlx::SqlitePool> {
 /// Same as [`connect`], against an explicit database URL — split out so tests can point it
 /// at an isolated, throwaway SQLite file instead of the shared one.
 pub async fn connect_to(url: String) -> crate::Result<sqlx::SqlitePool> {
-    let config = lib_config::DatabaseConfig {
-        url,
-        ..lib_config::DatabaseConfig::default()
-    };
-    let connection = lib_database::DatabaseConnection::new(config).await?;
+    let connection = lib_database::DatabaseConnection::new(url).await?;
     let pool = connection.into_pool();
 
     sqlx::migrate!("../../libs/lib-database/migrations/client")

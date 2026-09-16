@@ -34,22 +34,6 @@ pub enum Error {
     #[error("Invalid server address: {0}")]
     InvalidServerAddress(#[from] std::net::AddrParseError),
 
-    /// Error indicating an invalid database configuration.
-    ///
-    /// This is used for configuration validation failures such as invalid
-    /// values, missing required fields, or security misconfigurations with
-    /// the database.
-    #[error("Invalid database config: {0}")]
-    InvalidDatabaseConfig(String),
-
-    /// Error indicating an invalid telemetry configuration.
-    ///
-    /// This is used for configuration validation failures such as invalid
-    /// values, missing required fields, or security misconfigurations with
-    /// the telemetry.
-    #[error("Invalid telemetry config: {0}")]
-    InvalidTracingConfig(String),
-
     /// Error indicating an invalid key binding configuration.
     ///
     /// This is used when two commands are bound to the same key, leaving one

@@ -9,19 +9,20 @@
 //!
 //! The library is structured around several key components:
 //!
-//! - **Configuration** ([`DatabaseConfig`]): Database connection settings and pool configuration
-//! - **Connections** ([`DatabaseConnection`]): High-level connection pool management
+//! - **Connections** ([`DatabaseConnection`]): High-level connection pool management, built
+//!   from a database URI -- a Client's `[Personal-Ledger] file` or the Sync Server's
+//!   `[Sync-Server] database_uri` (see `lib_config`); pool settings themselves are fixed
+//!   (see `connection`'s `MAX_CONNECTIONS` etc)
 //! - **Error Handling** ([`DatabaseError`], [`DatabaseResult`]): Domain-specific error types
 //! - **Data Models**: Domain-specific types for financial entities ([`Categories`], [`SyncUser`], [`ChangeSet`])
 //!
 //! ## Key Features
 //!
 //! - **SQLite Integration**: Built on SQLx for robust, async SQLite operations
-//! - **Connection Pooling**: Configurable connection pools with automatic lifecycle management
+//! - **Connection Pooling**: Fixed-size connection pool with automatic lifecycle management
 //! - **Type Safety**: Strong typing for database operations and error handling
 //! - **Async-First**: Non-blocking operations for high-performance applications
 //! - **Health Monitoring**: Built-in connection health checks and validation
-//! - **Configuration-Driven**: Flexible configuration through environment variables and files
 
 /// Database entity categories for organising financial records.
 mod categories;

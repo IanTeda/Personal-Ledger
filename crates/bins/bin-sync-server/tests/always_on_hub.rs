@@ -19,7 +19,6 @@
 use std::sync::Arc;
 
 use bin_sync_server::auth;
-use lib_config::DatabaseConfig;
 use lib_core::{HlcClock, RowID};
 use lib_database::DatabaseConnection;
 use lib_rpc::{
@@ -33,12 +32,9 @@ use tonic::transport::Server;
 /// Start the Sync Server once, bound to an ephemeral port, and never touch it again
 /// except through fresh Client connections -- the whole point being demonstrated.
 async fn spawn_sync_server(db_path: &std::path::Path) -> (std::net::SocketAddr, SecretString) {
-    let connection = DatabaseConnection::new(DatabaseConfig {
-        url: format!("sqlite://{}?mode=rwc", db_path.display()),
-        ..DatabaseConfig::default()
-    })
-    .await
-    .expect("Sync Server database connection should establish");
+    let connection = DatabaseConnection::new(format!("sqlite://{}?mode=rwc", db_path.display()))
+        .await
+        .expect("Sync Server database connection should establish");
     let pool = connection.into_pool();
     sqlx::migrate!("../../libs/lib-database/migrations/sync-server")
         .run(&pool)
@@ -85,12 +81,9 @@ fn bearer_request<T>(message: T, access_token: &str) -> tonic::Request<T> {
 /// Set up a Client's own local SQLite Ledger copy -- migrated with `lib-database`'s
 /// full schema, the same pattern `bin-desktop`/`bin-tui`'s embedded-SQLite demos use.
 async fn client_pool(db_path: &std::path::Path) -> SqlitePool {
-    let connection = DatabaseConnection::new(DatabaseConfig {
-        url: format!("sqlite://{}?mode=rwc", db_path.display()),
-        ..DatabaseConfig::default()
-    })
-    .await
-    .expect("Client database connection should establish");
+    let connection = DatabaseConnection::new(format!("sqlite://{}?mode=rwc", db_path.display()))
+        .await
+        .expect("Client database connection should establish");
     let pool = connection.into_pool();
     sqlx::migrate!("../../libs/lib-database/migrations/client")
         .run(&pool)

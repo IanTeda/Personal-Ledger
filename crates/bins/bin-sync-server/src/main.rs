@@ -34,20 +34,21 @@ async fn main() -> SyncServerResult<()> {
     // `parse_for_sync_server`, not `parse` -- ADR-0014's reduced defaults -> explicit path ->
     // env chain, skipping the Client-only system/user/executable-directory/working-directory
     // search tiers (they don't correspond to anything meaningful inside a Docker container).
-    let config = config::Config::parse_for_sync_server(cli.config.path.as_deref())?;
+    let mut config = config::Config::parse_for_sync_server(cli.config.path.as_deref())?;
+    cli.config.apply_overrides(&mut config);
 
-    let telemetry_level = Some(&config.telemetry_config().level());
-    let log_file_path = config.telemetry_config().log_file_path();
+    let telemetry_level = Some(&config.personal_ledger_config().log());
+    let log_file_path = config.personal_ledger_config().log_file_path();
     // Held for the lifetime of `main` -- dropping it stops the background worker that
     // flushes buffered log lines to `log_file_path` (when configured).
     let _log_guard = telemetry::init(telemetry_level, log_file_path)?;
     tracing::info!("Starting Sync Server with config: {:#?}", config);
 
     // The Sync Server's own durable Change Set log (ADR-0009) -- reuses lib-database's
-    // conventions and migrations directly, the same `[database]` config section a Client
-    // uses for its local Ledger copy, just pointed at the Sync Server's own SQLite file.
+    // conventions and migrations directly, pointed at its own `[sync-server] database_uri`,
+    // never a Client's local `[Personal-Ledger] file`.
     let database_connection =
-        lib_database::DatabaseConnection::new(config.database_config().clone()).await?;
+        lib_database::DatabaseConnection::new(config.sync_server_config().database_uri()).await?;
     let database_pool = database_connection.into_pool();
     sqlx::migrate!("../../libs/lib-database/migrations/sync-server")
         .run(&database_pool)

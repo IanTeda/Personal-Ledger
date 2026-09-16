@@ -26,7 +26,6 @@
 use std::sync::Arc;
 
 use bin_sync_server::auth;
-use lib_config::DatabaseConfig;
 use lib_core::{HlcClock, RowID};
 use lib_database::{ChangeSet, DatabaseConnection};
 use lib_rpc::{
@@ -43,12 +42,9 @@ use tonic::transport::Server;
 /// Returns the bound address and the JWT signing key (so the test can mint its own
 /// access tokens); the server runs in a background task for the test's lifetime.
 async fn spawn_sync_server(db_path: &std::path::Path) -> (std::net::SocketAddr, SecretString) {
-    let connection = DatabaseConnection::new(DatabaseConfig {
-        url: format!("sqlite://{}?mode=rwc", db_path.display()),
-        ..DatabaseConfig::default()
-    })
-    .await
-    .expect("Sync Server database connection should establish");
+    let connection = DatabaseConnection::new(format!("sqlite://{}?mode=rwc", db_path.display()))
+        .await
+        .expect("Sync Server database connection should establish");
     let pool = connection.into_pool();
     sqlx::migrate!("../../libs/lib-database/migrations/sync-server")
         .run(&pool)
@@ -96,12 +92,9 @@ fn bearer_request<T>(message: T, access_token: &str) -> tonic::Request<T> {
 /// Set up a Client's own local SQLite Ledger copy -- migrated with `lib-database`'s
 /// full schema, same as `bin-desktop`'s embedded-SQLite demo.
 async fn client_pool(db_path: &std::path::Path) -> SqlitePool {
-    let connection = DatabaseConnection::new(DatabaseConfig {
-        url: format!("sqlite://{}?mode=rwc", db_path.display()),
-        ..DatabaseConfig::default()
-    })
-    .await
-    .expect("Client database connection should establish");
+    let connection = DatabaseConnection::new(format!("sqlite://{}?mode=rwc", db_path.display()))
+        .await
+        .expect("Client database connection should establish");
     let pool = connection.into_pool();
     sqlx::migrate!("../../libs/lib-database/migrations/client")
         .run(&pool)
@@ -350,13 +343,10 @@ async fn push_pull_sync_with_offline_catch_up() {
     // -- Durability: reopen the Sync Server's Change Set log from a fresh connection
     // (not the still-running server's own pool) and confirm the log survived --
     // proving it's a durable store, not in-memory state (ADR-0009) --
-    let reopened = DatabaseConnection::new(DatabaseConfig {
-        url: format!(
-            "sqlite://{}?mode=rwc",
-            temp_dir.path().join("sync-server.db").display()
-        ),
-        ..DatabaseConfig::default()
-    })
+    let reopened = DatabaseConnection::new(format!(
+        "sqlite://{}?mode=rwc",
+        temp_dir.path().join("sync-server.db").display()
+    ))
     .await
     .expect("should reopen the Sync Server's database file");
     let durable_change_sets = ChangeSet::find_since(None, 100, reopened.pool())
