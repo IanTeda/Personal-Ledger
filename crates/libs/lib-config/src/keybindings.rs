@@ -19,9 +19,9 @@
 //! ```ini
 //! [keybindings]
 //! super_key = "ctrl"
-//! quit = "ctrl+c"
 //! back = "esc"
 //! help = "?"
+//! open_command_popup = ":"
 //! move_up = "k"
 //! move_down = "j"
 //! select = "enter"
@@ -31,13 +31,17 @@
 //! cancel = "x"
 //! ```
 //!
+//! `quit` is deliberately **not** one of these -- `docs/navigation.md`'s own "Quit" section
+//! explains why: `bin-tui` has three separate, non-configurable quit mechanisms (`Ctrl+C`
+//! hard-quit, `Q`/`q` graceful quit, the `:quit` command), and none of them read this config.
+//!
 //! ## Environment Variables
 //!
 //! Individual bindings can be overridden using environment variables with the
 //! `PERSONAL_LEDGER_KEYBINDINGS__` prefix:
 //!
 //! ```bash
-//! PERSONAL_LEDGER_KEYBINDINGS__QUIT=ctrl+q
+//! PERSONAL_LEDGER_KEYBINDINGS__BACK=ctrl+h
 //! PERSONAL_LEDGER_KEYBINDINGS__SUPER_KEY=alt
 //! ```
 
@@ -49,16 +53,17 @@ use crate::Error;
 /// modifier requirement entirely, so global shortcuts fire on the bare key.
 const VALID_SUPER_KEYS: &[&str] = &["ctrl", "alt", "shift", "super", "none"];
 
-/// Default modifier held down for global shortcuts, matching the `quit` command's
-/// already-hardcoded `ctrl+c` in `bin-tui`.
+/// Default modifier held down for global shortcuts. `quit` isn't one of them -- see the
+/// module doc's note on why it's excluded from `DEFAULT_BINDINGS` entirely.
 const DEFAULT_SUPER_KEY: &str = "ctrl";
 
 /// The command name -> key pairs used when no configuration source overrides them, mirroring
-/// the shortcuts already hardcoded across `bin-tui`'s screens.
+/// the shortcuts already hardcoded across `bin-tui`'s screens. `quit` is deliberately absent
+/// -- see the module doc.
 const DEFAULT_BINDINGS: &[(&str, &str)] = &[
-    ("quit", "ctrl+c"),
     ("back", "esc"),
     ("help", "?"),
+    ("open_command_popup", ":"),
     ("move_up", "k"),
     ("move_down", "j"),
     ("select", "enter"),
@@ -177,9 +182,14 @@ mod tests {
     #[test]
     fn default_config_has_expected_bindings() {
         let config = KeyBindingConfig::default();
-        assert_eq!(config.key_for("quit"), Some("ctrl+c"));
+        assert_eq!(
+            config.key_for("quit"),
+            None,
+            "quit is deliberately not configurable"
+        );
         assert_eq!(config.key_for("back"), Some("esc"));
         assert_eq!(config.key_for("help"), Some("?"));
+        assert_eq!(config.key_for("open_command_popup"), Some(":"));
         assert_eq!(config.key_for("move_up"), Some("k"));
         assert_eq!(config.key_for("move_down"), Some("j"));
         assert_eq!(config.key_for("select"), Some("enter"));

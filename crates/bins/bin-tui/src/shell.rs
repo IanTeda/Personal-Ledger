@@ -7,6 +7,7 @@
 use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use lib_config::KeyBindingConfig;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -111,11 +112,26 @@ pub struct Shell {
     /// this entirely rather than pushing onto it (it's the app's one home view); re-opening
     /// the already-active view leaves it untouched (`Shell::open`).
     view_stack: Vec<Box<dyn View>>,
+    /// The truly-global key set's own bindings (`quit`/`back`/`help`/open-command-popup) --
+    /// `docs/navigation.md`'s "What's actually configurable", read once at startup via
+    /// `LedgerConfig::keybindings_config()` (`quit` isn't in this set at all -- see the
+    /// doc's own "Quit" section -- so it's the only one of the four still hardcoded).
+    /// Per-view/per-domain keys stay hardcoded too, out of scope for this map (#155).
+    keybindings: KeyBindingConfig,
 }
 
 impl Shell {
-    /// Creates the shell with the placeholder Dashboard as its active view.
+    /// Creates the shell with the placeholder Dashboard as its active view and the default
+    /// key bindings. Most callers should use [`Shell::with_keybindings`] instead; this exists
+    /// so the 180+ existing tests that don't care about keybinding configuration (and
+    /// `Shell::default`) don't all need to thread one through.
     pub fn new() -> Self {
+        Self::with_keybindings(KeyBindingConfig::default())
+    }
+
+    /// Creates the shell with the placeholder Dashboard as its active view, reading the
+    /// truly-global key set from `keybindings` instead of assuming the defaults.
+    pub fn with_keybindings(keybindings: KeyBindingConfig) -> Self {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
 
         let mut view: Box<dyn View> = Box::new(DashboardView::new());
@@ -136,6 +152,7 @@ impl Shell {
             payee_popup: None,
             pending_leader: false,
             view_stack: Vec::new(),
+            keybindings,
         }
     }
 
@@ -179,15 +196,19 @@ impl Shell {
     /// behind it is inert while it's up); then a pending `g` leader consumes the very next key
     /// as its chord
     /// completion (or aborts
-    /// silently if it doesn't complete one); otherwise `Ctrl+;` opens the command popup,
-    /// `Ctrl+U` opens the placeholder Units view directly, `?` opens the placeholder Help
-    /// view, `Esc` pops the view-navigation stack ([`Action::PopView`]), `Q` (shift) quits,
-    /// `q` (lowercase) also quits via its own [`Action::GracefulQuit`], a lone `g` arms the
-    /// leader, and anything left falls to the active view's own `handle_key` (which is how the
-    /// Units view's own `n`/`e`/`d` reach [`Action::OpenNewUnitPopup`]/
-    /// [`Action::OpenEditUnitPopup`]/[`Action::OpenDeleteUnitPopup`]). `Event::Resize` never
-    /// reaches here — `run` intercepts it directly to clear the terminal, since that's a
-    /// `Tui`-level concern with no `Action` of its own.
+    /// silently if it doesn't complete one); otherwise the configured `open_command_popup`
+    /// binding (`self.keybindings`, `:` by default per `docs/navigation.md`) opens the command
+    /// popup, `Ctrl+U` opens the placeholder Units view directly, the configured `help`
+    /// binding (`?` by default) opens the placeholder Help view, the configured `back` binding
+    /// (`Esc` by default) pops the view-navigation stack ([`Action::PopView`]), `Q` (shift)
+    /// quits, `q` (lowercase) also quits via its own [`Action::GracefulQuit`], a lone `g` arms
+    /// the leader, and anything left falls to the active view's own `handle_key` (which is how
+    /// the Units view's own `n`/`e`/`d` reach [`Action::OpenNewUnitPopup`]/
+    /// [`Action::OpenEditUnitPopup`]/[`Action::OpenDeleteUnitPopup`]). `quit`, unlike the other
+    /// three, is deliberately not part of `self.keybindings` at all (`docs/navigation.md`'s own
+    /// "Quit" section) — `Ctrl+C`/`Q`/`q` stay hardcoded. `Event::Resize` never reaches here —
+    /// `run` intercepts it directly to clear the terminal, since that's a `Tui`-level concern
+    /// with no `Action` of its own.
     fn map_event(&mut self, event: Event) -> Option<Action> {
         match event {
             Event::Tick => Some(Action::Tick),
@@ -250,16 +271,16 @@ impl Shell {
                         _ => None,
                     };
                 }
-                if is_open_command_popup(key) {
+                if self.is_open_command_popup(key) {
                     return Some(Action::OpenCommandPopup);
                 }
                 if is_open_units(key) {
                     return Some(Action::OpenUnits);
                 }
-                if is_open_help(key) {
+                if self.is_open_help(key) {
                     return Some(Action::OpenHelp);
                 }
-                if key.code == KeyCode::Esc {
+                if self.is_back(key) {
                     return Some(Action::PopView);
                 }
                 if is_quit(key) {
@@ -278,21 +299,22 @@ impl Shell {
         }
     }
 
-    /// Routes a key while the command popup is open. `Ctrl+;` toggles it shut again; `Esc`
-    /// closes it; typing, `Backspace` and `↑`/`↓` drive the input buffer and selection; `Tab`
-    /// completes the input to the highlighted row's own name up to its first placeholder
-    /// (`CommandPopup::tab`); `Ctrl+r` walks backward through `Shell`'s own `command_history`
-    /// (`Action::CommandPopupHistoryRecall`, applied via `CommandPopup::recall_history`).
-    /// `Enter` runs the highlighted command if it's one of the 6 with real content behind them
-    /// (`unit`, `unit new/edit/delete`, `dashboard`, `settings`); on any other command it
-    /// shows [`Action::CommandPopupSetNotYetBuilt`] instead — the popup stays open either way.
+    /// Routes a key while the command popup is open. `Esc` closes it (the configured
+    /// `open_command_popup` binding does *not* toggle it shut again — with the default bare
+    /// `:`, that key must reach the input buffer as ordinary typed text, e.g. to filter on a
+    /// literal `:` inside a command's own syntax; matching `bin-desktop`'s own palette, which
+    /// never treated re-pressing its open key as a close); typing, `Backspace` and `↑`/`↓`
+    /// drive the input buffer and selection; `Tab` completes the input to the highlighted
+    /// row's own name up to its first placeholder (`CommandPopup::tab`); `Ctrl+r` walks
+    /// backward through `Shell`'s own `command_history` (`Action::CommandPopupHistoryRecall`,
+    /// applied via `CommandPopup::recall_history`). `Enter` runs the highlighted command if
+    /// it's one of the 6 with real content behind them (`unit`, `unit new/edit/delete`,
+    /// `dashboard`, `settings`); on any other command it shows
+    /// [`Action::CommandPopupSetNotYetBuilt`] instead — the popup stays open either way.
     /// `map_event` records the highlighted command's name into history on every `Enter`
     /// press that has one selected, before this method decides which of those two paths it
     /// takes.
     fn map_command_popup_key(&self, key: KeyEvent) -> Option<Action> {
-        if is_open_command_popup(key) {
-            return Some(Action::CloseCommandPopup);
-        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         match key.code {
             KeyCode::Esc => Some(Action::CloseCommandPopup),
@@ -462,6 +484,38 @@ impl Shell {
             KeyCode::Char(c) if !ctrl => Some(Action::CommandPopupInput(c)),
             _ => None,
         }
+    }
+
+    /// Whether `key` matches the configured `back` binding (`Esc` by default) -- pops the
+    /// view-navigation stack ([`Action::PopView`]).
+    fn is_back(&self, key: KeyEvent) -> bool {
+        self.matches_binding(key, "back", "esc")
+    }
+
+    /// Whether `key` matches the configured `help` binding (`?` by default) -- opens the
+    /// placeholder Help view.
+    fn is_open_help(&self, key: KeyEvent) -> bool {
+        self.matches_binding(key, "help", "?")
+    }
+
+    /// Whether `key` matches the configured `open_command_popup` binding (bare `:` by
+    /// default, per `docs/navigation.md`) -- opens the command popup. Only consulted while it
+    /// isn't already open; while it is, [`Shell::map_command_popup_key`] routes every key to
+    /// the popup's own input handling instead, deliberately *not* re-checking this binding (a
+    /// bare, printable default key must still be typeable as ordinary input once the popup has
+    /// focus).
+    fn is_open_command_popup(&self, key: KeyEvent) -> bool {
+        self.matches_binding(key, "open_command_popup", ":")
+    }
+
+    /// Matches `key` against `command`'s configured key spec, falling back to `default_spec`
+    /// if `command` isn't present in `self.keybindings` at all -- shouldn't happen in practice
+    /// (`KeyBindingConfig::default_config_values` always seeds every truly-global command), but
+    /// keeps this identical to the hardcoded default it replaces even if a future config layer
+    /// ever strips a key out entirely rather than just overriding it.
+    fn matches_binding(&self, key: KeyEvent, command: &str, default_spec: &str) -> bool {
+        let spec = self.keybindings.key_for(command).unwrap_or(default_spec);
+        key_binding_matches(key, spec)
     }
 
     /// Routes a key while a Category popup is open, resolving it into a concrete `Action`
@@ -1600,26 +1654,70 @@ fn is_hard_quit(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('c'))
 }
 
-/// `Ctrl+;` — opens the command popup from anywhere, shift optional. `Tui` requests
-/// `DISAMBIGUATE_ESCAPE_CODES` so a Kitty-protocol terminal reports the unshifted key as
-/// `Char(';')` regardless of whether `Shift` is also held (physically producing `:`); `':'`
-/// is matched too as a defensive fallback for a terminal or layout that reports the shifted
-/// symbol instead. Either way `Shift`'s presence is ignored.
-fn is_open_command_popup(key: KeyEvent) -> bool {
-    key.modifiers.contains(KeyModifiers::CONTROL)
-        && matches!(key.code, KeyCode::Char(';') | KeyCode::Char(':'))
-}
-
 /// `Ctrl+U` — opens the placeholder Units view directly, alongside the command popup's own
 /// `unit` / `g u` route (`docs/ux/tui/units/README.md`).
 fn is_open_units(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('u'))
 }
 
-/// `?` — opens the placeholder Help view, matching the footer's own `? help` hint and the
-/// popup's `help` command (`docs/ux/tui/README.md`).
-fn is_open_help(key: KeyEvent) -> bool {
-    matches!(key.code, KeyCode::Char('?'))
+/// Parses the base-key token of a `KeyBindingConfig` key spec (case-insensitive). A single
+/// Unicode character is taken literally (`"?"`, `":"`, `"c"`); anything else must name one of
+/// the small set of non-printable keys the truly-global set actually uses.
+fn key_code_for_token(token: &str) -> Option<KeyCode> {
+    let mut chars = token.chars();
+    if let (Some(only), None) = (chars.next(), chars.next()) {
+        return Some(KeyCode::Char(only));
+    }
+    match token.to_ascii_lowercase().as_str() {
+        "esc" | "escape" => Some(KeyCode::Esc),
+        "enter" | "return" => Some(KeyCode::Enter),
+        "tab" => Some(KeyCode::Tab),
+        "backspace" => Some(KeyCode::Backspace),
+        "up" => Some(KeyCode::Up),
+        "down" => Some(KeyCode::Down),
+        "left" => Some(KeyCode::Left),
+        "right" => Some(KeyCode::Right),
+        _ => None,
+    }
+}
+
+/// Parses one modifier token of a `KeyBindingConfig` key spec (case-insensitive).
+fn key_modifier_for_token(token: &str) -> Option<KeyModifiers> {
+    match token.to_ascii_lowercase().as_str() {
+        "ctrl" | "control" => Some(KeyModifiers::CONTROL),
+        "alt" => Some(KeyModifiers::ALT),
+        "shift" => Some(KeyModifiers::SHIFT),
+        "super" | "cmd" => Some(KeyModifiers::SUPER),
+        _ => None,
+    }
+}
+
+/// Whether `key` matches a `KeyBindingConfig` key-spec string (e.g. `"esc"`, `"?"`,
+/// `"ctrl+c"`) -- the string format `KeyBindingConfig`'s own doc leaves opaque, parsed here
+/// since `bin-tui` is the consumer that owns a `crossterm::event::KeyEvent` to compare
+/// against. Segments before the last `+` name modifiers, which `key` must *contain* (extra
+/// held modifiers are tolerated, matching every hardcoded check this replaces, e.g.
+/// `is_hard_quit`'s own `.contains(CONTROL)`); the last segment names the base key. A spec
+/// with no modifier segments ignores `key`'s own modifiers entirely -- a shifted character
+/// (`?`, `:`) already encodes its own shift-ness in `KeyCode::Char`, so also requiring
+/// `KeyModifiers::SHIFT` would double up (the previous hardcoded `is_open_help`/`Esc` checks
+/// worked the same way). An unparseable spec (an empty string, an unknown named key) matches
+/// nothing rather than panicking -- `KeyBindingConfig::validate` doesn't check key strings
+/// are parseable, only that `super_key` is recognised and no two commands share a key.
+fn key_binding_matches(key: KeyEvent, spec: &str) -> bool {
+    let mut tokens: Vec<&str> = spec.split('+').map(str::trim).collect();
+    let Some(base_token) = tokens.pop() else {
+        return false;
+    };
+    let Some(base) = key_code_for_token(base_token) else {
+        return false;
+    };
+    if key.code != base {
+        return false;
+    }
+    tokens
+        .into_iter()
+        .all(|token| key_modifier_for_token(token).is_some_and(|m| key.modifiers.contains(m)))
 }
 
 /// `Q` — quits the app from anywhere the command popup/unit forms aren't intercepting keys,
@@ -1752,58 +1850,128 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_semicolon_is_recognised_as_open_command_popup() {
-        let ctrl_semicolon = KeyEvent::new(KeyCode::Char(';'), KeyModifiers::CONTROL);
-        assert!(is_open_command_popup(ctrl_semicolon));
-
-        let plain_semicolon = KeyEvent::new(KeyCode::Char(';'), KeyModifiers::NONE);
-        assert!(!is_open_command_popup(plain_semicolon));
+    fn key_binding_matches_a_bare_character_regardless_of_modifiers() {
+        // A bare spec ignores the event's own modifiers — a shifted character (`?`, `:`)
+        // already encodes its own shift-ness in `KeyCode::Char`.
+        assert!(key_binding_matches(
+            KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE),
+            ":"
+        ));
+        assert!(key_binding_matches(
+            KeyEvent::new(KeyCode::Char(':'), KeyModifiers::SHIFT),
+            ":"
+        ));
+        assert!(!key_binding_matches(
+            KeyEvent::new(KeyCode::Char(';'), KeyModifiers::NONE),
+            ":"
+        ));
     }
 
     #[test]
-    fn ctrl_semicolon_with_shift_held_is_also_recognised_as_open_command_popup() {
-        // Whether `Shift` is also held (physically producing `:` rather than `;`) doesn't
-        // matter — see `is_open_command_popup`'s doc.
-        let ctrl_shift_semicolon = KeyEvent::new(
-            KeyCode::Char(';'),
-            KeyModifiers::CONTROL | KeyModifiers::SHIFT,
-        );
-        assert!(is_open_command_popup(ctrl_shift_semicolon));
-
-        let ctrl_colon = KeyEvent::new(KeyCode::Char(':'), KeyModifiers::CONTROL);
-        assert!(is_open_command_popup(ctrl_colon));
+    fn key_binding_matches_a_named_key() {
+        assert!(key_binding_matches(
+            KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE),
+            "esc"
+        ));
+        assert!(!key_binding_matches(
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE),
+            "esc"
+        ));
     }
 
     #[test]
-    fn ctrl_colon_opens_the_command_popup() {
+    fn key_binding_matches_a_modifier_chord_and_tolerates_extra_modifiers() {
+        assert!(key_binding_matches(
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL),
+            "ctrl+c"
+        ));
+        assert!(key_binding_matches(
+            KeyEvent::new(
+                KeyCode::Char('c'),
+                KeyModifiers::CONTROL | KeyModifiers::SHIFT
+            ),
+            "ctrl+c"
+        ));
+        assert!(!key_binding_matches(
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE),
+            "ctrl+c"
+        ));
+    }
+
+    #[test]
+    fn key_binding_matches_nothing_for_an_unparseable_spec() {
+        assert!(!key_binding_matches(
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+            ""
+        ));
+        assert!(!key_binding_matches(
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+            "not_a_real_key"
+        ));
+    }
+
+    #[test]
+    fn bare_colon_opens_the_command_popup() {
         let mut shell = Shell::new();
         assert!(shell.command_popup.is_none());
 
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
                 KeyCode::Char(':'),
-                KeyModifiers::CONTROL,
+                KeyModifiers::NONE,
             )))
-            .expect("ctrl+: always maps to an action");
+            .expect("the default open_command_popup binding always maps to an action");
         shell.update(action);
 
         assert!(shell.command_popup.is_some());
     }
 
     #[test]
-    fn ctrl_colon_again_closes_an_open_command_popup() {
+    fn colon_while_the_popup_is_already_open_types_a_literal_colon() {
+        // The old `Ctrl+;` toggle-closed on a second press; the new default (a bare,
+        // printable `:`) must instead reach the input buffer as ordinary typed text once the
+        // popup already has focus — see `map_command_popup_key`'s own doc.
         let mut shell = Shell::new();
         shell.update(Action::OpenCommandPopup);
 
+        let action = shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char(':'),
+            KeyModifiers::NONE,
+        )));
+
+        assert_eq!(action, Some(Action::CommandPopupInput(':')));
+        shell.update(action.unwrap());
+        assert!(shell.command_popup.is_some());
+    }
+
+    #[test]
+    fn remapped_open_command_popup_binding_changes_the_key_the_shell_responds_to() {
+        let keybindings = lib_config::KeyBindingConfig {
+            bindings: {
+                let mut bindings = lib_config::KeyBindingConfig::default().bindings;
+                bindings.insert("open_command_popup".to_string(), "ctrl+p".to_string());
+                bindings
+            },
+            ..lib_config::KeyBindingConfig::default()
+        };
+        let mut shell = Shell::with_keybindings(keybindings);
+
+        // The old default (bare `:`) no longer opens it once remapped away.
+        assert_eq!(
+            shell.map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char(':'),
+                KeyModifiers::NONE,
+            ))),
+            None
+        );
+
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
-                KeyCode::Char(':'),
+                KeyCode::Char('p'),
                 KeyModifiers::CONTROL,
             )))
-            .expect("ctrl+: while open always maps to an action");
-        shell.update(action);
-
-        assert!(shell.command_popup.is_none());
+            .expect("the remapped binding always maps to an action");
+        assert_eq!(action, Action::OpenCommandPopup);
     }
 
     #[test]

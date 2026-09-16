@@ -36,8 +36,8 @@
 //! # Only read by bin-tui/bin-desktop; merged into the Sync Server's config but never used.
 //! [keybindings]
 //! super_key = "ctrl"
-//! quit = "ctrl+c"
 //! back = "esc"
+//! open_command_popup = ":"
 //! ```
 
 use std::path::{Path, PathBuf};

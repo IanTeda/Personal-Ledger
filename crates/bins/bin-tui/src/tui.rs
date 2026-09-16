@@ -35,15 +35,19 @@ impl Tui {
     /// as stray artifacts until something else happens to redraw that exact cell.
     ///
     /// Also opts into the Kitty keyboard protocol's `DISAMBIGUATE_ESCAPE_CODES`, when the
-    /// terminal supports it: legacy terminal encoding reduces `Ctrl+;` to the same control
-    /// code as `Esc` (both are `0x1B`), which is exactly the combination the command popup
-    /// (`Shell`) binds — without this, `Ctrl+;` is unreliable on terminals that don't speak
-    /// the enhanced protocol at all (a plain `xterm`, most Linux VTs, some multiplexer
-    /// configurations). `supports_keyboard_enhancement` probes the terminal first so nothing
-    /// is pushed where it wouldn't be understood.
+    /// terminal supports it: legacy terminal encoding reduces any `Ctrl+<key>` chord to the
+    /// same control code as some other key (e.g. `Ctrl+;` and `Esc` are both `0x1B`) on a
+    /// terminal that doesn't speak the enhanced protocol at all (a plain `xterm`, most Linux
+    /// VTs, some multiplexer configurations). The command popup's own default
+    /// `open_command_popup` binding is a bare `:` now (`docs/navigation.md`, converged onto
+    /// from the old default `Ctrl+;` by "Wire `KeyBindingConfig` into `bin-tui`'s Shell/View
+    /// global key handling", issue #160), so it no longer needs this -- but `quit`'s hardcoded
+    /// `Ctrl+C` still benefits, and so would any user-remapped `Ctrl+<key>` binding via
+    /// `KeyBindingConfig`. `supports_keyboard_enhancement` probes the terminal first so
+    /// nothing is pushed where it wouldn't be understood.
     ///
-    /// This doesn't request `REPORT_ALTERNATE_KEYS` — `shell::is_open_command_popup` doesn't care
-    /// whether `Shift` was also held (physically producing `:` rather than `;`), so there's
+    /// This doesn't request `REPORT_ALTERNATE_KEYS` -- nothing in `Shell`'s global key
+    /// handling cares whether `Shift` was also held to produce a given character, so there's
     /// no need for the terminal to disambiguate that.
     pub fn new() -> crate::Result<Self> {
         enable_raw_mode()?;

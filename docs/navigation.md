@@ -25,7 +25,7 @@ The grammar has three genuinely different key shapes, each solving a different p
 Both clients already independently arrived at shape 2 (a `g`-then-letter jump leader) in the same form. They disagree on shape 3:
 
 - `bin-desktop` opens its command palette on a bare `:` already — this document's own recommendation, already shipped.
-- `bin-tui` opens its command popup on `Ctrl+;` (`is_open_command_popup` in `crates/bins/bin-tui/src/shell.rs`) — a deviation from its own original handoff that was never a considered decision (flagged, and never revisited, in issue #85's own closing comment) and carries a real fragility: on a terminal without the Kitty keyboard protocol's disambiguation extension, `Ctrl+;` collapses onto the same control code as `Esc`. **This is the one piece of this document that isn't already shipped everywhere — [Wire KeyBindingConfig into bin-tui's Shell/View global key handling](https://github.com/IanTeda/Personal-Ledger/issues/160) is where `bin-tui` converges onto bare `:`.**
+- `bin-tui` now agrees too: it opens its command popup on a bare `:` (the `open_command_popup` binding, `KeyBindingConfig`-configurable, `Shell::is_open_command_popup` in `crates/bins/bin-tui/src/shell.rs`) as of [Wire KeyBindingConfig into bin-tui's Shell/View global key handling](https://github.com/IanTeda/Personal-Ledger/issues/160). It previously opened on `Ctrl+;` — a deviation from its own original handoff that was never a considered decision (flagged, and never revisited, in issue #85's own closing comment) and carried a real fragility: on a terminal without the Kitty keyboard protocol's disambiguation extension, `Ctrl+;` collapsed onto the same control code as `Esc`.
 
 Full rationale: [`docs/research/leader-key-conventions.md`](https://github.com/IanTeda/Personal-Ledger/blob/research/leader-key-conventions/docs/research/leader-key-conventions.md) (on the `research/leader-key-conventions` branch, not yet merged).
 
@@ -64,8 +64,7 @@ See [#158](https://github.com/IanTeda/Personal-Ledger/issues/158)'s own resoluti
 
 `lib-config`'s `KeyBindingConfig` (`crates/libs/lib-config/src/keybindings.rs`, `[keybindings]` in `personal-ledger.conf`, `PERSONAL_LEDGER_KEYBINDINGS__*` env vars) is `bin-tui`-only today — `bin-desktop` doesn't consume it, and bringing it in is explicitly out of scope for this map (see "Out of scope" on the map). Within `bin-tui`, only the truly-global set is in scope for real remapping, per the map's own boundary — no per-view key (`n`/`e`/`d`/`a`/... inside any one domain's own `handle_key`) is configurable:
 
-- `back` (`Esc`) and `help` (`?`) — bare keys, no modifier.
-- Opening the command surface — bare `:`, once [#160](https://github.com/IanTeda/Personal-Ledger/issues/160) lands (today still `Ctrl+;`, see above).
+- `back` (`Esc`), `help` (`?`), and `open_command_popup` (`:`) — bare keys, no modifier by default; all three are read from `KeyBindingConfig` at `Shell` startup (`Shell::with_keybindings`, wired from `main.rs`) as of [#160](https://github.com/IanTeda/Personal-Ledger/issues/160).
 - `quit` is **not** in this set — see "Quit" above.
 
 `super_key` (the modifier held for globally-gated commands, mirroring a window manager's `$mainMod`) remains defined in `KeyBindingConfig` for any future command that needs it, but gates nothing in the current truly-global set — `quit`, the one command it was shaped around, dropped out of the remappable set entirely rather than being forced through it.

@@ -48,7 +48,9 @@ async fn main() -> Result<()> {
     // flushes buffered log lines to `log_file_path` (when configured).
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
 
-    Shell::new().run().await?;
+    Shell::with_keybindings(config.keybindings_config().clone())
+        .run()
+        .await?;
 
     Ok(())
 }
