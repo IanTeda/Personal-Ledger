@@ -505,10 +505,11 @@ fn render_lower_band(frame: &mut Frame, area: Rect) {
         .constraints([Constraint::Min(0), Constraint::Length(attention_height)])
         .spacing(1)
         .split(columns[1]);
+    let budgets = fake_budgets();
     render_budgets_this_period(
         frame,
         budgets_rows[0],
-        &fake_budgets(),
+        capped_budgets(&budgets),
         &fake_budget_period(),
     );
     render_needs_attention(frame, budgets_rows[1], &attention_items);
@@ -649,11 +650,22 @@ struct BudgetPeriod {
     elapsed_percent: f64,
 }
 
+/// Caps `budgets` at 5 rows, keeping the first five in whatever order they're already in --
+/// the dashboard only ever shows "up to five budget gauges" (issue #81's user story #10), so
+/// a real Ledger with more than five active Budgets needs the same cap `fake_budgets()`'s own
+/// 7-item list exercises today.
+fn capped_budgets(budgets: &[BudgetCategory]) -> &[BudgetCategory] {
+    &budgets[..budgets.len().min(5)]
+}
+
 /// Item 5 — "Budgets this period": up to 5 category rows (label, ratio bar, `actual / limit`
 /// figures), largest-first with "other" last, matching the pie chart's legend ordering. Each
 /// bar fills by `actual / limit`, clamping full and flipping to the accent when over budget
 /// (`docs/ux/tui/README.md`'s over-budget rule). A `│` marks how far the period has
-/// elapsed at the same column across every bar, independent of that row's own fill.
+/// elapsed at the same column across every bar, independent of that row's own fill. The
+/// 5-item cap itself is enforced by the caller ([`capped_budgets`]), not here -- this function
+/// renders however many `budgets` it's handed, which the isolated-rendering unit tests below
+/// rely on to exercise the full 7-item `fake_budgets()` set directly.
 fn render_budgets_this_period(
     frame: &mut Frame,
     area: Rect,
@@ -802,10 +814,13 @@ fn format_thousands(amount: f64) -> String {
     grouped.chars().rev().collect()
 }
 
-/// The fake current-period budget progress behind the budget rows — largest-limit first,
-/// "other" last, echoing the pie chart legend's ordering. "dining" and "subscriptions" are
-/// deliberately over budget so the accent/over-budget styling has more than one row to
-/// render on.
+/// The fake current-period budget progress behind the budget rows — seven entries even
+/// though the dashboard only ever shows five (`render_lower_band`'s own `.take(5)`-equivalent
+/// slice), so the cap actually has real rows to cut rather than being a no-op against
+/// under-sized fake data. "dining" (2nd) and "subscriptions" (3rd) are deliberately over
+/// budget and both land inside the visible five, so the accent/over-budget styling still has
+/// more than one row to render on after the cap; "housing" and "other" (6th/7th) are the ones
+/// the cap actually excludes.
 fn fake_budgets() -> Vec<BudgetCategory> {
     vec![
         BudgetCategory {
@@ -817,6 +832,11 @@ fn fake_budgets() -> Vec<BudgetCategory> {
             category: "dining",
             actual: 412.0,
             limit: 300.0,
+        },
+        BudgetCategory {
+            category: "subscriptions",
+            actual: 86.0,
+            limit: 75.0,
         },
         BudgetCategory {
             category: "transport",
@@ -832,11 +852,6 @@ fn fake_budgets() -> Vec<BudgetCategory> {
             category: "housing",
             actual: 1_450.0,
             limit: 1_800.0,
-        },
-        BudgetCategory {
-            category: "subscriptions",
-            actual: 86.0,
-            limit: 75.0,
         },
         BudgetCategory {
             category: "other",
@@ -1314,6 +1329,53 @@ mod tests {
             !row_has_accent(row_containing("groceries")),
             "under-budget row should not use the accent"
         );
+    }
+
+    #[test]
+    fn capped_budgets_caps_at_five_and_keeps_the_first_five_in_order() {
+        let budgets = fake_budgets();
+        assert_eq!(
+            budgets.len(),
+            7,
+            "fake data should still exceed the cap for this test to mean anything"
+        );
+
+        let capped = capped_budgets(&budgets);
+
+        assert_eq!(
+            capped.len(),
+            5,
+            "the dashboard shows up to five budget gauges (issue #81)"
+        );
+        assert_eq!(
+            capped.iter().map(|b| b.category).collect::<Vec<_>>(),
+            vec![
+                "groceries",
+                "dining",
+                "subscriptions",
+                "transport",
+                "utilities"
+            ],
+            "both deliberately over-budget categories should still land inside the cap"
+        );
+    }
+
+    #[test]
+    fn capped_budgets_is_a_no_op_at_or_below_five() {
+        let budgets = vec![
+            BudgetCategory {
+                category: "rent",
+                actual: 1_000.0,
+                limit: 1_200.0,
+            },
+            BudgetCategory {
+                category: "groceries",
+                actual: 300.0,
+                limit: 400.0,
+            },
+        ];
+
+        assert_eq!(capped_budgets(&budgets).len(), 2);
     }
 
     #[test]
