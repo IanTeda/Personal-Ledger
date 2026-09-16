@@ -31,8 +31,6 @@ pub enum Action {
     /// `Esc` — pops one level of the navigation stack; only becomes [`Action::Quit`]-like
     /// (see `App::update`) when there's nothing left to pop (the dashboard is the base).
     Back,
-    /// Push the Settings drill-in screen.
-    OpenSettings,
     /// Push the Help screen, listing global keys plus the active screen's own.
     OpenHelp,
     /// Push the Units list screen.

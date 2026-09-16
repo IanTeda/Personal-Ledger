@@ -97,8 +97,12 @@ fn areas() -> Vec<Area> {
         },
         Area {
             name: "Settings",
-            action: Some(Action::OpenSettings),
-            not_yet_built_hint: "",
+            // Retired along with `crate::screen::settings` (this whole App/Screen stack is
+            // dead code, unreferenced from `main.rs` per ADR-0013) — the real Settings screen
+            // is built under `crate::view::settings`, see "Retire app.rs/screen/ wherever the
+            // migration audit clears it" (issue #161).
+            action: None,
+            not_yet_built_hint: "moved to the new Shell/View screen",
         },
     ]
 }

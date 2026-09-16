@@ -24,9 +24,9 @@ use crate::{
         Screen, balance_check_detail::BalanceCheckDetailScreen,
         balance_checks_list::BalanceChecksListScreen, budget_detail::BudgetDetailScreen,
         budgets_list::BudgetsListScreen, csv_import::CsvImportScreen, dashboard::DashboardScreen,
-        help::HelpScreen, reports::ReportsScreen, settings::SettingsScreen,
-        transaction_detail::TransactionDetailScreen, transactions_list::TransactionsListScreen,
-        unit_detail::UnitDetailScreen, units_list::UnitsListScreen,
+        help::HelpScreen, reports::ReportsScreen, transaction_detail::TransactionDetailScreen,
+        transactions_list::TransactionsListScreen, unit_detail::UnitDetailScreen,
+        units_list::UnitsListScreen,
     },
     tui::Tui,
 };
@@ -136,7 +136,14 @@ impl App {
                     self.should_quit = true;
                 }
             }
-            Action::OpenSettings => self.push(Box::new(SettingsScreen::new())),
+            // `Action::OpenSettings` is gone from `action::Action` entirely, not just
+            // unmatched here — `screen::settings` is retired (see "Retire app.rs/screen/
+            // wherever the migration audit clears it", issue #161), `screen::dashboard`'s own
+            // menu no longer constructs it (its Settings row is `action: None` now), and
+            // nothing else ever did. The real Settings screen lives under
+            // `crate::view::settings`, reached via `Shell`, not `App` — its own `Action` is a
+            // separate `view::Action`, not this module's, so none of this was ever shared with
+            // the live path despite the identical variant name.
             Action::OpenHelp => {
                 let already_on_help = self
                     .stack
@@ -340,18 +347,6 @@ mod tests {
         app.update(Action::Back);
         assert!(app.should_quit);
         assert_eq!(app.stack.len(), 1, "the Dashboard is never popped");
-    }
-
-    #[tokio::test]
-    async fn opening_and_backing_out_of_settings_returns_to_the_dashboard() {
-        let mut app = App::new();
-        app.update(Action::OpenSettings);
-        assert_eq!(app.stack.len(), 2);
-        assert_eq!(app.stack.last().unwrap().title(), "Settings");
-
-        app.update(Action::Back);
-        assert_eq!(app.stack.len(), 1);
-        assert!(!app.should_quit);
     }
 
     #[tokio::test]
