@@ -112,6 +112,14 @@ pub struct Shell {
     /// this entirely rather than pushing onto it (it's the app's one home view); re-opening
     /// the already-active view leaves it untouched (`Shell::open`).
     view_stack: Vec<Box<dyn View>>,
+    /// The noun a `g`-jump chord just landed on, when that noun's view is still a bare
+    /// placeholder (`budget`/`check`/`report`/`txn` today) -- `Some` replaces the footer's
+    /// resting hint with `:{noun} — not yet built` (issue #96), matching the command popup's
+    /// own message for the same situation (`docs/navigation.md`'s "every command with no real
+    /// behaviour yet says so explicitly" philosophy) instead of silently opening an empty box.
+    /// Cleared at the top of every subsequent keypress, mirroring `bin-desktop`'s own
+    /// `status_message` -- "any keypress clears it, not just a timer".
+    jump_not_yet_built: Option<&'static str>,
     /// The truly-global key set's own bindings (`quit`/`back`/`help`/open-command-popup) --
     /// `docs/navigation.md`'s "What's actually configurable", read once at startup via
     /// `LedgerConfig::keybindings_config()` (`quit` isn't in this set at all -- see the
@@ -152,6 +160,7 @@ impl Shell {
             payee_popup: None,
             pending_leader: false,
             view_stack: Vec::new(),
+            jump_not_yet_built: None,
             keybindings,
         }
     }
@@ -213,6 +222,10 @@ impl Shell {
         match event {
             Event::Tick => Some(Action::Tick),
             Event::Key(key) => {
+                // Any keypress clears a pending "not yet built" jump flash, not just a timer --
+                // mirrors `bin-desktop`'s own `status_message` precedent. Below, landing on a
+                // still-placeholder noun sets it fresh within this same keypress.
+                self.jump_not_yet_built = None;
                 if is_hard_quit(key) {
                     return Some(Action::Quit);
                 }
@@ -255,18 +268,35 @@ impl Shell {
                     self.pending_leader = false;
                     return match key.code {
                         KeyCode::Char('a') => Some(Action::OpenAccounts),
-                        KeyCode::Char('b') => Some(Action::OpenBudgets),
+                        // `budget`/`balance_check`/`report`/`txn` (below) still have no real
+                        // view content (`view::budgets`/`balance_checks`/`reports`/
+                        // `transactions` are all bare placeholder boxes) -- flashing the same
+                        // "not yet built" message the command popup shows for these, rather
+                        // than silently opening an empty box, closes issue #96.
+                        KeyCode::Char('b') => {
+                            self.jump_not_yet_built = Some("budget");
+                            None
+                        }
                         KeyCode::Char('c') => Some(Action::OpenCategories),
                         KeyCode::Char('d') => Some(Action::OpenDashboard),
                         // `t` is already Transactions', so Tags gets the leader key doubled
                         // instead — the one letter left unclaimed once every other domain had
                         // already taken its own initial.
                         KeyCode::Char('g') => Some(Action::OpenTags),
-                        KeyCode::Char('k') => Some(Action::OpenBalanceChecks),
+                        KeyCode::Char('k') => {
+                            self.jump_not_yet_built = Some("check");
+                            None
+                        }
                         KeyCode::Char('p') => Some(Action::OpenPayees),
-                        KeyCode::Char('r') => Some(Action::OpenReports),
+                        KeyCode::Char('r') => {
+                            self.jump_not_yet_built = Some("report");
+                            None
+                        }
                         KeyCode::Char('s') => Some(Action::OpenSettings),
-                        KeyCode::Char('t') => Some(Action::OpenTransactions),
+                        KeyCode::Char('t') => {
+                            self.jump_not_yet_built = Some("txn");
+                            None
+                        }
                         KeyCode::Char('u') => Some(Action::OpenUnits),
                         _ => None,
                     };
@@ -1600,6 +1630,11 @@ impl Shell {
             Line::from(" esc close tag form ").style(Style::default().fg(Color::DarkGray))
         } else if payee_popup_open {
             Line::from(" esc close payee form ").style(Style::default().fg(Color::DarkGray))
+        } else if let Some(noun) = self.jump_not_yet_built {
+            // Plain (not dimmed) styling, matching the command popup's own "not yet built"
+            // message treatment (`CommandPopup::render_info_row`) -- it reads as a real
+            // message, not secondary chrome the way the popup-close hints above do.
+            Line::from(format!(" :{noun} — not yet built "))
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             Line::from(vec![
@@ -2217,17 +2252,17 @@ mod tests {
 
     #[test]
     fn g_then_letter_opens_the_matching_view() {
+        // Only nouns with a real `view::` implementation -- `budget`/`check`/`report`/`txn`
+        // (below) are still bare placeholder boxes and covered by their own test instead,
+        // since completing their chord now flashes "not yet built" rather than navigating
+        // (issue #96).
         let cases: &[(char, &str)] = &[
             ('a', "Accounts"),
-            ('b', "Budgets"),
             ('c', "Categories"),
             ('d', "Dashboard"),
             ('g', "Tags"),
-            ('k', "Balance Checks"),
             ('p', "Payees"),
-            ('r', "Reports"),
             ('s', "Settings"),
-            ('t', "Transactions"),
             ('u', "Units & Prices"),
         ];
 
@@ -2250,6 +2285,71 @@ mod tests {
             assert_eq!(shell.view.title(), *expected_title, "g {letter}");
             assert!(!shell.pending_leader, "g {letter}");
         }
+    }
+
+    #[test]
+    fn g_then_letter_flashes_not_yet_built_for_placeholder_nouns() {
+        // `view::budgets`/`balance_checks`/`reports`/`transactions` are all still bare
+        // placeholder boxes -- landing on any of them via a `g`-jump should flash the same
+        // "not yet built" message the command popup already shows for these (issue #96),
+        // rather than silently opening the empty box.
+        let cases: &[(char, &str)] = &[
+            ('b', "budget"),
+            ('k', "check"),
+            ('r', "report"),
+            ('t', "txn"),
+        ];
+
+        for (letter, noun) in cases {
+            let mut shell = Shell::new();
+            let armed = shell.map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char('g'),
+                KeyModifiers::NONE,
+            )));
+            assert_eq!(armed, None, "g {letter}: a lone `g` should arm the leader");
+
+            let action = shell.map_event(Event::Key(KeyEvent::new(
+                KeyCode::Char(*letter),
+                KeyModifiers::NONE,
+            )));
+
+            assert_eq!(
+                action, None,
+                "g {letter}: should not dispatch a navigation action"
+            );
+            assert_eq!(
+                shell.jump_not_yet_built,
+                Some(*noun),
+                "g {letter}: should flash the not-yet-built message"
+            );
+            assert_eq!(
+                shell.view.title(),
+                "Dashboard",
+                "g {letter}: should stay on the Dashboard, not open the placeholder view"
+            );
+            assert!(!shell.pending_leader, "g {letter}");
+        }
+    }
+
+    #[test]
+    fn jump_not_yet_built_flash_clears_on_the_next_keypress() {
+        let mut shell = Shell::new();
+        shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('g'),
+            KeyModifiers::NONE,
+        )));
+        shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('b'),
+            KeyModifiers::NONE,
+        )));
+        assert_eq!(shell.jump_not_yet_built, Some("budget"));
+
+        shell.map_event(Event::Key(KeyEvent::new(
+            KeyCode::Char('x'),
+            KeyModifiers::NONE,
+        )));
+
+        assert_eq!(shell.jump_not_yet_built, None);
     }
 
     #[test]
