@@ -4,6 +4,8 @@ This is the living reference for how keyboard navigation actually works in the P
 
 The full decision trail behind this document lives on the closed [Command popup finishing](https://github.com/IanTeda/Personal-Ledger/issues/89) Wayfinder map and its children (issues #90–#98).
 
+[`docs/navigation.md`](../../navigation.md) is the cross-client layer this document sits under — the keyboard grammar (leader keys, modes, what's configurable) the TUI and `bin-desktop` are meant to share. Read it first; this document is what's TUI-specific on top of it.
+
 ## Philosophy
 
 The TUI has no menus, no breadcrumb trail, and no sidebar. At any moment there is exactly one thing on screen: a status line, one full-bleed view, an idle command line, and a dim keybind hint bar. Everything else — every action the app can take — is reached through a single floating command popup.
@@ -16,7 +18,7 @@ Three commitments follow from that bet:
 
 - **Every action must be reachable by name.** A keybinding is a shortcut to a command, never the only path to it. If a chord is forgotten, mistyped, or simply not memorised yet, typing the command's name in the popup always works.
 - **The popup never lies about what it can do.** A command that has no real behaviour behind it yet says so explicitly when run, rather than silently doing nothing or (worse) opening something half-finished with no explanation.
-- **The interface always says what mode it's in.** Modal, vim-flavoured: `NORMAL` at rest, `COMMAND` while the popup is open, `INSERT` inside a form. The status line names the mode whenever it isn't `NORMAL`, so a keystroke's meaning is never ambiguous.
+- **The interface always says what mode it's in.** Modal, vim-flavoured: `NORMAL` at rest, `COMMAND` while the popup is open, `INSERT` inside a form. The status line names the mode whenever it isn't `NORMAL`, so a keystroke's meaning is never ambiguous. A fourth mode, `SEARCH`, exists too (`/` on the Accounts, Payees, and Tags views opens real filter-typing) but isn't yet a `Shell`-level mode the status line announces the way the other three are — see [`docs/navigation.md`](../../navigation.md)'s "Modes" section for the gap between the two clients here.
 
 ## Commands
 

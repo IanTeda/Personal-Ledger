@@ -1,8 +1,15 @@
 # Account Kinds
 
-Personal Ledger models everyday spending money, revolving card debt, money owed to a lender, and money held as an investment as four separate entities — Transaction Account, Credit Card Account, Loan Account, and Investment Account — rather than one generic "account" with a type flag. Each has its own record shape, its own workflow, and its own view, even though the app still groups all four together under one "Accounts" area of navigation for browsing. This document explains why they're separate, what each one is, and how the mechanisms that move value between them (Transaction, Split, Trade, Repayment) fit together.
+Personal Ledger accounts represent money spent, money owed or money held as an investment. Every account is initially nominated as one of these four types:
 
-See `CONTEXT.md` for the one-paragraph canonical definition of each term; this document is where the fuller shape and relationships live.
+1. Transaction Account,
+2. Credit Card Account
+3. Loan Account 
+4. Investment Account 
+
+Each account type has its own record shape, workflow, and view, even though the app still groups all four under one “Accounts” navigation area for browsing. This document explains why they’re separate, what each one is, and how the mechanisms that move value between them (Transaction, Split, Trade, Repayment) fit together.
+
+See CONTEXT.md for the one-paragraph canonical definition of each term; this document covers the fuller shape and relationships.
 
 ## Why four entities, not one
 

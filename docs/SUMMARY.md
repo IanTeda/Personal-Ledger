@@ -4,6 +4,7 @@
 - [Product Requirements](product-requirements.md)
 - [Configuration](configuration.md)
 - [Deployment](deployment.md)
+- [Navigation & Keyboard Grammar](navigation.md)
 
 ## Domain Context
 

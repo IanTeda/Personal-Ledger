@@ -4,7 +4,7 @@ This is the gpui-facing spec for the Personal Ledger desktop client's applicatio
 
 `docs/ux/desktop/Settings/` is a second, companion handoff bundle — the `Noun::Settings` view's own ten-pane surface and its four modals — sharing this shell's design tokens and grammar but not yet translated into a `gpui`-terms living spec the way this document translates Shell & Navigation; treat its `README.md` as the current source of truth for that view until it is.
 
-The desktop and TUI clients are visual siblings by deliberate design (see the handoff's own "governing constraint"): both speak `g`-jumps, a `:` command palette, and a modal status line, so a user moving between them re-uses muscle memory. Where the two disagree, `docs/ux/tui/navigation.md` — the TUI's own living reference, playing the same role this document plays here — is the older, decided contract; read it before implementing anything keyboard-shaped.
+The desktop and TUI clients are visual siblings by deliberate design (see the handoff's own "governing constraint"): both speak `g`-jumps, a `:` command palette, and a modal status line, so a user moving between them re-uses muscle memory. [`docs/navigation.md`](../../navigation.md) is now the cross-client layer that grammar lives in — read it first for anything keyboard-shaped. Where it doesn't cover something, `docs/ux/tui/navigation.md` — the TUI's own living reference, playing the same role this document plays here — is the older, decided contract to fall back to.
 
 The full build-out trail for this document lives on the [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) Wayfinder map and its children (issues #145–#154).
 

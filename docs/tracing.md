@@ -1,17 +1,4 @@
----
-post_title: 'Telemetry (Logging)'
-author1: 'Personal Ledger Team'
-post_slug: 'telemetry-logging'
-microsoft_alias: 'personal-ledger'
-featured_image: ''
-categories: ['documentation', 'development']
-tags: ['telemetry', 'logging', 'tracing', 'rust']
-ai_note: 'AI-assisted documentation'
-summary: 'Comprehensive guide to telemetry and logging in the Personal Ledger
-application, including configuration, usage patterns, and best practices.'
-post_date: '2025-12-06'
----
-# Telemetry (Logging)
+# Tracing (Logging)
 
 Because we are using asynchronous functions, we use telemetry to group together log outputs in a meaningful way.
 
