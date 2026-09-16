@@ -28,15 +28,7 @@ pub struct PersonalLedgerConfig {
     /// `<data-dir>/My-Personal-Ledger.pldb`.
     pub file: std::path::PathBuf,
 
-    /// The tracing logging level for the application.
-    ///
-    /// Available levels (from least to most verbose):
-    /// - `OFF`: No tracing output
-    /// - `ERROR`: Only error conditions
-    /// - `WARN`: Errors and warnings
-    /// - `INFO`: General information (default)
-    /// - `DEBUG`: Detailed debugging information
-    /// - `TRACE`: Very detailed execution tracing
+    /// The tracing logging level for the application (see [`lib_tracing::Levels`]).
     pub log: lib_tracing::Levels,
 
     /// Optional path to a file that tracing output should also be written to, in addition

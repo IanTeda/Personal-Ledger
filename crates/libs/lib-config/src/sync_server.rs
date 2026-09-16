@@ -1,20 +1,15 @@
 //! # Sync Server Configuration
 //!
 //! Configuration specific to the Sync Server binary (`bin-sync-server`), not read by the
-//! TUI or Desktop Clients. The gRPC bind address and the Sync Server's own database URI;
-//! TLS is not configured here (see ADR-0014 and the "lib-config / lib-database refactor"
-//! Wayfinder map's Out of scope).
+//! TUI or Desktop Clients: the gRPC bind address and the Sync Server's own database URI
+//! (its durable Change Set log, per ADR-0009 -- distinct from any Client's local
+//! `[Personal-Ledger] file`). TLS is not configured here (see ADR-0014 and the
+//! "lib-config / lib-database refactor" Wayfinder map's Out of scope).
 
 /// Default gRPC bind address for the Sync Server.
-///
-/// Matches the value `bin-sync-server` hardcoded directly in `main.rs` before this section
-/// existed.
 const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:50051";
 
-/// Default database URI for the Sync Server's own SQLite-backed Change Set log (ADR-0009).
-///
-/// Distinct from any Client's `[Personal-Ledger] file` -- the Sync Server's database is
-/// server-side storage, never a Client's local `.pldb` file.
+/// Default database URI for the Sync Server's own database.
 const DEFAULT_DATABASE_URI: &str = "sqlite:./sync-server.sqlite";
 
 /// Configuration specific to the Sync Server.
@@ -27,8 +22,7 @@ pub struct SyncServerConfig {
     /// The socket address the Sync Server's gRPC/HTTP listener binds to.
     pub bind_address: String,
 
-    /// The URI of the Sync Server's own database (its durable Change Set log, per
-    /// ADR-0009) -- not a Client's local Ledger file.
+    /// The URI of the Sync Server's own database.
     pub database_uri: String,
 }
 

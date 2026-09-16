@@ -8,7 +8,7 @@
 
 /// Shared configuration-related CLI arguments: where's the config file, plus overrides for
 /// the `[Personal-Ledger]` section's `data`/`file`/`log` settings (see
-/// `docs/configuration.md`).
+/// `docs/configuration.md`) applied via [`Self::apply_overrides`].
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct ConfigArgs {
     /// Path to an explicit configuration file. Takes precedence over the file-location
@@ -17,30 +17,25 @@ pub struct ConfigArgs {
     #[arg(short = 'c', long = "config", value_name = "PATH")]
     pub path: Option<std::path::PathBuf>,
 
-    /// Override the `[Personal-Ledger]` section's data directory. Highest precedence --
-    /// applied via [`Self::apply_overrides`] after the normal layered parse.
+    /// Override the `[Personal-Ledger]` section's data directory.
     #[arg(short = 'd', long = "data", value_name = "DIR")]
     pub data: Option<std::path::PathBuf>,
 
-    /// Override the `[Personal-Ledger]` section's database file. Highest precedence --
-    /// applied via [`Self::apply_overrides`] after the normal layered parse.
+    /// Override the `[Personal-Ledger]` section's database file.
     #[arg(short = 'f', long = "file", value_name = "FILE")]
     pub file: Option<std::path::PathBuf>,
 
-    /// Override the `[Personal-Ledger]` section's logging level. Highest precedence --
-    /// applied via [`Self::apply_overrides`] after the normal layered parse.
+    /// Override the `[Personal-Ledger]` section's logging level.
     #[arg(short = 'l', long = "log", value_name = "LEVEL")]
     pub log: Option<lib_tracing::Levels>,
 }
 
 impl ConfigArgs {
-    /// Apply this invocation's `--data`/`--file`/`--log` overrides directly onto an
-    /// already-parsed [`crate::Config`]'s `[Personal-Ledger]` section.
-    ///
-    /// These sit above even environment variables in `docs/configuration.md`'s precedence
-    /// hierarchy, so they're applied as a final step after `LedgerConfig::parse`/
-    /// `parse_for_sync_server` rather than through the layered `config`-crate builder --
-    /// unset (`None`) fields leave the already-parsed value untouched.
+    /// Apply this invocation's `--data`/`--file`/`--log` overrides onto an already-parsed
+    /// [`crate::Config`]. These sit above even environment variables in
+    /// `docs/configuration.md`'s precedence hierarchy, so they're applied as a final step
+    /// after `LedgerConfig::parse`/`parse_for_sync_server` rather than through the layered
+    /// `config`-crate builder -- unset (`None`) fields leave the parsed value untouched.
     pub fn apply_overrides(&self, config: &mut crate::Config) {
         if let Some(data) = &self.data {
             config.personal_ledger.data = data.clone();

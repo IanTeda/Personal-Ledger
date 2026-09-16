@@ -1,43 +1,23 @@
 //! Configuration loading and validation errors.
-//!
-//! This module provides `ConfigError`, a small error type that wraps errors
-//! originating from the `config` crate and adds a couple of domain-specific
-//! validation variants used by the application.
 
 use config::ConfigError as ConfigLibError;
 
-#[derive(thiserror::Error, Debug)]
 /// Errors produced while loading or validating configuration.
-///
-/// `ConfigError` wraps the `config` crate's errors and provides a couple of
-/// convenience variants for validation and address-parsing failures.
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
-    /// Error from the underlying config crate during file loading or parsing.
-    ///
-    /// This wraps errors from the `config` crate such as file not found,
-    /// invalid syntax, or parsing failures.
+    /// A `config`-crate error: file not found, invalid syntax, or a parse failure.
     #[error("Configuration parsing error: {0}")]
     Parsing(#[from] ConfigLibError),
 
-    /// Validation error with a descriptive message.
-    ///
-    /// This is used for configuration validation failures such as invalid
-    /// values, missing required fields, or security misconfigurations.
+    /// A validation failure with a descriptive message.
     #[error("Invalid configuration: {0}")]
     Validation(String),
 
-    /// Error indicating an invalid server address format.
-    ///
-    /// This is used for configuration validation failures such as invalid
-    /// values, missing required fields, or security misconfigurations with
-    /// the server address.
+    /// An invalid socket address string.
     #[error("Invalid server address: {0}")]
     InvalidServerAddress(#[from] std::net::AddrParseError),
 
-    /// Error indicating an invalid key binding configuration.
-    ///
-    /// This is used when two commands are bound to the same key, leaving one
-    /// of them unreachable.
+    /// Two commands are bound to the same key, leaving one unreachable.
     #[error("Invalid key binding config: {0}")]
     InvalidKeyBindingConfig(String),
 }

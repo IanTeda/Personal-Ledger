@@ -16,10 +16,8 @@
 //!   working-directory tiers don't correspond to anything meaningful inside a Docker
 //!   container.
 //!
-//! Call [`LedgerConfig::parse`] with `None` to use the file-location search, or
-//! `Some(path)` for an explicit path (still optional -- a missing explicit file falls
-//! back to the rest of the chain rather than erroring); read sections back through
-//! accessors like [`LedgerConfig::personal_ledger_config`].
+//! An explicit path is still optional -- a missing file falls back to the rest of the
+//! chain rather than erroring.
 //!
 //! ## Configuration File Example
 //!
@@ -215,16 +213,12 @@ impl LedgerConfig {
         Ok(ledger_config)
     }
 
-    /// Get the system-wide configuration file path.
-    ///
-    /// Returns the path to the system configuration file using platform-specific
-    /// standard locations. This provides system administrators with a way to
-    /// set default configurations for all users.
+    /// System-wide config file path.
     ///
     /// - **Unix/Linux**: `/etc/personal-ledger/personal-ledger.conf`
     /// - **Windows**: `%ALLUSERSPROFILE%\personal-ledger\personal-ledger.conf`
     /// - **macOS**: `/Library/Preferences/personal-ledger/personal-ledger.conf`
-    /// - **Other**: None (system config not supported)
+    /// - **Other**: unsupported
     fn get_system_config_path() -> Option<PathBuf> {
         #[cfg(target_os = "linux")]
         {
@@ -256,11 +250,7 @@ impl LedgerConfig {
         }
     }
 
-    /// Get the user-specific configuration file path.
-    ///
-    /// Returns the path to the user's configuration file using the standard
-    /// platform-specific config directory. This allows individual users to
-    /// customise their configuration without affecting other users.
+    /// User-specific config file path.
     ///
     /// - **Linux**: `~/.config/personal-ledger/personal-ledger.conf` (or `$XDG_CONFIG_HOME`)
     /// - **macOS**: `~/Library/Preferences/personal-ledger/personal-ledger.conf`
@@ -273,13 +263,7 @@ impl LedgerConfig {
         })
     }
 
-    /// Get the executable directory configuration file path.
-    ///
-    /// Returns the path to a configuration file in the same directory as the
-    /// executable. This is useful for portable applications or when the config
-    /// should be distributed with the binary.
-    ///
-    /// Note: This is determined at runtime based on the executable's location.
+    /// Config file path in the same directory as the running executable (portable installs).
     fn get_executable_config_path() -> Option<PathBuf> {
         dirs::executable_dir().map(|exec_dir| {
             exec_dir
@@ -288,13 +272,9 @@ impl LedgerConfig {
         })
     }
 
-    /// Get the current working directory configuration file path.
+    /// Config file path in the current working directory (`config/personal-ledger.conf`).
     ///
-    /// Returns the path to a configuration file in the current working directory.
-    /// This allows project-specific configuration when running from a directory
-    /// that contains a config file.
-    ///
-    /// Returns an error if the current directory cannot be determined.
+    /// Errors if the current directory can't be determined.
     fn get_cwd_config_path() -> crate::Result<PathBuf> {
         let cwd = std::env::current_dir().map_err(|e| {
             crate::Error::Validation(format!(
