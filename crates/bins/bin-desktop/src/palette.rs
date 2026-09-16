@@ -30,11 +30,29 @@ pub struct Palette {
     input: String,
     /// Index into [`Self::matches`], clamped there rather than here.
     selected: usize,
+    /// Previously run command names, most-recent-first, deduplicated -- `Shell` owns the
+    /// durable copy (this instance is discarded when the palette closes) and clones it in on
+    /// [`Self::with_history`], mirroring the "`Shell` owns `Option<Palette>`" split the module
+    /// doc describes: history outlives any one palette session.
+    history: Vec<String>,
+    /// How far `^r` has walked back into [`Self::history`] -- `None` before the first press.
+    /// Reset by any edit ([`Self::push_char`], [`Self::backspace`]) so resuming typing always
+    /// starts a fresh browse rather than picking up mid-cycle.
+    history_cursor: Option<usize>,
 }
 
 impl Palette {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// A fresh palette pre-loaded with `history` for `^r` to cycle through -- see
+    /// [`Self::cycle_history_back`].
+    pub fn with_history(history: Vec<String>) -> Self {
+        Self {
+            history,
+            ..Self::default()
+        }
     }
 
     pub fn input(&self) -> &str {
@@ -46,10 +64,40 @@ impl Palette {
     pub fn push_char(&mut self, c: char) {
         self.input.push(c);
         self.selected = 0;
+        self.history_cursor = None;
     }
 
     pub fn backspace(&mut self) {
         self.input.pop();
+        self.selected = 0;
+        self.history_cursor = None;
+    }
+
+    /// `tab`: fills the input with the selected result's full command name -- mirrors `enter`'s
+    /// own "runs the selection" semantics rather than completing a shared prefix across every
+    /// match. A no-op when nothing is selected (the filtered set is empty).
+    pub fn complete_selected(&mut self) {
+        if let Some(command) = self.selected_command() {
+            self.input = command.name.to_string();
+            self.selected = 0;
+            self.history_cursor = None;
+        }
+    }
+
+    /// `^r`: walks backward (older) through [`Self::history`] into the input buffer. The first
+    /// press recalls the most recently run command; each further press without an intervening
+    /// edit walks one entry further back, clamped at the oldest rather than wrapping. A no-op
+    /// with no history yet.
+    pub fn cycle_history_back(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+        let next = match self.history_cursor {
+            Some(index) => (index + 1).min(self.history.len() - 1),
+            None => 0,
+        };
+        self.history_cursor = Some(next);
+        self.input = self.history[next].clone();
         self.selected = 0;
     }
 
@@ -125,7 +173,9 @@ impl Palette {
                     .child(div().h(px(2.0)).bg(color::INK))
                     .children(matches.iter().enumerate().map(|(index, command)| {
                         result_row(command, &self.input, index == selected)
-                    })),
+                    }))
+                    .child(div().h(px(1.0)).bg(color::HAIRLINE))
+                    .child(footer_row()),
             )
             .into_any_element()
     }
@@ -220,6 +270,17 @@ fn result_row(command: &'static Command, needle: &str, selected: bool) -> impl I
                 .text_color(binding_color)
                 .child(command.binding.unwrap_or("\u{2014}")),
         )
+}
+
+/// The "1d" spec's footer hint row, below the rule under the result list: every key the palette
+/// answers to, in the handoff's own order and wording.
+fn footer_row() -> impl IntoElement {
+    div()
+        .px(px(16.0))
+        .py(px(8.0))
+        .text_size(px(11.5))
+        .text_color(color::INK_SECONDARY)
+        .child("\u{2191}\u{2193} select \u{b7} tab complete \u{b7} enter run \u{b7} ^r history \u{b7} esc close")
 }
 
 /// Splits `name` around the first case-insensitive occurrence of `needle`, rendering the match
@@ -353,5 +414,65 @@ mod tests {
         }
         // No command is named "ledger", but several describe themselves with the word.
         assert!(!palette.matches().is_empty());
+    }
+
+    #[test]
+    fn tab_completes_to_the_selected_result_full_name() {
+        let mut palette = Palette::new();
+        for c in "acc".chars() {
+            palette.push_char(c);
+        }
+        palette.complete_selected();
+        assert_eq!(palette.input(), "accounts");
+    }
+
+    #[test]
+    fn tab_on_no_results_does_not_panic() {
+        let mut palette = Palette::new();
+        for c in "nonexistent-command".chars() {
+            palette.push_char(c);
+        }
+        palette.complete_selected();
+        assert_eq!(palette.input(), "nonexistent-command");
+    }
+
+    #[test]
+    fn ctrl_r_with_no_history_is_a_no_op() {
+        let mut palette = Palette::new();
+        palette.push_char('x');
+        palette.cycle_history_back();
+        assert_eq!(palette.input(), "x");
+    }
+
+    #[test]
+    fn ctrl_r_recalls_the_most_recent_command_first() {
+        let mut palette =
+            Palette::with_history(vec!["account new".to_string(), "accounts".to_string()]);
+        palette.cycle_history_back();
+        assert_eq!(palette.input(), "account new");
+    }
+
+    #[test]
+    fn repeated_ctrl_r_walks_further_back_and_clamps_at_the_oldest() {
+        let mut palette =
+            Palette::with_history(vec!["account new".to_string(), "accounts".to_string()]);
+        palette.cycle_history_back();
+        palette.cycle_history_back();
+        assert_eq!(palette.input(), "accounts");
+        palette.cycle_history_back();
+        assert_eq!(palette.input(), "accounts");
+    }
+
+    #[test]
+    fn editing_after_a_recall_resets_the_history_cursor() {
+        let mut palette =
+            Palette::with_history(vec!["account new".to_string(), "accounts".to_string()]);
+        palette.cycle_history_back();
+        palette.cycle_history_back();
+        assert_eq!(palette.input(), "accounts");
+        palette.backspace();
+        // Cursor reset -- the next `^r` recalls the most recent entry again, not "accounts".
+        palette.cycle_history_back();
+        assert_eq!(palette.input(), "account new");
     }
 }

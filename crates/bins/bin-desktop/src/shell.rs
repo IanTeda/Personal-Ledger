@@ -67,6 +67,15 @@ fn jump_noun_for_key(key: &str) -> Option<Noun> {
     }
 }
 
+/// Records `name` as just-run in `history`, most-recent-first: drops any earlier occurrence
+/// first so re-running a command moves it to the top rather than piling up a duplicate. Free
+/// (rather than a `Palette` method) since `Shell::command_history` outlives any one `Palette`
+/// instance -- see that field's own doc.
+fn record_history(history: &mut Vec<String>, name: &str) {
+    history.retain(|entry| entry != name);
+    history.insert(0, name.to_string());
+}
+
 /// A single semantic movement, parsed once from a keystroke and then dispatched against
 /// whichever zone is focused -- the same physical keys mean different things per zone, but
 /// the keys-to-intent mapping itself doesn't vary.
@@ -111,6 +120,10 @@ pub struct Shell {
     /// `NavState::mode` is `InputMode::Command`, mirroring `bin-tui`'s own
     /// `Shell`'s `Option<popup::command::CommandPopup>` (`docs/ux/desktop/README.md`'s Notes).
     palette: Option<Palette>,
+    /// Previously run palette command names, most-recent-first, deduplicated -- outlives any
+    /// one `Palette` (see [`record_history`]), cloned into a fresh `Palette` on every `:` open
+    /// so `^r` can reach commands run in an earlier palette session.
+    command_history: Vec<String>,
     /// The collapsed primary rail's row whose hover has settled past
     /// [`TOOLTIP_REVEAL_DELAY`] -- `None` while nothing's hovered, the delay hasn't elapsed
     /// yet, or the rail isn't collapsed (see `rail::primary::PrimaryRail`, which only wires
@@ -131,6 +144,7 @@ impl Shell {
             pending_g: None,
             status_message: None,
             palette: None,
+            command_history: Vec::new(),
             collapsed_rail_tooltip: None,
             hover_generation: 0,
         }
@@ -218,7 +232,7 @@ impl Shell {
         match key {
             ":" => {
                 self.nav.enter_mode(InputMode::Command);
-                self.palette = Some(Palette::new());
+                self.palette = Some(Palette::with_history(self.command_history.clone()));
                 return true;
             }
             "/" => {
@@ -364,10 +378,12 @@ impl Shell {
 
     /// Routes a keystroke while the palette is open (tier 2, "popup-owned keys" -- mirroring
     /// `docs/ux/tui/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
-    /// selection, `Enter` runs the selected command (see [`Self::run_command`]), and any other
-    /// unmodified, printable key is typed into the query. Everything else is swallowed here
-    /// rather than falling through to the zone/movement handling below -- keeping "the popup
-    /// owns every keystroke" true even for a key (e.g. `Tab`) this palette gives no meaning to.
+    /// selection, `Tab` completes to the selected result's full name, `Ctrl-r` cycles backward
+    /// through previously run commands, `Enter` runs the selected command (see
+    /// [`Self::run_command`]), and any other unmodified, printable key is typed into the query.
+    /// Everything else is swallowed here rather than falling through to the zone/movement
+    /// handling below -- keeping "the popup owns every keystroke" true even for a modified key
+    /// (e.g. a bare `Ctrl`) this palette gives no meaning to.
     fn handle_palette_key(&mut self, keystroke: &Keystroke) -> bool {
         let Some(palette) = self.palette.as_mut() else {
             return false;
@@ -384,6 +400,14 @@ impl Shell {
             }
             "down" => {
                 palette.move_down();
+                true
+            }
+            "tab" => {
+                palette.complete_selected();
+                true
+            }
+            "r" if keystroke.modifiers.control => {
+                palette.cycle_history_back();
                 true
             }
             "enter" => {
@@ -419,6 +443,7 @@ impl Shell {
     /// line has no message slot of its own, and the palette has already closed by the time this
     /// runs -- see the `enter` arm of [`Self::handle_palette_key`]).
     fn run_command(&mut self, command: &'static Command) {
+        record_history(&mut self.command_history, command.name);
         match command.handler {
             Some(handler) => {
                 let noun_before = self.nav.noun();
@@ -612,4 +637,37 @@ fn render_view(noun: Noun, focused: bool, scroll_handle: &ScrollHandle) -> gpui:
         })
         .child(content)
         .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn record_history_pushes_a_new_entry_to_the_front() {
+        let mut history = vec!["accounts".to_string()];
+        record_history(&mut history, "dashboard");
+        assert_eq!(
+            history,
+            vec!["dashboard".to_string(), "accounts".to_string()]
+        );
+    }
+
+    #[test]
+    fn record_history_moves_a_repeated_entry_to_the_front_without_duplicating_it() {
+        let mut history = vec![
+            "accounts".to_string(),
+            "dashboard".to_string(),
+            "reports".to_string(),
+        ];
+        record_history(&mut history, "reports");
+        assert_eq!(
+            history,
+            vec![
+                "reports".to_string(),
+                "accounts".to_string(),
+                "dashboard".to_string(),
+            ]
+        );
+    }
 }
