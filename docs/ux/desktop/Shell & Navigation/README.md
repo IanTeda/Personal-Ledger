@@ -1,292 +1,196 @@
 # Handoff: Desktop Shell & Navigation
 
 ## Overview
-This package contains the design for **Personal Ledger's main application shell** — the primary navigation frame, sidebar layout, settings surface, and related screens. The design explores a hybrid vim-inspired keybinding model (: command palette, j/k navigation) paired with a graphical sidebar rail, a modal-driven settings interface, and multi-pane accounts/transactions workflows.
+This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Four variants (1a–1d) present different answers to the same question — how much structure the rails should carry.
 
 ## About the Design Files
-The files in this bundle are **high-fidelity HTML prototypes** showing the intended look, layout, and interaction model. They are **design references created in this conversation, not production code**. Your task is to **recreate these designs in your target codebase** (Rust/GPUI, React, Vue, or native) using your established patterns and component libraries, informed by the HTML mockups' layouts, typography, colors, and behavior.
+`Ledger Desktop Shell.dc.html` is a **high-fidelity HTML prototype** showing intended look, layout, and interaction model. It is a **design reference, not production code**. Recreate these designs in the target codebase (Rust + GPUI) using established patterns, informed by the mockup's layout, typography, color, and behavior.
 
 ## Fidelity
-**High-fidelity (hifi)**: These are pixel-perfect mockups with final colors, typography, exact spacing, interactions, and modal patterns. Recreate the UI faithfully in your codebase, translating the HTML structure into your framework's idioms.
+**High-fidelity.** Final colors, typography, exact spacing, and interaction states. Recreate faithfully; translate HTML structure into GPUI idioms.
 
-## Screens / Views
+## Frame
+All four variants are drawn at **1280 × 800** — the reference desktop window size. The shell is a vertical stack: header (48px) / body (flex:1) / status bar (28px).
 
-### Turn 1: Main Shell Variations (1a, 1b, 1c, 1d)
+---
 
-#### 1a: Grouped Navigation Rail (Accounts Highlighted)
-**Purpose**: The primary application shell showing the main nav rail with grouped sections (LEDGER, PLAN, RECORDS) and a highlighted Accounts view.
+## Screens
 
-**Layout**:
-- Header: 48px, dark bar with app icon, title "Personal Ledger", breadcrumb, and 3 window controls
-- Sidebar: 178px wide, flex column with sections:
-  - LEDGER group: Dashboard, Transactions, Accounts (active/highlighted), Categories, Payees, Tags
-  - PLAN group: Bills, Budgets, Reports
-  - RECORDS group: Categories, Payees, Tags
-- Each nav item: 7px vertical padding, 14px horizontal, flex row with icon (14×14), label, keybinding hint
-- Active item: background #201e1d, color #f3f2f2, font-weight 800
-- Main content area: flex:1, shows Accounts view
-- Footer: 28px bar with mode label, keybindings hint, status
-
-**Colors**:
-- Primary bg: #eae9e9 (sidebar), #f3f2f2 (content)
-- Primary text: #201e1d
-- Secondary text: #9b9797
-- Active: #201e1d bg with #f3f2f2 text
-- Accent: #ec3013 (red)
-- Borders: rgba(32,30,29,.30) or #d7d3d3
-
-**Spacing**:
-- Nav items: 7px v-padding, 14px h-padding, 9px gap between icon and label
-- Section headers: 14px top, 8px bottom
-- Content: 18–22px padding
-
-**Interactions**:
-- Nav click: highlight item, swap content pane
-- Keybindings (vim): j/k up/down, b toggle sidebar, g+letter for direct jump, q return to dashboard
-
-#### 1b: Sidebar with Secondary Rail
-**Purpose**: Two-rail navigation — primary (Ledger, Plan, Records) plus secondary filterable rail showing account-specific options.
+### 1a — Grouped primary rail, no ledger open
+**Purpose**: The shell's structural baseline, shown in its **cold-start state**. The primary rail groups the domain nouns under headings and carries each item's `g`-jump binding in a right-hand column. No second rail: the landing view has no entity to scope to.
 
 **Layout**:
-- Primary sidebar: 178px (same as 1a)
-- Secondary rail: 250px, shows filtered accounts list with search bar
-- Both sidebar and secondary rail use #eae9e9 background
+- **Header** (48px): app glyph, "Personal Ledger" wordmark, `:` run-a-command affordance, sync indicator, three window controls. No file/unit label — there is no ledger loaded.
+- **Primary rail** (206px): grouped nav
+  - `LEDGER` — Dashboard `g d`, Transactions `g l`, Accounts `g a` (+ red count badge), Categories `g c`, Payees `g p`, Tags `g t`
+  - `PLAN` — Bills `g w`, Budgets `g b`, Reports `g r`
+  - Spacer, 2px rule, then Settings `g s` pinned to the bottom
+- **Main pane** (flex:1): the empty state — vertically and horizontally centered
+  - Title: "No ledger open" (800 26px/1.1, letter-spacing −.01em)
+  - Body: "Run `:open` to load a ledger file, or `:new` to start one." (13px, #605d5d, max-width 380px, `text-wrap: pretty`) — the two command names are set 800 weight in #201e1d
+  - Stack gap: 14px, `text-align: center`, pane padding 24px
+- **Status bar** (28px): `NORMAL` mode chip, binding legend, right-aligned context label
 
-**Components**:
-- Secondary rail: 250px wide, border-right 2px solid rgba(32,30,29,.38)
-- Search box: height 30px, border 1px solid rgba(32,30,29,.30), padding 8px 12px
-- Account list: rows with name left, balance right
-- Selected account: background #201e1d, color #f3f2f2
+**Why it matters**: The rail stays fully populated and legible with no ledger loaded — navigation is app structure, not document content. Only the main pane and the header's file label are empty.
 
-#### 1c: Settings View with Settings Rail
-**Purpose**: Settings screen with primary nav (Settings active) and secondary settings-index rail.
-
-**Layout**:
-- Primary sidebar: 178px, Settings active
-- Settings index rail: 214px, contains filter input + settings items (General, Ledger & units, Units, Institutions, Display, Sync server, Data & backup, Tracing (Logs), About)
-- Main content: Settings body scrolling through all panes, starting with Display
-
-**Components**:
-- Filter input: height 30px, font-size 12.5px, padding 8px 10px
-- Settings items: padding 8px 14px
-- Active settings item: background #201e1d, color #f3f2f2, font-weight 800
-- Divider lines: height 2px, background rgba(32,30,29,.38), flex:none to prevent shrink
-
-**Typography**:
-- Settings heading: 28px, 800 weight
-- Section heading (h4): 20px, 800 weight
-- Labels: 12px, 800 weight
-
-**Spacing**:
-- Content: padding 22px 28px
-- Sections: margin-bottom 48px between major blocks
-- Dividers: margin 14px 0 18px (or 24px after main heading)
-
-#### 1d: Command Palette (: bud)
-**Purpose**: Vim-style command palette triggered by `:`, showing fuzzy-filtered commands.
+### 1b — Flat primary rail + records rail (list–detail)
+**Purpose**: List–detail. The second rail holds the **records of the current noun**, so an account's ledger is one selection away. Rail one is flat (no group headings); the noun's own actions sit in the view header, not the rail.
 
 **Layout**:
-- Overlay: rgba(32,30,29,.30) dimmed background
-- Modal: centered, ~820px wide, containing:
-  - Input row: > prompt, input field, result count
-  - Divider: 2px solid #201e1d
-  - Command rows: highlighted row dark, others normal
-  - Argument help row: current value, limit, variance
-  - Footer hint: navigation and action keys
+- Header breadcrumb: `accounts › ANZ Everyday`
+- Primary rail (206px): flat list, Dashboard active
+- Secondary rail: filterable account list — `/ filter accounts` box at top, account rows with name + balance, selected row in the dark treatment
+- Main pane: the selected account's transaction ledger
 
-**Components**:
-- Modal: background #f3f2f2, border 2px solid #201e1d, box-shadow 0 12px 32px rgba(45,43,43,.30)
-- Selected row: background #201e1d, color #f3f2f2
-- Input cursor: 8px wide, 17px tall, background #ec3013
-- Description: color #d7d3d3 (selected) or #605d5d (normal)
-- Keybinding hint: color #bab6b6 (selected) or #9b9797 (normal)
+**Alignment note**: the rule under the `/ filter accounts` box lines up with the rule under the view header — the two rails share one horizontal datum.
 
-**Spacing**:
-- Modal padding: 12–16px for rows
-- Dimmer: full screen, z-index 10
-- Modal: positioned center (transform translateX(-50%))
-
-### Turn 2: Settings Surface (2a–2e)
-
-#### 2a: Settings Landing (General Pane, No Modal)
-**Purpose**: Clean resting state — expanded primary nav, Settings active, General pane visible, no modal.
+### 1c — Collapsed icon rail + section index
+**Purpose**: Rail one collapsed to icons (`b` toggles; hover reveals label + binding). The second rail becomes the screen's own table of contents — here, the settings index.
 
 **Layout**:
-- Header: 48px, breadcrumb "settings › general"
-- Primary nav: 206px, expanded with all app sections, Settings active
-- Settings index: 214px, with filter + 9 items (General active)
-- Main body: scrollable, padding 22px 28px
+- Primary rail: icon-only, ~48px wide
+- Secondary rail (214px): filter box, `SETTINGS` label, then the settings pages — General, Ledger & units, Units, Institutions, Display, Sync server, Data & backup, Tracing (Logs), About
+- Main pane: the selected settings pane (Display shown)
 
-**Sections** (in scroll order):
-- Settings heading (28px), margin-bottom 24px
-- General: Ledger name, Owner, Financial year, Base unit inputs, THIS LEDGER info box
-- 48px gap
-- Ledger & units: Default unit, Budget period radios
-- 48px gap
-- Units: Table (CODE, NAME, TYPE) with 3 rows, edit/delete buttons, + Add unit
-- 48px gap
-- Institutions: Table (INSTITUTION, ACCOUNT TYPE) with 7 rows, edit/delete buttons, + Add institution
-- 48px gap
-- Display: Date format, Decimal separator, Row density, Status glyphs, PREVIEW table
-- 48px gap
-- Sync server, Data & backup, Tracing (Logs), About sections follow
+### 1d — Command palette
+**Purpose**: The keyboard half of the hybrid. `:` floats the palette over the dimmed shell; one command registry drives results, bindings, and argument help.
 
-**Components**:
-- Input fields: padding 8px 10px, border 1px solid rgba(32,30,29,.30), font-size 13px
-- Buttons: padding 8px 16px, border 1px solid rgba(32,30,29,.30), background #eae9e9, font-weight 800
-- Table header: padding 12px 16px, background #eae9e9, font 800 10px 'Archivo', letter-spacing .11em
-- Table rows: padding 12px 16px, border-bottom 1px solid #d7d3d3
-- Action buttons: padding 4px 10px, font-size 11px
+**Layout**:
+- Dimmer: `rgba(32,30,29,.30)` over the whole shell, z-index 10
+- Palette: 820px wide, centered horizontally, `top: 96px`
+  - Input row: `>` prompt, typed query (`bud`), 8px × 17px `#ec3013` block cursor, result count "7 of 62" right-aligned
+  - 2px `#201e1d` rule
+  - Result rows: selected row in dark treatment (description `#d7d3d3`, binding `#bab6b6`); unselected (description `#605d5d`, binding `#9b9797`)
+  - Argument help row: current arg value, limit, actual, variance
+  - Footer hint: `↑↓ select · tab complete · enter run · ^r history · esc close`
+- Palette chrome: `background #f3f2f2; border: 2px solid #201e1d; box-shadow: 0 12px 32px rgba(45,43,43,.30)`
 
-**Typography**:
-- Settings heading: 800 28px 'Archivo'
-- Section headings: 800 20px
-- Labels: 800 12px
-- Content: 13px
+---
 
-**Spacing**:
-- Content: padding 22px 28px
-- Section wrappers: margin-bottom 48px
-- Dividers: height 2px, flex:none, margin 14px 0 18px (or 24px post-header)
-- Form gap: 16px vertically, 40px horizontally for multi-column
+## Components
 
-**Scrolling**: Body is 2957px tall in 724px viewport, all sections reachable by scroll
-
-#### 2b: Full Settings with Add Unit Modal
-**Purpose**: Same as 2a with "Add unit" modal open.
-
-**Modal**:
-- Overlay: rgba(32,30,29,.30), z-index 10
-- Modal box: background #f3f2f2, border 2px solid #201e1d, box-shadow 0 16px 48px rgba(32,30,29,.40), width 420px
-- Header: padding 18px 20px, border-bottom 2px solid rgba(32,30,29,.30), font 800 16px 'Archivo'
-- Form fields: Code, Name, Type (select)
-- Button row: padding 16px 20px, gap 10px, Cancel (transparent) and Add (dark)
-
-**Spacing**:
-- Form padding: 20px
-- Fields gap: 16px vertically
-
-#### 2c: Edit Unit Modal
-**Purpose**: "Edit unit — aud" form with usage notice.
-
-**Modal**:
-- Same structure as 2b
-- Fields pre-filled: Code=aud, Name=Australian Dollar, Type=currency
-- Usage notice: padding 10px, background #eae9e9, border-left 2px solid #ec3013, font-size 11.5px
-  Text: "Used by 4 accounts · 604 transactions. Renaming is safe; changing the code rewrites references."
-- Buttons: Cancel, Save
-
-#### 2d: Delete Unit Confirmation Modal
-**Purpose**: Destructive action confirmation with typed verification.
-
-**Modal**:
-- Border: 2px solid #ec3013 (red)
-- Header: border-bottom 2px solid #ec3013, color #ae1800, text "Delete unit — btc"
-- Warning text: lists affected accounts/transactions
-- Reference box: padding 12px, background #eae9e9, border-left 2px solid #ec3013
-- Confirmation input: label "Type btc to confirm", text input
-- Buttons: Cancel, Delete unit (red background #ec3013, color #f3f2f2)
-
-#### 2e: Add Institution Modal
-**Purpose**: "Add institution" form with multi-select account types.
-
-**Modal**:
-- Header: "Add institution"
-- Fields:
-  - Institution name (text input)
-  - Account types: 5 checkboxes (savings, credit card, offset, loan, investment) — multi-select chips
-  - Default unit (dropdown: aud, btc, vas)
-- Checkbox chip style: display flex, align-items center, gap 6px, padding 6px 10px, border 1px solid rgba(32,30,29,.30), font-size 12px
-- Buttons: Cancel, Add institution
-
-## Interactions & Behavior
-
-### Navigation
-- Sidebar click: switch sections, highlight active item
-- Keybindings: j/k navigate, g+letter jump, b toggle sidebar, q return to Dashboard, : command palette, / search
-
-### Settings
-- Rail navigation: click settings item to jump to that section
-- Form inputs: live-save (footer: "saved automatically")
-- Modals:
-  - Add unit: fill form, click Add, refresh Units table
-  - Edit unit: modify fields, click Save
-  - Delete unit: type unit code to unlock Delete, confirm
-  - Add institution: select account types, choose default unit, click Add
-
-### Hover States
-- Nav items: subtle bg darkening
-- Buttons: lighter border or shadow
-- Table rows: bg change
-
-### Focus States
-- Inputs/selects: visible focus ring (2px outline)
-
-## State Management
-
-### Navigation
-- activeSection: current nav section
-- sidebarCollapsed: boolean (future)
-
-### Settings
-- activeSetting: current pane (General, Ledger & units, Units, Institutions, Display, Sync server, Data & backup, Tracing, About)
-- Modal state: which modal is open (null, "add-unit", "edit-unit", "delete-unit", "add-institution")
-
-### Command Palette
-- isOpen: boolean
-- query: search string
-- results: filtered command list
-- selectedIndex: highlighted result
+| Part | Spec |
+| --- | --- |
+| Header | 48px, `background #eae9e9`, `border-bottom: 2px solid rgba(32,30,29,.38)`, padding `0 10px 0 12px`, gap 12px |
+| Wordmark | 800 13.5px, letter-spacing −.01em |
+| Breadcrumb | 12px, `#9b9797` |
+| Command affordance | `padding: 4px 9px; border: 1px solid rgba(32,30,29,.30)`, `:` in 800 #201e1d |
+| Window controls | three 26px squares, `background rgba(32,30,29,.08)`, gap 2px |
+| Primary rail | 206px (48px collapsed), `background #eae9e9`, `border-right: 2px solid rgba(32,30,29,.38)`, padding `14px 0 10px` |
+| Group heading | `font: 800 10px/1 'Archivo'; letter-spacing: .11em; color: #9b9797; padding: 0 14px 8px` (16px top for later groups) |
+| Nav item | `display:flex; align-items:center; gap:9px; padding:7px 14px`, icon 14×14, label `flex:1`, binding 11px `#9b9797` |
+| Nav item (active) | `background:#201e1d; color:#f3f2f2`, label 800, binding `#bab6b6`, icon stroke `#f3f2f2` |
+| Count badge | `background:#ec3013; color:#f3f2f2; font:800 10px; padding:1px 5px; margin-right:4px` |
+| Rail footer rule | `height:2px; background:rgba(32,30,29,.20); margin:8px 0` |
+| Secondary rail | 214–250px, `border-right: 2px solid rgba(32,30,29,.38)` |
+| Filter box | `height:30px; font-size:12.5px; padding:8px 10px; border:1px solid rgba(32,30,29,.30)` |
+| Status bar | 28px, `background #eae9e9`, `border-top: 2px solid rgba(32,30,29,.38)`, 11.5px `#605d5d`, gap 14px |
+| Mode chip | `background:#201e1d; color:#f3f2f2; font:800 10px; letter-spacing:.1em; padding:2px 7px` |
+| Section rule | `height:2px; background:rgba(32,30,29,.38)` — always `flex:none` inside a flex column |
+| Row rule | `height:1px; background:#d7d3d3` |
 
 ## Design Tokens
 
-### Colors
-- Primary text: #201e1d
-- Secondary text: #9b9797
-- Tertiary text: #605d5d
-- Light bg: #f3f2f2
-- Dark bg: #eae9e9
-- Active: #201e1d
-- Active light: #f3f2f2
-- Accent (error): #ec3013
-- Muted: rgba(32,30,29,.30) or rgba(32,30,29,.38)
+### Color
+| Role | Value |
+| --- | --- |
+| Ground | `#f3f2f2` |
+| Chrome / rail | `#eae9e9` |
+| Canvas (outside the window) | `#e2e0df` |
+| Ink | `#201e1d` |
+| Ink secondary | `#605d5d` |
+| Ink tertiary | `#9b9797` |
+| Ink on dark | `#f3f2f2` / `#bab6b6` (dimmed) |
+| Accent | `#ec3013` |
+| Accent (text-safe) | `#ae1800` |
+| Rule (strong) | `rgba(32,30,29,.38)` |
+| Rule (medium) | `#d7d3d3` |
+| Border | `rgba(32,30,29,.30)` |
+| Dimmer | `rgba(32,30,29,.30)` |
 
-### Spacing Scale
-6px, 7px, 8px, 9px, 10px, 12px, 14px, 16px, 18px, 20px, 22px, 24px, 28px, 40px, 48px
+### Type
+- Family: **Archivo** throughout (headings and body); monospace only for log output and inline command tokens
+- Weights: 400, 800 — nothing between
+- Sizes: 10px (labels), 11px (bindings), 11.5px (status/meta), 12px (breadcrumb), 13px (body), 13.5px (wordmark), 15px (palette input), 19–20px (view headings), 26px (empty-state title)
+- Letter-spacing: `.11em` (all-caps labels), `−.01em` (display sizes), `.1em` (mode chip)
+- Numbers: `font-variant-numeric: tabular-nums` on every figure
 
-### Typography
-- Font family: 'Archivo' (headers), system sans-serif (body)
-- Weights: 400 (regular), 800 (bold)
-- Sizes: 10px, 11px, 12px, 13px, 13.5px, 15px, 20px, 28px
-- Letter-spacing: .11em (labels), .01em (titles), -.01em (tight)
-- Line-height: 1, 1.3, 1.5, 1.6
+### Spacing
+7, 8, 9, 10, 12, 14, 16, 20, 24, 28px. Rail items 7px vertical / 14px horizontal; pane padding 20–24px.
 
-### Borders & Shadows
-- Dividers: 2px
-- Input borders: 1px
-- Modal borders: 2px
-- Palette shadow: 0 12px 32px rgba(45,43,43,.30)
-- Modal shadow: 0 16px 48px rgba(32,30,29,.40)
+### Radius & elevation
+- **Radius 0 everywhere.** No rounded corners.
+- Palette shadow: `0 12px 32px rgba(45,43,43,.30)`
+- Window card shadow (mockup only): `0 14px 40px rgba(32,30,29,.30)`
 
-## Assets
-- SVG icons (14×14, inline): Dashboard, Transactions, Accounts, Categories, Payees, Tags, Bills, Budgets, Reports, Settings
-- No external images or raster assets
+---
+
+## Interactions
+
+### Pointer
+- Nav item click → activate that section; the clicked item takes the dark treatment
+- Secondary rail row click → select that record / scroll to that section
+- Filter box → live substring filter over the rail below it
+- Hover on collapsed icon rail → reveal label + binding
+
+### Keyboard
+| Key | Action |
+| --- | --- |
+| `j` / `k` | move selection down / up |
+| `g` + letter | jump to section — `d` Dashboard, `l` Transactions, `a` Accounts, `c` Categories, `p` Payees, `t` Tags, `w` Bills, `b` Budgets, `r` Reports, `s` Settings |
+| `b` | toggle the primary rail between full and icon-only |
+| `:` | open the command palette |
+| `/` | focus the contextual filter |
+| `a` | add transaction |
+| `?` | help |
+| `esc` | close palette / clear filter |
+
+### Command palette
+- `:` opens; typing filters the registry (fuzzy, substring-weighted)
+- `↑` `↓` move selection, `tab` completes, `enter` runs, `^r` history
+- Argument help updates per selected command — shows current value, limit, actual, variance
+- One registry is the single source of truth for palette entries, rail bindings, and the status-bar legend
+
+### Empty state
+- The no-ledger state is reached on cold start and after `:close`
+- Only the main pane and the header's file label empty out — rail and status bar stay fully rendered
+- `:open` and `:new` are the only two paths forward; both are named in the body copy
+
+---
+
+## State
+
+```
+shell
+  ledgerOpen: bool            // false → 1a empty state
+  activeSection: Section      // Dashboard | Transactions | Accounts | …
+  railCollapsed: bool         // b toggles
+  secondaryRail: none | records | index
+  selectedRecord: Option<Id>
+  filterQuery: String
+  mode: Normal | Insert | Command
+palette
+  open: bool
+  query: String
+  results: Vec<Command>
+  selectedIndex: usize
+  history: Vec<String>
+```
+
+---
+
+## Implementation notes (GPUI)
+
+1. **HTML is a reference.** Translate to GPUI's element tree; do not port markup.
+2. **Rails are chrome, not content.** They render identically whether or not a ledger is open — only the main pane branches on `ledgerOpen`.
+3. **One command registry.** Palette entries, `g`-jump bindings, and the status-bar legend must read from the same table, or they will drift.
+4. **Zero radius.** Every corner is square — this is load-bearing to the look.
+5. **Rules are 2px for section boundaries, 1px for row separators.** Do not soften either into a hairline.
+6. **Tabular numerals** on every figure so columns align.
+7. **Palette layering.** Dimmer and palette share a stacking context above the shell; the palette is horizontally centered with a fixed 96px top offset, not vertically centered.
+8. **Flush left.** Labels — including labels inside wide buttons — start at the left padding edge. Never center them.
+9. **Icons**: Lucide, 14×14 at rail size, 1.5px stroke, `fill: none`.
 
 ## Files
-- Ledger Desktop Shell.dc.html — Main shell with all variations (1a–1d, 2a–2e)
-- docs/ux/desktop/Ledger Desktop Shell.dc.html — Reference copy
-- design_handoff_shell_navigation/Ledger Desktop Shell.dc.html — Handoff reference
-
-## Companion bundles
-- `docs/ux/desktop/Settings/` — the `Noun::Settings` view's own ten-pane surface and modals, re-hosted inside this shell; shares this bundle's `support.js` runtime and design tokens.
-- `docs/ux/desktop/README.md` — the `gpui`-facing living spec this shell is actually built against.
-
-## Notes for Implementation
-
-1. **HTML is a reference** — Translate layouts and styles into your target framework using its idioms (React, Vue, GPUI, SwiftUI).
-2. **Vim keybindings** — Implement j/k, g+letter, :, / as documented. Consider using a keybinding library.
-3. **Modal z-index** — All modals at z-index 10, dimmed overlay at same level. Use portals or stacking context.
-4. **Scrolling body** — Settings body is block-flow flex (not column flex) with overflow:auto, so dividers render at full 2px.
-5. **Radio namespacing** — Namespace radio name attributes per instance to avoid browser collisions (e.g., df-1c, df-2a).
-6. **Typography scale** — Stick to listed sizes and weights; avoid intermediate values.
-7. **Spacing consistency** — Most section boundaries use 48px margin-bottom; apply uniformly.
+- `Ledger Desktop Shell.dc.html` — the prototype (1a–1d plus the settings surface in section 2)
+- `README.md` — this document
