@@ -21,13 +21,15 @@ lib_tracing = { path = "../../libs/lib-tracing" }
 chrono = { workspace = true }
 clap = { workspace = true }
 dirs = { workspace = true }
-gpui = { workspace = true }
-gpui-component = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+
+## -- Crate Dependencies --
+gpui = { version = "0.2.2" }
+gpui-component = { version = "0.5.1" }
 
 [dev-dependencies]
 tempfile = { workspace = true }
