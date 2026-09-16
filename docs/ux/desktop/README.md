@@ -16,7 +16,7 @@ The TUI's own navigation model (`docs/ux/tui/navigation.md`) makes a deliberate 
 
 ```text
 Shell
-├── TopBar            — rail toggle, brand mark + open file name, palette hint, sync indicator
+├── TopBar            — rail toggle, brand mark + open file name, palette hint, sync indicator, window controls (minimize/maximize/close)
 ├── content row
 │   ├── PrimaryRail    — Expanded (206px, grouped rows) | Collapsed (52px, icon-only, tooltip on hover)
 │   ├── ContextRail     — Option<_>, scoped to the active Noun; None renders no rail at all (rule 4)
@@ -109,7 +109,7 @@ Restated from the handoff, unchanged — these are what "the shell is built" mea
 
 ## Current implementation status
 
-Every ticket on the [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) map except this one is closed. `Shell` (`src/shell.rs`) assembles a fixed-pixel `TopBar`, `PrimaryRail` (all ten nouns, both its expanded grouped-row and collapsed icon-only states), a `ContextRail` (Dashboard's own account roll-call is real; every other noun with entities gets a placeholder frame), the Dashboard `View` interior (frame, figures, `LineChart` net-worth chart, hand-rolled in/out bars, `PieChart` donut, budget tracks, needs-attention block — all dummy content per the fidelity note), a `StatusLine`, and a floating `Palette`, all driven by a live `NavState` (`src/nav.rs`) that persists `noun`/`primary_rail`/window geometry across restart (`src/persistence.rs`). `feasibility_demo.rs` (the old `TabBar` chart demo) is kept compiling but disconnected, per ADR-0016.
+Every ticket on the [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) map except this one is closed. `Shell` (`src/shell.rs`) assembles a fixed-pixel `TopBar` (now including a minimize/maximize/close window-control cluster, [#162](https://github.com/IanTeda/Personal-Ledger/issues/162) — part of the [TUI Keybindings & Shared Navigation Grammar](https://github.com/IanTeda/Personal-Ledger/issues/155) map, not this one, since it fills the gap #158's `quit` decision left in `bin-desktop`), `PrimaryRail` (all ten nouns, both its expanded grouped-row and collapsed icon-only states), a `ContextRail` (Dashboard's own account roll-call is real; every other noun with entities gets a placeholder frame), the Dashboard `View` interior (frame, figures, `LineChart` net-worth chart, hand-rolled in/out bars, `PieChart` donut, budget tracks, needs-attention block — all dummy content per the fidelity note), a `StatusLine`, and a floating `Palette`, all driven by a live `NavState` (`src/nav.rs`) that persists `noun`/`primary_rail`/window geometry across restart (`src/persistence.rs`). `feasibility_demo.rs` (the old `TabBar` chart demo) is kept compiling but disconnected, per ADR-0016.
 
 ### Acceptance criteria walk
 

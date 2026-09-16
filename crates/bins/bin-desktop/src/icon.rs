@@ -22,6 +22,12 @@ pub enum DesktopIcon {
     Palette,
     AddTransaction,
     Flagged,
+    /// TopBar window controls (issue #162) -- minimize-to-taskbar.
+    WindowMinimize,
+    /// TopBar window controls (issue #162) -- maximize/restore toggle.
+    WindowMaximize,
+    /// TopBar window controls (issue #162) -- quits the app.
+    WindowClose,
 }
 
 impl DesktopIcon {
@@ -41,6 +47,9 @@ impl DesktopIcon {
             Self::Palette => "icons/search.svg",
             Self::AddTransaction => "icons/plus.svg",
             Self::Flagged => "icons/flag.svg",
+            Self::WindowMinimize => "icons/minus.svg",
+            Self::WindowMaximize => "icons/square.svg",
+            Self::WindowClose => "icons/x.svg",
         }
     }
 

@@ -20,7 +20,7 @@ macro_rules! icon {
     };
 }
 
-/// Every bundled icon. A plain match table rather than `rust-embed`: 14 small SVGs don't need
+/// Every bundled icon. A plain match table rather than `rust-embed`: 17 small SVGs don't need
 /// a build-time directory scan.
 const ICONS: &[(&str, &[u8])] = &[
     icon!("layout-dashboard"),
@@ -37,6 +37,11 @@ const ICONS: &[(&str, &[u8])] = &[
     icon!("search"),
     icon!("plus"),
     icon!("flag"),
+    // TopBar window controls (issue #162) -- not in the handoff's own "Assets" table (it lists
+    // only the 10 nav icons), sourced separately from the same bundled Lucide set.
+    icon!("minus"),
+    icon!("square"),
+    icon!("x"),
 ];
 
 pub struct Assets;
