@@ -22,7 +22,6 @@ use crate::nav::{NavState, Noun};
 pub enum CommandKind {
     Navigate,
     Create,
-    #[allow(dead_code)]
     Run,
     #[allow(dead_code)]
     Setting,
@@ -72,6 +71,19 @@ fn goto_reports(nav: &mut NavState) {
 }
 fn goto_settings(nav: &mut NavState) {
     nav.set_noun(Noun::Settings);
+}
+
+/// `:open`/`:new`'s stand-in handler (`docs/ux/desktop/Shell & Navigation/README.md`'s "1e"
+/// file explorer and "Empty state" section) -- real file I/O is out of scope for this map
+/// (issue #144's "Out of scope"), so both commands just flip `NavState::ledger_open` on,
+/// enough to demonstrate the "1a" empty state giving way to the populated `Dashboard`.
+fn open_ledger(nav: &mut NavState) {
+    nav.open_ledger();
+}
+
+/// `:close`'s handler: returns to the "1a" empty state, same as cold start.
+fn close_ledger(nav: &mut NavState) {
+    nav.close_ledger();
 }
 
 /// Every command the palette can rank and run today: one `Navigate` command per rail item
@@ -157,6 +169,27 @@ pub const COMMANDS: &[Command] = &[
         binding: None,
         handler: None,
     },
+    Command {
+        name: "open",
+        description: "load a ledger file",
+        kind: CommandKind::Run,
+        binding: None,
+        handler: Some(open_ledger),
+    },
+    Command {
+        name: "new",
+        description: "start a new ledger",
+        kind: CommandKind::Create,
+        binding: None,
+        handler: Some(open_ledger),
+    },
+    Command {
+        name: "close",
+        description: "close the open ledger",
+        kind: CommandKind::Run,
+        binding: None,
+        handler: Some(close_ledger),
+    },
 ];
 
 /// Every registered command, in registration order -- the palette's resting-state (empty
@@ -194,6 +227,30 @@ mod tests {
     fn account_new_has_no_handler_yet() {
         let account_new = COMMANDS.iter().find(|c| c.name == "account new").unwrap();
         assert!(account_new.handler.is_none());
+    }
+
+    #[test]
+    fn open_and_new_open_the_ledger() {
+        for name in ["open", "new"] {
+            let mut nav = NavState::new();
+            assert!(!nav.ledger_open());
+
+            let command = COMMANDS.iter().find(|c| c.name == name).unwrap();
+            (command.handler.expect("open/new have a handler"))(&mut nav);
+
+            assert!(nav.ledger_open(), "{name:?} should open the ledger");
+        }
+    }
+
+    #[test]
+    fn close_closes_the_ledger() {
+        let mut nav = NavState::new();
+        nav.open_ledger();
+
+        let close = COMMANDS.iter().find(|c| c.name == "close").unwrap();
+        (close.handler.expect("close has a handler"))(&mut nav);
+
+        assert!(!nav.ledger_open());
     }
 
     #[test]

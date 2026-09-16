@@ -594,6 +594,7 @@ impl Render for Shell {
                             })
                             .child(render_view(
                                 self.nav.noun(),
+                                self.nav.ledger_open(),
                                 focus == FocusZone::View,
                                 &self.view_scroll_handle,
                             )),
@@ -612,12 +613,21 @@ impl Render for Shell {
 }
 
 /// The active noun's own view interior. Only `Dashboard` is real; every other noun is a
-/// placeholder until its own view lands (issue #153). Scrollable and focus-bordered
-/// regardless of which noun is active, since both are properties of the `View` zone itself,
-/// not of any one noun's content.
-fn render_view(noun: Noun, focused: bool, scroll_handle: &ScrollHandle) -> gpui::AnyElement {
+/// placeholder until its own view lands (issue #153). `Dashboard` itself further branches on
+/// `ledger_open` (`docs/ux/desktop/Shell & Navigation/README.md`'s "1a" empty state) --
+/// implementation note 2's "only the main pane branches on `ledgerOpen`" scopes that to the
+/// one real view; the still-placeholder nouns say "not yet built" either way. Scrollable and
+/// focus-bordered regardless of which noun is active, since both are properties of the `View`
+/// zone itself, not of any one noun's content.
+fn render_view(
+    noun: Noun,
+    ledger_open: bool,
+    focused: bool,
+    scroll_handle: &ScrollHandle,
+) -> gpui::AnyElement {
     let content = match noun {
-        Noun::Dashboard => Dashboard::new().into_any_element(),
+        Noun::Dashboard if ledger_open => Dashboard::new().into_any_element(),
+        Noun::Dashboard => empty_state(),
         other => div()
             .p(px(24.0))
             .text_color(color::INK_TERTIARY)
@@ -636,6 +646,51 @@ fn render_view(noun: Noun, focused: bool, scroll_handle: &ScrollHandle) -> gpui:
             this.border_l(px(2.0)).border_color(color::INK)
         })
         .child(content)
+        .into_any_element()
+}
+
+/// The "1a" cold-start empty state: "No ledger open" centered in the main pane, `:open`/`:new`
+/// named in the body copy (`docs/ux/desktop/Shell & Navigation/README.md`'s "Main pane"
+/// bullet). `gpui` 0.2's `Styled` trait has no letter-spacing hook, so the title's `-.01em`
+/// tracking from the spec has no equivalent here -- a real, not merely unverified, gap.
+fn empty_state() -> gpui::AnyElement {
+    let command = |text: &'static str| {
+        div()
+            .font_weight(gpui::FontWeight::EXTRA_BOLD)
+            .text_color(color::INK)
+            .child(text)
+    };
+
+    div()
+        .size_full()
+        .flex()
+        .flex_col()
+        .items_center()
+        .justify_center()
+        .gap(px(14.0))
+        .p(px(24.0))
+        .child(
+            div()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_size(px(26.0))
+                .line_height(gpui::relative(1.1))
+                .child("No ledger open"),
+        )
+        .child(
+            div()
+                .max_w(px(380.0))
+                .flex()
+                .flex_wrap()
+                .justify_center()
+                .text_align(gpui::TextAlign::Center)
+                .text_size(px(13.0))
+                .text_color(color::INK_SECONDARY)
+                .child("Run ")
+                .child(command(":open"))
+                .child(" to load a ledger file, or ")
+                .child(command(":new"))
+                .child(" to start one."),
+        )
         .into_any_element()
 }
 

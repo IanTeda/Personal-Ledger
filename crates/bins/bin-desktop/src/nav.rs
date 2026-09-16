@@ -153,6 +153,13 @@ pub struct NavState {
     /// `Normal`, set once on the transition away from `Normal` and cleared on the way back.
     pre_mode_focus: Option<FocusZone>,
     primary_highlight: Noun,
+    /// Whether a ledger is loaded (`docs/ux/desktop/Shell & Navigation/README.md`'s "State"
+    /// block: `shell.ledgerOpen`). `false` on every launch (the "1a" cold-start state) --
+    /// deliberately absent from `crate::persistence::PersistedState`, since the "Empty state"
+    /// spec section reaches this state "on cold start and after `:close`", never by restoring
+    /// a previous session. Rails render identically either way (Implementation note 2); only
+    /// the main pane's `Dashboard` arm branches on it (`Shell::render_view`).
+    ledger_open: bool,
 }
 
 impl Default for NavState {
@@ -169,6 +176,7 @@ impl Default for NavState {
             mode: InputMode::default(),
             pre_mode_focus: None,
             primary_highlight: Noun::default(),
+            ledger_open: false,
         }
     }
 }
@@ -200,6 +208,10 @@ impl NavState {
 
     pub fn primary_highlight(&self) -> Noun {
         self.primary_highlight
+    }
+
+    pub fn ledger_open(&self) -> bool {
+        self.ledger_open
     }
 
     /// Rule 1: changing `noun` resets `context` to the noun's first entity (index `0`, or
@@ -310,6 +322,20 @@ impl NavState {
             self.focus = focus;
         }
     }
+
+    /// The `:open`/`:new` command handlers' stand-in effect (`crate::command`): flips the "1a"
+    /// empty state off. Real file I/O (a native file picker, `lib_database` wiring) is separate
+    /// future work -- see issue #144's "Out of scope" -- so this is the whole of what either
+    /// command does today, just enough to demonstrate the empty-state -> populated-Dashboard
+    /// transition.
+    pub fn open_ledger(&mut self) {
+        self.ledger_open = true;
+    }
+
+    /// The `:close` command's effect: returns to the "1a" empty state, same as cold start.
+    pub fn close_ledger(&mut self) {
+        self.ledger_open = false;
+    }
 }
 
 #[cfg(test)]
@@ -325,6 +351,24 @@ mod tests {
         assert_eq!(nav.focus(), FocusZone::View);
         assert_eq!(nav.primary_rail(), RailMode::Expanded);
         assert_eq!(nav.mode(), InputMode::Normal);
+    }
+
+    #[test]
+    fn default_state_has_no_ledger_open() {
+        // The "1a" cold-start state -- see docs/ux/desktop/Shell & Navigation/README.md's
+        // "Empty state" section.
+        assert!(!NavState::new().ledger_open());
+    }
+
+    #[test]
+    fn open_ledger_and_close_ledger_toggle_ledger_open() {
+        let mut nav = NavState::new();
+
+        nav.open_ledger();
+        assert!(nav.ledger_open());
+
+        nav.close_ledger();
+        assert!(!nav.ledger_open());
     }
 
     // Rule 1
