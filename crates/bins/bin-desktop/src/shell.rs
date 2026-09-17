@@ -30,7 +30,7 @@ use gpui::{
 };
 
 use crate::{
-    command::{self, Command},
+    command::{self, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
@@ -476,44 +476,46 @@ impl Shell {
         }
     }
 
-    /// Runs `command`'s handler if it has one, resetting the view's scroll when it lands on a
-    /// different noun (matching every other navigation entry point -- `g`-jumps, rail `Enter`).
-    /// A command with no handler yet (`Command::handler == None`) shows the same "not yet
-    /// built" message `docs/ux/tui/navigation.md` describes for its own popup, reusing the
-    /// status line's existing `status_message` slot (the "1d" spec's own COMMAND-mode status
-    /// line has no message slot of its own, and the palette has already closed by the time this
-    /// runs -- see the `enter` arm of [`Self::handle_palette_key`]).
+    /// Runs `command`'s effect -- one exhaustive match over [`CommandEffect`], the single
+    /// source of truth for what a command does (issue #144's own architecture review, "deepen
+    /// the command's interface": this replaced an `Option<fn(&mut NavState)>` handler plus a
+    /// `Shell`-side `command.name == "open"` string match that couldn't express opening a
+    /// `Shell`-owned dialog).
     ///
-    /// `"open"` (issue #165) and `"new"` (issue #167) are special-cased before any of that:
-    /// neither has a `NavState` handler at all (a bare `fn(&mut NavState)` can't open a
-    /// `Shell`-owned dialog), and unlike every other command, running either does *not* leave
-    /// `InputMode::Command` -- the "1e" file explorer's own status-line treatment (`Shell::render`'s
+    /// [`CommandEffect::Navigate`] resets the view's scroll when it lands on a different noun,
+    /// matching every other navigation entry point (`g`-jumps, rail `Enter`).
+    /// [`CommandEffect::NotYetBuilt`] shows the same "not yet built" message
+    /// `docs/ux/tui/navigation.md` describes for its own popup, reusing the status line's
+    /// existing `status_message` slot (the "1d" spec's own COMMAND-mode status line has no
+    /// message slot of its own, and the palette has already closed by the time this runs -- see
+    /// the `enter` arm of [`Self::handle_palette_key`]).
+    ///
+    /// [`CommandEffect::OpenDialog`] (issues #165/#167) is the one variant that doesn't call
+    /// `NavState::exit_mode` -- unlike every other effect, opening the dialog does *not* leave
+    /// `InputMode::Command`: the "1e" file explorer's own status-line treatment (`Shell::render`'s
     /// `command_echo`) depends on staying there for as long as the dialog is on screen, exiting
     /// only when it closes (`Self::handle_explorer_cancel`/`Self::confirm_explorer_open`, or
     /// `Self::handle_key_down`'s `escape` arm).
     fn run_command(&mut self, command: &'static Command) {
         record_history(&mut self.command_history, command.name);
-        let explorer_mode = match command.name {
-            "open" => Some(ExplorerMode::Open),
-            // `:new` (issue #167): the *same* dialog as `:open`, relabelled -- see
-            // `ExplorerMode`'s own doc for why confirming it doesn't flip `ledger_open`.
-            "new" => Some(ExplorerMode::New),
-            _ => None,
-        };
-        if let Some(mode) = explorer_mode {
-            self.file_explorer = Some(FileExplorer::open_at(mode, explorer_start_dir()));
-            return;
-        }
-        self.nav.exit_mode();
-        match command.handler {
-            Some(handler) => {
+        match command.effect {
+            CommandEffect::OpenDialog(mode) => {
+                self.file_explorer = Some(FileExplorer::open_at(mode, explorer_start_dir()));
+            }
+            CommandEffect::Navigate(noun) => {
+                self.nav.exit_mode();
                 let noun_before = self.nav.noun();
-                handler(&mut self.nav);
+                self.nav.set_noun(noun);
                 if self.nav.noun() != noun_before {
                     self.reset_view_scroll();
                 }
             }
-            None => {
+            CommandEffect::CloseLedger => {
+                self.nav.exit_mode();
+                self.nav.close_ledger();
+            }
+            CommandEffect::NotYetBuilt => {
+                self.nav.exit_mode();
                 self.status_message = Some(format!(":{} — not yet built", command.name));
             }
         }
@@ -557,8 +559,8 @@ impl Shell {
     /// A primary-rail row's click (`rail::primary::PrimaryRail`'s `on_row_click`), expanded or
     /// collapsed alike. A direct `NavState::set_noun`, not a browse-then-commit -- the same
     /// call `g`-jump (`Self::handle_key_down`'s pending-`g` arm) and the palette
-    /// (`command::COMMANDS`'s `goto_*` handlers) both make, so rail click, `g`-jump and the
-    /// palette land in the same state per acceptance criterion 1.
+    /// (`Self::run_command`'s own `CommandEffect::Navigate` arm) both make, so rail click,
+    /// `g`-jump and the palette land in the same state per acceptance criterion 1.
     fn handle_rail_click(&mut self, noun: Noun, cx: &mut Context<Self>) {
         let noun_before = self.nav.noun();
         self.nav.set_noun(noun);
