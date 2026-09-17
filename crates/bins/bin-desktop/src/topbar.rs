@@ -1,8 +1,7 @@
 //! The shell's top bar (`docs/ux/desktop/Shell & Navigation/README.md`'s "1a" spec, "Top
-//! bar" component): rail toggle, brand mark, palette hint, sync indicator, window controls.
-//! The rail toggle is clickable (issue #152); the palette hint stays static since palette
-//! entry is currently keyboard-only (`:`), not a click affordance the handoff itself draws as
-//! one.
+//! bar" component): rail toggle, brand mark, sync indicator, window controls. The rail toggle
+//! is clickable (issue #152). The spec's own `:` palette-hint box was dropped from here --
+//! palette entry is keyboard-only (`:`), and the status line's own hint strip already names it.
 //!
 //! The mockup draws a "sync" icon next to the sync indicator, but no Lucide name for it
 //! appears in the handoff's own "Assets" table -- rather than invent one outside that table,
@@ -57,7 +56,6 @@ impl RenderOnce for TopBar {
             .child(rail_toggle(self.on_rail_toggle))
             .child(brand_mark())
             .child(div().flex_1())
-            .child(palette_hint())
             .child(sync_indicator())
             .child(window_controls())
     }
@@ -100,26 +98,6 @@ fn brand_mark() -> impl IntoElement {
                 .text_color(color::INK_TERTIARY)
                 .child("teda.ledger · aud"),
         )
-}
-
-fn palette_hint() -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap(px(6.0))
-        .py(px(4.0))
-        .px(px(9.0))
-        .border(px(1.0))
-        .border_color(gpui::rgba(0x201e1d4d)) // rgba(32,30,29,.30)
-        .text_size(px(12.0))
-        .text_color(color::INK_SECONDARY)
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_color(color::INK)
-                .child(":"),
-        )
-        .child("run a command")
 }
 
 fn sync_indicator() -> impl IntoElement {
