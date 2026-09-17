@@ -21,6 +21,15 @@ pub const WIDTH: gpui::Pixels = px(820.0);
 /// Distance from the window's top edge: the "1d" spec's own `top: 96px`.
 pub const TOP_OFFSET: gpui::Pixels = px(96.0);
 
+/// Width of the `<command>` column -- fixed (rather than `flex_1`, which used to push the
+/// binding off to the row's far edge) so the binding sits left-aligned right next to the name
+/// it triggers, freeing the rest of the row for the description. Sized to comfortably fit the
+/// registry's longest names ("transactions", "account new") at this text size.
+const NAME_COLUMN_WIDTH: gpui::Pixels = px(130.0);
+
+/// Width of the `<binding>` column, immediately after the name column.
+const BINDING_COLUMN_WIDTH: gpui::Pixels = px(64.0);
+
 /// One row of the resting/filtered list: a domain header (resting state only) or a command
 /// entry -- mirrors `bin-tui`'s own `popup::command::Row` exactly.
 enum Row {
@@ -306,25 +315,27 @@ fn result_row(command: &'static Command, needle: &str, selected: bool) -> impl I
         .when_some(bg, |this, bg| this.bg(bg))
         .flex()
         .items_center()
+        .gap(px(12.0))
         .px(px(16.0))
         .py(px(8.0))
-        .child(div().flex_1().text_color(text).child(highlighted_name(
-            command.name,
-            needle,
-            matched,
-            text,
-        )))
         .child(
             div()
-                .w(px(64.0))
+                .w(NAME_COLUMN_WIDTH)
+                .flex_none()
+                .text_color(text)
+                .child(highlighted_name(command.name, needle, matched, text)),
+        )
+        .child(
+            div()
+                .w(BINDING_COLUMN_WIDTH)
+                .flex_none()
                 .text_size(px(11.5))
                 .text_color(binding_color)
                 .child(command.binding.unwrap_or("\u{2014}")),
         )
         .child(
             div()
-                .w(px(200.0))
-                .flex_none()
+                .flex_1()
                 .overflow_hidden()
                 .whitespace_nowrap()
                 .text_ellipsis()
