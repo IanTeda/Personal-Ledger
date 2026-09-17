@@ -726,13 +726,16 @@ impl Render for Shell {
                                 on_row_hover,
                                 on_row_click,
                             ))
-                            .when(self.nav.noun().has_context_entities(), |this| {
-                                this.child(ContextRail::new(
-                                    self.nav.noun(),
-                                    self.nav.context(),
-                                    focus == FocusZone::ContextRail,
-                                ))
-                            })
+                            .when(
+                                self.nav.noun().has_context_entities() && self.nav.ledger_open(),
+                                |this| {
+                                    this.child(ContextRail::new(
+                                        self.nav.noun(),
+                                        self.nav.context(),
+                                        focus == FocusZone::ContextRail,
+                                    ))
+                                },
+                            )
                             .child(render_view(
                                 self.nav.noun(),
                                 self.nav.ledger_open(),

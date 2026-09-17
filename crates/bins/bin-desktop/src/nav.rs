@@ -254,11 +254,20 @@ impl NavState {
         self.context = context;
     }
 
+    /// Whether the context rail is currently on screen at all: the active noun has entities to
+    /// show there (issue #148) *and* a ledger is actually open to source them from (issue
+    /// #166) -- `Shell::render` gates `ContextRail` on exactly this, and focus cycling below
+    /// must agree, or `Tab` could park focus on a rail that isn't rendered.
+    fn context_rail_visible(&self) -> bool {
+        self.noun.has_context_entities() && self.ledger_open
+    }
+
     /// Rule 3: cycles focus forward (`PrimaryRail -> ContextRail -> View -> PrimaryRail`),
-    /// skipping `ContextRail` when the active noun has no entities to show there.
+    /// skipping `ContextRail` when it isn't currently visible (see
+    /// [`Self::context_rail_visible`]).
     pub fn cycle_focus_forward(&mut self) {
         let next = match self.focus {
-            FocusZone::PrimaryRail if self.noun.has_context_entities() => FocusZone::ContextRail,
+            FocusZone::PrimaryRail if self.context_rail_visible() => FocusZone::ContextRail,
             FocusZone::PrimaryRail => FocusZone::View,
             FocusZone::ContextRail => FocusZone::View,
             FocusZone::View => FocusZone::PrimaryRail,
@@ -271,7 +280,7 @@ impl NavState {
         let next = match self.focus {
             FocusZone::PrimaryRail => FocusZone::View,
             FocusZone::ContextRail => FocusZone::PrimaryRail,
-            FocusZone::View if self.noun.has_context_entities() => FocusZone::ContextRail,
+            FocusZone::View if self.context_rail_visible() => FocusZone::ContextRail,
             FocusZone::View => FocusZone::PrimaryRail,
         };
         self.set_focus(next);
@@ -333,7 +342,13 @@ impl NavState {
     }
 
     /// The `:close` command's effect: returns to the "1a" empty state, same as cold start.
+    /// Moves focus off `ContextRail` first if it's there -- that rail (issue #166) is about to
+    /// stop rendering, and leaving focus on a zone with nothing visible in it would be a
+    /// dead-end `Tab` couldn't even cycle out of consistently (see [`Self::context_rail_visible`]).
     pub fn close_ledger(&mut self) {
+        if self.focus == FocusZone::ContextRail {
+            self.set_focus(FocusZone::View);
+        }
         self.ledger_open = false;
     }
 }
@@ -414,6 +429,7 @@ mod tests {
     fn focus_cycles_through_all_three_zones_when_context_exists() {
         let mut nav = NavState::new();
         nav.set_noun(Noun::Accounts); // has_context_entities() == true
+        nav.open_ledger(); // the context rail also needs a ledger open (issue #166)
         nav.set_focus(FocusZone::PrimaryRail);
 
         nav.cycle_focus_forward();
@@ -421,6 +437,44 @@ mod tests {
         nav.cycle_focus_forward();
         assert_eq!(nav.focus(), FocusZone::View);
         nav.cycle_focus_forward();
+        assert_eq!(nav.focus(), FocusZone::PrimaryRail);
+    }
+
+    // Issue #166
+    #[test]
+    fn focus_skips_context_rail_when_no_ledger_is_open_even_with_entities() {
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Accounts); // has_context_entities() == true, but...
+        assert!(!nav.ledger_open()); // ...no ledger is open by default.
+        nav.set_focus(FocusZone::PrimaryRail);
+
+        nav.cycle_focus_forward();
+        assert_eq!(nav.focus(), FocusZone::View);
+        nav.cycle_focus_forward();
+        assert_eq!(nav.focus(), FocusZone::PrimaryRail);
+    }
+
+    #[test]
+    fn closing_the_ledger_moves_focus_off_the_context_rail() {
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Accounts);
+        nav.open_ledger();
+        nav.set_focus(FocusZone::ContextRail);
+
+        nav.close_ledger();
+
+        assert_eq!(nav.focus(), FocusZone::View);
+    }
+
+    #[test]
+    fn closing_the_ledger_leaves_other_focus_zones_alone() {
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Accounts);
+        nav.open_ledger();
+        nav.set_focus(FocusZone::PrimaryRail);
+
+        nav.close_ledger();
+
         assert_eq!(nav.focus(), FocusZone::PrimaryRail);
     }
 
