@@ -35,6 +35,12 @@ const NAME_COLUMN_WIDTH: gpui::Pixels = px(130.0);
 /// Width of the `<binding>` column, immediately after the name column.
 const BINDING_COLUMN_WIDTH: gpui::Pixels = px(64.0);
 
+/// Caps the row list at roughly the height the registry's 14 commands took up before domain
+/// headers existed (issue #144's domain-grouping change) -- rendering every header on top of
+/// every command made the resting-state list noticeably taller than before, so it scrolls past
+/// this instead of growing further. Mirrors `crate::explorer::MAX_ROWS_HEIGHT`'s own reasoning.
+const MAX_ROWS_HEIGHT: gpui::Pixels = px(448.0);
+
 /// One row of the resting/filtered list: a domain header (resting state only) or a command
 /// entry -- mirrors `bin-tui`'s own `popup::command::Row` exactly.
 enum Row {
@@ -60,6 +66,10 @@ pub struct Palette {
     /// Reset by any edit ([`Self::push_char`], [`Self::backspace`]) so resuming typing always
     /// starts a fresh browse rather than picking up mid-cycle.
     history_cursor: Option<usize>,
+    /// The row list's own scroll (see [`MAX_ROWS_HEIGHT`]) -- every mutation that can move
+    /// `selected` or reshuffle the row list calls [`Self::scroll_to_selected`] so the highlight
+    /// never scrolls out of view on its own.
+    scroll_handle: gpui::ScrollHandle,
 }
 
 impl Palette {
@@ -86,12 +96,14 @@ impl Palette {
         self.input.push(c);
         self.selected = 0;
         self.history_cursor = None;
+        self.scroll_to_selected();
     }
 
     pub fn backspace(&mut self) {
         self.input.pop();
         self.selected = 0;
         self.history_cursor = None;
+        self.scroll_to_selected();
     }
 
     /// `tab`: fills the input with the selected result's full command name -- mirrors `enter`'s
@@ -102,6 +114,7 @@ impl Palette {
             self.input = command.name.to_string();
             self.selected = 0;
             self.history_cursor = None;
+            self.scroll_to_selected();
         }
     }
 
@@ -120,10 +133,12 @@ impl Palette {
         self.history_cursor = Some(next);
         self.input = self.history[next].clone();
         self.selected = 0;
+        self.scroll_to_selected();
     }
 
     pub fn move_up(&mut self) {
         self.selected = self.selected.saturating_sub(1);
+        self.scroll_to_selected();
     }
 
     pub fn move_down(&mut self) {
@@ -131,6 +146,7 @@ impl Palette {
         if count > 0 && self.selected + 1 < count {
             self.selected += 1;
         }
+        self.scroll_to_selected();
     }
 
     /// Every registered command matching the current input case-insensitively, against its
@@ -177,6 +193,24 @@ impl Palette {
     /// The command the current selection would run on `Enter`.
     pub fn selected_command(&self) -> Option<&'static Command> {
         self.matches().get(self.selected).copied()
+    }
+
+    /// Scrolls [`Self::scroll_handle`] just enough to keep `self.selected`'s own row on screen
+    /// (`gpui::ScrollHandle::scroll_to_item`'s "minimal scroll to stay fully visible" strategy)
+    /// -- called after every mutation that can move `selected` or reshuffle [`Self::rows`], so
+    /// the highlight in a [`MAX_ROWS_HEIGHT`]-capped, now-scrollable list never drifts out of
+    /// view on its own the way it could before the list could scroll at all.
+    fn scroll_to_selected(&self) {
+        let mut entry_index = 0;
+        for (row_index, row) in self.rows().iter().enumerate() {
+            if let Row::Entry(_) = row {
+                if entry_index == self.selected {
+                    self.scroll_handle.scroll_to_item(row_index);
+                    return;
+                }
+                entry_index += 1;
+            }
+        }
     }
 
     /// The floating overlay itself: `position: absolute`, centred at [`TOP_OFFSET`] from the
@@ -232,7 +266,16 @@ impl Palette {
                     }])
                     .child(input_row(&self.input, match_count))
                     .child(div().h(px(2.0)).bg(color::INK))
-                    .children(rendered_rows)
+                    .child(
+                        div()
+                            .id("palette-rows")
+                            .flex()
+                            .flex_col()
+                            .max_h(MAX_ROWS_HEIGHT)
+                            .overflow_y_scroll()
+                            .track_scroll(&self.scroll_handle)
+                            .children(rendered_rows),
+                    )
                     .child(div().h(px(1.0)).bg(color::HAIRLINE))
                     .child(footer_row()),
             )
