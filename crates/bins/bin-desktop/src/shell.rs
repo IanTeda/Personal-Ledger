@@ -32,6 +32,7 @@ use gpui::{
 use crate::{
     command::{self, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
+    key_router::{KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
     rail::{self, context::ContextRail, primary::PrimaryRail},
@@ -50,24 +51,6 @@ const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
 /// The handoff's own "Jumps" timeout: a `g` with no completing chord within this window is
 /// abandoned rather than left waiting indefinitely.
 const PENDING_G_TIMEOUT: Duration = Duration::from_millis(1000);
-
-/// The `g`-prefix jump target for each bound completion key. Every noun has one today --
-/// `Transactions` moved off `g t` onto `g l` to free `t` for the newer `Tags` noun.
-fn jump_noun_for_key(key: &str) -> Option<Noun> {
-    match key {
-        "d" => Some(Noun::Dashboard),
-        "l" => Some(Noun::Transactions),
-        "a" => Some(Noun::Accounts),
-        "c" => Some(Noun::Categories),
-        "p" => Some(Noun::Payees),
-        "t" => Some(Noun::Tags),
-        "w" => Some(Noun::Bills),
-        "b" => Some(Noun::Budgets),
-        "r" => Some(Noun::Reports),
-        "s" => Some(Noun::Settings),
-        _ => None,
-    }
-}
 
 /// A click on the empty state's own `:open`/`:new` text (issue #167): the clicked command's
 /// name (`"open"` or `"new"`), looked up in `command::COMMANDS` and run exactly as the palette's
@@ -88,20 +71,6 @@ fn explorer_start_dir() -> PathBuf {
 fn record_history(history: &mut Vec<String>, name: &str) {
     history.retain(|entry| entry != name);
     history.insert(0, name.to_string());
-}
-
-/// A single semantic movement, parsed once from a keystroke and then dispatched against
-/// whichever zone is focused -- the same physical keys mean different things per zone, but
-/// the keys-to-intent mapping itself doesn't vary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Movement {
-    Next,
-    Prev,
-    First,
-    Last,
-    HalfPageDown,
-    HalfPageUp,
-    Enter,
 }
 
 /// The primary rail has a fixed 10-row list, not a real "page" of variable-height content --
@@ -196,135 +165,104 @@ impl Shell {
         }
     }
 
-    /// Routes a keystroke: `Esc` first (works in any mode, clears a pending `g` before
-    /// leaving the current mode), then -- while a non-`Normal` mode is active -- nothing else
-    /// (mode transitions pre-empt zone/movement handling, and there's no real `Insert`/
-    /// `Command`/`Search` input surface to route keys to yet, see the module doc), then a
-    /// pending `g`'s own completion/abort (before anything else can claim the key, so `g a`
-    /// reaches Accounts rather than bare `a`'s mode entry), then the global mode-entry keys,
-    /// `Tab` cycling, arming a fresh `g`, and finally [`Movement`] dispatched to whichever
-    /// zone is focused. Returns `false` for a keystroke that changed nothing (nothing to
-    /// redraw).
+    /// Routes a keystroke through the pure [`key_router::route_key`] decision function, then
+    /// applies whatever [`KeyOutcome`] it returns. The routing logic itself -- `Esc`'s
+    /// any-mode precedence, the `Command`-mode/other-non-`Normal` gates, a pending `g`'s
+    /// completion/abort, the global mode-entry keys, `Tab` cycling, arming a fresh `g`, and
+    /// [`Movement`] dispatch -- lives entirely in that `gpui`-free module now; this method is
+    /// just the impure shell that owns `Shell`'s own state (`pending_g`, `status_message`,
+    /// `palette`, `file_explorer`, `nav`) and applies the outcome to it. Returns `false` for a
+    /// keystroke that changed nothing (nothing to redraw).
     fn handle_key_down(&mut self, event: &KeyDownEvent) -> bool {
         let keystroke = &event.keystroke;
         let ctrl = keystroke.modifiers.control;
         let shift = keystroke.modifiers.shift;
         let key = keystroke.key.as_str();
 
-        if key == "escape" {
-            if self.pending_g.take().is_some() {
-                return true;
-            }
-            if self.nav.mode() != InputMode::Normal {
+        let pending_g_active = self
+            .pending_g
+            .take()
+            .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
+
+        let outcome = route_key(self.nav.mode(), pending_g_active, key, ctrl, shift);
+
+        // `Esc`'s three shapes short-circuit before the hint-strip-clearing precedent below --
+        // mirrors the original tier order exactly, including the quirk that a bare `Esc` with
+        // nothing to do (`EscapeNoOp`) does *not* clear a stale status message.
+        match outcome {
+            KeyOutcome::ClearPendingG => return true,
+            KeyOutcome::ClosePopupsAndExitMode => {
                 self.palette = None;
                 self.file_explorer = None;
                 self.nav.exit_mode();
                 return true;
             }
-            return false;
+            KeyOutcome::EscapeNoOp => return false,
+            _ => {}
         }
 
         // The handoff's own precedent for hint-strip messages (`docs/ux/desktop/README.md`'s
         // "Loading and error states"): any keypress clears one, not just a timer.
         let had_status_message = self.status_message.take().is_some();
 
-        // Popup-owned keys (mirroring `docs/ux/tui/navigation.md`'s own tier 2): while the
-        // palette is open it owns every keystroke, checked before the "Normal only" gate below
-        // since `Command` is the one non-`Normal` mode with a real input surface to route keys
-        // to today (`Insert`/`Search` don't have one yet -- see the module doc).
-        if self.nav.mode() == InputMode::Command {
-            return self.handle_palette_key(keystroke) || had_status_message;
-        }
-
-        if self.nav.mode() != InputMode::Normal {
-            return had_status_message;
-        }
-
-        // A pending `g` consumes the very next key unconditionally, completing or aborting
-        // the chord -- checked before the mode-entry keys and `Tab` below so e.g. `g a`
-        // reaches Accounts rather than the bare `a` mode-entry key, and `g` then anything
-        // else never leaks into ordinary handling.
-        if let Some(pending_since) = self.pending_g.take()
-            && pending_since.elapsed() <= PENDING_G_TIMEOUT
-        {
-            if key == "g" && !ctrl && !shift {
-                self.apply_movement(Movement::First);
-                return true;
+        match outcome {
+            KeyOutcome::DelegateToPalette => {
+                self.handle_palette_key(keystroke) || had_status_message
             }
-            if !ctrl
-                && !shift
-                && let Some(noun) = jump_noun_for_key(key)
-            {
+            KeyOutcome::Swallowed => had_status_message,
+            KeyOutcome::JumpToNoun(noun) => {
                 self.nav.set_noun(noun);
                 self.reset_view_scroll();
-                return true;
+                true
             }
-            // The handoff: "`g` + an unbound key is a no-op: clear the pending prefix and
-            // flash the hint strip." `key` itself is consumed doing nothing else -- it
-            // completes (aborts) the chord rather than also being processed as its own
-            // ordinary keystroke.
-            self.status_message = Some(format!("g {key} is not a jump"));
-            return true;
-        }
-        // No pending `g` (or it timed out) -- fall through and process `key` fresh.
-
-        match key {
-            ":" => {
+            KeyOutcome::PendingGUnbound(message) => {
+                self.status_message = Some(message);
+                true
+            }
+            KeyOutcome::EnterCommand => {
                 self.nav.enter_mode(InputMode::Command);
                 self.palette = Some(Palette::with_history(self.command_history.clone()));
-                return true;
+                true
             }
-            "/" => {
+            KeyOutcome::EnterSearch => {
                 self.nav.enter_mode(InputMode::Search);
-                return true;
+                true
             }
-            // `g a` (above) jumps to Accounts instead -- the pending-`g` branch always runs
-            // first and returns before this match is reached, so the two never collide.
-            "a" if !ctrl && !shift => {
+            KeyOutcome::EnterInsert => {
                 self.nav.enter_mode(InputMode::Insert);
-                return true;
+                true
             }
             // Mirrors the TopBar's own rail-toggle button (`Shell::handle_toggle_rail`) --
             // same action, two entry points. Clears any settled collapsed-rail tooltip: it's
             // meaningless once the rail that anchors it changes shape.
-            "b" if !ctrl && !shift => {
+            KeyOutcome::ToggleRail => {
                 self.nav.toggle_primary_rail();
                 self.collapsed_rail_tooltip = None;
-                return true;
+                true
             }
-            _ => {}
-        }
-
-        if key == "tab" {
-            if shift {
-                self.nav.cycle_focus_backward();
-            } else {
+            KeyOutcome::CycleFocusForward => {
                 self.nav.cycle_focus_forward();
+                true
             }
-            return true;
+            KeyOutcome::CycleFocusBackward => {
+                self.nav.cycle_focus_backward();
+                true
+            }
+            KeyOutcome::ArmPendingG => {
+                self.pending_g = Some(Instant::now());
+                had_status_message
+            }
+            KeyOutcome::Movement(movement) => {
+                self.apply_movement(movement);
+                true
+            }
+            KeyOutcome::NoOp => had_status_message,
+            KeyOutcome::ClearPendingG
+            | KeyOutcome::ClosePopupsAndExitMode
+            | KeyOutcome::EscapeNoOp => {
+                unreachable!("handled above")
+            }
         }
-
-        if key == "g" && !ctrl && !shift {
-            self.pending_g = Some(Instant::now());
-            return had_status_message;
-        }
-
-        let movement = match key {
-            // Bare Shift-`g` (`G`), no pending prefix -- jump to last in the focused zone.
-            "g" if shift => Some(Movement::Last),
-            "j" | "down" => Some(Movement::Next),
-            "k" | "up" => Some(Movement::Prev),
-            "d" if ctrl => Some(Movement::HalfPageDown),
-            "u" if ctrl => Some(Movement::HalfPageUp),
-            "enter" => Some(Movement::Enter),
-            _ => None,
-        };
-
-        let Some(movement) = movement else {
-            return had_status_message;
-        };
-        self.apply_movement(movement);
-        true
     }
 
     fn apply_movement(&mut self, movement: Movement) {

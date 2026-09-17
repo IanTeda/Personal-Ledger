@@ -11,6 +11,7 @@ mod error;
 mod explorer;
 mod feasibility_demo;
 mod icon;
+mod key_router;
 mod nav;
 mod palette;
 mod persistence;
