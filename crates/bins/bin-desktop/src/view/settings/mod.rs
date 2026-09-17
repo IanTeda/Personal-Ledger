@@ -1,15 +1,18 @@
 //! The Settings body (`docs/ux/desktop/Settings/README.md`'s "2a resting state", "Body"): one
 //! continuous scroll, not a pane switcher -- every section stays mounted, and the settings index
-//! rail (`rail::settings_index`) scrolls to a heading rather than swapping views. This ticket
-//! (issue #173) only lays out the frame: each section's real content is a placeholder until its
-//! own ticket lands (`crate::settings::SettingsSection::placeholder_issue`).
+//! rail (`rail::settings_index`) scrolls to a heading rather than swapping views. The shell
+//! scaffold (issue #173) laid out every section as a placeholder; each section's real content
+//! lands as its own submodule here, one ticket at a time
+//! (`crate::settings::SettingsSection::placeholder_issue` names the one still owed).
 //!
 //! Direct children of the scrollable container, in order: the page heading block (child `0`),
 //! then each of the nine sections (children `1..=9`) -- `SettingsSection::body_child_index`
 //! documents this offset, since `gpui::ScrollHandle::scroll_to_top_of_item` addresses direct
 //! children by index.
 
-use gpui::{ScrollHandle, div, prelude::*, px};
+mod general;
+
+use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
 
 use crate::{settings::SettingsSection, theme::color};
 
@@ -100,9 +103,58 @@ fn section_block(section: SettingsSection) -> impl IntoElement {
                 .mt(px(14.0))
                 .mb(px(18.0)),
         )
-        .child(div().text_color(color::INK_TERTIARY).child(format!(
+        .child(section_content(section))
+}
+
+/// Each section's real content, once its own ticket has landed -- everything else still falls
+/// back to the placeholder `section_block` originally rendered for all nine.
+fn section_content(section: SettingsSection) -> AnyElement {
+    match section {
+        SettingsSection::General => general::render(),
+        other => placeholder(other),
+    }
+}
+
+fn placeholder(section: SettingsSection) -> AnyElement {
+    div()
+        .text_color(color::INK_TERTIARY)
+        .child(format!(
             "{} -- not yet built (see issue #{})",
             section.label(),
             section.placeholder_issue()
-        )))
+        ))
+        .into_any_element()
+}
+
+/// A field label: `display:block; font-weight:800; font-size:12px; margin-bottom:6px`
+/// (`docs/ux/desktop/Settings/README.md`'s Components table) -- shared by every section that
+/// lays out `Field label` + `Input/select` pairs.
+pub(super) fn field_label(label: impl Into<SharedString>) -> impl IntoElement {
+    div()
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .text_size(px(12.0))
+        .mb(px(6.0))
+        .child(label.into())
+}
+
+/// An `Input`/`select`-styled box showing `value` as static text: `width:100%; padding:8px 10px;
+/// border:1px solid rgba(32,30,29,.30); font-size:13px` -- `select_style` adds the `select`
+/// row's own `background:#f3f2f2` (README: "selects add `background:#f3f2f2`").
+///
+/// Deliberately **not** a real editable text input or an openable dropdown -- see this map's own
+/// Destination: every section here is stubbed/dummy data, and free-text editing/dropdown-open
+/// behaviour is real interaction-pattern work with no existing precedent in this crate yet
+/// (`gpui-component` ships an `Input` widget, but adopting it is a bigger, crate-wide styling
+/// decision than one section's ticket should make on its own -- left for whichever future
+/// ticket needs it first). "Save on change" therefore has nothing to save yet.
+pub(super) fn field_value(value: impl Into<SharedString>, select_style: bool) -> impl IntoElement {
+    div()
+        .w_full()
+        .py(px(8.0))
+        .px(px(10.0))
+        .border_1()
+        .border_color(color::BORDER)
+        .text_size(px(13.0))
+        .when(select_style, |this| this.bg(color::GROUND))
+        .child(value.into())
 }
