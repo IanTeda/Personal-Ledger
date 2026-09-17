@@ -15,8 +15,13 @@ use crate::{
     theme::color,
 };
 
-/// Fixed width: the "1d" spec's own `820px`.
-pub const WIDTH: gpui::Pixels = px(820.0);
+/// Fixed width. Narrower than the "1d" spec's own `820px` -- another deliberate override (see
+/// `crate::command`'s own module doc for the domain-grouping one): now that the binding sits
+/// right next to the name instead of pushed to the row's far edge, 820px left the description
+/// column far wider than the registry's own longest description ever needs, sized instead to
+/// comfortably fit that longest description ("the tags every transaction can carry any number
+/// of", 50 characters) plus the name/binding columns before it.
+pub const WIDTH: gpui::Pixels = px(640.0);
 
 /// Distance from the window's top edge: the "1d" spec's own `top: 96px`.
 pub const TOP_OFFSET: gpui::Pixels = px(96.0);
