@@ -91,12 +91,13 @@ fn brand_mark() -> impl IntoElement {
                 .text_size(px(13.5))
                 .child("Personal Ledger"),
         )
-        // Representative content -- the open Ledger's own name/base Unit, not a real file yet.
+        // Representative content -- the open Ledger's own file path/base Unit, not a real file
+        // yet (real path display lands with the sync/open-file tickets, #164/#165).
         .child(
             div()
                 .text_size(px(12.0))
                 .text_color(color::INK_TERTIARY)
-                .child("teda.ledger · aud"),
+                .child("~/Documents/My-Personal-Ledger.pldb · aud"),
         )
 }
 
