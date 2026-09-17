@@ -1,12 +1,11 @@
 //! The shell's status line (`docs/ux/desktop/Shell & Navigation/README.md`'s "1a" spec,
-//! "Status line" component): mode badge, hint strip, breadcrumb.
+//! "Status line" component): mode badge, hint strip. Its own bottom-right breadcrumb (`ledger ·
+//! <noun>`) was dropped -- the top bar's brand tile now names the active screen instead
+//! (`crate::topbar::brand_mark`), and showing it in both places was a plain duplicate.
 
 use gpui::{App, Window, div, prelude::*, px};
 
-use crate::{
-    nav::{InputMode, Noun},
-    theme::color,
-};
+use crate::{nav::InputMode, theme::color};
 
 /// Band height: `docs/ux/desktop/Shell & Navigation/README.md`'s "Layout" table.
 pub const HEIGHT: gpui::Pixels = px(28.0);
@@ -14,7 +13,6 @@ pub const HEIGHT: gpui::Pixels = px(28.0);
 #[derive(IntoElement)]
 pub struct StatusLine {
     mode: InputMode,
-    noun: Noun,
     /// Replaces the hint strip when `Some` -- the handoff's "Loading and error states" rule
     /// ("the hint strip is replaced by the error ... cleared by any keypress"), reused here
     /// for the `g`-jump prefix's own "flash the hint strip" abort message and the command
@@ -36,13 +34,11 @@ pub struct StatusLine {
 impl StatusLine {
     pub fn new(
         mode: InputMode,
-        noun: Noun,
         status_message: Option<String>,
         command_echo: Option<(String, &'static str)>,
     ) -> Self {
         Self {
             mode,
-            noun,
             status_message,
             command_echo,
         }
@@ -76,7 +72,7 @@ impl RenderOnce for StatusLine {
             .child(div().flex_1())
             .child(match self.command_echo {
                 Some((_, hint)) => div().child(hint).into_any_element(),
-                None => breadcrumb(self.noun).into_any_element(),
+                None => file_path().into_any_element(),
             })
     }
 }
@@ -136,19 +132,9 @@ fn command_query_echo(query: &str) -> impl IntoElement {
         .child(div().w(px(2.0)).h(px(13.0)).bg(color::ACCENT))
 }
 
-fn breadcrumb(noun: Noun) -> impl IntoElement {
-    let noun_label = match noun {
-        Noun::Dashboard => "dashboard",
-        Noun::Transactions => "transactions",
-        Noun::Accounts => "accounts",
-        Noun::Categories => "categories",
-        Noun::Payees => "payees",
-        Noun::Tags => "tags",
-        Noun::Bills => "bills",
-        Noun::Budgets => "budgets",
-        Noun::Reports => "reports",
-        Noun::Settings => "settings",
-    };
-
-    div().child(format!("ledger · {noun_label}"))
+/// The open Ledger's own file path, moved here from the top bar's brand tile (`crate::topbar`)
+/// -- representative content, not a real path yet (lands with the sync/open-file tickets,
+/// #164/#165).
+fn file_path() -> impl IntoElement {
+    div().child("~/Documents/My-Personal-Ledger.pldb · aud")
 }

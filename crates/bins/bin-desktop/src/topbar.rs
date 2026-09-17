@@ -20,7 +20,7 @@ use std::rc::Rc;
 use gpui::{App, ClickEvent, Window, div, prelude::*, px};
 use gpui_component::Sizable;
 
-use crate::{icon::DesktopIcon, theme::color};
+use crate::{icon::DesktopIcon, nav::Noun, theme::color};
 
 /// Band height: `docs/ux/desktop/Shell & Navigation/README.md`'s "Layout" table.
 pub const HEIGHT: gpui::Pixels = px(48.0);
@@ -32,11 +32,15 @@ pub type OnRailToggle = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 #[derive(IntoElement)]
 pub struct TopBar {
     on_rail_toggle: OnRailToggle,
+    active_noun: Noun,
 }
 
 impl TopBar {
-    pub fn new(on_rail_toggle: OnRailToggle) -> Self {
-        Self { on_rail_toggle }
+    pub fn new(on_rail_toggle: OnRailToggle, active_noun: Noun) -> Self {
+        Self {
+            on_rail_toggle,
+            active_noun,
+        }
     }
 }
 
@@ -54,7 +58,7 @@ impl RenderOnce for TopBar {
             .border_b(px(2.0))
             .border_color(color::STRUCTURAL_RULE)
             .child(rail_toggle(self.on_rail_toggle))
-            .child(brand_mark())
+            .child(brand_mark(self.active_noun))
             .child(div().flex_1())
             .child(sync_indicator())
             .child(window_controls())
@@ -80,25 +84,24 @@ fn rail_toggle(on_rail_toggle: OnRailToggle) -> impl IntoElement {
         )
 }
 
-fn brand_mark() -> impl IntoElement {
+/// The brand tile names the active screen too (e.g. "Personal Ledger | Dashboard"), so it
+/// changes with `NavState::noun` -- the status line's own bottom-right breadcrumb used to
+/// duplicate this same fact and was dropped in favour of naming it once, here. The open
+/// Ledger's own file path lives at the status line's own bottom right instead
+/// (`crate::statusline`), not here.
+fn brand_mark(active_noun: Noun) -> impl IntoElement {
     div()
         .flex()
         .items_baseline()
-        .gap(px(8.0))
+        .gap(px(6.0))
+        .text_size(px(13.5))
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(13.5))
                 .child("Personal Ledger"),
         )
-        // Representative content -- the open Ledger's own file path/base Unit, not a real file
-        // yet (real path display lands with the sync/open-file tickets, #164/#165).
-        .child(
-            div()
-                .text_size(px(12.0))
-                .text_color(color::INK_TERTIARY)
-                .child("~/Documents/My-Personal-Ledger.pldb · aud"),
-        )
+        .child(div().text_color(color::INK_TERTIARY).child("|"))
+        .child(format!("{active_noun:?}"))
 }
 
 fn sync_indicator() -> impl IntoElement {

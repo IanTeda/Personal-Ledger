@@ -759,7 +759,7 @@ impl Render for Shell {
                     .flex()
                     .flex_col()
                     .opacity(content_opacity)
-                    .child(TopBar::new(on_rail_toggle))
+                    .child(TopBar::new(on_rail_toggle, self.nav.noun()))
                     .child(
                         div()
                             .flex_1()
@@ -794,7 +794,6 @@ impl Render for Shell {
             )
             .child(StatusLine::new(
                 self.nav.mode(),
-                self.nav.noun(),
                 self.status_message.clone(),
                 self.command_echo(),
             ))
