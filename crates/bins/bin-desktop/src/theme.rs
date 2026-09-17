@@ -55,6 +55,18 @@ pub mod color {
     pub const HAIRLINE_LIGHT: Rgba = rgb(0xeae9e9);
     /// The 2px structural rule between shell bands/columns: `rgba(32,30,29,.38)`.
     pub const STRUCTURAL_RULE: Rgba = rgba(0x201e1d61);
+    /// `Border`: `rgba(32,30,29,.30)` -- an unfocused input/button border (the handoffs'
+    /// design-token tables list this role separately from [`Self::STRUCTURAL_RULE`]'s `.38`,
+    /// even though earlier code duplicated its value as an inline `gpui::rgba(0x201e1d4d)`
+    /// rather than a shared constant -- see `crate::explorer`'s own header/Cancel button).
+    pub const BORDER: Rgba = rgba(0x201e1d4d);
+    /// `Dimmer`: the same `rgba(32,30,29,.30)` value as [`Self::BORDER`], under its own name
+    /// for the Settings dialog component's full-viewport scrim
+    /// (`docs/ux/desktop/Settings/README.md`'s "Dimmer" row) -- today's other floating
+    /// overlays (`crate::palette::Palette`, `crate::explorer::FileExplorer`) dim the shell by
+    /// reducing its own opacity instead (`Shell::render`'s `content_opacity`), so this is the
+    /// first real use of an overlay scrim in this crate.
+    pub const DIMMER: Rgba = BORDER;
     /// The in-rail group divider: `rgba(32,30,29,.20)`.
     pub const RAIL_DIVIDER: Rgba = rgba(0x201e1d33);
     /// Row/result hover tint: `rgba(32,30,29,.06)`.

@@ -7,6 +7,7 @@
 
 mod assets;
 mod command;
+mod dialog;
 mod error;
 mod explorer;
 mod feasibility_demo;
