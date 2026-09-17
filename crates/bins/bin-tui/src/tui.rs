@@ -14,7 +14,10 @@ use crossterm::{
         supports_keyboard_enhancement,
     },
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
+use ratatui::{
+    Terminal,
+    backend::{Backend as _, ClearType, CrosstermBackend},
+};
 
 /// The terminal type this crate renders to: `crossterm` on `stdout`.
 pub type Backend = CrosstermBackend<Stdout>;
@@ -33,6 +36,17 @@ impl Tui {
     /// *own* last draw, so without this, whatever the terminal emulator left in the alternate
     /// screen buffer (leftover output, a resize revealing untouched rows) can show through
     /// as stray artifacts until something else happens to redraw that exact cell.
+    ///
+    /// Clears via the backend's own `clear_region` directly, not `Terminal::clear` -- the
+    /// latter snapshots and restores the cursor position around the clear, which is a real
+    /// blocking ANSI round-trip (`ESC[6n`) to the terminal. That's meaningless here (nothing's
+    /// been drawn yet, so there's no cursor position worth preserving) and, chained right after
+    /// `supports_keyboard_enhancement`'s own round-trip above, was enough to make CI's smoke
+    /// test (which runs against `script`'s fake PTY -- a real pty device, but nothing on the
+    /// other end answers escape queries) fail with "the cursor position could not be read
+    /// within a normal duration" on Linux/macOS runners (Windows never round-trips at all:
+    /// `supports_keyboard_enhancement` is hardcoded `Ok(false)` there). Confirmed by direct
+    /// reproduction of the exact CI command locally.
     ///
     /// Also opts into the Kitty keyboard protocol's `DISAMBIGUATE_ESCAPE_CODES`, when the
     /// terminal supports it: legacy terminal encoding reduces any `Ctrl+<key>` chord to the
@@ -63,7 +77,7 @@ impl Tui {
         }
 
         let mut terminal = Terminal::new(CrosstermBackend::new(stdout))?;
-        terminal.clear()?;
+        terminal.backend_mut().clear_region(ClearType::All)?;
         Ok(Self {
             terminal,
             keyboard_enhancement,
