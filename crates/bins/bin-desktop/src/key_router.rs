@@ -50,8 +50,12 @@ pub enum KeyOutcome {
     EscapeNoOp,
     /// `InputMode::Command` owns every keystroke -- hand off to `Shell::handle_palette_key`.
     DelegateToPalette,
-    /// A non-`Normal`, non-`Command` mode (`Insert`/`Search`) with no real input surface yet --
-    /// swallow the key.
+    /// `InputMode::Search` owns every keystroke -- hand off to `Shell::handle_search_key`. Only
+    /// meaningful on the Settings noun today (its index rail's own `/ filter`,
+    /// `docs/ux/desktop/Settings/README.md`'s "Navigation" bullet); `Shell::handle_search_key`
+    /// is a no-op everywhere else, the same way `Swallowed` used to be for this mode outright.
+    DelegateToSearch,
+    /// `InputMode::Insert` has no real input surface yet -- swallow the key.
     Swallowed,
     /// A pending `g` completed: jump straight to this noun.
     JumpToNoun(Noun),
@@ -120,6 +124,9 @@ pub fn route_key(
 
     if mode == InputMode::Command {
         return KeyOutcome::DelegateToPalette;
+    }
+    if mode == InputMode::Search {
+        return KeyOutcome::DelegateToSearch;
     }
     if mode != InputMode::Normal {
         return KeyOutcome::Swallowed;
@@ -221,13 +228,19 @@ mod tests {
     }
 
     #[test]
-    fn insert_and_search_modes_swallow_every_non_escape_key() {
-        for mode in [InputMode::Insert, InputMode::Search] {
-            assert_eq!(
-                route_key(mode, false, "j", false, false),
-                KeyOutcome::Swallowed
-            );
-        }
+    fn insert_mode_swallows_every_non_escape_key() {
+        assert_eq!(
+            route_key(InputMode::Insert, false, "j", false, false),
+            KeyOutcome::Swallowed
+        );
+    }
+
+    #[test]
+    fn search_mode_delegates_every_non_escape_key() {
+        assert_eq!(
+            route_key(InputMode::Search, false, "j", false, false),
+            KeyOutcome::DelegateToSearch
+        );
     }
 
     // Pending g

@@ -3,3 +3,4 @@
 
 pub mod context;
 pub mod primary;
+pub mod settings_index;

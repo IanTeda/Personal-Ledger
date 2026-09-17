@@ -35,11 +35,17 @@ use crate::{
     key_router::{KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
-    rail::{self, context::ContextRail, primary::PrimaryRail},
+    rail::{
+        self,
+        context::ContextRail,
+        primary::PrimaryRail,
+        settings_index::{self, SettingsIndexRail},
+    },
+    settings::SettingsSection,
     statusline::StatusLine,
     theme::{color, type_scale},
     topbar::{self, TopBar},
-    view::dashboard::Dashboard,
+    view::{dashboard::Dashboard, settings as settings_view},
 };
 
 /// The collapsed rail's own hover-reveal delay (`docs/ux/desktop/Shell & Navigation/README.md`'s
@@ -121,6 +127,17 @@ pub struct Shell {
     /// this is `Some` (see [`Self::run_command`]'s own doc), so the two together -- rather than
     /// a third `InputMode` variant -- are what "the file explorer is open" means.
     file_explorer: Option<FileExplorer>,
+    /// The Settings index rail's own `/ filter` query (issue #173) -- live while
+    /// `NavState::mode` is `InputMode::Search` and the active noun is `Settings` (see
+    /// [`Self::handle_search_key`]). Cleared whenever a fresh noun is entered
+    /// ([`Self::reset_view_scroll`]) or `Esc` leaves the mode, so a stale filter never survives
+    /// past the session that typed it.
+    settings_filter: String,
+    /// The settings index rail's own active/highlighted entry -- updated only by an explicit
+    /// row click ([`Self::handle_settings_index_click`]), not by scroll position (no scrollspy
+    /// yet). Reset to `SettingsSection::default()` alongside the view scroll whenever a fresh
+    /// noun is entered, so re-opening Settings always starts on General again.
+    settings_selected_section: SettingsSection,
 }
 
 impl Shell {
@@ -136,6 +153,8 @@ impl Shell {
             collapsed_rail_tooltip: None,
             hover_generation: 0,
             file_explorer: None,
+            settings_filter: String::new(),
+            settings_selected_section: SettingsSection::default(),
         }
     }
 
@@ -194,6 +213,9 @@ impl Shell {
             KeyOutcome::ClosePopupsAndExitMode => {
                 self.palette = None;
                 self.file_explorer = None;
+                // README's "Interactions" > "Navigation": `esc` clears the settings index
+                // rail's own filter, the same as it closes the palette/file explorer above.
+                self.settings_filter.clear();
                 self.nav.exit_mode();
                 return true;
             }
@@ -209,6 +231,7 @@ impl Shell {
             KeyOutcome::DelegateToPalette => {
                 self.handle_palette_key(keystroke) || had_status_message
             }
+            KeyOutcome::DelegateToSearch => self.handle_search_key(keystroke) || had_status_message,
             KeyOutcome::Swallowed => had_status_message,
             KeyOutcome::JumpToNoun(noun) => {
                 self.nav.set_noun(noun);
@@ -279,9 +302,13 @@ impl Shell {
 
     /// A new noun's view is a different (usually much shorter) length -- carrying over the
     /// old scroll offset could leave it scrolled past all its content, rendering blank. Every
-    /// fresh noun starts scrolled to the top.
+    /// fresh noun starts scrolled to the top. Also resets the Settings index rail's own
+    /// highlight and filter (harmless for every other noun, and means re-entering Settings
+    /// always starts back on General with a clean filter, matching the fresh scroll position).
     fn reset_view_scroll(&mut self) {
         self.view_scroll_handle.set_offset(gpui::Point::default());
+        self.settings_selected_section = SettingsSection::default();
+        self.settings_filter.clear();
     }
 
     fn apply_primary_rail_movement(&mut self, movement: Movement) {
@@ -414,6 +441,39 @@ impl Shell {
         }
     }
 
+    /// Routes a keystroke while `InputMode::Search` is active (tier 2, mirroring
+    /// [`Self::handle_palette_key`]'s shape): only meaningful on the Settings noun today, where
+    /// it drives the settings index rail's own `/ filter`
+    /// (`docs/ux/desktop/Settings/README.md`'s "Navigation" bullet). A no-op everywhere else --
+    /// Search mode still has no other real input surface (`key_router::KeyOutcome::DelegateToSearch`'s
+    /// own doc).
+    fn handle_search_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.noun() != Noun::Settings {
+            return false;
+        }
+
+        match keystroke.key.as_str() {
+            "backspace" => {
+                self.settings_filter.pop();
+                true
+            }
+            _ => {
+                let modifiers = &keystroke.modifiers;
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                match keystroke.key_char.as_deref() {
+                    Some(text) if text.chars().count() == 1 => {
+                        self.settings_filter
+                            .push(text.chars().next().expect("checked above"));
+                        true
+                    }
+                    _ => false,
+                }
+            }
+        }
+    }
+
     /// Runs `command`'s effect -- one exhaustive match over [`CommandEffect`], the single
     /// source of truth for what a command does (issue #144's own architecture review, "deepen
     /// the command's interface": this replaced an `Option<fn(&mut NavState)>` handler plus a
@@ -505,6 +565,20 @@ impl Shell {
         if self.nav.noun() != noun_before {
             self.reset_view_scroll();
         }
+        cx.notify();
+    }
+
+    /// The settings index rail's own row click (`rail::settings_index::OnEntryClick`):
+    /// highlights the clicked section and scrolls the settings body so its heading becomes the
+    /// top visible child (`docs/ux/desktop/Settings/README.md`'s "Navigation" bullet: "Index
+    /// entry click -> scroll the body to that section's heading; the entry takes the active
+    /// dark treatment"). `scroll_to_top_of_item` addresses the body's *direct* children, so this
+    /// goes through `SettingsSection::body_child_index`, not `SettingsSection::index`, to
+    /// account for the page heading occupying child `0` (see `view::settings::render`).
+    fn handle_settings_index_click(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
+        self.settings_selected_section = section;
+        self.view_scroll_handle
+            .scroll_to_top_of_item(section.body_child_index());
         cx.notify();
     }
 
@@ -677,6 +751,14 @@ impl Render for Shell {
                 });
             })
         };
+        let on_settings_index_click: settings_index::OnEntryClick = {
+            let entity = entity.clone();
+            Rc::new(move |section, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_settings_index_click(section, cx)
+                });
+            })
+        };
 
         div()
             .size_full()
@@ -729,6 +811,11 @@ impl Render for Shell {
                                 focus == FocusZone::View,
                                 &self.view_scroll_handle,
                                 on_empty_state_command_click,
+                                SettingsIndexProps {
+                                    filter: &self.settings_filter,
+                                    selected: self.settings_selected_section,
+                                    on_click: on_settings_index_click,
+                                },
                             )),
                     ),
             )
@@ -749,23 +836,55 @@ impl Render for Shell {
     }
 }
 
-/// The active noun's own view interior. Only `Dashboard` is real; every other noun is a
-/// placeholder until its own view lands (issue #153). `Dashboard` itself further branches on
-/// `ledger_open` (`docs/ux/desktop/Shell & Navigation/README.md`'s "1a" empty state) --
-/// implementation note 2's "only the main pane branches on `ledgerOpen`" scopes that to the
-/// one real view; the still-placeholder nouns say "not yet built" either way. Scrollable and
-/// focus-bordered regardless of which noun is active, since both are properties of the `View`
-/// zone itself, not of any one noun's content.
+/// Bundles `render_view`'s Settings-only parameters (keeps the function under Clippy's
+/// `too_many_arguments` threshold) -- ignored entirely for every noun besides `Settings`.
+struct SettingsIndexProps<'a> {
+    filter: &'a str,
+    selected: SettingsSection,
+    on_click: settings_index::OnEntryClick,
+}
+
+/// The active noun's own view interior. Only `Dashboard` and `Settings` are real; every other
+/// noun is a placeholder until its own view lands (issue #153). `Dashboard` itself further
+/// branches on `ledger_open` (`docs/ux/desktop/Shell & Navigation/README.md`'s "1a" empty
+/// state) -- implementation note 2's "only the main pane branches on `ledgerOpen`" scopes that
+/// to the one real view; the still-placeholder nouns say "not yet built" either way.
+///
+/// `Settings` (issue #173) is handled separately, before the generic match below: it renders
+/// its own two-column [index rail][scrollable body] layout filling the whole slot, rather than
+/// the single scrollable `#view` div every other noun gets -- the settings body owns
+/// `scroll_handle` directly (see `view::settings::render`), so wrapping the whole thing in a
+/// second scrollable container here would fight it for the same scroll state. Every other noun
+/// is scrollable and focus-bordered regardless of which is active, since both are properties of
+/// the `View` zone itself, not of any one noun's content.
 fn render_view(
     noun: Noun,
     ledger_open: bool,
     focused: bool,
     scroll_handle: &ScrollHandle,
     on_empty_state_command_click: OnEmptyStateCommandClick,
+    settings: SettingsIndexProps<'_>,
 ) -> gpui::AnyElement {
+    if noun == Noun::Settings {
+        return div()
+            .id("settings")
+            .flex_1()
+            .min_w(px(0.0))
+            .h_full()
+            .flex()
+            .child(SettingsIndexRail::new(
+                settings.selected,
+                settings.filter.to_string(),
+                settings.on_click,
+            ))
+            .child(settings_view::render(focused, scroll_handle))
+            .into_any_element();
+    }
+
     let content = match noun {
         Noun::Dashboard if ledger_open => Dashboard::new().into_any_element(),
         Noun::Dashboard => empty_state(on_empty_state_command_click),
+        Noun::Settings => unreachable!("handled above"),
         other => div()
             .p(px(24.0))
             .text_color(color::INK_TERTIARY)

@@ -16,6 +16,7 @@ mod nav;
 mod palette;
 mod persistence;
 mod rail;
+mod settings;
 mod shell;
 mod statusline;
 mod theme;
@@ -25,7 +26,10 @@ mod view;
 use std::borrow::Cow;
 
 use clap::Parser;
-use gpui::{App, Application, Bounds, WindowBounds, WindowOptions, point, prelude::*, px, size};
+use gpui::{
+    App, Application, Bounds, TitlebarOptions, WindowBounds, WindowOptions, point, prelude::*, px,
+    size,
+};
 
 pub use error::Error;
 use persistence::WindowGeometry;
@@ -106,6 +110,15 @@ async fn main() -> Result<()> {
                 .open_window(
                     WindowOptions {
                         window_bounds: Some(WindowBounds::Windowed(bounds)),
+                        // Wayland app_id / X11 WM_CLASS -- without this the window reports an
+                        // empty class, which leaves window-manager rules (workspace assignment,
+                        // etc.) with nothing to match on. Mirrors the packager identifier in
+                        // this crate's Cargo.toml (`[package.metadata.packager]`).
+                        app_id: Some("au.id.teda.personal-ledger.desktop".into()),
+                        titlebar: Some(TitlebarOptions {
+                            title: Some("Personal Ledger".into()),
+                            ..Default::default()
+                        }),
                         ..Default::default()
                     },
                     move |window, cx| {
