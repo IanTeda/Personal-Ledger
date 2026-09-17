@@ -55,11 +55,25 @@ pub struct DirEntry {
     pub modified: Option<SystemTime>,
 }
 
+/// Which command opened the dialog (issue #167): `:open` and `:new` share the exact same
+/// browse-an-existing-`.pldb` dialog today, differing only in title/button text -- `:new`'s own
+/// eventual "create a fresh `.pldb`" workflow is still fog (the user's own words: "we still
+/// need to plan out the new file workflow"), not this. `Shell::confirm_explorer_open` also
+/// reads this: only `Open` actually flips `NavState::ledger_open` on confirm, so picking an
+/// existing file in `New` mode does nothing beyond closing the dialog -- copying an existing
+/// ledger's data isn't what "new" means, even as a stand-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExplorerMode {
+    Open,
+    New,
+}
+
 /// State for the floating file explorer: the directory currently being browsed, its entries,
 /// and the current `.pldb` selection (if any). Re-reads the filesystem on every navigation
 /// (`reload`) rather than caching -- a directory listing is cheap enough that staleness isn't
 /// worth guarding against here.
 pub struct FileExplorer {
+    mode: ExplorerMode,
     current_path: PathBuf,
     entries: Vec<DirEntry>,
     selected: Option<PathBuf>,
@@ -73,8 +87,9 @@ pub struct FileExplorer {
 impl FileExplorer {
     /// Opens browsing `start` -- callers pass `dirs::home_dir()` (falling back to the current
     /// directory), since the handoff names no default starting directory of its own.
-    pub fn open_at(start: PathBuf) -> Self {
+    pub fn open_at(mode: ExplorerMode, start: PathBuf) -> Self {
         let mut explorer = Self {
+            mode,
             current_path: start,
             entries: Vec::new(),
             selected: None,
@@ -82,6 +97,10 @@ impl FileExplorer {
         };
         explorer.reload();
         explorer
+    }
+
+    pub fn mode(&self) -> ExplorerMode {
+        self.mode
     }
 
     pub fn current_path(&self) -> &Path {
@@ -293,7 +312,7 @@ impl FileExplorer {
                         blur_radius: px(48.0),
                         spread_radius: px(0.0),
                     }])
-                    .child(header())
+                    .child(header(self.mode))
                     .child(path_bar(
                         &self.current_path,
                         self.entries.len(),
@@ -313,13 +332,19 @@ impl FileExplorer {
                                 row(entry, index, selected, is_last, on_entry_click.clone())
                             })),
                     )
-                    .child(footer(self.can_open(), on_cancel, on_open)),
+                    .child(footer(self.mode, self.can_open(), on_cancel, on_open)),
             )
             .into_any_element()
     }
 }
 
-fn header() -> impl IntoElement {
+fn header(mode: ExplorerMode) -> impl IntoElement {
+    let title = match mode {
+        ExplorerMode::Open => "Open ledger file",
+        // A literal copy of the Open dialog's own title, per issue #167 -- `:new`'s real
+        // "create a fresh .pldb" workflow is still fog, not this.
+        ExplorerMode::New => "New ledger file",
+    };
     div()
         .px(px(20.0))
         .py(px(16.0))
@@ -327,7 +352,7 @@ fn header() -> impl IntoElement {
         .border_color(gpui::rgba(0x201e1d4d)) // rgba(32,30,29,.30)
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(16.0))
-        .child("Open ledger file")
+        .child(title)
 }
 
 fn path_bar(
@@ -471,7 +496,16 @@ fn row(
         .child(div().w(px(120.0)).child(modified_text))
 }
 
-fn footer(can_open: bool, on_cancel: OnCancel, on_open: OnOpen) -> impl IntoElement {
+fn footer(
+    mode: ExplorerMode,
+    can_open: bool,
+    on_cancel: OnCancel,
+    on_open: OnOpen,
+) -> impl IntoElement {
+    let confirm_label = match mode {
+        ExplorerMode::Open => "Open",
+        ExplorerMode::New => "New",
+    };
     div()
         .flex()
         .items_center()
@@ -528,7 +562,7 @@ fn footer(can_open: bool, on_cancel: OnCancel, on_open: OnOpen) -> impl IntoElem
                 .when(can_open, |this| {
                     this.on_click(move |_event, window, cx| on_open(window, cx))
                 })
-                .child("Open"),
+                .child(confirm_label),
         )
 }
 
@@ -541,6 +575,15 @@ mod tests {
     }
 
     #[test]
+    fn open_at_records_its_mode() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+
+        let explorer = FileExplorer::open_at(ExplorerMode::New, dir.path().to_path_buf());
+
+        assert_eq!(explorer.mode(), ExplorerMode::New);
+    }
+
+    #[test]
     fn lists_folders_before_files_case_insensitively() {
         let dir = tempfile::tempdir().expect("tempdir should be creatable");
         std::fs::create_dir(dir.path().join("Zeta")).unwrap();
@@ -548,7 +591,7 @@ mod tests {
         touch(&dir.path().join("beta.pldb"));
         touch(&dir.path().join("Alpha.csv"));
 
-        let explorer = FileExplorer::open_at(dir.path().to_path_buf());
+        let explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
 
         let names: Vec<_> = explorer.entries().iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, vec!["archive", "Zeta", "Alpha.csv", "beta.pldb"]);
@@ -562,7 +605,7 @@ mod tests {
         touch(&dir.path().join("decoy.pldb.bak"));
         touch(&dir.path().join("plain.csv"));
 
-        let explorer = FileExplorer::open_at(dir.path().to_path_buf());
+        let explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
 
         let kind_of = |name: &str| {
             explorer
@@ -593,7 +636,7 @@ mod tests {
         std::fs::create_dir(&sub).unwrap();
         touch(&sub.join("inner.pldb"));
 
-        let mut explorer = FileExplorer::open_at(dir.path().to_path_buf());
+        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
         explorer.click_entry(&sub);
 
         assert_eq!(explorer.current_path(), sub);
@@ -607,7 +650,7 @@ mod tests {
         let pldb = dir.path().join("real.pldb");
         touch(&pldb);
 
-        let mut explorer = FileExplorer::open_at(dir.path().to_path_buf());
+        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
         assert!(!explorer.can_open());
 
         explorer.click_entry(&pldb);
@@ -622,7 +665,7 @@ mod tests {
         let csv = dir.path().join("plain.csv");
         touch(&csv);
 
-        let mut explorer = FileExplorer::open_at(dir.path().to_path_buf());
+        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
         explorer.click_entry(&csv);
 
         assert_eq!(explorer.selected(), None);
@@ -637,7 +680,7 @@ mod tests {
         let sub = dir.path().join("ledgers");
         std::fs::create_dir(&sub).unwrap();
 
-        let mut explorer = FileExplorer::open_at(dir.path().to_path_buf());
+        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
         explorer.click_entry(&pldb);
         assert!(explorer.can_open());
 
@@ -652,7 +695,7 @@ mod tests {
         let sub = dir.path().join("ledgers");
         std::fs::create_dir(&sub).unwrap();
 
-        let mut explorer = FileExplorer::open_at(sub.clone());
+        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, sub.clone());
         explorer.navigate_to(dir.path().to_path_buf());
 
         assert_eq!(explorer.current_path(), dir.path());

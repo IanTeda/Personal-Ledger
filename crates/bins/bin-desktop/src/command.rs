@@ -73,18 +73,10 @@ fn goto_settings(nav: &mut NavState) {
     nav.set_noun(Noun::Settings);
 }
 
-/// `:new`'s stand-in handler (`docs/ux/desktop/Shell & Navigation/README.md`'s "Empty state"
-/// section) -- real ledger creation is out of scope for this map (issue #144's "Out of
-/// scope"), so it just flips `NavState::ledger_open` on, enough to demonstrate the "1a" empty
-/// state giving way to the populated `Dashboard`. `:open` (issue #165) no longer shares this:
-/// it opens the real "1e" file explorer dialog first, which is `Shell`-level state a bare
-/// `fn(&mut NavState)` handler can't reach -- see its `Command::handler: None` below and
-/// `Shell::run_command`'s own `command.name == "open"` special case.
-fn open_ledger(nav: &mut NavState) {
-    nav.open_ledger();
-}
-
-/// `:close`'s handler: returns to the "1a" empty state, same as cold start.
+/// `:close`'s handler: returns to the "1a" empty state, same as cold start. `:open`/`:new`
+/// have no equivalent handler here -- both open a real `Shell`-owned dialog first (issues
+/// #165/#167), state a bare `fn(&mut NavState)` can't reach, so both are `Command::handler:
+/// None` below and `Shell::run_command` special-cases them by name instead.
 fn close_ledger(nav: &mut NavState) {
     nav.close_ledger();
 }
@@ -178,7 +170,7 @@ pub const COMMANDS: &[Command] = &[
         kind: CommandKind::Run,
         binding: None,
         // `Shell::run_command` intercepts this command by name before ever consulting
-        // `handler` -- see `crate::explorer` and the `open_ledger` doc comment above.
+        // `handler` -- see `crate::explorer` and the `close_ledger` doc comment above.
         handler: None,
     },
     Command {
@@ -186,7 +178,9 @@ pub const COMMANDS: &[Command] = &[
         description: "start a new ledger",
         kind: CommandKind::Create,
         binding: None,
-        handler: Some(open_ledger),
+        // Same interception as "open" above (issue #167) -- a literal copy of its dialog for
+        // now, relabelled.
+        handler: None,
     },
     Command {
         name: "close",
@@ -235,22 +229,14 @@ mod tests {
     }
 
     #[test]
-    fn new_opens_the_ledger_directly() {
-        let mut nav = NavState::new();
-        assert!(!nav.ledger_open());
-
-        let command = COMMANDS.iter().find(|c| c.name == "new").unwrap();
-        (command.handler.expect("new has a handler"))(&mut nav);
-
-        assert!(nav.ledger_open());
-    }
-
-    #[test]
-    fn open_has_no_navstate_handler_shell_owns_its_behaviour() {
-        // `Shell::run_command` special-cases "open" by name to launch the real file explorer
-        // (issue #165) -- a `Command::handler` can't reach `Shell`-level state, only `NavState`.
-        let open = COMMANDS.iter().find(|c| c.name == "open").unwrap();
-        assert!(open.handler.is_none());
+    fn open_and_new_have_no_navstate_handler_shell_owns_their_behaviour() {
+        // `Shell::run_command` special-cases both by name to launch the real file explorer
+        // dialog (issues #165/#167) -- a `Command::handler` can't reach `Shell`-level state,
+        // only `NavState`.
+        for name in ["open", "new"] {
+            let command = COMMANDS.iter().find(|c| c.name == name).unwrap();
+            assert!(command.handler.is_none(), "{name:?} should have no handler");
+        }
     }
 
     #[test]

@@ -25,13 +25,13 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle, Timer, Window, div,
-    point, prelude::*, px,
+    Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle, SharedString, Timer,
+    Window, div, point, prelude::*, px,
 };
 
 use crate::{
-    command::Command,
-    explorer::{self, FileExplorer},
+    command::{self, Command},
+    explorer::{self, ExplorerMode, FileExplorer},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
     rail::{self, context::ContextRail, primary::PrimaryRail},
@@ -68,6 +68,11 @@ fn jump_noun_for_key(key: &str) -> Option<Noun> {
         _ => None,
     }
 }
+
+/// A click on the empty state's own `:open`/`:new` text (issue #167): the clicked command's
+/// name (`"open"` or `"new"`), looked up in `command::COMMANDS` and run exactly as the palette's
+/// own `enter` key would (see [`Shell::handle_empty_state_command_click`]).
+type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut gpui::App)>;
 
 /// Where `:open`'s file explorer starts browsing -- the handoff names no default starting
 /// directory of its own, so the platform home directory is the reasonable stand-in, falling
@@ -180,8 +185,12 @@ impl Shell {
     fn command_echo(&self) -> Option<(String, &'static str)> {
         if let Some(palette) = self.palette.as_ref() {
             Some((palette.input().to_string(), "esc close command window"))
-        } else if self.file_explorer.is_some() {
-            Some(("open".to_string(), "esc close file explorer"))
+        } else if let Some(explorer) = self.file_explorer.as_ref() {
+            let name = match explorer.mode() {
+                ExplorerMode::Open => "open",
+                ExplorerMode::New => "new",
+            };
+            Some((name.to_string(), "esc close file explorer"))
         } else {
             None
         }
@@ -475,17 +484,24 @@ impl Shell {
     /// line has no message slot of its own, and the palette has already closed by the time this
     /// runs -- see the `enter` arm of [`Self::handle_palette_key`]).
     ///
-    /// `"open"` (issue #165) is special-cased before any of that: it has no `NavState`
-    /// handler at all (a bare `fn(&mut NavState)` can't open a `Shell`-owned dialog), and
-    /// unlike every other command, running it does *not* leave `InputMode::Command` -- the "1e"
-    /// file explorer's own status-line treatment (`Shell::render`'s `command_echo`) depends on
-    /// staying there for as long as the dialog is on screen, exiting only when it closes
-    /// (`Self::handle_explorer_cancel`/`Self::confirm_explorer_open`, or `Self::handle_key_down`'s
-    /// `escape` arm).
+    /// `"open"` (issue #165) and `"new"` (issue #167) are special-cased before any of that:
+    /// neither has a `NavState` handler at all (a bare `fn(&mut NavState)` can't open a
+    /// `Shell`-owned dialog), and unlike every other command, running either does *not* leave
+    /// `InputMode::Command` -- the "1e" file explorer's own status-line treatment (`Shell::render`'s
+    /// `command_echo`) depends on staying there for as long as the dialog is on screen, exiting
+    /// only when it closes (`Self::handle_explorer_cancel`/`Self::confirm_explorer_open`, or
+    /// `Self::handle_key_down`'s `escape` arm).
     fn run_command(&mut self, command: &'static Command) {
         record_history(&mut self.command_history, command.name);
-        if command.name == "open" {
-            self.file_explorer = Some(FileExplorer::open_at(explorer_start_dir()));
+        let explorer_mode = match command.name {
+            "open" => Some(ExplorerMode::Open),
+            // `:new` (issue #167): the *same* dialog as `:open`, relabelled -- see
+            // `ExplorerMode`'s own doc for why confirming it doesn't flip `ledger_open`.
+            "new" => Some(ExplorerMode::New),
+            _ => None,
+        };
+        if let Some(mode) = explorer_mode {
+            self.file_explorer = Some(FileExplorer::open_at(mode, explorer_start_dir()));
             return;
         }
         self.nav.exit_mode();
@@ -596,23 +612,46 @@ impl Shell {
         self.confirm_explorer_open(cx);
     }
 
-    /// Confirms the explorer's current selection and closes the dialog: the stand-in "opening"
-    /// effect (`NavState::open_ledger`, from issue #164) -- real `.pldb` parsing stays out of
-    /// scope for this map. A no-op if nothing is selected (Open is only clickable once
-    /// `FileExplorer::can_open` is true, but a double-click can also reach here -- see
-    /// [`Self::handle_explorer_entry_click`] -- so this re-checks rather than trusting the
-    /// caller).
+    /// Confirms the explorer's current selection and closes the dialog. In `ExplorerMode::Open`
+    /// this is the stand-in "opening" effect (`NavState::open_ledger`, from issue #164) -- real
+    /// `.pldb` parsing stays out of scope for this map. In `ExplorerMode::New` (issue #167) it
+    /// closes without touching `NavState::ledger_open` at all: the dialog is a literal copy of
+    /// Open's for now, but confirming an *existing* file was never what "new" means, even as a
+    /// stand-in -- the real "create a fresh `.pldb`" workflow is still fog. A no-op if nothing
+    /// is selected (Open/New is only clickable once `FileExplorer::can_open` is true, but a
+    /// double-click can also reach here -- see [`Self::handle_explorer_entry_click`] -- so this
+    /// re-checks rather than trusting the caller).
     fn confirm_explorer_open(&mut self, cx: &mut Context<Self>) {
-        if self
-            .file_explorer
-            .as_ref()
-            .is_some_and(FileExplorer::can_open)
-        {
-            self.nav.open_ledger();
-            self.file_explorer = None;
-            self.nav.exit_mode();
-            cx.notify();
+        let Some(explorer) = self.file_explorer.as_ref() else {
+            return;
+        };
+        if !explorer.can_open() {
+            return;
         }
+        if explorer.mode() == ExplorerMode::Open {
+            self.nav.open_ledger();
+        }
+        self.file_explorer = None;
+        self.nav.exit_mode();
+        cx.notify();
+    }
+
+    /// A click on the empty state's own `:open`/`:new` text (`OnEmptyStateCommandClick`, issue
+    /// #167): looks `command_name` up in the registry and runs it exactly as the palette's own
+    /// `enter` key would -- entering `InputMode::Command` first, same as typing `:` would, so
+    /// the status line's `COMMAND` badge and `Esc` (which only acts outside `InputMode::Normal`)
+    /// both behave identically regardless of which entry point opened the dialog.
+    fn handle_empty_state_command_click(
+        &mut self,
+        command_name: &'static str,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(command) = command::all().find(|command| command.name == command_name) else {
+            return;
+        };
+        self.nav.enter_mode(InputMode::Command);
+        self.run_command(command);
+        cx.notify();
     }
 }
 
@@ -690,6 +729,14 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_explorer_open(cx));
             })
         };
+        let on_empty_state_command_click: OnEmptyStateCommandClick = {
+            let entity = entity.clone();
+            Rc::new(move |command_name, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_empty_state_command_click(command_name, cx)
+                });
+            })
+        };
 
         div()
             .size_full()
@@ -741,6 +788,7 @@ impl Render for Shell {
                                 self.nav.ledger_open(),
                                 focus == FocusZone::View,
                                 &self.view_scroll_handle,
+                                on_empty_state_command_click,
                             )),
                     ),
             )
@@ -774,10 +822,11 @@ fn render_view(
     ledger_open: bool,
     focused: bool,
     scroll_handle: &ScrollHandle,
+    on_empty_state_command_click: OnEmptyStateCommandClick,
 ) -> gpui::AnyElement {
     let content = match noun {
         Noun::Dashboard if ledger_open => Dashboard::new().into_any_element(),
-        Noun::Dashboard => empty_state(),
+        Noun::Dashboard => empty_state(on_empty_state_command_click),
         other => div()
             .p(px(24.0))
             .text_color(color::INK_TERTIARY)
@@ -803,12 +852,19 @@ fn render_view(
 /// named in the body copy (`docs/ux/desktop/Shell & Navigation/README.md`'s "Main pane"
 /// bullet). `gpui` 0.2's `Styled` trait has no letter-spacing hook, so the title's `-.01em`
 /// tracking from the spec has no equivalent here -- a real, not merely unverified, gap.
-fn empty_state() -> gpui::AnyElement {
-    let command = |text: &'static str| {
+///
+/// Both command names are real click targets (issue #167), not just copy: clicking one lands
+/// in exactly the state running it from the palette would (this shell's own repeated invariant
+/// -- rail click, `g`-jump and the palette already all call `NavState::set_noun` identically).
+fn empty_state(on_command_click: OnEmptyStateCommandClick) -> gpui::AnyElement {
+    let command = |name: &'static str, on_command_click: OnEmptyStateCommandClick| {
         div()
+            .id(SharedString::from(format!("empty-state-{name}")))
+            .cursor_pointer()
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
             .text_color(color::INK)
-            .child(text)
+            .on_click(move |_event, window, cx| on_command_click(name, window, cx))
+            .child(format!(":{name}"))
     };
 
     div()
@@ -836,9 +892,9 @@ fn empty_state() -> gpui::AnyElement {
                 .text_size(px(13.0))
                 .text_color(color::INK_SECONDARY)
                 .child("Run ")
-                .child(command(":open"))
+                .child(command("open", on_command_click.clone()))
                 .child(" to load a ledger file, or ")
-                .child(command(":new"))
+                .child(command("new", on_command_click))
                 .child(" to start one."),
         )
         .into_any_element()
