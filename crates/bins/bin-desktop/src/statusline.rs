@@ -116,8 +116,6 @@ fn hint_strip() -> impl IntoElement {
         .child("command ·")
         .child(key("/"))
         .child("search ·")
-        .child(key("a"))
-        .child("add txn ·")
         .child(key("?"))
         .child("help ·")
         .child(key("b"))
