@@ -28,6 +28,10 @@ pub enum DesktopIcon {
     WindowMaximize,
     /// TopBar window controls (issue #162) -- quits the app.
     WindowClose,
+    /// The "1e" file explorer's row icon for a folder (issue #165).
+    Folder,
+    /// The "1e" file explorer's row icon for any non-folder entry, openable or not.
+    File,
 }
 
 impl DesktopIcon {
@@ -50,6 +54,8 @@ impl DesktopIcon {
             Self::WindowMinimize => "icons/minus.svg",
             Self::WindowMaximize => "icons/square.svg",
             Self::WindowClose => "icons/x.svg",
+            Self::Folder => "icons/folder.svg",
+            Self::File => "icons/file.svg",
         }
     }
 

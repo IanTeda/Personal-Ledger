@@ -23,11 +23,14 @@ pub struct StatusLine {
     /// status line has no room for both the live query and a message, and a message can only
     /// be showing here right after the palette that set it has already closed.
     status_message: Option<String>,
-    /// The palette's live input while `InputMode::Command` is active (`Shell`'s
-    /// `Option<Palette>`, `Some(palette.input())`) -- `docs/ux/desktop/Shell & Navigation/
-    /// README.md`'s "1d" spec: "Status line in COMMAND mode: ... the live query echoes ...;
-    /// right side reads 'esc close command window'."
-    palette_query: Option<String>,
+    /// The active command-mode echo text and its own "esc closes ..." hint, `Some` while
+    /// `InputMode::Command` has something other than the ordinary hint strip to show: either
+    /// the palette's live input (`docs/ux/desktop/Shell & Navigation/README.md`'s "1d" spec:
+    /// "Status line in COMMAND mode: ... the live query echoes ...; right side reads 'esc close
+    /// command window'"), or -- once `:open` is confirmed -- the "1e" file explorer's own
+    /// frozen `"open"` echo and "esc close file explorer" hint, since `Shell` keeps `mode` at
+    /// `Command` for as long as that dialog is open (see `Shell::run_command`'s own doc).
+    command_echo: Option<(String, &'static str)>,
 }
 
 impl StatusLine {
@@ -35,13 +38,13 @@ impl StatusLine {
         mode: InputMode,
         noun: Noun,
         status_message: Option<String>,
-        palette_query: Option<String>,
+        command_echo: Option<(String, &'static str)>,
     ) -> Self {
         Self {
             mode,
             noun,
             status_message,
-            palette_query,
+            command_echo,
         }
     }
 }
@@ -61,8 +64,8 @@ impl RenderOnce for StatusLine {
             .text_size(px(11.5))
             .text_color(color::INK_SECONDARY)
             .child(mode_badge(self.mode))
-            .child(match (&self.palette_query, self.status_message) {
-                (Some(query), _) => command_query_echo(query).into_any_element(),
+            .child(match (&self.command_echo, self.status_message) {
+                (Some((query, _)), _) => command_query_echo(query).into_any_element(),
                 (None, Some(message)) => div()
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
                     .text_color(color::ACCENT_TEXT)
@@ -71,8 +74,8 @@ impl RenderOnce for StatusLine {
                 (None, None) => hint_strip().into_any_element(),
             })
             .child(div().flex_1())
-            .child(match self.palette_query {
-                Some(_) => div().child("esc close command window").into_any_element(),
+            .child(match self.command_echo {
+                Some((_, hint)) => div().child(hint).into_any_element(),
                 None => breadcrumb(self.noun).into_any_element(),
             })
     }

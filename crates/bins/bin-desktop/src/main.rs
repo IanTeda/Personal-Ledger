@@ -8,6 +8,7 @@
 mod assets;
 mod command;
 mod error;
+mod explorer;
 mod feasibility_demo;
 mod icon;
 mod nav;

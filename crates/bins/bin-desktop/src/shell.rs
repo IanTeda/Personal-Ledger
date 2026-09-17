@@ -20,6 +20,7 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -30,6 +31,7 @@ use gpui::{
 
 use crate::{
     command::Command,
+    explorer::{self, FileExplorer},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
     rail::{self, context::ContextRail, primary::PrimaryRail},
@@ -65,6 +67,13 @@ fn jump_noun_for_key(key: &str) -> Option<Noun> {
         "s" => Some(Noun::Settings),
         _ => None,
     }
+}
+
+/// Where `:open`'s file explorer starts browsing -- the handoff names no default starting
+/// directory of its own, so the platform home directory is the reasonable stand-in, falling
+/// back to the current directory on a platform/sandbox with no resolvable home.
+fn explorer_start_dir() -> PathBuf {
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// Records `name` as just-run in `history`, most-recent-first: drops any earlier occurrence
@@ -133,6 +142,11 @@ pub struct Shell {
     /// it captured before applying, so hovering a second row (or leaving the rail entirely)
     /// before the first row's delay elapses can't reveal the wrong tooltip.
     hover_generation: u64,
+    /// The "1e" file explorer's own state -- `Some` only while `:open`'s dialog is on screen,
+    /// mirroring `Option<Palette>`. `NavState::mode` stays `InputMode::Command` for as long as
+    /// this is `Some` (see [`Self::run_command`]'s own doc), so the two together -- rather than
+    /// a third `InputMode` variant -- are what "the file explorer is open" means.
+    file_explorer: Option<FileExplorer>,
 }
 
 impl Shell {
@@ -147,6 +161,7 @@ impl Shell {
             command_history: Vec::new(),
             collapsed_rail_tooltip: None,
             hover_generation: 0,
+            file_explorer: None,
         }
     }
 
@@ -156,6 +171,20 @@ impl Shell {
 
     pub fn focus_handle(&self) -> &FocusHandle {
         &self.focus_handle
+    }
+
+    /// The status line's own COMMAND-mode echo (`crate::statusline::StatusLine`'s
+    /// `command_echo`): the palette's live input while it's open, or -- once `:open` has been
+    /// confirmed and the palette has closed in its favour -- the file explorer's frozen
+    /// `"open"` echo, each paired with its own "esc closes ..." hint text.
+    fn command_echo(&self) -> Option<(String, &'static str)> {
+        if let Some(palette) = self.palette.as_ref() {
+            Some((palette.input().to_string(), "esc close command window"))
+        } else if self.file_explorer.is_some() {
+            Some(("open".to_string(), "esc close file explorer"))
+        } else {
+            None
+        }
     }
 
     /// Routes a keystroke: `Esc` first (works in any mode, clears a pending `g` before
@@ -179,6 +208,7 @@ impl Shell {
             }
             if self.nav.mode() != InputMode::Normal {
                 self.palette = None;
+                self.file_explorer = None;
                 self.nav.exit_mode();
                 return true;
             }
@@ -413,9 +443,11 @@ impl Shell {
             "enter" => {
                 let command = palette.selected_command();
                 self.palette = None;
-                self.nav.exit_mode();
-                if let Some(command) = command {
-                    self.run_command(command);
+                match command {
+                    Some(command) => self.run_command(command),
+                    // No result to run (an empty registry match) -- there's nothing left for
+                    // `run_command` to do, so leave Command mode directly instead.
+                    None => self.nav.exit_mode(),
                 }
                 true
             }
@@ -442,8 +474,21 @@ impl Shell {
     /// status line's existing `status_message` slot (the "1d" spec's own COMMAND-mode status
     /// line has no message slot of its own, and the palette has already closed by the time this
     /// runs -- see the `enter` arm of [`Self::handle_palette_key`]).
+    ///
+    /// `"open"` (issue #165) is special-cased before any of that: it has no `NavState`
+    /// handler at all (a bare `fn(&mut NavState)` can't open a `Shell`-owned dialog), and
+    /// unlike every other command, running it does *not* leave `InputMode::Command` -- the "1e"
+    /// file explorer's own status-line treatment (`Shell::render`'s `command_echo`) depends on
+    /// staying there for as long as the dialog is on screen, exiting only when it closes
+    /// (`Self::handle_explorer_cancel`/`Self::confirm_explorer_open`, or `Self::handle_key_down`'s
+    /// `escape` arm).
     fn run_command(&mut self, command: &'static Command) {
         record_history(&mut self.command_history, command.name);
+        if command.name == "open" {
+            self.file_explorer = Some(FileExplorer::open_at(explorer_start_dir()));
+            return;
+        }
+        self.nav.exit_mode();
         match command.handler {
             Some(handler) => {
                 let noun_before = self.nav.noun();
@@ -506,6 +551,69 @@ impl Shell {
         }
         cx.notify();
     }
+
+    /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
+    /// state, then -- README's "double-click a `.pldb` row opens immediately" -- confirms the
+    /// open immediately when `click_count` reports a real double-click landing on a row that
+    /// (as of the resulting state) is the current selection. A single click on a not-yet-open
+    /// `.pldb` row only selects it; a second, separate click completing the double-click is
+    /// what actually opens it.
+    fn handle_explorer_entry_click(
+        &mut self,
+        path: PathBuf,
+        click_count: usize,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(explorer) = self.file_explorer.as_mut() else {
+            return;
+        };
+        explorer.click_entry(&path);
+        if click_count >= 2 && explorer.selected() == Some(path.as_path()) {
+            self.confirm_explorer_open(cx);
+            return;
+        }
+        cx.notify();
+    }
+
+    /// A breadcrumb segment click (`explorer::OnBreadcrumbClick`).
+    fn handle_explorer_breadcrumb_click(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if let Some(explorer) = self.file_explorer.as_mut() {
+            explorer.navigate_to(path);
+            cx.notify();
+        }
+    }
+
+    /// The explorer dialog's own Cancel button: closes without opening anything, leaving
+    /// Command mode the same way the palette's own `esc` does.
+    fn handle_explorer_cancel(&mut self, cx: &mut Context<Self>) {
+        self.file_explorer = None;
+        self.nav.exit_mode();
+        cx.notify();
+    }
+
+    /// The explorer dialog's own Open button.
+    fn handle_explorer_open(&mut self, cx: &mut Context<Self>) {
+        self.confirm_explorer_open(cx);
+    }
+
+    /// Confirms the explorer's current selection and closes the dialog: the stand-in "opening"
+    /// effect (`NavState::open_ledger`, from issue #164) -- real `.pldb` parsing stays out of
+    /// scope for this map. A no-op if nothing is selected (Open is only clickable once
+    /// `FileExplorer::can_open` is true, but a double-click can also reach here -- see
+    /// [`Self::handle_explorer_entry_click`] -- so this re-checks rather than trusting the
+    /// caller).
+    fn confirm_explorer_open(&mut self, cx: &mut Context<Self>) {
+        if self
+            .file_explorer
+            .as_ref()
+            .is_some_and(FileExplorer::can_open)
+        {
+            self.nav.open_ledger();
+            self.file_explorer = None;
+            self.nav.exit_mode();
+            cx.notify();
+        }
+    }
 }
 
 impl Focusable for Shell {
@@ -517,12 +625,17 @@ impl Focusable for Shell {
 impl Render for Shell {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.nav.focus();
-        // The "1d" spec: "The shell behind the palette drops to 30% opacity." Applied to the
-        // top bar and content row only, not the status line -- that same spec separately
-        // describes the status line's own COMMAND-mode content (the live query, "esc close
-        // command window"), which stays meaningful precisely because it stays legible; only
-        // the navigational chrome the palette visually floats over goes dim.
-        let content_opacity = if self.palette.is_some() { 0.3 } else { 1.0 };
+        // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
+        // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
+        // bar and content row only, not the status line -- that same spec separately describes
+        // the status line's own COMMAND-mode content (the live query, "esc close command
+        // window"), which stays meaningful precisely because it stays legible; only the
+        // navigational chrome the palette/explorer visually floats over goes dim.
+        let content_opacity = if self.palette.is_some() || self.file_explorer.is_some() {
+            0.3
+        } else {
+            1.0
+        };
 
         // Both closures go through an `Entity` handle (mirroring `feasibility_demo`'s own
         // `TabBar::on_click` wiring) rather than `cx.listener`: `on_click`/`on_hover`'s own
@@ -547,6 +660,34 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |noun, _window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_rail_click(noun, cx));
+            })
+        };
+        let on_explorer_entry_click: explorer::OnEntryClick = {
+            let entity = entity.clone();
+            Rc::new(move |path, click_count, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_explorer_entry_click(path, click_count, cx)
+                });
+            })
+        };
+        let on_explorer_breadcrumb_click: explorer::OnBreadcrumbClick = {
+            let entity = entity.clone();
+            Rc::new(move |path, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_explorer_breadcrumb_click(path, cx)
+                });
+            })
+        };
+        let on_explorer_cancel: explorer::OnCancel = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_explorer_cancel(cx));
+            })
+        };
+        let on_explorer_open: explorer::OnOpen = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_explorer_open(cx));
             })
         };
 
@@ -604,11 +745,17 @@ impl Render for Shell {
                 self.nav.mode(),
                 self.nav.noun(),
                 self.status_message.clone(),
-                self.palette
-                    .as_ref()
-                    .map(|palette| palette.input().to_string()),
+                self.command_echo(),
             ))
             .children(self.palette.as_ref().map(Palette::render))
+            .children(self.file_explorer.as_ref().map(|explorer| {
+                explorer.render(
+                    on_explorer_entry_click,
+                    on_explorer_breadcrumb_click,
+                    on_explorer_cancel,
+                    on_explorer_open,
+                )
+            }))
     }
 }
 

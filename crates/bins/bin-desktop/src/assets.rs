@@ -42,6 +42,12 @@ const ICONS: &[(&str, &[u8])] = &[
     icon!("minus"),
     icon!("square"),
     icon!("x"),
+    // The "1e" file explorer's row icons (issue #165) -- not in the handoff's own "Assets"
+    // table either (its markup embeds hand-drawn 16x16 paths, not Lucide names); these are the
+    // genuine Lucide `folder`/`file` icons, stroke-normalized the same as every other bundled
+    // icon here.
+    icon!("folder"),
+    icon!("file"),
 ];
 
 pub struct Assets;

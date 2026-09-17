@@ -74,6 +74,10 @@ pub mod color {
     /// "Shadows" section names this as the shell's one exception to "nothing else elevates," so
     /// it earns its own token rather than reusing `STRUCTURAL_RULE`'s different ink/alpha.
     pub const PALETTE_SHADOW: Rgba = rgba(0x2d2b2b4d);
+    /// The "1e" file explorer dialog's own drop shadow: `0 16px 48px rgba(32,30,29,.40)`, named
+    /// inline in the handoff's mockup markup rather than its "Shadows" table (that table
+    /// predates the file explorer) -- a second named exception alongside `PALETTE_SHADOW`.
+    pub const DIALOG_SHADOW: Rgba = rgba(0x201e1d66);
 }
 
 /// Type scale. Archivo throughout, bundled offline (see `crate::main`'s `add_fonts` call) --
