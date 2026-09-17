@@ -601,7 +601,11 @@ mod tests {
     fn only_a_real_pldb_extension_is_a_ledger() {
         let dir = tempfile::tempdir().expect("tempdir should be creatable");
         touch(&dir.path().join("real.pldb"));
-        touch(&dir.path().join("real.PLDB"));
+        // A distinct base name, not just a different case of "real.pldb" -- macOS (APFS) and
+        // Windows (NTFS) are case-insensitive-but-preserving by default, so two paths differing
+        // only by case silently collide onto the one directory entry there (CI caught this: it
+        // passed on Linux, panicked on both macOS and Windows).
+        touch(&dir.path().join("second.PLDB"));
         touch(&dir.path().join("decoy.pldb.bak"));
         touch(&dir.path().join("plain.csv"));
 
@@ -617,7 +621,7 @@ mod tests {
         };
         assert_eq!(kind_of("real.pldb"), EntryKind::Ledger);
         assert_eq!(
-            kind_of("real.PLDB"),
+            kind_of("second.PLDB"),
             EntryKind::Ledger,
             "extension check is case-insensitive"
         );
