@@ -21,6 +21,13 @@ pub const WIDTH: gpui::Pixels = px(820.0);
 /// Distance from the window's top edge: the "1d" spec's own `top: 96px`.
 pub const TOP_OFFSET: gpui::Pixels = px(96.0);
 
+/// One row of the resting/filtered list: a domain header (resting state only) or a command
+/// entry -- mirrors `bin-tui`'s own `popup::command::Row` exactly.
+enum Row {
+    Header(&'static str),
+    Entry(&'static Command),
+}
+
 /// State for the floating command palette: its input buffer and result selection. Filtering and
 /// ranking are recomputed from `input`/`COMMANDS` on every call rather than cached, matching
 /// `nav.rs`'s own "never tracked as its own field, so it can never drift out of sync" idiom --
@@ -112,11 +119,9 @@ impl Palette {
         }
     }
 
-    /// Every registered command matching the current input case-insensitively, against either
-    /// its name or description, ranked so an exact name match leads, then a name that starts
-    /// with the input, then everything else -- ties keep [`command::all`]'s own registration
-    /// order. Flat across every command kind, never grouped, per the "1d" spec's own "Results
-    /// are ranked across kinds, not grouped."
+    /// Every registered command matching the current input case-insensitively, against its
+    /// name, description or owning [`Command::domain`], ranked by [`match_rank`] -- ties keep
+    /// [`command::all`]'s own registration order (`Vec::sort_by_key` is stable).
     fn matches(&self) -> Vec<&'static Command> {
         let needle = self.input.to_lowercase();
         let mut matches: Vec<_> = command::all()
@@ -124,10 +129,35 @@ impl Palette {
                 needle.is_empty()
                     || command.name.to_lowercase().contains(&needle)
                     || command.description.to_lowercase().contains(&needle)
+                    || command.domain.to_lowercase().contains(&needle)
             })
             .collect();
-        matches.sort_by_key(|command| name_match_rank(&command.name.to_lowercase(), &needle));
+        matches.sort_by_key(|command| match_rank(command, &needle));
         matches
+    }
+
+    /// The rows to render: every domain with a header at rest (`input` empty), mirroring
+    /// `bin-tui`'s own `CommandPopup::rows`/`Row::Header` -- or a flat, header-less list of
+    /// matches while filtering, since once you're typing you already know what you want and
+    /// ranking beats grouping. Domain headers are inserted purely for display: they don't
+    /// consume a `selected` index, which continues to count entries only (`Self::matches`'s own
+    /// order), the same way `bin-tui`'s `selected` skips its own `Row::Header` rows.
+    fn rows(&self) -> Vec<Row> {
+        let matches = self.matches();
+        if self.input.is_empty() {
+            let mut rows = Vec::with_capacity(matches.len() * 2);
+            let mut last_domain = None;
+            for command in matches {
+                if last_domain != Some(command.domain) {
+                    rows.push(Row::Header(command.domain));
+                    last_domain = Some(command.domain);
+                }
+                rows.push(Row::Entry(command));
+            }
+            rows
+        } else {
+            matches.into_iter().map(Row::Entry).collect()
+        }
     }
 
     /// The command the current selection would run on `Enter`.
@@ -142,8 +172,25 @@ impl Palette {
     /// (unlike the chrome's `RenderOnce` components) since `Shell` must keep this state past the
     /// render call that draws it.
     pub fn render(&self) -> gpui::AnyElement {
-        let matches = self.matches();
-        let selected = self.selected.min(matches.len().saturating_sub(1));
+        let rows = self.rows();
+        let match_count = rows
+            .iter()
+            .filter(|row| matches!(row, Row::Entry(_)))
+            .count();
+        let selected = self.selected.min(match_count.saturating_sub(1));
+
+        // Rows are a mix of headers and entries; `selected` counts entries only (mirroring
+        // `bin-tui`'s own `selected_row_index`), so this walks both in lockstep rather than
+        // using the row's own index to decide highlighting.
+        let mut entry_index = 0;
+        let rendered_rows = rows.into_iter().map(|row| match row {
+            Row::Header(domain) => domain_header(domain).into_any_element(),
+            Row::Entry(command) => {
+                let is_selected = entry_index == selected;
+                entry_index += 1;
+                result_row(command, &self.input, is_selected).into_any_element()
+            }
+        });
 
         div()
             .absolute()
@@ -169,11 +216,9 @@ impl Palette {
                         blur_radius: px(32.0),
                         spread_radius: px(0.0),
                     }])
-                    .child(input_row(&self.input, matches.len()))
+                    .child(input_row(&self.input, match_count))
                     .child(div().h(px(2.0)).bg(color::INK))
-                    .children(matches.iter().enumerate().map(|(index, command)| {
-                        result_row(command, &self.input, index == selected)
-                    }))
+                    .children(rendered_rows)
                     .child(div().h(px(1.0)).bg(color::HAIRLINE))
                     .child(footer_row()),
             )
@@ -181,18 +226,33 @@ impl Palette {
     }
 }
 
-/// Ranks a (lowercased) command name against a (lowercased, possibly empty) needle: `0` for an
-/// exact match (including the resting, empty-query case, where every command ties at `0` and
-/// registration order therefore wins outright), `1` for a name that starts with the needle,
-/// `2` for a match found only elsewhere in the name or in the description.
-fn name_match_rank(name: &str, needle: &str) -> u8 {
-    if needle.is_empty() || name == needle {
+/// Ranks `command` against a (lowercased, possibly empty) `needle` -- mirrors `bin-tui`'s own
+/// `match_rank` exactly: `0` for a name that starts with the needle (the resting, empty-query
+/// case ties every command here, so registration order wins outright), `1` for the needle
+/// appearing anywhere in the name or the owning [`Command::domain`] (and not already tier `0`),
+/// `2` for a match found only in the description.
+fn match_rank(command: &Command, needle: &str) -> u8 {
+    let name = command.name.to_lowercase();
+    if needle.is_empty() || name.starts_with(needle) {
         0
-    } else if name.starts_with(needle) {
+    } else if name.contains(needle) || command.domain.to_lowercase().contains(needle) {
         1
     } else {
         2
     }
+}
+
+/// A domain header in the resting-state list (`Row::Header`) -- mirrors `bin-tui`'s own
+/// section-header styling for its command popup (dim, extra-bold, uppercase, small).
+fn domain_header(domain: &'static str) -> impl IntoElement {
+    div()
+        .px(px(16.0))
+        .pt(px(10.0))
+        .pb(px(4.0))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .text_size(px(10.0))
+        .text_color(color::INK_TERTIARY)
+        .child(domain.to_uppercase())
 }
 
 /// The "1d" spec's input row: leading `>`, the live query with a block caret, right-aligned
@@ -358,6 +418,53 @@ mod tests {
     }
 
     #[test]
+    fn resting_rows_include_a_header_per_domain() {
+        let palette = Palette::new();
+        let header_count = palette
+            .rows()
+            .iter()
+            .filter(|row| matches!(row, Row::Header(_)))
+            .count();
+        let domain_count = command::COMMANDS
+            .iter()
+            .map(|command| command.domain)
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        assert_eq!(header_count, domain_count);
+    }
+
+    #[test]
+    fn resting_rows_have_no_headers_split_across_a_domains_entries() {
+        // Every header should be followed immediately by its domain's own entries, then the
+        // next header -- never re-appear once a different domain's header has been emitted.
+        let mut seen = Vec::new();
+        for row in Palette::new().rows() {
+            if let Row::Header(domain) = row {
+                assert!(
+                    !seen.contains(&domain),
+                    "domain {domain:?} header appeared twice"
+                );
+                seen.push(domain);
+            }
+        }
+    }
+
+    #[test]
+    fn filtered_rows_have_no_headers() {
+        let mut palette = Palette::new();
+        for c in "tags".chars() {
+            palette.push_char(c);
+        }
+        assert!(
+            palette
+                .rows()
+                .iter()
+                .all(|row| matches!(row, Row::Entry(_))),
+            "a filtered (non-resting) list should be flat, no domain headers"
+        );
+    }
+
+    #[test]
     fn typing_filters_to_matching_commands_only() {
         let mut palette = Palette::new();
         for c in "tags".chars() {
@@ -413,8 +520,26 @@ mod tests {
         for c in "ledger".chars() {
             palette.push_char(c);
         }
-        // No command is named "ledger", but several describe themselves with the word.
+        // No command is named "ledger", but several describe themselves with the word (and
+        // "open"/"new"/"close" also match via their own "Ledger" domain -- see the next test).
         assert!(!palette.matches().is_empty());
+    }
+
+    #[test]
+    fn a_domain_match_outranks_a_description_only_match() {
+        let mut palette = Palette::new();
+        for c in "ledger".chars() {
+            palette.push_char(c);
+        }
+        // "open"/"new"/"close" match via their own "Ledger" domain (tier 1); "settings"
+        // matches only because its description says "ledger preferences" (tier 2).
+        let matches = palette.matches();
+        let ledger_domain_rank = matches.iter().position(|c| c.name == "open").unwrap();
+        let settings_rank = matches.iter().position(|c| c.name == "settings").unwrap();
+        assert!(
+            ledger_domain_rank < settings_rank,
+            "a domain match should rank above a description-only match"
+        );
     }
 
     #[test]

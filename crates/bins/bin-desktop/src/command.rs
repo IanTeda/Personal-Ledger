@@ -3,9 +3,16 @@
 //! item, every context-rail footer affordance, and every view action registers a command with:
 //! command string, description, kind ... optional binding, and a handler." Mirrors the shape of
 //! `bin-tui`'s own per-domain registry (`crates/bins/bin-tui/src/popup/command/commands/`,
-//! `docs/ux/tui/navigation.md`'s "Commands" section) -- plain, hand-authored data, one flat list
-//! rather than domain modules, since the desktop registry is deliberately never grouped by
-//! domain (README's "1d" spec: "Results are ranked across kinds, not grouped").
+//! `docs/ux/tui/navigation.md`'s "Commands" section) -- plain, hand-authored data, one flat
+//! array rather than domain modules (the desktop registry is small enough not to need
+//! splitting the way the TUI's much larger one does), but each `Command` now carries a
+//! `domain` field so the palette's own resting-state list can group by it the same way.
+//!
+//! **This reverses the "1d" spec's original "Results are ranked across kinds, not grouped"**
+//! (recorded when the palette was first built, issue #151) -- the user's own later call, for
+//! consistency with the TUI's own domain-headed resting-state list
+//! (`bin-tui/src/popup/command/mod.rs`'s `Row::Header`), take precedence over that earlier
+//! spec text.
 //!
 //! Unlike the TUI's registry, `Command` carries a real `handler` here, matching this document's
 //! own spec rather than deferring dispatch to a special case in `Shell`. `handler: None` is the
@@ -32,6 +39,10 @@ pub enum CommandKind {
 /// `None` renders as an em dash in the palette, matching the TUI's `Chord::NONE`.
 pub struct Command {
     pub name: &'static str,
+    /// The palette's resting-state group header (mirroring `bin-tui`'s own per-domain
+    /// grouping) -- one domain per noun, plus "Ledger" for the file-level `open`/`new`/`close`
+    /// trio, which has no noun of its own.
+    pub domain: &'static str,
     pub description: &'static str,
     #[allow(dead_code)]
     pub kind: CommandKind,
@@ -81,56 +92,44 @@ fn close_ledger(nav: &mut NavState) {
     nav.close_ledger();
 }
 
-/// Every command the palette can rank and run today: one `Navigate` command per rail item
-/// (`Noun::ALL`'s own order), plus the one real footer affordance
-/// (`crate::rail::context::footer`'s "+ new account · :account new"). `account new`'s handler
-/// is `None` -- there is no new-account popup yet (out of scope for this map, issue #144), so
-/// running it shows the "not yet built" message rather than silently doing nothing.
+/// Every command the palette can rank and run today, grouped by [`Command::domain`] --
+/// `"Dashboard"` first, then every other domain alphabetically, mirroring the TUI's own
+/// `commands::DOMAINS` order exactly (`bin-tui/src/popup/command/commands/mod.rs`: "Dashboard
+/// first then alphabetical"). One `Navigate` command per rail item (`Noun::ALL`'s own order,
+/// each its own single-command domain), plus the one real footer affordance
+/// (`crate::rail::context::footer`'s "+ new account · :account new", grouped under "Accounts"
+/// alongside its own noun's command) and the file-level `open`/`new`/`close` trio under
+/// "Ledger", which has no noun of its own. `account new`'s handler is `None` -- there is no
+/// new-account popup yet (out of scope for this map, issue #144), so running it shows the "not
+/// yet built" message rather than silently doing nothing.
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "dashboard",
+        domain: "Dashboard",
         description: "net worth and budget health",
         kind: CommandKind::Navigate,
         binding: Some("g d"),
         handler: Some(goto_dashboard),
     },
     Command {
-        name: "transactions",
-        description: "the transaction ledger",
-        kind: CommandKind::Navigate,
-        binding: Some("g l"),
-        handler: Some(goto_transactions),
-    },
-    Command {
         name: "accounts",
+        domain: "Accounts",
         description: "accounts grouped by type",
         kind: CommandKind::Navigate,
         binding: Some("g a"),
         handler: Some(goto_accounts),
     },
     Command {
-        name: "categories",
-        description: "the category tree",
-        kind: CommandKind::Navigate,
-        binding: Some("g c"),
-        handler: Some(goto_categories),
-    },
-    Command {
-        name: "payees",
-        description: "payees and default categories",
-        kind: CommandKind::Navigate,
-        binding: Some("g p"),
-        handler: Some(goto_payees),
-    },
-    Command {
-        name: "tags",
-        description: "the tags every transaction can carry any number of",
-        kind: CommandKind::Navigate,
-        binding: Some("g t"),
-        handler: Some(goto_tags),
+        name: "account new",
+        domain: "Accounts",
+        description: "add an account",
+        kind: CommandKind::Create,
+        binding: None,
+        handler: None,
     },
     Command {
         name: "bills",
+        domain: "Bills",
         description: "recurring and upcoming bills",
         kind: CommandKind::Navigate,
         binding: Some("g w"),
@@ -138,34 +137,23 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         name: "budgets",
+        domain: "Budgets",
         description: "category limits and actuals",
         kind: CommandKind::Navigate,
         binding: Some("g b"),
         handler: Some(goto_budgets),
     },
     Command {
-        name: "reports",
-        description: "net worth and variance reports",
+        name: "categories",
+        domain: "Categories",
+        description: "the category tree",
         kind: CommandKind::Navigate,
-        binding: Some("g r"),
-        handler: Some(goto_reports),
-    },
-    Command {
-        name: "settings",
-        description: "ledger preferences",
-        kind: CommandKind::Navigate,
-        binding: Some("g s"),
-        handler: Some(goto_settings),
-    },
-    Command {
-        name: "account new",
-        description: "add an account",
-        kind: CommandKind::Create,
-        binding: None,
-        handler: None,
+        binding: Some("g c"),
+        handler: Some(goto_categories),
     },
     Command {
         name: "open",
+        domain: "Ledger",
         description: "load a ledger file",
         kind: CommandKind::Run,
         binding: None,
@@ -175,6 +163,7 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         name: "new",
+        domain: "Ledger",
         description: "start a new ledger",
         kind: CommandKind::Create,
         binding: None,
@@ -184,10 +173,51 @@ pub const COMMANDS: &[Command] = &[
     },
     Command {
         name: "close",
+        domain: "Ledger",
         description: "close the open ledger",
         kind: CommandKind::Run,
         binding: None,
         handler: Some(close_ledger),
+    },
+    Command {
+        name: "payees",
+        domain: "Payees",
+        description: "payees and default categories",
+        kind: CommandKind::Navigate,
+        binding: Some("g p"),
+        handler: Some(goto_payees),
+    },
+    Command {
+        name: "reports",
+        domain: "Reports",
+        description: "net worth and variance reports",
+        kind: CommandKind::Navigate,
+        binding: Some("g r"),
+        handler: Some(goto_reports),
+    },
+    Command {
+        name: "settings",
+        domain: "Settings",
+        description: "ledger preferences",
+        kind: CommandKind::Navigate,
+        binding: Some("g s"),
+        handler: Some(goto_settings),
+    },
+    Command {
+        name: "tags",
+        domain: "Tags",
+        description: "the tags every transaction can carry any number of",
+        kind: CommandKind::Navigate,
+        binding: Some("g t"),
+        handler: Some(goto_tags),
+    },
+    Command {
+        name: "transactions",
+        domain: "Transactions",
+        description: "the transaction ledger",
+        kind: CommandKind::Navigate,
+        binding: Some("g l"),
+        handler: Some(goto_transactions),
     },
 ];
 
@@ -220,6 +250,29 @@ mod tests {
                 "no navigate command named {label:?}"
             );
         }
+    }
+
+    #[test]
+    fn domains_are_contiguous_dashboard_first_then_alphabetical() {
+        // Mirrors bin-tui's own `dashboard_is_first_and_the_rest_are_alphabetical` invariant --
+        // the palette's resting-state grouping (`Palette::rows`) assumes each domain's commands
+        // sit together, never split across two separate runs.
+        let mut order: Vec<&str> = Vec::new();
+        for command in COMMANDS {
+            if order.last() != Some(&command.domain) {
+                assert!(
+                    !order.contains(&command.domain),
+                    "domain {:?} is split across non-adjacent commands",
+                    command.domain
+                );
+                order.push(command.domain);
+            }
+        }
+        assert_eq!(order[0], "Dashboard");
+        let rest = &order[1..];
+        let mut sorted_rest = rest.to_vec();
+        sorted_rest.sort_unstable();
+        assert_eq!(rest, sorted_rest.as_slice());
     }
 
     #[test]
