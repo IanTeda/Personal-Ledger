@@ -219,9 +219,10 @@ fn input_row(input: &str, match_count: usize) -> impl IntoElement {
         )
 }
 
-/// One result row: the command name with its matched substring picked out, the description,
-/// and the binding column (an em dash when the command has none) -- selected styling inverts
-/// per the "1d" spec ("Selected result: ink fill, ground text, accent-on-dark substring").
+/// One result row: the command name with its matched substring picked out, then the binding
+/// column (an em dash when the command has none), then the description -- selected styling
+/// inverts per the "1d" spec ("Selected result: ink fill, ground text, accent-on-dark
+/// substring").
 fn result_row(command: &'static Command, needle: &str, selected: bool) -> impl IntoElement {
     let (bg, text, matched, description_color, binding_color) = if selected {
         (
@@ -255,6 +256,13 @@ fn result_row(command: &'static Command, needle: &str, selected: bool) -> impl I
         )))
         .child(
             div()
+                .w(px(64.0))
+                .text_size(px(11.5))
+                .text_color(binding_color)
+                .child(command.binding.unwrap_or("\u{2014}")),
+        )
+        .child(
+            div()
                 .w(px(200.0))
                 .flex_none()
                 .overflow_hidden()
@@ -262,13 +270,6 @@ fn result_row(command: &'static Command, needle: &str, selected: bool) -> impl I
                 .text_ellipsis()
                 .text_color(description_color)
                 .child(command.description),
-        )
-        .child(
-            div()
-                .w(px(64.0))
-                .text_size(px(11.5))
-                .text_color(binding_color)
-                .child(command.binding.unwrap_or("\u{2014}")),
         )
 }
 
