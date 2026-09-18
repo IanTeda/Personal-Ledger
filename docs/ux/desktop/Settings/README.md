@@ -5,7 +5,7 @@ This package contains the design for **Personal Ledger's settings surface** — 
 
 The governing idea: **Settings is a destination, not a mode.** The primary rail stays expanded and marks Settings as the active section, so the user never "falls into" a modal settings window. A second rail acts as the page's own index.
 
-A second distinction runs through the content: **Configuration vs Preferences.** Configuration is client-scoped and read from `personal-ledger.conf` at start-up (Display, Sync server, Data & backup, Tracing). Preferences are ledger-scoped and sync as Change Sets (Ledger & units, default unit, budget period). The UI must make that difference legible — each section header carries a scope note on the right.
+A second distinction runs through the content: **Configuration vs Preferences.** Configuration is client-scoped and read from `personal-ledger.conf` at start-up (Display, Sync server, Data & backup, Tracing). Preferences are ledger-scoped and sync as Change Sets (General, Units, Institutions). The UI must make that difference legible — each section header carries a scope note on the right.
 
 ## About the Design Files
 `Ledger Desktop Shell.dc.html` is a **high-fidelity HTML prototype** showing intended look, layout, and interaction model. It is a **design reference, not production code**. Recreate these designs in the target codebase (Rust + GPUI).
@@ -28,29 +28,45 @@ All variants drawn at **1280 × 800**. The shell is header (48px) / body (flex:1
 - **Primary rail** (206px): the full app nav (LEDGER / PLAN groups), Settings pinned at the bottom in the active dark treatment
 - **Settings index rail** (214px):
   - Filter box: `/ filter`, padding `22px 12px 25.4px`, closed by a 2px rule — this padding is tuned so the rule under the filter **aligns exactly with the 2px rule under the "Settings" page heading**
-  - `SETTINGS` label, then nine entries: General (active), Ledger & units, Units, Institutions, Display, Sync server, Data & backup, Tracing (Logs), About
+  - `SETTINGS` label, then eight entries in order: **General, Display, Units, Institutions, Sync server, Data & backup, Tracing (Logs), About**
   - Footer note, above a 1px rule: "preferences sync · configuration local"
 - **Body** (flex:1): `padding: 22px 28px; overflow: auto` — one continuous scroll, not a pane switcher
   - Page heading "Settings" (28px/800) + scope note "preferences · synced", then a 2px rule
   - Then each section in order, every one built the same way: `h4` (20px) + right-aligned scope note, a 2px rule (`margin: 14px 0 18px`), then content, closing with **48px** before the next section
 - **Status bar** (28px): unchanged from the shell
 
-**Sections, in scroll order**:
+**Sections, in scroll order** (Display sits directly under General — Configuration is surfaced early, right after ledger identity):
+
 | Section | Scope note | Content |
 | --- | --- | --- |
 | General | ledger identity | Ledger name, Owner, Financial year starts, Base unit + a THIS LEDGER summary panel |
-| Ledger & units | synced · change sets | Default unit, budget period |
-| Units | synced · change sets | Table (CODE / NAME / TYPE) — aud, btc, vas — with per-row edit/delete, then **+ Add unit** |
-| Institutions | synced · change sets | Table (INSTITUTION / ACCOUNT TYPE) with per-row edit/delete, then **+ Add institution** |
 | Display | client-scoped · never synced | Date format, decimal separator, row density, status glyphs — beside a live PREVIEW table |
+| Units | 3 units · synced | One combined section — no separate "Ledger & units" pane. A "UNITS" table title, then the units table, then a **Price Sources** subsection |
+| Institutions | 7 institutions · synced | Table (INSTITUTION / ACCOUNT TYPE) with per-row edit/delete, then **+ Add institution** |
 | Sync server | synced · every 30 seconds | Server URL, status (green dot + "connected"), last sync, **Sync now** |
 | Data & backup | local files · aud · 2.84 mb | Store location, last backup, **Backup now**, **Export ledger (CSV)** |
 | Tracing (Logs) | diagnostic · last 1000 entries | Level radios (error/warn/info/debug), a monospace log viewport (120px, scrolling), **Clear logs** |
 | About | version info | Version, release date, build stack |
 
+**Units section detail** — there is no longer a standalone "Default unit for new entries" or "Budget period" control here; budget period moved to become a per-budget setting and does not belong in Settings.
+
+- Table title label: "UNITS" (`font:800 10px/1 'Archivo'; letter-spacing:.11em; color:#9b9797`), same treatment as "PRICE SOURCES" and "PREVIEW" below it
+- Units table columns, in order: **CODE (100px) → NAME (180px) → FLAGS (flex:1, left-aligned) → SOURCE (130px) → TYPE (80px) → ACTIONS (120px)**
+  - FLAGS: tag pills, `class="tag tag-accent"` for **base**, `class="tag tag-outline"` for **default** — only aud carries them (it is both the ledger's base unit and the default unit for new entries); other rows leave the cell empty. Tags sit immediately left-aligned next to NAME, since NAME is a fixed 180px column (not flex) — flags never drift into empty middle space.
+  - SOURCE: the price source shorthand — aud shows **USD** (its rate is sourced against USD as the reference currency), btc shows **CoinGecko**, vas shows **Manual entry**
+  - Rows: aud / Australian Dollar / currency, btc / Bitcoin / crypto, vas / Vanguard Aus Shares / etf
+  - Row action buttons: edit, delete
+- **+ Add unit** button below the table
+- **Price Sources** subsection (own "PRICE SOURCES" label, `margin-top:32px`):
+  - Table columns: **NAME (130px) → SOURCE (flex:1) → LAST UPDATED (130px) → ACTIONS (170px)**
+  - The NAME column shows the unit's name, not its code (Bitcoin, Vanguard Aus Shares) — this is the one place the unit is referenced by name rather than code, since the table is about the source relationship, not the unit record itself
+  - Rows: Bitcoin / "CoinGecko — auto, every 15 min" / "5 minutes ago"; Vanguard Aus Shares / "Manual entry" / "—"
+  - Row action buttons: **test**, edit, delete — `test` checks the source connection/response without editing it, and sits first (left of edit/delete) in the action group
+  - **+ Add price source** button below the table
+
 **Keybindings are not in Settings** — they are statically set in the configuration file and deliberately absent from this surface.
 
-**Scroll**: the body is ~2957px tall in a 724px viewport. Sections stay in the DOM; the index rail scrolls to them.
+**Scroll**: the body scrolls; sections stay in the DOM. The index rail scrolls to them.
 
 ### 2b — Add unit
 Same surface, with the **Add unit** dialog open over it. Fields: Code, Name, Type (select: currency / cryptocurrency / custom). Actions: Cancel, Add.
@@ -89,14 +105,15 @@ Account types are **multi-select chips**, because one institution usually carrie
 | Section heading | `h4`, 20px, same right-aligned scope note |
 | Section rule | `height:2px; flex:none; background:rgba(32,30,29,.38); margin:14px 0 18px` |
 | Section gap | **48px** bottom margin — every section, no exceptions |
+| Subsection label | `font:800 10px/1 'Archivo'; letter-spacing:.11em; color:#9b9797; margin-bottom:10px` — used for "UNITS", "PRICE SOURCES", "THIS LEDGER", "PREVIEW" |
 | Field label | `display:block; font-weight:800; font-size:12px; margin-bottom:6px` |
 | Input / select | `width:100%; padding:8px 10px; border:1px solid rgba(32,30,29,.30); font-size:13px; box-sizing:border-box`; selects add `background:#f3f2f2` |
 | Field column | `width:320px; flex:none; gap:16px`; two columns sit `gap:40px` apart |
-| Radio group | design-system `.radio` + `.dot`; segmented choices use `.seg` + `.seg-opt` |
+| Tag (flags) | `.tag.tag-accent` (filled accent) for **base**; `.tag.tag-outline` for **default** — from the Modernist bundle, not hand-rolled |
 | Table header | `padding:12px 16px; background:#eae9e9; font:800 10px/1 'Archivo'; letter-spacing:.11em; color:#605d5d`, 1px bottom rule |
 | Table row | `padding:12px 16px; border-bottom:1px solid #d7d3d3` (last row omits it); primary cell 800 weight |
 | Row action button | `padding:4px 10px; font-size:11px; border:1px solid rgba(32,30,29,.30); background:transparent` |
-| Section button | `padding:8px 16px` (10px 16px for add-entity), `border:1px solid rgba(32,30,29,.30); background:#eae9e9; font-weight:800; width:fit-content` |
+| Section button | `padding:8px–10px 16px`, `border:1px solid rgba(32,30,29,.30); background:#eae9e9; font-weight:800; width:fit-content` |
 | Info panel | `padding:10–12px; background:#eae9e9; border-left:2px solid #ec3013; font-size:11.5px` |
 | Log viewport | `border:1px solid rgba(32,30,29,.30); background:#eae9e9; padding:10px; height:120px; overflow-y:auto; font-family:monospace; font-size:10px; line-height:1.5` |
 
@@ -145,7 +162,7 @@ Account types are **multi-select chips**, because one institution usually carrie
 - Numbers: `font-variant-numeric: tabular-nums` on every figure
 
 ### Spacing
-6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 40, 48px. Section gap is always 48px; field gap 16px; column gap 40px.
+6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 40, 48px. Section gap is always 48px; field gap 16px; column gap 40px; subsection gap (e.g. Units → Price Sources) 32px.
 
 ### Radius & elevation
 - **Radius 0 everywhere.**
@@ -171,6 +188,7 @@ Account types are **multi-select chips**, because one institution usually carrie
 | Row **edit** (unit) | open 2c pre-filled → modify → Save → if the code changed, rewrite references → close |
 | Row **delete** (unit) | open 2d → type the code → confirm button enables on exact match → Delete → remove + close |
 | **+ Add institution** | open 2e → name + at least one account type + default unit → Add → append → close |
+| Price source **test** | pings/validates the source's connection and shows a transient success/failure state on the button — does not open a dialog |
 
 - `esc` closes any dialog without saving; `enter` submits when the confirm button is enabled
 - Focus moves into the dialog's first field on open and returns to the trigger on close
@@ -187,12 +205,14 @@ Account types are **multi-select chips**, because one institution usually carrie
 
 ```
 settings
-  activeSection: SettingsSection   // General | LedgerUnits | Units | …
+  activeSection: SettingsSection   // General | Display | Units | Institutions | …
   filterQuery: String              // filters the index rail only
   dialog: Option<Dialog>           // AddUnit | EditUnit(id) | DeleteUnit(id) | AddInstitution
   confirmInput: String             // typed-back code for DeleteUnit
 preferences   // ledger-scoped, syncs as Change Sets
-  defaultUnit, budgetPeriod, units[], institutions[]
+  units[] { code, name, type, isBase, isDefault }
+  institutions[]
+  priceSources[] { unitCode, sourceLabel, lastUpdatedAt }
 configuration // client-scoped, read from personal-ledger.conf
   dateFormat, decimalSeparator, rowDensity, statusGlyphs
   syncServerUrl, backupPath, traceLevel
@@ -207,13 +227,16 @@ configuration // client-scoped, read from personal-ledger.conf
 3. **Rules need `flex: none`** inside a flex column, or a 2px rule gets compressed to a hairline.
 4. **Section gap is 48px, uniformly.** Carry it on a consistent edge (bottom of each section wrapper) rather than mixing top and bottom margins — mixed ownership is how gaps go missing.
 5. **The filter rule and the page-heading rule must align.** The filter wrapper's `25.4px` bottom padding is what buys that; recompute it if the heading block's metrics change.
-6. **Configuration vs Preferences must be visible.** Keep each section's scope note — it is the only thing telling the user whether a change syncs.
+6. **Configuration vs Preferences must be visible.** Keep each section's scope note — it is the only thing telling the user whether a change syncs. Display is placed directly after General specifically so Configuration is visible early, not buried.
 7. **Destructive confirm is typed, not clicked.** Keep the confirm disabled until the typed value matches exactly; do not substitute a plain "are you sure".
-8. **Namespace radio groups per instance** (`df-2a`, `df-2b`, …) so two rendered copies of a section don't share selection.
-9. **No keybinding editor.** Bindings are static configuration; if a request to expose them arrives, it is a scope change.
-10. **Zero radius, flush-left labels** — including labels inside wide buttons.
-11. **Icons**: Lucide, 14×14 at rail size, 1.5px stroke.
+8. **Units and "Ledger & units" are one section, not two.** There is no separate pane for default-unit/budget-period controls — budget period is a per-budget setting and lives outside Settings entirely. Don't reintroduce it here.
+9. **Base/default flags are data-driven tags, not free text.** Only render `base` / `default` pills on the unit(s) that actually hold those flags; most rows render an empty flags cell.
+10. **Price Sources references units by name, not code** — this is deliberate and different from every other table in Settings (which key on code). Keep the distinction; it reflects that this table is about the relationship to an external source, read by a human, not a machine key.
+11. **Namespace radio groups per instance** (`df-2a`, `df-2b`, …) so two rendered copies of a section don't share selection.
+12. **No keybinding editor.** Bindings are static configuration; if a request to expose them arrives, it is a scope change.
+13. **Zero radius, flush-left labels** — including labels inside wide buttons.
+14. **Icons**: Lucide, 14×14 at rail size, 1.5px stroke.
 
 ## Files
-- `Ledger Desktop Shell.dc.html` — the prototype (section 2 = 2a–2e; section 1 = the shell variants)
+- `Ledger Desktop Shell.dc.html` — the prototype (section 2 = 2a–2e; section 1 = the shell variants; section 3 = Accounts)
 - `README.md` — this document

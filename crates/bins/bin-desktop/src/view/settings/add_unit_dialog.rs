@@ -15,14 +15,15 @@
 //! editing, not an arbitrary-position cursor, is enough for a single-line Code/Name field with no
 //! existing value to edit into the middle of.
 //!
-//! Type is a segmented control (`super::ledger_units::segmented_control`, made `pub(super)` for
-//! this), not the raw mockup markup's own `<select>` -- see this ticket's own resolution comment
-//! for why (a real dropdown has no more precedent in this crate than a real text cursor does, and
-//! unlike Code/Name, Type can't fall back to "static until a future ticket needs it" the way
-//! `general`'s fields do, since a brand-new unit needs a real value here). The mockup's own
-//! `<select>` options ("currency / crypto / etf / stock") also don't match the ticket's own body
-//! ("currency / cryptocurrency / custom") -- built to the ticket's wording, the operative spec
-//! here, not the mockup's own copy.
+//! Type is a segmented control (`segmented_control`, below), not the raw mockup markup's own
+//! `<select>` -- see this ticket's own resolution comment for why (a real dropdown has no more
+//! precedent in this crate than a real text cursor does, and unlike Code/Name, Type can't fall
+//! back to "static until a future ticket needs it" the way `general`'s fields do, since a
+//! brand-new unit needs a real value here). The mockup's own `<select>` options ("currency /
+//! crypto / etf / stock") also don't match the ticket's own body ("currency / cryptocurrency /
+//! custom") -- built to the ticket's wording, the operative spec here, not the mockup's own
+//! copy. `segmented_control` itself moved here from the now-deleted `ledger_units.rs` (issue
+//! #189): this is its only consumer once that module's own two fields were removed.
 
 use std::rc::Rc;
 
@@ -34,12 +35,14 @@ use crate::{
     theme::color,
 };
 
-use super::{field_label, ledger_units::segmented_control};
+use super::field_label;
 
 pub type OnFieldClick = Rc<dyn Fn(AddUnitField, &mut Window, &mut App)>;
 pub type OnKindClick = Rc<dyn Fn(UnitKind, &mut Window, &mut App)>;
 pub type OnCancel = dialog::OnClick;
 pub type OnConfirm = dialog::OnClick;
+/// A [`segmented_control`] row's own click handler, generic over which enum it selects.
+type OnSegmentClick<T> = Rc<dyn Fn(T, &mut Window, &mut App)>;
 
 pub fn render(
     form: &UnitForm,
@@ -152,4 +155,42 @@ pub(super) fn type_field(
         UnitKind::label,
         on_click,
     ))
+}
+
+/// `.seg`/`.seg-opt`: a bordered, radius-0 pill row, each option separated by a 1px rule, the
+/// selected option taking `background: var(--color-accent); color: var(--color-bg)` -- the
+/// segmented control's own named exception to the shell's "accent never a background" rule (see
+/// `theme::color::ACCENT`'s own doc). Only usable for `&'static [T]` option lists --
+/// `super::add_institution_dialog`'s own Default unit field needs a runtime `&[UnitRow]`
+/// instead, so it builds its own bespoke row rather than reusing this one (see that module's
+/// own doc).
+pub(super) fn segmented_control<T: Copy + PartialEq + 'static>(
+    id_prefix: &'static str,
+    options: &'static [T],
+    current: T,
+    label: fn(T) -> &'static str,
+    on_click: OnSegmentClick<T>,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .border_1()
+        .border_color(color::DIVIDER)
+        .children(options.iter().enumerate().map(|(index, &option)| {
+            let selected = option == current;
+            let on_click = on_click.clone();
+            div()
+                .id(SharedString::from(format!("{id_prefix}-{index}")))
+                .cursor_pointer()
+                .py(px(7.0))
+                .px(px(12.0))
+                .text_size(px(13.0))
+                .when(index > 0, |this| {
+                    this.border_l(px(1.0)).border_color(color::DIVIDER)
+                })
+                .when(selected, |this| {
+                    this.bg(color::ACCENT).text_color(color::INK_ON_DARK)
+                })
+                .on_click(move |_event, window, cx| on_click(option, window, cx))
+                .child(label(option))
+        }))
 }

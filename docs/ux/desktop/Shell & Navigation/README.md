@@ -1,7 +1,7 @@
 # Handoff: Desktop Shell & Navigation
 
 ## Overview
-This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Four variants (1a–1d) present different answers to the same question — how much structure the rails should carry.
+This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, the file-open explorer, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Five variants (1a–1e) present different answers to the same question — how much structure the rails should carry, and how each overlay (palette, file explorer) floats over it.
 
 ## About the Design Files
 `Ledger Desktop Shell.dc.html` is a **high-fidelity HTML prototype** showing intended look, layout, and interaction model. It is a **design reference, not production code**. Recreate these designs in the target codebase (Rust + GPUI) using established patterns, informed by the mockup's layout, typography, color, and behavior.
@@ -65,6 +65,20 @@ All four variants are drawn at **1280 × 800** — the reference desktop window 
   - Footer hint: `↑↓ select · tab complete · enter run · ^r history · esc close`
 - Palette chrome: `background #f3f2f2; border: 2px solid #201e1d; box-shadow: 0 12px 32px rgba(45,43,43,.30)`
 
+### 1e — File explorer (`:open`)
+**Purpose**: The popup behind `:open` — browsing the filesystem to load a `.pldb` ledger. Floats over the same empty shell as 1a, using the same dimming pattern as the command palette (1d): header/rails/footer at reduced opacity, dialog at full opacity and elevated.
+
+**Layout**:
+- Shell behind: identical to 1a (empty state, `:open` shown active in the header), dimmed to `opacity:.30` (rails) / `.38` (header)
+- Dialog: 640px wide, centered horizontally, `top: 80px`, `border: 2px solid #201e1d`, `box-shadow: 0 16px 48px rgba(32,30,29,.40)`
+  - Header: "Open ledger file" (800 16px)
+  - Path bar: folder icon + breadcrumb `~ / documents / **ledgers**` (current segment bold), item count right-aligned
+  - Column header: NAME / SIZE / MODIFIED (800 10px, letter-spacing .11em, `#9b9797`)
+  - Rows, in order: two folders (dimmed `#9b9797`, folder icon), a non-openable file (`expenses-2024.csv`, `#605d5d`, still selectable-looking but not the target type), a decoy near-match (`old-ledger.pldb.bak` — deliberately NOT a real `.pldb`), the **selected** `.pldb` row (dark treatment: `background:#201e1d; color:#f3f2f2`), and one more unselected `.pldb` row
+  - Footer: helper text "only **.pldb** files can be opened" left, Cancel (secondary) + Open (primary, dark) right
+
+**Why it matters**: `.pldb` is the only openable extension — everything else in the list (folders, `.csv`, `.pldb.bak`) is present specifically to test that the row-type distinction reads correctly at a glance, and that Open is meaningfully gated on selecting a real `.pldb` row.
+
 ---
 
 ## Components
@@ -88,6 +102,11 @@ All four variants are drawn at **1280 × 800** — the reference desktop window 
 | Mode chip | `background:#201e1d; color:#f3f2f2; font:800 10px; letter-spacing:.1em; padding:2px 7px` |
 | Section rule | `height:2px; background:rgba(32,30,29,.38)` — always `flex:none` inside a flex column |
 | Row rule | `height:1px; background:#d7d3d3` |
+| File explorer dialog | 640px, `border:2px solid #201e1d`, `top:80px`, centered; header `padding:16px 20px; border-bottom:2px solid rgba(32,30,29,.30)` |
+| Path bar | `padding:12px 20px; border-bottom:1px solid #d7d3d3; font-size:12px; color:#605d5d`, current segment `color:#201e1d; font-weight:800` |
+| File row | `padding:9px 20px`, 1px bottom rule between rows (last omits it); folder/non-target rows `color:#9b9797`/`#605d5d`; selected row `background:#201e1d; color:#f3f2f2` |
+| File row icon | 14×14, `margin-right:9px; flex:none`, stroke matches row text color |
+| Explorer footer | `padding:16px 20px; border-top:1px solid #d7d3d3`, helper text left, Cancel + Open right, `gap:10px` |
 
 ## Design Tokens
 
@@ -143,7 +162,13 @@ All four variants are drawn at **1280 × 800** — the reference desktop window 
 | `/` | focus the contextual filter |
 | `a` | add transaction |
 | `?` | help |
-| `esc` | close palette / clear filter |
+| `esc` | close palette / file explorer / clear filter |
+
+### File explorer (`:open`)
+- Row click selects it; only `.pldb` rows are selectable as the open target — folders navigate in, other extensions are inert
+- Open is disabled until a `.pldb` row is selected; double-click a `.pldb` row opens immediately
+- `esc` or Cancel closes without opening
+- Breadcrumb segments are clickable to jump up the path
 
 ### Command palette
 - `:` opens; typing filters the registry (fuzzy, substring-weighted)
@@ -175,6 +200,12 @@ palette
   results: Vec<Command>
   selectedIndex: usize
   history: Vec<String>
+fileExplorer
+  open: bool
+  currentPath: PathBuf
+  entries: Vec<DirEntry>       // folders + files, unfiltered
+  selected: Option<PathBuf>    // only settable to a .pldb file
+  extensionFilter: "pldb"
 ```
 
 ---
@@ -190,7 +221,9 @@ palette
 7. **Palette layering.** Dimmer and palette share a stacking context above the shell; the palette is horizontally centered with a fixed 96px top offset, not vertically centered.
 8. **Flush left.** Labels — including labels inside wide buttons — start at the left padding edge. Never center them.
 9. **Icons**: Lucide, 14×14 at rail size, 1.5px stroke, `fill: none`.
+10. **File explorer reuses the palette's dimming pattern**, not a separate dimmer treatment — keep both overlays visually consistent (same opacity values, same shell-behind).
+11. **Row eligibility is type-driven, not name-driven.** Gate selectability on the actual file extension read from the filesystem — the mockup's `old-ledger.pldb.bak` decoy exists to catch a naive substring-match bug (`.includes(".pldb")` would wrongly accept it).
 
 ## Files
-- `Ledger Desktop Shell.dc.html` — the prototype (1a–1d plus the settings surface in section 2)
+- `Ledger Desktop Shell.dc.html` — the prototype (1a–1e plus the settings surface in section 2)
 - `README.md` — this document

@@ -4,16 +4,19 @@
 //! `rail::settings_index::SettingsIndexRail` and `view::settings` are the chrome; this module
 //! only knows what sections exist, their scroll order, and their label/scope-note/filter text.
 
-/// The nine sections of the Settings body, in scroll order -- also the settings index rail's
+/// The eight sections of the Settings body, in scroll order -- also the settings index rail's
 /// own row order (`docs/ux/desktop/Settings/README.md`'s "Sections, in scroll order" table).
+/// Nine down to eight as of issue #189: "Ledger & units" no longer exists as its own section --
+/// budget period moved to a per-budget setting outside Settings entirely, and its other control
+/// (Default unit for new entries) merged into Units, which #189 also moved Display ahead of so
+/// Configuration surfaces early (see [`Self::ALL`]'s own order).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsSection {
     #[default]
     General,
-    LedgerUnits,
+    Display,
     Units,
     Institutions,
-    Display,
     SyncServer,
     DataBackup,
     Tracing,
@@ -21,13 +24,14 @@ pub enum SettingsSection {
 }
 
 impl SettingsSection {
-    /// Every section, in scroll/index-rail order.
-    pub const ALL: [SettingsSection; 9] = [
+    /// Every section, in scroll/index-rail order -- Display sits directly after General (issue
+    /// #189's own reorder), not after Institutions the way the original nine-section layout had
+    /// it.
+    pub const ALL: [SettingsSection; 8] = [
         SettingsSection::General,
-        SettingsSection::LedgerUnits,
+        SettingsSection::Display,
         SettingsSection::Units,
         SettingsSection::Institutions,
-        SettingsSection::Display,
         SettingsSection::SyncServer,
         SettingsSection::DataBackup,
         SettingsSection::Tracing,
@@ -38,10 +42,9 @@ impl SettingsSection {
     pub fn label(self) -> &'static str {
         match self {
             Self::General => "General",
-            Self::LedgerUnits => "Ledger & units",
+            Self::Display => "Display",
             Self::Units => "Units",
             Self::Institutions => "Institutions",
-            Self::Display => "Display",
             Self::SyncServer => "Sync server",
             Self::DataBackup => "Data & backup",
             Self::Tracing => "Tracing (Logs)",
@@ -54,7 +57,6 @@ impl SettingsSection {
     pub fn scope_note(self) -> &'static str {
         match self {
             Self::General => "ledger identity",
-            Self::LedgerUnits => "synced · change sets",
             Self::Units => "synced · change sets",
             Self::Institutions => "synced · change sets",
             Self::Display => "client-scoped · never synced",
@@ -67,11 +69,11 @@ impl SettingsSection {
 
     /// The Desktop Settings Surface ticket that builds this section's real content -- this
     /// scaffold (issue #173) only lays out the frame, so every section is a placeholder until
-    /// its own ticket lands.
+    /// its own ticket lands. `LedgerUnits`'s own #176 is gone along with the section it built
+    /// (issue #189).
     pub fn placeholder_issue(self) -> u32 {
         match self {
             Self::General => 175,
-            Self::LedgerUnits => 176,
             Self::Units => 177,
             Self::Institutions => 178,
             Self::Display => 179,
@@ -106,58 +108,9 @@ impl SettingsSection {
     }
 }
 
-/// The **Ledger & units** section's "Default unit for new entries" segmented control
-/// (`docs/ux/desktop/Settings/README.md`'s "2a resting state" markup -- the shared design
-/// system's `.seg`/`.seg-opt` classes, not the "Field label"/`Input`/`select` pair General's
-/// own fields use). `aud` is the mockup's own `checked` option.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DefaultUnit {
-    #[default]
-    Aud,
-    Btc,
-    Vas,
-}
-
-impl DefaultUnit {
-    pub const ALL: [DefaultUnit; 3] = [DefaultUnit::Aud, DefaultUnit::Btc, DefaultUnit::Vas];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Aud => "aud",
-            Self::Btc => "btc",
-            Self::Vas => "vas",
-        }
-    }
-}
-
-/// The same section's "Budget period" segmented control. `monthly` is the mockup's own
-/// `checked` option.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum BudgetPeriod {
-    Weekly,
-    #[default]
-    Monthly,
-    Quarterly,
-}
-
-impl BudgetPeriod {
-    pub const ALL: [BudgetPeriod; 3] = [
-        BudgetPeriod::Weekly,
-        BudgetPeriod::Monthly,
-        BudgetPeriod::Quarterly,
-    ];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Weekly => "weekly",
-            Self::Monthly => "monthly",
-            Self::Quarterly => "quarterly",
-        }
-    }
-}
-
 /// One row of the **Units** section's table (`docs/ux/desktop/Settings/README.md`'s "2a resting
-/// state" markup: CODE / NAME / TYPE columns). Owned `String` fields, not `&'static str` --
+/// state" markup: CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS columns as of issue #189, up
+/// from CODE / NAME / TYPE). Owned `String` fields, not `&'static str` --
 /// issue #184's own Add unit dialog is this crate's first real typed-text input, so a row can
 /// now hold text a person actually typed, not just compile-time dummy data. `kind` stays a
 /// free-form string rather than [`UnitKind`]: the table just displays it, and legacy seeded rows
@@ -169,6 +122,20 @@ pub struct UnitRow {
     pub code: String,
     pub name: String,
     pub kind: String,
+    /// The SOURCE column shorthand (issue #189) -- e.g. `"USD"` (aud's rate is sourced against
+    /// USD as the reference currency), `"CoinGecko"`, `"Manual entry"`. A unit added via the Add
+    /// unit dialog (issue #184) has no real price-source integration, so it defaults to `"Manual
+    /// entry"`, the same fallback `vas` already uses.
+    pub source: String,
+    /// The FLAGS column's `base` pill (`.tag.tag-accent`) -- the ledger's own base unit. Only
+    /// `aud` carries this in the seeded data; nothing in this map lets a user change which unit
+    /// is base, so a dialog-created row always defaults to `false`.
+    pub is_base: bool,
+    /// The FLAGS column's `default` pill (`.tag.tag-outline`) -- the default unit for new
+    /// entries (formerly the removed "Ledger & units" section's own standalone control, now
+    /// folded into this one flag). Same "only `aud`, dialogs default to `false`" reasoning as
+    /// [`Self::is_base`].
+    pub is_default: bool,
 }
 
 /// The mockup's own three seeded rows, in its own order -- a function rather than a `const`
@@ -179,25 +146,63 @@ pub fn default_units() -> Vec<UnitRow> {
             code: "aud".to_string(),
             name: "Australian Dollar".to_string(),
             kind: "currency".to_string(),
+            source: "USD".to_string(),
+            is_base: true,
+            is_default: true,
         },
         UnitRow {
             code: "btc".to_string(),
             name: "Bitcoin".to_string(),
             kind: "crypto".to_string(),
+            source: "CoinGecko".to_string(),
+            is_base: false,
+            is_default: false,
         },
         UnitRow {
             code: "vas".to_string(),
             name: "Vanguard Aus Shares".to_string(),
             kind: "etf".to_string(),
+            source: "Manual entry".to_string(),
+            is_base: false,
+            is_default: false,
+        },
+    ]
+}
+
+/// One row of the **Units** section's own "Price Sources" subsection (issue #189's own README
+/// revision) -- a table about the *relationship* to an external price source, not the unit
+/// record itself, so it's keyed by the unit's `name`, not its `code` (the README's own "the one
+/// place the unit is referenced by name rather than code" callout). Only `btc`/`vas` appear here
+/// -- `aud` has no price-source relationship of this kind (its own SOURCE column value, "USD",
+/// is a reference-currency note on the Units table itself, not an external feed).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PriceSourceRow {
+    pub unit_name: String,
+    pub source: String,
+    pub last_updated: String,
+}
+
+/// The mockup's own two seeded rows, in its own order.
+pub fn default_price_sources() -> Vec<PriceSourceRow> {
+    vec![
+        PriceSourceRow {
+            unit_name: "Bitcoin".to_string(),
+            source: "CoinGecko \u{2014} auto, every 15 min".to_string(),
+            last_updated: "5 minutes ago".to_string(),
+        },
+        PriceSourceRow {
+            unit_name: "Vanguard Aus Shares".to_string(),
+            source: "Manual entry".to_string(),
+            last_updated: "\u{2014}".to_string(),
         },
     ]
 }
 
 /// The Add/Edit unit dialogs' own "Type" selector (`docs/ux/desktop/Settings/README.md`'s "2b —
 /// Add unit": "Type (select: currency / cryptocurrency / custom)") -- rendered as a segmented
-/// control (like [`DefaultUnit`]/[`BudgetPeriod`]/[`TracingLevel`]), not a real `<select>`
-/// dropdown, same reasoning as every other "pick one of a few options" control this map has
-/// built: dropdown-open behaviour has no precedent in this crate yet.
+/// control (like [`TracingLevel`]), not a real `<select>` dropdown, same reasoning as every
+/// other "pick one of a few options" control this map has built: dropdown-open behaviour has no
+/// precedent in this crate yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum UnitKind {
     #[default]
@@ -446,8 +451,8 @@ pub struct AddInstitutionForm {
 impl AddInstitutionForm {
     /// Seeds Account types with the mockup's own `checked` default (savings) and Default unit
     /// with `units`' own first entry, if any -- the same "first option is the resting default"
-    /// precedent `DefaultUnit`/`TracingLevel`/etc. already establish, just read from a runtime
-    /// `Vec` instead of a compile-time enum's own `ALL`.
+    /// precedent `TracingLevel`/etc. already establish, just read from a runtime `Vec` instead
+    /// of a compile-time enum's own `ALL`.
     pub fn new(units: &[UnitRow]) -> Self {
         Self {
             name: String::new(),
@@ -489,7 +494,7 @@ impl AddInstitutionForm {
 
 /// The **Tracing (Logs)** section's level radios (`docs/ux/desktop/Settings/README.md`'s "2a
 /// resting state" markup: `error`/`warn`/`info`/`debug`, `error` the mockup's own `checked`
-/// option). Purely a selected-level preference, like [`DefaultUnit`]/[`BudgetPeriod`] -- there
+/// option). Purely a selected-level preference, like [`UnitKind`] -- there
 /// are no real log lines to filter by level yet (see [`DEFAULT_LOG_LINES`]'s own doc).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TracingLevel {
@@ -536,7 +541,7 @@ mod tests {
             .map(|section| section.body_child_index())
             .collect();
         indices.sort_unstable();
-        assert_eq!(indices, vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(indices, vec![1, 2, 3, 4, 5, 6, 7, 8]);
     }
 
     #[test]
@@ -568,19 +573,29 @@ mod tests {
     }
 
     #[test]
-    fn default_unit_defaults_to_aud() {
-        assert_eq!(DefaultUnit::default(), DefaultUnit::Aud);
-    }
-
-    #[test]
-    fn budget_period_defaults_to_monthly() {
-        assert_eq!(BudgetPeriod::default(), BudgetPeriod::Monthly);
-    }
-
-    #[test]
     fn default_units_matches_the_mockups_own_three_seeded_rows() {
         let codes: Vec<_> = default_units().into_iter().map(|unit| unit.code).collect();
         assert_eq!(codes, vec!["aud", "btc", "vas"]);
+    }
+
+    #[test]
+    fn only_aud_carries_the_base_and_default_flags() {
+        let units = default_units();
+        let flagged: Vec<_> = units
+            .iter()
+            .filter(|unit| unit.is_base || unit.is_default)
+            .map(|unit| unit.code.as_str())
+            .collect();
+        assert_eq!(flagged, vec!["aud"]);
+    }
+
+    #[test]
+    fn default_price_sources_matches_the_mockups_own_two_seeded_rows() {
+        let names: Vec<_> = default_price_sources()
+            .into_iter()
+            .map(|row| row.unit_name)
+            .collect();
+        assert_eq!(names, vec!["Bitcoin", "Vanguard Aus Shares"]);
     }
 
     #[test]
@@ -605,6 +620,9 @@ mod tests {
             code: "btc".to_string(),
             name: "Bitcoin".to_string(),
             kind: "crypto".to_string(),
+            source: "CoinGecko".to_string(),
+            is_base: false,
+            is_default: false,
         };
         let form = UnitForm::from_row(&row);
         assert_eq!(form.code, "btc");

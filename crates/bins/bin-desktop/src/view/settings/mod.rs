@@ -6,7 +6,7 @@
 //! (`crate::settings::SettingsSection::placeholder_issue` names the one still owed).
 //!
 //! Direct children of the scrollable container, in order: the page heading block (child `0`),
-//! then each of the nine sections (children `1..=9`) -- `SettingsSection::body_child_index`
+//! then each of the eight sections (children `1..=8`) -- `SettingsSection::body_child_index`
 //! documents this offset, since `gpui::ScrollHandle::scroll_to_top_of_item` addresses direct
 //! children by index.
 
@@ -18,7 +18,6 @@ pub mod delete_unit_dialog;
 pub mod edit_unit_dialog;
 mod general;
 pub mod institutions;
-pub mod ledger_units;
 pub mod sync_server;
 pub mod tracing;
 pub mod units;
@@ -26,7 +25,7 @@ pub mod units;
 use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
 
 use crate::{
-    settings::{BudgetPeriod, DefaultUnit, InstitutionRow, SettingsSection, TracingLevel, UnitRow},
+    settings::{InstitutionRow, PriceSourceRow, SettingsSection, TracingLevel, UnitRow},
     theme::color,
 };
 
@@ -35,14 +34,15 @@ use crate::{
 /// reason for existing). Every section function takes `&SettingsBodyProps` and reads whatever
 /// subset it needs.
 pub struct SettingsBodyProps<'a> {
-    pub default_unit: DefaultUnit,
-    pub budget_period: BudgetPeriod,
-    pub on_default_unit_click: ledger_units::OnDefaultUnitClick,
-    pub on_budget_period_click: ledger_units::OnBudgetPeriodClick,
     pub units: &'a [UnitRow],
     pub on_unit_edit_click: units::OnRowIndexClick,
     pub on_unit_delete_click: units::OnRowIndexClick,
     pub on_add_unit_click: units::OnAddClick,
+    pub price_sources: &'a [PriceSourceRow],
+    pub on_price_source_test_click: units::OnRowIndexClick,
+    pub on_price_source_edit_click: units::OnRowIndexClick,
+    pub on_price_source_delete_click: units::OnRowIndexClick,
+    pub on_add_price_source_click: units::OnAddClick,
     pub institutions: &'a [InstitutionRow],
     pub on_institution_edit_click: institutions::OnRowIndexClick,
     pub on_institution_delete_click: institutions::OnRowIndexClick,
@@ -173,17 +173,16 @@ fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String
 fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> AnyElement {
     match section {
         SettingsSection::General => general::render(),
-        SettingsSection::LedgerUnits => ledger_units::render(
-            props.default_unit,
-            props.budget_period,
-            props.on_default_unit_click.clone(),
-            props.on_budget_period_click.clone(),
-        ),
         SettingsSection::Units => units::render(
             props.units,
             props.on_unit_edit_click.clone(),
             props.on_unit_delete_click.clone(),
             props.on_add_unit_click.clone(),
+            props.price_sources,
+            props.on_price_source_test_click.clone(),
+            props.on_price_source_edit_click.clone(),
+            props.on_price_source_delete_click.clone(),
+            props.on_add_price_source_click.clone(),
         ),
         SettingsSection::Institutions => institutions::render(
             props.institutions,

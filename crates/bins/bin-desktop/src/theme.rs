@@ -103,6 +103,15 @@ pub mod color {
     /// `Positive` (`docs/ux/desktop/Settings/README.md`'s Design Tokens table): the Sync
     /// server section's own "connected" status dot and text -- the first use of this role.
     pub const POSITIVE: Rgba = rgb(0x2ecc71);
+    /// `.tag-accent`'s own background (`docs/ux/desktop/Shell & Navigation/styles.css`'s
+    /// `--color-accent-100`) -- the Units section's own "base" flag pill (issue #189). `.tag`'s
+    /// own `border-radius` is deliberately not carried over here: this crate's "Radius 0
+    /// everywhere" rule (this module's own doc) has no other exception for a general rounded
+    /// pill shape, only the one already-justified circular status dot, so the flag renders
+    /// square rather than reproducing the shared library's own rounded corner.
+    pub const TAG_ACCENT_BG: Rgba = rgb(0xfff2ef);
+    /// `.tag-accent`'s own text colour (`--color-accent-800`).
+    pub const TAG_ACCENT_TEXT: Rgba = rgb(0x7c1405);
 }
 
 /// Type scale. Archivo throughout, bundled offline (see `crate::main`'s `add_fonts` call) --

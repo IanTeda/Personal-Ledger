@@ -1445,7 +1445,96 @@ a:hover{color:#ae1800}
 </div>
 
 </div>
-<p class="dv-next">Try next: "go with <a class="dv-oid" href="#1b">1b</a>'s second rail but <a class="dv-oid" href="#1a">1a</a>'s grouped nav" · "show the rails at 1024px wide" · "write the gpui handoff for <a class="dv-oid" href="#1a">1a</a>"</p>
+<div class="dv-opt" id="1e">
+<div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Same empty shell as <a class="dv-oid" href="#1a">1a</a>, with the <code>:open</code> command's file explorer floated over it — browsing to a <code>.pldb</code> file. Path bar, sortable list, and a disabled Open until a <code>.pldb</code> row is selected.</div>
+<div class="dv-card" style="width:1280px;height:800px;position:relative;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
+
+  <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38);opacity:.38">
+    <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11"></rect><line x1="6" y1="2.5" x2="6" y2="13.5"></line></svg>
+    </div>
+    <span style="font-weight:800;font-size:13.5px;letter-spacing:-.01em">Personal Ledger</span>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid rgba(32,30,29,.30);color:#605d5d;font-size:12px">
+      <span style="font-weight:800;color:#201e1d">:</span><span>open</span>
+    </div>
+    <div style="display:flex;gap:2px;margin-left:10px"><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div></div>
+  </div>
+
+  <div style="flex:1;display:flex;min-height:0;opacity:.30">
+    <div style="width:206px;flex:none;background:#eae9e9;border-right:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;padding:14px 0 10px">
+      <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;padding:0 14px 8px">LEDGER</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><span style="flex:1">Dashboard</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><span style="flex:1">Transactions</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><span style="flex:1">Accounts</span></div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center">
+        <div style="font:800 26px/1.1 'Archivo';letter-spacing:-.01em;color:#201e1d">No ledger open</div>
+        <div style="font-size:13px;color:#605d5d;max-width:380px">Run <span style="font-weight:800;color:#201e1d">:open</span> to load a ledger file, or <span style="font-weight:800;color:#201e1d">:new</span> to start one.</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#9b9797">
+    <span style="background:#ec3013;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">COMMAND</span>
+    <span style="color:#201e1d;font-weight:800">: open</span><span style="width:2px;height:13px;background:#ec3013;display:inline-block"></span>
+    <div style="flex:1"></div>
+    <span>esc close file explorer</span>
+  </div>
+
+  <div style="position:absolute;left:50%;top:80px;transform:translateX(-50%);width:640px;background:#f3f2f2;border:2px solid #201e1d;box-shadow:0 16px 48px rgba(32,30,29,.40)">
+    <div style="padding:16px 20px;border-bottom:2px solid rgba(32,30,29,.30)">
+      <div style="font:800 16px 'Archivo';letter-spacing:.01em">Open ledger file</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 20px;border-bottom:1px solid #d7d3d3;font-size:12px;color:#605d5d">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#605d5d" stroke-width="1.5"><path d="M2 4.5h4l1.5 2H14v7H2z"></path></svg>
+      <span>~</span><span style="color:#9b9797">/</span><span>documents</span><span style="color:#9b9797">/</span><span style="color:#201e1d;font-weight:800">ledgers</span>
+      <div style="flex:1"></div>
+      <span style="font-variant-numeric:tabular-nums">6 items</span>
+    </div>
+
+    <div style="display:flex;padding:8px 20px;font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;border-bottom:1px solid #d7d3d3">
+      <span style="flex:1">NAME</span><span style="width:90px">SIZE</span><span style="width:120px">MODIFIED</span>
+    </div>
+
+    <div style="display:flex;align-items:center;padding:9px 20px;border-bottom:1px solid #eae9e9;color:#9b9797">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#9b9797" stroke-width="1.5" style="margin-right:9px;flex:none"><path d="M1.5 4h4l1.2 1.6h7.8v8h-13z"></path></svg>
+      <span style="flex:1">archive</span><span style="width:90px">—</span><span style="width:120px">3 weeks ago</span>
+    </div>
+    <div style="display:flex;align-items:center;padding:9px 20px;border-bottom:1px solid #eae9e9;color:#9b9797">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#9b9797" stroke-width="1.5" style="margin-right:9px;flex:none"><path d="M1.5 4h4l1.2 1.6h7.8v8h-13z"></path></svg>
+      <span style="flex:1">backups</span><span style="width:90px">—</span><span style="width:120px">2 days ago</span>
+    </div>
+    <div style="display:flex;align-items:center;padding:9px 20px;border-bottom:1px solid #eae9e9;color:#605d5d">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#605d5d" stroke-width="1.5" style="margin-right:9px;flex:none"><path d="M4 1.5h5.5L12.5 4.5V14.5h-8.5z"></path><path d="M9.5 1.5V4.5H12.5"></path></svg>
+      <span style="flex:1">expenses-2024.csv</span><span style="width:90px">184 kb</span><span style="width:120px">6 days ago</span>
+    </div>
+    <div style="display:flex;align-items:center;padding:9px 20px;border-bottom:1px solid #eae9e9;color:#605d5d">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#605d5d" stroke-width="1.5" style="margin-right:9px;flex:none"><path d="M4 1.5h5.5L12.5 4.5V14.5h-8.5z"></path><path d="M9.5 1.5V4.5H12.5"></path></svg>
+      <span style="flex:1">old-ledger.pldb.bak</span><span style="width:90px">2.61 mb</span><span style="width:120px">4 months ago</span>
+    </div>
+    <div style="display:flex;align-items:center;padding:9px 20px;border-bottom:1px solid #eae9e9;background:#201e1d;color:#f3f2f2">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#f3f2f2" stroke-width="1.5" style="margin-right:9px;flex:none"><path d="M4 1.5h5.5L12.5 4.5V14.5h-8.5z"></path><path d="M9.5 1.5V4.5H12.5"></path></svg>
+      <span style="flex:1;font-weight:800">teda.pldb</span><span style="width:90px;color:#d7d3d3">2.84 mb</span><span style="width:120px;color:#d7d3d3">10 minutes ago</span>
+    </div>
+    <div style="display:flex;align-items:center;padding:9px 20px;color:#605d5d">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#605d5d" stroke-width="1.5" style="margin-right:9px;flex:none"><path d="M4 1.5h5.5L12.5 4.5V14.5h-8.5z"></path><path d="M9.5 1.5V4.5H12.5"></path></svg>
+      <span style="flex:1">personal-2023.pldb</span><span style="width:90px">1.92 mb</span><span style="width:120px">1 year ago</span>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;padding:16px 20px;border-top:1px solid #d7d3d3">
+      <span style="font-size:11.5px;color:#605d5d">only <span style="font-weight:800;color:#201e1d">.pldb</span> files can be opened</span>
+      <div style="flex:1"></div>
+      <div style="padding:8px 16px;border:1px solid rgba(32,30,29,.30);background:transparent;font-weight:800">Cancel</div>
+      <div style="padding:8px 16px;background:#201e1d;color:#f3f2f2;font-weight:800">Open</div>
+    </div>
+  </div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "go with <a class="dv-oid" href="#1b">1b</a>'s second rail but <a class="dv-oid" href="#1a">1a</a>'s grouped nav" · "show the rails at 1024px wide" · "write the gpui handoff for <a class="dv-oid" href="#1a">1a</a>" · "add the same explorer to <a class="dv-oid" href="#1e">1e</a>'s <code>:new</code> flow"</p>
 </section>
 </x-dc>
 </body>

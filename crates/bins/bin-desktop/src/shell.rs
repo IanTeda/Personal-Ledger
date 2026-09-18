@@ -42,9 +42,8 @@ use crate::{
         settings_index::{self, SettingsIndexRail},
     },
     settings::{
-        self, AccountType, AddInstitutionForm, AddUnitField, BudgetPeriod, DefaultUnit,
-        DeleteUnitForm, InstitutionRow, SettingsDialog, SettingsSection, TracingLevel, UnitForm,
-        UnitKind, UnitRow,
+        self, AccountType, AddInstitutionForm, AddUnitField, DeleteUnitForm, InstitutionRow,
+        PriceSourceRow, SettingsDialog, SettingsSection, TracingLevel, UnitForm, UnitKind, UnitRow,
     },
     statusline::StatusLine,
     theme::{color, type_scale},
@@ -145,20 +144,18 @@ pub struct Shell {
     /// yet). Reset to `SettingsSection::default()` alongside the view scroll whenever a fresh
     /// noun is entered, so re-opening Settings always starts on General again.
     settings_selected_section: SettingsSection,
-    /// The Ledger & units section's "Default unit for new entries" (issue #176) -- unlike
-    /// [`Self::settings_filter`]/[`Self::settings_selected_section`], this is *not* reset by
-    /// [`Self::reset_view_scroll`]: it represents a saved-in-memory preference, not navigational
-    /// UI state, so it must survive leaving and re-entering Settings the way a real saved
-    /// setting would.
-    settings_default_unit: DefaultUnit,
-    /// The same section's "Budget period" -- see [`Self::settings_default_unit`]'s own doc for
-    /// why this also isn't reset on noun change.
-    settings_budget_period: BudgetPeriod,
     /// The Units section's own table rows (issue #177), seeded from `settings::default_units()`.
     /// A real, mutable `Vec` so the Add/Edit/Delete unit dialogs (issues #184-#186) can
-    /// push/update/remove rows once they land -- not reset on noun change, same reasoning as
-    /// [`Self::settings_default_unit`].
+    /// push/update/remove rows once they land -- unlike
+    /// [`Self::settings_filter`]/[`Self::settings_selected_section`], not reset by
+    /// [`Self::reset_view_scroll`]: it represents saved-in-memory state, not navigational UI
+    /// state, so it must survive leaving and re-entering Settings the way real saved data would.
     settings_units: Vec<UnitRow>,
+    /// The same section's own "Price Sources" subsection rows (issue #189), seeded from
+    /// `settings::default_price_sources()` -- same reasoning as [`Self::settings_units`], though
+    /// nothing on this map's own dialog tickets mutates this `Vec` yet (test/edit/delete/add are
+    /// all clearly-marked stubs, see `view::settings::units`'s own doc).
+    settings_price_sources: Vec<PriceSourceRow>,
     /// The currently open Settings dialog, if any (issue #184's own "Add unit" the first
     /// variant) -- `NavState::mode` is `InputMode::Dialog` for exactly as long as this is
     /// `Some`, the same "`Option<T>` + a matching mode" shape `Self::palette`/
@@ -167,8 +164,8 @@ pub struct Shell {
     /// The Institutions section's own table rows (issue #178), seeded from
     /// `settings::default_institutions()` -- same reasoning as [`Self::settings_units`].
     settings_institutions: Vec<InstitutionRow>,
-    /// The Tracing (Logs) section's own selected level (issue #182) -- a stored preference like
-    /// [`Self::settings_default_unit`], not reset on noun change.
+    /// The Tracing (Logs) section's own selected level (issue #182) -- a stored preference, not
+    /// reset on noun change (same reasoning as [`Self::settings_units`]).
     settings_tracing_level: TracingLevel,
     /// The same section's log viewport contents, seeded from `settings::DEFAULT_LOG_LINES`.
     /// Real, mutable state -- "Clear logs" empties this `Vec`, the one button in this map with a
@@ -191,9 +188,8 @@ impl Shell {
             file_explorer: None,
             settings_filter: String::new(),
             settings_selected_section: SettingsSection::default(),
-            settings_default_unit: DefaultUnit::default(),
-            settings_budget_period: BudgetPeriod::default(),
             settings_units: settings::default_units(),
+            settings_price_sources: settings::default_price_sources(),
             settings_dialog: None,
             settings_institutions: settings::default_institutions(),
             settings_tracing_level: TracingLevel::default(),
@@ -729,6 +725,13 @@ impl Shell {
                     code: form.code,
                     name: form.name,
                     kind: form.kind.label().to_string(),
+                    // Neither field exists in the Add unit dialog (issue #184's own fields are
+                    // just Code/Name/Type) -- a dialog-created unit has no real price-source
+                    // integration yet, and can't be the ledger's base/default unit (nothing
+                    // lets a user change which one that is).
+                    source: "Manual entry".to_string(),
+                    is_base: false,
+                    is_default: false,
                 });
             }
             SettingsDialog::EditUnit(index, form) => {
@@ -736,10 +739,16 @@ impl Shell {
                     return;
                 }
                 if let Some(existing) = self.settings_units.get_mut(index) {
+                    // `source`/`is_base`/`is_default` aren't Edit unit dialog fields either
+                    // (issue #185's own body: "same form as Add unit") -- preserved from the
+                    // row being edited rather than reset, unlike `code`/`name`/`kind`.
                     *existing = UnitRow {
                         code: form.code,
                         name: form.name,
                         kind: form.kind.label().to_string(),
+                        source: existing.source.clone(),
+                        is_base: existing.is_base,
+                        is_default: existing.is_default,
                     };
                 }
             }
@@ -887,17 +896,30 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Ledger & units section's "Default unit for new entries" segmented control
-    /// (`view::settings::ledger_units::OnDefaultUnitClick`).
-    fn handle_default_unit_click(&mut self, unit: DefaultUnit, cx: &mut Context<Self>) {
-        self.settings_default_unit = unit;
+    /// The Price Sources table's own row "test"/"edit"/"delete" buttons and its own "+ Add price
+    /// source" button (issue #189): no dialog exists for any of these anywhere on this map (same
+    /// reasoning as Institutions' own row edit/delete, `Self::handle_institution_edit_click`'s
+    /// own doc), so each flashes a plain "not yet built" status message naming no issue.
+    fn handle_price_source_test_click(&mut self, index: usize, cx: &mut Context<Self>) {
+        let _ = index;
+        self.status_message = Some("test price source -- not yet built".to_string());
         cx.notify();
     }
 
-    /// The same section's "Budget period" segmented control
-    /// (`view::settings::ledger_units::OnBudgetPeriodClick`).
-    fn handle_budget_period_click(&mut self, period: BudgetPeriod, cx: &mut Context<Self>) {
-        self.settings_budget_period = period;
+    fn handle_price_source_edit_click(&mut self, index: usize, cx: &mut Context<Self>) {
+        let _ = index;
+        self.status_message = Some("edit price source -- not yet built".to_string());
+        cx.notify();
+    }
+
+    fn handle_price_source_delete_click(&mut self, index: usize, cx: &mut Context<Self>) {
+        let _ = index;
+        self.status_message = Some("delete price source -- not yet built".to_string());
+        cx.notify();
+    }
+
+    fn handle_add_price_source_click(&mut self, cx: &mut Context<Self>) {
+        self.status_message = Some("add price source -- not yet built".to_string());
         cx.notify();
     }
 
@@ -1222,16 +1244,34 @@ impl Render for Shell {
                 });
             })
         };
-        let on_default_unit_click: settings_view::ledger_units::OnDefaultUnitClick = {
+        let on_price_source_test_click: settings_view::units::OnRowIndexClick = {
             let entity = entity.clone();
-            Rc::new(move |unit, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_default_unit_click(unit, cx));
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_price_source_test_click(index, cx)
+                });
             })
         };
-        let on_budget_period_click: settings_view::ledger_units::OnBudgetPeriodClick = {
+        let on_price_source_edit_click: settings_view::units::OnRowIndexClick = {
             let entity = entity.clone();
-            Rc::new(move |period, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_budget_period_click(period, cx));
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_price_source_edit_click(index, cx)
+                });
+            })
+        };
+        let on_price_source_delete_click: settings_view::units::OnRowIndexClick = {
+            let entity = entity.clone();
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_price_source_delete_click(index, cx)
+                });
+            })
+        };
+        let on_add_price_source_click: settings_view::units::OnAddClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_add_price_source_click(cx));
             })
         };
         let on_unit_edit_click: settings_view::units::OnRowIndexClick = {
@@ -1360,14 +1400,15 @@ impl Render for Shell {
                                     filter: &self.settings_filter,
                                     selected: self.settings_selected_section,
                                     on_index_click: on_settings_index_click,
-                                    default_unit: self.settings_default_unit,
-                                    budget_period: self.settings_budget_period,
-                                    on_default_unit_click,
-                                    on_budget_period_click,
                                     units: &self.settings_units,
                                     on_unit_edit_click,
                                     on_unit_delete_click,
                                     on_add_unit_click,
+                                    price_sources: &self.settings_price_sources,
+                                    on_price_source_test_click,
+                                    on_price_source_edit_click,
+                                    on_price_source_delete_click,
+                                    on_add_price_source_click,
                                     institutions: &self.settings_institutions,
                                     on_institution_edit_click,
                                     on_institution_delete_click,
@@ -1449,14 +1490,15 @@ struct SettingsPanelProps<'a> {
     filter: &'a str,
     selected: SettingsSection,
     on_index_click: settings_index::OnEntryClick,
-    default_unit: DefaultUnit,
-    budget_period: BudgetPeriod,
-    on_default_unit_click: settings_view::ledger_units::OnDefaultUnitClick,
-    on_budget_period_click: settings_view::ledger_units::OnBudgetPeriodClick,
     units: &'a [UnitRow],
     on_unit_edit_click: settings_view::units::OnRowIndexClick,
     on_unit_delete_click: settings_view::units::OnRowIndexClick,
     on_add_unit_click: settings_view::units::OnAddClick,
+    price_sources: &'a [PriceSourceRow],
+    on_price_source_test_click: settings_view::units::OnRowIndexClick,
+    on_price_source_edit_click: settings_view::units::OnRowIndexClick,
+    on_price_source_delete_click: settings_view::units::OnRowIndexClick,
+    on_add_price_source_click: settings_view::units::OnAddClick,
     institutions: &'a [InstitutionRow],
     on_institution_edit_click: settings_view::institutions::OnRowIndexClick,
     on_institution_delete_click: settings_view::institutions::OnRowIndexClick,
@@ -1507,14 +1549,15 @@ fn render_view(
                 focused,
                 scroll_handle,
                 SettingsBodyProps {
-                    default_unit: settings.default_unit,
-                    budget_period: settings.budget_period,
-                    on_default_unit_click: settings.on_default_unit_click,
-                    on_budget_period_click: settings.on_budget_period_click,
                     units: settings.units,
                     on_unit_edit_click: settings.on_unit_edit_click,
                     on_unit_delete_click: settings.on_unit_delete_click,
                     on_add_unit_click: settings.on_add_unit_click,
+                    price_sources: settings.price_sources,
+                    on_price_source_test_click: settings.on_price_source_test_click,
+                    on_price_source_edit_click: settings.on_price_source_edit_click,
+                    on_price_source_delete_click: settings.on_price_source_delete_click,
+                    on_add_price_source_click: settings.on_add_price_source_click,
                     institutions: settings.institutions,
                     on_institution_edit_click: settings.on_institution_edit_click,
                     on_institution_delete_click: settings.on_institution_delete_click,
