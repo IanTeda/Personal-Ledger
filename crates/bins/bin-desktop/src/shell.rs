@@ -41,7 +41,7 @@ use crate::{
         primary::PrimaryRail,
         settings_index::{self, SettingsIndexRail},
     },
-    settings::{BudgetPeriod, DefaultUnit, SettingsSection},
+    settings::{self, BudgetPeriod, DefaultUnit, SettingsSection, UnitRow},
     statusline::StatusLine,
     theme::{color, type_scale},
     topbar::{self, TopBar},
@@ -150,6 +150,11 @@ pub struct Shell {
     /// The same section's "Budget period" -- see [`Self::settings_default_unit`]'s own doc for
     /// why this also isn't reset on noun change.
     settings_budget_period: BudgetPeriod,
+    /// The Units section's own table rows (issue #177), seeded from `settings::DEFAULT_UNITS`.
+    /// A real, mutable `Vec` (not a `const` slice) so the Add/Edit/Delete unit dialogs (issues
+    /// #184-#186) can push/update/remove rows once they land -- not reset on noun change, same
+    /// reasoning as [`Self::settings_default_unit`].
+    settings_units: Vec<UnitRow>,
 }
 
 impl Shell {
@@ -169,6 +174,7 @@ impl Shell {
             settings_selected_section: SettingsSection::default(),
             settings_default_unit: DefaultUnit::default(),
             settings_budget_period: BudgetPeriod::default(),
+            settings_units: settings::DEFAULT_UNITS.to_vec(),
         }
     }
 
@@ -610,6 +616,28 @@ impl Shell {
         cx.notify();
     }
 
+    /// The Units table's own row "edit"/"delete" buttons and its "+ Add unit" button (issue
+    /// #177): all three open a dialog this map hasn't built yet (issues #184-#186), so each is a
+    /// clearly-marked stub -- flashing the same "not yet built" status-line message
+    /// `CommandEffect::NotYetBuilt` already uses, naming the specific ticket that owes the real
+    /// behaviour, rather than silently doing nothing.
+    fn handle_unit_edit_click(&mut self, index: usize, cx: &mut Context<Self>) {
+        let _ = index; // no row-scoped state until #185 actually opens a dialog on it
+        self.status_message = Some("edit unit -- not yet built (see issue #185)".to_string());
+        cx.notify();
+    }
+
+    fn handle_unit_delete_click(&mut self, index: usize, cx: &mut Context<Self>) {
+        let _ = index; // no row-scoped state until #186 actually opens a dialog on it
+        self.status_message = Some("delete unit -- not yet built (see issue #186)".to_string());
+        cx.notify();
+    }
+
+    fn handle_add_unit_click(&mut self, cx: &mut Context<Self>) {
+        self.status_message = Some("add unit -- not yet built (see issue #184)".to_string());
+        cx.notify();
+    }
+
     /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
     /// state, then -- README's "double-click a `.pldb` row opens immediately" -- confirms the
     /// open immediately when `click_count` reports a real double-click landing on a row that
@@ -799,6 +827,24 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_budget_period_click(period, cx));
             })
         };
+        let on_unit_edit_click: settings_view::units::OnRowIndexClick = {
+            let entity = entity.clone();
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_unit_edit_click(index, cx));
+            })
+        };
+        let on_unit_delete_click: settings_view::units::OnRowIndexClick = {
+            let entity = entity.clone();
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_unit_delete_click(index, cx));
+            })
+        };
+        let on_add_unit_click: settings_view::units::OnAddClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_add_unit_click(cx));
+            })
+        };
 
         div()
             .size_full()
@@ -859,6 +905,10 @@ impl Render for Shell {
                                     budget_period: self.settings_budget_period,
                                     on_default_unit_click,
                                     on_budget_period_click,
+                                    units: &self.settings_units,
+                                    on_unit_edit_click,
+                                    on_unit_delete_click,
+                                    on_add_unit_click,
                                 },
                             )),
                     ),
@@ -893,6 +943,10 @@ struct SettingsPanelProps<'a> {
     budget_period: BudgetPeriod,
     on_default_unit_click: settings_view::ledger_units::OnDefaultUnitClick,
     on_budget_period_click: settings_view::ledger_units::OnBudgetPeriodClick,
+    units: &'a [UnitRow],
+    on_unit_edit_click: settings_view::units::OnRowIndexClick,
+    on_unit_delete_click: settings_view::units::OnRowIndexClick,
+    on_add_unit_click: settings_view::units::OnAddClick,
 }
 
 /// The active noun's own view interior. Only `Dashboard` and `Settings` are real; every other
@@ -936,6 +990,10 @@ fn render_view(
                     budget_period: settings.budget_period,
                     on_default_unit_click: settings.on_default_unit_click,
                     on_budget_period_click: settings.on_budget_period_click,
+                    units: settings.units,
+                    on_unit_edit_click: settings.on_unit_edit_click,
+                    on_unit_delete_click: settings.on_unit_delete_click,
+                    on_add_unit_click: settings.on_add_unit_click,
                 },
             ))
             .into_any_element();

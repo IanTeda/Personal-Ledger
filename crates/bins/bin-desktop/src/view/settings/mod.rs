@@ -12,29 +12,34 @@
 
 mod general;
 pub mod ledger_units;
+pub mod units;
 
 use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
 
 use crate::{
-    settings::{BudgetPeriod, DefaultUnit, SettingsSection},
+    settings::{BudgetPeriod, DefaultUnit, SettingsSection, UnitRow},
     theme::color,
 };
 
 /// Interactive bits a section's own content needs, gathered in one bundle so `render`'s own
-/// signature doesn't grow a new positional parameter per section (mirrors `shell::SettingsIndexProps`'s
+/// signature doesn't grow a new positional parameter per section (mirrors `shell::SettingsPanelProps`'s
 /// reason for existing). Every section function takes `&SettingsBodyProps` and reads whatever
-/// subset it needs -- most of it, today, is only for `ledger_units`.
-pub struct SettingsBodyProps {
+/// subset it needs.
+pub struct SettingsBodyProps<'a> {
     pub default_unit: DefaultUnit,
     pub budget_period: BudgetPeriod,
     pub on_default_unit_click: ledger_units::OnDefaultUnitClick,
     pub on_budget_period_click: ledger_units::OnBudgetPeriodClick,
+    pub units: &'a [UnitRow],
+    pub on_unit_edit_click: units::OnRowIndexClick,
+    pub on_unit_delete_click: units::OnRowIndexClick,
+    pub on_add_unit_click: units::OnAddClick,
 }
 
 pub fn render(
     focused: bool,
     scroll_handle: &ScrollHandle,
-    props: SettingsBodyProps,
+    props: SettingsBodyProps<'_>,
 ) -> gpui::AnyElement {
     div()
         .id("settings-body")
@@ -95,7 +100,7 @@ fn page_heading() -> impl IntoElement {
 /// then a **48px** bottom gap -- every section, no exceptions (README's implementation note 4:
 /// mixed top/bottom margin ownership is how this gap goes missing, so it's carried on a single
 /// edge, here).
-fn section_block(section: SettingsSection, props: &SettingsBodyProps) -> impl IntoElement {
+fn section_block(section: SettingsSection, props: &SettingsBodyProps<'_>) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -116,7 +121,7 @@ fn section_block(section: SettingsSection, props: &SettingsBodyProps) -> impl In
                     div()
                         .text_size(px(11.5))
                         .text_color(color::INK_TERTIARY)
-                        .child(section.scope_note()),
+                        .child(scope_note(section, props)),
                 ),
         )
         .child(
@@ -129,9 +134,20 @@ fn section_block(section: SettingsSection, props: &SettingsBodyProps) -> impl In
         .child(section_content(section, props))
 }
 
+/// The section heading's own right-aligned scope note. Static for every section except Units,
+/// which the mockup gives a **dynamic**, row-count-based note ("3 units · synced") instead of
+/// the generic "synced · change sets" `SettingsSection::scope_note` otherwise returns --
+/// confirmed against the raw markup, not just the README's coarser Components table.
+fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String {
+    match section {
+        SettingsSection::Units => format!("{} units \u{b7} synced", props.units.len()),
+        other => other.scope_note().to_string(),
+    }
+}
+
 /// Each section's real content, once its own ticket has landed -- everything else still falls
 /// back to the placeholder `section_block` originally rendered for all nine.
-fn section_content(section: SettingsSection, props: &SettingsBodyProps) -> AnyElement {
+fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> AnyElement {
     match section {
         SettingsSection::General => general::render(),
         SettingsSection::LedgerUnits => ledger_units::render(
@@ -139,6 +155,12 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps) -> AnyEl
             props.budget_period,
             props.on_default_unit_click.clone(),
             props.on_budget_period_click.clone(),
+        ),
+        SettingsSection::Units => units::render(
+            props.units,
+            props.on_unit_edit_click.clone(),
+            props.on_unit_delete_click.clone(),
+            props.on_add_unit_click.clone(),
         ),
         other => placeholder(other),
     }

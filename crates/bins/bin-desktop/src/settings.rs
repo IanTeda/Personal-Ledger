@@ -156,6 +156,39 @@ impl BudgetPeriod {
     }
 }
 
+/// One row of the **Units** section's table (`docs/ux/desktop/Settings/README.md`'s "2a resting
+/// state" markup: CODE / NAME / TYPE columns). `&'static str` fields since every seeded row is
+/// dummy data known at compile time -- `Shell` clones [`DEFAULT_UNITS`] into a real `Vec` it
+/// owns, so a future ticket's Add/Edit/Delete dialog (issues #184-#186) can mutate it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitRow {
+    pub code: &'static str,
+    pub name: &'static str,
+    /// The TYPE column, e.g. `"currency"` -- a free-form label in the mockup, not (yet) a real
+    /// enum: nothing downstream branches on it, so there's nothing to gain from typing it
+    /// narrower than the string the table just displays.
+    pub kind: &'static str,
+}
+
+/// The mockup's own three seeded rows, in its own order.
+pub const DEFAULT_UNITS: &[UnitRow] = &[
+    UnitRow {
+        code: "aud",
+        name: "Australian Dollar",
+        kind: "currency",
+    },
+    UnitRow {
+        code: "btc",
+        name: "Bitcoin",
+        kind: "crypto",
+    },
+    UnitRow {
+        code: "vas",
+        name: "Vanguard Aus Shares",
+        kind: "etf",
+    },
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,5 +239,11 @@ mod tests {
     #[test]
     fn budget_period_defaults_to_monthly() {
         assert_eq!(BudgetPeriod::default(), BudgetPeriod::Monthly);
+    }
+
+    #[test]
+    fn default_units_matches_the_mockups_own_three_seeded_rows() {
+        let codes: Vec<_> = DEFAULT_UNITS.iter().map(|unit| unit.code).collect();
+        assert_eq!(codes, vec!["aud", "btc", "vas"]);
     }
 }
