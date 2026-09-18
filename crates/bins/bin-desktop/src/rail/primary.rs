@@ -125,6 +125,8 @@ pub struct PrimaryRail {
     tooltip_target: Option<Noun>,
     on_row_hover: OnRowHover,
     on_row_click: OnRowClick,
+    /// The Accounts row's count badge -- the live number of accounts, not a fixed stub.
+    account_count: usize,
 }
 
 impl PrimaryRail {
@@ -143,7 +145,14 @@ impl PrimaryRail {
             tooltip_target,
             on_row_click,
             on_row_hover,
+            account_count: crate::rail::context::account_count(),
         }
+    }
+
+    /// Overrides the Accounts row's badge with the real account count.
+    pub fn account_count(mut self, count: usize) -> Self {
+        self.account_count = count;
+        self
     }
 }
 
@@ -307,7 +316,7 @@ impl PrimaryRail {
                 .py(px(1.0))
                 .px(px(5.0))
                 .mr(px(4.0))
-                .child(crate::rail::context::account_count().to_string())
+                .child(self.account_count.to_string())
         });
 
         let noun = row.noun;

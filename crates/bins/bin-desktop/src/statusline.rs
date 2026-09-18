@@ -10,6 +10,14 @@ use crate::{nav::InputMode, theme::color};
 /// Band height: `docs/ux/desktop/Shell & Navigation/README.md`'s "Layout" table.
 pub const HEIGHT: gpui::Pixels = px(28.0);
 
+/// A page's own status-line content, replacing the shell-wide hint strip and file path while that
+/// page is showing: its key legend (`(key, action)` pairs) and its right-aligned text.
+#[derive(Debug, Clone)]
+pub struct PageStatus {
+    pub hints: &'static [(&'static str, &'static str)],
+    pub right: String,
+}
+
 #[derive(IntoElement)]
 pub struct StatusLine {
     mode: InputMode,
@@ -29,6 +37,9 @@ pub struct StatusLine {
     /// frozen `"open"` echo and "esc close file explorer" hint, since `Shell` keeps `mode` at
     /// `Command` for as long as that dialog is open (see `Shell::run_command`'s own doc).
     command_echo: Option<(String, &'static str)>,
+    /// `Some` while a page with its own legend is showing (`docs/ux/desktop/Accounts/README.md`'s
+    /// 3a status bar). Ignored in command mode, which owns the whole line.
+    page: Option<PageStatus>,
 }
 
 impl StatusLine {
@@ -41,7 +52,13 @@ impl StatusLine {
             mode,
             status_message,
             command_echo,
+            page: None,
         }
+    }
+
+    pub fn page(mut self, page: Option<PageStatus>) -> Self {
+        self.page = page;
+        self
     }
 }
 
@@ -67,12 +84,16 @@ impl RenderOnce for StatusLine {
                     .text_color(color::ACCENT_TEXT)
                     .child(message)
                     .into_any_element(),
-                (None, None) => hint_strip().into_any_element(),
+                (None, None) => match &self.page {
+                    Some(page) => page_hint_strip(page.hints).into_any_element(),
+                    None => hint_strip().into_any_element(),
+                },
             })
             .child(div().flex_1())
-            .child(match self.command_echo {
-                Some((_, hint)) => div().child(hint).into_any_element(),
-                None => file_path().into_any_element(),
+            .child(match (self.command_echo, self.page) {
+                (Some((_, hint)), _) => div().child(hint).into_any_element(),
+                (None, Some(page)) => div().child(page.right).into_any_element(),
+                (None, None) => file_path().into_any_element(),
             })
     }
 }
@@ -118,6 +139,26 @@ fn hint_strip() -> impl IntoElement {
         .child("help ·")
         .child(key("b"))
         .child("toggle sidebar")
+}
+
+/// A page's key legend: `j/k row · enter open ledger · ...`, each key at weight 800 like the
+/// shell-wide hint strip's own.
+fn page_hint_strip(hints: &'static [(&'static str, &'static str)]) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(4.0))
+        .children(hints.iter().enumerate().flat_map(|(index, (key, action))| {
+            let separator = (index > 0).then(|| div().child("\u{b7}").into_any_element());
+            separator.into_iter().chain([
+                div()
+                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    .text_color(color::INK)
+                    .child(*key)
+                    .into_any_element(),
+                div().child(*action).into_any_element(),
+            ])
+        }))
 }
 
 /// The "1d" spec's COMMAND-mode echo: `:{query}` at weight 800, then the accent block caret --

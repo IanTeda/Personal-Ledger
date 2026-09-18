@@ -81,11 +81,14 @@ impl Noun {
     /// other noun with entities. See `docs/ux/desktop/README.md`'s "Where this differs from
     /// the handoff".
     ///
-    /// Every noun besides `Settings` has its own screen still unbuilt (a placeholder-views
+    /// `Accounts` has none either: its page (`docs/ux/desktop/Accounts/README.md`'s 3a) is a
+    /// full-width management table with no rail beside it, the same shape as `Settings`.
+    ///
+    /// Every other noun besides `Dashboard` has its own screen still unbuilt (a placeholder-views
     /// ticket, #153), so this says whether a context rail *could* exist, not that one renders
     /// real data today.
     pub fn has_context_entities(self) -> bool {
-        self != Noun::Settings
+        !matches!(self, Noun::Settings | Noun::Accounts)
     }
 }
 
@@ -400,9 +403,9 @@ mod tests {
         let mut nav = NavState::new();
         nav.set_focus(FocusZone::PrimaryRail);
 
-        nav.set_noun(Noun::Accounts);
+        nav.set_noun(Noun::Categories);
 
-        assert_eq!(nav.noun(), Noun::Accounts);
+        assert_eq!(nav.noun(), Noun::Categories);
         assert_eq!(nav.context(), Some(0));
         assert_eq!(nav.focus(), FocusZone::View);
     }
@@ -410,7 +413,7 @@ mod tests {
     #[test]
     fn set_noun_to_a_noun_with_no_entities_clears_context() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Accounts);
+        nav.set_noun(Noun::Categories);
         assert_eq!(nav.context(), Some(0));
 
         nav.set_noun(Noun::Settings);
@@ -422,13 +425,13 @@ mod tests {
     #[test]
     fn set_context_does_not_change_noun_or_focus() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Accounts);
+        nav.set_noun(Noun::Categories);
         nav.set_focus(FocusZone::ContextRail);
 
         nav.set_context(Some(3));
 
         assert_eq!(nav.context(), Some(3));
-        assert_eq!(nav.noun(), Noun::Accounts);
+        assert_eq!(nav.noun(), Noun::Categories);
         assert_eq!(nav.focus(), FocusZone::ContextRail);
     }
 
@@ -436,7 +439,7 @@ mod tests {
     #[test]
     fn focus_cycles_through_all_three_zones_when_context_exists() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Accounts); // has_context_entities() == true
+        nav.set_noun(Noun::Categories); // has_context_entities() == true
         nav.open_ledger(); // the context rail also needs a ledger open (issue #166)
         nav.set_focus(FocusZone::PrimaryRail);
 
@@ -452,7 +455,7 @@ mod tests {
     #[test]
     fn focus_skips_context_rail_when_no_ledger_is_open_even_with_entities() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Accounts); // has_context_entities() == true, but...
+        nav.set_noun(Noun::Categories); // has_context_entities() == true, but...
         assert!(!nav.ledger_open()); // ...no ledger is open by default.
         nav.set_focus(FocusZone::PrimaryRail);
 
@@ -465,7 +468,7 @@ mod tests {
     #[test]
     fn closing_the_ledger_moves_focus_off_the_context_rail() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Accounts);
+        nav.set_noun(Noun::Categories);
         nav.open_ledger();
         nav.set_focus(FocusZone::ContextRail);
 
@@ -477,7 +480,7 @@ mod tests {
     #[test]
     fn closing_the_ledger_leaves_other_focus_zones_alone() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Accounts);
+        nav.set_noun(Noun::Categories);
         nav.open_ledger();
         nav.set_focus(FocusZone::PrimaryRail);
 
@@ -487,9 +490,22 @@ mod tests {
     }
 
     #[test]
+    fn accounts_has_no_context_rail_so_focus_skips_it() {
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Accounts);
+        nav.open_ledger();
+        assert!(!Noun::Accounts.has_context_entities());
+        assert_eq!(nav.context(), None);
+        nav.set_focus(FocusZone::PrimaryRail);
+
+        nav.cycle_focus_forward();
+        assert_eq!(nav.focus(), FocusZone::View);
+    }
+
+    #[test]
     fn focus_skips_context_rail_when_noun_has_no_entities() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Settings); // the one noun with no context entities
+        nav.set_noun(Noun::Settings); // a noun with no context entities
         nav.set_focus(FocusZone::PrimaryRail);
 
         nav.cycle_focus_forward();
@@ -512,12 +528,12 @@ mod tests {
 
     // Rule 4
     #[test]
-    fn only_settings_has_no_context_entities() {
+    fn only_settings_and_accounts_have_no_context_entities() {
         assert!(!Noun::Settings.has_context_entities());
+        assert!(!Noun::Accounts.has_context_entities());
         for noun in [
             Noun::Dashboard,
             Noun::Transactions,
-            Noun::Accounts,
             Noun::Categories,
             Noun::Payees,
             Noun::Tags,
@@ -533,7 +549,7 @@ mod tests {
     #[test]
     fn toggling_primary_rail_preserves_focus_and_context() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Accounts);
+        nav.set_noun(Noun::Categories);
         nav.set_focus(FocusZone::ContextRail);
         nav.set_context(Some(2));
 

@@ -47,10 +47,11 @@ use crate::{
         DeleteUnitForm, InstitutionRow, PriceSourceRow, RowDensity, SettingsDialog,
         SettingsSection, StatusGlyphs, TracingLevel, UnitForm, UnitKind, UnitRow,
     },
-    statusline::StatusLine,
+    statusline::{PageStatus, StatusLine},
     theme::{color, type_scale},
     topbar::{self, TopBar},
     view::{
+        accounts as accounts_view,
         dashboard::Dashboard,
         settings::{self as settings_view, SettingsBodyProps},
     },
@@ -95,6 +96,18 @@ const PRIMARY_RAIL_HALF_PAGE: usize = 5;
 /// there's no literal "row height" for a dashboard of charts and figures, so this is a plain
 /// reading-sized increment, not a computed value.
 const VIEW_LINE_STEP: f32 = 40.0;
+
+/// `Ctrl-d`/`Ctrl-u` on the Accounts page: half of a typical screenful of rows.
+const ACCOUNTS_HALF_PAGE: isize = 5;
+
+/// The Accounts page's status-line legend (`docs/ux/desktop/Accounts/README.md`'s 3a).
+const ACCOUNTS_HINTS: &[(&str, &str)] = &[
+    ("j/k", "row"),
+    ("enter", "open ledger"),
+    ("e", "edit"),
+    ("d", "delete"),
+    ("n", "new"),
+];
 
 /// Owns the shell's render tree and the live `NavState`.
 pub struct Shell {
@@ -353,7 +366,7 @@ impl Shell {
                 self.apply_movement(movement);
                 true
             }
-            KeyOutcome::NoOp => had_status_message,
+            KeyOutcome::NoOp => self.handle_accounts_key(keystroke) || had_status_message,
             KeyOutcome::ClearPendingG
             | KeyOutcome::ClosePopupsAndExitMode
             | KeyOutcome::EscapeNoOp => {
@@ -433,6 +446,10 @@ impl Shell {
     }
 
     fn apply_view_movement(&mut self, movement: Movement) {
+        if self.nav.noun() == Noun::Accounts {
+            self.apply_accounts_movement(movement);
+            return;
+        }
         let offset = self.view_scroll_handle.offset();
         let max_height = f32::from(self.view_scroll_handle.max_offset().height);
         let viewport_height = f32::from(self.view_scroll_handle.bounds().size.height);
@@ -673,6 +690,125 @@ impl Shell {
                 }
             },
         }
+    }
+
+    /// The selected account's index in [`Self::accounts`], `None` when there are none. The stored
+    /// position is clamped, so removing accounts can never leave it pointing past the end.
+    fn selected_account_index(&self) -> Option<usize> {
+        let order = accounts::display_order(&self.accounts);
+        order
+            .get(self.accounts_selected.min(order.len().saturating_sub(1)))
+            .copied()
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Accounts page's row selection instead of
+    /// scrolling it; `Enter` opens the account's ledger, which no screen exists for yet.
+    fn apply_accounts_movement(&mut self, movement: Movement) {
+        let len = self.accounts.len();
+        let selected = self.accounts_selected;
+        self.accounts_selected = match movement {
+            Movement::Next => accounts::step_selection(selected, len, 1),
+            Movement::Prev => accounts::step_selection(selected, len, -1),
+            Movement::First => 0,
+            Movement::Last => len.saturating_sub(1),
+            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
+            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
+            Movement::Enter => {
+                self.flash_open_ledger_stub();
+                selected
+            }
+        };
+        self.scroll_selected_account_into_view();
+    }
+
+    /// Scrolls the selected account's group block into view (`ScrollHandle::scroll_to_item`
+    /// addresses the page's direct children; see `view::accounts::GROUP_CHILD_OFFSET`).
+    fn scroll_selected_account_into_view(&self) {
+        if let Some(position) = self
+            .selected_account_index()
+            .and_then(|index| accounts::group_position(&self.accounts, index))
+        {
+            self.view_scroll_handle
+                .scroll_to_item(accounts_view::GROUP_CHILD_OFFSET + position);
+        }
+    }
+
+    /// The Accounts page's own `n`/`e`/`d` (only while it is the active noun and the view has
+    /// focus, in `Normal` mode -- `route_key` hands back `NoOp` for these bare keys). Each goes
+    /// through the same handler its button does.
+    fn handle_accounts_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.noun() != Noun::Accounts || self.nav.focus() != FocusZone::View {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        let selected_id = self
+            .selected_account_index()
+            .and_then(|index| self.accounts.get(index))
+            .map(|account| account.id);
+        match keystroke.key.as_str() {
+            "n" => self.flash_accounts_stub("add account"),
+            "e" => {
+                if selected_id.is_some() {
+                    self.flash_accounts_stub("edit account");
+                }
+            }
+            "d" => {
+                if selected_id.is_some() {
+                    self.flash_accounts_stub("delete account");
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    fn flash_accounts_stub(&mut self, what: &str) {
+        self.status_message = Some(format!("{what} -- not yet built"));
+    }
+
+    fn flash_open_ledger_stub(&mut self) {
+        self.status_message = Some("open ledger -- not yet built".to_string());
+    }
+
+    /// Selects the account with `id`, if it still exists.
+    fn select_account(&mut self, id: u32) {
+        let Some(index) = self.accounts.iter().position(|account| account.id == id) else {
+            return;
+        };
+        if let Some(position) = accounts::display_order(&self.accounts)
+            .iter()
+            .position(|&i| i == index)
+        {
+            self.accounts_selected = position;
+        }
+    }
+
+    /// A click on an account row: selects it and, as `enter` does, tries to open its ledger.
+    fn handle_accounts_row_click(&mut self, id: u32, cx: &mut Context<Self>) {
+        self.select_account(id);
+        self.flash_open_ledger_stub();
+        cx.notify();
+    }
+
+    /// The page's **+ Add account** button, sharing `n`'s stub until the Add dialog lands.
+    fn handle_accounts_add_click(&mut self, cx: &mut Context<Self>) {
+        self.flash_accounts_stub("add account");
+        cx.notify();
+    }
+
+    fn handle_accounts_edit_click(&mut self, id: u32, cx: &mut Context<Self>) {
+        self.select_account(id);
+        self.flash_accounts_stub("edit account");
+        cx.notify();
+    }
+
+    fn handle_accounts_delete_click(&mut self, id: u32, cx: &mut Context<Self>) {
+        self.select_account(id);
+        self.flash_accounts_stub("delete account");
+        cx.notify();
     }
 
     /// The Units section's own "+ Add unit" button (issue #184, replacing the stub #177 left
@@ -1435,6 +1571,48 @@ impl Render for Shell {
             })
         };
 
+        let on_accounts_add_click: accounts_view::OnAddClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_accounts_add_click(cx));
+            })
+        };
+        let on_accounts_row_click: accounts_view::OnAccountClick = {
+            let entity = entity.clone();
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_accounts_row_click(id, cx));
+            })
+        };
+        let on_accounts_edit_click: accounts_view::OnAccountClick = {
+            let entity = entity.clone();
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_accounts_edit_click(id, cx));
+            })
+        };
+        let on_accounts_delete_click: accounts_view::OnAccountClick = {
+            let entity = entity.clone();
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_accounts_delete_click(id, cx));
+            })
+        };
+        let selected_account = self.selected_account_index();
+        let accounts_page = accounts_view::AccountsPageProps {
+            accounts: &self.accounts,
+            units: &self.settings_units,
+            selected: selected_account,
+            on_add_click: on_accounts_add_click,
+            on_row_click: on_accounts_row_click,
+            on_edit_click: on_accounts_edit_click,
+            on_delete_click: on_accounts_delete_click,
+        };
+        let page_status = (self.nav.noun() == Noun::Accounts).then(|| PageStatus {
+            hints: ACCOUNTS_HINTS,
+            right: match self.accounts.len() {
+                1 => "1 account".to_string(),
+                count => format!("{count} accounts"),
+            },
+        });
+
         div()
             .size_full()
             .flex()
@@ -1462,14 +1640,17 @@ impl Render for Shell {
                             .flex_1()
                             .min_h(px(0.0))
                             .flex()
-                            .child(PrimaryRail::new(
-                                self.nav.primary_highlight(),
-                                focus == FocusZone::PrimaryRail,
-                                self.nav.primary_rail(),
-                                self.collapsed_rail_tooltip,
-                                on_row_hover,
-                                on_row_click,
-                            ))
+                            .child(
+                                PrimaryRail::new(
+                                    self.nav.primary_highlight(),
+                                    focus == FocusZone::PrimaryRail,
+                                    self.nav.primary_rail(),
+                                    self.collapsed_rail_tooltip,
+                                    on_row_hover,
+                                    on_row_click,
+                                )
+                                .account_count(self.accounts.len()),
+                            )
                             .when(
                                 self.nav.noun().has_context_entities() && self.nav.ledger_open(),
                                 |this| {
@@ -1486,6 +1667,7 @@ impl Render for Shell {
                                 focus == FocusZone::View,
                                 &self.view_scroll_handle,
                                 on_empty_state_command_click,
+                                accounts_page,
                                 SettingsPanelProps {
                                     filter: &self.settings_filter,
                                     selected: self.settings_selected_section,
@@ -1522,11 +1704,14 @@ impl Render for Shell {
                             )),
                     ),
             )
-            .child(StatusLine::new(
-                self.nav.mode(),
-                self.status_message.clone(),
-                self.command_echo(),
-            ))
+            .child(
+                StatusLine::new(
+                    self.nav.mode(),
+                    self.status_message.clone(),
+                    self.command_echo(),
+                )
+                .page(page_status),
+            )
             .children(self.palette.as_ref().map(Palette::render))
             .children(self.file_explorer.as_ref().map(|explorer| {
                 explorer.render(
@@ -1637,8 +1822,13 @@ fn render_view(
     focused: bool,
     scroll_handle: &ScrollHandle,
     on_empty_state_command_click: OnEmptyStateCommandClick,
+    accounts: accounts_view::AccountsPageProps<'_>,
     settings: SettingsPanelProps<'_>,
 ) -> gpui::AnyElement {
+    if noun == Noun::Accounts {
+        return accounts_view::render(focused, scroll_handle, accounts);
+    }
+
     if noun == Noun::Settings {
         return div()
             .id("settings")
@@ -1691,7 +1881,7 @@ fn render_view(
     let content = match noun {
         Noun::Dashboard if ledger_open => Dashboard::new().into_any_element(),
         Noun::Dashboard => empty_state(on_empty_state_command_click),
-        Noun::Settings => unreachable!("handled above"),
+        Noun::Settings | Noun::Accounts => unreachable!("handled above"),
         other => div()
             .p(px(24.0))
             .text_color(color::INK_TERTIARY)

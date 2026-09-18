@@ -115,6 +115,118 @@ pub enum AccountsDialog {
     Delete(u32),
 }
 
+/// Splits `money` into its sign and its display text: thousands-grouped integer part, fractional
+/// digits kept exactly as the amount carries them (`0.4120` stays four places -- the Unit's own
+/// precision, never a hard-coded two). Negative is a separate flag so the caller can apply the
+/// negative-balance rule (an ink token plus the U+2212 minus, never colour alone); a zero amount
+/// is never negative, even if its text is `-0.00`.
+pub fn format_amount(money: &Money) -> (bool, String) {
+    let text = money.0.to_string();
+    let (signed, digits) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text.as_str()),
+    };
+    let negative = signed && digits.chars().any(|c| matches!(c, '1'..='9'));
+    let (integer, fraction) = match digits.split_once('.') {
+        Some((integer, fraction)) => (integer, Some(fraction.to_string())),
+        // `BigDecimal` prints a zero as a bare `0` whatever scale it carries, so an empty
+        // `0.00` account would lose its places; put them back from the amount's own scale.
+        None => match usize::try_from(money.0.fractional_digit_count()) {
+            Ok(scale) if scale > 0 => (digits, Some("0".repeat(scale))),
+            _ => (digits, None),
+        },
+    };
+
+    let grouped = if integer.chars().all(|c| c.is_ascii_digit()) {
+        let mut out = String::with_capacity(integer.len() + integer.len() / 3);
+        for (index, digit) in integer.chars().enumerate() {
+            if index > 0 && (integer.len() - index) % 3 == 0 {
+                out.push(',');
+            }
+            out.push(digit);
+        }
+        out
+    } else {
+        integer.to_string()
+    };
+
+    let mut display = String::new();
+    if negative {
+        display.push('\u{2212}');
+    }
+    display.push_str(&grouped);
+    if let Some(fraction) = fraction {
+        display.push('.');
+        display.push_str(&fraction);
+    }
+    (negative, display)
+}
+
+/// The page header's figures under the no-cross-Unit rule: one net figure in the base Unit
+/// only, with every other Unit held named rather than summed or silently dropped.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NetWorth {
+    pub account_count: usize,
+    /// `None` when Settings has no base Unit, in which case there is no net figure at all.
+    pub base_unit: Option<String>,
+    /// Signed sum of the base-Unit accounts' balances (loans and cards negative).
+    pub base_net: Money,
+    /// Other Unit codes held, in first-seen order, each once.
+    pub held_separately: Vec<String>,
+}
+
+/// Computes the header's [`NetWorth`] for `accounts` against the Settings base Unit.
+pub fn net_worth(accounts: &[Account], base_unit: Option<&str>) -> NetWorth {
+    let mut base_net = money("0");
+    let mut held_separately: Vec<String> = Vec::new();
+    for account in accounts {
+        if base_unit == Some(account.unit.as_str()) {
+            base_net = Money(base_net.0 + account.balance.0.clone());
+        } else if !held_separately.contains(&account.unit) {
+            held_separately.push(account.unit.clone());
+        }
+    }
+    NetWorth {
+        account_count: accounts.len(),
+        base_unit: base_unit.map(str::to_string),
+        base_net,
+        held_separately,
+    }
+}
+
+impl NetWorth {
+    /// `"7 accounts"`, or `"1 account"`.
+    pub fn count_text(&self) -> String {
+        match self.account_count {
+            1 => "1 account".to_string(),
+            count => format!("{count} accounts"),
+        }
+    }
+
+    /// `"vas, btc held separately"`, or `None` when every account is in the base Unit.
+    pub fn held_separately_text(&self) -> Option<String> {
+        (!self.held_separately.is_empty())
+            .then(|| format!("{} held separately", self.held_separately.join(", ")))
+    }
+}
+
+/// Moves a selection (a position in [`display_order`]) by `delta` rows, clamped to `0..len`. An
+/// empty list always selects `0`.
+pub fn step_selection(selected: usize, len: usize, delta: isize) -> usize {
+    if len == 0 {
+        return 0;
+    }
+    selected.saturating_add_signed(delta).min(len - 1)
+}
+
+/// The zero-based group position of the account at `accounts[index]` -- which group block on the
+/// page holds it, for scrolling that block into view.
+pub fn group_position(accounts: &[Account], index: usize) -> Option<usize> {
+    group_accounts(accounts)
+        .iter()
+        .position(|group| group.indices.contains(&index))
+}
+
 fn money(text: &str) -> Money {
     text.parse()
         .expect("seed amounts are valid decimals (see seed_rows_parse_and_link)")
@@ -363,5 +475,107 @@ mod tests {
             .filter(|account| account.unit == base)
             .fold(money("0"), |sum, account| Money(sum.0 + account.balance.0));
         assert_eq!(net, money("83995.87"));
+    }
+
+    #[test]
+    fn format_amount_groups_thousands_and_keeps_the_amounts_own_precision() {
+        assert_eq!(
+            format_amount(&money("463203.10")),
+            (false, "463,203.10".to_string())
+        );
+        assert_eq!(
+            format_amount(&money("4182.55")),
+            (false, "4,182.55".to_string())
+        );
+        assert_eq!(format_amount(&money("1240")), (false, "1,240".to_string()));
+        assert_eq!(
+            format_amount(&money("0.4120")),
+            (false, "0.4120".to_string())
+        );
+        assert_eq!(format_amount(&money("999")), (false, "999".to_string()));
+        assert_eq!(
+            format_amount(&money("1000000")),
+            (false, "1,000,000".to_string())
+        );
+    }
+
+    #[test]
+    fn format_amount_marks_negatives_with_a_real_minus_sign() {
+        assert_eq!(
+            format_amount(&money("-381311.34")),
+            (true, "\u{2212}381,311.34".to_string())
+        );
+        assert_eq!(
+            format_amount(&money("-2318.44")),
+            (true, "\u{2212}2,318.44".to_string())
+        );
+    }
+
+    #[test]
+    fn format_amount_never_treats_zero_as_negative() {
+        let (negative, text) = format_amount(&money("-0.00"));
+        assert!(!negative);
+        assert_eq!(text, "0.00");
+    }
+
+    #[test]
+    fn net_worth_sums_base_unit_only_and_names_the_rest() {
+        let net = net_worth(&default_accounts(), Some("aud"));
+        assert_eq!(net.account_count, 7);
+        assert_eq!(net.base_net, money("83995.87"));
+        assert_eq!(
+            net.held_separately,
+            vec!["vas".to_string(), "btc".to_string()]
+        );
+        assert_eq!(net.count_text(), "7 accounts");
+        assert_eq!(
+            net.held_separately_text().as_deref(),
+            Some("vas, btc held separately")
+        );
+    }
+
+    #[test]
+    fn net_worth_with_no_base_unit_accounts_is_zero_and_lists_every_unit() {
+        let accounts = vec![Account {
+            unit: "btc".to_string(),
+            ..account(1, "Coins", AccountType::Investment)
+        }];
+        let net = net_worth(&accounts, Some("aud"));
+        assert_eq!(net.base_net, money("0"));
+        assert_eq!(net.held_separately, vec!["btc".to_string()]);
+    }
+
+    #[test]
+    fn net_worth_with_no_base_unit_sums_nothing() {
+        let net = net_worth(&default_accounts(), None);
+        assert_eq!(net.base_net, money("0"));
+        assert_eq!(net.base_unit, None);
+        assert_eq!(net.held_separately.len(), 3);
+    }
+
+    #[test]
+    fn net_worth_count_text_is_singular_for_one_account() {
+        let net = net_worth(&[account(1, "Only", AccountType::Cash)], Some("aud"));
+        assert_eq!(net.count_text(), "1 account");
+        assert_eq!(net.held_separately_text(), None);
+    }
+
+    #[test]
+    fn step_selection_clamps_at_both_ends_and_tolerates_an_empty_list() {
+        assert_eq!(step_selection(0, 7, -1), 0);
+        assert_eq!(step_selection(3, 7, 1), 4);
+        assert_eq!(step_selection(6, 7, 1), 6);
+        assert_eq!(step_selection(2, 7, -5), 0);
+        assert_eq!(step_selection(2, 7, 100), 6);
+        assert_eq!(step_selection(0, 0, 1), 0);
+    }
+
+    #[test]
+    fn group_position_finds_the_block_holding_an_account() {
+        let accounts = default_accounts();
+        // Wallet (Cash) is the first block; Bitcoin (Investment) is the last of five.
+        assert_eq!(group_position(&accounts, 0), Some(0));
+        assert_eq!(group_position(&accounts, 6), Some(4));
+        assert_eq!(group_position(&accounts, 99), None);
     }
 }
