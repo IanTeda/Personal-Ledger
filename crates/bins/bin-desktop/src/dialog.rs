@@ -21,8 +21,8 @@
 //! picks. Deciding that shape is deliberately left to those tickets: unlike the file explorer
 //! (opened via a `:`-palette command, so reusing `InputMode::Command` while it's open was a
 //! natural fit), a Settings dialog opens from a plain button click inside the Settings view, with
-//! no palette dispatch to piggyback on.
-#![allow(dead_code)] // No consumer yet -- built ahead of issues #184-#187 on the same map.
+//! no palette dispatch to piggyback on. Issues #184/#185 picked `InputMode::Dialog`
+//! (`Shell::handle_dialog_key`), a new mode alongside `Command`/`Search`.
 
 use std::rc::Rc;
 
@@ -134,6 +134,21 @@ pub fn cancel_button(id: impl Into<SharedString>, on_click: OnClick) -> impl Int
         .text_color(color::INK)
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child("Cancel")
+}
+
+/// The Info panel: `padding:10-12px; background:#eae9e9; border-left:2px solid #ec3013;
+/// font-size:11.5px` (`docs/ux/desktop/Settings/README.md`'s Components table) -- the Edit unit
+/// dialog's own usage notice (issue #185) and the Delete unit dialog's own reference panel
+/// (issue #186) share this exact style, so it's extracted here rather than built twice.
+pub fn info_panel(content: impl Into<SharedString>) -> impl IntoElement {
+    div()
+        .p(px(10.0))
+        .bg(color::CHROME)
+        .border_l(px(2.0))
+        .border_color(color::ACCENT)
+        .text_size(px(11.5))
+        .text_color(color::INK_SECONDARY)
+        .child(content.into())
 }
 
 /// The Confirm button: `padding:8px 16px; background:#201e1d; color:#f3f2f2; border:none;

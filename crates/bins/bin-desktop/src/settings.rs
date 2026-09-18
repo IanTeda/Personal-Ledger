@@ -160,10 +160,10 @@ impl BudgetPeriod {
 /// state" markup: CODE / NAME / TYPE columns). Owned `String` fields, not `&'static str` --
 /// issue #184's own Add unit dialog is this crate's first real typed-text input, so a row can
 /// now hold text a person actually typed, not just compile-time dummy data. `kind` stays a
-/// free-form string rather than [`UnitKind`] even for dialog-created rows: nothing downstream
-/// branches on it, so there's nothing to gain from re-typing it narrower than the string the
-/// table just displays, and legacy seeded rows ("crypto", "etf") don't match any `UnitKind`
-/// label anyway -- `UnitKind` only governs the dialog's own selector, not the row it produces.
+/// free-form string rather than [`UnitKind`]: the table just displays it, and legacy seeded rows
+/// ("crypto", "etf") don't match any `UnitKind` label anyway. Issue #185's Edit dialog reads it
+/// back through [`UnitKind::from_label`] to pre-fill the Type selector, but the row itself is
+/// never typed narrower than a string -- `UnitKind` only governs the dialogs' own selector.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitRow {
     pub code: String,
@@ -216,10 +216,23 @@ impl UnitKind {
             Self::Custom => "custom",
         }
     }
+
+    /// Maps a [`UnitRow::kind`] free-form string back to the closest `UnitKind` (issue #185's
+    /// own Edit unit dialog: pre-filling the Type selector from an existing row). Falls back to
+    /// `Custom` on no exact match -- `Custom` is the catch-all category by definition, and a
+    /// legacy seeded row's own free-form label ("crypto", "etf") was never guaranteed to match
+    /// one of these three canonical options in the first place (see [`UnitRow`]'s own doc).
+    pub fn from_label(label: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|kind| kind.label() == label)
+            .unwrap_or(Self::Custom)
+    }
 }
 
-/// Which text field currently receives typed characters in the Add unit dialog -- Type has no
-/// equivalent variant since it's a click-select segmented control, not something you type into.
+/// Which text field currently receives typed characters in the Add/Edit unit dialogs -- Type
+/// has no equivalent variant since it's a click-select segmented control, not something you
+/// type into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AddUnitField {
     #[default]
@@ -227,21 +240,36 @@ pub enum AddUnitField {
     Name,
 }
 
-/// The Add unit dialog's own live form state (issue #184) -- pure, `gpui`-free, mirroring
-/// `nav.rs`/`palette.rs`'s "state here, chrome renders it" split. `Shell` owns `Option<Self>`
-/// wrapped in [`SettingsDialog`]; `None` means the dialog is closed.
+/// The Add/Edit unit dialogs' own live form state (issues #184/#185) -- pure, `gpui`-free,
+/// mirroring `nav.rs`/`palette.rs`'s "state here, chrome renders it" split. `Shell` owns
+/// `Option<Self>` wrapped in [`SettingsDialog`]; `None` means no dialog is open. Shared between
+/// both dialogs rather than a separate `EditUnitForm` -- issue #185's own body: "same form as
+/// Add unit" -- so [`Self::is_valid`]/[`Self::push_char`]/[`Self::backspace`]/[`Self::cycle_field`]
+/// only need writing once.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct AddUnitForm {
+pub struct UnitForm {
     pub code: String,
     pub name: String,
     pub kind: UnitKind,
     pub focused_field: AddUnitField,
 }
 
-impl AddUnitForm {
+impl UnitForm {
+    /// Pre-fills a form from an existing row (issue #185's own Edit unit dialog) -- `kind` maps
+    /// back through [`UnitKind::from_label`] since the row stores a free-form string, not the
+    /// enum itself.
+    pub fn from_row(row: &UnitRow) -> Self {
+        Self {
+            code: row.code.clone(),
+            name: row.name.clone(),
+            kind: UnitKind::from_label(&row.kind),
+            focused_field: AddUnitField::default(),
+        }
+    }
+
     /// The README's own "Dialog lifecycle" row: "fill Code / Name / Type (all required)" --
     /// Type always has a value (a segmented control can't be empty), so only Code/Name gate the
-    /// Add button's enabled state.
+    /// Add/Save button's enabled state.
     pub fn is_valid(&self) -> bool {
         !self.code.trim().is_empty() && !self.name.trim().is_empty()
     }
@@ -281,10 +309,13 @@ impl AddUnitForm {
 }
 
 /// Every Settings dialog `Shell` can have open, `None` when none is -- the README's own `State`
-/// block (`dialog: Option<Dialog>`). One variant per dialog ticket; issue #184 adds the first.
+/// block (`dialog: Option<Dialog>`). One variant per dialog ticket; `EditUnit`'s own `usize` is
+/// the row's index in `Shell::settings_units` -- `Shell::confirm_settings_dialog` needs it to
+/// know which row to overwrite.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingsDialog {
-    AddUnit(AddUnitForm),
+    AddUnit(UnitForm),
+    EditUnit(usize, UnitForm),
 }
 
 /// One row of the **Institutions** section's table (`docs/ux/desktop/Settings/README.md`'s "2a
@@ -435,8 +466,33 @@ mod tests {
     }
 
     #[test]
+    fn unit_kind_from_label_matches_exactly_or_falls_back_to_custom() {
+        assert_eq!(UnitKind::from_label("currency"), UnitKind::Currency);
+        assert_eq!(
+            UnitKind::from_label("cryptocurrency"),
+            UnitKind::Cryptocurrency
+        );
+        assert_eq!(UnitKind::from_label("crypto"), UnitKind::Custom);
+        assert_eq!(UnitKind::from_label("etf"), UnitKind::Custom);
+    }
+
+    #[test]
+    fn unit_form_from_row_prefills_every_field() {
+        let row = UnitRow {
+            code: "btc".to_string(),
+            name: "Bitcoin".to_string(),
+            kind: "crypto".to_string(),
+        };
+        let form = UnitForm::from_row(&row);
+        assert_eq!(form.code, "btc");
+        assert_eq!(form.name, "Bitcoin");
+        assert_eq!(form.kind, UnitKind::Custom);
+        assert_eq!(form.focused_field, AddUnitField::Code);
+    }
+
+    #[test]
     fn add_unit_form_is_invalid_until_code_and_name_are_both_filled() {
-        let mut form = AddUnitForm::default();
+        let mut form = UnitForm::default();
         assert!(!form.is_valid());
         form.push_char('a');
         assert!(!form.is_valid());
@@ -447,7 +503,7 @@ mod tests {
 
     #[test]
     fn add_unit_form_push_and_backspace_target_the_focused_field() {
-        let mut form = AddUnitForm::default();
+        let mut form = UnitForm::default();
         form.push_char('a');
         form.push_char('u');
         form.push_char('d');
@@ -464,7 +520,7 @@ mod tests {
 
     #[test]
     fn add_unit_form_cycle_field_toggles_between_code_and_name() {
-        let mut form = AddUnitForm::default();
+        let mut form = UnitForm::default();
         assert_eq!(form.focused_field, AddUnitField::Code);
         form.cycle_field();
         assert_eq!(form.focused_field, AddUnitField::Name);

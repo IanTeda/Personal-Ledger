@@ -1,7 +1,11 @@
 //! Renders the **Add unit** dialog (issue #184's own "2b"), on the shared `crate::dialog`
-//! chrome. `Shell` owns the live form state (`settings::AddUnitForm`) and every keystroke while
+//! chrome. `Shell` owns the live form state (`settings::UnitForm`) and every keystroke while
 //! it's open (`InputMode::Dialog`, `Shell::handle_dialog_key`) -- this module is a pure
 //! render-helper, the same split every other `view::settings` submodule already uses.
+//!
+//! `field_click`/`text_field`/`type_field` are `pub(super)`: the Edit unit dialog (issue #185)
+//! wraps the same `UnitForm` and reuses them verbatim rather than duplicating this module's own
+//! field rendering -- see `super::edit_unit_dialog`'s own doc.
 //!
 //! Code/Name are this crate's **first real editable text fields** -- every other "field" built
 //! so far (`general::field_value`) is deliberately static per that module's own doc, since
@@ -26,7 +30,7 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
     dialog,
-    settings::{AddUnitField, AddUnitForm, UnitKind},
+    settings::{AddUnitField, UnitForm, UnitKind},
     theme::color,
 };
 
@@ -38,7 +42,7 @@ pub type OnCancel = dialog::OnClick;
 pub type OnConfirm = dialog::OnClick;
 
 pub fn render(
-    form: &AddUnitForm,
+    form: &UnitForm,
     on_field_click: OnFieldClick,
     on_kind_click: OnKindClick,
     on_cancel: OnCancel,
@@ -67,7 +71,7 @@ pub fn render(
                 field_click(AddUnitField::Name, on_field_click),
             )
             .into_any_element(),
-            type_field(form.kind, on_kind_click).into_any_element(),
+            type_field("add-unit-type", form.kind, on_kind_click).into_any_element(),
         ]))
         .child(dialog::action_row([
             dialog::cancel_button("add-unit-cancel", on_cancel).into_any_element(),
@@ -85,14 +89,14 @@ pub fn render(
 }
 
 /// Curries `field` into a plain click handler -- what [`text_field`] binds its own `on_click` to.
-fn field_click(field: AddUnitField, on_click: OnFieldClick) -> dialog::OnClick {
+pub(super) fn field_click(field: AddUnitField, on_click: OnFieldClick) -> dialog::OnClick {
     Rc::new(move |window: &mut Window, cx: &mut App| on_click(field, window, cx))
 }
 
 /// One Code/Name field: `super::field_label` above a clickable value box mirroring
 /// `super::field_value`'s own border/padding, plus the focused-state border and caret this
 /// crate's first real text input needs (see the module doc).
-fn text_field(
+pub(super) fn text_field(
     id: &'static str,
     label: &'static str,
     value: &str,
@@ -131,10 +135,15 @@ fn text_field(
 }
 
 /// The Type field: `super::field_label` above a segmented control (see the module doc for why
-/// this isn't the raw markup's own `<select>`).
-fn type_field(selected: UnitKind, on_click: OnKindClick) -> impl IntoElement {
+/// this isn't the raw markup's own `<select>`). `id_prefix` keeps the Add/Edit dialogs' own
+/// segmented controls element-id-distinct, even though only one is ever mounted at a time.
+pub(super) fn type_field(
+    id_prefix: &'static str,
+    selected: UnitKind,
+    on_click: OnKindClick,
+) -> impl IntoElement {
     div().child(field_label("Type")).child(segmented_control(
-        "add-unit-type",
+        id_prefix,
         &UnitKind::ALL,
         selected,
         UnitKind::label,

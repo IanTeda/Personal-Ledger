@@ -42,8 +42,8 @@ use crate::{
         settings_index::{self, SettingsIndexRail},
     },
     settings::{
-        self, AddUnitField, AddUnitForm, BudgetPeriod, DefaultUnit, InstitutionRow, SettingsDialog,
-        SettingsSection, TracingLevel, UnitKind, UnitRow,
+        self, AddUnitField, BudgetPeriod, DefaultUnit, InstitutionRow, SettingsDialog,
+        SettingsSection, TracingLevel, UnitForm, UnitKind, UnitRow,
     },
     statusline::StatusLine,
     theme::{color, type_scale},
@@ -521,104 +521,142 @@ impl Shell {
     }
 
     /// Routes a keystroke while `InputMode::Dialog` is active (tier 2, mirroring
-    /// [`Self::handle_search_key`]'s shape): dispatches on which [`SettingsDialog`] variant is
-    /// open. `Tab` cycles the open dialog's own field focus rather than reaching
-    /// `NavState::cycle_focus_forward` -- this tier returns before `route_key`'s `Tab` tier is
-    /// ever checked, so the shell-wide zones stay untouched while a dialog is up. `Enter`
-    /// submits only when the form validates, mirroring `dialog::confirm_button`'s own
-    /// `enabled`-gated `on_click`.
+    /// [`Self::handle_search_key`]'s shape): extracts the open [`SettingsDialog`]'s own
+    /// [`UnitForm`] regardless of which variant it is (`AddUnit`/`EditUnit` share one form type,
+    /// so their keystroke handling is identical). `Tab` cycles the open dialog's own field focus
+    /// rather than reaching `NavState::cycle_focus_forward` -- this tier returns before
+    /// `route_key`'s `Tab` tier is ever checked, so the shell-wide zones stay untouched while a
+    /// dialog is up. `Enter` submits only when the form validates, mirroring
+    /// `dialog::confirm_button`'s own `enabled`-gated `on_click`.
     fn handle_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
         let Some(dialog) = self.settings_dialog.as_mut() else {
             return false;
         };
+        let form = match dialog {
+            SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => form,
+        };
 
-        match dialog {
-            SettingsDialog::AddUnit(form) => match keystroke.key.as_str() {
-                "backspace" => {
-                    form.backspace();
-                    true
+        match keystroke.key.as_str() {
+            "backspace" => {
+                form.backspace();
+                true
+            }
+            "tab" => {
+                form.cycle_field();
+                true
+            }
+            "enter" => {
+                let valid = form.is_valid();
+                if valid {
+                    self.confirm_settings_dialog();
                 }
-                "tab" => {
-                    form.cycle_field();
-                    true
+                true
+            }
+            _ => {
+                let modifiers = &keystroke.modifiers;
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
                 }
-                "enter" => {
-                    if form.is_valid() {
-                        self.confirm_add_unit();
+                match keystroke.key_char.as_deref() {
+                    Some(text) if text.chars().count() == 1 => {
+                        form.push_char(text.chars().next().expect("checked above"));
+                        true
                     }
-                    true
+                    _ => false,
                 }
-                _ => {
-                    let modifiers = &keystroke.modifiers;
-                    if modifiers.control
-                        || modifiers.alt
-                        || modifiers.platform
-                        || modifiers.function
-                    {
-                        return false;
-                    }
-                    match keystroke.key_char.as_deref() {
-                        Some(text) if text.chars().count() == 1 => {
-                            form.push_char(text.chars().next().expect("checked above"));
-                            true
-                        }
-                        _ => false,
-                    }
-                }
-            },
+            }
         }
     }
 
     /// The Units section's own "+ Add unit" button (issue #184, replacing the stub #177 left
     /// behind): opens the Add unit dialog rather than flashing a status message.
     fn handle_add_unit_click(&mut self, cx: &mut Context<Self>) {
-        self.settings_dialog = Some(SettingsDialog::AddUnit(AddUnitForm::default()));
+        self.settings_dialog = Some(SettingsDialog::AddUnit(UnitForm::default()));
         self.nav.enter_mode(InputMode::Dialog);
         cx.notify();
     }
 
-    fn handle_add_unit_field_click(&mut self, field: AddUnitField, cx: &mut Context<Self>) {
-        if let Some(SettingsDialog::AddUnit(form)) = self.settings_dialog.as_mut() {
+    /// The Units table's own row "edit" button (issue #185, replacing the stub #177 left
+    /// behind): opens the Edit unit dialog pre-filled from the clicked row
+    /// (`UnitForm::from_row`) rather than flashing a status message. A no-op if `index` is
+    /// somehow out of bounds (defensive only -- every caller is a row's own click handler, so
+    /// this should never actually happen).
+    fn handle_unit_edit_click(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(row) = self.settings_units.get(index) else {
+            return;
+        };
+        self.settings_dialog = Some(SettingsDialog::EditUnit(index, UnitForm::from_row(row)));
+        self.nav.enter_mode(InputMode::Dialog);
+        cx.notify();
+    }
+
+    /// Shared by the Add/Edit unit dialogs' own field-focus clicks (issues #184/#185) -- which
+    /// field a click targets doesn't depend on which dialog variant is open.
+    fn handle_unit_dialog_field_click(&mut self, field: AddUnitField, cx: &mut Context<Self>) {
+        if let Some(dialog) = self.settings_dialog.as_mut() {
+            let form = match dialog {
+                SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => form,
+            };
             form.focused_field = field;
             cx.notify();
         }
     }
 
-    fn handle_add_unit_kind_click(&mut self, kind: UnitKind, cx: &mut Context<Self>) {
-        if let Some(SettingsDialog::AddUnit(form)) = self.settings_dialog.as_mut() {
+    /// Shared by the Add/Edit unit dialogs' own Type segmented control (issues #184/#185).
+    fn handle_unit_dialog_kind_click(&mut self, kind: UnitKind, cx: &mut Context<Self>) {
+        if let Some(dialog) = self.settings_dialog.as_mut() {
+            let form = match dialog {
+                SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => form,
+            };
             form.kind = kind;
             cx.notify();
         }
     }
 
-    fn handle_add_unit_cancel(&mut self, cx: &mut Context<Self>) {
+    /// Shared by the Add/Edit unit dialogs' own Cancel button -- discards whatever was typed,
+    /// same as `Esc` (`Self::handle_key_down`'s `ClosePopupsAndExitMode` arm).
+    fn handle_unit_dialog_cancel(&mut self, cx: &mut Context<Self>) {
         self.settings_dialog = None;
         self.nav.exit_mode();
         cx.notify();
     }
 
-    /// The Add unit dialog's own Add button (and `Enter`, via [`Self::handle_dialog_key`]):
-    /// the README's own "Dialog lifecycle" row -- "validate -> append to Units table -> close".
-    /// A no-op if the form isn't valid or (defensively) isn't actually the open dialog; the
-    /// button itself is only clickable while `AddUnitForm::is_valid` holds, so this should only
-    /// ever run on a valid form.
-    fn confirm_add_unit(&mut self) {
-        let Some(SettingsDialog::AddUnit(form)) = self.settings_dialog.take() else {
+    /// The Add/Edit unit dialogs' own Add/Save button (and `Enter`, via
+    /// [`Self::handle_dialog_key`]): the README's own "Dialog lifecycle" rows -- Add "validate ->
+    /// append to Units table -> close", Edit "Save -> update the in-memory row -> close" (a
+    /// changed code just relabels the row here; rewriting real references is out of scope per
+    /// the map's own Destination). A no-op if the form isn't valid or (defensively) nothing is
+    /// actually open -- the button itself is only clickable while `UnitForm::is_valid` holds, so
+    /// this should only ever run on a valid form.
+    fn confirm_settings_dialog(&mut self) {
+        let Some(dialog) = self.settings_dialog.take() else {
             return;
+        };
+        let (index, form) = match dialog {
+            SettingsDialog::AddUnit(form) => (None, form),
+            SettingsDialog::EditUnit(index, form) => (Some(index), form),
         };
         if !form.is_valid() {
             return;
         }
-        self.settings_units.push(UnitRow {
+        let row = UnitRow {
             code: form.code,
             name: form.name,
             kind: form.kind.label().to_string(),
-        });
+        };
+        match index {
+            Some(index) => {
+                if let Some(existing) = self.settings_units.get_mut(index) {
+                    *existing = row;
+                }
+            }
+            None => self.settings_units.push(row),
+        }
         self.nav.exit_mode();
     }
 
-    fn handle_add_unit_confirm(&mut self, cx: &mut Context<Self>) {
-        self.confirm_add_unit();
+    fn handle_unit_dialog_confirm(&mut self, cx: &mut Context<Self>) {
+        self.confirm_settings_dialog();
         cx.notify();
     }
 
@@ -744,18 +782,12 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Units table's own row "edit"/"delete" buttons (issue #177): both still open a dialog
-    /// this map hasn't built yet (issues #185/#186), so each is a clearly-marked stub --
-    /// flashing the same "not yet built" status-line message `CommandEffect::NotYetBuilt`
-    /// already uses, naming the specific ticket that owes the real behaviour, rather than
-    /// silently doing nothing. "+ Add unit" itself is no longer one of these three stubs -- see
-    /// [`Self::handle_add_unit_click`], which now opens the real Add unit dialog (issue #184).
-    fn handle_unit_edit_click(&mut self, index: usize, cx: &mut Context<Self>) {
-        let _ = index; // no row-scoped state until #185 actually opens a dialog on it
-        self.status_message = Some("edit unit -- not yet built (see issue #185)".to_string());
-        cx.notify();
-    }
-
+    /// The Units table's own row "delete" button (issue #177): still opens a dialog this map
+    /// hasn't built yet (issue #186), so it's a clearly-marked stub -- flashing the same "not
+    /// yet built" status-line message `CommandEffect::NotYetBuilt` already uses, naming the
+    /// specific ticket that owes the real behaviour, rather than silently doing nothing. Its own
+    /// "edit" sibling and "+ Add unit" are no longer stubs -- see
+    /// [`Self::handle_unit_edit_click`]/[`Self::handle_add_unit_click`].
     fn handle_unit_delete_click(&mut self, index: usize, cx: &mut Context<Self>) {
         let _ = index; // no row-scoped state until #186 actually opens a dialog on it
         self.status_message = Some("delete unit -- not yet built (see issue #186)".to_string());
@@ -984,28 +1016,35 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_explorer_open(cx));
             })
         };
-        let on_add_unit_field_click: settings_view::add_unit_dialog::OnFieldClick = {
+        // Shared by the Add unit (issue #184) and Edit unit (issue #185) dialogs -- both wrap
+        // the same `UnitForm`, and `Shell`'s own handlers already dispatch on whichever
+        // `SettingsDialog` variant is actually open, so one set of closures serves both renders.
+        let on_unit_dialog_field_click: settings_view::add_unit_dialog::OnFieldClick = {
             let entity = entity.clone();
             Rc::new(move |field, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_add_unit_field_click(field, cx));
+                entity.update(cx, |shell, cx| {
+                    shell.handle_unit_dialog_field_click(field, cx)
+                });
             })
         };
-        let on_add_unit_kind_click: settings_view::add_unit_dialog::OnKindClick = {
+        let on_unit_dialog_kind_click: settings_view::add_unit_dialog::OnKindClick = {
             let entity = entity.clone();
             Rc::new(move |kind, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_add_unit_kind_click(kind, cx));
+                entity.update(cx, |shell, cx| {
+                    shell.handle_unit_dialog_kind_click(kind, cx)
+                });
             })
         };
-        let on_add_unit_dialog_cancel: settings_view::add_unit_dialog::OnCancel = {
+        let on_unit_dialog_cancel: settings_view::add_unit_dialog::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_add_unit_cancel(cx));
+                entity.update(cx, |shell, cx| shell.handle_unit_dialog_cancel(cx));
             })
         };
-        let on_add_unit_dialog_confirm: settings_view::add_unit_dialog::OnConfirm = {
+        let on_unit_dialog_confirm: settings_view::add_unit_dialog::OnConfirm = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_add_unit_confirm(cx));
+                entity.update(cx, |shell, cx| shell.handle_unit_dialog_confirm(cx));
             })
         };
         let on_empty_state_command_click: OnEmptyStateCommandClick = {
@@ -1202,10 +1241,17 @@ impl Render for Shell {
             .children(self.settings_dialog.as_ref().map(|dialog| match dialog {
                 SettingsDialog::AddUnit(form) => settings_view::add_unit_dialog::render(
                     form,
-                    on_add_unit_field_click,
-                    on_add_unit_kind_click,
-                    on_add_unit_dialog_cancel,
-                    on_add_unit_dialog_confirm,
+                    on_unit_dialog_field_click.clone(),
+                    on_unit_dialog_kind_click.clone(),
+                    on_unit_dialog_cancel.clone(),
+                    on_unit_dialog_confirm.clone(),
+                ),
+                SettingsDialog::EditUnit(_, form) => settings_view::edit_unit_dialog::render(
+                    form,
+                    on_unit_dialog_field_click,
+                    on_unit_dialog_kind_click,
+                    on_unit_dialog_cancel,
+                    on_unit_dialog_confirm,
                 ),
             }))
     }
