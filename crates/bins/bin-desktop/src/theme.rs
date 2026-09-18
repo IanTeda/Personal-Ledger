@@ -100,6 +100,9 @@ pub mod color {
     /// inline in the handoff's mockup markup rather than its "Shadows" table (that table
     /// predates the file explorer) -- a second named exception alongside `PALETTE_SHADOW`.
     pub const DIALOG_SHADOW: Rgba = rgba(0x201e1d66);
+    /// `Positive` (`docs/ux/desktop/Settings/README.md`'s Design Tokens table): the Sync
+    /// server section's own "connected" status dot and text -- the first use of this role.
+    pub const POSITIVE: Rgba = rgb(0x2ecc71);
 }
 
 /// Type scale. Archivo throughout, bundled offline (see `crate::main`'s `add_fonts` call) --

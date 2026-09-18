@@ -13,6 +13,7 @@
 mod general;
 pub mod institutions;
 pub mod ledger_units;
+pub mod sync_server;
 pub mod units;
 
 use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
@@ -39,6 +40,7 @@ pub struct SettingsBodyProps<'a> {
     pub on_institution_edit_click: institutions::OnRowIndexClick,
     pub on_institution_delete_click: institutions::OnRowIndexClick,
     pub on_add_institution_click: institutions::OnAddClick,
+    pub on_sync_now_click: sync_server::OnSyncNowClick,
 }
 
 pub fn render(
@@ -176,6 +178,7 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
             props.on_institution_delete_click.clone(),
             props.on_add_institution_click.clone(),
         ),
+        SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone()),
         other => placeholder(other),
     }
 }

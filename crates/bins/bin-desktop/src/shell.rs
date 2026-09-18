@@ -667,6 +667,14 @@ impl Shell {
         cx.notify();
     }
 
+    /// The Sync server section's own "Sync now" button (issue #180): unlike the "+ Add"
+    /// buttons above, this has no future ticket that will give it real behaviour -- the map's
+    /// own Out-of-scope names it a permanent stand-in -- so the stub message names no issue.
+    fn handle_sync_now_click(&mut self, cx: &mut Context<Self>) {
+        self.status_message = Some("sync now -- not implemented".to_string());
+        cx.notify();
+    }
+
     /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
     /// state, then -- README's "double-click a `.pldb` row opens immediately" -- confirms the
     /// open immediately when `click_count` reports a real double-click landing on a row that
@@ -896,6 +904,12 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_add_institution_click(cx));
             })
         };
+        let on_sync_now_click: settings_view::sync_server::OnSyncNowClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_sync_now_click(cx));
+            })
+        };
 
         div()
             .size_full()
@@ -964,6 +978,7 @@ impl Render for Shell {
                                     on_institution_edit_click,
                                     on_institution_delete_click,
                                     on_add_institution_click,
+                                    on_sync_now_click,
                                 },
                             )),
                     ),
@@ -1006,6 +1021,7 @@ struct SettingsPanelProps<'a> {
     on_institution_edit_click: settings_view::institutions::OnRowIndexClick,
     on_institution_delete_click: settings_view::institutions::OnRowIndexClick,
     on_add_institution_click: settings_view::institutions::OnAddClick,
+    on_sync_now_click: settings_view::sync_server::OnSyncNowClick,
 }
 
 /// The active noun's own view interior. Only `Dashboard` and `Settings` are real; every other
@@ -1057,6 +1073,7 @@ fn render_view(
                     on_institution_edit_click: settings.on_institution_edit_click,
                     on_institution_delete_click: settings.on_institution_delete_click,
                     on_add_institution_click: settings.on_add_institution_click,
+                    on_sync_now_click: settings.on_sync_now_click,
                 },
             ))
             .into_any_element();
