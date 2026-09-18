@@ -95,12 +95,15 @@ pub(super) fn field_click(field: AddUnitField, on_click: OnFieldClick) -> dialog
 
 /// One Code/Name field: `super::field_label` above a clickable value box mirroring
 /// `super::field_value`'s own border/padding, plus the focused-state border and caret this
-/// crate's first real text input needs (see the module doc).
+/// crate's first real text input needs (see the module doc). `label`/`placeholder` take
+/// non-`'static` strings too -- the Delete unit dialog's own confirm field (issue #186) needs a
+/// row-specific label ("Type btc to confirm") and placeholder (the code itself), neither known
+/// until render time.
 pub(super) fn text_field(
     id: &'static str,
-    label: &'static str,
+    label: impl Into<SharedString>,
     value: &str,
-    placeholder: &'static str,
+    placeholder: &str,
     focused: bool,
     on_click: dialog::OnClick,
 ) -> impl IntoElement {

@@ -13,6 +13,7 @@
 mod about;
 pub mod add_unit_dialog;
 pub mod data_backup;
+pub mod delete_unit_dialog;
 pub mod edit_unit_dialog;
 mod general;
 pub mod institutions;

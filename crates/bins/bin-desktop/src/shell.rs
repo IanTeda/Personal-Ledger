@@ -42,8 +42,8 @@ use crate::{
         settings_index::{self, SettingsIndexRail},
     },
     settings::{
-        self, AddUnitField, BudgetPeriod, DefaultUnit, InstitutionRow, SettingsDialog,
-        SettingsSection, TracingLevel, UnitForm, UnitKind, UnitRow,
+        self, AddUnitField, BudgetPeriod, DefaultUnit, DeleteUnitForm, InstitutionRow,
+        SettingsDialog, SettingsSection, TracingLevel, UnitForm, UnitKind, UnitRow,
     },
     statusline::StatusLine,
     theme::{color, type_scale},
@@ -532,37 +532,81 @@ impl Shell {
         let Some(dialog) = self.settings_dialog.as_mut() else {
             return false;
         };
-        let form = match dialog {
-            SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => form,
-        };
 
-        match keystroke.key.as_str() {
-            "backspace" => {
-                form.backspace();
-                true
-            }
-            "tab" => {
-                form.cycle_field();
-                true
-            }
-            "enter" => {
-                let valid = form.is_valid();
-                if valid {
-                    self.confirm_settings_dialog();
-                }
-                true
-            }
-            _ => {
-                let modifiers = &keystroke.modifiers;
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-                match keystroke.key_char.as_deref() {
-                    Some(text) if text.chars().count() == 1 => {
-                        form.push_char(text.chars().next().expect("checked above"));
+        match dialog {
+            SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
+                match keystroke.key.as_str() {
+                    "backspace" => {
+                        form.backspace();
                         true
                     }
-                    _ => false,
+                    "tab" => {
+                        form.cycle_field();
+                        true
+                    }
+                    "enter" => {
+                        let valid = form.is_valid();
+                        if valid {
+                            self.confirm_settings_dialog();
+                        }
+                        true
+                    }
+                    _ => {
+                        let modifiers = &keystroke.modifiers;
+                        if modifiers.control
+                            || modifiers.alt
+                            || modifiers.platform
+                            || modifiers.function
+                        {
+                            return false;
+                        }
+                        match keystroke.key_char.as_deref() {
+                            Some(text) if text.chars().count() == 1 => {
+                                form.push_char(text.chars().next().expect("checked above"));
+                                true
+                            }
+                            _ => false,
+                        }
+                    }
+                }
+            }
+            // No `Tab` field to cycle -- the confirmation input is the dialog's only field, so
+            // `Tab` is swallowed as a no-op rather than reaching the shell-wide zones.
+            SettingsDialog::DeleteUnit(index, form) => {
+                let index = *index;
+                match keystroke.key.as_str() {
+                    "backspace" => {
+                        form.backspace();
+                        true
+                    }
+                    "tab" => true,
+                    "enter" => {
+                        let matches = self
+                            .settings_units
+                            .get(index)
+                            .is_some_and(|row| form.matches(&row.code));
+                        if matches {
+                            self.confirm_settings_dialog();
+                        }
+                        true
+                    }
+                    _ => {
+                        let modifiers = &keystroke.modifiers;
+                        if modifiers.control
+                            || modifiers.alt
+                            || modifiers.platform
+                            || modifiers.function
+                        {
+                            return false;
+                        }
+                        match keystroke.key_char.as_deref() {
+                            Some(text) if text.chars().count() == 1 => {
+                                form.push_char(text.chars().next().expect("checked above"));
+                                true
+                            }
+                            _ => false,
+                        }
+                    }
                 }
             }
         }
@@ -594,22 +638,29 @@ impl Shell {
     /// field a click targets doesn't depend on which dialog variant is open.
     fn handle_unit_dialog_field_click(&mut self, field: AddUnitField, cx: &mut Context<Self>) {
         if let Some(dialog) = self.settings_dialog.as_mut() {
-            let form = match dialog {
-                SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => form,
-            };
-            form.focused_field = field;
-            cx.notify();
+            match dialog {
+                SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
+                    form.focused_field = field;
+                    cx.notify();
+                }
+                // The Delete unit dialog has one field, always implicitly focused -- nothing to
+                // click into.
+                SettingsDialog::DeleteUnit(..) => {}
+            }
         }
     }
 
     /// Shared by the Add/Edit unit dialogs' own Type segmented control (issues #184/#185).
     fn handle_unit_dialog_kind_click(&mut self, kind: UnitKind, cx: &mut Context<Self>) {
         if let Some(dialog) = self.settings_dialog.as_mut() {
-            let form = match dialog {
-                SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => form,
-            };
-            form.kind = kind;
-            cx.notify();
+            match dialog {
+                SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
+                    form.kind = kind;
+                    cx.notify();
+                }
+                // The Delete unit dialog has no Type selector at all.
+                SettingsDialog::DeleteUnit(..) => {}
+            }
         }
     }
 
@@ -621,36 +672,53 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Add/Edit unit dialogs' own Add/Save button (and `Enter`, via
+    /// The Add/Edit/Delete unit dialogs' own Add/Save/Delete unit button (and `Enter`, via
     /// [`Self::handle_dialog_key`]): the README's own "Dialog lifecycle" rows -- Add "validate ->
     /// append to Units table -> close", Edit "Save -> update the in-memory row -> close" (a
     /// changed code just relabels the row here; rewriting real references is out of scope per
-    /// the map's own Destination). A no-op if the form isn't valid or (defensively) nothing is
-    /// actually open -- the button itself is only clickable while `UnitForm::is_valid` holds, so
-    /// this should only ever run on a valid form.
+    /// the map's own Destination), Delete "confirm -> remove + close". A no-op if the relevant
+    /// form isn't valid/matching, or (defensively) nothing is actually open -- each dialog's own
+    /// confirm button is only clickable while that gate already holds, so this should only ever
+    /// run on a form that's already passed it.
     fn confirm_settings_dialog(&mut self) {
         let Some(dialog) = self.settings_dialog.take() else {
             return;
         };
-        let (index, form) = match dialog {
-            SettingsDialog::AddUnit(form) => (None, form),
-            SettingsDialog::EditUnit(index, form) => (Some(index), form),
-        };
-        if !form.is_valid() {
-            return;
-        }
-        let row = UnitRow {
-            code: form.code,
-            name: form.name,
-            kind: form.kind.label().to_string(),
-        };
-        match index {
-            Some(index) => {
+        match dialog {
+            SettingsDialog::AddUnit(form) => {
+                if !form.is_valid() {
+                    return;
+                }
+                self.settings_units.push(UnitRow {
+                    code: form.code,
+                    name: form.name,
+                    kind: form.kind.label().to_string(),
+                });
+            }
+            SettingsDialog::EditUnit(index, form) => {
+                if !form.is_valid() {
+                    return;
+                }
                 if let Some(existing) = self.settings_units.get_mut(index) {
-                    *existing = row;
+                    *existing = UnitRow {
+                        code: form.code,
+                        name: form.name,
+                        kind: form.kind.label().to_string(),
+                    };
                 }
             }
-            None => self.settings_units.push(row),
+            SettingsDialog::DeleteUnit(index, form) => {
+                let matches = self
+                    .settings_units
+                    .get(index)
+                    .is_some_and(|row| form.matches(&row.code));
+                if !matches {
+                    return;
+                }
+                if index < self.settings_units.len() {
+                    self.settings_units.remove(index);
+                }
+            }
         }
         self.nav.exit_mode();
     }
@@ -782,15 +850,16 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Units table's own row "delete" button (issue #177): still opens a dialog this map
-    /// hasn't built yet (issue #186), so it's a clearly-marked stub -- flashing the same "not
-    /// yet built" status-line message `CommandEffect::NotYetBuilt` already uses, naming the
-    /// specific ticket that owes the real behaviour, rather than silently doing nothing. Its own
-    /// "edit" sibling and "+ Add unit" are no longer stubs -- see
-    /// [`Self::handle_unit_edit_click`]/[`Self::handle_add_unit_click`].
+    /// The Units table's own row "delete" button (issue #186, replacing the stub #177 left
+    /// behind): opens the destructive Delete unit confirm dialog rather than flashing a status
+    /// message. A no-op if `index` is somehow out of bounds (defensive only, same reasoning as
+    /// [`Self::handle_unit_edit_click`]).
     fn handle_unit_delete_click(&mut self, index: usize, cx: &mut Context<Self>) {
-        let _ = index; // no row-scoped state until #186 actually opens a dialog on it
-        self.status_message = Some("delete unit -- not yet built (see issue #186)".to_string());
+        if index >= self.settings_units.len() {
+            return;
+        }
+        self.settings_dialog = Some(SettingsDialog::DeleteUnit(index, DeleteUnitForm::default()));
+        self.nav.enter_mode(InputMode::Dialog);
         cx.notify();
     }
 
@@ -1250,9 +1319,23 @@ impl Render for Shell {
                     form,
                     on_unit_dialog_field_click,
                     on_unit_dialog_kind_click,
-                    on_unit_dialog_cancel,
-                    on_unit_dialog_confirm,
+                    on_unit_dialog_cancel.clone(),
+                    on_unit_dialog_confirm.clone(),
                 ),
+                SettingsDialog::DeleteUnit(index, form) => {
+                    match self.settings_units.get(*index) {
+                        Some(row) => settings_view::delete_unit_dialog::render(
+                            row,
+                            form,
+                            on_unit_dialog_cancel,
+                            on_unit_dialog_confirm,
+                        ),
+                        // Defensive only: `index` should always be in bounds (it's only ever
+                        // set from a real row's own click handler) -- an empty overlay is a
+                        // safer failure than panicking mid-render.
+                        None => div().into_any_element(),
+                    }
+                }
             }))
     }
 }

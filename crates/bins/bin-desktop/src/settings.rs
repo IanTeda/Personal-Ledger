@@ -309,13 +309,44 @@ impl UnitForm {
 }
 
 /// Every Settings dialog `Shell` can have open, `None` when none is -- the README's own `State`
-/// block (`dialog: Option<Dialog>`). One variant per dialog ticket; `EditUnit`'s own `usize` is
-/// the row's index in `Shell::settings_units` -- `Shell::confirm_settings_dialog` needs it to
-/// know which row to overwrite.
+/// block (`dialog: Option<Dialog>`). One variant per dialog ticket; `EditUnit`/`DeleteUnit`'s own
+/// `usize` is the row's index in `Shell::settings_units` -- `Shell::confirm_settings_dialog`
+/// needs it to know which row to overwrite/remove.
 #[derive(Debug, Clone, PartialEq, Eq)]
+// The shared `Unit` postfix is the README's own naming for this exact enum ("AddUnit | EditUnit
+// (id) | DeleteUnit(id) | AddInstitution") -- issue #187's own `AddInstitution` variant breaks
+// the "every variant shares a postfix" pattern this lint is checking for, so it resolves itself
+// once that ticket lands rather than needing a rename now.
+#[allow(clippy::enum_variant_names)]
 pub enum SettingsDialog {
     AddUnit(UnitForm),
     EditUnit(usize, UnitForm),
+    DeleteUnit(usize, DeleteUnitForm),
+}
+
+/// The Delete unit dialog's own live form state (issue #186) -- pure, `gpui`-free. Just the one
+/// typed-back confirmation field: unlike [`UnitForm`], there's nothing to `Tab` between, so no
+/// `focused_field` -- the confirmation input is implicitly the only thing you can type into
+/// while this dialog is open.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DeleteUnitForm {
+    pub confirm_input: String,
+}
+
+impl DeleteUnitForm {
+    pub fn push_char(&mut self, ch: char) {
+        self.confirm_input.push(ch);
+    }
+
+    pub fn backspace(&mut self) {
+        self.confirm_input.pop();
+    }
+
+    /// The README's own "disabled until the typed value matches the code exactly" -- a plain
+    /// case-sensitive `==`, not a trim/lowercase-tolerant comparison, per the ticket's own body.
+    pub fn matches(&self, code: &str) -> bool {
+        self.confirm_input == code
+    }
 }
 
 /// One row of the **Institutions** section's table (`docs/ux/desktop/Settings/README.md`'s "2a
@@ -488,6 +519,23 @@ mod tests {
         assert_eq!(form.name, "Bitcoin");
         assert_eq!(form.kind, UnitKind::Custom);
         assert_eq!(form.focused_field, AddUnitField::Code);
+    }
+
+    #[test]
+    fn delete_unit_form_matches_is_case_sensitive_and_exact() {
+        let mut form = DeleteUnitForm::default();
+        assert!(!form.matches("btc"));
+        for ch in "BTC".chars() {
+            form.push_char(ch);
+        }
+        assert!(!form.matches("btc"));
+        form.backspace();
+        form.backspace();
+        form.backspace();
+        for ch in "btc".chars() {
+            form.push_char(ch);
+        }
+        assert!(form.matches("btc"));
     }
 
     #[test]
