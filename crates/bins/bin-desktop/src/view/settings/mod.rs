@@ -10,6 +10,7 @@
 //! documents this offset, since `gpui::ScrollHandle::scroll_to_top_of_item` addresses direct
 //! children by index.
 
+mod about;
 pub mod data_backup;
 mod general;
 pub mod institutions;
@@ -197,6 +198,7 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
             props.on_tracing_level_click.clone(),
             props.on_clear_logs_click.clone(),
         ),
+        SettingsSection::About => about::render(),
         other => placeholder(other),
     }
 }
