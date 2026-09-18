@@ -5,6 +5,7 @@
 //! here; its `gpui-component` chart-widget patterns are reused by the real Dashboard view as
 //! that work lands (issue #148).
 
+mod accounts;
 mod assets;
 mod command;
 mod dialog;

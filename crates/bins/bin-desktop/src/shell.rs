@@ -30,6 +30,7 @@ use gpui::{
 };
 
 use crate::{
+    accounts::{self, Account, AccountsDialog},
     command::{self, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
     key_router::{KeyOutcome, Movement, route_key},
@@ -182,6 +183,17 @@ pub struct Shell {
     /// Real, mutable state -- "Clear logs" empties this `Vec`, the one button in this map with a
     /// real effect rather than a permanently-out-of-scope stub.
     settings_log_lines: Vec<&'static str>,
+    /// The Accounts page's rows, seeded from `accounts::default_accounts()`. A real, mutable
+    /// `Vec` the Add/Edit/Delete dialogs push to, update and remove from -- saved-in-memory
+    /// state like [`Self::settings_units`], so it survives leaving and re-entering Accounts.
+    accounts: Vec<Account>,
+    /// The selected row as a position in `accounts::display_order(&self.accounts)` -- what
+    /// `j`/`k` move -- not an index into [`Self::accounts`], since the page shows accounts
+    /// grouped by type rather than in insertion order.
+    accounts_selected: usize,
+    /// The currently open Accounts dialog, if any -- same shape as [`Self::settings_dialog`],
+    /// with `NavState::mode` being `InputMode::Dialog` for exactly as long as it is `Some`.
+    accounts_dialog: Option<AccountsDialog>,
 }
 
 impl Shell {
@@ -209,6 +221,9 @@ impl Shell {
             settings_institutions: settings::default_institutions(),
             settings_tracing_level: TracingLevel::default(),
             settings_log_lines: settings::DEFAULT_LOG_LINES.to_vec(),
+            accounts: accounts::default_accounts(),
+            accounts_selected: 0,
+            accounts_dialog: None,
         }
     }
 
@@ -270,6 +285,7 @@ impl Shell {
                 // The README's own Dialog lifecycle table: "`esc` closes any dialog without
                 // saving" -- discards whatever was typed, same as Cancel.
                 self.settings_dialog = None;
+                self.accounts_dialog = None;
                 // README's "Interactions" > "Navigation": `esc` clears the settings index
                 // rail's own filter, the same as it closes the palette/file explorer above.
                 self.settings_filter.clear();
