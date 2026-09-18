@@ -108,6 +108,237 @@ impl SettingsSection {
     }
 }
 
+/// The **Display** section's "Date format" segmented control (`docs/ux/desktop/Settings/README.md`'s
+/// "2a resting state" markup: `"12 sep 2026"` the mockup's own `checked` option).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DateFormat {
+    #[default]
+    DayMonthYear,
+    Slash,
+    Iso,
+}
+
+impl DateFormat {
+    pub const ALL: [DateFormat; 3] = [Self::DayMonthYear, Self::Slash, Self::Iso];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::DayMonthYear => "12 sep 2026",
+            Self::Slash => "12/09/2026",
+            Self::Iso => "ISO",
+        }
+    }
+}
+
+/// The same section's "Decimal & thousands separator" segmented control (`"1,234.56"` the
+/// mockup's own `checked` option). The shared `Thousands` postfix is what every option actually
+/// is -- a thousands-grouping style -- same reasoning [`SettingsDialog`]'s own
+/// `#[allow(clippy::enum_variant_names)]` used for its shared `Unit` postfix.
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DecimalSeparator {
+    #[default]
+    CommaThousands,
+    DotThousands,
+    SpaceThousands,
+}
+
+impl DecimalSeparator {
+    pub const ALL: [DecimalSeparator; 3] = [
+        Self::CommaThousands,
+        Self::DotThousands,
+        Self::SpaceThousands,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::CommaThousands => "1,234.56",
+            Self::DotThousands => "1.234,56",
+            Self::SpaceThousands => "1 234.56",
+        }
+    }
+
+    /// This style's own (thousands, decimal) mark pair, read straight off [`Self::label`]'s own
+    /// three example strings.
+    fn marks(self) -> (char, char) {
+        match self {
+            Self::CommaThousands => (',', '.'),
+            Self::DotThousands => ('.', ','),
+            Self::SpaceThousands => (' ', '.'),
+        }
+    }
+}
+
+/// The same section's "Row density" segmented control (`regular` the mockup's own `checked`
+/// option).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RowDensity {
+    Compact,
+    #[default]
+    Regular,
+    Roomy,
+}
+
+impl RowDensity {
+    pub const ALL: [RowDensity; 3] = [Self::Compact, Self::Regular, Self::Roomy];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Compact => "compact",
+            Self::Regular => "regular",
+            Self::Roomy => "roomy",
+        }
+    }
+
+    /// The PREVIEW table's own row vertical padding at this density -- the mockup only draws the
+    /// `regular` state (`padding:8px 12px`), so `compact`/`roomy` step by the design tokens' own
+    /// 4px rhythm (`docs/ux/desktop/Settings/README.md`'s Spacing token list) either side of it,
+    /// the same "reflects the currently-selected values" the README's own field list promises
+    /// for this control.
+    pub fn preview_row_padding_y(self) -> f32 {
+        match self {
+            Self::Compact => 4.0,
+            Self::Regular => 8.0,
+            Self::Roomy => 12.0,
+        }
+    }
+}
+
+/// The same section's "Status glyphs" radio group (dot-style, like [`TracingLevel`]'s own
+/// radios, not segmented) -- `unicode` is the mockup's own `checked` option.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StatusGlyphs {
+    #[default]
+    Unicode,
+    AsciiFallback,
+}
+
+impl StatusGlyphs {
+    pub const ALL: [StatusGlyphs; 2] = [Self::Unicode, Self::AsciiFallback];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unicode => "unicode \u{2014} \u{25cb} \u{25d0} \u{25cf} \u{2691}",
+            Self::AsciiFallback => "ascii fallback \u{2014} o / x !",
+        }
+    }
+}
+
+/// One PREVIEW-table row's transaction status (`docs/ux/desktop/Settings/README.md`'s own three
+/// drawn rows: cleared, pending, flagged) -- distinct from [`StatusGlyphs`], which picks *how* a
+/// status renders, not *which* status a row has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PreviewStatus {
+    Cleared,
+    Pending,
+    Flagged,
+}
+
+impl PreviewStatus {
+    /// The glyph shown in the PREVIEW table's leftmost column at the given [`StatusGlyphs`]
+    /// style. The ascii fallback's own three symbols aren't individually labelled in the
+    /// mockup's copy ("o / x !"), so this keeps that same left-to-right order: pending stays the
+    /// "open/unmarked" `o`, cleared takes the unambiguous `x`, flagged keeps `!`.
+    pub fn glyph(self, style: StatusGlyphs) -> &'static str {
+        match (self, style) {
+            (Self::Cleared, StatusGlyphs::Unicode) => "\u{25cf}",
+            (Self::Pending, StatusGlyphs::Unicode) => "\u{25d0}",
+            (Self::Flagged, StatusGlyphs::Unicode) => "\u{2691}",
+            (Self::Cleared, StatusGlyphs::AsciiFallback) => "x",
+            (Self::Pending, StatusGlyphs::AsciiFallback) => "o",
+            (Self::Flagged, StatusGlyphs::AsciiFallback) => "!",
+        }
+    }
+}
+
+/// One PREVIEW-table row -- the mockup's own three seeded rows
+/// (`docs/ux/desktop/Settings/README.md`'s "2a resting state" markup), keyed on a real
+/// `(year, month, day)` and integer cents rather than pre-formatted strings so
+/// [`format_preview_date`]/[`format_preview_amount`] can re-render them under any selected
+/// [`DateFormat`]/[`DecimalSeparator`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DisplayPreviewRow {
+    pub status: PreviewStatus,
+    pub year: u32,
+    pub month: u32,
+    pub day: u32,
+    pub payee: &'static str,
+    pub amount_cents: i64,
+}
+
+/// The mockup's own three seeded rows, in its own order.
+pub const DEFAULT_DISPLAY_PREVIEW_ROWS: &[DisplayPreviewRow] = &[
+    DisplayPreviewRow {
+        status: PreviewStatus::Cleared,
+        year: 2026,
+        month: 9,
+        day: 12,
+        payee: "Woolworths Metro",
+        amount_cents: -8640,
+    },
+    DisplayPreviewRow {
+        status: PreviewStatus::Pending,
+        year: 2026,
+        month: 9,
+        day: 10,
+        payee: "Telstra",
+        amount_cents: -9900,
+    },
+    DisplayPreviewRow {
+        status: PreviewStatus::Flagged,
+        year: 2026,
+        month: 9,
+        day: 9,
+        payee: "Dept of Education",
+        amount_cents: 421_000,
+    },
+];
+
+const MONTH_ABBREVIATIONS: [&str; 12] = [
+    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
+];
+
+/// Formats a `(year, month, day)` per the selected [`DateFormat`] -- matching the mockup's own
+/// first two styles (`"12 sep 2026"`, `"12/09/2026"`) exactly; the mockup's own column just says
+/// "ISO" rather than drawing a literal example, so the third style is a real ISO-8601
+/// `"2026-09-12"`.
+pub fn format_preview_date(year: u32, month: u32, day: u32, format: DateFormat) -> String {
+    match format {
+        DateFormat::DayMonthYear => {
+            let abbreviation = MONTH_ABBREVIATIONS
+                .get(month.saturating_sub(1) as usize)
+                .copied()
+                .unwrap_or("???");
+            format!("{day:02} {abbreviation} {year}")
+        }
+        DateFormat::Slash => format!("{day:02}/{month:02}/{year}"),
+        DateFormat::Iso => format!("{year:04}-{month:02}-{day:02}"),
+    }
+}
+
+/// Formats `amount_cents` per the selected [`DecimalSeparator`] -- matching the PREVIEW table's
+/// own mockup values (`"+4,210.00"`, `"\u{2212}86.40"`): an explicit `+` for a non-negative
+/// amount (the mockup's own third row), `\u{2212}` (Unicode minus, not a hyphen) for a negative
+/// one, and thousands grouped by the selected style's own separator.
+pub fn format_preview_amount(amount_cents: i64, separator: DecimalSeparator) -> String {
+    let (thousands, decimal) = separator.marks();
+    let sign = if amount_cents < 0 { '\u{2212}' } else { '+' };
+    let whole = amount_cents.abs() / 100;
+    let fraction = amount_cents.abs() % 100;
+
+    let digits = whole.to_string();
+    let mut grouped = String::new();
+    for (index, ch) in digits.chars().rev().enumerate() {
+        if index > 0 && index % 3 == 0 {
+            grouped.push(thousands);
+        }
+        grouped.push(ch);
+    }
+    let grouped: String = grouped.chars().rev().collect();
+
+    format!("{sign}{grouped}{decimal}{fraction:02}")
+}
+
 /// One row of the **Units** section's table (`docs/ux/desktop/Settings/README.md`'s "2a resting
 /// state" markup: CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS columns as of issue #189, up
 /// from CODE / NAME / TYPE). Owned `String` fields, not `&'static str` --
@@ -750,5 +981,100 @@ mod tests {
     fn default_log_lines_matches_the_mockups_own_four_seeded_lines() {
         assert_eq!(DEFAULT_LOG_LINES.len(), 4);
         assert!(DEFAULT_LOG_LINES[0].contains("sync: connected to server"));
+    }
+
+    #[test]
+    fn date_format_defaults_to_day_month_year() {
+        assert_eq!(DateFormat::default(), DateFormat::DayMonthYear);
+    }
+
+    #[test]
+    fn decimal_separator_defaults_to_comma_thousands() {
+        assert_eq!(
+            DecimalSeparator::default(),
+            DecimalSeparator::CommaThousands
+        );
+    }
+
+    #[test]
+    fn row_density_defaults_to_regular() {
+        assert_eq!(RowDensity::default(), RowDensity::Regular);
+    }
+
+    #[test]
+    fn status_glyphs_defaults_to_unicode() {
+        assert_eq!(StatusGlyphs::default(), StatusGlyphs::Unicode);
+    }
+
+    #[test]
+    fn default_display_preview_rows_matches_the_mockups_own_three_seeded_rows() {
+        let payees: Vec<_> = DEFAULT_DISPLAY_PREVIEW_ROWS
+            .iter()
+            .map(|row| row.payee)
+            .collect();
+        assert_eq!(
+            payees,
+            vec!["Woolworths Metro", "Telstra", "Dept of Education"]
+        );
+    }
+
+    #[test]
+    fn format_preview_date_matches_the_mockups_own_three_styles() {
+        assert_eq!(
+            format_preview_date(2026, 9, 12, DateFormat::DayMonthYear),
+            "12 sep 2026"
+        );
+        assert_eq!(
+            format_preview_date(2026, 9, 12, DateFormat::Slash),
+            "12/09/2026"
+        );
+        assert_eq!(
+            format_preview_date(2026, 9, 12, DateFormat::Iso),
+            "2026-09-12"
+        );
+    }
+
+    #[test]
+    fn format_preview_amount_matches_the_mockups_own_values() {
+        assert_eq!(
+            format_preview_amount(-8640, DecimalSeparator::CommaThousands),
+            "\u{2212}86.40"
+        );
+        assert_eq!(
+            format_preview_amount(421_000, DecimalSeparator::CommaThousands),
+            "+4,210.00"
+        );
+    }
+
+    #[test]
+    fn format_preview_amount_groups_thousands_per_the_selected_style() {
+        assert_eq!(
+            format_preview_amount(421_000, DecimalSeparator::DotThousands),
+            "+4.210,00"
+        );
+        assert_eq!(
+            format_preview_amount(421_000, DecimalSeparator::SpaceThousands),
+            "+4 210.00"
+        );
+    }
+
+    #[test]
+    fn preview_status_glyph_matches_the_selected_style() {
+        assert_eq!(
+            PreviewStatus::Cleared.glyph(StatusGlyphs::Unicode),
+            "\u{25cf}"
+        );
+        assert_eq!(
+            PreviewStatus::Cleared.glyph(StatusGlyphs::AsciiFallback),
+            "x"
+        );
+        assert_eq!(
+            PreviewStatus::Flagged.glyph(StatusGlyphs::Unicode),
+            "\u{2691}"
+        );
+        assert_eq!(
+            PreviewStatus::Flagged.glyph(StatusGlyphs::AsciiFallback),
+            "!"
+        );
     }
 }

@@ -2,8 +2,9 @@
 //! continuous scroll, not a pane switcher -- every section stays mounted, and the settings index
 //! rail (`rail::settings_index`) scrolls to a heading rather than swapping views. The shell
 //! scaffold (issue #173) laid out every section as a placeholder; each section's real content
-//! lands as its own submodule here, one ticket at a time
-//! (`crate::settings::SettingsSection::placeholder_issue` names the one still owed).
+//! landed as its own submodule here, one ticket at a time, with issue #179 (Display) the last
+//! (`crate::settings::SettingsSection::placeholder_issue` still names each section's own
+//! building ticket, for reference).
 //!
 //! Direct children of the scrollable container, in order: the page heading block (child `0`),
 //! then each of the eight sections (children `1..=8`) -- `SettingsSection::body_child_index`
@@ -15,6 +16,7 @@ pub mod add_institution_dialog;
 pub mod add_unit_dialog;
 pub mod data_backup;
 pub mod delete_unit_dialog;
+pub mod display;
 pub mod edit_unit_dialog;
 mod general;
 pub mod institutions;
@@ -25,7 +27,10 @@ pub mod units;
 use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
 
 use crate::{
-    settings::{InstitutionRow, PriceSourceRow, SettingsSection, TracingLevel, UnitRow},
+    settings::{
+        DateFormat, DecimalSeparator, InstitutionRow, PriceSourceRow, RowDensity, SettingsSection,
+        StatusGlyphs, TracingLevel, UnitRow,
+    },
     theme::color,
 };
 
@@ -34,6 +39,14 @@ use crate::{
 /// reason for existing). Every section function takes `&SettingsBodyProps` and reads whatever
 /// subset it needs.
 pub struct SettingsBodyProps<'a> {
+    pub date_format: DateFormat,
+    pub decimal_separator: DecimalSeparator,
+    pub row_density: RowDensity,
+    pub status_glyphs: StatusGlyphs,
+    pub on_date_format_click: display::OnDateFormatClick,
+    pub on_decimal_separator_click: display::OnDecimalSeparatorClick,
+    pub on_row_density_click: display::OnRowDensityClick,
+    pub on_status_glyphs_click: display::OnStatusGlyphsClick,
     pub units: &'a [UnitRow],
     pub on_unit_edit_click: units::OnRowIndexClick,
     pub on_unit_delete_click: units::OnRowIndexClick,
@@ -168,11 +181,22 @@ fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String
     }
 }
 
-/// Each section's real content, once its own ticket has landed -- everything else still falls
-/// back to the placeholder `section_block` originally rendered for all nine.
+/// Each section's real content -- issue #179 (Display) was the last section still on the
+/// placeholder `section_block` originally rendered for all nine; every `SettingsSection` variant
+/// now has a real arm here, so there is no longer a catch-all fallback.
 fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> AnyElement {
     match section {
         SettingsSection::General => general::render(),
+        SettingsSection::Display => display::render(
+            props.date_format,
+            props.decimal_separator,
+            props.row_density,
+            props.status_glyphs,
+            props.on_date_format_click.clone(),
+            props.on_decimal_separator_click.clone(),
+            props.on_row_density_click.clone(),
+            props.on_status_glyphs_click.clone(),
+        ),
         SettingsSection::Units => units::render(
             props.units,
             props.on_unit_edit_click.clone(),
@@ -202,19 +226,7 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
             props.on_clear_logs_click.clone(),
         ),
         SettingsSection::About => about::render(),
-        other => placeholder(other),
     }
-}
-
-fn placeholder(section: SettingsSection) -> AnyElement {
-    div()
-        .text_color(color::INK_TERTIARY)
-        .child(format!(
-            "{} -- not yet built (see issue #{})",
-            section.label(),
-            section.placeholder_issue()
-        ))
-        .into_any_element()
 }
 
 /// A field label: `display:block; font-weight:800; font-size:12px; margin-bottom:6px`

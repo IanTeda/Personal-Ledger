@@ -85,7 +85,9 @@ fn radio_option(level: TracingLevel, checked: bool, on_click: OnPlainClick) -> i
 /// with a centred 8px accent-filled inner circle standing in for the mockup's own `box-shadow:
 /// inset 0 0 0 4px var(--color-bg)` ring effect -- `gpui` has no inset-shadow primitive, so two
 /// concentric circles reproduce the same "accent ring around a punched-out centre" look.
-fn radio_dot(checked: bool) -> impl IntoElement {
+/// `pub(super)`: reused by `super::display`'s own "Status glyphs" radio group (issue #179) --
+/// its second consumer, promoted the same way `add_unit_dialog::segmented_control` was.
+pub(super) fn radio_dot(checked: bool) -> impl IntoElement {
     div()
         .w(DOT_SIZE)
         .h(DOT_SIZE)

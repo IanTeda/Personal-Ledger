@@ -42,8 +42,9 @@ use crate::{
         settings_index::{self, SettingsIndexRail},
     },
     settings::{
-        self, AccountType, AddInstitutionForm, AddUnitField, DeleteUnitForm, InstitutionRow,
-        PriceSourceRow, SettingsDialog, SettingsSection, TracingLevel, UnitForm, UnitKind, UnitRow,
+        self, AccountType, AddInstitutionForm, AddUnitField, DateFormat, DecimalSeparator,
+        DeleteUnitForm, InstitutionRow, PriceSourceRow, RowDensity, SettingsDialog,
+        SettingsSection, StatusGlyphs, TracingLevel, UnitForm, UnitKind, UnitRow,
     },
     statusline::StatusLine,
     theme::{color, type_scale},
@@ -144,6 +145,16 @@ pub struct Shell {
     /// yet). Reset to `SettingsSection::default()` alongside the view scroll whenever a fresh
     /// noun is entered, so re-opening Settings always starts on General again.
     settings_selected_section: SettingsSection,
+    /// The Display section's own "Date format" segmented control (issue #179) -- a stored
+    /// preference, not reset on noun change (same reasoning as [`Self::settings_tracing_level`]).
+    settings_date_format: DateFormat,
+    /// The same section's "Decimal & thousands separator" segmented control.
+    settings_decimal_separator: DecimalSeparator,
+    /// The same section's "Row density" segmented control -- also drives the PREVIEW table's own
+    /// row padding (`view::settings::display`'s own doc), unlike a purely-cosmetic preference.
+    settings_row_density: RowDensity,
+    /// The same section's "Status glyphs" radio group.
+    settings_status_glyphs: StatusGlyphs,
     /// The Units section's own table rows (issue #177), seeded from `settings::default_units()`.
     /// A real, mutable `Vec` so the Add/Edit/Delete unit dialogs (issues #184-#186) can
     /// push/update/remove rows once they land -- unlike
@@ -188,6 +199,10 @@ impl Shell {
             file_explorer: None,
             settings_filter: String::new(),
             settings_selected_section: SettingsSection::default(),
+            settings_date_format: DateFormat::default(),
+            settings_decimal_separator: DecimalSeparator::default(),
+            settings_row_density: RowDensity::default(),
+            settings_status_glyphs: StatusGlyphs::default(),
             settings_units: settings::default_units(),
             settings_price_sources: settings::default_price_sources(),
             settings_dialog: None,
@@ -1005,10 +1020,43 @@ impl Shell {
     }
 
     /// The Tracing (Logs) section's own level radios (issue #182): a stored preference, same
-    /// shape as [`Self::handle_default_unit_click`] -- there are no real log lines to filter by
+    /// shape as [`Self::handle_row_density_click`] -- there are no real log lines to filter by
     /// level yet.
     fn handle_tracing_level_click(&mut self, level: TracingLevel, cx: &mut Context<Self>) {
         self.settings_tracing_level = level;
+        cx.notify();
+    }
+
+    /// The Display section's own "Date format" segmented control (issue #179) -- a stored
+    /// preference that also re-renders the PREVIEW table's own DATE column.
+    fn handle_date_format_click(&mut self, format: DateFormat, cx: &mut Context<Self>) {
+        self.settings_date_format = format;
+        cx.notify();
+    }
+
+    /// The same section's "Decimal & thousands separator" segmented control -- also re-renders
+    /// the PREVIEW table's own AMOUNT column.
+    fn handle_decimal_separator_click(
+        &mut self,
+        separator: DecimalSeparator,
+        cx: &mut Context<Self>,
+    ) {
+        self.settings_decimal_separator = separator;
+        cx.notify();
+    }
+
+    /// The same section's "Row density" segmented control -- also re-renders the PREVIEW table's
+    /// own row padding (`view::settings::display`'s own doc: the one field this map gives a real
+    /// visual effect to, not just a stored preference).
+    fn handle_row_density_click(&mut self, density: RowDensity, cx: &mut Context<Self>) {
+        self.settings_row_density = density;
+        cx.notify();
+    }
+
+    /// The same section's "Status glyphs" radio group -- also re-renders the PREVIEW table's own
+    /// leftmost glyph column.
+    fn handle_status_glyphs_click(&mut self, glyphs: StatusGlyphs, cx: &mut Context<Self>) {
+        self.settings_status_glyphs = glyphs;
         cx.notify();
     }
 
@@ -1344,6 +1392,32 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_clear_logs_click(cx));
             })
         };
+        let on_date_format_click: settings_view::display::OnDateFormatClick = {
+            let entity = entity.clone();
+            Rc::new(move |format, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_date_format_click(format, cx));
+            })
+        };
+        let on_decimal_separator_click: settings_view::display::OnDecimalSeparatorClick = {
+            let entity = entity.clone();
+            Rc::new(move |separator, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_decimal_separator_click(separator, cx)
+                });
+            })
+        };
+        let on_row_density_click: settings_view::display::OnRowDensityClick = {
+            let entity = entity.clone();
+            Rc::new(move |density, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_row_density_click(density, cx));
+            })
+        };
+        let on_status_glyphs_click: settings_view::display::OnStatusGlyphsClick = {
+            let entity = entity.clone();
+            Rc::new(move |glyphs, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_status_glyphs_click(glyphs, cx));
+            })
+        };
 
         div()
             .size_full()
@@ -1400,6 +1474,14 @@ impl Render for Shell {
                                     filter: &self.settings_filter,
                                     selected: self.settings_selected_section,
                                     on_index_click: on_settings_index_click,
+                                    date_format: self.settings_date_format,
+                                    decimal_separator: self.settings_decimal_separator,
+                                    row_density: self.settings_row_density,
+                                    status_glyphs: self.settings_status_glyphs,
+                                    on_date_format_click,
+                                    on_decimal_separator_click,
+                                    on_row_density_click,
+                                    on_status_glyphs_click,
                                     units: &self.settings_units,
                                     on_unit_edit_click,
                                     on_unit_delete_click,
@@ -1490,6 +1572,14 @@ struct SettingsPanelProps<'a> {
     filter: &'a str,
     selected: SettingsSection,
     on_index_click: settings_index::OnEntryClick,
+    date_format: DateFormat,
+    decimal_separator: DecimalSeparator,
+    row_density: RowDensity,
+    status_glyphs: StatusGlyphs,
+    on_date_format_click: settings_view::display::OnDateFormatClick,
+    on_decimal_separator_click: settings_view::display::OnDecimalSeparatorClick,
+    on_row_density_click: settings_view::display::OnRowDensityClick,
+    on_status_glyphs_click: settings_view::display::OnStatusGlyphsClick,
     units: &'a [UnitRow],
     on_unit_edit_click: settings_view::units::OnRowIndexClick,
     on_unit_delete_click: settings_view::units::OnRowIndexClick,
@@ -1549,6 +1639,14 @@ fn render_view(
                 focused,
                 scroll_handle,
                 SettingsBodyProps {
+                    date_format: settings.date_format,
+                    decimal_separator: settings.decimal_separator,
+                    row_density: settings.row_density,
+                    status_glyphs: settings.status_glyphs,
+                    on_date_format_click: settings.on_date_format_click,
+                    on_decimal_separator_click: settings.on_decimal_separator_click,
+                    on_row_density_click: settings.on_row_density_click,
+                    on_status_glyphs_click: settings.on_status_glyphs_click,
                     units: settings.units,
                     on_unit_edit_click: settings.on_unit_edit_click,
                     on_unit_delete_click: settings.on_unit_delete_click,
