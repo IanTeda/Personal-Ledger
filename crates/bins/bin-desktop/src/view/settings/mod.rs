@@ -11,13 +11,14 @@
 //! children by index.
 
 mod general;
+pub mod institutions;
 pub mod ledger_units;
 pub mod units;
 
 use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
 
 use crate::{
-    settings::{BudgetPeriod, DefaultUnit, SettingsSection, UnitRow},
+    settings::{BudgetPeriod, DefaultUnit, InstitutionRow, SettingsSection, UnitRow},
     theme::color,
 };
 
@@ -34,6 +35,10 @@ pub struct SettingsBodyProps<'a> {
     pub on_unit_edit_click: units::OnRowIndexClick,
     pub on_unit_delete_click: units::OnRowIndexClick,
     pub on_add_unit_click: units::OnAddClick,
+    pub institutions: &'a [InstitutionRow],
+    pub on_institution_edit_click: institutions::OnRowIndexClick,
+    pub on_institution_delete_click: institutions::OnRowIndexClick,
+    pub on_add_institution_click: institutions::OnAddClick,
 }
 
 pub fn render(
@@ -141,6 +146,9 @@ fn section_block(section: SettingsSection, props: &SettingsBodyProps<'_>) -> imp
 fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String {
     match section {
         SettingsSection::Units => format!("{} units \u{b7} synced", props.units.len()),
+        SettingsSection::Institutions => {
+            format!("{} institutions \u{b7} synced", props.institutions.len())
+        }
         other => other.scope_note().to_string(),
     }
 }
@@ -161,6 +169,12 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
             props.on_unit_edit_click.clone(),
             props.on_unit_delete_click.clone(),
             props.on_add_unit_click.clone(),
+        ),
+        SettingsSection::Institutions => institutions::render(
+            props.institutions,
+            props.on_institution_edit_click.clone(),
+            props.on_institution_delete_click.clone(),
+            props.on_add_institution_click.clone(),
         ),
         other => placeholder(other),
     }

@@ -189,6 +189,51 @@ pub const DEFAULT_UNITS: &[UnitRow] = &[
     },
 ];
 
+/// One row of the **Institutions** section's table (`docs/ux/desktop/Settings/README.md`'s "2a
+/// resting state" markup: INSTITUTION / ACCOUNT TYPE columns) -- same `&'static str`/`Shell`-owned
+/// `Vec` reasoning as [`UnitRow`]/[`DEFAULT_UNITS`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstitutionRow {
+    pub name: &'static str,
+    /// The ACCOUNT TYPE column, e.g. `"savings \u{b7} offset"` -- the mockup joins multiple
+    /// types with the same `\u{b7}` separator the scope notes use, as one free-form label (not a
+    /// `Vec` of chips -- that multi-select shape belongs to the Add institution dialog's own
+    /// input, not this read-only table cell).
+    pub account_type: &'static str,
+}
+
+/// The mockup's own six seeded rows, in its own order (the mockup's static scope note claims "7
+/// institutions", but only six rows are actually drawn -- treated as the same kind of
+/// mockup-authoring slip [`DEFAULT_UNITS`]'s own doc calls out elsewhere, not a seventh row to
+/// invent; the scope note is dynamic and derived from `Shell::settings_institutions.len()`
+/// regardless, so it self-corrects to whatever this slice actually holds).
+pub const DEFAULT_INSTITUTIONS: &[InstitutionRow] = &[
+    InstitutionRow {
+        name: "ANZ Banking Group",
+        account_type: "savings \u{b7} offset",
+    },
+    InstitutionRow {
+        name: "American Express",
+        account_type: "credit card",
+    },
+    InstitutionRow {
+        name: "Vanguard Investments",
+        account_type: "investment",
+    },
+    InstitutionRow {
+        name: "Westpac Banking",
+        account_type: "savings",
+    },
+    InstitutionRow {
+        name: "Cryptocurrency Exchange",
+        account_type: "crypto",
+    },
+    InstitutionRow {
+        name: "Superannuation Fund",
+        account_type: "retirement",
+    },
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,5 +290,24 @@ mod tests {
     fn default_units_matches_the_mockups_own_three_seeded_rows() {
         let codes: Vec<_> = DEFAULT_UNITS.iter().map(|unit| unit.code).collect();
         assert_eq!(codes, vec!["aud", "btc", "vas"]);
+    }
+
+    #[test]
+    fn default_institutions_matches_the_mockups_own_six_seeded_rows() {
+        let names: Vec<_> = DEFAULT_INSTITUTIONS
+            .iter()
+            .map(|institution| institution.name)
+            .collect();
+        assert_eq!(
+            names,
+            vec![
+                "ANZ Banking Group",
+                "American Express",
+                "Vanguard Investments",
+                "Westpac Banking",
+                "Cryptocurrency Exchange",
+                "Superannuation Fund",
+            ]
+        );
     }
 }

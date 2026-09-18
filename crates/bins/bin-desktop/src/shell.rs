@@ -41,7 +41,7 @@ use crate::{
         primary::PrimaryRail,
         settings_index::{self, SettingsIndexRail},
     },
-    settings::{self, BudgetPeriod, DefaultUnit, SettingsSection, UnitRow},
+    settings::{self, BudgetPeriod, DefaultUnit, InstitutionRow, SettingsSection, UnitRow},
     statusline::StatusLine,
     theme::{color, type_scale},
     topbar::{self, TopBar},
@@ -155,6 +155,9 @@ pub struct Shell {
     /// #184-#186) can push/update/remove rows once they land -- not reset on noun change, same
     /// reasoning as [`Self::settings_default_unit`].
     settings_units: Vec<UnitRow>,
+    /// The Institutions section's own table rows (issue #178), seeded from
+    /// `settings::DEFAULT_INSTITUTIONS` -- same reasoning as [`Self::settings_units`].
+    settings_institutions: Vec<InstitutionRow>,
 }
 
 impl Shell {
@@ -175,6 +178,7 @@ impl Shell {
             settings_default_unit: DefaultUnit::default(),
             settings_budget_period: BudgetPeriod::default(),
             settings_units: settings::DEFAULT_UNITS.to_vec(),
+            settings_institutions: settings::DEFAULT_INSTITUTIONS.to_vec(),
         }
     }
 
@@ -638,6 +642,31 @@ impl Shell {
         cx.notify();
     }
 
+    /// The Institutions table's own row "edit"/"delete" buttons (issue #178). Unlike
+    /// [`Self::handle_unit_edit_click`]/[`Self::handle_unit_delete_click`], neither stub names an
+    /// issue: no `EditInstitution`/`DeleteInstitution` dialog is specified anywhere on this map
+    /// (the README's own "Dialog lifecycle" table and `State` block only ever mention
+    /// `AddInstitution`), so there is no ticket to point at.
+    fn handle_institution_edit_click(&mut self, index: usize, cx: &mut Context<Self>) {
+        let _ = index; // no row-scoped state until a future ticket specifies this dialog
+        self.status_message = Some("edit institution -- not yet built".to_string());
+        cx.notify();
+    }
+
+    fn handle_institution_delete_click(&mut self, index: usize, cx: &mut Context<Self>) {
+        let _ = index; // no row-scoped state until a future ticket specifies this dialog
+        self.status_message = Some("delete institution -- not yet built".to_string());
+        cx.notify();
+    }
+
+    /// The Institutions table's own "+ Add institution" button (issue #178): opens the Add
+    /// institution dialog (issue #187), not yet built -- same stub shape as
+    /// [`Self::handle_add_unit_click`].
+    fn handle_add_institution_click(&mut self, cx: &mut Context<Self>) {
+        self.status_message = Some("add institution -- not yet built (see issue #187)".to_string());
+        cx.notify();
+    }
+
     /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
     /// state, then -- README's "double-click a `.pldb` row opens immediately" -- confirms the
     /// open immediately when `click_count` reports a real double-click landing on a row that
@@ -845,6 +874,28 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_add_unit_click(cx));
             })
         };
+        let on_institution_edit_click: settings_view::institutions::OnRowIndexClick = {
+            let entity = entity.clone();
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_institution_edit_click(index, cx)
+                });
+            })
+        };
+        let on_institution_delete_click: settings_view::institutions::OnRowIndexClick = {
+            let entity = entity.clone();
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_institution_delete_click(index, cx)
+                });
+            })
+        };
+        let on_add_institution_click: settings_view::institutions::OnAddClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_add_institution_click(cx));
+            })
+        };
 
         div()
             .size_full()
@@ -909,6 +960,10 @@ impl Render for Shell {
                                     on_unit_edit_click,
                                     on_unit_delete_click,
                                     on_add_unit_click,
+                                    institutions: &self.settings_institutions,
+                                    on_institution_edit_click,
+                                    on_institution_delete_click,
+                                    on_add_institution_click,
                                 },
                             )),
                     ),
@@ -947,6 +1002,10 @@ struct SettingsPanelProps<'a> {
     on_unit_edit_click: settings_view::units::OnRowIndexClick,
     on_unit_delete_click: settings_view::units::OnRowIndexClick,
     on_add_unit_click: settings_view::units::OnAddClick,
+    institutions: &'a [InstitutionRow],
+    on_institution_edit_click: settings_view::institutions::OnRowIndexClick,
+    on_institution_delete_click: settings_view::institutions::OnRowIndexClick,
+    on_add_institution_click: settings_view::institutions::OnAddClick,
 }
 
 /// The active noun's own view interior. Only `Dashboard` and `Settings` are real; every other
@@ -994,6 +1053,10 @@ fn render_view(
                     on_unit_edit_click: settings.on_unit_edit_click,
                     on_unit_delete_click: settings.on_unit_delete_click,
                     on_add_unit_click: settings.on_add_unit_click,
+                    institutions: settings.institutions,
+                    on_institution_edit_click: settings.on_institution_edit_click,
+                    on_institution_delete_click: settings.on_institution_delete_click,
+                    on_add_institution_click: settings.on_add_institution_click,
                 },
             ))
             .into_any_element();
