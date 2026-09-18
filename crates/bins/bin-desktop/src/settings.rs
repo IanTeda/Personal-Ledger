@@ -234,6 +234,44 @@ pub const DEFAULT_INSTITUTIONS: &[InstitutionRow] = &[
     },
 ];
 
+/// The **Tracing (Logs)** section's level radios (`docs/ux/desktop/Settings/README.md`'s "2a
+/// resting state" markup: `error`/`warn`/`info`/`debug`, `error` the mockup's own `checked`
+/// option). Purely a selected-level preference, like [`DefaultUnit`]/[`BudgetPeriod`] -- there
+/// are no real log lines to filter by level yet (see [`DEFAULT_LOG_LINES`]'s own doc).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TracingLevel {
+    #[default]
+    Error,
+    Warn,
+    Info,
+    Debug,
+}
+
+impl TracingLevel {
+    pub const ALL: [TracingLevel; 4] = [Self::Error, Self::Warn, Self::Info, Self::Debug];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Error => "error",
+            Self::Warn => "warn",
+            Self::Info => "info",
+            Self::Debug => "debug",
+        }
+    }
+}
+
+/// The log viewport's own seeded lines, in the mockup's own order -- dummy data, not a real
+/// `tracing`-subscriber feed (see the Desktop Settings Surface map's own Destination). `Shell`
+/// clones this into a real `Vec` it owns, so "Clear logs" (issue #182) can empty it -- the one
+/// real mutation this section makes, unlike Sync server's/Data & backup's own permanently
+/// no-effect buttons.
+pub const DEFAULT_LOG_LINES: &[&str] = &[
+    "[14:22:18] sync: connected to server",
+    "[14:22:15] txn: reconciled payment 312.80",
+    "[14:22:12] budget: updated dining limit",
+    "[14:22:08] import: 3 csv rows processed",
+];
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -309,5 +347,16 @@ mod tests {
                 "Superannuation Fund",
             ]
         );
+    }
+
+    #[test]
+    fn tracing_level_defaults_to_error() {
+        assert_eq!(TracingLevel::default(), TracingLevel::Error);
+    }
+
+    #[test]
+    fn default_log_lines_matches_the_mockups_own_four_seeded_lines() {
+        assert_eq!(DEFAULT_LOG_LINES.len(), 4);
+        assert!(DEFAULT_LOG_LINES[0].contains("sync: connected to server"));
     }
 }

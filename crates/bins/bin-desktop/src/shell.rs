@@ -41,7 +41,9 @@ use crate::{
         primary::PrimaryRail,
         settings_index::{self, SettingsIndexRail},
     },
-    settings::{self, BudgetPeriod, DefaultUnit, InstitutionRow, SettingsSection, UnitRow},
+    settings::{
+        self, BudgetPeriod, DefaultUnit, InstitutionRow, SettingsSection, TracingLevel, UnitRow,
+    },
     statusline::StatusLine,
     theme::{color, type_scale},
     topbar::{self, TopBar},
@@ -158,6 +160,13 @@ pub struct Shell {
     /// The Institutions section's own table rows (issue #178), seeded from
     /// `settings::DEFAULT_INSTITUTIONS` -- same reasoning as [`Self::settings_units`].
     settings_institutions: Vec<InstitutionRow>,
+    /// The Tracing (Logs) section's own selected level (issue #182) -- a stored preference like
+    /// [`Self::settings_default_unit`], not reset on noun change.
+    settings_tracing_level: TracingLevel,
+    /// The same section's log viewport contents, seeded from `settings::DEFAULT_LOG_LINES`.
+    /// Real, mutable state -- "Clear logs" empties this `Vec`, the one button in this map with a
+    /// real effect rather than a permanently-out-of-scope stub.
+    settings_log_lines: Vec<&'static str>,
 }
 
 impl Shell {
@@ -179,6 +188,8 @@ impl Shell {
             settings_budget_period: BudgetPeriod::default(),
             settings_units: settings::DEFAULT_UNITS.to_vec(),
             settings_institutions: settings::DEFAULT_INSTITUTIONS.to_vec(),
+            settings_tracing_level: TracingLevel::default(),
+            settings_log_lines: settings::DEFAULT_LOG_LINES.to_vec(),
         }
     }
 
@@ -687,6 +698,22 @@ impl Shell {
         cx.notify();
     }
 
+    /// The Tracing (Logs) section's own level radios (issue #182): a stored preference, same
+    /// shape as [`Self::handle_default_unit_click`] -- there are no real log lines to filter by
+    /// level yet.
+    fn handle_tracing_level_click(&mut self, level: TracingLevel, cx: &mut Context<Self>) {
+        self.settings_tracing_level = level;
+        cx.notify();
+    }
+
+    /// The same section's "Clear logs" button: unlike every other button this map has built,
+    /// this one has a real effect -- the ticket's own body asks for the viewport's in-memory
+    /// contents to actually empty, not a stubbed status-line message.
+    fn handle_clear_logs_click(&mut self, cx: &mut Context<Self>) {
+        self.settings_log_lines.clear();
+        cx.notify();
+    }
+
     /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
     /// state, then -- README's "double-click a `.pldb` row opens immediately" -- confirms the
     /// open immediately when `click_count` reports a real double-click landing on a row that
@@ -934,6 +961,18 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_export_ledger_click(cx));
             })
         };
+        let on_tracing_level_click: settings_view::tracing::OnLevelClick = {
+            let entity = entity.clone();
+            Rc::new(move |level, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_tracing_level_click(level, cx));
+            })
+        };
+        let on_clear_logs_click: settings_view::tracing::OnClearLogsClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_clear_logs_click(cx));
+            })
+        };
 
         div()
             .size_full()
@@ -1005,6 +1044,10 @@ impl Render for Shell {
                                     on_sync_now_click,
                                     on_backup_now_click,
                                     on_export_ledger_click,
+                                    tracing_level: self.settings_tracing_level,
+                                    log_lines: &self.settings_log_lines,
+                                    on_tracing_level_click,
+                                    on_clear_logs_click,
                                 },
                             )),
                     ),
@@ -1050,6 +1093,10 @@ struct SettingsPanelProps<'a> {
     on_sync_now_click: settings_view::sync_server::OnSyncNowClick,
     on_backup_now_click: settings_view::data_backup::OnBackupNowClick,
     on_export_ledger_click: settings_view::data_backup::OnExportLedgerClick,
+    tracing_level: TracingLevel,
+    log_lines: &'a [&'static str],
+    on_tracing_level_click: settings_view::tracing::OnLevelClick,
+    on_clear_logs_click: settings_view::tracing::OnClearLogsClick,
 }
 
 /// The active noun's own view interior. Only `Dashboard` and `Settings` are real; every other
@@ -1104,6 +1151,10 @@ fn render_view(
                     on_sync_now_click: settings.on_sync_now_click,
                     on_backup_now_click: settings.on_backup_now_click,
                     on_export_ledger_click: settings.on_export_ledger_click,
+                    tracing_level: settings.tracing_level,
+                    log_lines: settings.log_lines,
+                    on_tracing_level_click: settings.on_tracing_level_click,
+                    on_clear_logs_click: settings.on_clear_logs_click,
                 },
             ))
             .into_any_element();

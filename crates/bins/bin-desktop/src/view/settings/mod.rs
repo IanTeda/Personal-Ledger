@@ -15,12 +15,13 @@ mod general;
 pub mod institutions;
 pub mod ledger_units;
 pub mod sync_server;
+pub mod tracing;
 pub mod units;
 
 use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
 
 use crate::{
-    settings::{BudgetPeriod, DefaultUnit, InstitutionRow, SettingsSection, UnitRow},
+    settings::{BudgetPeriod, DefaultUnit, InstitutionRow, SettingsSection, TracingLevel, UnitRow},
     theme::color,
 };
 
@@ -44,6 +45,10 @@ pub struct SettingsBodyProps<'a> {
     pub on_sync_now_click: sync_server::OnSyncNowClick,
     pub on_backup_now_click: data_backup::OnBackupNowClick,
     pub on_export_ledger_click: data_backup::OnExportLedgerClick,
+    pub tracing_level: TracingLevel,
+    pub log_lines: &'a [&'static str],
+    pub on_tracing_level_click: tracing::OnLevelClick,
+    pub on_clear_logs_click: tracing::OnClearLogsClick,
 }
 
 pub fn render(
@@ -185,6 +190,12 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
         SettingsSection::DataBackup => data_backup::render(
             props.on_backup_now_click.clone(),
             props.on_export_ledger_click.clone(),
+        ),
+        SettingsSection::Tracing => tracing::render(
+            props.tracing_level,
+            props.log_lines,
+            props.on_tracing_level_click.clone(),
+            props.on_clear_logs_click.clone(),
         ),
         other => placeholder(other),
     }
