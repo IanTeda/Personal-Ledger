@@ -11,6 +11,9 @@
 //! Every action here (row click, edit, delete, add) is a callback into `Shell`, so the keyboard
 //! (`n`/`e`/`d`/`enter`) and the mouse reach the same handlers.
 
+pub mod add_dialog;
+mod select_field;
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*, px};

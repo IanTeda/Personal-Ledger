@@ -18,6 +18,7 @@ mod nav;
 mod palette;
 mod persistence;
 mod rail;
+mod select;
 mod settings;
 mod shell;
 mod statusline;
