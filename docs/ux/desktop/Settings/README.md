@@ -237,6 +237,18 @@ configuration // client-scoped, read from personal-ledger.conf
 13. **Zero radius, flush-left labels** — including labels inside wide buttons.
 14. **Icons**: Lucide, 14×14 at rail size, 1.5px stroke.
 
+## Acceptance pass
+
+Issue #188's own closing walk — every "2a" section and "2b–2e" dialog checked against this document, now that all eight sections and all four dialogs have landed against `crates/bins/bin-desktop/src/view/settings/`, the same way issue #154 walked the Shell & Navigation map's own 10 acceptance criteria (`docs/ux/desktop/README.md`'s "Acceptance criteria walk").
+
+- **All eight sections render in scroll order** (General, Display, Units, Institutions, Sync server, Data & backup, Tracing (Logs), About) **with the uniform section pattern** (heading + scope note + 2px rule + 48px gap, no exceptions) **and correct scope notes.** Met — `SettingsSection::ALL`/`label`/`scope_note` (`crate::settings`) match this document's own "Sections, in scroll order" table verbatim, and `view::settings::section_block` is the sole owner of the 48px gap and 2px rule, so no individual section's own render function can drift from it.
+- **Index rail click scrolls to the right section and takes the active treatment; `/ filter` live-filters the index only.** Met — `Shell::handle_settings_index_click` sets the active section and calls `ScrollHandle::scroll_to_top_of_item` with `SettingsSection::body_child_index`; `Shell::handle_search_key` only ever mutates `settings_filter`, which `rail::settings_index::SettingsIndexRail` reads through `SettingsSection::matches_filter` — body sections stay mounted regardless of the filter text.
+- **All four dialogs open/close correctly, including the Delete-unit typed-confirmation gating.** Met by code review and this crate's own test coverage, not a live click-through — this sandbox has no working synthetic mouse-click path for `bin-desktop` (the same limitation this map's own Notes, and issue #144's own #154, both flag). `DeleteUnitForm::matches` is a plain case-sensitive `==` against the row's own code; `dialog::confirm_button` only attaches an `on_click` handler when `enabled` is true, so a mismatched confirmation field is genuinely inert, not merely dimmed. `Esc` discards `settings_dialog` unconditionally, regardless of which variant is open.
+- **Design tokens match this document's own tables.** Met — every named colour in `theme::color` was checked numerically against the Design Tokens table above (Ground, Chrome, Ink/secondary/tertiary, Accent/text-safe, Positive, both rule weights, Border, Dimmer); no mismatches found.
+- **What's verified live vs by code review.** General and Display were confirmed with a real, resized floating window and screenshot (this sandbox's own `hyprctl`/`grim` path) — both render pixel-for-pixel against the mockup, including Display's own live PREVIEW table re-rendering correctly under every Date format / Decimal separator / Row density / Status glyphs combination. Units, Institutions, Sync server, Data & backup, Tracing, About, and all four dialogs are verified by code review and their own test coverage only, for the same synthetic-input reason noted above.
+
+No drift found in this document itself against the shipped code. One stale rustdoc reference was fixed in passing: `theme::color::DIVIDER`'s own doc comment still pointed at the now-deleted `ledger_units` module (issue #189) rather than `add_unit_dialog::segmented_control`, its real home since that ticket (and now also reused by `display`).
+
 ## Files
 - `Ledger Desktop Shell.dc.html` — the prototype (section 2 = 2a–2e; section 1 = the shell variants; section 3 = Accounts)
 - `README.md` — this document

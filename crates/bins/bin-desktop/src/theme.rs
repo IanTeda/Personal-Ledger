@@ -73,8 +73,8 @@ pub mod color {
     pub const HOVER_TINT: Rgba = rgba(0x201e1d0f);
     /// The shared design system's generic `--color-divider` (`styles.css`):
     /// `color-mix(in srgb, #201e1d 40%, transparent)`, i.e. `rgba(32,30,29,.40)`. Used by the
-    /// `.seg`/`.seg-opt` segmented-control classes (`crate::view::settings::ledger_units`) --
-    /// distinct from [`Self::BORDER`]'s `.30`, which is the value every inline-styled
+    /// `.seg`/`.seg-opt` segmented-control classes (`crate::view::settings::add_unit_dialog::segmented_control`,
+    /// reused by `display`) -- distinct from [`Self::BORDER`]'s `.30`, which is the value every inline-styled
     /// `Input`/`select` border in the 2a mockup uses instead. Coincides numerically with
     /// [`Self::DIALOG_SHADOW`]'s own `.40` alpha; named separately since the two mean
     /// different things.
