@@ -57,6 +57,8 @@ pub enum KeyOutcome {
     DelegateToSearch,
     /// `InputMode::Insert` has no real input surface yet -- swallow the key.
     Swallowed,
+    /// `InputMode::Dialog` owns every keystroke -- hand off to `Shell::handle_dialog_key`.
+    DelegateToDialog,
     /// A pending `g` completed: jump straight to this noun.
     JumpToNoun(Noun),
     /// A pending `g` was followed by an unbound key: flash this already-formatted hint-strip
@@ -127,6 +129,9 @@ pub fn route_key(
     }
     if mode == InputMode::Search {
         return KeyOutcome::DelegateToSearch;
+    }
+    if mode == InputMode::Dialog {
+        return KeyOutcome::DelegateToDialog;
     }
     if mode != InputMode::Normal {
         return KeyOutcome::Swallowed;
@@ -202,7 +207,12 @@ mod tests {
 
     #[test]
     fn escape_in_a_non_normal_mode_closes_popups_and_exits() {
-        for mode in [InputMode::Command, InputMode::Insert, InputMode::Search] {
+        for mode in [
+            InputMode::Command,
+            InputMode::Insert,
+            InputMode::Search,
+            InputMode::Dialog,
+        ] {
             assert_eq!(
                 route_key(mode, false, "escape", false, false),
                 KeyOutcome::ClosePopupsAndExitMode
@@ -240,6 +250,14 @@ mod tests {
         assert_eq!(
             route_key(InputMode::Search, false, "j", false, false),
             KeyOutcome::DelegateToSearch
+        );
+    }
+
+    #[test]
+    fn dialog_mode_delegates_every_non_escape_key() {
+        assert_eq!(
+            route_key(InputMode::Dialog, false, "j", false, false),
+            KeyOutcome::DelegateToDialog
         );
     }
 

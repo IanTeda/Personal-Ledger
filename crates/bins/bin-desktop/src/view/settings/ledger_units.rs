@@ -78,8 +78,11 @@ fn field_label(label: &'static str) -> impl IntoElement {
 /// `.seg`/`.seg-opt`: a bordered, radius-0 pill row, each option separated by a 1px rule, the
 /// selected option taking `background: var(--color-accent); color: var(--color-bg)` -- the
 /// segmented control's own named exception to the shell's "accent never a background" rule (see
-/// `theme::color::ACCENT`'s own doc).
-fn segmented_control<T: Copy + PartialEq + 'static>(
+/// `theme::color::ACCENT`'s own doc). `pub(super)`: reused by `super::add_unit_dialog` for the
+/// Add unit dialog's own "Type" field (issue #184) -- a real `<select>` in the raw mockup
+/// markup, but every other "pick one of a few options" control in this map already stands in a
+/// segmented control for a `<select>` this crate has no real dropdown-open behaviour for yet.
+pub(super) fn segmented_control<T: Copy + PartialEq + 'static>(
     id_prefix: &'static str,
     options: &'static [T],
     current: T,

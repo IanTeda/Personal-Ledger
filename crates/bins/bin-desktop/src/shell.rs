@@ -42,7 +42,8 @@ use crate::{
         settings_index::{self, SettingsIndexRail},
     },
     settings::{
-        self, BudgetPeriod, DefaultUnit, InstitutionRow, SettingsSection, TracingLevel, UnitRow,
+        self, AddUnitField, AddUnitForm, BudgetPeriod, DefaultUnit, InstitutionRow, SettingsDialog,
+        SettingsSection, TracingLevel, UnitKind, UnitRow,
     },
     statusline::StatusLine,
     theme::{color, type_scale},
@@ -152,11 +153,16 @@ pub struct Shell {
     /// The same section's "Budget period" -- see [`Self::settings_default_unit`]'s own doc for
     /// why this also isn't reset on noun change.
     settings_budget_period: BudgetPeriod,
-    /// The Units section's own table rows (issue #177), seeded from `settings::DEFAULT_UNITS`.
-    /// A real, mutable `Vec` (not a `const` slice) so the Add/Edit/Delete unit dialogs (issues
-    /// #184-#186) can push/update/remove rows once they land -- not reset on noun change, same
-    /// reasoning as [`Self::settings_default_unit`].
+    /// The Units section's own table rows (issue #177), seeded from `settings::default_units()`.
+    /// A real, mutable `Vec` so the Add/Edit/Delete unit dialogs (issues #184-#186) can
+    /// push/update/remove rows once they land -- not reset on noun change, same reasoning as
+    /// [`Self::settings_default_unit`].
     settings_units: Vec<UnitRow>,
+    /// The currently open Settings dialog, if any (issue #184's own "Add unit" the first
+    /// variant) -- `NavState::mode` is `InputMode::Dialog` for exactly as long as this is
+    /// `Some`, the same "`Option<T>` + a matching mode" shape `Self::palette`/
+    /// `Self::file_explorer` already use with `InputMode::Command`.
+    settings_dialog: Option<SettingsDialog>,
     /// The Institutions section's own table rows (issue #178), seeded from
     /// `settings::DEFAULT_INSTITUTIONS` -- same reasoning as [`Self::settings_units`].
     settings_institutions: Vec<InstitutionRow>,
@@ -186,7 +192,8 @@ impl Shell {
             settings_selected_section: SettingsSection::default(),
             settings_default_unit: DefaultUnit::default(),
             settings_budget_period: BudgetPeriod::default(),
-            settings_units: settings::DEFAULT_UNITS.to_vec(),
+            settings_units: settings::default_units(),
+            settings_dialog: None,
             settings_institutions: settings::DEFAULT_INSTITUTIONS.to_vec(),
             settings_tracing_level: TracingLevel::default(),
             settings_log_lines: settings::DEFAULT_LOG_LINES.to_vec(),
@@ -248,6 +255,9 @@ impl Shell {
             KeyOutcome::ClosePopupsAndExitMode => {
                 self.palette = None;
                 self.file_explorer = None;
+                // The README's own Dialog lifecycle table: "`esc` closes any dialog without
+                // saving" -- discards whatever was typed, same as Cancel.
+                self.settings_dialog = None;
                 // README's "Interactions" > "Navigation": `esc` clears the settings index
                 // rail's own filter, the same as it closes the palette/file explorer above.
                 self.settings_filter.clear();
@@ -267,6 +277,7 @@ impl Shell {
                 self.handle_palette_key(keystroke) || had_status_message
             }
             KeyOutcome::DelegateToSearch => self.handle_search_key(keystroke) || had_status_message,
+            KeyOutcome::DelegateToDialog => self.handle_dialog_key(keystroke) || had_status_message,
             KeyOutcome::Swallowed => had_status_message,
             KeyOutcome::JumpToNoun(noun) => {
                 self.nav.set_noun(noun);
@@ -509,6 +520,108 @@ impl Shell {
         }
     }
 
+    /// Routes a keystroke while `InputMode::Dialog` is active (tier 2, mirroring
+    /// [`Self::handle_search_key`]'s shape): dispatches on which [`SettingsDialog`] variant is
+    /// open. `Tab` cycles the open dialog's own field focus rather than reaching
+    /// `NavState::cycle_focus_forward` -- this tier returns before `route_key`'s `Tab` tier is
+    /// ever checked, so the shell-wide zones stay untouched while a dialog is up. `Enter`
+    /// submits only when the form validates, mirroring `dialog::confirm_button`'s own
+    /// `enabled`-gated `on_click`.
+    fn handle_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(dialog) = self.settings_dialog.as_mut() else {
+            return false;
+        };
+
+        match dialog {
+            SettingsDialog::AddUnit(form) => match keystroke.key.as_str() {
+                "backspace" => {
+                    form.backspace();
+                    true
+                }
+                "tab" => {
+                    form.cycle_field();
+                    true
+                }
+                "enter" => {
+                    if form.is_valid() {
+                        self.confirm_add_unit();
+                    }
+                    true
+                }
+                _ => {
+                    let modifiers = &keystroke.modifiers;
+                    if modifiers.control
+                        || modifiers.alt
+                        || modifiers.platform
+                        || modifiers.function
+                    {
+                        return false;
+                    }
+                    match keystroke.key_char.as_deref() {
+                        Some(text) if text.chars().count() == 1 => {
+                            form.push_char(text.chars().next().expect("checked above"));
+                            true
+                        }
+                        _ => false,
+                    }
+                }
+            },
+        }
+    }
+
+    /// The Units section's own "+ Add unit" button (issue #184, replacing the stub #177 left
+    /// behind): opens the Add unit dialog rather than flashing a status message.
+    fn handle_add_unit_click(&mut self, cx: &mut Context<Self>) {
+        self.settings_dialog = Some(SettingsDialog::AddUnit(AddUnitForm::default()));
+        self.nav.enter_mode(InputMode::Dialog);
+        cx.notify();
+    }
+
+    fn handle_add_unit_field_click(&mut self, field: AddUnitField, cx: &mut Context<Self>) {
+        if let Some(SettingsDialog::AddUnit(form)) = self.settings_dialog.as_mut() {
+            form.focused_field = field;
+            cx.notify();
+        }
+    }
+
+    fn handle_add_unit_kind_click(&mut self, kind: UnitKind, cx: &mut Context<Self>) {
+        if let Some(SettingsDialog::AddUnit(form)) = self.settings_dialog.as_mut() {
+            form.kind = kind;
+            cx.notify();
+        }
+    }
+
+    fn handle_add_unit_cancel(&mut self, cx: &mut Context<Self>) {
+        self.settings_dialog = None;
+        self.nav.exit_mode();
+        cx.notify();
+    }
+
+    /// The Add unit dialog's own Add button (and `Enter`, via [`Self::handle_dialog_key`]):
+    /// the README's own "Dialog lifecycle" row -- "validate -> append to Units table -> close".
+    /// A no-op if the form isn't valid or (defensively) isn't actually the open dialog; the
+    /// button itself is only clickable while `AddUnitForm::is_valid` holds, so this should only
+    /// ever run on a valid form.
+    fn confirm_add_unit(&mut self) {
+        let Some(SettingsDialog::AddUnit(form)) = self.settings_dialog.take() else {
+            return;
+        };
+        if !form.is_valid() {
+            return;
+        }
+        self.settings_units.push(UnitRow {
+            code: form.code,
+            name: form.name,
+            kind: form.kind.label().to_string(),
+        });
+        self.nav.exit_mode();
+    }
+
+    fn handle_add_unit_confirm(&mut self, cx: &mut Context<Self>) {
+        self.confirm_add_unit();
+        cx.notify();
+    }
+
     /// Runs `command`'s effect -- one exhaustive match over [`CommandEffect`], the single
     /// source of truth for what a command does (issue #144's own architecture review, "deepen
     /// the command's interface": this replaced an `Option<fn(&mut NavState)>` handler plus a
@@ -631,11 +744,12 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Units table's own row "edit"/"delete" buttons and its "+ Add unit" button (issue
-    /// #177): all three open a dialog this map hasn't built yet (issues #184-#186), so each is a
-    /// clearly-marked stub -- flashing the same "not yet built" status-line message
-    /// `CommandEffect::NotYetBuilt` already uses, naming the specific ticket that owes the real
-    /// behaviour, rather than silently doing nothing.
+    /// The Units table's own row "edit"/"delete" buttons (issue #177): both still open a dialog
+    /// this map hasn't built yet (issues #185/#186), so each is a clearly-marked stub --
+    /// flashing the same "not yet built" status-line message `CommandEffect::NotYetBuilt`
+    /// already uses, naming the specific ticket that owes the real behaviour, rather than
+    /// silently doing nothing. "+ Add unit" itself is no longer one of these three stubs -- see
+    /// [`Self::handle_add_unit_click`], which now opens the real Add unit dialog (issue #184).
     fn handle_unit_edit_click(&mut self, index: usize, cx: &mut Context<Self>) {
         let _ = index; // no row-scoped state until #185 actually opens a dialog on it
         self.status_message = Some("edit unit -- not yet built (see issue #185)".to_string());
@@ -645,11 +759,6 @@ impl Shell {
     fn handle_unit_delete_click(&mut self, index: usize, cx: &mut Context<Self>) {
         let _ = index; // no row-scoped state until #186 actually opens a dialog on it
         self.status_message = Some("delete unit -- not yet built (see issue #186)".to_string());
-        cx.notify();
-    }
-
-    fn handle_add_unit_click(&mut self, cx: &mut Context<Self>) {
-        self.status_message = Some("add unit -- not yet built (see issue #184)".to_string());
         cx.notify();
     }
 
@@ -875,6 +984,30 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_explorer_open(cx));
             })
         };
+        let on_add_unit_field_click: settings_view::add_unit_dialog::OnFieldClick = {
+            let entity = entity.clone();
+            Rc::new(move |field, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_add_unit_field_click(field, cx));
+            })
+        };
+        let on_add_unit_kind_click: settings_view::add_unit_dialog::OnKindClick = {
+            let entity = entity.clone();
+            Rc::new(move |kind, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_add_unit_kind_click(kind, cx));
+            })
+        };
+        let on_add_unit_dialog_cancel: settings_view::add_unit_dialog::OnCancel = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_add_unit_cancel(cx));
+            })
+        };
+        let on_add_unit_dialog_confirm: settings_view::add_unit_dialog::OnConfirm = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_add_unit_confirm(cx));
+            })
+        };
         let on_empty_state_command_click: OnEmptyStateCommandClick = {
             let entity = entity.clone();
             Rc::new(move |command_name, _window, cx| {
@@ -1065,6 +1198,15 @@ impl Render for Shell {
                     on_explorer_cancel,
                     on_explorer_open,
                 )
+            }))
+            .children(self.settings_dialog.as_ref().map(|dialog| match dialog {
+                SettingsDialog::AddUnit(form) => settings_view::add_unit_dialog::render(
+                    form,
+                    on_add_unit_field_click,
+                    on_add_unit_kind_click,
+                    on_add_unit_dialog_cancel,
+                    on_add_unit_dialog_confirm,
+                ),
             }))
     }
 }

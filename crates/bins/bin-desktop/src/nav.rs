@@ -120,6 +120,14 @@ pub enum InputMode {
     Insert,
     Command,
     Search,
+    /// A Settings dialog (issue #184's own "Add unit" the first) owns every keystroke -- the
+    /// modal-dialog analogue of `Command`'s palette ownership, entered on open and exited on
+    /// close (Cancel/Confirm/`Esc`), never by a bare keybinding the way `Insert`/`Command`/
+    /// `Search` are. Distinct from `Insert` even though both are "a modal surface captures
+    /// typed text": `Insert` is `a`'s own vi-style mode, reserved for a future direct-list-edit
+    /// feature unrelated to a floating dialog, and conflating the two would make either one
+    /// harder to reason about once its own real feature lands.
+    Dialog,
 }
 
 /// The active entity within a noun's context rail, if any. An index rather than a real

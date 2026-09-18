@@ -112,14 +112,14 @@ fn row(
             div()
                 .w(CODE_WIDTH)
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child(unit.code),
+                .child(unit.code.clone()),
         )
-        .child(div().flex_1().child(unit.name))
+        .child(div().flex_1().child(unit.name.clone()))
         .child(
             div()
                 .w(TYPE_WIDTH)
                 .text_color(color::INK_TERTIARY)
-                .child(unit.kind),
+                .child(unit.kind.clone()),
         )
         .child(
             div()

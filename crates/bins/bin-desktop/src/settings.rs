@@ -157,41 +157,140 @@ impl BudgetPeriod {
 }
 
 /// One row of the **Units** section's table (`docs/ux/desktop/Settings/README.md`'s "2a resting
-/// state" markup: CODE / NAME / TYPE columns). `&'static str` fields since every seeded row is
-/// dummy data known at compile time -- `Shell` clones [`DEFAULT_UNITS`] into a real `Vec` it
-/// owns, so a future ticket's Add/Edit/Delete dialog (issues #184-#186) can mutate it.
+/// state" markup: CODE / NAME / TYPE columns). Owned `String` fields, not `&'static str` --
+/// issue #184's own Add unit dialog is this crate's first real typed-text input, so a row can
+/// now hold text a person actually typed, not just compile-time dummy data. `kind` stays a
+/// free-form string rather than [`UnitKind`] even for dialog-created rows: nothing downstream
+/// branches on it, so there's nothing to gain from re-typing it narrower than the string the
+/// table just displays, and legacy seeded rows ("crypto", "etf") don't match any `UnitKind`
+/// label anyway -- `UnitKind` only governs the dialog's own selector, not the row it produces.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitRow {
-    pub code: &'static str,
-    pub name: &'static str,
-    /// The TYPE column, e.g. `"currency"` -- a free-form label in the mockup, not (yet) a real
-    /// enum: nothing downstream branches on it, so there's nothing to gain from typing it
-    /// narrower than the string the table just displays.
-    pub kind: &'static str,
+    pub code: String,
+    pub name: String,
+    pub kind: String,
 }
 
-/// The mockup's own three seeded rows, in its own order.
-pub const DEFAULT_UNITS: &[UnitRow] = &[
-    UnitRow {
-        code: "aud",
-        name: "Australian Dollar",
-        kind: "currency",
-    },
-    UnitRow {
-        code: "btc",
-        name: "Bitcoin",
-        kind: "crypto",
-    },
-    UnitRow {
-        code: "vas",
-        name: "Vanguard Aus Shares",
-        kind: "etf",
-    },
-];
+/// The mockup's own three seeded rows, in its own order -- a function rather than a `const`
+/// slice now that [`UnitRow`] owns its strings (`String` has no `const` constructor).
+pub fn default_units() -> Vec<UnitRow> {
+    vec![
+        UnitRow {
+            code: "aud".to_string(),
+            name: "Australian Dollar".to_string(),
+            kind: "currency".to_string(),
+        },
+        UnitRow {
+            code: "btc".to_string(),
+            name: "Bitcoin".to_string(),
+            kind: "crypto".to_string(),
+        },
+        UnitRow {
+            code: "vas".to_string(),
+            name: "Vanguard Aus Shares".to_string(),
+            kind: "etf".to_string(),
+        },
+    ]
+}
+
+/// The Add/Edit unit dialogs' own "Type" selector (`docs/ux/desktop/Settings/README.md`'s "2b —
+/// Add unit": "Type (select: currency / cryptocurrency / custom)") -- rendered as a segmented
+/// control (like [`DefaultUnit`]/[`BudgetPeriod`]/[`TracingLevel`]), not a real `<select>`
+/// dropdown, same reasoning as every other "pick one of a few options" control this map has
+/// built: dropdown-open behaviour has no precedent in this crate yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum UnitKind {
+    #[default]
+    Currency,
+    Cryptocurrency,
+    Custom,
+}
+
+impl UnitKind {
+    pub const ALL: [UnitKind; 3] = [Self::Currency, Self::Cryptocurrency, Self::Custom];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Currency => "currency",
+            Self::Cryptocurrency => "cryptocurrency",
+            Self::Custom => "custom",
+        }
+    }
+}
+
+/// Which text field currently receives typed characters in the Add unit dialog -- Type has no
+/// equivalent variant since it's a click-select segmented control, not something you type into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AddUnitField {
+    #[default]
+    Code,
+    Name,
+}
+
+/// The Add unit dialog's own live form state (issue #184) -- pure, `gpui`-free, mirroring
+/// `nav.rs`/`palette.rs`'s "state here, chrome renders it" split. `Shell` owns `Option<Self>`
+/// wrapped in [`SettingsDialog`]; `None` means the dialog is closed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AddUnitForm {
+    pub code: String,
+    pub name: String,
+    pub kind: UnitKind,
+    pub focused_field: AddUnitField,
+}
+
+impl AddUnitForm {
+    /// The README's own "Dialog lifecycle" row: "fill Code / Name / Type (all required)" --
+    /// Type always has a value (a segmented control can't be empty), so only Code/Name gate the
+    /// Add button's enabled state.
+    pub fn is_valid(&self) -> bool {
+        !self.code.trim().is_empty() && !self.name.trim().is_empty()
+    }
+
+    /// Appends whichever character `text` is to the currently focused field -- `Shell` calls
+    /// this once per typed character (see `Self::backspace`'s own doc for why there's no bulk
+    /// "set text" method instead).
+    pub fn push_char(&mut self, ch: char) {
+        match self.focused_field {
+            AddUnitField::Code => self.code.push(ch),
+            AddUnitField::Name => self.name.push(ch),
+        }
+    }
+
+    /// Pops one character from the focused field -- a no-op on an already-empty field, mirroring
+    /// `String::pop`'s own behaviour rather than treating it as an error.
+    pub fn backspace(&mut self) {
+        match self.focused_field {
+            AddUnitField::Code => {
+                self.code.pop();
+            }
+            AddUnitField::Name => {
+                self.name.pop();
+            }
+        }
+    }
+
+    /// `Tab` cycles Code -> Name -> Code -- the dialog's own two-field focus ring, independent
+    /// of `NavState::cycle_focus_forward`'s three shell-wide zones (`InputMode::Dialog` routes
+    /// `Tab` here instead, before the shell-wide tier ever sees it).
+    pub fn cycle_field(&mut self) {
+        self.focused_field = match self.focused_field {
+            AddUnitField::Code => AddUnitField::Name,
+            AddUnitField::Name => AddUnitField::Code,
+        };
+    }
+}
+
+/// Every Settings dialog `Shell` can have open, `None` when none is -- the README's own `State`
+/// block (`dialog: Option<Dialog>`). One variant per dialog ticket; issue #184 adds the first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SettingsDialog {
+    AddUnit(AddUnitForm),
+}
 
 /// One row of the **Institutions** section's table (`docs/ux/desktop/Settings/README.md`'s "2a
-/// resting state" markup: INSTITUTION / ACCOUNT TYPE columns) -- same `&'static str`/`Shell`-owned
-/// `Vec` reasoning as [`UnitRow`]/[`DEFAULT_UNITS`].
+/// resting state" markup: INSTITUTION / ACCOUNT TYPE columns) -- `&'static str` fields, unlike
+/// [`UnitRow`]'s now-owned `String`s: no Institutions dialog types real text yet (issue #187 is
+/// still just a stub), so there's nothing forcing these off compile-time dummy data yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstitutionRow {
     pub name: &'static str,
@@ -204,7 +303,7 @@ pub struct InstitutionRow {
 
 /// The mockup's own six seeded rows, in its own order (the mockup's static scope note claims "7
 /// institutions", but only six rows are actually drawn -- treated as the same kind of
-/// mockup-authoring slip [`DEFAULT_UNITS`]'s own doc calls out elsewhere, not a seventh row to
+/// mockup-authoring slip [`default_units`]'s own doc calls out elsewhere, not a seventh row to
 /// invent; the scope note is dynamic and derived from `Shell::settings_institutions.len()`
 /// regardless, so it self-corrects to whatever this slice actually holds).
 pub const DEFAULT_INSTITUTIONS: &[InstitutionRow] = &[
@@ -326,8 +425,51 @@ mod tests {
 
     #[test]
     fn default_units_matches_the_mockups_own_three_seeded_rows() {
-        let codes: Vec<_> = DEFAULT_UNITS.iter().map(|unit| unit.code).collect();
+        let codes: Vec<_> = default_units().into_iter().map(|unit| unit.code).collect();
         assert_eq!(codes, vec!["aud", "btc", "vas"]);
+    }
+
+    #[test]
+    fn unit_kind_defaults_to_currency() {
+        assert_eq!(UnitKind::default(), UnitKind::Currency);
+    }
+
+    #[test]
+    fn add_unit_form_is_invalid_until_code_and_name_are_both_filled() {
+        let mut form = AddUnitForm::default();
+        assert!(!form.is_valid());
+        form.push_char('a');
+        assert!(!form.is_valid());
+        form.cycle_field();
+        form.push_char('b');
+        assert!(form.is_valid());
+    }
+
+    #[test]
+    fn add_unit_form_push_and_backspace_target_the_focused_field() {
+        let mut form = AddUnitForm::default();
+        form.push_char('a');
+        form.push_char('u');
+        form.push_char('d');
+        assert_eq!(form.code, "aud");
+        assert_eq!(form.name, "");
+        form.backspace();
+        assert_eq!(form.code, "au");
+
+        form.cycle_field();
+        form.push_char('x');
+        assert_eq!(form.name, "x");
+        assert_eq!(form.code, "au");
+    }
+
+    #[test]
+    fn add_unit_form_cycle_field_toggles_between_code_and_name() {
+        let mut form = AddUnitForm::default();
+        assert_eq!(form.focused_field, AddUnitField::Code);
+        form.cycle_field();
+        assert_eq!(form.focused_field, AddUnitField::Name);
+        form.cycle_field();
+        assert_eq!(form.focused_field, AddUnitField::Code);
     }
 
     #[test]

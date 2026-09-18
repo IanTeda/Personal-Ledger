@@ -84,6 +84,8 @@ fn mode_badge(mode: InputMode) -> impl IntoElement {
         InputMode::Search => ("SEARCH", color::INK),
         // The handoff's own COMMAND-mode callout: the badge fill becomes the accent.
         InputMode::Command => ("COMMAND", color::ACCENT),
+        // Same accent callout as `Command` -- a modal dialog is exactly as attention-grabbing.
+        InputMode::Dialog => ("DIALOG", color::ACCENT),
     };
 
     div()
