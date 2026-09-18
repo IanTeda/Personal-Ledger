@@ -675,6 +675,18 @@ impl Shell {
         cx.notify();
     }
 
+    /// The Data & backup section's own "Backup now"/"Export ledger (CSV)" buttons (issue #181)
+    /// -- same permanently-out-of-scope reasoning as [`Self::handle_sync_now_click`].
+    fn handle_backup_now_click(&mut self, cx: &mut Context<Self>) {
+        self.status_message = Some("backup now -- not implemented".to_string());
+        cx.notify();
+    }
+
+    fn handle_export_ledger_click(&mut self, cx: &mut Context<Self>) {
+        self.status_message = Some("export ledger -- not implemented".to_string());
+        cx.notify();
+    }
+
     /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
     /// state, then -- README's "double-click a `.pldb` row opens immediately" -- confirms the
     /// open immediately when `click_count` reports a real double-click landing on a row that
@@ -910,6 +922,18 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_sync_now_click(cx));
             })
         };
+        let on_backup_now_click: settings_view::data_backup::OnBackupNowClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_backup_now_click(cx));
+            })
+        };
+        let on_export_ledger_click: settings_view::data_backup::OnExportLedgerClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_export_ledger_click(cx));
+            })
+        };
 
         div()
             .size_full()
@@ -979,6 +1003,8 @@ impl Render for Shell {
                                     on_institution_delete_click,
                                     on_add_institution_click,
                                     on_sync_now_click,
+                                    on_backup_now_click,
+                                    on_export_ledger_click,
                                 },
                             )),
                     ),
@@ -1022,6 +1048,8 @@ struct SettingsPanelProps<'a> {
     on_institution_delete_click: settings_view::institutions::OnRowIndexClick,
     on_add_institution_click: settings_view::institutions::OnAddClick,
     on_sync_now_click: settings_view::sync_server::OnSyncNowClick,
+    on_backup_now_click: settings_view::data_backup::OnBackupNowClick,
+    on_export_ledger_click: settings_view::data_backup::OnExportLedgerClick,
 }
 
 /// The active noun's own view interior. Only `Dashboard` and `Settings` are real; every other
@@ -1074,6 +1102,8 @@ fn render_view(
                     on_institution_delete_click: settings.on_institution_delete_click,
                     on_add_institution_click: settings.on_add_institution_click,
                     on_sync_now_click: settings.on_sync_now_click,
+                    on_backup_now_click: settings.on_backup_now_click,
+                    on_export_ledger_click: settings.on_export_ledger_click,
                 },
             ))
             .into_any_element();

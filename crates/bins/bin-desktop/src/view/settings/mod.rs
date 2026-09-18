@@ -10,6 +10,7 @@
 //! documents this offset, since `gpui::ScrollHandle::scroll_to_top_of_item` addresses direct
 //! children by index.
 
+pub mod data_backup;
 mod general;
 pub mod institutions;
 pub mod ledger_units;
@@ -41,6 +42,8 @@ pub struct SettingsBodyProps<'a> {
     pub on_institution_delete_click: institutions::OnRowIndexClick,
     pub on_add_institution_click: institutions::OnAddClick,
     pub on_sync_now_click: sync_server::OnSyncNowClick,
+    pub on_backup_now_click: data_backup::OnBackupNowClick,
+    pub on_export_ledger_click: data_backup::OnExportLedgerClick,
 }
 
 pub fn render(
@@ -179,6 +182,10 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
             props.on_add_institution_click.clone(),
         ),
         SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone()),
+        SettingsSection::DataBackup => data_backup::render(
+            props.on_backup_now_click.clone(),
+            props.on_export_ledger_click.clone(),
+        ),
         other => placeholder(other),
     }
 }
