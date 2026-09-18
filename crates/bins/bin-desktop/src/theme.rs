@@ -71,10 +71,20 @@ pub mod color {
     pub const RAIL_DIVIDER: Rgba = rgba(0x201e1d33);
     /// Row/result hover tint: `rgba(32,30,29,.06)`.
     pub const HOVER_TINT: Rgba = rgba(0x201e1d0f);
+    /// The shared design system's generic `--color-divider` (`styles.css`):
+    /// `color-mix(in srgb, #201e1d 40%, transparent)`, i.e. `rgba(32,30,29,.40)`. Used by the
+    /// `.seg`/`.seg-opt` segmented-control classes (`crate::view::settings::ledger_units`) --
+    /// distinct from [`Self::BORDER`]'s `.30`, which is the value every inline-styled
+    /// `Input`/`select` border in the 2a mockup uses instead. Coincides numerically with
+    /// [`Self::DIALOG_SHADOW`]'s own `.40` alpha; named separately since the two mean
+    /// different things.
+    pub const DIVIDER: Rgba = rgba(0x201e1d66);
 
     /// Reserved for the primary action, the Reconcile badge, over-budget state, the block
-    /// caret, matched substrings, the focus ring, and the COMMAND mode badge -- never a
-    /// background field in the shell (the handoff's "Accent discipline").
+    /// caret, matched substrings, the focus ring, the COMMAND mode badge, and a segmented
+    /// control's selected option (`.seg-opt:has(input:checked)` in `styles.css`) -- never an
+    /// unconditional background field in the shell otherwise (the handoff's "Accent
+    /// discipline").
     pub const ACCENT: Rgba = rgb(0xec3013);
     /// Accent for a matched substring on a dark (selected) row.
     pub const ACCENT_ON_DARK: Rgba = rgb(0xff9783);

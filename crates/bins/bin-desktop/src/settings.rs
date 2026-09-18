@@ -106,6 +106,56 @@ impl SettingsSection {
     }
 }
 
+/// The **Ledger & units** section's "Default unit for new entries" segmented control
+/// (`docs/ux/desktop/Settings/README.md`'s "2a resting state" markup -- the shared design
+/// system's `.seg`/`.seg-opt` classes, not the "Field label"/`Input`/`select` pair General's
+/// own fields use). `aud` is the mockup's own `checked` option.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DefaultUnit {
+    #[default]
+    Aud,
+    Btc,
+    Vas,
+}
+
+impl DefaultUnit {
+    pub const ALL: [DefaultUnit; 3] = [DefaultUnit::Aud, DefaultUnit::Btc, DefaultUnit::Vas];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Aud => "aud",
+            Self::Btc => "btc",
+            Self::Vas => "vas",
+        }
+    }
+}
+
+/// The same section's "Budget period" segmented control. `monthly` is the mockup's own
+/// `checked` option.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BudgetPeriod {
+    Weekly,
+    #[default]
+    Monthly,
+    Quarterly,
+}
+
+impl BudgetPeriod {
+    pub const ALL: [BudgetPeriod; 3] = [
+        BudgetPeriod::Weekly,
+        BudgetPeriod::Monthly,
+        BudgetPeriod::Quarterly,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Weekly => "weekly",
+            Self::Monthly => "monthly",
+            Self::Quarterly => "quarterly",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,5 +196,15 @@ mod tests {
             .map(|section| section.placeholder_issue())
             .collect();
         assert_eq!(issues.len(), SettingsSection::ALL.len());
+    }
+
+    #[test]
+    fn default_unit_defaults_to_aud() {
+        assert_eq!(DefaultUnit::default(), DefaultUnit::Aud);
+    }
+
+    #[test]
+    fn budget_period_defaults_to_monthly() {
+        assert_eq!(BudgetPeriod::default(), BudgetPeriod::Monthly);
     }
 }

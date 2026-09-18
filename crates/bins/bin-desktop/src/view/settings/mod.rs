@@ -11,12 +11,31 @@
 //! children by index.
 
 mod general;
+pub mod ledger_units;
 
 use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
 
-use crate::{settings::SettingsSection, theme::color};
+use crate::{
+    settings::{BudgetPeriod, DefaultUnit, SettingsSection},
+    theme::color,
+};
 
-pub fn render(focused: bool, scroll_handle: &ScrollHandle) -> gpui::AnyElement {
+/// Interactive bits a section's own content needs, gathered in one bundle so `render`'s own
+/// signature doesn't grow a new positional parameter per section (mirrors `shell::SettingsIndexProps`'s
+/// reason for existing). Every section function takes `&SettingsBodyProps` and reads whatever
+/// subset it needs -- most of it, today, is only for `ledger_units`.
+pub struct SettingsBodyProps {
+    pub default_unit: DefaultUnit,
+    pub budget_period: BudgetPeriod,
+    pub on_default_unit_click: ledger_units::OnDefaultUnitClick,
+    pub on_budget_period_click: ledger_units::OnBudgetPeriodClick,
+}
+
+pub fn render(
+    focused: bool,
+    scroll_handle: &ScrollHandle,
+    props: SettingsBodyProps,
+) -> gpui::AnyElement {
     div()
         .id("settings-body")
         .flex_1()
@@ -32,7 +51,11 @@ pub fn render(focused: bool, scroll_handle: &ScrollHandle) -> gpui::AnyElement {
         .flex()
         .flex_col()
         .child(page_heading())
-        .children(SettingsSection::ALL.into_iter().map(section_block))
+        .children(
+            SettingsSection::ALL
+                .into_iter()
+                .map(|section| section_block(section, &props)),
+        )
         .into_any_element()
 }
 
@@ -72,7 +95,7 @@ fn page_heading() -> impl IntoElement {
 /// then a **48px** bottom gap -- every section, no exceptions (README's implementation note 4:
 /// mixed top/bottom margin ownership is how this gap goes missing, so it's carried on a single
 /// edge, here).
-fn section_block(section: SettingsSection) -> impl IntoElement {
+fn section_block(section: SettingsSection, props: &SettingsBodyProps) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -103,14 +126,20 @@ fn section_block(section: SettingsSection) -> impl IntoElement {
                 .mt(px(14.0))
                 .mb(px(18.0)),
         )
-        .child(section_content(section))
+        .child(section_content(section, props))
 }
 
 /// Each section's real content, once its own ticket has landed -- everything else still falls
 /// back to the placeholder `section_block` originally rendered for all nine.
-fn section_content(section: SettingsSection) -> AnyElement {
+fn section_content(section: SettingsSection, props: &SettingsBodyProps) -> AnyElement {
     match section {
         SettingsSection::General => general::render(),
+        SettingsSection::LedgerUnits => ledger_units::render(
+            props.default_unit,
+            props.budget_period,
+            props.on_default_unit_click.clone(),
+            props.on_budget_period_click.clone(),
+        ),
         other => placeholder(other),
     }
 }

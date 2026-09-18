@@ -41,11 +41,14 @@ use crate::{
         primary::PrimaryRail,
         settings_index::{self, SettingsIndexRail},
     },
-    settings::SettingsSection,
+    settings::{BudgetPeriod, DefaultUnit, SettingsSection},
     statusline::StatusLine,
     theme::{color, type_scale},
     topbar::{self, TopBar},
-    view::{dashboard::Dashboard, settings as settings_view},
+    view::{
+        dashboard::Dashboard,
+        settings::{self as settings_view, SettingsBodyProps},
+    },
 };
 
 /// The collapsed rail's own hover-reveal delay (`docs/ux/desktop/Shell & Navigation/README.md`'s
@@ -138,6 +141,15 @@ pub struct Shell {
     /// yet). Reset to `SettingsSection::default()` alongside the view scroll whenever a fresh
     /// noun is entered, so re-opening Settings always starts on General again.
     settings_selected_section: SettingsSection,
+    /// The Ledger & units section's "Default unit for new entries" (issue #176) -- unlike
+    /// [`Self::settings_filter`]/[`Self::settings_selected_section`], this is *not* reset by
+    /// [`Self::reset_view_scroll`]: it represents a saved-in-memory preference, not navigational
+    /// UI state, so it must survive leaving and re-entering Settings the way a real saved
+    /// setting would.
+    settings_default_unit: DefaultUnit,
+    /// The same section's "Budget period" -- see [`Self::settings_default_unit`]'s own doc for
+    /// why this also isn't reset on noun change.
+    settings_budget_period: BudgetPeriod,
 }
 
 impl Shell {
@@ -155,6 +167,8 @@ impl Shell {
             file_explorer: None,
             settings_filter: String::new(),
             settings_selected_section: SettingsSection::default(),
+            settings_default_unit: DefaultUnit::default(),
+            settings_budget_period: BudgetPeriod::default(),
         }
     }
 
@@ -582,6 +596,20 @@ impl Shell {
         cx.notify();
     }
 
+    /// The Ledger & units section's "Default unit for new entries" segmented control
+    /// (`view::settings::ledger_units::OnDefaultUnitClick`).
+    fn handle_default_unit_click(&mut self, unit: DefaultUnit, cx: &mut Context<Self>) {
+        self.settings_default_unit = unit;
+        cx.notify();
+    }
+
+    /// The same section's "Budget period" segmented control
+    /// (`view::settings::ledger_units::OnBudgetPeriodClick`).
+    fn handle_budget_period_click(&mut self, period: BudgetPeriod, cx: &mut Context<Self>) {
+        self.settings_budget_period = period;
+        cx.notify();
+    }
+
     /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
     /// state, then -- README's "double-click a `.pldb` row opens immediately" -- confirms the
     /// open immediately when `click_count` reports a real double-click landing on a row that
@@ -759,6 +787,18 @@ impl Render for Shell {
                 });
             })
         };
+        let on_default_unit_click: settings_view::ledger_units::OnDefaultUnitClick = {
+            let entity = entity.clone();
+            Rc::new(move |unit, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_default_unit_click(unit, cx));
+            })
+        };
+        let on_budget_period_click: settings_view::ledger_units::OnBudgetPeriodClick = {
+            let entity = entity.clone();
+            Rc::new(move |period, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_budget_period_click(period, cx));
+            })
+        };
 
         div()
             .size_full()
@@ -811,10 +851,14 @@ impl Render for Shell {
                                 focus == FocusZone::View,
                                 &self.view_scroll_handle,
                                 on_empty_state_command_click,
-                                SettingsIndexProps {
+                                SettingsPanelProps {
                                     filter: &self.settings_filter,
                                     selected: self.settings_selected_section,
-                                    on_click: on_settings_index_click,
+                                    on_index_click: on_settings_index_click,
+                                    default_unit: self.settings_default_unit,
+                                    budget_period: self.settings_budget_period,
+                                    on_default_unit_click,
+                                    on_budget_period_click,
                                 },
                             )),
                     ),
@@ -837,11 +881,18 @@ impl Render for Shell {
 }
 
 /// Bundles `render_view`'s Settings-only parameters (keeps the function under Clippy's
-/// `too_many_arguments` threshold) -- ignored entirely for every noun besides `Settings`.
-struct SettingsIndexProps<'a> {
+/// `too_many_arguments` threshold) -- ignored entirely for every noun besides `Settings`. Covers
+/// both the index rail's own state and the body's per-section interactive state
+/// (`view::settings::SettingsBodyProps`); `render_view` splits it back apart when it builds
+/// each half's own component.
+struct SettingsPanelProps<'a> {
     filter: &'a str,
     selected: SettingsSection,
-    on_click: settings_index::OnEntryClick,
+    on_index_click: settings_index::OnEntryClick,
+    default_unit: DefaultUnit,
+    budget_period: BudgetPeriod,
+    on_default_unit_click: settings_view::ledger_units::OnDefaultUnitClick,
+    on_budget_period_click: settings_view::ledger_units::OnBudgetPeriodClick,
 }
 
 /// The active noun's own view interior. Only `Dashboard` and `Settings` are real; every other
@@ -863,7 +914,7 @@ fn render_view(
     focused: bool,
     scroll_handle: &ScrollHandle,
     on_empty_state_command_click: OnEmptyStateCommandClick,
-    settings: SettingsIndexProps<'_>,
+    settings: SettingsPanelProps<'_>,
 ) -> gpui::AnyElement {
     if noun == Noun::Settings {
         return div()
@@ -875,9 +926,18 @@ fn render_view(
             .child(SettingsIndexRail::new(
                 settings.selected,
                 settings.filter.to_string(),
-                settings.on_click,
+                settings.on_index_click,
             ))
-            .child(settings_view::render(focused, scroll_handle))
+            .child(settings_view::render(
+                focused,
+                scroll_handle,
+                SettingsBodyProps {
+                    default_unit: settings.default_unit,
+                    budget_period: settings.budget_period,
+                    on_default_unit_click: settings.on_default_unit_click,
+                    on_budget_period_click: settings.on_budget_period_click,
+                },
+            ))
             .into_any_element();
     }
 
