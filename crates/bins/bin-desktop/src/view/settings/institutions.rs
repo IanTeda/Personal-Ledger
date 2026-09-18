@@ -1,15 +1,14 @@
 //! The **Institutions** section (`docs/ux/desktop/Settings/README.md`'s "2a resting state"): a
-//! table (INSTITUTION / ACCOUNT TYPE) seeded from `crate::settings::DEFAULT_INSTITUTIONS`,
+//! table (INSTITUTION / ACCOUNT TYPE) seeded from `crate::settings::default_institutions()`,
 //! per-row edit/delete buttons, and a "+ Add institution" button below it -- same shape as
 //! `view::settings::units`, just a two-column table instead of three.
 //!
-//! "+ Add institution" opens the Add institution dialog (issue #187, not yet built), wired the
-//! same way `units::add_button` stubs "+ Add unit" against its own not-yet-built dialog issue.
-//! Row edit/delete have **no dialog ticket anywhere on this map** -- unlike Units, whose
-//! `2c`/`2d` dialogs are named tickets (#185/#186), the README's own "Dialog lifecycle" table and
-//! `State` block only ever mention `AddInstitution`, never an `EditInstitution`/
-//! `DeleteInstitution` variant. So these two stubs flash a plain "not yet built" message with no
-//! issue number to point at, rather than inventing one.
+//! "+ Add institution" opens the real Add institution dialog (issue #187). Row edit/delete have
+//! **no dialog ticket anywhere on this map** -- unlike Units, whose `2c`/`2d` dialogs are named
+//! tickets (#185/#186), the README's own "Dialog lifecycle" table and `State` block only ever
+//! mention `AddInstitution`, never an `EditInstitution`/`DeleteInstitution` variant. So these two
+//! stubs flash a plain "not yet built" message with no issue number to point at, rather than
+//! inventing one.
 
 use std::rc::Rc;
 
@@ -104,13 +103,13 @@ fn row(
             div()
                 .flex_1()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child(institution.name),
+                .child(institution.name.clone()),
         )
         .child(
             div()
                 .w(ACCOUNT_TYPE_WIDTH)
                 .text_color(color::INK_TERTIARY)
-                .child(institution.account_type),
+                .child(institution.account_type.clone()),
         )
         .child(
             div()

@@ -59,7 +59,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(true, card)
+    dialog::overlay(dialog::WIDTH, true, card)
 }
 
 fn warning_copy() -> impl IntoElement {

@@ -42,8 +42,9 @@ use crate::{
         settings_index::{self, SettingsIndexRail},
     },
     settings::{
-        self, AddUnitField, BudgetPeriod, DefaultUnit, DeleteUnitForm, InstitutionRow,
-        SettingsDialog, SettingsSection, TracingLevel, UnitForm, UnitKind, UnitRow,
+        self, AccountType, AddInstitutionForm, AddUnitField, BudgetPeriod, DefaultUnit,
+        DeleteUnitForm, InstitutionRow, SettingsDialog, SettingsSection, TracingLevel, UnitForm,
+        UnitKind, UnitRow,
     },
     statusline::StatusLine,
     theme::{color, type_scale},
@@ -164,7 +165,7 @@ pub struct Shell {
     /// `Self::file_explorer` already use with `InputMode::Command`.
     settings_dialog: Option<SettingsDialog>,
     /// The Institutions section's own table rows (issue #178), seeded from
-    /// `settings::DEFAULT_INSTITUTIONS` -- same reasoning as [`Self::settings_units`].
+    /// `settings::default_institutions()` -- same reasoning as [`Self::settings_units`].
     settings_institutions: Vec<InstitutionRow>,
     /// The Tracing (Logs) section's own selected level (issue #182) -- a stored preference like
     /// [`Self::settings_default_unit`], not reset on noun change.
@@ -194,7 +195,7 @@ impl Shell {
             settings_budget_period: BudgetPeriod::default(),
             settings_units: settings::default_units(),
             settings_dialog: None,
-            settings_institutions: settings::DEFAULT_INSTITUTIONS.to_vec(),
+            settings_institutions: settings::default_institutions(),
             settings_tracing_level: TracingLevel::default(),
             settings_log_lines: settings::DEFAULT_LOG_LINES.to_vec(),
         }
@@ -609,6 +610,41 @@ impl Shell {
                     }
                 }
             }
+            // Institution name is the dialog's only text field, same shape as `DeleteUnit`'s
+            // own confirm input above -- `Tab` is swallowed, and Account types/Default unit are
+            // click-only (`Shell::handle_add_institution_account_type_click`/
+            // `handle_add_institution_unit_click`), never typed into.
+            SettingsDialog::AddInstitution(form) => match keystroke.key.as_str() {
+                "backspace" => {
+                    form.backspace();
+                    true
+                }
+                "tab" => true,
+                "enter" => {
+                    let valid = form.is_valid();
+                    if valid {
+                        self.confirm_settings_dialog();
+                    }
+                    true
+                }
+                _ => {
+                    let modifiers = &keystroke.modifiers;
+                    if modifiers.control
+                        || modifiers.alt
+                        || modifiers.platform
+                        || modifiers.function
+                    {
+                        return false;
+                    }
+                    match keystroke.key_char.as_deref() {
+                        Some(text) if text.chars().count() == 1 => {
+                            form.push_char(text.chars().next().expect("checked above"));
+                            true
+                        }
+                        _ => false,
+                    }
+                }
+            },
         }
     }
 
@@ -643,9 +679,9 @@ impl Shell {
                     form.focused_field = field;
                     cx.notify();
                 }
-                // The Delete unit dialog has one field, always implicitly focused -- nothing to
+                // Neither has more than one text field, always implicitly focused -- nothing to
                 // click into.
-                SettingsDialog::DeleteUnit(..) => {}
+                SettingsDialog::DeleteUnit(..) | SettingsDialog::AddInstitution(_) => {}
             }
         }
     }
@@ -658,15 +694,15 @@ impl Shell {
                     form.kind = kind;
                     cx.notify();
                 }
-                // The Delete unit dialog has no Type selector at all.
-                SettingsDialog::DeleteUnit(..) => {}
+                // Neither has a Type selector at all.
+                SettingsDialog::DeleteUnit(..) | SettingsDialog::AddInstitution(_) => {}
             }
         }
     }
 
     /// Shared by the Add/Edit unit dialogs' own Cancel button -- discards whatever was typed,
     /// same as `Esc` (`Self::handle_key_down`'s `ClosePopupsAndExitMode` arm).
-    fn handle_unit_dialog_cancel(&mut self, cx: &mut Context<Self>) {
+    fn handle_settings_dialog_cancel(&mut self, cx: &mut Context<Self>) {
         self.settings_dialog = None;
         self.nav.exit_mode();
         cx.notify();
@@ -719,11 +755,26 @@ impl Shell {
                     self.settings_units.remove(index);
                 }
             }
+            SettingsDialog::AddInstitution(form) => {
+                if !form.is_valid() {
+                    return;
+                }
+                let account_type = form
+                    .account_types
+                    .iter()
+                    .map(|account_type| account_type.label())
+                    .collect::<Vec<_>>()
+                    .join(" \u{b7} ");
+                self.settings_institutions.push(InstitutionRow {
+                    name: form.name,
+                    account_type,
+                });
+            }
         }
         self.nav.exit_mode();
     }
 
-    fn handle_unit_dialog_confirm(&mut self, cx: &mut Context<Self>) {
+    fn handle_settings_dialog_confirm(&mut self, cx: &mut Context<Self>) {
         self.confirm_settings_dialog();
         cx.notify();
     }
@@ -880,12 +931,35 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Institutions table's own "+ Add institution" button (issue #178): opens the Add
-    /// institution dialog (issue #187), not yet built -- same stub shape as
-    /// [`Self::handle_add_unit_click`].
+    /// The Institutions table's own "+ Add institution" button (issue #187, replacing the stub
+    /// #178 left behind): opens the real Add institution dialog rather than flashing a status
+    /// message. `AddInstitutionForm::new` seeds Default unit from `self.settings_units`' own
+    /// first entry, so this dialog reads Units' live state even though the two sections are
+    /// otherwise independent.
     fn handle_add_institution_click(&mut self, cx: &mut Context<Self>) {
-        self.status_message = Some("add institution -- not yet built (see issue #187)".to_string());
+        self.settings_dialog = Some(SettingsDialog::AddInstitution(AddInstitutionForm::new(
+            &self.settings_units,
+        )));
+        self.nav.enter_mode(InputMode::Dialog);
         cx.notify();
+    }
+
+    fn handle_add_institution_account_type_click(
+        &mut self,
+        account_type: AccountType,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog.as_mut() {
+            form.toggle_account_type(account_type);
+            cx.notify();
+        }
+    }
+
+    fn handle_add_institution_unit_click(&mut self, code: String, cx: &mut Context<Self>) {
+        if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog.as_mut() {
+            form.default_unit_code = Some(code);
+            cx.notify();
+        }
     }
 
     /// The Sync server section's own "Sync now" button (issue #180): unlike the "+ Add"
@@ -1104,16 +1178,32 @@ impl Render for Shell {
                 });
             })
         };
-        let on_unit_dialog_cancel: settings_view::add_unit_dialog::OnCancel = {
+        let on_settings_dialog_cancel: settings_view::add_unit_dialog::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_unit_dialog_cancel(cx));
+                entity.update(cx, |shell, cx| shell.handle_settings_dialog_cancel(cx));
             })
         };
-        let on_unit_dialog_confirm: settings_view::add_unit_dialog::OnConfirm = {
+        let on_settings_dialog_confirm: settings_view::add_unit_dialog::OnConfirm = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_unit_dialog_confirm(cx));
+                entity.update(cx, |shell, cx| shell.handle_settings_dialog_confirm(cx));
+            })
+        };
+        let on_add_institution_account_type_click: settings_view::add_institution_dialog::OnAccountTypeClick = {
+            let entity = entity.clone();
+            Rc::new(move |account_type, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_add_institution_account_type_click(account_type, cx)
+                });
+            })
+        };
+        let on_add_institution_unit_click: settings_view::add_institution_dialog::OnUnitClick = {
+            let entity = entity.clone();
+            Rc::new(move |code, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_add_institution_unit_click(code, cx)
+                });
             })
         };
         let on_empty_state_command_click: OnEmptyStateCommandClick = {
@@ -1312,29 +1402,39 @@ impl Render for Shell {
                     form,
                     on_unit_dialog_field_click.clone(),
                     on_unit_dialog_kind_click.clone(),
-                    on_unit_dialog_cancel.clone(),
-                    on_unit_dialog_confirm.clone(),
+                    on_settings_dialog_cancel.clone(),
+                    on_settings_dialog_confirm.clone(),
                 ),
                 SettingsDialog::EditUnit(_, form) => settings_view::edit_unit_dialog::render(
                     form,
                     on_unit_dialog_field_click,
                     on_unit_dialog_kind_click,
-                    on_unit_dialog_cancel.clone(),
-                    on_unit_dialog_confirm.clone(),
+                    on_settings_dialog_cancel.clone(),
+                    on_settings_dialog_confirm.clone(),
                 ),
                 SettingsDialog::DeleteUnit(index, form) => {
                     match self.settings_units.get(*index) {
                         Some(row) => settings_view::delete_unit_dialog::render(
                             row,
                             form,
-                            on_unit_dialog_cancel,
-                            on_unit_dialog_confirm,
+                            on_settings_dialog_cancel.clone(),
+                            on_settings_dialog_confirm.clone(),
                         ),
                         // Defensive only: `index` should always be in bounds (it's only ever
                         // set from a real row's own click handler) -- an empty overlay is a
                         // safer failure than panicking mid-render.
                         None => div().into_any_element(),
                     }
+                }
+                SettingsDialog::AddInstitution(form) => {
+                    settings_view::add_institution_dialog::render(
+                        form,
+                        &self.settings_units,
+                        on_add_institution_account_type_click,
+                        on_add_institution_unit_click,
+                        on_settings_dialog_cancel,
+                        on_settings_dialog_confirm,
+                    )
                 }
             }))
     }

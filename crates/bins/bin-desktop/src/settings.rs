@@ -313,15 +313,11 @@ impl UnitForm {
 /// `usize` is the row's index in `Shell::settings_units` -- `Shell::confirm_settings_dialog`
 /// needs it to know which row to overwrite/remove.
 #[derive(Debug, Clone, PartialEq, Eq)]
-// The shared `Unit` postfix is the README's own naming for this exact enum ("AddUnit | EditUnit
-// (id) | DeleteUnit(id) | AddInstitution") -- issue #187's own `AddInstitution` variant breaks
-// the "every variant shares a postfix" pattern this lint is checking for, so it resolves itself
-// once that ticket lands rather than needing a rename now.
-#[allow(clippy::enum_variant_names)]
 pub enum SettingsDialog {
     AddUnit(UnitForm),
     EditUnit(usize, UnitForm),
     DeleteUnit(usize, DeleteUnitForm),
+    AddInstitution(AddInstitutionForm),
 }
 
 /// The Delete unit dialog's own live form state (issue #186) -- pure, `gpui`-free. Just the one
@@ -350,50 +346,146 @@ impl DeleteUnitForm {
 }
 
 /// One row of the **Institutions** section's table (`docs/ux/desktop/Settings/README.md`'s "2a
-/// resting state" markup: INSTITUTION / ACCOUNT TYPE columns) -- `&'static str` fields, unlike
-/// [`UnitRow`]'s now-owned `String`s: no Institutions dialog types real text yet (issue #187 is
-/// still just a stub), so there's nothing forcing these off compile-time dummy data yet.
+/// resting state" markup: INSTITUTION / ACCOUNT TYPE columns). Owned `String` fields, not
+/// `&'static str` -- issue #187's own Add institution dialog produces real typed text, same
+/// reasoning as [`UnitRow`]'s own migration for issue #184.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstitutionRow {
-    pub name: &'static str,
+    pub name: String,
     /// The ACCOUNT TYPE column, e.g. `"savings \u{b7} offset"` -- the mockup joins multiple
     /// types with the same `\u{b7}` separator the scope notes use, as one free-form label (not a
     /// `Vec` of chips -- that multi-select shape belongs to the Add institution dialog's own
-    /// input, not this read-only table cell).
-    pub account_type: &'static str,
+    /// input, not this read-only table cell). `AddInstitutionForm::account_types` joins the same
+    /// way when a dialog-created row is appended (see `Shell::confirm_settings_dialog`).
+    pub account_type: String,
 }
 
 /// The mockup's own six seeded rows, in its own order (the mockup's static scope note claims "7
 /// institutions", but only six rows are actually drawn -- treated as the same kind of
 /// mockup-authoring slip [`default_units`]'s own doc calls out elsewhere, not a seventh row to
 /// invent; the scope note is dynamic and derived from `Shell::settings_institutions.len()`
-/// regardless, so it self-corrects to whatever this slice actually holds).
-pub const DEFAULT_INSTITUTIONS: &[InstitutionRow] = &[
-    InstitutionRow {
-        name: "ANZ Banking Group",
-        account_type: "savings \u{b7} offset",
-    },
-    InstitutionRow {
-        name: "American Express",
-        account_type: "credit card",
-    },
-    InstitutionRow {
-        name: "Vanguard Investments",
-        account_type: "investment",
-    },
-    InstitutionRow {
-        name: "Westpac Banking",
-        account_type: "savings",
-    },
-    InstitutionRow {
-        name: "Cryptocurrency Exchange",
-        account_type: "crypto",
-    },
-    InstitutionRow {
-        name: "Superannuation Fund",
-        account_type: "retirement",
-    },
-];
+/// regardless, so it self-corrects to whatever this slice actually holds). A function rather
+/// than a `const` slice now that [`InstitutionRow`] owns its strings.
+pub fn default_institutions() -> Vec<InstitutionRow> {
+    vec![
+        InstitutionRow {
+            name: "ANZ Banking Group".to_string(),
+            account_type: "savings \u{b7} offset".to_string(),
+        },
+        InstitutionRow {
+            name: "American Express".to_string(),
+            account_type: "credit card".to_string(),
+        },
+        InstitutionRow {
+            name: "Vanguard Investments".to_string(),
+            account_type: "investment".to_string(),
+        },
+        InstitutionRow {
+            name: "Westpac Banking".to_string(),
+            account_type: "savings".to_string(),
+        },
+        InstitutionRow {
+            name: "Cryptocurrency Exchange".to_string(),
+            account_type: "crypto".to_string(),
+        },
+        InstitutionRow {
+            name: "Superannuation Fund".to_string(),
+            account_type: "retirement".to_string(),
+        },
+    ]
+}
+
+/// The Add institution dialog's own Account types multi-select chips
+/// (`docs/ux/desktop/Settings/README.md`'s "2e — Add institution": savings / credit card /
+/// offset / loan / investment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountType {
+    Savings,
+    CreditCard,
+    Offset,
+    Loan,
+    Investment,
+}
+
+impl AccountType {
+    pub const ALL: [AccountType; 5] = [
+        Self::Savings,
+        Self::CreditCard,
+        Self::Offset,
+        Self::Loan,
+        Self::Investment,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Savings => "savings",
+            Self::CreditCard => "credit card",
+            Self::Offset => "offset",
+            Self::Loan => "loan",
+            Self::Investment => "investment",
+        }
+    }
+}
+
+/// The Add institution dialog's own live form state (issue #187) -- pure, `gpui`-free.
+/// Institution name is a real text field with no `focused_field`, mirroring
+/// [`DeleteUnitForm`]'s own one-field shape: it's the only text field, so always implicitly
+/// focused, nothing to `Tab` between. Account types are a real multi-select (more than one chip
+/// may be checked at once, unlike [`UnitForm`]'s single-choice Type) -- `Vec` rather than a
+/// fixed-size set since membership toggles are simpler as push/remove.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct AddInstitutionForm {
+    pub name: String,
+    pub account_types: Vec<AccountType>,
+    /// The selected default unit's own *code*, not an index into `Shell::settings_units` -- a
+    /// code stays meaningful even if that `Vec`'s shape changes, though nothing in this map
+    /// actually opens two dialogs at once for that to matter yet.
+    pub default_unit_code: Option<String>,
+}
+
+impl AddInstitutionForm {
+    /// Seeds Account types with the mockup's own `checked` default (savings) and Default unit
+    /// with `units`' own first entry, if any -- the same "first option is the resting default"
+    /// precedent `DefaultUnit`/`TracingLevel`/etc. already establish, just read from a runtime
+    /// `Vec` instead of a compile-time enum's own `ALL`.
+    pub fn new(units: &[UnitRow]) -> Self {
+        Self {
+            name: String::new(),
+            account_types: vec![AccountType::Savings],
+            default_unit_code: units.first().map(|unit| unit.code.clone()),
+        }
+    }
+
+    pub fn push_char(&mut self, ch: char) {
+        self.name.push(ch);
+    }
+
+    pub fn backspace(&mut self) {
+        self.name.pop();
+    }
+
+    /// Toggles `account_type`'s own membership -- present removes it, absent adds it.
+    pub fn toggle_account_type(&mut self, account_type: AccountType) {
+        match self
+            .account_types
+            .iter()
+            .position(|&selected| selected == account_type)
+        {
+            Some(index) => {
+                self.account_types.remove(index);
+            }
+            None => self.account_types.push(account_type),
+        }
+    }
+
+    /// The README's own "Dialog lifecycle" row: "name + at least one account type + default
+    /// unit" (all required).
+    pub fn is_valid(&self) -> bool {
+        !self.name.trim().is_empty()
+            && !self.account_types.is_empty()
+            && self.default_unit_code.is_some()
+    }
+}
 
 /// The **Tracing (Logs)** section's level radios (`docs/ux/desktop/Settings/README.md`'s "2a
 /// resting state" markup: `error`/`warn`/`info`/`debug`, `error` the mockup's own `checked`
@@ -539,6 +631,42 @@ mod tests {
     }
 
     #[test]
+    fn add_institution_form_new_seeds_savings_and_the_first_unit() {
+        let units = default_units();
+        let form = AddInstitutionForm::new(&units);
+        assert_eq!(form.account_types, vec![AccountType::Savings]);
+        assert_eq!(form.default_unit_code.as_deref(), Some("aud"));
+    }
+
+    #[test]
+    fn add_institution_form_new_with_no_units_has_no_default_unit() {
+        let form = AddInstitutionForm::new(&[]);
+        assert_eq!(form.default_unit_code, None);
+    }
+
+    #[test]
+    fn add_institution_form_toggle_account_type_adds_and_removes() {
+        let mut form = AddInstitutionForm::new(&default_units());
+        assert!(form.account_types.contains(&AccountType::Savings));
+        form.toggle_account_type(AccountType::Savings);
+        assert!(!form.account_types.contains(&AccountType::Savings));
+        form.toggle_account_type(AccountType::Loan);
+        assert!(form.account_types.contains(&AccountType::Loan));
+    }
+
+    #[test]
+    fn add_institution_form_is_invalid_until_name_type_and_unit_are_set() {
+        let mut form = AddInstitutionForm::new(&default_units());
+        assert!(!form.is_valid()); // name is empty
+        for ch in "ANZ".chars() {
+            form.push_char(ch);
+        }
+        assert!(form.is_valid());
+        form.toggle_account_type(AccountType::Savings);
+        assert!(!form.is_valid()); // no account types selected
+    }
+
+    #[test]
     fn add_unit_form_is_invalid_until_code_and_name_are_both_filled() {
         let mut form = UnitForm::default();
         assert!(!form.is_valid());
@@ -578,8 +706,8 @@ mod tests {
 
     #[test]
     fn default_institutions_matches_the_mockups_own_six_seeded_rows() {
-        let names: Vec<_> = DEFAULT_INSTITUTIONS
-            .iter()
+        let names: Vec<_> = default_institutions()
+            .into_iter()
             .map(|institution| institution.name)
             .collect();
         assert_eq!(

@@ -72,5 +72,5 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(false, card)
+    dialog::overlay(dialog::WIDTH, false, card)
 }

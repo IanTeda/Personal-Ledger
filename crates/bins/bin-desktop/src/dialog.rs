@@ -30,7 +30,10 @@ use gpui::{AnyElement, App, BoxShadow, SharedString, Window, div, point, prelude
 
 use crate::theme::color;
 
-/// Fixed width: `docs/ux/desktop/Settings/README.md`'s Dialog component table.
+/// Fixed width: `docs/ux/desktop/Settings/README.md`'s Dialog component table -- every dialog
+/// this map builds except the Add institution dialog (issue #187), whose own raw markup sets
+/// `width:460px` instead. [`overlay`] takes `width` as a parameter rather than hardcoding this
+/// constant so that one dialog's own deviation doesn't need a special case.
 pub const WIDTH: gpui::Pixels = px(420.0);
 
 pub type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -38,8 +41,9 @@ pub type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// Wraps `card` in the full-viewport dimmer + centred frame (`docs/ux/desktop/Settings/README.md`'s
 /// "Dimmer"/"Dialog" rows: `position:absolute; inset:0; ...; align-items:center;
 /// justify-content:center`), then the bordered card itself -- `destructive` swaps the border to
-/// `#ec3013` (the "Destructive dialog" row).
-pub fn overlay(destructive: bool, card: impl IntoElement) -> AnyElement {
+/// `#ec3013` (the "Destructive dialog" row). `width` is almost always [`WIDTH`]; see that
+/// constant's own doc for the one exception.
+pub fn overlay(width: gpui::Pixels, destructive: bool, card: impl IntoElement) -> AnyElement {
     div()
         .id("dialog-overlay")
         .absolute()
@@ -50,7 +54,7 @@ pub fn overlay(destructive: bool, card: impl IntoElement) -> AnyElement {
         .bg(color::DIMMER)
         .child(
             div()
-                .w(WIDTH)
+                .w(width)
                 .flex()
                 .flex_col()
                 .bg(color::GROUND)

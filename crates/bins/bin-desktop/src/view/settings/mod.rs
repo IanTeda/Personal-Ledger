@@ -11,6 +11,7 @@
 //! children by index.
 
 mod about;
+pub mod add_institution_dialog;
 pub mod add_unit_dialog;
 pub mod data_backup;
 pub mod delete_unit_dialog;

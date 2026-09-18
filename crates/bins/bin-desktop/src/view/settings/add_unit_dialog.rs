@@ -85,7 +85,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(false, card)
+    dialog::overlay(dialog::WIDTH, false, card)
 }
 
 /// Curries `field` into a plain click handler -- what [`text_field`] binds its own `on_click` to.
