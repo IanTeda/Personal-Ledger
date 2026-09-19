@@ -652,6 +652,51 @@ pub fn group_position(accounts: &[Account], index: usize) -> Option<usize> {
         .position(|group| group.indices.contains(&index))
 }
 
+/// The outcome of resolving a typed account name (`accounts delete Home Loan`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NameLookup {
+    /// The account's index in the slice searched.
+    Found(usize),
+    NotFound,
+    /// More than one account fits; their names, in list order.
+    Ambiguous(Vec<String>),
+}
+
+/// Finds the account `text` names, case-insensitively, trying an exact name first, then a name
+/// that starts with `text`, then one that merely contains it. The first tier with any hits
+/// decides: one hit is the account, several are [`NameLookup::Ambiguous`] rather than a guess.
+/// Account names are not unique (the schema has no such rule), so even an exact name can be
+/// ambiguous.
+pub fn find_by_name(accounts: &[Account], text: &str) -> NameLookup {
+    let needle = text.trim().to_lowercase();
+    if needle.is_empty() {
+        return NameLookup::NotFound;
+    }
+    let tiers: [fn(&str, &str) -> bool; 3] = [
+        |name, needle| name == needle,
+        |name, needle| name.starts_with(needle),
+        |name, needle| name.contains(needle),
+    ];
+    for tier in tiers {
+        let hits: Vec<usize> = accounts
+            .iter()
+            .enumerate()
+            .filter(|(_, account)| tier(&account.name.to_lowercase(), &needle))
+            .map(|(index, _)| index)
+            .collect();
+        match hits.as_slice() {
+            [] => continue,
+            [index] => return NameLookup::Found(*index),
+            many => {
+                return NameLookup::Ambiguous(
+                    many.iter().map(|&i| accounts[i].name.clone()).collect(),
+                );
+            }
+        }
+    }
+    NameLookup::NotFound
+}
+
 fn money(text: &str) -> Money {
     text.parse()
         .expect("seed amounts are valid decimals (see seed_rows_parse_and_link)")
@@ -1448,5 +1493,62 @@ mod tests {
         form.push_char('\t');
         form.backspace();
         assert_eq!(form.confirm_input, "");
+    }
+
+    #[test]
+    fn find_by_name_prefers_an_exact_name_case_insensitively() {
+        let accounts = default_accounts();
+        assert_eq!(find_by_name(&accounts, "home loan"), NameLookup::Found(4));
+        assert_eq!(
+            find_by_name(&accounts, "  HOME LOAN "),
+            NameLookup::Found(4)
+        );
+    }
+
+    #[test]
+    fn find_by_name_falls_back_to_a_unique_prefix_then_a_unique_substring() {
+        let accounts = default_accounts();
+        assert_eq!(find_by_name(&accounts, "amex"), NameLookup::Found(3));
+        assert_eq!(find_by_name(&accounts, "platinum"), NameLookup::Found(3));
+        assert_eq!(find_by_name(&accounts, "bitc"), NameLookup::Found(6));
+    }
+
+    #[test]
+    fn find_by_name_reports_ambiguity_instead_of_guessing() {
+        let accounts = default_accounts();
+        assert_eq!(
+            find_by_name(&accounts, "anz"),
+            NameLookup::Ambiguous(vec!["ANZ Everyday".to_string(), "ANZ Offset".to_string()])
+        );
+    }
+
+    #[test]
+    fn an_exact_name_wins_over_longer_names_that_contain_it() {
+        let mut accounts = default_accounts();
+        accounts.push(Account {
+            name: "ANZ".to_string(),
+            ..account(20, "ANZ", AccountType::Bank)
+        });
+        assert_eq!(find_by_name(&accounts, "anz"), NameLookup::Found(7));
+    }
+
+    #[test]
+    fn duplicate_exact_names_are_ambiguous() {
+        let accounts = vec![
+            account(1, "Savings", AccountType::Bank),
+            account(2, "Savings", AccountType::Bank),
+        ];
+        assert_eq!(
+            find_by_name(&accounts, "savings"),
+            NameLookup::Ambiguous(vec!["Savings".to_string(), "Savings".to_string()])
+        );
+    }
+
+    #[test]
+    fn find_by_name_finds_nothing_for_an_unknown_or_empty_name() {
+        let accounts = default_accounts();
+        assert_eq!(find_by_name(&accounts, "zzz"), NameLookup::NotFound);
+        assert_eq!(find_by_name(&accounts, "   "), NameLookup::NotFound);
+        assert_eq!(find_by_name(&[], "wallet"), NameLookup::NotFound);
     }
 }

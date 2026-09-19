@@ -39,10 +39,26 @@ pub enum CommandEffect {
     OpenDialog(ExplorerMode),
     /// `:close`: returns to the "1a" empty state, same as cold start.
     CloseLedger,
+    /// An `accounts <verb> [<account name>]` command: `Shell::run_command` jumps to the Accounts
+    /// page and opens the matching dialog, resolving the typed name (see [`split_input`]).
+    Accounts(AccountsVerb),
     /// No real behaviour behind this command yet (`docs/ux/tui/README.md`'s commitment: "a
     /// command that has no real behaviour yet says so explicitly when run") --
     /// `Shell::run_command` turns this into the status-line flash.
     NotYetBuilt,
+}
+
+/// The Accounts verbs the palette understands -- the same three the page's `n`/`e`/`d` keys and
+/// buttons reach, through the same dialog-opening handlers. The TUI's `account off`/`on`/`check`
+/// have no desktop counterpart: the desktop design has no active flag and no balance checks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountsVerb {
+    /// `accounts new [<account name>]`: the Add dialog, with Name pre-filled when given.
+    New,
+    /// `accounts edit [<account name>]`: the Edit dialog for the named (or selected) account.
+    Edit,
+    /// `accounts delete [<account name>]`: the Delete dialog for the named (or selected) account.
+    Delete,
 }
 
 /// One command: the palette's own unit of data. `binding` is a plain display string (unlike the
@@ -59,15 +75,51 @@ pub struct Command {
     pub effect: CommandEffect,
 }
 
+impl Command {
+    /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
+    /// rather than more of the query -- see [`split_input`].
+    pub fn takes_argument(&self) -> bool {
+        matches!(self.effect, CommandEffect::Accounts(_))
+    }
+}
+
+/// Splits palette input into the command query and its argument text: when the input starts with
+/// the full name of a command that takes an argument (case-insensitively, followed by a space or
+/// the end of the input), that name is the query and the rest, trimmed, is the argument; any
+/// other input is all query. The longest such name wins. Free text after the name may contain
+/// spaces (`accounts new Rainy Day`).
+pub fn split_input(input: &str) -> (&str, &str) {
+    let best = COMMANDS
+        .iter()
+        .filter(|command| command.takes_argument())
+        .filter(|command| {
+            input
+                .get(..command.name.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(command.name))
+                && input[command.name.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|next| next == ' ')
+        })
+        .max_by_key(|command| command.name.len());
+    match best {
+        Some(command) => (
+            &input[..command.name.len()],
+            input[command.name.len()..].trim(),
+        ),
+        None => (input, ""),
+    }
+}
+
 /// Every command the palette can rank and run today, grouped by [`Command::domain`] --
 /// `"Dashboard"` first, then every other domain alphabetically, mirroring the TUI's own
 /// `commands::DOMAINS` order exactly (`bin-tui/src/popup/command/commands/mod.rs`: "Dashboard
 /// first then alphabetical"). One [`CommandEffect::Navigate`] command per rail item (`Noun::ALL`'s
 /// own order, each its own single-command domain), plus the one real footer affordance
-/// (`crate::rail::context::footer`'s "+ new account · :account new", grouped under "Accounts"
+/// (`crate::rail::context::footer`'s "+ new account · :accounts new", grouped under "Accounts"
 /// alongside its own noun's command) and the file-level `open`/`new`/`close` trio under
-/// "Ledger", which has no noun of its own. `account new`'s effect is [`CommandEffect::NotYetBuilt`]
-/// -- there is no new-account popup yet (out of scope for this map, issue #144).
+/// "Ledger", which has no noun of its own. The three `accounts <verb>` commands take a typed
+/// account name (see [`split_input`]).
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "dashboard",
@@ -84,11 +136,25 @@ pub const COMMANDS: &[Command] = &[
         effect: CommandEffect::Navigate(Noun::Accounts),
     },
     Command {
-        name: "account new",
+        name: "accounts new",
         domain: "Accounts",
-        description: "add an account",
-        binding: None,
-        effect: CommandEffect::NotYetBuilt,
+        description: "add an account: accounts new <account name>",
+        binding: Some("n"),
+        effect: CommandEffect::Accounts(AccountsVerb::New),
+    },
+    Command {
+        name: "accounts edit",
+        domain: "Accounts",
+        description: "edit an account by name, or the selected row",
+        binding: Some("e"),
+        effect: CommandEffect::Accounts(AccountsVerb::Edit),
+    },
+    Command {
+        name: "accounts delete",
+        domain: "Accounts",
+        description: "delete an account by name, or the selected row",
+        binding: Some("d"),
+        effect: CommandEffect::Accounts(AccountsVerb::Delete),
     },
     Command {
         name: "bills",
@@ -223,9 +289,49 @@ mod tests {
     }
 
     #[test]
-    fn account_new_has_no_real_behaviour_yet() {
-        let account_new = COMMANDS.iter().find(|c| c.name == "account new").unwrap();
-        assert_eq!(account_new.effect, CommandEffect::NotYetBuilt);
+    fn the_accounts_verbs_carry_their_effects_and_take_an_argument() {
+        for (name, verb) in [
+            ("accounts new", AccountsVerb::New),
+            ("accounts edit", AccountsVerb::Edit),
+            ("accounts delete", AccountsVerb::Delete),
+        ] {
+            let command = COMMANDS.iter().find(|c| c.name == name).unwrap();
+            assert_eq!(command.effect, CommandEffect::Accounts(verb));
+            assert!(command.takes_argument());
+        }
+        let accounts = COMMANDS.iter().find(|c| c.name == "accounts").unwrap();
+        assert!(!accounts.takes_argument(), "the bare noun jump takes none");
+    }
+
+    #[test]
+    fn split_input_separates_the_argument_after_a_full_command_name() {
+        assert_eq!(
+            split_input("accounts new Rainy Day"),
+            ("accounts new", "Rainy Day")
+        );
+        assert_eq!(
+            split_input("accounts delete   Home Loan  "),
+            ("accounts delete", "Home Loan")
+        );
+        assert_eq!(split_input("accounts edit"), ("accounts edit", ""));
+        assert_eq!(split_input("accounts edit "), ("accounts edit", ""));
+    }
+
+    #[test]
+    fn split_input_matches_the_command_name_case_insensitively_keeping_the_arguments_case() {
+        assert_eq!(
+            split_input("Accounts New ANZ Offset"),
+            ("Accounts New", "ANZ Offset")
+        );
+    }
+
+    #[test]
+    fn split_input_leaves_everything_else_as_the_query() {
+        assert_eq!(split_input(""), ("", ""));
+        assert_eq!(split_input("accounts"), ("accounts", ""));
+        assert_eq!(split_input("accounts del"), ("accounts del", ""));
+        assert_eq!(split_input("accounts deleted"), ("accounts deleted", ""));
+        assert_eq!(split_input("open something"), ("open something", ""));
     }
 
     #[test]

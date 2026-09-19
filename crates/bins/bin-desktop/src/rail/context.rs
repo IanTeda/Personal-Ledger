@@ -137,7 +137,7 @@ impl RenderOnce for ContextRail {
                     account_row(account, index == ACCOUNTS.len() - 1, current)
                 }))
                 .child(div().flex_1())
-                .child(footer("+ new account", ":account new")),
+                .child(footer("+ new account", ":accounts new")),
             noun => frame
                 .child(header(&noun_label(noun), "not yet built"))
                 .child(div().flex_1()),

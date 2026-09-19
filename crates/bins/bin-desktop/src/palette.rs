@@ -29,7 +29,7 @@ pub const TOP_OFFSET: gpui::Pixels = px(96.0);
 /// Width of the `<command>` column -- fixed (rather than `flex_1`, which used to push the
 /// binding off to the row's far edge) so the binding sits left-aligned right next to the name
 /// it triggers, freeing the rest of the row for the description. Sized to comfortably fit the
-/// registry's longest names ("transactions", "account new") at this text size.
+/// registry's longest names ("transactions", "accounts delete") at this text size.
 const NAME_COLUMN_WIDTH: gpui::Pixels = px(130.0);
 
 /// Width of the `<binding>` column, immediately after the name column.
@@ -90,6 +90,12 @@ impl Palette {
         &self.input
     }
 
+    /// The text typed after a command that takes an argument (`Home Loan` in `accounts delete
+    /// Home Loan`), trimmed; empty for every other input. See [`command::split_input`].
+    pub fn argument(&self) -> &str {
+        command::split_input(&self.input).1
+    }
+
     /// Appends a typed character, resetting the selection to the top -- the filtered set
     /// changes on every keystroke, so the old index may no longer point at anything.
     pub fn push_char(&mut self, c: char) {
@@ -108,10 +114,17 @@ impl Palette {
 
     /// `tab`: fills the input with the selected result's full command name -- mirrors `enter`'s
     /// own "runs the selection" semantics rather than completing a shared prefix across every
-    /// match. A no-op when nothing is selected (the filtered set is empty).
+    /// match. A command that takes an argument gets a trailing space, ready for it to be typed
+    /// (any argument already typed is kept). A no-op when nothing is selected (the filtered set
+    /// is empty).
     pub fn complete_selected(&mut self) {
         if let Some(command) = self.selected_command() {
+            let argument = self.argument().to_string();
             self.input = command.name.to_string();
+            if command.takes_argument() {
+                self.input.push(' ');
+                self.input.push_str(&argument);
+            }
             self.selected = 0;
             self.history_cursor = None;
             self.scroll_to_selected();
@@ -153,7 +166,8 @@ impl Palette {
     /// name, description or owning [`Command::domain`], ranked by [`match_rank`] -- ties keep
     /// [`command::all`]'s own registration order (`Vec::sort_by_key` is stable).
     fn matches(&self) -> Vec<&'static Command> {
-        let needle = self.input.to_lowercase();
+        let (query, _) = command::split_input(&self.input);
+        let needle = query.to_lowercase();
         let mut matches: Vec<_> = command::all()
             .filter(|command| {
                 needle.is_empty()
@@ -226,6 +240,9 @@ impl Palette {
             .filter(|row| matches!(row, Row::Entry(_)))
             .count();
         let selected = self.selected.min(match_count.saturating_sub(1));
+        // The command part of the input only: a typed argument is not part of any name to
+        // highlight.
+        let query = command::split_input(&self.input).0.to_lowercase();
 
         // Rows are a mix of headers and entries; `selected` counts entries only (mirroring
         // `bin-tui`'s own `selected_row_index`), so this walks both in lockstep rather than
@@ -236,7 +253,7 @@ impl Palette {
             Row::Entry(command) => {
                 let is_selected = entry_index == selected;
                 entry_index += 1;
-                result_row(command, &self.input, is_selected).into_any_element()
+                result_row(command, &query, is_selected).into_any_element()
             }
         });
 
@@ -632,15 +649,15 @@ mod tests {
     #[test]
     fn ctrl_r_recalls_the_most_recent_command_first() {
         let mut palette =
-            Palette::with_history(vec!["account new".to_string(), "accounts".to_string()]);
+            Palette::with_history(vec!["accounts new".to_string(), "accounts".to_string()]);
         palette.cycle_history_back();
-        assert_eq!(palette.input(), "account new");
+        assert_eq!(palette.input(), "accounts new");
     }
 
     #[test]
     fn repeated_ctrl_r_walks_further_back_and_clamps_at_the_oldest() {
         let mut palette =
-            Palette::with_history(vec!["account new".to_string(), "accounts".to_string()]);
+            Palette::with_history(vec!["accounts new".to_string(), "accounts".to_string()]);
         palette.cycle_history_back();
         palette.cycle_history_back();
         assert_eq!(palette.input(), "accounts");
@@ -651,13 +668,81 @@ mod tests {
     #[test]
     fn editing_after_a_recall_resets_the_history_cursor() {
         let mut palette =
-            Palette::with_history(vec!["account new".to_string(), "accounts".to_string()]);
+            Palette::with_history(vec!["accounts new".to_string(), "accounts".to_string()]);
         palette.cycle_history_back();
         palette.cycle_history_back();
         assert_eq!(palette.input(), "accounts");
         palette.backspace();
         // Cursor reset -- the next `^r` recalls the most recent entry again, not "accounts".
         palette.cycle_history_back();
-        assert_eq!(palette.input(), "account new");
+        assert_eq!(palette.input(), "accounts new");
+    }
+
+    fn typed(input: &str) -> Palette {
+        let mut palette = Palette::new();
+        for c in input.chars() {
+            palette.push_char(c);
+        }
+        palette
+    }
+
+    #[test]
+    fn a_typed_argument_keeps_its_command_selected_and_is_exposed_separately() {
+        let palette = typed("accounts delete Home Loan");
+        assert_eq!(
+            palette.selected_command().map(|c| c.name),
+            Some("accounts delete")
+        );
+        assert_eq!(palette.argument(), "Home Loan");
+        assert_eq!(palette.matches().len(), 1);
+    }
+
+    #[test]
+    fn the_command_name_alone_has_no_argument() {
+        let palette = typed("accounts new");
+        assert_eq!(
+            palette.selected_command().map(|c| c.name),
+            Some("accounts new")
+        );
+        assert_eq!(palette.argument(), "");
+    }
+
+    #[test]
+    fn typing_a_command_prefix_lists_every_accounts_verb() {
+        let names: Vec<_> = typed("accounts ")
+            .matches()
+            .iter()
+            .map(|c| c.name)
+            .collect();
+        assert!(names.contains(&"accounts new"));
+        assert!(names.contains(&"accounts edit"));
+        assert!(names.contains(&"accounts delete"));
+    }
+
+    #[test]
+    fn tab_on_an_argument_command_leaves_room_for_the_argument() {
+        let mut palette = typed("accounts del");
+        palette.complete_selected();
+        assert_eq!(palette.input(), "accounts delete ");
+    }
+
+    #[test]
+    fn tab_keeps_an_argument_already_typed() {
+        let mut palette = typed("accounts delete Home");
+        palette.complete_selected();
+        assert_eq!(palette.input(), "accounts delete Home");
+    }
+
+    #[test]
+    fn tab_on_a_command_without_an_argument_adds_no_space() {
+        let mut palette = typed("settings");
+        palette.complete_selected();
+        assert_eq!(palette.input(), "settings");
+    }
+
+    #[test]
+    fn a_non_argument_command_has_no_argument_whatever_follows() {
+        let palette = typed("accounts");
+        assert_eq!(palette.argument(), "");
     }
 }

@@ -32,9 +32,9 @@ use gpui::{
 use crate::{
     accounts::{
         self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
-        DeleteAccountForm, SelectKey,
+        DeleteAccountForm, NameLookup, SelectKey,
     },
-    command::{self, Command, CommandEffect},
+    command::{self, AccountsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
     key_router::{KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
@@ -520,9 +520,10 @@ impl Shell {
             }
             "enter" => {
                 let command = palette.selected_command();
+                let argument = palette.argument().to_string();
                 self.palette = None;
                 match command {
-                    Some(command) => self.run_command(command),
+                    Some(command) => self.run_command(command, &argument),
                     // No result to run (an empty registry match) -- there's nothing left for
                     // `run_command` to do, so leave Command mode directly instead.
                     None => self.nav.exit_mode(),
@@ -765,7 +766,7 @@ impl Shell {
             .and_then(|index| self.accounts.get(index))
             .map(|account| account.id);
         match keystroke.key.as_str() {
-            "n" => self.open_add_account_dialog(),
+            "n" => self.open_add_account_dialog(""),
             "e" => {
                 if let Some(id) = selected_id {
                     self.open_edit_account_dialog(id);
@@ -807,7 +808,7 @@ impl Shell {
 
     /// The page's **+ Add account** button: the same handler `n` reaches.
     fn handle_accounts_add_click(&mut self, cx: &mut Context<Self>) {
-        self.open_add_account_dialog();
+        self.open_add_account_dialog("");
         cx.notify();
     }
 
@@ -826,15 +827,18 @@ impl Shell {
         )
     }
 
-    /// Opens the Add account dialog on a fresh form (Unit starting on Settings' default Unit).
-    fn open_add_account_dialog(&mut self) {
+    /// Opens the Add account dialog on a fresh form (Unit starting on Settings' default Unit),
+    /// with Name pre-filled from `name` -- empty for `n` and the button, the typed argument for
+    /// `accounts new <account name>`.
+    fn open_add_account_dialog(&mut self, name: &str) {
         let options = self.account_dialog_options();
         let default_unit = self
             .settings_units
             .iter()
             .find(|unit| unit.is_default)
             .map(|unit| unit.code.as_str());
-        let form = AccountForm::new(&options, default_unit);
+        let mut form = AccountForm::new(&options, default_unit);
+        form.name = name.trim().to_string();
         self.accounts_dialog = Some(AccountsDialog::Add(form));
         self.nav.enter_mode(InputMode::Dialog);
     }
@@ -1226,8 +1230,17 @@ impl Shell {
     /// `command_echo`) depends on staying there for as long as the dialog is on screen, exiting
     /// only when it closes (`Self::handle_explorer_cancel`/`Self::confirm_explorer_open`, or
     /// `Self::handle_key_down`'s `escape` arm).
-    fn run_command(&mut self, command: &'static Command) {
-        record_history(&mut self.command_history, command.name);
+    fn run_command(&mut self, command: &'static Command, argument: &str) {
+        // History keeps what was typed, argument and all, so `^r` recalls `accounts delete Home
+        // Loan` rather than just the bare command.
+        if argument.is_empty() {
+            record_history(&mut self.command_history, command.name);
+        } else {
+            record_history(
+                &mut self.command_history,
+                &format!("{} {argument}", command.name),
+            );
+        }
         match command.effect {
             CommandEffect::OpenDialog(mode) => {
                 self.file_explorer = Some(FileExplorer::open_at(mode, explorer_start_dir()));
@@ -1244,10 +1257,65 @@ impl Shell {
                 self.nav.exit_mode();
                 self.nav.close_ledger();
             }
+            CommandEffect::Accounts(verb) => {
+                self.nav.exit_mode();
+                self.run_accounts_command(command.name, verb, argument);
+            }
             CommandEffect::NotYetBuilt => {
                 self.nav.exit_mode();
                 self.status_message = Some(format!(":{} — not yet built", command.name));
             }
+        }
+    }
+
+    /// `accounts new|edit|delete [<account name>]`: jumps to the Accounts page, then opens the
+    /// same dialog the page's `n`/`e`/`d` and buttons do. `new` pre-fills Name with the argument.
+    /// `edit` and `delete` resolve the typed name ([`accounts::find_by_name`]), or use the
+    /// selected row when none is given; a name that fits nothing or several accounts flashes a
+    /// status-line message naming the problem rather than guessing.
+    fn run_accounts_command(&mut self, command_name: &str, verb: AccountsVerb, argument: &str) {
+        if self.nav.noun() != Noun::Accounts {
+            self.nav.set_noun(Noun::Accounts);
+            self.reset_view_scroll();
+        }
+        if verb == AccountsVerb::New {
+            self.open_add_account_dialog(argument);
+            return;
+        }
+
+        let index = if argument.is_empty() {
+            match self.selected_account_index() {
+                Some(index) => index,
+                None => {
+                    self.status_message = Some(format!(":{command_name} \u{2014} no accounts"));
+                    return;
+                }
+            }
+        } else {
+            match accounts::find_by_name(&self.accounts, argument) {
+                NameLookup::Found(index) => index,
+                NameLookup::NotFound => {
+                    self.status_message = Some(format!(
+                        ":{command_name} \u{2014} no account named \"{argument}\""
+                    ));
+                    return;
+                }
+                NameLookup::Ambiguous(names) => {
+                    self.status_message = Some(format!(
+                        ":{command_name} \u{2014} \"{argument}\" matches {}",
+                        names.join(", ")
+                    ));
+                    return;
+                }
+            }
+        };
+        let id = self.accounts[index].id;
+        self.select_account(id);
+        self.scroll_selected_account_into_view();
+        match verb {
+            AccountsVerb::Edit => self.open_edit_account_dialog(id),
+            AccountsVerb::Delete => self.open_delete_account_dialog(id),
+            AccountsVerb::New => {}
         }
     }
 
@@ -1553,7 +1621,7 @@ impl Shell {
             return;
         };
         self.nav.enter_mode(InputMode::Command);
-        self.run_command(command);
+        self.run_command(command, "");
         cx.notify();
     }
 }
