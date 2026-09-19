@@ -31,7 +31,8 @@ use gpui::{
 
 use crate::{
     accounts::{
-        self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog, SelectKey,
+        self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
+        DeleteAccountForm, SelectKey,
     },
     command::{self, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
@@ -771,17 +772,13 @@ impl Shell {
                 }
             }
             "d" => {
-                if selected_id.is_some() {
-                    self.flash_accounts_stub("delete account");
+                if let Some(id) = selected_id {
+                    self.open_delete_account_dialog(id);
                 }
             }
             _ => return false,
         }
         true
-    }
-
-    fn flash_accounts_stub(&mut self, what: &str) {
-        self.status_message = Some(format!("{what} -- not yet built"));
     }
 
     fn flash_open_ledger_stub(&mut self) {
@@ -845,6 +842,9 @@ impl Shell {
     /// Routes a keystroke while an Accounts dialog with a form (Add or Edit) is open. `Esc` never
     /// reaches here (it is handled ahead of the mode gates); everything else is swallowed.
     fn handle_accounts_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        if matches!(self.accounts_dialog, Some(AccountsDialog::Delete(..))) {
+            return self.handle_delete_account_key(keystroke);
+        }
         let options = self.account_dialog_options();
         let Some(form) = self
             .accounts_dialog
@@ -875,6 +875,42 @@ impl Shell {
             }
             "backspace" => form.backspace(),
             _ => {
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(text) = keystroke.key_char.as_deref()
+                    && text.chars().count() == 1
+                    && let Some(ch) = text.chars().next()
+                {
+                    form.push_char(ch);
+                }
+            }
+        }
+        true
+    }
+
+    /// Keys in the Delete account dialog: type the account's name back (`Backspace` edits it),
+    /// `Enter` deletes once it matches, and `Tab` is swallowed since the confirmation is the only
+    /// field. `Esc` never reaches here (it cancels ahead of the mode gates).
+    fn handle_delete_account_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(AccountsDialog::Delete(id, form)) = self.accounts_dialog.as_mut() else {
+            return false;
+        };
+        match keystroke.key.as_str() {
+            "backspace" => form.backspace(),
+            "tab" => {}
+            "enter" => {
+                let matches = self
+                    .accounts
+                    .iter()
+                    .find(|account| account.id == *id)
+                    .is_some_and(|account| form.matches(&account.name));
+                if matches {
+                    self.confirm_accounts_dialog();
+                }
+            }
+            _ => {
+                let modifiers = &keystroke.modifiers;
                 if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
                     return false;
                 }
@@ -936,16 +972,20 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Add account dialog's **Add account** button, the Edit dialog's **Save**, and `Enter` in
-    /// either: Add builds the account, appends it and selects it; Edit writes the changes onto the
+    /// The Add account dialog's **Add account** button, the Edit dialog's **Save**, the Delete
+    /// dialog's **Delete account** (once the name matches), and `Enter` in any of them: Add builds the account, appends it and selects it; Edit writes the changes onto the
     /// existing row (which regroups if its Type changed) and keeps it selected. Either way the
     /// dialog closes. A no-op, leaving it open, while the form is invalid.
     fn confirm_accounts_dialog(&mut self) {
-        let valid = self
-            .accounts_dialog
-            .as_ref()
-            .and_then(AccountsDialog::form)
-            .is_some_and(AccountForm::is_valid);
+        let valid = match self.accounts_dialog.as_ref() {
+            Some(AccountsDialog::Delete(id, form)) => self
+                .accounts
+                .iter()
+                .find(|account| account.id == *id)
+                .is_some_and(|account| form.matches(&account.name)),
+            Some(dialog) => dialog.form().is_some_and(AccountForm::is_valid),
+            None => false,
+        };
         if !valid {
             return;
         }
@@ -972,13 +1012,31 @@ impl Shell {
                 .iter_mut()
                 .find(|account| account.id == id)
                 .and_then(|account| form.apply_to(account).then_some(id)),
-            AccountsDialog::Delete(_) => None,
+            AccountsDialog::Delete(id, _) => {
+                self.accounts.retain(|account| account.id != id);
+                // The selection is a position in display order: keep it in range, so it lands on
+                // the account that slid into the deleted row's place (or the last one).
+                self.accounts_selected = self
+                    .accounts_selected
+                    .min(self.accounts.len().saturating_sub(1));
+                self.scroll_selected_account_into_view();
+                None
+            }
         };
         if let Some(id) = changed_id {
             self.select_account(id);
             self.scroll_selected_account_into_view();
         }
         self.nav.exit_mode();
+    }
+
+    /// Opens the Delete account dialog on `id`. A no-op if the account is gone.
+    fn open_delete_account_dialog(&mut self, id: u32) {
+        if !self.accounts.iter().any(|account| account.id == id) {
+            return;
+        }
+        self.accounts_dialog = Some(AccountsDialog::Delete(id, DeleteAccountForm::default()));
+        self.nav.enter_mode(InputMode::Dialog);
     }
 
     /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
@@ -1000,7 +1058,7 @@ impl Shell {
 
     fn handle_accounts_delete_click(&mut self, id: u32, cx: &mut Context<Self>) {
         self.select_account(id);
-        self.flash_accounts_stub("delete account");
+        self.open_delete_account_dialog(id);
         cx.notify();
     }
 
@@ -1967,8 +2025,18 @@ impl Render for Shell {
                         None => div().into_any_element(),
                     }
                 }
-                // Opened by the Delete dialog ticket, which lands its own render arm.
-                AccountsDialog::Delete(_) => div().into_any_element(),
+                AccountsDialog::Delete(id, form) => {
+                    match self.accounts.iter().find(|account| account.id == *id) {
+                        Some(account) => accounts_view::delete_dialog::render(
+                            account,
+                            form,
+                            on_accounts_dialog_cancel,
+                            on_accounts_dialog_confirm,
+                        ),
+                        // Defensive only: the id comes from a live row when the dialog opens.
+                        None => div().into_any_element(),
+                    }
+                }
             }))
             .children(self.settings_dialog.as_ref().map(|dialog| match dialog {
                 SettingsDialog::AddUnit(form) => settings_view::add_unit_dialog::render(

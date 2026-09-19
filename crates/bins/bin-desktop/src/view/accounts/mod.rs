@@ -12,6 +12,7 @@
 //! (`n`/`e`/`d`/`enter`) and the mouse reach the same handlers.
 
 pub mod add_dialog;
+pub mod delete_dialog;
 pub mod edit_dialog;
 mod select_field;
 

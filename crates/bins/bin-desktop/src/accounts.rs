@@ -115,23 +115,50 @@ pub enum AccountsDialog {
     Add(AccountForm),
     /// Editing the account with this [`Account::id`].
     Edit(u32, AccountForm),
-    Delete(u32),
+    /// Deleting the account with this [`Account::id`], once its name has been typed back.
+    Delete(u32, DeleteAccountForm),
 }
 
 impl AccountsDialog {
-    /// The form behind the Add and Edit dialogs.
+    /// The form behind the Add and Edit dialogs; Delete has its own, single-field form.
     pub fn form(&self) -> Option<&AccountForm> {
         match self {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
-            Self::Delete(_) => None,
+            Self::Delete(..) => None,
         }
     }
 
     pub fn form_mut(&mut self) -> Option<&mut AccountForm> {
         match self {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
-            Self::Delete(_) => None,
+            Self::Delete(..) => None,
         }
+    }
+}
+
+/// The Delete account dialog's live form state -- pure, `gpui`-free. Just the typed-back
+/// confirmation: there is nothing to `Tab` between, so the input is implicitly always focused
+/// (the same shape as the Settings `DeleteUnitForm`).
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DeleteAccountForm {
+    pub confirm_input: String,
+}
+
+impl DeleteAccountForm {
+    pub fn push_char(&mut self, ch: char) {
+        if !ch.is_control() {
+            self.confirm_input.push(ch);
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        self.confirm_input.pop();
+    }
+
+    /// The README's "disabled until the typed value matches the account name exactly": a plain
+    /// case-sensitive `==`, no trimming or case folding, so it can't be confirmed by habit.
+    pub fn matches(&self, name: &str) -> bool {
+        self.confirm_input == name
     }
 }
 
@@ -1392,6 +1419,34 @@ mod tests {
         let form = AccountForm::new(&options, None);
         assert!(AccountsDialog::Add(form.clone()).form().is_some());
         assert!(AccountsDialog::Edit(1, form).form().is_some());
-        assert!(AccountsDialog::Delete(1).form().is_none());
+        assert!(
+            AccountsDialog::Delete(1, DeleteAccountForm::default())
+                .form()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn delete_confirmation_is_an_exact_case_sensitive_match() {
+        let mut form = DeleteAccountForm::default();
+        assert!(!form.matches("Amex Platinum"));
+        for ch in "Amex Platinum".chars() {
+            form.push_char(ch);
+        }
+        assert!(form.matches("Amex Platinum"));
+        assert!(!form.matches("amex platinum"));
+        form.push_char(' ');
+        assert!(!form.matches("Amex Platinum"), "no trimming");
+        form.backspace();
+        assert!(form.matches("Amex Platinum"));
+    }
+
+    #[test]
+    fn delete_confirmation_ignores_control_characters_and_backspace_on_empty() {
+        let mut form = DeleteAccountForm::default();
+        form.push_char('\n');
+        form.push_char('\t');
+        form.backspace();
+        assert_eq!(form.confirm_input, "");
     }
 }
