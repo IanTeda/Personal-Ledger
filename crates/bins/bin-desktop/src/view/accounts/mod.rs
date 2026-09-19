@@ -169,6 +169,9 @@ fn add_button(on_click: OnAddClick) -> impl IntoElement {
         .text_color(color::INK_ON_DARK)
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
+        // README's "Hover: rows and buttons take a subtle ground tint or border shift": a dark
+        // button lightens one step within the palette.
+        .hover(|style| style.bg(color::INK_SECONDARY))
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child("+ Add account")
 }
@@ -373,6 +376,7 @@ fn row_action_button(
         .border_1()
         .border_color(color::BORDER)
         .text_size(px(11.0))
+        .hover(|style| style.bg(color::HOVER_TINT))
         .on_click(move |_event, window, cx| {
             cx.stop_propagation();
             on_click(window, cx)
