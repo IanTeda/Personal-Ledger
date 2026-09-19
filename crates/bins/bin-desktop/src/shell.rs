@@ -31,8 +31,7 @@ use gpui::{
 
 use crate::{
     accounts::{
-        self, Account, AccountsDialog, AddAccountField, AddAccountForm, AddAccountOptions,
-        SelectKey,
+        self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog, SelectKey,
     },
     command::{self, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
@@ -298,7 +297,10 @@ impl Shell {
             KeyOutcome::ClosePopupsAndExitMode => {
                 // The Accounts dialogs' dropdowns: the first `Esc` closes an open list only, the
                 // next one cancels the dialog (the Desktop Accounts map's select-control decision).
-                if let Some(AccountsDialog::Add(form)) = self.accounts_dialog.as_mut()
+                if let Some(form) = self
+                    .accounts_dialog
+                    .as_mut()
+                    .and_then(AccountsDialog::form_mut)
                     && form.close_open_select()
                 {
                     return true;
@@ -764,8 +766,8 @@ impl Shell {
         match keystroke.key.as_str() {
             "n" => self.open_add_account_dialog(),
             "e" => {
-                if selected_id.is_some() {
-                    self.flash_accounts_stub("edit account");
+                if let Some(id) = selected_id {
+                    self.open_edit_account_dialog(id);
                 }
             }
             "d" => {
@@ -814,8 +816,8 @@ impl Shell {
 
     /// The three selects' option lists, read live from Settings (so an institution added there
     /// appears here) and the fixed type order.
-    fn account_dialog_options(&self) -> AddAccountOptions {
-        AddAccountOptions::new(
+    fn account_dialog_options(&self) -> AccountOptions {
+        AccountOptions::new(
             self.settings_institutions
                 .iter()
                 .map(|institution| institution.name.clone())
@@ -835,16 +837,20 @@ impl Shell {
             .iter()
             .find(|unit| unit.is_default)
             .map(|unit| unit.code.as_str());
-        let form = AddAccountForm::new(&options, default_unit);
+        let form = AccountForm::new(&options, default_unit);
         self.accounts_dialog = Some(AccountsDialog::Add(form));
         self.nav.enter_mode(InputMode::Dialog);
     }
 
-    /// Routes a keystroke while an Accounts dialog is open. Only Add exists so far. `Esc` never
+    /// Routes a keystroke while an Accounts dialog with a form (Add or Edit) is open. `Esc` never
     /// reaches here (it is handled ahead of the mode gates); everything else is swallowed.
     fn handle_accounts_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
         let options = self.account_dialog_options();
-        let Some(AccountsDialog::Add(form)) = self.accounts_dialog.as_mut() else {
+        let Some(form) = self
+            .accounts_dialog
+            .as_mut()
+            .and_then(AccountsDialog::form_mut)
+        else {
             return false;
         };
         let modifiers = &keystroke.modifiers;
@@ -885,13 +891,13 @@ impl Shell {
 
     /// A click on a field of the Add account dialog: focuses a text field, or focuses a select
     /// and toggles its list.
-    fn handle_accounts_dialog_field_click(
-        &mut self,
-        field: AddAccountField,
-        cx: &mut Context<Self>,
-    ) {
+    fn handle_accounts_dialog_field_click(&mut self, field: AccountField, cx: &mut Context<Self>) {
         let options = self.account_dialog_options();
-        if let Some(AccountsDialog::Add(form)) = self.accounts_dialog.as_mut() {
+        if let Some(form) = self
+            .accounts_dialog
+            .as_mut()
+            .and_then(AccountsDialog::form_mut)
+        {
             if field.is_select() {
                 form.click_select(field, &options);
             } else {
@@ -904,12 +910,16 @@ impl Shell {
     /// A click on a row of an open dropdown list.
     fn handle_accounts_dialog_option_click(
         &mut self,
-        field: AddAccountField,
+        field: AccountField,
         index: usize,
         cx: &mut Context<Self>,
     ) {
         let options = self.account_dialog_options();
-        if let Some(AccountsDialog::Add(form)) = self.accounts_dialog.as_mut() {
+        if let Some(form) = self
+            .accounts_dialog
+            .as_mut()
+            .and_then(AccountsDialog::form_mut)
+        {
             form.choose_option(field, index, &options);
         }
         cx.notify();
@@ -926,37 +936,65 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Add account dialog's **Add account** button and `Enter`: builds the account, appends
-    /// it (the page regroups it under its type), selects it and closes. A no-op, leaving the
-    /// dialog open, while the form is invalid.
+    /// The Add account dialog's **Add account** button, the Edit dialog's **Save**, and `Enter` in
+    /// either: Add builds the account, appends it and selects it; Edit writes the changes onto the
+    /// existing row (which regroups if its Type changed) and keeps it selected. Either way the
+    /// dialog closes. A no-op, leaving it open, while the form is invalid.
     fn confirm_accounts_dialog(&mut self) {
-        let Some(AccountsDialog::Add(form)) = self.accounts_dialog.as_ref() else {
-            return;
-        };
-        if !form.is_valid() {
+        let valid = self
+            .accounts_dialog
+            .as_ref()
+            .and_then(AccountsDialog::form)
+            .is_some_and(AccountForm::is_valid);
+        if !valid {
             return;
         }
-        let is_currency = form
-            .unit
-            .value()
-            .and_then(|code| self.settings_units.iter().find(|unit| unit.code == code))
-            .is_none_or(|unit| unit.kind == "currency");
-        let Some(AccountsDialog::Add(form)) = self.accounts_dialog.take() else {
+        let Some(dialog) = self.accounts_dialog.take() else {
             return;
         };
-        let id = accounts::next_account_id(&self.accounts);
-        let opened_at = chrono::Local::now().date_naive();
-        if let Some(account) = form.into_account(id, opened_at, is_currency) {
-            self.accounts.push(account);
+        let changed_id = match dialog {
+            AccountsDialog::Add(form) => {
+                let is_currency = form
+                    .unit
+                    .value()
+                    .and_then(|code| self.settings_units.iter().find(|unit| unit.code == code))
+                    .is_none_or(|unit| unit.kind == "currency");
+                let id = accounts::next_account_id(&self.accounts);
+                let opened_at = chrono::Local::now().date_naive();
+                form.into_account(id, opened_at, is_currency)
+                    .map(|account| {
+                        self.accounts.push(account);
+                        id
+                    })
+            }
+            AccountsDialog::Edit(id, form) => self
+                .accounts
+                .iter_mut()
+                .find(|account| account.id == id)
+                .and_then(|account| form.apply_to(account).then_some(id)),
+            AccountsDialog::Delete(_) => None,
+        };
+        if let Some(id) = changed_id {
             self.select_account(id);
             self.scroll_selected_account_into_view();
         }
         self.nav.exit_mode();
     }
 
+    /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
+    fn open_edit_account_dialog(&mut self, id: u32) {
+        let options = self.account_dialog_options();
+        let Some(account) = self.accounts.iter().find(|account| account.id == id) else {
+            return;
+        };
+        let form = AccountForm::from_account(account, &options);
+        self.accounts_dialog = Some(AccountsDialog::Edit(id, form));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
     fn handle_accounts_edit_click(&mut self, id: u32, cx: &mut Context<Self>) {
         self.select_account(id);
-        self.flash_accounts_stub("edit account");
+        self.open_edit_account_dialog(id);
         cx.notify();
     }
 
@@ -1914,8 +1952,23 @@ impl Render for Shell {
                     on_accounts_dialog_cancel,
                     on_accounts_dialog_confirm,
                 ),
-                // Opened by the Edit/Delete dialog tickets, which land their own render arms.
-                AccountsDialog::Edit(_) | AccountsDialog::Delete(_) => div().into_any_element(),
+                AccountsDialog::Edit(id, form) => {
+                    match self.accounts.iter().find(|account| account.id == *id) {
+                        Some(account) => accounts_view::edit_dialog::render(
+                            form,
+                            account,
+                            &account_options,
+                            on_accounts_dialog_field_click,
+                            on_accounts_dialog_option_click,
+                            on_accounts_dialog_cancel,
+                            on_accounts_dialog_confirm,
+                        ),
+                        // Defensive only: the id comes from a live row when the dialog opens.
+                        None => div().into_any_element(),
+                    }
+                }
+                // Opened by the Delete dialog ticket, which lands its own render arm.
+                AccountsDialog::Delete(_) => div().into_any_element(),
             }))
             .children(self.settings_dialog.as_ref().map(|dialog| match dialog {
                 SettingsDialog::AddUnit(form) => settings_view::add_unit_dialog::render(

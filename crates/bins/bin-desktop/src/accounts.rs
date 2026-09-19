@@ -112,15 +112,33 @@ pub fn next_account_id(accounts: &[Account]) -> u32 {
 /// ticket attaches its own form state to its variant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountsDialog {
-    Add(AddAccountForm),
-    Edit(u32),
+    Add(AccountForm),
+    /// Editing the account with this [`Account::id`].
+    Edit(u32, AccountForm),
     Delete(u32),
+}
+
+impl AccountsDialog {
+    /// The form behind the Add and Edit dialogs.
+    pub fn form(&self) -> Option<&AccountForm> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => Some(form),
+            Self::Delete(_) => None,
+        }
+    }
+
+    pub fn form_mut(&mut self) -> Option<&mut AccountForm> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => Some(form),
+            Self::Delete(_) => None,
+        }
+    }
 }
 
 /// The Add account dialog's fields, in `Tab` order (the mockup's reading order: Name,
 /// Institution / Type, Unit / Opening balance, Account number).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum AddAccountField {
+pub enum AccountField {
     #[default]
     Name,
     Institution,
@@ -130,8 +148,8 @@ pub enum AddAccountField {
     AccountNumber,
 }
 
-impl AddAccountField {
-    const ORDER: [AddAccountField; 6] = [
+impl AccountField {
+    const ORDER: [AccountField; 6] = [
         Self::Name,
         Self::Institution,
         Self::Type,
@@ -148,13 +166,13 @@ impl AddAccountField {
 /// The option lists behind the three selects, all value keys: institution names and unit codes
 /// come live from Settings, type labels from [`GROUP_ORDER`].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AddAccountOptions {
+pub struct AccountOptions {
     pub institutions: Vec<String>,
     pub types: Vec<String>,
     pub units: Vec<String>,
 }
 
-impl AddAccountOptions {
+impl AccountOptions {
     pub fn new(institutions: Vec<String>, units: Vec<String>) -> Self {
         Self {
             institutions,
@@ -167,11 +185,11 @@ impl AddAccountOptions {
     }
 
     /// The options behind `field`; empty for a text field.
-    pub fn for_field(&self, field: AddAccountField) -> &[String] {
+    pub fn for_field(&self, field: AccountField) -> &[String] {
         match field {
-            AddAccountField::Institution => &self.institutions,
-            AddAccountField::Type => &self.types,
-            AddAccountField::Unit => &self.units,
+            AccountField::Institution => &self.institutions,
+            AccountField::Type => &self.types,
+            AccountField::Unit => &self.units,
             _ => &[],
         }
     }
@@ -194,7 +212,7 @@ pub fn account_type_from_label(label: &str) -> Option<AccountType> {
         .cloned()
 }
 
-/// The Add account dialog's live form state (`docs/ux/desktop/Accounts/README.md`'s 3b) -- pure,
+/// The Add and Edit account dialogs' live form state (`docs/ux/desktop/Accounts/README.md`'s 3b) -- pure,
 /// `gpui`-free. Name, Opening balance and Account number are typed into (append/pop only, like
 /// the Settings dialogs); Institution, Type and Unit are [`SelectState`]s.
 ///
@@ -203,21 +221,24 @@ pub fn account_type_from_label(label: &str) -> Option<AccountType> {
 /// the Institution select is read-only, `Tab` skips it, and the created account links to the
 /// placeholder. Switching away from Cash brings the earlier pick back.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AddAccountForm {
+pub struct AccountForm {
     pub name: String,
     pub institution: SelectState,
     pub account_type: SelectState,
     pub unit: SelectState,
     pub opening_balance: String,
     pub account_number: String,
-    pub focused: AddAccountField,
+    pub focused: AccountField,
+    /// Edit mode: Unit and Opening balance are fixed once an account exists (FR.13), so they are
+    /// shown read-only, `Tab` skips them and focus is refused.
+    pub fixed_unit_and_balance: bool,
 }
 
-impl AddAccountForm {
+impl AccountForm {
     /// A fresh form: Type starts on Bank (the common case, and one that needs a real
     /// Institution), Institution on the first available, Unit on `default_unit` when it is one of
     /// the options and the first option otherwise.
-    pub fn new(options: &AddAccountOptions, default_unit: Option<&str>) -> Self {
+    pub fn new(options: &AccountOptions, default_unit: Option<&str>) -> Self {
         let unit = default_unit
             .filter(|code| options.units.iter().any(|unit| unit == code))
             .map(str::to_string)
@@ -229,8 +250,36 @@ impl AddAccountForm {
             unit: SelectState::new(unit),
             opening_balance: String::new(),
             account_number: String::new(),
-            focused: AddAccountField::Name,
+            focused: AccountField::Name,
+            fixed_unit_and_balance: false,
         }
+    }
+
+    /// A form pre-filled from `account` for the Edit dialog. A Cash account's Institution is the
+    /// placeholder, not a pick, so that select starts on the first real Institution (which only
+    /// matters if Type is switched away from Cash).
+    pub fn from_account(account: &Account, options: &AccountOptions) -> Self {
+        let institution = if account.institution == NO_INSTITUTION {
+            options.institutions.first().cloned()
+        } else {
+            Some(account.institution.clone())
+        };
+        Self {
+            name: account.name.clone(),
+            institution: SelectState::new(institution),
+            account_type: SelectState::new(Some(type_label(&account.account_type).to_string())),
+            unit: SelectState::new(Some(account.unit.clone())),
+            opening_balance: String::new(),
+            account_number: account.account_number.clone().unwrap_or_default(),
+            focused: AccountField::Name,
+            fixed_unit_and_balance: true,
+        }
+    }
+
+    /// Whether `field` cannot be focused right now: Unit and Opening balance while editing.
+    fn is_fixed(&self, field: AccountField) -> bool {
+        self.fixed_unit_and_balance
+            && matches!(field, AccountField::Unit | AccountField::OpeningBalance)
     }
 
     pub fn selected_type(&self) -> Option<AccountType> {
@@ -242,11 +291,11 @@ impl AddAccountForm {
         self.selected_type() == Some(AccountType::Cash)
     }
 
-    fn select_mut(&mut self, field: AddAccountField) -> Option<&mut SelectState> {
+    fn select_mut(&mut self, field: AccountField) -> Option<&mut SelectState> {
         match field {
-            AddAccountField::Institution => Some(&mut self.institution),
-            AddAccountField::Type => Some(&mut self.account_type),
-            AddAccountField::Unit => Some(&mut self.unit),
+            AccountField::Institution => Some(&mut self.institution),
+            AccountField::Type => Some(&mut self.account_type),
+            AccountField::Unit => Some(&mut self.unit),
             _ => None,
         }
     }
@@ -268,8 +317,8 @@ impl AddAccountForm {
 
     /// Moves focus to `field`, closing any list open on another field. Focusing the read-only
     /// Cash Institution is refused.
-    pub fn focus(&mut self, field: AddAccountField) {
-        if field == AddAccountField::Institution && self.is_cash() {
+    pub fn focus(&mut self, field: AccountField) {
+        if (field == AccountField::Institution && self.is_cash()) || self.is_fixed(field) {
             return;
         }
         if field != self.focused {
@@ -280,13 +329,13 @@ impl AddAccountForm {
 
     /// `Tab` / `Shift-Tab`: commits an open list's highlight, then moves to the next field,
     /// wrapping and skipping the read-only Cash Institution.
-    pub fn cycle_focus(&mut self, backward: bool, options: &AddAccountOptions) {
+    pub fn cycle_focus(&mut self, backward: bool, options: &AccountOptions) {
         let focused = self.focused;
         if let Some(state) = self.select_mut(focused) {
             state.commit(options.for_field(focused));
         }
-        let count = AddAccountField::ORDER.len();
-        let mut index = AddAccountField::ORDER
+        let count = AccountField::ORDER.len();
+        let mut index = AccountField::ORDER
             .iter()
             .position(|field| *field == self.focused)
             .unwrap_or(0);
@@ -296,8 +345,10 @@ impl AddAccountForm {
             } else {
                 (index + 1) % count
             };
-            let candidate = AddAccountField::ORDER[index];
-            if candidate == AddAccountField::Institution && self.is_cash() {
+            let candidate = AccountField::ORDER[index];
+            if (candidate == AccountField::Institution && self.is_cash())
+                || self.is_fixed(candidate)
+            {
                 continue;
             }
             self.focused = candidate;
@@ -307,7 +358,7 @@ impl AddAccountForm {
 
     /// A key on the focused select. Returns whether the focused field is a select (and so took
     /// the key).
-    pub fn handle_select_key(&mut self, key: SelectKey, options: &AddAccountOptions) -> bool {
+    pub fn handle_select_key(&mut self, key: SelectKey, options: &AccountOptions) -> bool {
         let focused = self.focused;
         let list = options.for_field(focused);
         let Some(state) = self.select_mut(focused) else {
@@ -325,8 +376,11 @@ impl AddAccountForm {
     }
 
     /// A click on a select's closed field: focuses it and toggles its list.
-    pub fn click_select(&mut self, field: AddAccountField, options: &AddAccountOptions) {
-        if !field.is_select() || (field == AddAccountField::Institution && self.is_cash()) {
+    pub fn click_select(&mut self, field: AccountField, options: &AccountOptions) {
+        if !field.is_select()
+            || (field == AccountField::Institution && self.is_cash())
+            || self.is_fixed(field)
+        {
             return;
         }
         self.focus(field);
@@ -341,12 +395,7 @@ impl AddAccountForm {
     }
 
     /// A click on row `index` of an open list.
-    pub fn choose_option(
-        &mut self,
-        field: AddAccountField,
-        index: usize,
-        options: &AddAccountOptions,
-    ) {
+    pub fn choose_option(&mut self, field: AccountField, index: usize, options: &AccountOptions) {
         let list = options.for_field(field);
         if let Some(state) = self.select_mut(field) {
             state.choose(list, index);
@@ -360,9 +409,9 @@ impl AddAccountForm {
             return;
         }
         match self.focused {
-            AddAccountField::Name => self.name.push(ch),
-            AddAccountField::AccountNumber => self.account_number.push(ch),
-            AddAccountField::OpeningBalance => {
+            AccountField::Name => self.name.push(ch),
+            AccountField::AccountNumber => self.account_number.push(ch),
+            AccountField::OpeningBalance => {
                 let allowed = ch.is_ascii_digit()
                     || (ch == '.' && !self.opening_balance.contains('.'))
                     || (ch == '-' && self.opening_balance.is_empty());
@@ -376,13 +425,13 @@ impl AddAccountForm {
 
     pub fn backspace(&mut self) {
         match self.focused {
-            AddAccountField::Name => {
+            AccountField::Name => {
                 self.name.pop();
             }
-            AddAccountField::AccountNumber => {
+            AccountField::AccountNumber => {
                 self.account_number.pop();
             }
-            AddAccountField::OpeningBalance => {
+            AccountField::OpeningBalance => {
                 self.opening_balance.pop();
             }
             _ => {}
@@ -409,6 +458,33 @@ impl AddAccountForm {
             && self.opening_balance_money().is_some()
     }
 
+    /// The Institution the account links to: the placeholder for Cash, else the picked one.
+    fn resolved_institution(&self, account_type: &AccountType) -> Option<String> {
+        if *account_type == AccountType::Cash {
+            Some(NO_INSTITUTION.to_string())
+        } else {
+            self.institution.value().map(str::to_string)
+        }
+    }
+
+    /// The Edit dialog's Save: writes Name, Institution, Type and Account number onto `account`,
+    /// leaving Unit, balance, opened date and the stub counts untouched. `false` (and no change)
+    /// while the form is invalid.
+    pub fn apply_to(&self, account: &mut Account) -> bool {
+        let Some(account_type) = self.selected_type().filter(|_| self.is_valid()) else {
+            return false;
+        };
+        let Some(institution) = self.resolved_institution(&account_type) else {
+            return false;
+        };
+        let account_number = self.account_number.trim();
+        account.name = self.name.trim().to_string();
+        account.institution = institution;
+        account.account_type = account_type;
+        account.account_number = (!account_number.is_empty()).then(|| account_number.to_string());
+        true
+    }
+
     /// Builds the account this form describes. `is_currency` pads a currency amount to two
     /// places (`1000` becomes `1000.00`); other Units keep what was typed. `None` while invalid.
     pub fn into_account(self, id: u32, opened_at: NaiveDate, is_currency: bool) -> Option<Account> {
@@ -416,11 +492,7 @@ impl AddAccountForm {
             return None;
         }
         let account_type = self.selected_type()?;
-        let institution = if account_type == AccountType::Cash {
-            NO_INSTITUTION.to_string()
-        } else {
-            self.institution.value()?.to_string()
-        };
+        let institution = self.resolved_institution(&account_type)?;
         let mut balance = self.opening_balance_money()?;
         if is_currency && balance.0.fractional_digit_count() < 2 {
             balance = Money(balance.0.with_scale(2));
@@ -905,8 +977,8 @@ mod tests {
         assert_eq!(group_position(&accounts, 99), None);
     }
 
-    fn add_options() -> AddAccountOptions {
-        AddAccountOptions::new(
+    fn add_options() -> AccountOptions {
+        AccountOptions::new(
             settings::default_institutions()
                 .into_iter()
                 .map(|institution| institution.name)
@@ -918,8 +990,8 @@ mod tests {
         )
     }
 
-    fn valid_form(options: &AddAccountOptions) -> AddAccountForm {
-        let mut form = AddAccountForm::new(options, Some("aud"));
+    fn valid_form(options: &AccountOptions) -> AccountForm {
+        let mut form = AccountForm::new(options, Some("aud"));
         form.name = "Savings Maximiser".to_string();
         form
     }
@@ -927,8 +999,8 @@ mod tests {
     #[test]
     fn a_fresh_form_starts_on_bank_with_the_first_institution_and_default_unit() {
         let options = add_options();
-        let form = AddAccountForm::new(&options, Some("btc"));
-        assert_eq!(form.focused, AddAccountField::Name);
+        let form = AccountForm::new(&options, Some("btc"));
+        assert_eq!(form.focused, AccountField::Name);
         assert_eq!(form.selected_type(), Some(AccountType::Bank));
         assert_eq!(form.institution.value(), Some("ANZ Banking Group"));
         assert_eq!(form.unit.value(), Some("btc"));
@@ -939,13 +1011,10 @@ mod tests {
     fn an_unknown_default_unit_falls_back_to_the_first_option() {
         let options = add_options();
         assert_eq!(
-            AddAccountForm::new(&options, Some("zzz")).unit.value(),
+            AccountForm::new(&options, Some("zzz")).unit.value(),
             Some("aud")
         );
-        assert_eq!(
-            AddAccountForm::new(&options, None).unit.value(),
-            Some("aud")
-        );
+        assert_eq!(AccountForm::new(&options, None).unit.value(), Some("aud"));
     }
 
     #[test]
@@ -968,47 +1037,47 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                AddAccountField::Name,
-                AddAccountField::Institution,
-                AddAccountField::Type,
-                AddAccountField::Unit,
-                AddAccountField::OpeningBalance,
-                AddAccountField::AccountNumber,
-                AddAccountField::Name,
+                AccountField::Name,
+                AccountField::Institution,
+                AccountField::Type,
+                AccountField::Unit,
+                AccountField::OpeningBalance,
+                AccountField::AccountNumber,
+                AccountField::Name,
             ]
         );
         form.cycle_focus(true, &options);
-        assert_eq!(form.focused, AddAccountField::AccountNumber);
+        assert_eq!(form.focused, AccountField::AccountNumber);
     }
 
     #[test]
     fn tab_commits_an_open_lists_highlight_before_moving_on() {
         let options = add_options();
         let mut form = valid_form(&options);
-        form.focus(AddAccountField::Type);
+        form.focus(AccountField::Type);
         form.handle_select_key(SelectKey::Activate, &options);
         form.handle_select_key(SelectKey::Down, &options);
         assert!(form.account_type.is_open());
         form.cycle_focus(false, &options);
         assert!(!form.account_type.is_open());
         assert_eq!(form.selected_type(), Some(AccountType::CreditCard));
-        assert_eq!(form.focused, AddAccountField::Unit);
+        assert_eq!(form.focused, AccountField::Unit);
     }
 
     #[test]
     fn cash_makes_institution_read_only_and_tab_skips_it() {
         let options = add_options();
         let mut form = valid_form(&options);
-        form.focus(AddAccountField::Type);
+        form.focus(AccountField::Type);
         form.handle_select_key(SelectKey::Up, &options);
         assert!(form.is_cash());
 
-        form.focus(AddAccountField::Institution);
-        assert_eq!(form.focused, AddAccountField::Type, "focus is refused");
-        form.focus(AddAccountField::Name);
+        form.focus(AccountField::Institution);
+        assert_eq!(form.focused, AccountField::Type, "focus is refused");
+        form.focus(AccountField::Name);
         form.cycle_focus(false, &options);
-        assert_eq!(form.focused, AddAccountField::Type, "tab skips Institution");
-        form.click_select(AddAccountField::Institution, &options);
+        assert_eq!(form.focused, AccountField::Type, "tab skips Institution");
+        form.click_select(AccountField::Institution, &options);
         assert!(!form.institution.is_open());
     }
 
@@ -1016,7 +1085,7 @@ mod tests {
     fn a_cash_account_links_to_the_placeholder_institution() {
         let options = add_options();
         let mut form = valid_form(&options);
-        form.focus(AddAccountField::Type);
+        form.focus(AccountField::Type);
         form.handle_select_key(SelectKey::Up, &options);
         let account = form.into_account(9, date(2026, 9), true).expect("valid");
         assert_eq!(account.account_type, AccountType::Cash);
@@ -1027,10 +1096,10 @@ mod tests {
     fn leaving_cash_brings_the_earlier_institution_pick_back() {
         let options = add_options();
         let mut form = valid_form(&options);
-        form.focus(AddAccountField::Institution);
+        form.focus(AccountField::Institution);
         form.handle_select_key(SelectKey::Down, &options);
         assert_eq!(form.institution.value(), Some("American Express"));
-        form.focus(AddAccountField::Type);
+        form.focus(AccountField::Type);
         form.handle_select_key(SelectKey::Up, &options);
         form.handle_select_key(SelectKey::Down, &options);
         assert!(!form.is_cash());
@@ -1041,7 +1110,7 @@ mod tests {
     fn a_focused_select_steps_opens_navigates_and_commits() {
         let options = add_options();
         let mut form = valid_form(&options);
-        form.focus(AddAccountField::Unit);
+        form.focus(AccountField::Unit);
         assert!(form.handle_select_key(SelectKey::Down, &options));
         assert_eq!(form.unit.value(), Some("btc"));
         form.handle_select_key(SelectKey::Activate, &options);
@@ -1064,7 +1133,7 @@ mod tests {
         let options = add_options();
         let mut form = valid_form(&options);
         assert!(!form.close_open_select());
-        form.focus(AddAccountField::Type);
+        form.focus(AccountField::Type);
         form.handle_select_key(SelectKey::Activate, &options);
         assert!(form.close_open_select());
         assert!(!form.any_select_open());
@@ -1075,9 +1144,9 @@ mod tests {
     fn moving_focus_closes_a_list_open_on_another_field() {
         let options = add_options();
         let mut form = valid_form(&options);
-        form.click_select(AddAccountField::Unit, &options);
+        form.click_select(AccountField::Unit, &options);
         assert!(form.unit.is_open());
-        form.focus(AddAccountField::Name);
+        form.focus(AccountField::Name);
         assert!(!form.unit.is_open());
     }
 
@@ -1085,14 +1154,14 @@ mod tests {
     fn clicking_a_select_toggles_it_and_a_row_click_chooses() {
         let options = add_options();
         let mut form = valid_form(&options);
-        form.click_select(AddAccountField::Type, &options);
+        form.click_select(AccountField::Type, &options);
         assert!(form.account_type.is_open());
-        assert_eq!(form.focused, AddAccountField::Type);
-        form.choose_option(AddAccountField::Type, 3, &options);
+        assert_eq!(form.focused, AccountField::Type);
+        form.choose_option(AccountField::Type, 3, &options);
         assert!(!form.account_type.is_open());
         assert_eq!(form.selected_type(), Some(AccountType::Loan));
-        form.click_select(AddAccountField::Type, &options);
-        form.click_select(AddAccountField::Type, &options);
+        form.click_select(AccountField::Type, &options);
+        form.click_select(AccountField::Type, &options);
         assert!(!form.account_type.is_open());
     }
 
@@ -1100,7 +1169,7 @@ mod tests {
     fn opening_balance_only_takes_a_decimal_amount() {
         let options = add_options();
         let mut form = valid_form(&options);
-        form.focus(AddAccountField::OpeningBalance);
+        form.focus(AccountField::OpeningBalance);
         for ch in "-12a3.4.5e-".chars() {
             form.push_char(ch);
         }
@@ -1112,11 +1181,11 @@ mod tests {
     #[test]
     fn typing_goes_to_the_focused_text_field_only() {
         let options = add_options();
-        let mut form = AddAccountForm::new(&options, None);
+        let mut form = AccountForm::new(&options, None);
         form.push_char('A');
-        form.focus(AddAccountField::AccountNumber);
+        form.focus(AccountField::AccountNumber);
         form.push_char('1');
-        form.focus(AddAccountField::Unit);
+        form.focus(AccountField::Unit);
         form.push_char('x');
         assert_eq!(form.name, "A");
         assert_eq!(form.account_number, "1");
@@ -1180,7 +1249,149 @@ mod tests {
     #[test]
     fn an_invalid_form_builds_nothing() {
         let options = add_options();
-        let form = AddAccountForm::new(&options, None);
+        let form = AccountForm::new(&options, None);
         assert_eq!(form.into_account(9, date(2026, 9), true), None);
+    }
+
+    fn seeded(name: &str) -> Account {
+        default_accounts()
+            .into_iter()
+            .find(|account| account.name == name)
+            .expect("seeded")
+    }
+
+    #[test]
+    fn from_account_prefills_every_field_and_marks_unit_and_balance_fixed() {
+        let options = add_options();
+        let form = AccountForm::from_account(&seeded("ANZ Everyday"), &options);
+        assert_eq!(form.name, "ANZ Everyday");
+        assert_eq!(form.institution.value(), Some("ANZ Banking Group"));
+        assert_eq!(form.selected_type(), Some(AccountType::Bank));
+        assert_eq!(form.unit.value(), Some("aud"));
+        assert_eq!(form.account_number, "1234 5678");
+        assert!(form.fixed_unit_and_balance);
+        assert_eq!(form.focused, AccountField::Name);
+        assert!(form.is_valid());
+    }
+
+    #[test]
+    fn a_cash_account_edits_with_the_placeholder_and_a_real_institution_ready() {
+        let options = add_options();
+        let form = AccountForm::from_account(&seeded("Wallet"), &options);
+        assert!(form.is_cash());
+        assert_eq!(form.institution.value(), Some("ANZ Banking Group"));
+        assert_eq!(form.account_number, "");
+    }
+
+    #[test]
+    fn tab_in_edit_mode_skips_the_fixed_unit_and_opening_balance() {
+        let options = add_options();
+        let mut form = AccountForm::from_account(&seeded("ANZ Everyday"), &options);
+        let mut seen = vec![form.focused];
+        for _ in 0..4 {
+            form.cycle_focus(false, &options);
+            seen.push(form.focused);
+        }
+        assert_eq!(
+            seen,
+            vec![
+                AccountField::Name,
+                AccountField::Institution,
+                AccountField::Type,
+                AccountField::AccountNumber,
+                AccountField::Name,
+            ]
+        );
+    }
+
+    #[test]
+    fn edit_mode_refuses_focus_and_clicks_on_the_fixed_fields() {
+        let options = add_options();
+        let mut form = AccountForm::from_account(&seeded("ANZ Everyday"), &options);
+        form.focus(AccountField::Unit);
+        assert_eq!(form.focused, AccountField::Name);
+        form.focus(AccountField::OpeningBalance);
+        assert_eq!(form.focused, AccountField::Name);
+        form.click_select(AccountField::Unit, &options);
+        assert!(!form.unit.is_open());
+        assert_eq!(form.unit.value(), Some("aud"));
+    }
+
+    #[test]
+    fn apply_to_changes_name_institution_type_and_number_only() {
+        let options = add_options();
+        let mut account = seeded("ANZ Everyday");
+        let before = account.clone();
+        let mut form = AccountForm::from_account(&account, &options);
+        form.name = "  Daily  ".to_string();
+        form.institution = SelectState::new(Some("Westpac Banking".to_string()));
+        form.account_type = SelectState::new(Some("Credit card".to_string()));
+        form.account_number = "  ".to_string();
+
+        assert!(form.apply_to(&mut account));
+        assert_eq!(account.name, "Daily");
+        assert_eq!(account.institution, "Westpac Banking");
+        assert_eq!(account.account_type, AccountType::CreditCard);
+        assert_eq!(account.account_number, None);
+        assert_eq!(account.id, before.id);
+        assert_eq!(account.unit, before.unit);
+        assert_eq!(account.balance, before.balance);
+        assert_eq!(account.opened_at, before.opened_at);
+        assert_eq!(account.transaction_count, before.transaction_count);
+        assert_eq!(account.budget_count, before.budget_count);
+    }
+
+    #[test]
+    fn changing_type_regroups_the_account() {
+        let options = add_options();
+        let mut accounts = default_accounts();
+        let index = accounts
+            .iter()
+            .position(|account| account.name == "ANZ Everyday")
+            .expect("seeded");
+        let mut form = AccountForm::from_account(&accounts[index], &options);
+        form.account_type = SelectState::new(Some("Loan".to_string()));
+        assert!(form.apply_to(&mut accounts[index]));
+
+        let loans = group_accounts(&accounts)
+            .into_iter()
+            .find(|group| group.account_type == AccountType::Loan)
+            .expect("loan group");
+        assert!(loans.indices.contains(&index));
+    }
+
+    #[test]
+    fn editing_to_cash_links_the_placeholder_and_back_restores_a_real_institution() {
+        let options = add_options();
+        let mut account = seeded("ANZ Everyday");
+        let mut form = AccountForm::from_account(&account, &options);
+        form.account_type = SelectState::new(Some("Cash".to_string()));
+        assert!(form.apply_to(&mut account));
+        assert_eq!(account.institution, NO_INSTITUTION);
+
+        let mut form = AccountForm::from_account(&account, &options);
+        form.account_type = SelectState::new(Some("Bank".to_string()));
+        assert!(form.apply_to(&mut account));
+        assert_eq!(account.institution, "ANZ Banking Group");
+    }
+
+    #[test]
+    fn apply_to_leaves_the_account_alone_while_invalid() {
+        let options = add_options();
+        let mut account = seeded("ANZ Everyday");
+        let before = account.clone();
+        let mut form = AccountForm::from_account(&account, &options);
+        form.name = "   ".to_string();
+        assert!(!form.apply_to(&mut account));
+        assert_eq!(account, before);
+    }
+
+    #[test]
+    fn the_dialog_exposes_its_form_for_add_and_edit_but_not_delete() {
+        let options = add_options();
+        let form = AccountForm::new(&options, None);
+        assert!(AccountsDialog::Add(form.clone()).form().is_some());
+        assert!(AccountsDialog::Edit(1, form).form().is_some());
+        assert!(AccountsDialog::Delete(1).form().is_none());
     }
 }

@@ -1,5 +1,5 @@
 //! Renders the **Add account** dialog (`docs/ux/desktop/Accounts/README.md`'s 3b) on the shared
-//! `crate::dialog` chrome. `Shell` owns the live form (`accounts::AddAccountForm`) and every
+//! `crate::dialog` chrome. `Shell` owns the live form (`accounts::AccountForm`) and every
 //! keystroke while it is open (`InputMode::Dialog`); this module only draws it.
 //!
 //! Width is 440px rather than `dialog::WIDTH`'s 420px, the README's own note: only because the
@@ -13,7 +13,7 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use super::select_field::{self, SelectFieldProps};
 use crate::{
-    accounts::{AddAccountField, AddAccountForm, AddAccountOptions, NO_INSTITUTION},
+    accounts::{AccountField, AccountForm, AccountOptions, NO_INSTITUTION},
     dialog,
     theme::color,
 };
@@ -21,25 +21,25 @@ use crate::{
 /// The dialog's width: `docs/ux/desktop/Accounts/README.md`'s "Dialog" row.
 pub const WIDTH: gpui::Pixels = px(440.0);
 
-pub type OnFieldClick = Rc<dyn Fn(AddAccountField, &mut Window, &mut App)>;
-pub type OnOptionClick = Rc<dyn Fn(AddAccountField, usize, &mut Window, &mut App)>;
+pub type OnFieldClick = Rc<dyn Fn(AccountField, &mut Window, &mut App)>;
+pub type OnOptionClick = Rc<dyn Fn(AccountField, usize, &mut Window, &mut App)>;
 pub type OnCancel = dialog::OnClick;
 pub type OnConfirm = dialog::OnClick;
 
 pub fn render(
-    form: &AddAccountForm,
-    options: &AddAccountOptions,
+    form: &AccountForm,
+    options: &AccountOptions,
     on_field_click: OnFieldClick,
     on_option_click: OnOptionClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
 ) -> AnyElement {
-    let focused = |field: AddAccountField| form.focused == field;
-    let click = |field: AddAccountField| -> dialog::OnClick {
+    let focused = |field: AccountField| form.focused == field;
+    let click = |field: AccountField| -> dialog::OnClick {
         let on_field_click = on_field_click.clone();
         Rc::new(move |window: &mut Window, cx: &mut App| on_field_click(field, window, cx))
     };
-    let option_click = |field: AddAccountField| -> select_field::OnOptionClick {
+    let option_click = |field: AccountField| -> select_field::OnOptionClick {
         let on_option_click = on_option_click.clone();
         Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
             on_option_click(field, index, window, cx)
@@ -56,8 +56,8 @@ pub fn render(
                 label("Name"),
                 &form.name,
                 "e.g. Everyday Account",
-                focused(AddAccountField::Name),
-                click(AddAccountField::Name),
+                focused(AccountField::Name),
+                click(AccountField::Name),
             ),
             two_up([
                 select_field::render(SelectFieldProps {
@@ -65,20 +65,20 @@ pub fn render(
                     label: "Institution".into(),
                     options: &options.institutions,
                     state: &form.institution,
-                    focused: focused(AddAccountField::Institution),
+                    focused: focused(AccountField::Institution),
                     read_only: form.is_cash().then_some(NO_INSTITUTION),
-                    on_field_click: click(AddAccountField::Institution),
-                    on_option_click: option_click(AddAccountField::Institution),
+                    on_field_click: click(AccountField::Institution),
+                    on_option_click: option_click(AccountField::Institution),
                 }),
                 select_field::render(SelectFieldProps {
                     id: "add-account-type",
                     label: "Type".into(),
                     options: &options.types,
                     state: &form.account_type,
-                    focused: focused(AddAccountField::Type),
+                    focused: focused(AccountField::Type),
                     read_only: None,
-                    on_field_click: click(AddAccountField::Type),
-                    on_option_click: option_click(AddAccountField::Type),
+                    on_field_click: click(AccountField::Type),
+                    on_option_click: option_click(AccountField::Type),
                 }),
             ]),
             two_up([
@@ -87,10 +87,10 @@ pub fn render(
                     label: "Unit".into(),
                     options: &options.units,
                     state: &form.unit,
-                    focused: focused(AddAccountField::Unit),
+                    focused: focused(AccountField::Unit),
                     read_only: None,
-                    on_field_click: click(AddAccountField::Unit),
-                    on_option_click: option_click(AddAccountField::Unit),
+                    on_field_click: click(AccountField::Unit),
+                    on_option_click: option_click(AccountField::Unit),
                 }),
                 div()
                     .flex_1()
@@ -100,8 +100,8 @@ pub fn render(
                         label("Opening balance"),
                         &form.opening_balance,
                         "0.00",
-                        focused(AddAccountField::OpeningBalance),
-                        click(AddAccountField::OpeningBalance),
+                        focused(AccountField::OpeningBalance),
+                        click(AccountField::OpeningBalance),
                     ))
                     .into_any_element(),
             ]),
@@ -110,8 +110,8 @@ pub fn render(
                 optional_label("Account number"),
                 &form.account_number,
                 "\u{2022}\u{2022}\u{2022}\u{2022} \u{2022}\u{2022}\u{2022}\u{2022} 1234",
-                focused(AddAccountField::AccountNumber),
-                click(AddAccountField::AccountNumber),
+                focused(AccountField::AccountNumber),
+                click(AccountField::AccountNumber),
             ),
         ]))
         .child(dialog::action_row([
@@ -130,7 +130,7 @@ pub fn render(
 }
 
 /// Two fields side by side: `gap:16px`, each `flex:1`.
-fn two_up(fields: [AnyElement; 2]) -> AnyElement {
+pub(super) fn two_up(fields: [AnyElement; 2]) -> AnyElement {
     div()
         .flex()
         .items_start()
@@ -140,7 +140,7 @@ fn two_up(fields: [AnyElement; 2]) -> AnyElement {
 }
 
 /// A field label: `font-weight:800; font-size:12px; margin-bottom:6px`.
-fn label(text: &'static str) -> AnyElement {
+pub(super) fn label(text: &'static str) -> AnyElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(12.0))
@@ -151,6 +151,11 @@ fn label(text: &'static str) -> AnyElement {
 
 /// A label suffixed `(optional)` in the tertiary ink.
 fn optional_label(text: &'static str) -> AnyElement {
+    suffixed_label(text, "(optional)")
+}
+
+/// A label followed by a `suffix` in the tertiary ink, at regular weight.
+pub(super) fn suffixed_label(text: &'static str, suffix: &'static str) -> AnyElement {
     div()
         .flex()
         .gap(px(4.0))
@@ -162,14 +167,14 @@ fn optional_label(text: &'static str) -> AnyElement {
             div()
                 .font_weight(gpui::FontWeight::NORMAL)
                 .text_color(color::INK_TERTIARY)
-                .child("(optional)"),
+                .child(suffix),
         )
         .into_any_element()
 }
 
 /// A label above a clickable text box whose border turns `ACCENT` with a trailing caret while
 /// focused -- the same look as the Settings dialogs' text fields.
-fn text_field(
+pub(super) fn text_field(
     id: &'static str,
     label: AnyElement,
     value: &str,

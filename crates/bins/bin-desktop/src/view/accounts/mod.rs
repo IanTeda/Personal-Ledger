@@ -12,6 +12,7 @@
 //! (`n`/`e`/`d`/`enter`) and the mouse reach the same handlers.
 
 pub mod add_dialog;
+pub mod edit_dialog;
 mod select_field;
 
 use std::rc::Rc;
@@ -171,6 +172,9 @@ fn add_button(on_click: OnAddClick) -> impl IntoElement {
         .child("+ Add account")
 }
 
+/// The NAME column's floor: without one, the fixed columns beside it can squeeze it to nothing in
+/// a narrow window, and the other cells shrink (and truncate) instead.
+const NAME_MIN_WIDTH: gpui::Pixels = px(140.0);
 const INSTITUTION_WIDTH: gpui::Pixels = px(170.0);
 const UNIT_WIDTH: gpui::Pixels = px(70.0);
 const BALANCE_WIDTH: gpui::Pixels = px(150.0);
@@ -233,7 +237,7 @@ fn table_header() -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .text_color(color::INK_SECONDARY)
-        .child(div().flex_1().child("NAME"))
+        .child(div().flex_1().min_w(NAME_MIN_WIDTH).child("NAME"))
         .child(div().w(INSTITUTION_WIDTH).child("INSTITUTION"))
         .child(div().w(UNIT_WIDTH).child("UNIT"))
         .child(
@@ -299,7 +303,7 @@ fn row(
         .child(
             div()
                 .flex_1()
-                .min_w(px(0.0))
+                .min_w(NAME_MIN_WIDTH)
                 .pl(px(14.0))
                 .truncate()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
