@@ -329,7 +329,7 @@ fn domain_header(domain: &'static str) -> impl IntoElement {
         .child(domain.to_uppercase())
 }
 
-/// The "1d" spec's input row: leading `>`, the live query with a block caret, right-aligned
+/// The "1d" spec's input row: leading `:` (matching the key that opens it; the spec draws `>`), the live query with a block caret, right-aligned
 /// match count.
 fn input_row(input: &str, match_count: usize) -> impl IntoElement {
     div()
@@ -341,7 +341,7 @@ fn input_row(input: &str, match_count: usize) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(15.0))
         .text_color(color::INK)
-        .child(">")
+        .child(":")
         .child(div().flex_1().child(input.to_string()))
         .child(div().w(px(8.0)).h(px(17.0)).bg(color::ACCENT))
         .child(
