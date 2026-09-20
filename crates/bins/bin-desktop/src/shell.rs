@@ -607,6 +607,32 @@ impl Shell {
         self.nav.set_context(Some(next));
     }
 
+    /// `j`/`k`/`g g`/`G` on Settings step the index rail's highlight through the sections the
+    /// `/ filter` leaves visible and scroll the body to the new section, like an index click.
+    fn apply_settings_section_movement(&mut self, movement: Movement) {
+        let visible: Vec<SettingsSection> = SettingsSection::ALL
+            .into_iter()
+            .filter(|section| section.matches_filter(&self.settings_filter))
+            .collect();
+        let Some(last) = visible.len().checked_sub(1) else {
+            return;
+        };
+        let current = visible
+            .iter()
+            .position(|section| *section == self.settings_selected_section)
+            .unwrap_or(0);
+        let next = match movement {
+            Movement::Next => (current + 1).min(last),
+            Movement::Prev => current.saturating_sub(1),
+            Movement::First => 0,
+            _ => last,
+        };
+        let section = visible[next];
+        self.settings_selected_section = section;
+        self.view_scroll_handle
+            .scroll_to_top_of_item(section.body_child_index());
+    }
+
     fn apply_view_movement(&mut self, movement: Movement) {
         if self.nav.noun() == Noun::Accounts {
             self.apply_accounts_movement(movement);
@@ -614,6 +640,15 @@ impl Shell {
         }
         if self.nav.noun() == Noun::Transactions {
             self.apply_transactions_movement(movement);
+            return;
+        }
+        if self.nav.noun() == Noun::Settings
+            && matches!(
+                movement,
+                Movement::Next | Movement::Prev | Movement::First | Movement::Last
+            )
+        {
+            self.apply_settings_section_movement(movement);
             return;
         }
         let offset = self.view_scroll_handle.offset();
@@ -2040,6 +2075,13 @@ impl Shell {
         cx.notify();
     }
 
+    /// The same section's "Start Sidebar minimised" toggle -- takes effect at the next launch, so
+    /// the current rail state is left alone.
+    fn handle_start_sidebar_minimised_click(&mut self, cx: &mut Context<Self>) {
+        self.settings_start_sidebar_minimised = !self.settings_start_sidebar_minimised;
+        cx.notify();
+    }
+
     /// The same section's "Clear logs" button: unlike every other button this map has built,
     /// this one has a real effect -- the ticket's own body asks for the viewport's in-memory
     /// contents to actually empty, not a stubbed status-line message.
@@ -2075,13 +2117,6 @@ impl Shell {
     fn handle_explorer_breadcrumb_click(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if let Some(explorer) = self.file_explorer.as_mut() {
             explorer.navigate_to(path);
-    /// The same section's "Start Sidebar minimised" toggle -- takes effect at the next launch, so
-    /// the current rail state is left alone.
-    fn handle_start_sidebar_minimised_click(&mut self, cx: &mut Context<Self>) {
-        self.settings_start_sidebar_minimised = !self.settings_start_sidebar_minimised;
-        cx.notify();
-    }
-
             cx.notify();
         }
     }
@@ -2427,6 +2462,15 @@ impl Render for Shell {
             })
         };
 
+        let on_start_sidebar_minimised_click: settings_view::display::OnPlainClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_start_sidebar_minimised_click(cx)
+                });
+            })
+        };
+
         let on_accounts_add_click: accounts_view::OnAddClick = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -2462,15 +2506,6 @@ impl Render for Shell {
         let on_accounts_dialog_option_click: accounts_view::add_dialog::OnOptionClick = {
             let entity = entity.clone();
             Rc::new(move |field, index, _window, cx| {
-        let on_start_sidebar_minimised_click: settings_view::display::OnPlainClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_start_sidebar_minimised_click(cx)
-                });
-            })
-        };
-
                 entity.update(cx, |shell, cx| {
                     shell.handle_accounts_dialog_option_click(field, index, cx)
                 });
@@ -2743,6 +2778,8 @@ impl Render for Shell {
                                     decimal_separator: self.settings_decimal_separator,
                                     row_density: self.settings_row_density,
                                     status_glyphs: self.settings_status_glyphs,
+                                    start_sidebar_minimised: self.settings_start_sidebar_minimised,
+                                    on_start_sidebar_minimised_click,
                                     on_date_format_click,
                                     on_decimal_separator_click,
                                     on_row_density_click,
@@ -2778,8 +2815,6 @@ impl Render for Shell {
                     self.command_echo(),
                 )
                 .page(page_status)
-                                    start_sidebar_minimised: self.settings_start_sidebar_minimised,
-                                    on_start_sidebar_minimised_click,
                 .on_hint(on_hint),
             )
             .children(self.palette.as_ref().map(Palette::render))
@@ -2895,6 +2930,8 @@ struct SettingsPanelProps<'a> {
     decimal_separator: DecimalSeparator,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
+    start_sidebar_minimised: bool,
+    on_start_sidebar_minimised_click: settings_view::display::OnPlainClick,
     on_date_format_click: settings_view::display::OnDateFormatClick,
     on_decimal_separator_click: settings_view::display::OnDecimalSeparatorClick,
     on_row_density_click: settings_view::display::OnRowDensityClick,
@@ -2930,8 +2967,6 @@ struct SettingsPanelProps<'a> {
 /// `Settings` (issue #173) is handled separately, before the generic match below: it renders
 /// its own two-column [index rail][scrollable body] layout filling the whole slot, rather than
 /// the single scrollable `#view` div every other noun gets -- the settings body owns
-    start_sidebar_minimised: bool,
-    on_start_sidebar_minimised_click: settings_view::display::OnPlainClick,
 /// `scroll_handle` directly (see `view::settings::render`), so wrapping the whole thing in a
 /// second scrollable container here would fight it for the same scroll state. Every other noun
 /// is scrollable and focus-bordered regardless of which is active, since both are properties of
@@ -2974,6 +3009,8 @@ fn render_view(
                     decimal_separator: settings.decimal_separator,
                     row_density: settings.row_density,
                     status_glyphs: settings.status_glyphs,
+                    start_sidebar_minimised: settings.start_sidebar_minimised,
+                    on_start_sidebar_minimised_click: settings.on_start_sidebar_minimised_click,
                     on_date_format_click: settings.on_date_format_click,
                     on_decimal_separator_click: settings.on_decimal_separator_click,
                     on_row_density_click: settings.on_row_density_click,
@@ -3009,8 +3046,6 @@ fn render_view(
         Noun::Settings | Noun::Accounts => unreachable!("handled above"),
         other => div()
             .p(px(24.0))
-                    start_sidebar_minimised: settings.start_sidebar_minimised,
-                    on_start_sidebar_minimised_click: settings.on_start_sidebar_minimised_click,
             .text_color(color::INK_TERTIARY)
             .child(format!("{other:?} -- not yet built (see issue #153)"))
             .into_any_element(),
