@@ -98,3 +98,34 @@ fn init_then_accessor() {
     assert_eq!(msg::nav_settings(), "Settings");
     assert_eq!(lib_locale::init("fr-FR"), Locale::EnUs);
 }
+
+#[test]
+fn generated_rich_accessor_returns_segments_with_tokens() {
+    let segments = with_locale(Locale::EnUs, || msg::hint_press_key("Enter", "save"));
+    let shown: Vec<(&str, Option<usize>)> = segments
+        .iter()
+        .map(|s| (s.text.as_str(), s.token))
+        .collect();
+    // Parameters follow the text's order (`key`, `action`), and so do the token indices.
+    assert_eq!(
+        shown,
+        vec![
+            ("Press ", None),
+            ("Enter", Some(0)),
+            (" to ", None),
+            ("save", Some(1))
+        ]
+    );
+}
+
+#[test]
+fn generated_rich_accessor_survives_en_xa() {
+    let segments = with_locale(Locale::EnXa, || msg::hint_press_key("Enter", "save"));
+    assert!(
+        segments
+            .iter()
+            .any(|s| s.token == Some(0) && s.text == "Enter")
+    );
+    assert!(segments.first().is_some_and(|s| s.text.starts_with('[')));
+    assert!(segments.last().is_some_and(|s| s.text.ends_with(']')));
+}

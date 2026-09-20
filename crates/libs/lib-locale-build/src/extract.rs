@@ -1,6 +1,6 @@
 //! Reads the variables a Fluent pattern uses, so accessors can be typed.
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use fluent_syntax::ast::{
     CallArguments, Expression, InlineExpression, Pattern, PatternElement, VariantKey,
@@ -16,8 +16,47 @@ pub(crate) enum Kind {
     Text,
 }
 
-/// Variable name (as written in the Catalogue) to its [`Kind`].
-pub(crate) type Params = BTreeMap<String, Kind>;
+/// Variables in order of first appearance in the text (so an accessor's parameters read in the
+/// same order as the Message), each with its [`Kind`].
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Params(Vec<(String, Kind)>);
+
+impl Params {
+    pub(crate) fn new() -> Self {
+        Params::default()
+    }
+
+    /// A count wins over text if the variable is used both ways; the first position is kept.
+    fn insert(&mut self, name: &str, kind: Kind) {
+        match self.0.iter_mut().find(|(existing, _)| existing == name) {
+            Some((_, existing)) => {
+                if kind == Kind::Number {
+                    *existing = Kind::Number;
+                }
+            }
+            None => self.0.push((name.to_string(), kind)),
+        }
+    }
+
+    pub(crate) fn get(&self, name: &str) -> Option<Kind> {
+        self.0
+            .iter()
+            .find(|(existing, _)| existing == name)
+            .map(|(_, kind)| *kind)
+    }
+
+    pub(crate) fn contains_key(&self, name: &str) -> bool {
+        self.get(name).is_some()
+    }
+
+    pub(crate) fn keys(&self) -> impl Iterator<Item = &String> {
+        self.0.iter().map(|(name, _)| name)
+    }
+
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&String, &Kind)> {
+        self.0.iter().map(|(name, kind)| (name, kind))
+    }
+}
 
 const PLURAL_CATEGORIES: [&str; 6] = ["zero", "one", "two", "few", "many", "other"];
 
@@ -40,7 +79,7 @@ fn expression_params(source: &Expression<&str>, out: &mut Params) {
             });
             match selector {
                 InlineExpression::VariableReference { id } if numeric => {
-                    out.insert(id.name.to_string(), Kind::Number);
+                    out.insert(id.name, Kind::Number);
                 }
                 other => inline_params(other, out),
             }
@@ -54,7 +93,7 @@ fn expression_params(source: &Expression<&str>, out: &mut Params) {
 fn inline_params(source: &InlineExpression<&str>, out: &mut Params) {
     match source {
         InlineExpression::VariableReference { id } => {
-            out.entry(id.name.to_string()).or_insert(Kind::Text);
+            out.insert(id.name, Kind::Text);
         }
         InlineExpression::FunctionReference { arguments, .. } => call_arguments(arguments, out),
         InlineExpression::TermReference {
@@ -73,4 +112,73 @@ fn call_arguments(source: &CallArguments<&str>, out: &mut Params) {
     for named in &source.named {
         inline_params(&named.value, out);
     }
+}
+
+/// Flattens a pattern (and each select variant, separately) to text, with a placeholder where a
+/// placeable sits, so tags can be balanced across placeables (`<b>{ $x }</b>`).
+fn flatten(source: &Pattern<&str>, out: &mut Vec<String>) {
+    let mut current = String::new();
+    for element in &source.elements {
+        match element {
+            PatternElement::TextElement { value } => current.push_str(value),
+            PatternElement::Placeable { expression } => {
+                current.push('\u{fffc}');
+                flatten_expression(expression, out);
+            }
+        }
+    }
+    out.push(current);
+}
+
+fn flatten_expression(source: &Expression<&str>, out: &mut Vec<String>) {
+    match source {
+        Expression::Select { variants, .. } => {
+            for variant in variants {
+                flatten(&variant.value, out);
+            }
+        }
+        Expression::Inline(InlineExpression::Placeable { expression }) => {
+            flatten_expression(expression, out);
+        }
+        Expression::Inline(_) => {}
+    }
+}
+
+/// The `<tag>` names a pattern uses. A tag is `<name>` ... `</name>` with a lowercase name;
+/// any other `<` is literal text. Returns a description of the problem if tags are unbalanced.
+pub(crate) fn tags(source: &Pattern<&str>) -> Result<BTreeSet<String>, String> {
+    let mut texts = Vec::new();
+    flatten(source, &mut texts);
+
+    let mut found = BTreeSet::new();
+    for text in texts {
+        let mut stack: Vec<&str> = Vec::new();
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find('<') {
+            rest = &rest[at + 1..];
+            let closing = rest.starts_with('/');
+            let body = if closing { &rest[1..] } else { rest };
+            let name_len = body
+                .find(|ch: char| !(ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-'))
+                .unwrap_or(body.len());
+            let name = &body[..name_len];
+            let valid = name.starts_with(|ch: char| ch.is_ascii_lowercase())
+                && body[name_len..].starts_with('>');
+            if !valid {
+                continue;
+            }
+            if closing {
+                if stack.pop() != Some(name) {
+                    return Err(format!("`</{name}>` closes a tag that is not open"));
+                }
+            } else {
+                stack.push(name);
+                found.insert(name.to_string());
+            }
+        }
+        if let Some(open) = stack.last() {
+            return Err(format!("`<{open}>` is never closed"));
+        }
+    }
+    Ok(found)
 }

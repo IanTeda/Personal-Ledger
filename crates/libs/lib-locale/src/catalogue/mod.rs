@@ -9,7 +9,7 @@ mod bundle;
 mod loader;
 mod pseudo;
 
-pub use loader::{format, init, init_with_layers, locale, with_locale};
+pub use loader::{format, format_rich, init, init_with_layers, locale, with_locale};
 
 /// The embedded files of one crate's Catalogue: `(locale tag, [(file name, contents)])`.
 pub type Layer = &'static [(&'static str, &'static [(&'static str, &'static str)])];

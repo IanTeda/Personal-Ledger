@@ -1,6 +1,6 @@
 //! Loads and checks one layer of Catalogue files.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -24,6 +24,13 @@ pub(crate) struct Item {
     pub attribute: Option<String>,
 
     pub params: Params,
+
+    /// The `<tag>` names the text uses.
+    pub tags: BTreeSet<String>,
+
+    /// Whether the accessor returns segments (tags, or a `# @rich` comment on the Message)
+    /// rather than a plain `String`.
+    pub rich: bool,
 }
 
 impl Item {
@@ -138,6 +145,12 @@ impl Layer {
                     continue;
                 };
                 compare_params(locale, key, &source_item.params, &item.params, problems);
+                if source_item.tags != item.tags {
+                    problems.push(format!(
+                        "{locale}: `{key}` uses tags {:?} but {SOURCE_LOCALE} uses {:?}",
+                        item.tags, source_item.tags
+                    ));
+                }
             }
         }
 
@@ -184,15 +197,15 @@ fn compare_params(locale: &str, key: &str, source: &Params, other: &Params, out:
         ));
         return;
     }
-    for (name, kind) in source {
-        if other.get(name) != Some(kind) {
+    for (name, kind) in source.iter() {
+        if other.get(name) != Some(*kind) {
             let describe = |kind: &Kind| match kind {
                 Kind::Number => "a plural selector",
                 Kind::Text => "plain text",
             };
             out.push(format!(
                 "{locale}: `{key}` uses `${name}` as {} but {SOURCE_LOCALE} uses it as {}",
-                describe(&other[name]),
+                other.get(name).as_ref().map_or("nothing", describe),
                 describe(kind)
             ));
         }
@@ -231,11 +244,28 @@ fn load_locale(dir: &Path, problems: &mut Vec<String>) -> Result<LocaleFiles> {
                 continue;
             };
             let id = message.id.name.to_string();
-            let mut add = |attribute: Option<String>, params: Params| {
+            let marked_rich = message
+                .comment
+                .as_ref()
+                .is_some_and(|comment| comment.content.iter().any(|line| line.contains("@rich")));
+            let mut add = |attribute: Option<String>,
+                           pattern: &fluent_syntax::ast::Pattern<&str>| {
+                let mut params = Params::new();
+                extract::pattern(pattern, &mut params);
+                let tags = match extract::tags(pattern) {
+                    Ok(tags) => tags,
+                    Err(problem) => {
+                        problems.push(format!("{}: `{id}`: {problem}", path.display()));
+                        BTreeSet::new()
+                    }
+                };
+                let rich = marked_rich || !tags.is_empty();
                 let item = Item {
                     id: id.clone(),
                     attribute,
                     params,
+                    tags,
+                    rich,
                 };
                 let key = item.key();
                 if locale.items.insert(key.clone(), item).is_some() {
@@ -246,14 +276,10 @@ fn load_locale(dir: &Path, problems: &mut Vec<String>) -> Result<LocaleFiles> {
                 }
             };
             if let Some(value) = &message.value {
-                let mut params = Params::new();
-                extract::pattern(value, &mut params);
-                add(None, params);
+                add(None, value);
             }
             for attribute in &message.attributes {
-                let mut params = Params::new();
-                extract::pattern(&attribute.value, &mut params);
-                add(Some(attribute.id.name.to_string()), params);
+                add(Some(attribute.id.name.to_string()), &attribute.value);
             }
         }
 

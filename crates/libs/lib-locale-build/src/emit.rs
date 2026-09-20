@@ -135,8 +135,13 @@ fn accessor(item: &Item, runtime: &str) -> String {
         Some(attribute) => format!("Some({attribute:?})"),
         None => "None".to_string(),
     };
+    let (returns, call) = if item.rich {
+        (format!("Vec<{runtime}::Segment>"), "format_rich")
+    } else {
+        ("String".to_string(), "format")
+    };
     format!(
-        "\n/// The `{id}` Message{attr}.\npub fn {name}({params}) -> String {{\n    {runtime}::format({id:?}, {attribute}, &[{args}])\n}}\n",
+        "\n/// The `{id}` Message{attr}.\npub fn {name}({params}) -> {returns} {{\n    {runtime}::{call}({id:?}, {attribute}, &[{args}])\n}}\n",
         id = item.id,
         attr = item
             .attribute
@@ -329,5 +334,81 @@ mod tests {
             generate(&options).unwrap().unused,
             vec!["unused_one".to_string()]
         );
+    }
+
+    #[test]
+    fn messages_with_tags_or_the_rich_comment_return_segments() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "en-US",
+            "a.ftl",
+            "tui-open = Press <open>open</open> to see { $key }\n\
+             # @rich\n\
+             tui-key = Press { $key } to continue\n\
+             tui-plain = Nothing special\n",
+        );
+        let code = generate(&options(dir.path(), Some("tui-"))).unwrap().code;
+        assert!(code.contains("pub fn tui_open(key: &str) -> Vec<crate::runtime::Segment>"));
+        assert!(code.contains("crate::runtime::format_rich(\"tui-open\""));
+        assert!(code.contains("pub fn tui_key(key: &str) -> Vec<crate::runtime::Segment>"));
+        assert!(code.contains("pub fn tui_plain() -> String"));
+    }
+
+    #[test]
+    fn tags_must_match_the_source_locale() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "en-US",
+            "a.ftl",
+            "tui-open = Press <open>open</open>\n",
+        );
+        write(
+            dir.path(),
+            "en-GB",
+            "a.ftl",
+            "tui-open = Press <close>open</close>\n",
+        );
+        assert!(failure(&options(dir.path(), Some("tui-"))).contains("uses tags"));
+        write(dir.path(), "en-GB", "a.ftl", "tui-open = Press open\n");
+        assert!(failure(&options(dir.path(), Some("tui-"))).contains("uses tags"));
+        write(
+            dir.path(),
+            "en-GB",
+            "a.ftl",
+            "tui-open = Push <open>open</open>\n",
+        );
+        assert!(generate(&options(dir.path(), Some("tui-"))).is_ok());
+    }
+
+    #[test]
+    fn unbalanced_tags_fail_but_other_angle_brackets_are_literal() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "en-US", "a.ftl", "tui-a = Press <open>open\n");
+        assert!(failure(&options(dir.path(), Some("tui-"))).contains("never closed"));
+        write(dir.path(), "en-US", "a.ftl", "tui-a = Press open</open>\n");
+        assert!(failure(&options(dir.path(), Some("tui-"))).contains("not open"));
+        write(
+            dir.path(),
+            "en-US",
+            "a.ftl",
+            "tui-a = a < b and c > d, <3 and <Upper>\n",
+        );
+        let code = generate(&options(dir.path(), Some("tui-"))).unwrap().code;
+        assert!(code.contains("pub fn tui_a() -> String"));
+    }
+
+    #[test]
+    fn tags_balance_across_placeables() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "en-US",
+            "a.ftl",
+            "tui-a = Press <key>{ $key }</key> now\n",
+        );
+        let code = generate(&options(dir.path(), Some("tui-"))).unwrap().code;
+        assert!(code.contains("Vec<crate::runtime::Segment>"));
     }
 }

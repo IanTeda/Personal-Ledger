@@ -9,6 +9,7 @@ use fluent_bundle::FluentArgs;
 use super::bundle::{self, Bundle};
 use super::{Arg, Layer, pseudo};
 use crate::locale::Locale;
+use crate::rich::{self, Segment};
 
 static LOADER: OnceLock<Loader> = OnceLock::new();
 
@@ -92,6 +93,40 @@ impl Loader {
     }
 }
 
+impl Loader {
+    fn format_rich(
+        &self,
+        locale: Locale,
+        id: &str,
+        attribute: Option<&str>,
+        args: &[(&str, Arg)],
+    ) -> Vec<Segment> {
+        let tokens: Vec<&str> = args
+            .iter()
+            .filter_map(|(_, arg)| match arg {
+                Arg::Text(text) => Some(*text),
+                Arg::Int(_) => None,
+            })
+            .collect();
+        let sentinels: Vec<String> = (0..tokens.len()).map(rich::sentinel).collect();
+
+        let mut next = 0;
+        let swapped: Vec<(&str, Arg)> = args
+            .iter()
+            .map(|(name, arg)| match arg {
+                Arg::Int(_) => (*name, *arg),
+                Arg::Text(_) => {
+                    let sentinel = &sentinels[next];
+                    next += 1;
+                    (*name, Arg::Text(sentinel.as_str()))
+                }
+            })
+            .collect();
+
+        rich::split(&self.format(locale, id, attribute, &swapped), &tokens)
+    }
+}
+
 /// An id missing everywhere (possible only for a dynamic id): `⟦id⟧` in debug builds so it
 /// stands out, the plain id in release, with one warning.
 fn miss(id: &str, attribute: Option<&str>) -> String {
@@ -136,6 +171,14 @@ pub fn init_with_layers(tag: &str, layers: &[Layer]) -> Locale {
 pub fn format(id: &str, attribute: Option<&str>, args: &[(&str, Arg)]) -> String {
     let loader = LOADER.get_or_init(|| Loader::build(Locale::DEFAULT, &[]));
     loader.format(locale(), id, attribute, args)
+}
+
+/// As [`format`], for a rich Message: every text argument travels as a sentinel and the result
+/// is split into [`Segment`]s (see the `rich` module). Counts stay plain. The generated
+/// accessors for a Message with tags, or marked `# @rich`, call this.
+pub fn format_rich(id: &str, attribute: Option<&str>, args: &[(&str, Arg)]) -> Vec<Segment> {
+    let loader = LOADER.get_or_init(|| Loader::build(Locale::DEFAULT, &[]));
+    loader.format_rich(locale(), id, attribute, args)
 }
 
 /// The Locale in effect on this thread: the scoped override if any, else the process-wide one.
@@ -274,6 +317,105 @@ mod tests {
         assert_eq!(
             with_locale(Locale::EnUs, crate::msg::column_colour),
             "Color"
+        );
+    }
+
+    const RICH: Layer = &[(
+        "en-US",
+        &[(
+            "r.ftl",
+            "tui-open = Press <open>open</open> to see { $key } details\ntui-count = { $count ->\n    [one] <b>{ $count }</b> match for { $name }\n   *[other] <b>{ $count }</b> matches for { $name }\n}\n",
+        )],
+    )];
+
+    fn segment_texts(segments: &[Segment]) -> Vec<(String, Option<String>, Option<usize>)> {
+        segments
+            .iter()
+            .map(|s| (s.text.clone(), s.tag.clone(), s.token))
+            .collect()
+    }
+
+    #[test]
+    fn rich_messages_split_tags_and_tokens() {
+        let loader = Loader::build(Locale::EnUs, &[RICH]);
+        let segments = loader.format_rich(
+            Locale::EnUs,
+            "tui-open",
+            None,
+            &[("key", Arg::Text("Ctrl+K"))],
+        );
+        assert_eq!(
+            segment_texts(&segments),
+            vec![
+                ("Press ".to_string(), None, None),
+                ("open".to_string(), Some("open".to_string()), None),
+                (" to see ".to_string(), None, None),
+                ("Ctrl+K".to_string(), None, Some(0)),
+                (" details".to_string(), None, None),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_forged_tag_in_an_argument_stays_literal() {
+        let loader = Loader::build(Locale::EnUs, &[RICH]);
+        let segments = loader.format_rich(
+            Locale::EnUs,
+            "tui-open",
+            None,
+            &[("key", Arg::Text("<open>x</open>"))],
+        );
+        let token = segments.iter().find(|s| s.token == Some(0));
+        assert_eq!(
+            token.map(|s| (s.text.as_str(), s.tag.as_deref())),
+            Some(("<open>x</open>", None))
+        );
+        assert_eq!(
+            segments
+                .iter()
+                .filter(|s| s.tag.as_deref() == Some("open"))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn counts_stay_plain_beside_tokens() {
+        let loader = Loader::build(Locale::EnUs, &[RICH]);
+        let args = [("count", Arg::Int(2)), ("name", Arg::Text("Food"))];
+        let segments = loader.format_rich(Locale::EnUs, "tui-count", None, &args);
+        assert_eq!(
+            segment_texts(&segments),
+            vec![
+                ("2".to_string(), Some("b".to_string()), None),
+                (" matches for ".to_string(), None, None),
+                ("Food".to_string(), None, Some(0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn en_xa_keeps_tags_and_sentinels_intact() {
+        let loader = Loader::build(Locale::EnXa, &[RICH]);
+        let segments = loader.format_rich(
+            Locale::EnXa,
+            "tui-open",
+            None,
+            &[("key", Arg::Text("Ctrl+K"))],
+        );
+        let texts = segment_texts(&segments);
+        assert!(
+            texts
+                .iter()
+                .any(|(text, tag, _)| tag.as_deref() == Some("open") && text != "open")
+        );
+        assert!(texts.contains(&("Ctrl+K".to_string(), None, Some(0))));
+        assert!(segments.first().is_some_and(|s| s.text.starts_with('[')));
+        assert!(segments.last().is_some_and(|s| s.text.ends_with(']')));
+        assert!(
+            segments
+                .iter()
+                .all(|s| !s.text.contains('<') && !s.text.contains('\u{e000}'))
         );
     }
 }

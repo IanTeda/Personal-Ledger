@@ -24,3 +24,8 @@ date-error-unrecognised-iso = Enter a date like { $iso }, or a word such as { $w
 date-error-out-of-range = That is not a valid { $field } for a date.
 date-error-bad-year = Use a four-digit year.
 date-error-year-required = Include the year.
+
+## Key hints. `$key` and `$action` are passed as tokens, so the caller can style the key.
+
+# @rich
+hint-press-key = Press { $key } to { $action }
