@@ -13,6 +13,7 @@ mod dialog;
 mod error;
 mod explorer;
 mod feasibility_demo;
+mod format;
 mod icon;
 mod key_router;
 mod nav;

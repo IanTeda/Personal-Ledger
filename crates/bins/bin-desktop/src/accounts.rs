@@ -544,47 +544,10 @@ impl AccountForm {
 /// digits kept exactly as the amount carries them (`0.4120` stays four places -- the Unit's own
 /// precision, never a hard-coded two). Negative is a separate flag so the caller can apply the
 /// negative-balance rule (an ink token plus the U+2212 minus, never colour alone); a zero amount
-/// is never negative, even if its text is `-0.00`.
+/// is never negative, even if its text is `-0.00`. Always comma-grouped: the Accounts page does not
+/// yet follow the Display preferences (see [`crate::format`], which does).
 pub fn format_amount(money: &Money) -> (bool, String) {
-    let text = money.0.to_string();
-    let (signed, digits) = match text.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, text.as_str()),
-    };
-    let negative = signed && digits.chars().any(|c| matches!(c, '1'..='9'));
-    let (integer, fraction) = match digits.split_once('.') {
-        Some((integer, fraction)) => (integer, Some(fraction.to_string())),
-        // `BigDecimal` prints a zero as a bare `0` whatever scale it carries, so an empty
-        // `0.00` account would lose its places; put them back from the amount's own scale.
-        None => match usize::try_from(money.0.fractional_digit_count()) {
-            Ok(scale) if scale > 0 => (digits, Some("0".repeat(scale))),
-            _ => (digits, None),
-        },
-    };
-
-    let grouped = if integer.chars().all(|c| c.is_ascii_digit()) {
-        let mut out = String::with_capacity(integer.len() + integer.len() / 3);
-        for (index, digit) in integer.chars().enumerate() {
-            if index > 0 && (integer.len() - index) % 3 == 0 {
-                out.push(',');
-            }
-            out.push(digit);
-        }
-        out
-    } else {
-        integer.to_string()
-    };
-
-    let mut display = String::new();
-    if negative {
-        display.push('\u{2212}');
-    }
-    display.push_str(&grouped);
-    if let Some(fraction) = fraction {
-        display.push('.');
-        display.push_str(&fraction);
-    }
-    (negative, display)
+    crate::format::amount(money, crate::settings::DecimalSeparator::CommaThousands)
 }
 
 /// The page header's figures under the no-cross-Unit rule: one net figure in the base Unit

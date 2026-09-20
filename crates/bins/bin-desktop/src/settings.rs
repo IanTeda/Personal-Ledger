@@ -160,7 +160,7 @@ impl DecimalSeparator {
 
     /// This style's own (thousands, decimal) mark pair, read straight off [`Self::label`]'s own
     /// three example strings.
-    fn marks(self) -> (char, char) {
+    pub(crate) fn marks(self) -> (char, char) {
         match self {
             Self::CommaThousands => (',', '.'),
             Self::DotThousands => ('.', ','),
@@ -294,7 +294,7 @@ pub const DEFAULT_DISPLAY_PREVIEW_ROWS: &[DisplayPreviewRow] = &[
     },
 ];
 
-const MONTH_ABBREVIATIONS: [&str; 12] = [
+pub(crate) const MONTH_ABBREVIATIONS: [&str; 12] = [
     "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
 ];
 
