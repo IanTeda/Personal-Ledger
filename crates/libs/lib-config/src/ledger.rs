@@ -40,6 +40,7 @@
 //! open_command_popup = ":"
 //! ```
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use config::{Config, ConfigBuilder, builder::DefaultState};
@@ -93,6 +94,15 @@ impl LedgerConfig {
     /// Returns an error if any present config file can't be read/parsed, or if the merged
     /// result doesn't deserialize into a valid `LedgerConfig`.
     pub fn parse(config_file: Option<&Path>) -> crate::Result<LedgerConfig> {
+        Self::parse_with_env(config_file, None)
+    }
+
+    /// [`Self::parse`] with an optional injected environment (`None` reads the process
+    /// environment). Tests use this because mutating the process environment is `unsafe`.
+    fn parse_with_env(
+        config_file: Option<&Path>,
+        env: Option<HashMap<String, String>>,
+    ) -> crate::Result<LedgerConfig> {
         let mut config_builder = Self::defaults_builder()?;
 
         if let Some(system_config) = Self::get_system_config_path().filter(|p| p.exists()) {
@@ -114,7 +124,7 @@ impl LedgerConfig {
             config_builder = Self::add_ini_source(config_builder, &cwd_config)?;
         }
 
-        config_builder = Self::add_explicit_and_env(config_builder, config_file)?;
+        config_builder = Self::add_explicit_and_env(config_builder, config_file, env)?;
 
         Self::build(config_builder)
     }
@@ -128,8 +138,16 @@ impl LedgerConfig {
     /// Returns an error if the explicit config file (when given) can't be read/parsed, or if
     /// the merged result doesn't deserialize into a valid `LedgerConfig`.
     pub fn parse_for_sync_server(config_file: Option<&Path>) -> crate::Result<LedgerConfig> {
+        Self::parse_for_sync_server_with_env(config_file, None)
+    }
+
+    /// [`Self::parse_for_sync_server`] with an optional injected environment.
+    fn parse_for_sync_server_with_env(
+        config_file: Option<&Path>,
+        env: Option<HashMap<String, String>>,
+    ) -> crate::Result<LedgerConfig> {
         let config_builder = Self::defaults_builder()?;
-        let config_builder = Self::add_explicit_and_env(config_builder, config_file)?;
+        let config_builder = Self::add_explicit_and_env(config_builder, config_file, env)?;
         Self::build(config_builder)
     }
 
@@ -155,10 +173,14 @@ impl LedgerConfig {
 
     /// Add the explicit config file (if given and it exists) and environment variable
     /// overrides -- the two highest-precedence tiers, shared by both entry points. Env vars
-    /// (e.g. `PERSONAL_LEDGER_PERSONAL_LEDGER__LOG=debug`) always come last/highest.
+    /// (e.g. `PERSONAL_LEDGER_PERSONAL_LEDGER__LOG=debug`) always come last/highest: the
+    /// single `_` after the prefix is followed by `SECTION__KEY`, where `__` is the nesting
+    /// separator (so single underscores inside a key, like `LOG_FILE_PATH`, are preserved).
+    /// `env` replaces the process environment when given.
     fn add_explicit_and_env(
         config_builder: ConfigBuilder<DefaultState>,
         config_file: Option<&Path>,
+        env: Option<HashMap<String, String>>,
     ) -> crate::Result<ConfigBuilder<DefaultState>> {
         let mut config_builder = config_builder;
 
@@ -166,7 +188,12 @@ impl LedgerConfig {
             config_builder = Self::add_ini_source(config_builder, explicit_config)?;
         }
 
-        config_builder = config_builder.add_source(config::Environment::with_prefix(ENV_PREFIX));
+        // `prefix_separator` must be explicit: `config` otherwise reuses `separator` for it.
+        let environment = config::Environment::with_prefix(ENV_PREFIX)
+            .prefix_separator("_")
+            .separator("__")
+            .source(env);
+        config_builder = config_builder.add_source(environment);
 
         Ok(config_builder)
     }
@@ -603,5 +630,75 @@ mod tests {
 
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(config.sync_server.bind_address(), "0.0.0.0:1234");
+    }
+
+    fn env_map(pairs: &[(&str, &str)]) -> Option<HashMap<String, String>> {
+        Some(
+            pairs
+                .iter()
+                .map(|(key, value)| (key.to_string(), value.to_string()))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn env_double_underscore_overrides_section_key() {
+        let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__LOG", "trace")]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
+        assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::TRACE);
+    }
+
+    #[test]
+    fn env_overrides_keybinding() {
+        let env = env_map(&[("PERSONAL_LEDGER_KEYBINDINGS__SUPER_KEY", "alt")]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
+        assert_eq!(config.keybindings.super_key(), "alt");
+    }
+
+    #[test]
+    fn env_preserves_single_underscores_within_a_key() {
+        let env = env_map(&[(
+            "PERSONAL_LEDGER_PERSONAL_LEDGER__LOG_FILE_PATH",
+            "/tmp/ledger.log",
+        )]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
+        assert_eq!(
+            config.personal_ledger.log_file_path(),
+            Some(Path::new("/tmp/ledger.log"))
+        );
+    }
+
+    #[test]
+    fn env_reaches_hyphenated_sync_server_section() {
+        let env = env_map(&[("PERSONAL_LEDGER_SYNC_SERVER__BIND_ADDRESS", "0.0.0.0:4321")]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
+        assert_eq!(config.sync_server.bind_address(), "0.0.0.0:4321");
+    }
+
+    #[test]
+    fn env_beats_config_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_file = temp_dir.path().join("test.conf");
+        fs::write(
+            &config_file,
+            r#"
+            [personal-ledger]
+            log = "warn"
+            "#,
+        )
+        .unwrap();
+
+        let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__LOG", "trace")]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(Some(&config_file), env).unwrap();
+        assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::TRACE);
+    }
+
+    #[test]
+    fn client_parse_honours_injected_env() {
+        in_empty_cwd(|| {
+            let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__LOG", "error")]);
+            let config = LedgerConfig::parse_with_env(None, env).unwrap();
+            assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::ERROR);
+        });
     }
 }
