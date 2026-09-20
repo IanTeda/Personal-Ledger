@@ -34,11 +34,13 @@ use crate::{
         self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
         DeleteAccountForm, NameLookup, SelectKey,
     },
+    categories::{self, Category},
     command::{self, AccountsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
     key_router::{KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
+    payees::{self, Payee},
     rail::{
         self,
         context::ContextRail,
@@ -51,8 +53,10 @@ use crate::{
         SettingsSection, StatusGlyphs, TracingLevel, UnitForm, UnitKind, UnitRow,
     },
     statusline::{PageStatus, StatusLine},
+    tags::{self, Tag},
     theme::{color, type_scale},
     topbar::{self, TopBar},
+    transactions::{self, Transaction},
     view::{
         accounts as accounts_view,
         dashboard::Dashboard,
@@ -210,10 +214,38 @@ pub struct Shell {
     /// The currently open Accounts dialog, if any -- same shape as [`Self::settings_dialog`],
     /// with `NavState::mode` being `InputMode::Dialog` for exactly as long as it is `Some`.
     accounts_dialog: Option<AccountsDialog>,
+    /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
+    /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
+    today: chrono::NaiveDate,
+    /// The shared stub Categories tree, Payees and Tags. Owned here so the Categories, Payees and
+    /// Tags views the later maps build can read and grow the same data the Transactions view uses.
+    categories: Vec<Category>,
+    payees: Vec<Payee>,
+    tags: Vec<Tag>,
+    /// The Transactions view's stub dataset, newest first (`transactions::default_transactions`).
+    /// A real, mutable `Vec`, like [`Self::accounts`]: saved-in-memory state that survives leaving
+    /// and re-entering the page. Deleting an account deletes its transactions with it.
+    transactions: Vec<Transaction>,
+    /// The selected row as a position in [`Self::transactions`] (the table shows them in this
+    /// order), clamped wherever it is read. Once filters land it becomes a position in the
+    /// filtered list.
+    transactions_selected: usize,
 }
 
 impl Shell {
     pub fn new(nav: NavState, focus_handle: FocusHandle) -> Self {
+        let today = chrono::Local::now().date_naive();
+        let seeded_accounts = accounts::default_accounts();
+        let categories = categories::default_categories();
+        let payees = payees::default_payees();
+        let tags = tags::default_tags();
+        let transactions = transactions::default_transactions(
+            &seeded_accounts,
+            &categories,
+            &payees,
+            &tags,
+            today,
+        );
         Self {
             nav,
             focus_handle,
@@ -240,6 +272,12 @@ impl Shell {
             accounts: accounts::default_accounts(),
             accounts_selected: 0,
             accounts_dialog: None,
+            today,
+            categories,
+            payees,
+            tags,
+            transactions,
+            transactions_selected: 0,
         }
     }
 
@@ -1018,6 +1056,9 @@ impl Shell {
                 .and_then(|account| form.apply_to(account).then_some(id)),
             AccountsDialog::Delete(id, _) => {
                 self.accounts.retain(|account| account.id != id);
+                // The Delete dialog says its transactions go with it, so they do.
+                self.transactions
+                    .retain(|transaction| transaction.account_id != id);
                 // The selection is a position in display order: keep it in range, so it lands on
                 // the account that slid into the deleted row's place (or the last one).
                 self.accounts_selected = self

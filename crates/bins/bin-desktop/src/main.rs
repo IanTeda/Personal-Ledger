@@ -7,6 +7,7 @@
 
 mod accounts;
 mod assets;
+mod categories;
 mod command;
 mod dialog;
 mod error;
@@ -16,14 +17,17 @@ mod icon;
 mod key_router;
 mod nav;
 mod palette;
+mod payees;
 mod persistence;
 mod rail;
 mod select;
 mod settings;
 mod shell;
 mod statusline;
+mod tags;
 mod theme;
 mod topbar;
+mod transactions;
 mod view;
 
 use std::borrow::Cow;
