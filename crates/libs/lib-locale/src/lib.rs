@@ -31,10 +31,12 @@ mod error;
 pub mod format;
 mod locale;
 pub mod msg;
+mod vocabulary;
 
 pub use catalogue::{init, init_with_layers, locale, with_locale};
 pub use error::{Error, Result};
 pub use locale::Locale;
+pub use vocabulary::{Label, flagged_label};
 
 /// Support items for generated accessors, including those a bin's own `build.rs` generates.
 /// Not part of the API to call directly.
