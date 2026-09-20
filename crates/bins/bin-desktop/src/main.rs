@@ -102,7 +102,12 @@ async fn main() -> Result<()> {
 
             let mut nav = nav::NavState::new();
             nav.set_noun(persisted.noun);
-            nav.set_primary_rail(persisted.primary_rail);
+            nav.set_primary_rail(if persisted.start_sidebar_minimised {
+                nav::RailMode::Collapsed
+            } else {
+                persisted.primary_rail
+            });
+            let start_sidebar_minimised = persisted.start_sidebar_minimised;
 
             // Restore the last saved window geometry; otherwise 1280x800 centered, the handoff's
             // own window size (`docs/ux/desktop/Shell & Navigation/README.md`, option 1a).
@@ -140,7 +145,11 @@ async fn main() -> Result<()> {
                         // as soon as the window opens -- nothing else in the window competes
                         // for it yet.
                         window.focus(&focus_handle);
-                        cx.new(|_cx| Shell::new(nav, focus_handle))
+                        cx.new(|_cx| {
+                            let mut shell = Shell::new(nav, focus_handle);
+                            shell.set_start_sidebar_minimised(start_sidebar_minimised);
+                            shell
+                        })
                     },
                 )
                 .expect("desktop window must open");
@@ -157,6 +166,7 @@ async fn main() -> Result<()> {
                     let state = persistence::PersistedState {
                         noun: shell.nav().noun(),
                         primary_rail: shell.nav().primary_rail(),
+                        start_sidebar_minimised: shell.start_sidebar_minimised(),
                         window: Some(WindowGeometry {
                             x: f32::from(bounds.origin.x),
                             y: f32::from(bounds.origin.y),

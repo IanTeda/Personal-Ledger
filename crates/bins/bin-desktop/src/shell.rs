@@ -204,6 +204,9 @@ pub struct Shell {
     settings_row_density: RowDensity,
     /// The same section's "Status glyphs" radio group.
     settings_status_glyphs: StatusGlyphs,
+    /// The same section's "Start Sidebar minimised" toggle -- persisted across restarts (see
+    /// `persistence::PersistedState`) and applied to the primary rail at launch.
+    settings_start_sidebar_minimised: bool,
     /// The Units section's own table rows (issue #177), seeded from `settings::default_units()`.
     /// A real, mutable `Vec` so the Add/Edit/Delete unit dialogs (issues #184-#186) can
     /// push/update/remove rows once they land -- unlike
@@ -305,6 +308,7 @@ impl Shell {
             settings_decimal_separator: DecimalSeparator::default(),
             settings_row_density: RowDensity::default(),
             settings_status_glyphs: StatusGlyphs::default(),
+            settings_start_sidebar_minimised: false,
             settings_units: settings::default_units(),
             settings_price_sources: settings::default_price_sources(),
             settings_dialog: None,
@@ -327,6 +331,14 @@ impl Shell {
             transactions_filter_anchor: FilterField::Account,
             transactions_chip_bounds: Default::default(),
         }
+    }
+
+    pub fn start_sidebar_minimised(&self) -> bool {
+        self.settings_start_sidebar_minimised
+    }
+
+    pub fn set_start_sidebar_minimised(&mut self, minimised: bool) {
+        self.settings_start_sidebar_minimised = minimised;
     }
 
     pub fn nav(&self) -> &NavState {
@@ -2063,6 +2075,13 @@ impl Shell {
     fn handle_explorer_breadcrumb_click(&mut self, path: PathBuf, cx: &mut Context<Self>) {
         if let Some(explorer) = self.file_explorer.as_mut() {
             explorer.navigate_to(path);
+    /// The same section's "Start Sidebar minimised" toggle -- takes effect at the next launch, so
+    /// the current rail state is left alone.
+    fn handle_start_sidebar_minimised_click(&mut self, cx: &mut Context<Self>) {
+        self.settings_start_sidebar_minimised = !self.settings_start_sidebar_minimised;
+        cx.notify();
+    }
+
             cx.notify();
         }
     }
@@ -2443,6 +2462,15 @@ impl Render for Shell {
         let on_accounts_dialog_option_click: accounts_view::add_dialog::OnOptionClick = {
             let entity = entity.clone();
             Rc::new(move |field, index, _window, cx| {
+        let on_start_sidebar_minimised_click: settings_view::display::OnPlainClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_start_sidebar_minimised_click(cx)
+                });
+            })
+        };
+
                 entity.update(cx, |shell, cx| {
                     shell.handle_accounts_dialog_option_click(field, index, cx)
                 });
@@ -2750,6 +2778,8 @@ impl Render for Shell {
                     self.command_echo(),
                 )
                 .page(page_status)
+                                    start_sidebar_minimised: self.settings_start_sidebar_minimised,
+                                    on_start_sidebar_minimised_click,
                 .on_hint(on_hint),
             )
             .children(self.palette.as_ref().map(Palette::render))
@@ -2900,6 +2930,8 @@ struct SettingsPanelProps<'a> {
 /// `Settings` (issue #173) is handled separately, before the generic match below: it renders
 /// its own two-column [index rail][scrollable body] layout filling the whole slot, rather than
 /// the single scrollable `#view` div every other noun gets -- the settings body owns
+    start_sidebar_minimised: bool,
+    on_start_sidebar_minimised_click: settings_view::display::OnPlainClick,
 /// `scroll_handle` directly (see `view::settings::render`), so wrapping the whole thing in a
 /// second scrollable container here would fight it for the same scroll state. Every other noun
 /// is scrollable and focus-bordered regardless of which is active, since both are properties of
@@ -2977,6 +3009,8 @@ fn render_view(
         Noun::Settings | Noun::Accounts => unreachable!("handled above"),
         other => div()
             .p(px(24.0))
+                    start_sidebar_minimised: settings.start_sidebar_minimised,
+                    on_start_sidebar_minimised_click: settings.on_start_sidebar_minimised_click,
             .text_color(color::INK_TERTIARY)
             .child(format!("{other:?} -- not yet built (see issue #153)"))
             .into_any_element(),

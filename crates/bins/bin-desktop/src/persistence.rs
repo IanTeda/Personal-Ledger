@@ -37,6 +37,10 @@ pub struct WindowGeometry {
 pub struct PersistedState {
     pub noun: Noun,
     pub primary_rail: RailMode,
+    /// The Display section's "Start Sidebar minimised" toggle: when set, every launch opens with
+    /// the primary rail collapsed regardless of [`Self::primary_rail`].
+    #[serde(default)]
+    pub start_sidebar_minimised: bool,
     pub window: Option<WindowGeometry>,
 }
 
@@ -121,6 +125,7 @@ mod tests {
         let state = PersistedState {
             noun: Noun::Accounts,
             primary_rail: RailMode::Collapsed,
+            start_sidebar_minimised: true,
             window: Some(WindowGeometry {
                 x: 10.0,
                 y: 20.0,
@@ -142,6 +147,7 @@ mod tests {
         let state = PersistedState {
             noun: Noun::Settings,
             primary_rail: RailMode::Expanded,
+            start_sidebar_minimised: false,
             window: None,
         };
 

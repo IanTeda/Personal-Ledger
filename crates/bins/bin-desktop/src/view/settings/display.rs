@@ -35,7 +35,7 @@ pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
 pub type OnStatusGlyphsClick = Rc<dyn Fn(StatusGlyphs, &mut Window, &mut App)>;
 /// A curried, option-less click handler -- what a [`status_glyphs_option`] is bound to after its
 /// own option has already been curried in (mirrors `units::OnPlainClick`).
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
 const FIELD_COLUMN_WIDTH: gpui::Pixels = px(300.0);
 const PREVIEW_GLYPH_WIDTH: gpui::Pixels = px(18.0);
@@ -48,6 +48,8 @@ pub fn render(
     decimal_separator: DecimalSeparator,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
+    start_sidebar_minimised: bool,
+    on_start_sidebar_minimised_click: OnPlainClick,
     on_date_format_click: OnDateFormatClick,
     on_decimal_separator_click: OnDecimalSeparatorClick,
     on_row_density_click: OnRowDensityClick,
@@ -61,6 +63,8 @@ pub fn render(
             decimal_separator,
             row_density,
             status_glyphs,
+            start_sidebar_minimised,
+            on_start_sidebar_minimised_click,
             on_date_format_click,
             on_decimal_separator_click,
             on_row_density_click,
@@ -81,6 +85,8 @@ fn field_column(
     decimal_separator: DecimalSeparator,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
+    start_sidebar_minimised: bool,
+    on_start_sidebar_minimised_click: OnPlainClick,
     on_date_format_click: OnDateFormatClick,
     on_decimal_separator_click: OnDecimalSeparatorClick,
     on_row_density_click: OnRowDensityClick,
@@ -126,6 +132,38 @@ fn field_column(
                 )),
         )
         .child(status_glyphs_field(status_glyphs, on_status_glyphs_click))
+        .child(start_sidebar_minimised_toggle(
+            start_sidebar_minimised,
+            on_start_sidebar_minimised_click,
+        ))
+}
+
+fn start_sidebar_minimised_toggle(checked: bool, on_click: OnPlainClick) -> impl IntoElement {
+    div()
+        .id("display-start-sidebar-minimised")
+        .cursor_pointer()
+        .flex()
+        .items_center()
+        .gap(px(8.0))
+        .on_click(move |_event, window, cx| on_click(window, cx))
+        .child(
+            div()
+                .w(px(14.0))
+                .h(px(14.0))
+                .flex_none()
+                .border_1()
+                .border_color(if checked {
+                    color::ACCENT
+                } else {
+                    color::DIVIDER
+                })
+                .bg(if checked {
+                    color::ACCENT
+                } else {
+                    color::GROUND
+                }),
+        )
+        .child(div().text_size(px(12.0)).child("Start Sidebar minimised"))
 }
 
 /// `.field > label`: `display:block; font-size:12px; margin-bottom:5px; color: color-mix(text
