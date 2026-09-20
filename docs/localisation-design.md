@@ -99,10 +99,10 @@ crates/libs/lib-locale/
 
 - `lib-locale` depends on `lib-core`, never the reverse, so `lib-core` stays pure with no I/O and no ICU.
 - `lib-config` depends on neither `lib-locale` nor ICU4X, and `lib-locale` does not depend on `lib-config`. `bin-sync-server` never depends on `lib-locale`.
-- The generator is a small separate crate, `lib-locale-build`, used by each bin's `build.rs`, because a `build.rs` cannot use its own crate's dependencies. If the first spike shows `fluent-typed`'s own build API is enough, that crate is not created.
+- The generator is a small separate crate, `lib-locale-build`, depending only on `fluent-syntax` and used by `lib-locale`'s and each bin's `build.rs`, because a `build.rs` cannot use its own crate's dependencies and a build-dependency on `lib-locale` would compile Fluent and ICU4X for the host. The spike ([research note](research/localisation-message-generator.md)) chose our own generator over `fluent-typed`, so the crate is created.
 - No `fluent-bundle`, `icu` or `unic-langid` type appears in any public signature, so a dependency can change without touching the bins.
 - **Public surface:** `init(&str) -> Locale`, `Locale`, the generated `msg::…` accessors, the rich segment types, `format_money(&Money, &Unit)`, `format_date(NaiveDate, DateStyle)`, `format_number`, `parse_date(&str, today)`, a Locale-aware `upper`, the `Label` trait, and a `with_locale(...)` test helper.
-- **Dependencies to add:** `fluent-bundle`, `fluent-langneg`, `fluent-pseudo` and `fluent-syntax` (or `fluent-typed`), `unic-langid`, `icu` (`icu_decimal`, `icu_datetime`, `icu_casemap`, and a pinned `icu_experimental` for currency), and `sys-locale` in `lib-config`.
+- **Dependencies to add:** `fluent-bundle`, `fluent-langneg`, `fluent-pseudo` (and `fluent-syntax`, in `lib-locale-build` only), `unic-langid`, `icu` (`icu_decimal`, `icu_datetime`, `icu_casemap`, and a pinned `icu_experimental` for currency), and `sys-locale` in `lib-config`.
 
 ## The name
 
@@ -116,10 +116,15 @@ The crate is `lib-locale` (crate `lib_locale`), chosen over `lib-localisation` a
 
 ## Open items
 
-- The first build ticket is a spike choosing between `fluent-typed` (young, 0.9.0) and our own `build.rs` over `fluent-syntax`. It also confirms the kebab-case to snake_case conversion, that a shared crate's assets can be checked from a bin, and whether the `en-XA` transform mangles `<tag>` names (tags may then need to be emitted through a Fluent function or sentinel).
+- Settled by the generator spike ([note](research/localisation-message-generator.md)):
+  - We write our own generator over `fluent-syntax`, not `fluent-typed`, which cannot express sparse override Locales, reports cross-Locale problems as warnings, and generates instance methods rather than free functions over a process-wide loader. Accessors take `i64` for counts and `&str` otherwise, and the kebab-case to snake_case conversion works, with a generator check for accessor-name collisions (an attribute `accounts-delete.title` collides with a message `accounts-delete-title`).
+  - A bin generates its own layer from `bin-*/i18n/` with the same generator, and the runtime composes every layer into one bundle per Locale with `add_resource_overriding` in fallback-chain order. `fl!` from `i18n-embed-fl` is not a fallback, because it validates ids only against its own crate's assets. The bin build cannot see the shared layer's terms and ids, so it must not fail on an unresolved reference, and cross-layer id collisions are caught by the `desktop-`/`tui-` prefixes, a check at `init` and a test.
+  - `en-XA` uses `fluent_pseudo::transform_dom` with markers off, because plain `transform` mangles `<tag>` names and its markers bracket each text fragment; the generated outer `[ … ]` is added around the whole Message. The private-use sentinels survive the transform.
+  - The chain `en-AU -> en-GB -> en-US` works with sparse Locales.
+- Measured on a `ratatui` stand-in, for a stripped release binary: Fluent adds about 2.1 MB (1.4 MB with a size-tuned profile) and 11 s of clean build, and ICU4X with its default data adds about 1.3 MB and 24 s. An `icu4x-datagen` trim to `en-US`, `en-GB` and `en-AU` cuts the ICU4X share to about 0.3 MB and saves about 12 s. The trim is a separate, later ticket, and must be regenerated when a new ICU4X marker is used.
 - Not yet scheduled: the per-screen string migration, the Preference migration (the number-separator column goes and `date_format` becomes the nullable date style), the TUI palette's move from dispatch-on-display-text to dispatch-on-id, the seeded-row keys, translation workflow, per-Locale command aliases, user-supplied Catalogues, and mapping Commonwealth variants (`en-NZ`, `en-IN`) to `en-GB`.
-- Binary size and build time of ICU4X and Fluent were not measured, and the ICU4X data trim with `icu4x-datagen` is untested.
+- The cost figures come from a stand-in binary, not a real `bin-tui` or `bin-desktop` build, so re-measure once `lib-locale` exists.
 
 ## Research
 
-The findings behind these decisions are Markdown notes on throwaway `research/localisation-*` branches (they are not merged): the Fluent binding, formatting, gpui and ratatui behaviour, the hardcoded-text inventory, crate naming precedents, date input parsing, and the confirmation of Fluent against alternative message systems (which found no blocker: MessageFormat 2's Rust runtime is not yet usable, and the gaps in Fluent are ones the shared crate would add anyway).
+The generator spike's findings are in [Localisation Message generator spike](research/localisation-message-generator.md). The other findings behind these decisions are Markdown notes on throwaway `research/localisation-*` branches (they are not merged): the Fluent binding, formatting, gpui and ratatui behaviour, the hardcoded-text inventory, crate naming precedents, date input parsing, and the confirmation of Fluent against alternative message systems (which found no blocker: MessageFormat 2's Rust runtime is not yet usable, and the gaps in Fluent are ones the shared crate would add anyway).
