@@ -1,161 +1,92 @@
 //! The content of the `?` help overlay -- `gpui`-free, so what it lists is unit-tested without a
-//! window. Mirrors `bin-tui`'s help idea (global keys plus the active screen's own, ADR-0013);
-//! the shared grammar it documents lives in `docs/navigation.md`.
+//! window. An About-style card: project facts on the left, the shortcut cheat-sheet on the right
+//! (the shared grammar lives in `docs/navigation.md`).
 
-use crate::{key_router::JUMPS, nav::Noun};
+use crate::key_router::JUMPS;
 
-/// One row: the key(s) as typed, and what they do.
-pub type Entry = (String, &'static str);
+/// The tagline under the header.
+pub const DESCRIPTION: &str = "Track your personal expenses, investments and assets to help you understand what you have and make informed decisions.";
 
-/// A titled group of rows.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Section {
-    pub title: &'static str,
-    pub entries: Vec<Entry>,
+/// The build channel shown beside the version in the header.
+pub const CHANNEL: &str = "concept";
+
+pub const AUTHOR: &str = "Ian Teda";
+
+/// A labelled, clickable link.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Link {
+    pub label: &'static str,
+    pub text: &'static str,
+    pub url: &'static str,
 }
 
-fn entries(rows: &[(&str, &'static str)]) -> Vec<Entry> {
-    rows.iter()
-        .map(|(keys, action)| ((*keys).to_string(), *action))
+/// The facts column's links, top to bottom. Author and licence render around these.
+pub const LINKS: [Link; 3] = [
+    Link {
+        label: "Repository",
+        text: "github.com/IanTeda/personal-ledger",
+        url: "https://github.com/IanTeda/Personal-Ledger",
+    },
+    Link {
+        label: "Documentation",
+        text: "ianteda.github.io/personal-ledger",
+        url: "https://ianteda.github.io/personal-ledger",
+    },
+    Link {
+        label: "Report an issue",
+        text: "github.com/IanTeda/personal-ledger/issues",
+        url: "https://github.com/IanTeda/Personal-Ledger/issues",
+    },
+];
+
+pub const LICENSE_NAME: &str = "GPL-3.0 License";
+pub const LICENSE_URL: &str = "https://www.gnu.org/licenses/gpl-3.0.html";
+pub const COPYRIGHT: &str = "\u{a9} 2025\u{2013}2026 Ian Teda. All rights reserved.";
+pub const FOOTER_NOTE: &str = "Free software \u{2014} no warranty, see the license for details.";
+
+/// The `g`-jump cheat-sheet, as `(noun label, "g x")`, in the router table's own order (the view
+/// lays it out row-major in two columns).
+pub fn jump_shortcuts() -> Vec<(&'static str, String)> {
+    JUMPS
+        .iter()
+        .map(|(key, _, label)| (*label, format!("g {key}")))
         .collect()
 }
 
-/// The screen-specific keys for `noun`, or `None` when the screen binds none of its own yet.
-fn screen_section(noun: Noun) -> Option<Section> {
-    let (title, rows): (&'static str, &[(&str, &'static str)]) = match noun {
-        Noun::Accounts => (
-            "Accounts",
-            &[
-                ("j / k", "select the next / previous account"),
-                ("enter", "open the selected account's ledger"),
-                ("n", "add an account"),
-                ("e", "edit the selected account"),
-                ("d", "delete the selected account"),
-            ],
-        ),
-        Noun::Transactions => (
-            "Transactions",
-            &[
-                ("j / k", "select the next / previous transaction"),
-                ("/", "search descriptions and payees"),
-                ("f", "open the filter popover"),
-                ("n", "add a transaction (not yet built)"),
-                ("e", "edit the selected transaction (not yet built)"),
-            ],
-        ),
-        Noun::Settings => ("Settings", &[("/", "filter the settings index")]),
-        _ => return None,
-    };
-    Some(Section {
-        title,
-        entries: entries(rows),
-    })
-}
-
-/// Every section the overlay shows while `noun` is the active screen: the shared grammar first,
-/// then that screen's own keys (omitted when it has none), then what only the desktop client has.
-pub fn sections(noun: Noun) -> Vec<Section> {
-    let mut sections = vec![
-        Section {
-            title: "Global",
-            entries: entries(&[
-                (":", "open the command palette"),
-                ("/", "search the current screen"),
-                ("?", "show or hide this help"),
-                ("esc", "close a popup, leave a mode"),
-                (
-                    "tab / shift-tab",
-                    "cycle focus between the rails and the view",
-                ),
-            ]),
-        },
-        Section {
-            title: "Movement",
-            entries: entries(&[
-                ("j / k", "next / previous (also down / up)"),
-                ("g g / G", "first / last"),
-                ("ctrl-d / ctrl-u", "half a page down / up"),
-                ("enter", "activate the selection"),
-            ]),
-        },
-        Section {
-            title: "Jump",
-            entries: JUMPS
-                .iter()
-                .map(|(key, _, label)| (format!("g {key}"), *label))
-                .collect(),
-        },
-    ];
-    sections.extend(screen_section(noun));
-    sections.push(Section {
-        title: "Desktop",
-        entries: entries(&[
-            ("b", "collapse or expand the primary rail"),
-            (
-                "click",
-                "a rail row jumps to it; a collapsed row shows a tooltip on hover",
-            ),
-        ]),
-    });
-    sections
-}
+/// The non-jump shortcuts, as `(action, keys)`, two columns row-major.
+pub const GLOBAL_SHORTCUTS: [(&str, &str); 5] = [
+    ("Command palette", ":"),
+    ("This help", "?"),
+    ("Move focus", "j/k"),
+    ("Open / confirm", "enter"),
+    ("Close overlay", "esc"),
+];
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn titles(noun: Noun) -> Vec<&'static str> {
-        sections(noun).iter().map(|section| section.title).collect()
+    #[test]
+    fn jump_shortcuts_cover_every_router_jump_in_table_order() {
+        let shortcuts = jump_shortcuts();
+        assert_eq!(shortcuts.len(), JUMPS.len());
+        assert_eq!(shortcuts[0], ("Dashboard", "g d".to_string()));
+        assert!(shortcuts.contains(&("Transactions", "g l".to_string())));
+        assert!(shortcuts.contains(&("Tags", "g t".to_string())));
     }
 
     #[test]
-    fn every_screen_lists_the_shared_grammar_and_the_desktop_extras() {
-        for noun in Noun::ALL {
-            let titles = titles(noun);
-            assert_eq!(&titles[..3], ["Global", "Movement", "Jump"], "{noun:?}");
-            assert_eq!(titles.last(), Some(&"Desktop"), "{noun:?}");
+    fn links_are_https_and_labelled() {
+        for link in LINKS {
+            assert!(link.url.starts_with("https://"), "{}", link.label);
+            assert!(!link.label.is_empty() && !link.text.is_empty());
         }
+        assert!(LICENSE_URL.starts_with("https://"));
     }
 
     #[test]
-    fn screens_with_their_own_keys_get_a_section_between_jump_and_desktop() {
-        for (noun, title) in [
-            (Noun::Accounts, "Accounts"),
-            (Noun::Transactions, "Transactions"),
-            (Noun::Settings, "Settings"),
-        ] {
-            assert_eq!(
-                titles(noun),
-                ["Global", "Movement", "Jump", title, "Desktop"],
-                "{noun:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn screens_without_keys_of_their_own_get_no_screen_section() {
-        assert_eq!(titles(Noun::Dashboard).len(), 4);
-        assert_eq!(titles(Noun::Budgets).len(), 4);
-    }
-
-    #[test]
-    fn the_jump_section_lists_every_jump_from_the_router_table() {
-        let all = sections(Noun::Dashboard);
-        let jump = all
-            .iter()
-            .find(|section| section.title == "Jump")
-            .expect("jump section");
-        assert_eq!(jump.entries.len(), JUMPS.len());
-        assert!(jump.entries.contains(&("g l".to_string(), "Transactions")));
-        assert!(jump.entries.contains(&("g t".to_string(), "Tags")));
-    }
-
-    #[test]
-    fn no_section_is_empty() {
-        for noun in Noun::ALL {
-            for section in sections(noun) {
-                assert!(!section.entries.is_empty(), "{noun:?} {}", section.title);
-            }
-        }
+    fn the_help_key_and_close_key_are_listed() {
+        assert!(GLOBAL_SHORTCUTS.contains(&("This help", "?")));
+        assert!(GLOBAL_SHORTCUTS.contains(&("Close overlay", "esc")));
     }
 }

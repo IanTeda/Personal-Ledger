@@ -36,7 +36,7 @@ use crate::{
     categories::{self, Category},
     command::{self, AccountsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
-    format, help,
+    format,
     key_router::{KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
@@ -2051,6 +2051,12 @@ impl Shell {
         cx.notify();
     }
 
+    /// The help overlay's own Close button.
+    fn handle_help_close(&mut self, cx: &mut Context<Self>) {
+        self.nav.exit_mode();
+        cx.notify();
+    }
+
     /// The explorer dialog's own Open button.
     fn handle_explorer_open(&mut self, cx: &mut Context<Self>) {
         self.confirm_explorer_open(cx);
@@ -2162,6 +2168,12 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| {
                     shell.handle_explorer_breadcrumb_click(path, cx)
                 });
+            })
+        };
+        let on_help_close: help_view::OnClose = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_help_close(cx));
             })
         };
         let on_explorer_cancel: explorer::OnCancel = {
@@ -2720,8 +2732,7 @@ impl Render for Shell {
             }))
             .children(filter_popover)
             .children(
-                (self.nav.mode() == InputMode::Help)
-                    .then(|| help_view::render(&help::sections(self.nav.noun()))),
+                (self.nav.mode() == InputMode::Help).then(|| help_view::render(on_help_close)),
             )
             .children(self.accounts_dialog.as_ref().map(|dialog| match dialog {
                 AccountsDialog::Add(form) => accounts_view::add_dialog::render(
