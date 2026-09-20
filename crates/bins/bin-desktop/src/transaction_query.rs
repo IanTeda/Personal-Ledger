@@ -105,6 +105,14 @@ impl TransactionFilters {
         }
     }
 
+    /// The defaults narrowed to one account: what "open ledger" on the Accounts page hands over.
+    pub fn for_account(today: NaiveDate, account: u32) -> Self {
+        Self {
+            account: Some(account),
+            ..Self::defaults(today)
+        }
+    }
+
     /// Whether these are exactly the defaults (so no chip is an "active" accent chip).
     pub fn is_default(&self, today: NaiveDate) -> bool {
         *self == Self::defaults(today)

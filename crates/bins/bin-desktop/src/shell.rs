@@ -1160,7 +1160,7 @@ impl Shell {
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Accounts page's row selection instead of
-    /// scrolling it; `Enter` opens the account's ledger, which no screen exists for yet.
+    /// scrolling it; `Enter` opens the account's ledger (Transactions filtered to it).
     fn apply_accounts_movement(&mut self, movement: Movement) {
         let len = self.accounts.len();
         let selected = self.accounts_selected;
@@ -1172,7 +1172,13 @@ impl Shell {
             Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
             Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
             Movement::Enter => {
-                self.flash_open_ledger_stub();
+                if let Some(id) = self
+                    .selected_account_index()
+                    .and_then(|index| self.accounts.get(index))
+                    .map(|account| account.id)
+                {
+                    self.open_account_ledger(id);
+                }
                 selected
             }
         };
@@ -1223,8 +1229,16 @@ impl Shell {
         true
     }
 
-    fn flash_open_ledger_stub(&mut self) {
-        self.status_message = Some("open ledger -- not yet built".to_string());
+    /// Opens Transactions pre-filtered to the account `id`: fresh defaults plus that account, the
+    /// search cleared and the table back on its first row. The Accounts selection is untouched, so
+    /// returning to Accounts finds the same row selected.
+    fn open_account_ledger(&mut self, id: u32) {
+        self.transactions_filters = TransactionFilters::for_account(self.today, id);
+        self.transactions_search.clear();
+        self.transactions_filter_form = None;
+        self.reset_transactions_selection();
+        self.nav.set_noun(Noun::Transactions);
+        self.reset_view_scroll();
     }
 
     /// Selects the account with `id`, if it still exists.
@@ -1243,7 +1257,7 @@ impl Shell {
     /// A click on an account row: selects it and, as `enter` does, tries to open its ledger.
     fn handle_accounts_row_click(&mut self, id: u32, cx: &mut Context<Self>) {
         self.select_account(id);
-        self.flash_open_ledger_stub();
+        self.open_account_ledger(id);
         cx.notify();
     }
 

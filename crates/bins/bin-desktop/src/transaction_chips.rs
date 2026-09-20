@@ -310,6 +310,21 @@ mod tests {
     }
 
     #[test]
+    fn an_account_ledger_hand_off_shows_only_the_account_chip_as_active() {
+        let w = world();
+        let account = &w.accounts[0];
+        let filters = TransactionFilters::for_account(today(), account.id);
+        let chips = w.chips(&filters);
+
+        assert_eq!(chips[0].label, format!("account: {}", account.name));
+        assert_eq!(
+            chips.iter().map(|c| c.active).collect::<Vec<_>>(),
+            [true, false, false, false, false, false]
+        );
+        assert_eq!(chips[4].label, "this year");
+    }
+
+    #[test]
     fn the_defaults_are_six_outline_chips_with_this_year_as_the_date_chip() {
         let w = world();
         let chips = w.chips(&TransactionFilters::defaults(today()));
