@@ -11,11 +11,15 @@
 mod casing;
 mod currency;
 mod date;
+mod input;
 mod number;
 
 pub use casing::upper;
 pub use currency::{Unit, format_money};
 pub use date::format_date;
+pub use input::{
+    DateField, DateInputError, DateInputOptions, date_error_message, parse_date, parse_date_with,
+};
 pub use number::format_number;
 
 use std::cell::RefCell;

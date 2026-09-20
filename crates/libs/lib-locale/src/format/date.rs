@@ -48,6 +48,15 @@ fn try_format(date: NaiveDate, style: DateStyle) -> Result<String> {
     Ok(formatter(crate::locale(), style)?.format(&iso).to_string())
 }
 
+/// The Locale's resolved short pattern (`d/M/yy` in `en-AU`), for the typed-input parser to
+/// read the field order and separator from.
+pub(super) fn short_pattern(locale: Locale) -> Result<String> {
+    let sample = Date::try_new_iso(2026, 9, 3)
+        .map_err(|error| Error::Format(format!("sample date rejected: {error}")))?;
+    let formatter = formatter(locale, DateStyle::Short)?;
+    Ok(formatter.format(&sample).pattern().to_string())
+}
+
 /// Formats a date in the given style, or in the Locale's default (medium, e.g. `3 Sept 2026` in
 /// `en-AU`) when `style` is `None`. `Iso` always renders `YYYY-MM-DD`, overriding the Locale.
 pub fn format_date(date: NaiveDate, style: Option<DateStyle>) -> String {
