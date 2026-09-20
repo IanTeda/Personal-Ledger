@@ -61,6 +61,11 @@ pub enum KeyOutcome {
     DelegateToDialog,
     /// `InputMode::Filter` owns every keystroke -- hand off to `Shell::handle_filter_key`.
     DelegateToFilter,
+    /// `InputMode::Help` owns every keystroke: `?` closes the overlay again (`Esc` is handled
+    /// before this, as for every mode), anything else is swallowed.
+    CloseHelp,
+    /// `?` opened the help overlay.
+    EnterHelp,
     /// A pending `g` completed: jump straight to this noun.
     JumpToNoun(Noun),
     /// A pending `g` was followed by an unbound key: flash this already-formatted hint-strip
@@ -80,22 +85,32 @@ pub enum KeyOutcome {
     NoOp,
 }
 
-/// The `g`-prefix jump target for each bound completion key. Every noun has one today --
+/// Every `g`-prefix jump: the completion key, its noun, and the noun's display label. One table so
+/// [`jump_noun_for_key`] and the `?` help overlay can never drift apart. Every noun has one --
 /// `Transactions` moved off `g t` onto `g l` to free `t` for the newer `Tags` noun.
+pub const JUMPS: [(&str, Noun, &str); 10] = [
+    ("d", Noun::Dashboard, "Dashboard"),
+    ("l", Noun::Transactions, "Transactions"),
+    ("a", Noun::Accounts, "Accounts"),
+    ("c", Noun::Categories, "Categories"),
+    ("p", Noun::Payees, "Payees"),
+    ("t", Noun::Tags, "Tags"),
+    ("w", Noun::Bills, "Bills"),
+    ("b", Noun::Budgets, "Budgets"),
+    ("r", Noun::Reports, "Reports"),
+    ("s", Noun::Settings, "Settings"),
+];
+
 fn jump_noun_for_key(key: &str) -> Option<Noun> {
-    match key {
-        "d" => Some(Noun::Dashboard),
-        "l" => Some(Noun::Transactions),
-        "a" => Some(Noun::Accounts),
-        "c" => Some(Noun::Categories),
-        "p" => Some(Noun::Payees),
-        "t" => Some(Noun::Tags),
-        "w" => Some(Noun::Bills),
-        "b" => Some(Noun::Budgets),
-        "r" => Some(Noun::Reports),
-        "s" => Some(Noun::Settings),
-        _ => None,
-    }
+    JUMPS
+        .iter()
+        .find(|(jump_key, _, _)| *jump_key == key)
+        .map(|(_, noun, _)| *noun)
+}
+
+/// `?` itself, or the `/` key with Shift held (how a US layout reports it).
+fn is_help_key(key: &str, shift: bool) -> bool {
+    key == "?" || (key == "/" && shift)
 }
 
 /// Decides what a keystroke means, in the exact tier order `Shell::handle_key_down` used to
@@ -138,6 +153,13 @@ pub fn route_key(
     if mode == InputMode::Filter {
         return KeyOutcome::DelegateToFilter;
     }
+    if mode == InputMode::Help {
+        return if is_help_key(key, shift) {
+            KeyOutcome::CloseHelp
+        } else {
+            KeyOutcome::Swallowed
+        };
+    }
     if mode != InputMode::Normal {
         return KeyOutcome::Swallowed;
     }
@@ -156,6 +178,11 @@ pub fn route_key(
         // the hint strip." `key` itself is consumed doing nothing else -- it completes (aborts)
         // the chord rather than also being processed as its own ordinary keystroke.
         return KeyOutcome::PendingGUnbound(format!("g {key} is not a jump"));
+    }
+
+    // Checked before `/`: on some platforms `?` arrives as an unshifted `/` key plus Shift.
+    if is_help_key(key, shift) {
+        return KeyOutcome::EnterHelp;
     }
 
     match key {
@@ -218,6 +245,7 @@ mod tests {
             InputMode::Search,
             InputMode::Dialog,
             InputMode::Filter,
+            InputMode::Help,
         ] {
             assert_eq!(
                 route_key(mode, false, "escape", false, false),
@@ -274,6 +302,62 @@ mod tests {
                 route_key(InputMode::Filter, false, key, false, false),
                 KeyOutcome::DelegateToFilter,
                 "{key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn question_mark_opens_help_in_normal_mode_however_the_platform_reports_it() {
+        assert_eq!(
+            route_key(InputMode::Normal, false, "?", false, true),
+            KeyOutcome::EnterHelp
+        );
+        assert_eq!(
+            route_key(InputMode::Normal, false, "/", false, true),
+            KeyOutcome::EnterHelp
+        );
+        assert_eq!(
+            route_key(InputMode::Normal, false, "/", false, false),
+            KeyOutcome::EnterSearch
+        );
+    }
+
+    #[test]
+    fn help_mode_closes_on_question_mark_and_swallows_everything_else() {
+        assert_eq!(
+            route_key(InputMode::Help, false, "?", false, true),
+            KeyOutcome::CloseHelp
+        );
+        for key in ["j", "a", ":", "/", "tab", "g", "enter"] {
+            assert_eq!(
+                route_key(InputMode::Help, false, key, false, false),
+                KeyOutcome::Swallowed,
+                "{key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn question_mark_does_not_open_help_from_other_modes() {
+        for mode in [
+            InputMode::Command,
+            InputMode::Search,
+            InputMode::Dialog,
+            InputMode::Filter,
+        ] {
+            assert_ne!(
+                route_key(mode, false, "?", false, true),
+                KeyOutcome::EnterHelp
+            );
+        }
+    }
+
+    #[test]
+    fn every_jump_table_entry_routes_to_its_noun() {
+        for (key, noun, _) in JUMPS {
+            assert_eq!(
+                route_key(InputMode::Normal, true, key, false, false),
+                KeyOutcome::JumpToNoun(noun)
             );
         }
     }

@@ -3,5 +3,6 @@
 
 pub mod accounts;
 pub mod dashboard;
+pub mod help;
 pub mod settings;
 pub mod transactions;

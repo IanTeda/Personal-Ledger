@@ -8,9 +8,8 @@
 //! scoped strictly to whichever zone (`NavState::focus`) currently has it (issue #149); the
 //! `g`-prefix jump chords (`g d`, `g t`, ...) and the `Normal`/`Insert`/`Command`/`Search`
 //! mode transitions (issue #150); the command palette (issue #151); the collapsed rail, its
-//! `b`-key/click toggle, and its hover tooltip (issue #152). `?`'s help overlay is a separate
-//! build ticket still to land on the
-//! [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) map. A
+//! `b`-key/click toggle, and its hover tooltip (issue #152). `?`'s help overlay (issue #169,
+//! `InputMode::Help`). A
 //! `View` trait mirroring `bin-tui`'s is still deliberately deferred (see ADR-0016):
 //! `Dashboard` is the only real view, and `render_view` below is a plain match rather than a
 //! trait object because there's still only one concrete implementor to dispatch to.
@@ -37,7 +36,7 @@ use crate::{
     categories::{self, Category},
     command::{self, AccountsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
-    format,
+    format, help,
     key_router::{KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
@@ -65,6 +64,7 @@ use crate::{
     view::{
         accounts as accounts_view,
         dashboard::Dashboard,
+        help as help_view,
         settings::{self as settings_view, SettingsBodyProps},
         transactions as transactions_view,
     },
@@ -450,6 +450,14 @@ impl Shell {
             }
             KeyOutcome::EnterSearch => {
                 self.nav.enter_mode(InputMode::Search);
+                true
+            }
+            KeyOutcome::EnterHelp => {
+                self.nav.enter_mode(InputMode::Help);
+                true
+            }
+            KeyOutcome::CloseHelp => {
+                self.nav.exit_mode();
                 true
             }
             KeyOutcome::EnterInsert => {
@@ -2106,7 +2114,10 @@ impl Render for Shell {
         // the status line's own COMMAND-mode content (the live query, "esc close command
         // window"), which stays meaningful precisely because it stays legible; only the
         // navigational chrome the palette/explorer visually floats over goes dim.
-        let content_opacity = if self.palette.is_some() || self.file_explorer.is_some() {
+        let content_opacity = if self.palette.is_some()
+            || self.file_explorer.is_some()
+            || self.nav.mode() == InputMode::Help
+        {
             0.3
         } else {
             1.0
@@ -2708,6 +2719,10 @@ impl Render for Shell {
                 )
             }))
             .children(filter_popover)
+            .children(
+                (self.nav.mode() == InputMode::Help)
+                    .then(|| help_view::render(&help::sections(self.nav.noun()))),
+            )
             .children(self.accounts_dialog.as_ref().map(|dialog| match dialog {
                 AccountsDialog::Add(form) => accounts_view::add_dialog::render(
                     form,

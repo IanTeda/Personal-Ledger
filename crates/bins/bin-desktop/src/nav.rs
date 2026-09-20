@@ -136,6 +136,9 @@ pub enum InputMode {
     /// keystroke while it is open. Modal like `Dialog`, but its own mode so the status line reads
     /// `FILTER` (the mockup's own chip) and its legend can differ.
     Filter,
+    /// The `?` help overlay is open. Read-only: `?` or `Esc` closes it, every other key is
+    /// swallowed so nothing behind the overlay reacts.
+    Help,
 }
 
 /// The active entity within a noun's context rail, if any. An index rather than a real

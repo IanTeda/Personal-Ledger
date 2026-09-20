@@ -14,6 +14,7 @@ mod error;
 mod explorer;
 mod feasibility_demo;
 mod format;
+mod help;
 mod icon;
 mod key_router;
 mod nav;
