@@ -9,8 +9,6 @@
 //! Locale, and `13/09` in a month-first Locale is an error, never silently reordered. Years must
 //! have four digits.
 
-use std::rc::Rc;
-
 use chrono::{Datelike, Duration, NaiveDate};
 use lib_core::DateStyle;
 
@@ -211,10 +209,13 @@ fn parse_with(
     }
 
     let iso_parts: Vec<&str> = text.split('-').collect();
-    if let [year, month, day] = iso_parts[..] {
-        if year.len() == 4 && all_digits(year) && short_digits(month) && short_digits(day) {
-            return build(number(year), number(month), number(day));
-        }
+    if let [year, month, day] = iso_parts[..]
+        && year.len() == 4
+        && all_digits(year)
+        && short_digits(month)
+        && short_digits(day)
+    {
+        return build(number(year), number(month), number(day));
     }
 
     let Some(shape) = shape else {
@@ -306,6 +307,16 @@ fn build(year: i64, month: i64, day: i64) -> std::result::Result<NaiveDate, Date
         .ok()
         .and_then(|day| NaiveDate::from_ymd_opt(year, month, day))
         .ok_or(DateInputError::OutOfRange(DateField::Day))
+}
+
+/// A date as typed input reads it: ISO when the style is `Iso`, else the Locale's short field
+/// order with a four-digit year (`3/9/2026` in `en-AU`). Use this to fill a text field the user
+/// will edit, since [`parse_date`] reads it back, which the display styles do not promise.
+pub fn format_date_input(date: NaiveDate, style: Option<DateStyle>) -> String {
+    match (style, shape(crate::locale())) {
+        (Some(DateStyle::Iso), _) | (_, None) => format_date(date, Some(DateStyle::Iso)),
+        (_, Some(shape)) => shape.example(date),
+    }
 }
 
 /// The user-facing text for a typed-date error, as a Message with the expected format as an

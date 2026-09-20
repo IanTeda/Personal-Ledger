@@ -17,6 +17,7 @@ mod format;
 mod help;
 mod icon;
 mod key_router;
+mod locale;
 mod nav;
 mod palette;
 mod payees;
@@ -35,6 +36,11 @@ mod transaction_query;
 mod transaction_rows;
 mod transactions;
 mod view;
+
+/// This bin's own Messages, generated at build time from `i18n/<locale>/*.ftl`.
+mod msg {
+    include!(concat!(env!("OUT_DIR"), "/msg.rs"));
+}
 
 use std::borrow::Cow;
 
@@ -78,10 +84,15 @@ async fn main() -> Result<()> {
     // flushes buffered log lines to `log_file_path` (when configured).
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
 
+    // Resolved once, before any window opens; the Locale never changes at runtime.
+    let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
+    let locale = locale::init(requested_locale, locale_source);
+
     Application::new()
         .with_assets(assets::Assets)
         .run(move |cx: &mut App| {
             gpui_component::init(cx);
+            gpui_component::set_locale(locale::gpui_component_tag(locale));
 
             // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
             // .. }` request resolves against the bundled weights rather than a fallback -- a

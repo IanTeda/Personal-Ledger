@@ -185,11 +185,11 @@ pub(crate) fn snake(name: &str) -> String {
 fn compare_params(locale: &str, key: &str, source: &Params, other: &Params, out: &mut Vec<String>) {
     let missing: Vec<_> = source
         .keys()
-        .filter(|name| !other.contains_key(*name))
+        .filter(|name| !other.contains_key(name))
         .collect();
     let extra: Vec<_> = other
         .keys()
-        .filter(|name| !source.contains_key(*name))
+        .filter(|name| !source.contains_key(name))
         .collect();
     if !missing.is_empty() || !extra.is_empty() {
         out.push(format!(

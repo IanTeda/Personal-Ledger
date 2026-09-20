@@ -164,11 +164,11 @@ pub(super) fn type_field(
 /// `super::add_institution_dialog`'s own Default unit field needs a runtime `&[UnitRow]`
 /// instead, so it builds its own bespoke row rather than reusing this one (see that module's
 /// own doc).
-pub(crate) fn segmented_control<T: Copy + PartialEq + 'static>(
+pub(crate) fn segmented_control<T: Copy + PartialEq + 'static, L: Into<SharedString>>(
     id_prefix: &'static str,
     options: &'static [T],
     current: T,
-    label: fn(T) -> &'static str,
+    label: fn(T) -> L,
     on_click: OnSegmentClick<T>,
 ) -> impl IntoElement {
     div()
@@ -191,6 +191,6 @@ pub(crate) fn segmented_control<T: Copy + PartialEq + 'static>(
                     this.bg(color::ACCENT).text_color(color::INK_ON_DARK)
                 })
                 .on_click(move |_event, window, cx| on_click(option, window, cx))
-                .child(label(option))
+                .child(label(option).into())
         }))
 }

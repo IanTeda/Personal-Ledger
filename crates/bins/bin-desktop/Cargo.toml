@@ -15,6 +15,7 @@ path = "src/main.rs"
 lib_config = { path = "../../libs/lib-config" }
 lib_database = { path = "../../libs/lib-database" }
 lib_core = { path = "../../libs/lib-core" }
+lib_locale = { path = "../../libs/lib-locale" }
 lib_tracing = { path = "../../libs/lib-tracing" }
 
 ## -- Workspace Dependencies --
@@ -30,6 +31,9 @@ tokio = { workspace = true }
 ## -- Crate Dependencies --
 gpui = { version = "0.2.2" }
 gpui-component = { version = "0.5.1" }
+
+[build-dependencies]
+lib_locale_build = { path = "../../libs/lib-locale-build" }
 
 [dev-dependencies]
 tempfile = { workspace = true }

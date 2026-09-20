@@ -14,13 +14,15 @@
 //!   the applied filters. `apply` commits the draft; `Esc` discards it.
 
 use chrono::NaiveDate;
+use lib_core::DateStyle;
+use lib_locale::format::{
+    DateInputError, DateInputOptions, date_error_message, format_date_input, parse_date_with,
+};
 
 use crate::{
     accounts::Account,
     categories::{self, Category},
-    format,
     select::SelectState,
-    settings::{DateFormat, MONTH_ABBREVIATIONS},
     transaction_chips::FilterField,
     transaction_query::{StatusFilter, TransactionFilters},
 };
@@ -157,64 +159,24 @@ pub enum SelectKey {
     Activate,
 }
 
-fn parse_iso(text: &str) -> Option<NaiveDate> {
-    let mut parts = text.split('-');
-    let (year, month, day) = (parts.next()?, parts.next()?, parts.next()?);
-    if parts.next().is_some() || year.len() != 4 {
-        return None;
-    }
-    NaiveDate::from_ymd_opt(year.parse().ok()?, month.parse().ok()?, day.parse().ok()?)
-}
-
-fn parse_slash(text: &str) -> Option<NaiveDate> {
-    let mut parts = text.split('/');
-    let (day, month, year) = (parts.next()?, parts.next()?, parts.next()?);
-    if parts.next().is_some() || year.len() != 4 {
-        return None;
-    }
-    NaiveDate::from_ymd_opt(year.parse().ok()?, month.parse().ok()?, day.parse().ok()?)
-}
-
-fn parse_day_month_year(lower: &str) -> Option<NaiveDate> {
-    let mut parts = lower.split_whitespace();
-    let (day, month, year) = (parts.next()?, parts.next()?, parts.next()?);
-    if parts.next().is_some() || year.len() != 4 {
-        return None;
-    }
-    let month = MONTH_ABBREVIATIONS.iter().position(|name| *name == month)? as u32 + 1;
-    NaiveDate::from_ymd_opt(year.parse().ok()?, month, day.parse().ok()?)
-}
-
-/// Parses a From / To field: empty is `Ok(None)` (no bound), `today` is today, ISO is always
-/// accepted, and otherwise the chosen Date format. The error is the hint shown under the field,
-/// built from today's date in the chosen style.
+/// Parses a From / To field: empty is `Ok(None)` (no bound), and otherwise the Locale's short
+/// numeric form, ISO, or a word such as `today`, with the year optional (a filter can say `3/9`).
+/// An ISO date style makes ISO the only numeric form. The error is the hint shown under the field,
+/// a Message built from today's date.
 pub fn parse_date(
     text: &str,
     today: NaiveDate,
-    date_format: DateFormat,
+    date_style: Option<DateStyle>,
 ) -> Result<Option<NaiveDate>, String> {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
+    let options = DateInputOptions {
+        style: date_style,
+        allow_yearless: true,
+    };
+    match parse_date_with(text, today, &options) {
+        Ok(date) => Ok(Some(date)),
+        Err(DateInputError::Empty) => Ok(None),
+        Err(error) => Err(date_error_message(&error, today, &options)),
     }
-    let lower = trimmed.to_lowercase();
-    if lower == "today" {
-        return Ok(Some(today));
-    }
-    let parsed = parse_iso(trimmed).or_else(|| match date_format {
-        DateFormat::DayMonthYear => parse_day_month_year(&lower),
-        DateFormat::Slash => parse_slash(trimmed),
-        DateFormat::Iso => None,
-    });
-    parsed.map(Some).ok_or_else(|| {
-        let styled = format::date(today, date_format);
-        let iso = format::date(today, DateFormat::Iso);
-        if styled == iso {
-            format!("use {iso} or today")
-        } else {
-            format!("use {styled}, {iso} or today")
-        }
-    })
 }
 
 /// The popover's draft.
@@ -239,7 +201,7 @@ impl FilterForm {
         filters: &TransactionFilters,
         options: &FormOptions,
         today: NaiveDate,
-        date_format: DateFormat,
+        date_style: Option<DateStyle>,
     ) -> Self {
         Self {
             account: SelectState::new(Some(options.account_label(filters.account).to_string())),
@@ -248,11 +210,11 @@ impl FilterForm {
             tag: filters.tag.clone(),
             from: filters
                 .from
-                .map(|date| format::date(date, date_format))
+                .map(|date| format_date_input(date, date_style))
                 .unwrap_or_default(),
             to: match filters.to {
                 Some(date) if date == today => "today".to_string(),
-                Some(date) => format::date(date, date_format),
+                Some(date) => format_date_input(date, date_style),
                 None => String::new(),
             },
             status: filters.status,
@@ -262,30 +224,35 @@ impl FilterForm {
 
     /// `reset`: the draft back to the defaults (this year, everything else empty). Focus stays put
     /// and the applied filters are untouched.
-    pub fn reset(&mut self, options: &FormOptions, today: NaiveDate, date_format: DateFormat) {
+    pub fn reset(
+        &mut self,
+        options: &FormOptions,
+        today: NaiveDate,
+        date_style: Option<DateStyle>,
+    ) {
         let focused = self.focused;
         *self = Self::from_filters(
             &TransactionFilters::defaults(today),
             options,
             today,
-            date_format,
+            date_style,
         );
         self.focused = focused;
     }
 
     /// The hint under From when its text is not a date.
-    pub fn start_hint(&self, today: NaiveDate, date_format: DateFormat) -> Option<String> {
-        parse_date(&self.from, today, date_format).err()
+    pub fn start_hint(&self, today: NaiveDate, date_style: Option<DateStyle>) -> Option<String> {
+        parse_date(&self.from, today, date_style).err()
     }
 
     /// The hint under To when its text is not a date.
-    pub fn end_hint(&self, today: NaiveDate, date_format: DateFormat) -> Option<String> {
-        parse_date(&self.to, today, date_format).err()
+    pub fn end_hint(&self, today: NaiveDate, date_style: Option<DateStyle>) -> Option<String> {
+        parse_date(&self.to, today, date_style).err()
     }
 
     /// Whether **apply** may run: both dates parse.
-    pub fn is_valid(&self, today: NaiveDate, date_format: DateFormat) -> bool {
-        self.start_hint(today, date_format).is_none() && self.end_hint(today, date_format).is_none()
+    pub fn is_valid(&self, today: NaiveDate, date_style: Option<DateStyle>) -> bool {
+        self.start_hint(today, date_style).is_none() && self.end_hint(today, date_style).is_none()
     }
 
     /// The filters this draft describes, or `None` while a date is unparseable.
@@ -293,7 +260,7 @@ impl FilterForm {
         &self,
         options: &FormOptions,
         today: NaiveDate,
-        date_format: DateFormat,
+        date_style: Option<DateStyle>,
     ) -> Option<TransactionFilters> {
         Some(TransactionFilters {
             account: self
@@ -306,8 +273,8 @@ impl FilterForm {
                 .and_then(|label| options.category_id(label)),
             payee: self.payee.trim().to_string(),
             tag: self.tag.trim().to_string(),
-            from: parse_date(&self.from, today, date_format).ok()?,
-            to: parse_date(&self.to, today, date_format).ok()?,
+            from: parse_date(&self.from, today, date_style).ok()?,
+            to: parse_date(&self.to, today, date_style).ok()?,
             status: self.status,
         })
     }
@@ -460,17 +427,24 @@ mod tests {
         FormOptions::new(&default_accounts(), &default_categories())
     }
 
-    fn fmt() -> DateFormat {
-        DateFormat::DayMonthYear
+    fn fmt() -> Option<DateStyle> {
+        None
+    }
+
+    /// The typed forms are Locale-dependent, so each test pins one.
+    fn au<T>(f: impl FnOnce() -> T) -> T {
+        lib_locale::with_locale(lib_locale::Locale::EnAu, f)
     }
 
     fn defaults_form() -> FilterForm {
-        FilterForm::from_filters(
-            &TransactionFilters::defaults(today()),
-            &options(),
-            today(),
-            fmt(),
-        )
+        au(|| {
+            FilterForm::from_filters(
+                &TransactionFilters::defaults(today()),
+                &options(),
+                today(),
+                fmt(),
+            )
+        })
     }
 
     #[test]
@@ -482,90 +456,99 @@ mod tests {
     }
 
     #[test]
-    fn dates_parse_in_the_chosen_format() {
-        assert_eq!(
-            parse_date("12 sep 2026", today(), DateFormat::DayMonthYear),
-            Ok(Some(day(2026, 9, 12)))
-        );
-        assert_eq!(
-            parse_date("01 JAN 2026", today(), DateFormat::DayMonthYear),
-            Ok(Some(day(2026, 1, 1)))
-        );
-        assert_eq!(
-            parse_date("5 sep 2026", today(), DateFormat::DayMonthYear),
-            Ok(Some(day(2026, 9, 5)))
-        );
-        assert_eq!(
-            parse_date("12/09/2026", today(), DateFormat::Slash),
-            Ok(Some(day(2026, 9, 12)))
-        );
-        assert_eq!(
-            parse_date("2026-09-12", today(), DateFormat::Iso),
-            Ok(Some(day(2026, 9, 12)))
-        );
+    fn dates_parse_in_the_locales_short_form() {
+        au(|| {
+            for text in ["12/9/2026", "12/09/2026", "2026-09-12", "2026-9-12"] {
+                assert_eq!(
+                    parse_date(text, today(), None),
+                    Ok(Some(day(2026, 9, 12))),
+                    "{text}"
+                );
+            }
+        });
+        lib_locale::with_locale(lib_locale::Locale::EnUs, || {
+            assert_eq!(
+                parse_date("9/12/2026", today(), None),
+                Ok(Some(day(2026, 9, 12)))
+            );
+        });
+    }
+
+    #[test]
+    fn a_year_is_optional_in_a_filter() {
+        au(|| {
+            assert_eq!(parse_date("3/9", today(), None), Ok(Some(day(2026, 9, 3))));
+        });
+    }
+
+    #[test]
+    fn relative_words_are_accepted() {
+        au(|| {
+            assert_eq!(
+                parse_date("yesterday", today(), None),
+                Ok(Some(day(2026, 9, 18)))
+            );
+        });
     }
 
     #[test]
     fn iso_is_accepted_whatever_the_preference() {
-        for format in DateFormat::ALL {
+        au(|| {
+            for style in crate::settings::DATE_STYLE_CHOICES {
+                assert_eq!(
+                    parse_date("2026-09-12", today(), style),
+                    Ok(Some(day(2026, 9, 12)))
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn an_iso_style_accepts_only_iso() {
+        au(|| {
+            assert!(parse_date("12/9/2026", today(), Some(DateStyle::Iso)).is_err());
+            assert!(parse_date("2026-09-12", today(), Some(DateStyle::Iso)).is_ok());
+        });
+    }
+
+    #[test]
+    fn impossible_or_malformed_dates_are_errors_with_a_hint() {
+        au(|| {
+            for bad in ["31/2/2026", "12/9/26", "12 sep 2026", "2026-13-01", "abc"] {
+                assert!(
+                    parse_date(bad, today(), fmt()).is_err(),
+                    "{bad:?} should not parse"
+                );
+            }
             assert_eq!(
-                parse_date("2026-09-12", today(), format),
-                Ok(Some(day(2026, 9, 12)))
+                parse_date("nope", today(), None),
+                Err("Enter a date like 19/9/2026 or 2026-09-19, or a word such as today, yesterday, tomorrow.".to_string())
             );
-        }
-    }
-
-    #[test]
-    fn another_styles_format_is_not_accepted() {
-        assert!(parse_date("12/09/2026", today(), DateFormat::DayMonthYear).is_err());
-        assert!(parse_date("12 sep 2026", today(), DateFormat::Slash).is_err());
-        assert!(parse_date("12 sep 2026", today(), DateFormat::Iso).is_err());
-        assert!(parse_date("12/09/2026", today(), DateFormat::Iso).is_err());
-    }
-
-    #[test]
-    fn impossible_or_malformed_dates_are_errors_with_a_hint_in_the_chosen_style() {
-        for bad in [
-            "31 feb 2026",
-            "12 sept 2026",
-            "12 sep 26",
-            "sep 12 2026",
-            "yesterday",
-            "2026-13-01",
-            "abc",
-        ] {
-            assert!(
-                parse_date(bad, today(), fmt()).is_err(),
-                "{bad:?} should not parse"
+            assert_eq!(
+                parse_date("nope", today(), Some(DateStyle::Iso)),
+                Err(
+                    "Enter a date like 2026-09-19, or a word such as today, yesterday, tomorrow."
+                        .to_string()
+                )
             );
-        }
-        assert_eq!(
-            parse_date("nope", today(), DateFormat::DayMonthYear),
-            Err("use 19 sep 2026, 2026-09-19 or today".to_string())
-        );
-        assert_eq!(
-            parse_date("nope", today(), DateFormat::Slash),
-            Err("use 19/09/2026, 2026-09-19 or today".to_string())
-        );
-        assert_eq!(
-            parse_date("nope", today(), DateFormat::Iso),
-            Err("use 2026-09-19 or today".to_string())
-        );
+        });
     }
 
     #[test]
     fn the_defaults_draft_holds_the_mockups_own_values() {
-        let form = defaults_form();
-        assert_eq!(form.from, "01 jan 2026");
-        assert_eq!(form.to, "today");
-        assert_eq!(form.account.value(), Some(ALL_ACCOUNTS));
-        assert_eq!(form.category.value(), Some(ANY_CATEGORY));
-        assert_eq!(form.status, StatusFilter::All);
-        assert_eq!(form.focused, FormField::Account);
+        au(|| {
+            let form = defaults_form();
+            assert_eq!(form.from, "1/1/2026");
+            assert_eq!(form.to, "today");
+            assert_eq!(form.account.value(), Some(ALL_ACCOUNTS));
+            assert_eq!(form.category.value(), Some(ANY_CATEGORY));
+            assert_eq!(form.status, StatusFilter::All);
+            assert_eq!(form.focused, FormField::Account);
+        });
     }
 
     #[test]
-    fn a_draft_round_trips_through_every_date_format() {
+    fn a_draft_round_trips_through_every_date_style() {
         let mut filters = TransactionFilters::defaults(today());
         filters.account = Some(default_accounts()[1].id);
         filters.category = categories::find_by_name(&default_categories(), "Groceries");
@@ -574,14 +557,16 @@ mod tests {
         filters.status = StatusFilter::Cleared;
         filters.from = Some(day(2025, 3, 4));
         filters.to = Some(day(2026, 8, 30));
-        for format in DateFormat::ALL {
-            let form = FilterForm::from_filters(&filters, &options(), today(), format);
-            assert_eq!(
-                form.to_filters(&options(), today(), format),
-                Some(filters.clone()),
-                "{format:?}"
-            );
-        }
+        au(|| {
+            for style in crate::settings::DATE_STYLE_CHOICES {
+                let form = FilterForm::from_filters(&filters, &options(), today(), style);
+                assert_eq!(
+                    form.to_filters(&options(), today(), style),
+                    Some(filters.clone()),
+                    "{style:?}"
+                );
+            }
+        });
     }
 
     #[test]
@@ -748,7 +733,7 @@ mod tests {
         assert_eq!(form.account.value(), Some(ALL_ACCOUNTS));
         form.focus(FormField::From);
         form.backspace();
-        assert_eq!(form.from, "01 jan 202");
+        assert_eq!(form.from, "1/1/202");
     }
 
     #[test]

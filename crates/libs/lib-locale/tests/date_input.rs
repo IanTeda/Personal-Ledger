@@ -3,7 +3,7 @@
 use chrono::NaiveDate;
 use lib_core::DateStyle;
 use lib_locale::format::{
-    DateField, DateInputError, DateInputOptions, date_error_message, format_date, parse_date,
+    DateField, DateInputError, DateInputOptions, date_error_message, format_date_input, parse_date,
     parse_date_with,
 };
 use lib_locale::{Locale, with_locale};
@@ -198,4 +198,31 @@ fn error_messages_carry_the_expected_format_as_arguments() {
         )),
         "Enter a date like 2026-09-20, or a word such as today, yesterday, tomorrow."
     );
+}
+
+#[test]
+fn typed_input_text_reads_back_as_the_same_date() {
+    let day = day(2026, 12, 3);
+    let cases = [
+        (Locale::EnAu, None, "3/12/2026"),
+        (Locale::EnGb, Some(DateStyle::Long), "3/12/2026"),
+        (Locale::EnUs, Some(DateStyle::Short), "12/3/2026"),
+        (Locale::EnAu, Some(DateStyle::Iso), "2026-12-03"),
+        (Locale::EnXa, None, "12/3/2026"),
+    ];
+    for (locale, style, expected) in cases {
+        with_locale(locale, || {
+            let text = format_date_input(day, style);
+            assert_eq!(text, expected, "{locale} {style:?}");
+            let options = DateInputOptions {
+                style,
+                allow_yearless: false,
+            };
+            assert_eq!(
+                parse_date_with(&text, today(), &options),
+                Ok(day),
+                "{locale}"
+            );
+        });
+    }
 }

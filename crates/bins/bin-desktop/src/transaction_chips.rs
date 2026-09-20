@@ -12,10 +12,10 @@
 use std::collections::HashSet;
 
 use chrono::NaiveDate;
+use lib_core::DateStyle;
 
 use crate::{
     categories, format,
-    settings::{DateFormat, DecimalSeparator},
     transaction_query::{Ledger, Total, TransactionFilters, Visible, this_year},
     transactions::Transaction,
 };
@@ -58,13 +58,13 @@ pub fn date_label(
     from: Option<NaiveDate>,
     to: Option<NaiveDate>,
     today: NaiveDate,
-    date_format: DateFormat,
+    date_style: Option<DateStyle>,
 ) -> String {
     let (default_from, default_to) = this_year(today);
     if from == Some(default_from) && to == Some(default_to) {
         return "this year".to_string();
     }
-    let show = |date: NaiveDate| format::date_compact(date, date_format, today);
+    let show = |date: NaiveDate| format::date(date, date_style);
     let show_end = |date: NaiveDate| {
         if date == today {
             "today".to_string()
@@ -85,7 +85,7 @@ pub fn chips(
     filters: &TransactionFilters,
     ledger: &Ledger<'_>,
     today: NaiveDate,
-    date_format: DateFormat,
+    date_style: Option<DateStyle>,
 ) -> Vec<Chip> {
     let defaults = TransactionFilters::defaults(today);
     let account = filters.account.map(|id| {
@@ -131,7 +131,7 @@ pub fn chips(
         ),
         make(
             FilterField::Date,
-            date_label(filters.from, filters.to, today, date_format),
+            date_label(filters.from, filters.to, today, date_style),
             date_active,
         ),
         make(
@@ -217,12 +217,7 @@ impl Footer {
 }
 
 /// The footer for a query result.
-pub fn footer(
-    visible: &Visible<'_>,
-    filters: &TransactionFilters,
-    ledger: &Ledger<'_>,
-    separator: DecimalSeparator,
-) -> Footer {
+pub fn footer(visible: &Visible<'_>, filters: &TransactionFilters, ledger: &Ledger<'_>) -> Footer {
     let category = filters.category.and_then(|id| {
         ledger
             .categories
@@ -234,7 +229,7 @@ pub fn footer(
         Total::Empty => FooterTotal::Empty,
         Total::Mixed => FooterTotal::Mixed,
         Total::Single { unit, amount } => {
-            let (negative, text) = format::amount(amount, separator);
+            let (negative, text) = format::amount(amount);
             FooterTotal::Single {
                 unit: unit.clone(),
                 negative,
@@ -301,7 +296,7 @@ mod tests {
         }
 
         fn chips(&self, filters: &TransactionFilters) -> Vec<Chip> {
-            chips(filters, &self.ledger(), today(), DateFormat::DayMonthYear)
+            chips(filters, &self.ledger(), today(), None)
         }
     }
 
@@ -375,28 +370,30 @@ mod tests {
     #[test]
     fn the_date_chip_reads_this_year_a_range_or_all_dates() {
         let d = |m, day| NaiveDate::from_ymd_opt(2026, m, day).unwrap();
-        let fmt = DateFormat::DayMonthYear;
-        assert_eq!(
-            date_label(Some(d(1, 1)), Some(today()), today(), fmt),
-            "this year"
-        );
-        assert_eq!(date_label(None, None, today(), fmt), "all dates");
-        assert_eq!(
-            date_label(Some(d(8, 12)), Some(d(9, 12)), today(), fmt),
-            "12 aug \u{2013} 12 sep"
-        );
-        assert_eq!(
-            date_label(Some(d(8, 12)), Some(today()), today(), fmt),
-            "12 aug \u{2013} today"
-        );
-        assert_eq!(
-            date_label(Some(d(8, 12)), None, today(), fmt),
-            "from 12 aug"
-        );
-        assert_eq!(
-            date_label(None, Some(d(9, 12)), today(), fmt),
-            "until 12 sep"
-        );
+        let fmt = None;
+        lib_locale::with_locale(lib_locale::Locale::EnAu, || {
+            assert_eq!(
+                date_label(Some(d(1, 1)), Some(today()), today(), fmt),
+                "this year"
+            );
+            assert_eq!(date_label(None, None, today(), fmt), "all dates");
+            assert_eq!(
+                date_label(Some(d(8, 12)), Some(d(9, 12)), today(), fmt),
+                "12 Aug 2026 \u{2013} 12 Sept 2026"
+            );
+            assert_eq!(
+                date_label(Some(d(8, 12)), Some(today()), today(), fmt),
+                "12 Aug 2026 \u{2013} today"
+            );
+            assert_eq!(
+                date_label(Some(d(8, 12)), None, today(), fmt),
+                "from 12 Aug 2026"
+            );
+            assert_eq!(
+                date_label(None, Some(d(9, 12)), today(), fmt),
+                "until 12 Sept 2026"
+            );
+        });
     }
 
     #[test]
@@ -419,7 +416,7 @@ mod tests {
         let from = NaiveDate::from_ymd_opt(2025, 1, 28).unwrap();
         let to = NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
         assert_eq!(
-            date_label(Some(from), Some(to), today(), DateFormat::Iso),
+            date_label(Some(from), Some(to), today(), Some(DateStyle::Iso)),
             "2025-01-28 \u{2013} 2026-03-02"
         );
     }
@@ -478,12 +475,7 @@ mod tests {
         let w = world();
         let filters = TransactionFilters::defaults(today());
         let visible = query(&w.ledger(), &w.transactions, &filters, "");
-        let plain = footer(
-            &visible,
-            &filters,
-            &w.ledger(),
-            DecimalSeparator::CommaThousands,
-        );
+        let plain = footer(&visible, &filters, &w.ledger());
         assert_eq!(
             plain.label(),
             format!("{} of 700 transactions shown", visible.rows.len())
@@ -493,12 +485,7 @@ mod tests {
         let mut filters = TransactionFilters::defaults(today());
         filters.category = Some(groceries);
         let visible = query(&w.ledger(), &w.transactions, &filters, "");
-        let named = footer(
-            &visible,
-            &filters,
-            &w.ledger(),
-            DecimalSeparator::CommaThousands,
-        );
+        let named = footer(&visible, &filters, &w.ledger());
         assert_eq!(named.category.as_deref(), Some("groceries"));
         assert_eq!(
             named.label(),
@@ -507,38 +494,18 @@ mod tests {
     }
 
     #[test]
-    fn a_single_unit_footer_total_is_the_last_running_figure_in_the_chosen_separators() {
+    fn a_single_unit_footer_total_is_the_last_running_figure() {
         let w = world();
         let filters = TransactionFilters::defaults(today());
         let visible = query(&w.ledger(), &w.transactions, &filters, "");
-        let comma = footer(
-            &visible,
-            &filters,
-            &w.ledger(),
-            DecimalSeparator::CommaThousands,
-        );
-        let dot = footer(
-            &visible,
-            &filters,
-            &w.ledger(),
-            DecimalSeparator::DotThousands,
-        );
-        let (unit, text) = match (&comma.total, &dot.total) {
-            (
-                FooterTotal::Single { unit, text, .. },
-                FooterTotal::Single { text: dot_text, .. },
-            ) => {
-                assert_ne!(text, dot_text, "the separators differ");
-                (unit.clone(), text.clone())
-            }
+        let total = footer(&visible, &filters, &w.ledger());
+        let (unit, text) = match &total.total {
+            FooterTotal::Single { unit, text, .. } => (unit.clone(), text.clone()),
             other => panic!("expected single-Unit totals, got {other:?}"),
         };
         assert_eq!(unit, "aud");
         let last = visible.rows.last().unwrap().running.as_ref().unwrap();
-        assert_eq!(
-            text,
-            format::amount(last, DecimalSeparator::CommaThousands).1
-        );
+        assert_eq!(text, format::amount(last).1);
     }
 
     #[test]
@@ -547,12 +514,7 @@ mod tests {
         let mut filters = TransactionFilters::defaults(today());
         filters.status = StatusFilter::Open;
         let visible = query(&w.ledger(), &w.transactions, &filters, "");
-        let f = footer(
-            &visible,
-            &filters,
-            &w.ledger(),
-            DecimalSeparator::CommaThousands,
-        );
+        let f = footer(&visible, &filters, &w.ledger());
         match f.total {
             FooterTotal::Single { negative, text, .. } => {
                 assert_eq!(negative, text.starts_with('\u{2212}'));
@@ -571,22 +533,12 @@ mod tests {
         }
         let filters = TransactionFilters::defaults(today());
         let visible = query(&w.ledger(), &w.transactions, &filters, "");
-        let mixed = footer(
-            &visible,
-            &filters,
-            &w.ledger(),
-            DecimalSeparator::CommaThousands,
-        );
+        let mixed = footer(&visible, &filters, &w.ledger());
         assert_eq!(mixed.total, FooterTotal::Mixed);
         assert!(mixed.shown > 0, "the rows still show");
 
         let none = query(&w.ledger(), &w.transactions, &filters, "zzzz-no-such-thing");
-        let empty = footer(
-            &none,
-            &filters,
-            &w.ledger(),
-            DecimalSeparator::CommaThousands,
-        );
+        let empty = footer(&none, &filters, &w.ledger());
         assert_eq!(empty.total, FooterTotal::Empty);
         assert_eq!(empty.shown, 0);
         assert_eq!(empty.label(), "0 of 700 transactions shown");

@@ -26,10 +26,12 @@ pub mod units;
 
 use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
 
+use lib_core::DateStyle;
+
 use crate::{
     settings::{
-        DateFormat, DecimalSeparator, InstitutionRow, PriceSourceRow, RowDensity, SettingsSection,
-        StatusGlyphs, TracingLevel, UnitRow,
+        InstitutionRow, PriceSourceRow, RowDensity, SettingsSection, StatusGlyphs, TracingLevel,
+        UnitRow,
     },
     theme::color,
 };
@@ -39,14 +41,12 @@ use crate::{
 /// reason for existing). Every section function takes `&SettingsBodyProps` and reads whatever
 /// subset it needs.
 pub struct SettingsBodyProps<'a> {
-    pub date_format: DateFormat,
-    pub decimal_separator: DecimalSeparator,
+    pub date_style: Option<DateStyle>,
     pub row_density: RowDensity,
     pub status_glyphs: StatusGlyphs,
     pub start_sidebar_minimised: bool,
     pub on_start_sidebar_minimised_click: display::OnPlainClick,
-    pub on_date_format_click: display::OnDateFormatClick,
-    pub on_decimal_separator_click: display::OnDecimalSeparatorClick,
+    pub on_date_style_click: display::OnDateStyleClick,
     pub on_row_density_click: display::OnRowDensityClick,
     pub on_status_glyphs_click: display::OnStatusGlyphsClick,
     pub units: &'a [UnitRow],
@@ -190,14 +190,12 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
     match section {
         SettingsSection::General => general::render(),
         SettingsSection::Display => display::render(
-            props.date_format,
-            props.decimal_separator,
+            props.date_style,
             props.row_density,
             props.status_glyphs,
             props.start_sidebar_minimised,
             props.on_start_sidebar_minimised_click.clone(),
-            props.on_date_format_click.clone(),
-            props.on_decimal_separator_click.clone(),
+            props.on_date_style_click.clone(),
             props.on_row_density_click.clone(),
             props.on_status_glyphs_click.clone(),
         ),

@@ -4,6 +4,8 @@
 //! `rail::settings_index::SettingsIndexRail` and `view::settings` are the chrome; this module
 //! only knows what sections exist, their scroll order, and their label/scope-note/filter text.
 
+use lib_core::DateStyle;
+
 /// The eight sections of the Settings body, in scroll order -- also the settings index rail's
 /// own row order (`docs/ux/desktop/Settings/README.md`'s "Sections, in scroll order" table).
 /// Nine down to eight as of issue #189: "Ledger & units" no longer exists as its own section --
@@ -108,64 +110,26 @@ impl SettingsSection {
     }
 }
 
-/// The **Display** section's "Date format" segmented control (`docs/ux/desktop/Settings/README.md`'s
-/// "2a resting state" markup: `"12 sep 2026"` the mockup's own `checked` option).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DateFormat {
-    #[default]
-    DayMonthYear,
-    Slash,
-    Iso,
-}
+/// The **Display** section's "Date format" segmented control: the nullable date style
+/// Preference (ADR-0021). `None` is "Locale default" -- the Locale picks the form -- and only an
+/// explicit choice is stored. The Locale itself is not chosen here: it is Configuration, shown
+/// read-only beside this control. The number separator has no control, because the Locale owns it.
+pub const DATE_STYLE_CHOICES: [Option<DateStyle>; 5] = [
+    None,
+    Some(DateStyle::Short),
+    Some(DateStyle::Medium),
+    Some(DateStyle::Long),
+    Some(DateStyle::Iso),
+];
 
-impl DateFormat {
-    pub const ALL: [DateFormat; 3] = [Self::DayMonthYear, Self::Slash, Self::Iso];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::DayMonthYear => "12 sep 2026",
-            Self::Slash => "12/09/2026",
-            Self::Iso => "ISO",
-        }
-    }
-}
-
-/// The same section's "Decimal & thousands separator" segmented control (`"1,234.56"` the
-/// mockup's own `checked` option). The shared `Thousands` postfix is what every option actually
-/// is -- a thousands-grouping style -- same reasoning [`SettingsDialog`]'s own
-/// `#[allow(clippy::enum_variant_names)]` used for its shared `Unit` postfix.
-#[allow(clippy::enum_variant_names)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DecimalSeparator {
-    #[default]
-    CommaThousands,
-    DotThousands,
-    SpaceThousands,
-}
-
-impl DecimalSeparator {
-    pub const ALL: [DecimalSeparator; 3] = [
-        Self::CommaThousands,
-        Self::DotThousands,
-        Self::SpaceThousands,
-    ];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::CommaThousands => "1,234.56",
-            Self::DotThousands => "1.234,56",
-            Self::SpaceThousands => "1 234.56",
-        }
-    }
-
-    /// This style's own (thousands, decimal) mark pair, read straight off [`Self::label`]'s own
-    /// three example strings.
-    pub(crate) fn marks(self) -> (char, char) {
-        match self {
-            Self::CommaThousands => (',', '.'),
-            Self::DotThousands => ('.', ','),
-            Self::SpaceThousands => (' ', '.'),
-        }
+/// The control's label for a choice, as a Message in the Locale in effect.
+pub fn date_style_label(choice: Option<DateStyle>) -> String {
+    match choice {
+        None => crate::msg::desktop_display_date_style_default(),
+        Some(DateStyle::Short) => crate::msg::desktop_display_date_style_short(),
+        Some(DateStyle::Medium) => crate::msg::desktop_display_date_style_medium(),
+        Some(DateStyle::Long) => crate::msg::desktop_display_date_style_long(),
+        Some(DateStyle::Iso) => crate::msg::desktop_display_date_style_iso(),
     }
 }
 
@@ -294,49 +258,28 @@ pub const DEFAULT_DISPLAY_PREVIEW_ROWS: &[DisplayPreviewRow] = &[
     },
 ];
 
-pub(crate) const MONTH_ABBREVIATIONS: [&str; 12] = [
-    "jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec",
-];
-
-/// Formats a `(year, month, day)` per the selected [`DateFormat`] -- matching the mockup's own
-/// first two styles (`"12 sep 2026"`, `"12/09/2026"`) exactly; the mockup's own column just says
-/// "ISO" rather than drawing a literal example, so the third style is a real ISO-8601
-/// `"2026-09-12"`.
-pub fn format_preview_date(year: u32, month: u32, day: u32, format: DateFormat) -> String {
-    match format {
-        DateFormat::DayMonthYear => {
-            let abbreviation = MONTH_ABBREVIATIONS
-                .get(month.saturating_sub(1) as usize)
-                .copied()
-                .unwrap_or("???");
-            format!("{day:02} {abbreviation} {year}")
-        }
-        DateFormat::Slash => format!("{day:02}/{month:02}/{year}"),
-        DateFormat::Iso => format!("{year:04}-{month:02}-{day:02}"),
-    }
+/// Formats a `(year, month, day)` in the selected date style, for the PREVIEW table, through the
+/// same Locale formatting the rest of the app uses so the two cannot disagree.
+pub fn format_preview_date(year: u32, month: u32, day: u32, style: Option<DateStyle>) -> String {
+    i32::try_from(year)
+        .ok()
+        .and_then(|year| chrono::NaiveDate::from_ymd_opt(year, month, day))
+        .map(|date| crate::format::date(date, style))
+        .unwrap_or_else(|| "???".to_string())
 }
 
-/// Formats `amount_cents` per the selected [`DecimalSeparator`] -- matching the PREVIEW table's
-/// own mockup values (`"+4,210.00"`, `"\u{2212}86.40"`): an explicit `+` for a non-negative
-/// amount (the mockup's own third row), `\u{2212}` (Unicode minus, not a hyphen) for a negative
-/// one, and thousands grouped by the selected style's own separator.
-pub fn format_preview_amount(amount_cents: i64, separator: DecimalSeparator) -> String {
-    let (thousands, decimal) = separator.marks();
-    let sign = if amount_cents < 0 { '\u{2212}' } else { '+' };
-    let whole = amount_cents.abs() / 100;
-    let fraction = amount_cents.abs() % 100;
-
-    let digits = whole.to_string();
-    let mut grouped = String::new();
-    for (index, ch) in digits.chars().rev().enumerate() {
-        if index > 0 && index % 3 == 0 {
-            grouped.push(thousands);
-        }
-        grouped.push(ch);
-    }
-    let grouped: String = grouped.chars().rev().collect();
-
-    format!("{sign}{grouped}{decimal}{fraction:02}")
+/// Formats `amount_cents` as the PREVIEW table shows it (`"+4,210.00"`, `"\u{2212}86.40"`): an
+/// explicit `+` for a positive amount and the Locale's grouping.
+pub fn format_preview_amount(amount_cents: i64) -> String {
+    let sign = if amount_cents < 0 { "-" } else { "" };
+    let text = format!(
+        "{sign}{}.{:02}",
+        amount_cents.unsigned_abs() / 100,
+        amount_cents.unsigned_abs() % 100
+    );
+    text.parse::<lib_core::Money>()
+        .map(|money| crate::format::signed_amount(&money).1)
+        .unwrap_or_default()
 }
 
 /// One row of the **Units** section's table (`docs/ux/desktop/Settings/README.md`'s "2a resting
@@ -984,16 +927,19 @@ mod tests {
     }
 
     #[test]
-    fn date_format_defaults_to_day_month_year() {
-        assert_eq!(DateFormat::default(), DateFormat::DayMonthYear);
+    fn the_date_style_choices_start_with_the_locale_default() {
+        assert_eq!(DATE_STYLE_CHOICES[0], None);
+        assert_eq!(DATE_STYLE_CHOICES.len(), 5);
     }
 
     #[test]
-    fn decimal_separator_defaults_to_comma_thousands() {
-        assert_eq!(
-            DecimalSeparator::default(),
-            DecimalSeparator::CommaThousands
-        );
+    fn the_date_style_labels_are_messages() {
+        crate::locale::init_for_tests();
+        let labels: Vec<String> = DATE_STYLE_CHOICES
+            .into_iter()
+            .map(date_style_label)
+            .collect();
+        assert_eq!(labels, ["Locale default", "Short", "Medium", "Long", "ISO"]);
     }
 
     #[test]
@@ -1019,43 +965,32 @@ mod tests {
     }
 
     #[test]
-    fn format_preview_date_matches_the_mockups_own_three_styles() {
-        assert_eq!(
-            format_preview_date(2026, 9, 12, DateFormat::DayMonthYear),
-            "12 sep 2026"
-        );
-        assert_eq!(
-            format_preview_date(2026, 9, 12, DateFormat::Slash),
-            "12/09/2026"
-        );
-        assert_eq!(
-            format_preview_date(2026, 9, 12, DateFormat::Iso),
-            "2026-09-12"
-        );
+    fn format_preview_date_follows_the_locale_and_style() {
+        use lib_locale::{Locale, with_locale};
+        with_locale(Locale::EnAu, || {
+            assert_eq!(format_preview_date(2026, 9, 12, None), "12 Sept 2026");
+            assert_eq!(
+                format_preview_date(2026, 9, 12, Some(DateStyle::Long)),
+                "12 September 2026"
+            );
+            assert_eq!(
+                format_preview_date(2026, 9, 12, Some(DateStyle::Iso)),
+                "2026-09-12"
+            );
+        });
+        with_locale(Locale::EnUs, || {
+            assert_eq!(
+                format_preview_date(2026, 9, 12, Some(DateStyle::Short)),
+                "9/12/26"
+            );
+        });
+        assert_eq!(format_preview_date(2026, 13, 40, None), "???");
     }
 
     #[test]
     fn format_preview_amount_matches_the_mockups_own_values() {
-        assert_eq!(
-            format_preview_amount(-8640, DecimalSeparator::CommaThousands),
-            "\u{2212}86.40"
-        );
-        assert_eq!(
-            format_preview_amount(421_000, DecimalSeparator::CommaThousands),
-            "+4,210.00"
-        );
-    }
-
-    #[test]
-    fn format_preview_amount_groups_thousands_per_the_selected_style() {
-        assert_eq!(
-            format_preview_amount(421_000, DecimalSeparator::DotThousands),
-            "+4.210,00"
-        );
-        assert_eq!(
-            format_preview_amount(421_000, DecimalSeparator::SpaceThousands),
-            "+4 210.00"
-        );
+        assert_eq!(format_preview_amount(-8640), "\u{2212}86.40");
+        assert_eq!(format_preview_amount(421_000), "+4,210.00");
     }
 
     #[test]

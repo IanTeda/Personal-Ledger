@@ -547,7 +547,7 @@ impl AccountForm {
 /// is never negative, even if its text is `-0.00`. Always comma-grouped: the Accounts page does not
 /// yet follow the Display preferences (see [`crate::format`], which does).
 pub fn format_amount(money: &Money) -> (bool, String) {
-    crate::format::amount(money, crate::settings::DecimalSeparator::CommaThousands)
+    crate::format::amount(money)
 }
 
 /// The page header's figures under the no-cross-Unit rule: one net figure in the base Unit

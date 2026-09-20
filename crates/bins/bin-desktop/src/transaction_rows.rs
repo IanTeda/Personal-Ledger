@@ -7,12 +7,12 @@
 //! Payees (`—` if none has one); TAGS is the first chip of the Splits' combined, deduplicated Tags
 //! with `+N` when there are more (`—` if none). A single-Split row reads exactly as the mockup's.
 
-use chrono::NaiveDate;
+use lib_core::DateStyle;
 
 use crate::{
     categories, format,
     payees::Payee,
-    settings::{DateFormat, DecimalSeparator, StatusGlyphs},
+    settings::StatusGlyphs,
     tags::Tag,
     transaction_query::{Ledger, Visible},
     transactions::Transaction,
@@ -24,8 +24,7 @@ pub const EMPTY_CELL: &str = "\u{2014}";
 /// The Display preferences a row is formatted with (density is a layout matter, not a text one).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DisplayPrefs {
-    pub date_format: DateFormat,
-    pub separator: DecimalSeparator,
+    pub date_style: Option<DateStyle>,
     pub glyphs: StatusGlyphs,
 }
 
@@ -122,7 +121,6 @@ pub fn build_rows(
     visible: &Visible<'_>,
     ledger: &Ledger<'_>,
     prefs: &DisplayPrefs,
-    today: NaiveDate,
 ) -> Vec<RowView> {
     visible
         .rows
@@ -135,10 +133,10 @@ pub fn build_rows(
                 .find(|account| account.id == transaction.account_id)
                 .map(|account| account.name.clone())
                 .unwrap_or_default();
-            let (amount_negative, amount) = format::signed_amount(&row.amount, prefs.separator);
+            let (amount_negative, amount) = format::signed_amount(&row.amount);
             let (running_negative, running) = match &row.running {
                 Some(running) => {
-                    let (negative, text) = format::amount(running, prefs.separator);
+                    let (negative, text) = format::amount(running);
                     (negative, Some(text))
                 }
                 None => (false, None),
@@ -148,7 +146,7 @@ pub fn build_rows(
                 flag_glyph: transaction
                     .is_flagged
                     .then(|| format::flag_glyph(prefs.glyphs)),
-                date: format::date_compact(transaction.date, prefs.date_format, today),
+                date: format::date(transaction.date, prefs.date_style),
                 account,
                 payee: payee_summary(transaction, ledger.payees),
                 category: category_summary(transaction, ledger.categories),
@@ -188,6 +186,7 @@ mod tests {
         transaction_query::{TransactionFilters, query},
         transactions::default_transactions,
     };
+    use chrono::NaiveDate;
     use lib_core::TransactionStatus;
 
     fn today() -> NaiveDate {
@@ -196,8 +195,7 @@ mod tests {
 
     fn prefs() -> DisplayPrefs {
         DisplayPrefs {
-            date_format: DateFormat::DayMonthYear,
-            separator: DecimalSeparator::CommaThousands,
+            date_style: None,
             glyphs: StatusGlyphs::Unicode,
         }
     }
@@ -241,7 +239,7 @@ mod tests {
             tags: &world.tags,
         };
         let visible = query(&ledger, &world.transactions, filters, search);
-        build_rows(&visible, &ledger, &prefs(), today())
+        build_rows(&visible, &ledger, &prefs())
     }
 
     fn open_filters() -> TransactionFilters {
@@ -340,23 +338,19 @@ mod tests {
         assert_eq!(visible.rows.len(), 1);
         let day = visible.rows[0].transaction.date;
 
-        let comma = build_rows(&visible, &ledger, &prefs(), today());
+        let comma = build_rows(&visible, &ledger, &prefs());
         assert_eq!(comma[0].amount, "\u{2212}214.30");
         assert!(comma[0].amount_negative);
-        assert_eq!(
-            comma[0].date,
-            format::date_compact(day, DateFormat::DayMonthYear, today())
-        );
+        assert_eq!(comma[0].date, format::date(day, None));
 
         let iso = DisplayPrefs {
-            date_format: DateFormat::Iso,
-            separator: DecimalSeparator::DotThousands,
+            date_style: Some(DateStyle::Iso),
             glyphs: StatusGlyphs::AsciiFallback,
         };
-        let rows = build_rows(&visible, &ledger, &iso, today());
+        let rows = build_rows(&visible, &ledger, &iso);
         assert_eq!(rows[0].date, day.format("%Y-%m-%d").to_string());
         assert_eq!(rows[0].status_glyph, "o", "cleared, ascii");
-        assert_eq!(rows[0].amount, "\u{2212}214,30");
+        assert_eq!(rows[0].amount, "\u{2212}214.30");
     }
 
     #[test]

@@ -65,11 +65,12 @@ fn push_text(segments: &mut Vec<Segment>, text: &str, tag: Option<&str>) {
     if text.is_empty() {
         return;
     }
-    if let Some(last) = segments.last_mut() {
-        if last.token.is_none() && last.tag.as_deref() == tag {
-            last.text.push_str(text);
-            return;
-        }
+    if let Some(last) = segments.last_mut()
+        && last.token.is_none()
+        && last.tag.as_deref() == tag
+    {
+        last.text.push_str(text);
+        return;
     }
     segments.push(Segment::text(text, tag));
 }

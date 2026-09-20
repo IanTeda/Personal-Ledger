@@ -1,6 +1,6 @@
 //! The **Display** section (`docs/ux/desktop/Settings/README.md`'s "2a resting state", moved
 //! directly after General by issue #189's own reorder): a 300px column of three segmented
-//! controls (Date format, Decimal & thousands separator, Row density) plus a dot-style Status
+//! controls (Date format, Row density) plus a read-only Locale and a dot-style Status
 //! glyphs radio group, beside a live **PREVIEW** table that re-renders the mockup's own three
 //! seeded transaction rows under whichever combination is currently selected.
 //!
@@ -18,40 +18,38 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use lib_core::DateStyle;
 
 use crate::{
     settings::{
-        DEFAULT_DISPLAY_PREVIEW_ROWS, DateFormat, DecimalSeparator, DisplayPreviewRow,
-        PreviewStatus, RowDensity, StatusGlyphs, format_preview_amount, format_preview_date,
+        DATE_STYLE_CHOICES, DEFAULT_DISPLAY_PREVIEW_ROWS, DisplayPreviewRow, PreviewStatus,
+        RowDensity, StatusGlyphs, date_style_label, format_preview_amount, format_preview_date,
     },
     theme::color,
 };
 
 use super::{add_unit_dialog::segmented_control, tracing::radio_dot};
 
-pub type OnDateFormatClick = Rc<dyn Fn(DateFormat, &mut Window, &mut App)>;
-pub type OnDecimalSeparatorClick = Rc<dyn Fn(DecimalSeparator, &mut Window, &mut App)>;
+pub type OnDateStyleClick = Rc<dyn Fn(Option<DateStyle>, &mut Window, &mut App)>;
 pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
 pub type OnStatusGlyphsClick = Rc<dyn Fn(StatusGlyphs, &mut Window, &mut App)>;
 /// A curried, option-less click handler -- what a [`status_glyphs_option`] is bound to after its
 /// own option has already been curried in (mirrors `units::OnPlainClick`).
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-const FIELD_COLUMN_WIDTH: gpui::Pixels = px(300.0);
+const FIELD_COLUMN_WIDTH: gpui::Pixels = px(380.0);
 const PREVIEW_GLYPH_WIDTH: gpui::Pixels = px(18.0);
 const PREVIEW_DATE_WIDTH: gpui::Pixels = px(92.0);
 const PREVIEW_AMOUNT_WIDTH: gpui::Pixels = px(96.0);
 
 #[allow(clippy::too_many_arguments)]
 pub fn render(
-    date_format: DateFormat,
-    decimal_separator: DecimalSeparator,
+    date_style: Option<DateStyle>,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
     start_sidebar_minimised: bool,
     on_start_sidebar_minimised_click: OnPlainClick,
-    on_date_format_click: OnDateFormatClick,
-    on_decimal_separator_click: OnDecimalSeparatorClick,
+    on_date_style_click: OnDateStyleClick,
     on_row_density_click: OnRowDensityClick,
     on_status_glyphs_click: OnStatusGlyphsClick,
 ) -> AnyElement {
@@ -59,36 +57,27 @@ pub fn render(
         .flex()
         .gap(px(40.0))
         .child(field_column(
-            date_format,
-            decimal_separator,
+            date_style,
             row_density,
             status_glyphs,
             start_sidebar_minimised,
             on_start_sidebar_minimised_click,
-            on_date_format_click,
-            on_decimal_separator_click,
+            on_date_style_click,
             on_row_density_click,
             on_status_glyphs_click,
         ))
-        .child(preview_column(
-            date_format,
-            decimal_separator,
-            row_density,
-            status_glyphs,
-        ))
+        .child(preview_column(date_style, row_density, status_glyphs))
         .into_any_element()
 }
 
 #[allow(clippy::too_many_arguments)]
 fn field_column(
-    date_format: DateFormat,
-    decimal_separator: DecimalSeparator,
+    date_style: Option<DateStyle>,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
     start_sidebar_minimised: bool,
     on_start_sidebar_minimised_click: OnPlainClick,
-    on_date_format_click: OnDateFormatClick,
-    on_decimal_separator_click: OnDecimalSeparatorClick,
+    on_date_style_click: OnDateStyleClick,
     on_row_density_click: OnRowDensityClick,
     on_status_glyphs_click: OnStatusGlyphsClick,
 ) -> impl IntoElement {
@@ -98,26 +87,16 @@ fn field_column(
         .flex()
         .flex_col()
         .gap(px(18.0))
+        .child(locale_field())
         .child(
             div()
-                .child(field_label("Date format"))
+                .child(field_label(crate::msg::desktop_display_date_style_label()))
                 .child(segmented_control(
-                    "display-date-format",
-                    &DateFormat::ALL,
-                    date_format,
-                    DateFormat::label,
-                    on_date_format_click,
-                )),
-        )
-        .child(
-            div()
-                .child(field_label("Decimal & thousands separator"))
-                .child(segmented_control(
-                    "display-decimal-separator",
-                    &DecimalSeparator::ALL,
-                    decimal_separator,
-                    DecimalSeparator::label,
-                    on_decimal_separator_click,
+                    "display-date-style",
+                    &DATE_STYLE_CHOICES,
+                    date_style,
+                    date_style_label,
+                    on_date_style_click,
                 )),
         )
         .child(
@@ -136,6 +115,25 @@ fn field_column(
             start_sidebar_minimised,
             on_start_sidebar_minimised_click,
         ))
+}
+
+/// The effective Locale, read-only, with where it came from. There is no control: the Locale is
+/// Configuration, changed by the `locale` setting or `--locale` and a restart.
+fn locale_field() -> impl IntoElement {
+    let (line, fallback_note) = crate::locale::describe(&crate::locale::info());
+    let note = |text: String| {
+        div()
+            .mt(px(3.0))
+            .text_size(px(12.0))
+            .text_color(color::INK_SECONDARY)
+            .child(text)
+    };
+    div()
+        .id("display-locale")
+        .child(field_label(crate::msg::desktop_display_locale_label()))
+        .child(div().text_size(px(13.0)).child(line))
+        .children(fallback_note.map(note))
+        .child(note(crate::msg::desktop_display_locale_hint()))
 }
 
 fn start_sidebar_minimised_toggle(checked: bool, on_click: OnPlainClick) -> impl IntoElement {
@@ -170,12 +168,12 @@ fn start_sidebar_minimised_toggle(checked: bool, on_click: OnPlainClick) -> impl
 /// 70%, transparent)` -- the same style the now-removed `ledger_units.rs`'s own field label used
 /// (issue #189), distinct from General's bold `super::field_label`
 /// (`font-weight:800; margin-bottom:6px`), which only sits over `Input`/`select` pairs.
-fn field_label(label: &'static str) -> impl IntoElement {
+fn field_label(label: impl Into<SharedString>) -> impl IntoElement {
     div()
         .text_size(px(12.0))
         .mb(px(5.0))
         .text_color(color::INK_SECONDARY)
-        .child(label)
+        .child(label.into())
 }
 
 fn status_glyphs_field(selected: StatusGlyphs, on_click: OnStatusGlyphsClick) -> impl IntoElement {
@@ -218,8 +216,7 @@ fn status_glyphs_option(
 }
 
 fn preview_column(
-    date_format: DateFormat,
-    decimal_separator: DecimalSeparator,
+    date_style: Option<DateStyle>,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
 ) -> impl IntoElement {
@@ -235,12 +232,7 @@ fn preview_column(
                 .mb(px(10.0))
                 .child("PREVIEW"),
         )
-        .child(preview_table(
-            date_format,
-            decimal_separator,
-            row_density,
-            status_glyphs,
-        ))
+        .child(preview_table(date_style, row_density, status_glyphs))
         .child(
             div()
                 .mt(px(14.0))
@@ -256,8 +248,7 @@ fn preview_column(
 }
 
 fn preview_table(
-    date_format: DateFormat,
-    decimal_separator: DecimalSeparator,
+    date_style: Option<DateStyle>,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
 ) -> impl IntoElement {
@@ -277,8 +268,7 @@ fn preview_table(
                     preview_row(
                         row,
                         index == last_index,
-                        date_format,
-                        decimal_separator,
+                        date_style,
                         row_density,
                         status_glyphs,
                     )
@@ -313,8 +303,7 @@ fn preview_table_header() -> impl IntoElement {
 fn preview_row(
     row: &DisplayPreviewRow,
     last: bool,
-    date_format: DateFormat,
-    decimal_separator: DecimalSeparator,
+    date_style: Option<DateStyle>,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
 ) -> impl IntoElement {
@@ -335,16 +324,13 @@ fn preview_row(
                 .child(row.status.glyph(status_glyphs)),
         )
         .child(div().w(PREVIEW_DATE_WIDTH).child(format_preview_date(
-            row.year,
-            row.month,
-            row.day,
-            date_format,
+            row.year, row.month, row.day, date_style,
         )))
         .child(div().flex_1().child(row.payee))
         .child(
             div()
                 .w(PREVIEW_AMOUNT_WIDTH)
                 .text_align(gpui::TextAlign::Right)
-                .child(format_preview_amount(row.amount_cents, decimal_separator)),
+                .child(format_preview_amount(row.amount_cents)),
         )
 }

@@ -28,6 +28,8 @@ use gpui::{
     SharedString, Timer, UniformListScrollHandle, Window, div, point, prelude::*, px,
 };
 
+use lib_core::DateStyle;
+
 use crate::{
     accounts::{
         self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
@@ -48,9 +50,9 @@ use crate::{
         settings_index::{self, SettingsIndexRail},
     },
     settings::{
-        self, AccountType, AddInstitutionForm, AddUnitField, DateFormat, DecimalSeparator,
-        DeleteUnitForm, InstitutionRow, PriceSourceRow, RowDensity, SettingsDialog,
-        SettingsSection, StatusGlyphs, TracingLevel, UnitForm, UnitKind, UnitRow,
+        self, AccountType, AddInstitutionForm, AddUnitField, DeleteUnitForm, InstitutionRow,
+        PriceSourceRow, RowDensity, SettingsDialog, SettingsSection, StatusGlyphs, TracingLevel,
+        UnitForm, UnitKind, UnitRow,
     },
     statusline::{self, HintAction, PageStatus, StatusLine},
     tags::{self, Tag},
@@ -196,9 +198,7 @@ pub struct Shell {
     settings_selected_section: SettingsSection,
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored
     /// preference, not reset on noun change (same reasoning as [`Self::settings_tracing_level`]).
-    settings_date_format: DateFormat,
-    /// The same section's "Decimal & thousands separator" segmented control.
-    settings_decimal_separator: DecimalSeparator,
+    settings_date_style: Option<DateStyle>,
     /// The same section's "Row density" segmented control -- also drives the PREVIEW table's own
     /// row padding (`view::settings::display`'s own doc), unlike a purely-cosmetic preference.
     settings_row_density: RowDensity,
@@ -304,8 +304,7 @@ impl Shell {
             file_explorer: None,
             settings_filter: String::new(),
             settings_selected_section: SettingsSection::default(),
-            settings_date_format: DateFormat::default(),
-            settings_decimal_separator: DecimalSeparator::default(),
+            settings_date_style: None,
             settings_row_density: RowDensity::default(),
             settings_status_glyphs: StatusGlyphs::default(),
             settings_start_sidebar_minimised: false,
@@ -913,8 +912,7 @@ impl Shell {
     /// The Display preferences the table's text is formatted with.
     fn transactions_prefs(&self) -> DisplayPrefs {
         DisplayPrefs {
-            date_format: self.settings_date_format,
-            separator: self.settings_decimal_separator,
+            date_style: self.settings_date_style,
             glyphs: self.settings_status_glyphs,
         }
     }
@@ -1058,7 +1056,7 @@ impl Shell {
             &self.transactions_filters,
             &options,
             self.today,
-            self.settings_date_format,
+            self.settings_date_style,
         );
         form.focused = chip.map(FormField::for_chip).unwrap_or_default();
         self.transactions_filter_anchor = chip.unwrap_or(FilterField::Account);
@@ -1073,7 +1071,7 @@ impl Shell {
     /// resets the draft. `Esc` never reaches here: it is handled with the other modes' exit.
     fn handle_filter_key(&mut self, keystroke: &Keystroke) -> bool {
         let options = self.filter_form_options();
-        let (today, date_format) = (self.today, self.settings_date_format);
+        let (today, date_style) = (self.today, self.settings_date_style);
         let Some(form) = self.transactions_filter_form.as_mut() else {
             return false;
         };
@@ -1081,7 +1079,7 @@ impl Shell {
         let mut apply = false;
 
         if modifiers.control && keystroke.key == "r" {
-            form.reset(&options, today, date_format);
+            form.reset(&options, today, date_style);
             return true;
         }
         match keystroke.key.as_str() {
@@ -1128,7 +1126,7 @@ impl Shell {
         let Some(filters) = self
             .transactions_filter_form
             .as_ref()
-            .and_then(|form| form.to_filters(&options, self.today, self.settings_date_format))
+            .and_then(|form| form.to_filters(&options, self.today, self.settings_date_style))
         else {
             return;
         };
@@ -1180,9 +1178,9 @@ impl Shell {
     /// `reset`: the draft back to the defaults; the applied filters are untouched.
     fn handle_filter_reset(&mut self, cx: &mut Context<Self>) {
         let options = self.filter_form_options();
-        let (today, date_format) = (self.today, self.settings_date_format);
+        let (today, date_style) = (self.today, self.settings_date_style);
         if let Some(form) = self.transactions_filter_form.as_mut() {
-            form.reset(&options, today, date_format);
+            form.reset(&options, today, date_style);
         }
         cx.notify();
     }
@@ -2040,19 +2038,8 @@ impl Shell {
 
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored
     /// preference that also re-renders the PREVIEW table's own DATE column.
-    fn handle_date_format_click(&mut self, format: DateFormat, cx: &mut Context<Self>) {
-        self.settings_date_format = format;
-        cx.notify();
-    }
-
-    /// The same section's "Decimal & thousands separator" segmented control -- also re-renders
-    /// the PREVIEW table's own AMOUNT column.
-    fn handle_decimal_separator_click(
-        &mut self,
-        separator: DecimalSeparator,
-        cx: &mut Context<Self>,
-    ) {
-        self.settings_decimal_separator = separator;
+    fn handle_date_style_click(&mut self, style: Option<DateStyle>, cx: &mut Context<Self>) {
+        self.settings_date_style = style;
         cx.notify();
     }
 
@@ -2435,18 +2422,10 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_clear_logs_click(cx));
             })
         };
-        let on_date_format_click: settings_view::display::OnDateFormatClick = {
+        let on_date_style_click: settings_view::display::OnDateStyleClick = {
             let entity = entity.clone();
-            Rc::new(move |format, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_date_format_click(format, cx));
-            })
-        };
-        let on_decimal_separator_click: settings_view::display::OnDecimalSeparatorClick = {
-            let entity = entity.clone();
-            Rc::new(move |separator, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_decimal_separator_click(separator, cx)
-                });
+            Rc::new(move |style, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_date_style_click(style, cx));
             })
         };
         let on_row_density_click: settings_view::display::OnRowDensityClick = {
@@ -2631,9 +2610,9 @@ impl Render for Shell {
             transactions_view::render_popover(transactions_view::PopoverProps {
                 form,
                 options: &options,
-                start_hint: form.start_hint(self.today, self.settings_date_format),
-                end_hint: form.end_hint(self.today, self.settings_date_format),
-                can_apply: form.is_valid(self.today, self.settings_date_format),
+                start_hint: form.start_hint(self.today, self.settings_date_style),
+                end_hint: form.end_hint(self.today, self.settings_date_style),
+                can_apply: form.is_valid(self.today, self.settings_date_style),
                 left,
                 top,
                 on_field_click,
@@ -2652,23 +2631,13 @@ impl Render for Shell {
                 &self.transactions_filters,
                 &self.transactions_search,
             );
-            let rows = transaction_rows::build_rows(
-                &visible,
-                &ledger,
-                &self.transactions_prefs(),
-                self.today,
-            );
-            let footer = transaction_chips::footer(
-                &visible,
-                &self.transactions_filters,
-                &ledger,
-                self.settings_decimal_separator,
-            );
+            let rows = transaction_rows::build_rows(&visible, &ledger, &self.transactions_prefs());
+            let footer = transaction_chips::footer(&visible, &self.transactions_filters, &ledger);
             let chips = transaction_chips::chips(
                 &self.transactions_filters,
                 &ledger,
                 self.today,
-                self.settings_date_format,
+                self.settings_date_style,
             );
             transactions_view::TransactionsPageProps {
                 dimmed: self.transactions_filter_form.is_some(),
@@ -2774,14 +2743,12 @@ impl Render for Shell {
                                     filter: &self.settings_filter,
                                     selected: self.settings_selected_section,
                                     on_index_click: on_settings_index_click,
-                                    date_format: self.settings_date_format,
-                                    decimal_separator: self.settings_decimal_separator,
+                                    date_style: self.settings_date_style,
                                     row_density: self.settings_row_density,
                                     status_glyphs: self.settings_status_glyphs,
                                     start_sidebar_minimised: self.settings_start_sidebar_minimised,
                                     on_start_sidebar_minimised_click,
-                                    on_date_format_click,
-                                    on_decimal_separator_click,
+                                    on_date_style_click,
                                     on_row_density_click,
                                     on_status_glyphs_click,
                                     units: &self.settings_units,
@@ -2926,14 +2893,12 @@ struct SettingsPanelProps<'a> {
     filter: &'a str,
     selected: SettingsSection,
     on_index_click: settings_index::OnEntryClick,
-    date_format: DateFormat,
-    decimal_separator: DecimalSeparator,
+    date_style: Option<DateStyle>,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
     start_sidebar_minimised: bool,
     on_start_sidebar_minimised_click: settings_view::display::OnPlainClick,
-    on_date_format_click: settings_view::display::OnDateFormatClick,
-    on_decimal_separator_click: settings_view::display::OnDecimalSeparatorClick,
+    on_date_style_click: settings_view::display::OnDateStyleClick,
     on_row_density_click: settings_view::display::OnRowDensityClick,
     on_status_glyphs_click: settings_view::display::OnStatusGlyphsClick,
     units: &'a [UnitRow],
@@ -3005,14 +2970,12 @@ fn render_view(
                 focused,
                 scroll_handle,
                 SettingsBodyProps {
-                    date_format: settings.date_format,
-                    decimal_separator: settings.decimal_separator,
+                    date_style: settings.date_style,
                     row_density: settings.row_density,
                     status_glyphs: settings.status_glyphs,
                     start_sidebar_minimised: settings.start_sidebar_minimised,
                     on_start_sidebar_minimised_click: settings.on_start_sidebar_minimised_click,
-                    on_date_format_click: settings.on_date_format_click,
-                    on_decimal_separator_click: settings.on_decimal_separator_click,
+                    on_date_style_click: settings.on_date_style_click,
                     on_row_density_click: settings.on_row_density_click,
                     on_status_glyphs_click: settings.on_status_glyphs_click,
                     units: settings.units,

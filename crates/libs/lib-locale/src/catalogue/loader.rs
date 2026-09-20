@@ -2,7 +2,7 @@
 
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use fluent_bundle::FluentArgs;
 
@@ -11,7 +11,9 @@ use super::{Arg, Layer, pseudo};
 use crate::locale::Locale;
 use crate::rich::{self, Segment};
 
-static LOADER: OnceLock<Loader> = OnceLock::new();
+/// The process-wide loader. A lookup before `init` builds a default one (so tests and tools work
+/// without setup); an explicit `init` replaces that default, but never another explicit one.
+static LOADER: RwLock<Option<Arc<Loader>>> = RwLock::new(None);
 
 thread_local! {
     static OVERRIDE: Cell<Option<Locale>> = const { Cell::new(None) };
@@ -20,10 +22,11 @@ thread_local! {
 struct Loader {
     active: Locale,
     bundles: HashMap<Locale, Bundle>,
+    explicit: bool,
 }
 
 impl Loader {
-    fn build(active: Locale, extra_layers: &[Layer]) -> Loader {
+    fn build(active: Locale, extra_layers: &[Layer], explicit: bool) -> Loader {
         let mut layers: Vec<Layer> = vec![crate::msg::LAYER];
         layers.extend_from_slice(extra_layers);
 
@@ -46,7 +49,11 @@ impl Loader {
                 }
             }
         }
-        Loader { active, bundles }
+        Loader {
+            active,
+            bundles,
+            explicit,
+        }
     }
 
     fn format(
@@ -145,7 +152,7 @@ fn miss(id: &str, attribute: Option<&str>) -> String {
 /// Sets the process-wide Locale from a requested BCP-47 tag and returns the Locale chosen.
 ///
 /// The tag is negotiated against the supported set: an exact match wins, anything else becomes
-/// `en-US`, and `en-XA` is chosen only by exact request. Set once: a later call keeps the first
+/// `en-US`, and `en-XA` is chosen only by exact request. Set once: a later explicit call keeps the first
 /// Locale and returns it.
 pub fn init(tag: &str) -> Locale {
     init_with_layers(tag, &[])
@@ -155,36 +162,48 @@ pub fn init(tag: &str) -> Locale {
 /// one.
 pub fn init_with_layers(tag: &str, layers: &[Layer]) -> Locale {
     let requested = Locale::negotiate(tag);
-    if let Some(existing) = LOADER.get() {
+    let mut slot = LOADER.write().unwrap_or_else(PoisonError::into_inner);
+    if let Some(existing) = slot.as_ref().filter(|loader| loader.explicit) {
         if existing.active != requested {
             tracing::warn!(active = %existing.active, %requested, "Locale is already set; ignoring init");
         }
         return existing.active;
     }
-    LOADER
-        .get_or_init(|| Loader::build(requested, layers))
-        .active
+    let loader = Arc::new(Loader::build(requested, layers, true));
+    let active = loader.active;
+    *slot = Some(loader);
+    active
+}
+
+/// The loader in use, building the default one on first need.
+fn current() -> Arc<Loader> {
+    if let Some(loader) = LOADER
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .as_ref()
+    {
+        return Arc::clone(loader);
+    }
+    let mut slot = LOADER.write().unwrap_or_else(PoisonError::into_inner);
+    Arc::clone(slot.get_or_insert_with(|| Arc::new(Loader::build(Locale::DEFAULT, &[], false))))
 }
 
 /// Looks a Message up by id (and optional attribute). The generated accessors call this; use
 /// them rather than calling it directly. A miss never panics.
 pub fn format(id: &str, attribute: Option<&str>, args: &[(&str, Arg)]) -> String {
-    let loader = LOADER.get_or_init(|| Loader::build(Locale::DEFAULT, &[]));
-    loader.format(locale(), id, attribute, args)
+    current().format(locale(), id, attribute, args)
 }
 
 /// As [`format`], for a rich Message: every text argument travels as a sentinel and the result
 /// is split into [`Segment`]s (see the `rich` module). Counts stay plain. The generated
 /// accessors for a Message with tags, or marked `# @rich`, call this.
 pub fn format_rich(id: &str, attribute: Option<&str>, args: &[(&str, Arg)]) -> Vec<Segment> {
-    let loader = LOADER.get_or_init(|| Loader::build(Locale::DEFAULT, &[]));
-    loader.format_rich(locale(), id, attribute, args)
+    current().format_rich(locale(), id, attribute, args)
 }
 
 /// The Locale in effect on this thread: the scoped override if any, else the process-wide one.
 pub fn locale() -> Locale {
-    let loader = LOADER.get_or_init(|| Loader::build(Locale::DEFAULT, &[]));
-    OVERRIDE.with(Cell::get).unwrap_or(loader.active)
+    OVERRIDE.with(Cell::get).unwrap_or_else(|| current().active)
 }
 
 /// Runs `f` with this thread's Messages rendered in `locale`, leaving the process-wide loader
@@ -227,7 +246,7 @@ mod tests {
     ];
 
     fn loader() -> Loader {
-        Loader::build(Locale::EnAu, &[LAYER_A])
+        Loader::build(Locale::EnAu, &[LAYER_A], false)
     }
 
     fn hits(loader: &Loader, locale: Locale, count: i64) -> String {
@@ -337,7 +356,7 @@ mod tests {
 
     #[test]
     fn rich_messages_split_tags_and_tokens() {
-        let loader = Loader::build(Locale::EnUs, &[RICH]);
+        let loader = Loader::build(Locale::EnUs, &[RICH], false);
         let segments = loader.format_rich(
             Locale::EnUs,
             "tui-open",
@@ -358,7 +377,7 @@ mod tests {
 
     #[test]
     fn a_forged_tag_in_an_argument_stays_literal() {
-        let loader = Loader::build(Locale::EnUs, &[RICH]);
+        let loader = Loader::build(Locale::EnUs, &[RICH], false);
         let segments = loader.format_rich(
             Locale::EnUs,
             "tui-open",
@@ -381,7 +400,7 @@ mod tests {
 
     #[test]
     fn counts_stay_plain_beside_tokens() {
-        let loader = Loader::build(Locale::EnUs, &[RICH]);
+        let loader = Loader::build(Locale::EnUs, &[RICH], false);
         let args = [("count", Arg::Int(2)), ("name", Arg::Text("Food"))];
         let segments = loader.format_rich(Locale::EnUs, "tui-count", None, &args);
         assert_eq!(
@@ -396,7 +415,7 @@ mod tests {
 
     #[test]
     fn en_xa_keeps_tags_and_sentinels_intact() {
-        let loader = Loader::build(Locale::EnXa, &[RICH]);
+        let loader = Loader::build(Locale::EnXa, &[RICH], false);
         let segments = loader.format_rich(
             Locale::EnXa,
             "tui-open",

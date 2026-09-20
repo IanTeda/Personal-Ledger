@@ -18,7 +18,8 @@ pub use casing::upper;
 pub use currency::{Unit, format_money};
 pub use date::format_date;
 pub use input::{
-    DateField, DateInputError, DateInputOptions, date_error_message, parse_date, parse_date_with,
+    DateField, DateInputError, DateInputOptions, date_error_message, format_date_input, parse_date,
+    parse_date_with,
 };
 pub use number::format_number;
 

@@ -1,103 +1,58 @@
-//! The Settings **Display** preferences applied to real data: date format, decimal and thousands
-//! separators, the status and Flagged glyphs, and row density. `gpui`-free, and taking each
+//! The Settings **Display** preferences applied to real data: the date style (dates and amounts
+//! otherwise follow the Locale through `lib-locale`), the status and Flagged glyphs, and row
+//! density. `gpui`-free, and taking each
 //! preference as a plain argument (the enums in `settings.rs`, never `Shell`), so every view
 //! renders from one place and the Display section's PREVIEW table keeps matching what the app
 //! actually shows.
 //!
 //! The Settings preview has its own primitive-argument helpers (`settings::format_preview_date` and
 //! `format_preview_amount`); these take the real types (`NaiveDate`, `Money`, `TransactionStatus`)
-//! and share the same marks and month names, so the two cannot disagree.
+//! and route through the same Locale formatting, so the two cannot disagree.
 
-use chrono::{Datelike, NaiveDate};
-use lib_core::{Money, TransactionStatus};
+use chrono::NaiveDate;
+use lib_core::{DateStyle, Money, TransactionStatus};
+use lib_locale::format::{format_date, format_number};
 
-use crate::settings::{
-    DateFormat, DecimalSeparator, MONTH_ABBREVIATIONS, RowDensity, StatusGlyphs,
-};
+use crate::settings::{RowDensity, StatusGlyphs};
 
-/// `12 sep 2026`, `12/09/2026` (day first) or `2026-09-12`, per the Date format preference.
-pub fn date(date: NaiveDate, format: DateFormat) -> String {
-    let (year, month, day) = (date.year(), date.month(), date.day());
-    match format {
-        DateFormat::DayMonthYear => {
-            format!(
-                "{day:02} {} {year}",
-                MONTH_ABBREVIATIONS[month as usize - 1]
-            )
-        }
-        DateFormat::Slash => format!("{day:02}/{month:02}/{year}"),
-        DateFormat::Iso => format!("{year:04}-{month:02}-{day:02}"),
-    }
+/// The minus shown before a negative amount: U+2212, not a hyphen. The one place it is spelt.
+const MINUS: char = '\u{2212}';
+
+/// A date in the chosen style, or in the Locale's default form when there is none. `Iso` is
+/// always `2026-09-12`; the others follow the Locale (`12 Sept 2026` in `en-AU`).
+pub fn date(date: NaiveDate, style: Option<DateStyle>) -> String {
+    format_date(date, style)
 }
 
-/// [`date`] for a narrow column: in the day-month-year style the year is dropped when it is
-/// `today`'s (`12 sep`, then `28 jan 2025` for an earlier year); the other two styles have no short
-/// form and read in full. A column sized for the longest of these fits every style.
-pub fn date_compact(date: NaiveDate, format: DateFormat, today: NaiveDate) -> String {
-    match format {
-        DateFormat::DayMonthYear if date.year() == today.year() => {
-            format!(
-                "{:02} {}",
-                date.day(),
-                MONTH_ABBREVIATIONS[date.month() as usize - 1]
-            )
-        }
-        _ => self::date(date, format),
-    }
-}
-
-/// An amount as `(is_negative, text)`: thousands grouped with the preferred mark, the preferred
-/// decimal mark, the amount's **own** fractional digits (a fund's `0.4120` keeps four places; a
-/// zero keeps the scale it was entered with), and U+2212 for a minus. The flag lets the caller
-/// apply the negative-balance token so a negative is never colour alone. A zero is never negative,
-/// even if its text is `-0.00`.
-pub fn amount(money: &Money, separator: DecimalSeparator) -> (bool, String) {
-    let (thousands, decimal) = separator.marks();
-    let text = money.0.to_string();
-    let (signed, digits) = match text.strip_prefix('-') {
+/// An amount as `(is_negative, text)`: grouped and marked by the Locale, at the amount's **own**
+/// fractional digits (a fund's `0.4120` keeps four places; a zero keeps the scale it was entered
+/// with), with [`MINUS`] for a negative. The flag lets the caller apply the negative-balance
+/// token so a negative is never colour alone. A zero is never negative, even if its text is
+/// `-0.00`.
+pub fn amount(money: &Money) -> (bool, String) {
+    let plain = money.0.to_plain_string();
+    let (signed, digits) = match plain.strip_prefix('-') {
         Some(rest) => (true, rest),
-        None => (false, text.as_str()),
+        None => (false, plain.as_str()),
     };
     let negative = signed && digits.chars().any(|c| matches!(c, '1'..='9'));
-    let (integer, fraction) = match digits.split_once('.') {
-        Some((integer, fraction)) => (integer, Some(fraction.to_string())),
-        // `BigDecimal` prints a zero as a bare `0` whatever scale it carries, so an empty `0.00`
-        // amount would lose its places; put them back from the amount's own scale.
-        None => match usize::try_from(money.0.fractional_digit_count()) {
-            Ok(scale) if scale > 0 => (digits, Some("0".repeat(scale))),
-            _ => (digits, None),
-        },
-    };
+    let scale = u32::try_from(money.0.fractional_digit_count().max(0)).unwrap_or(0);
 
-    let grouped = if integer.chars().all(|c| c.is_ascii_digit()) {
-        let mut out = String::with_capacity(integer.len() + integer.len() / 3);
-        for (index, digit) in integer.chars().enumerate() {
-            if index > 0 && (integer.len() - index) % 3 == 0 {
-                out.push(thousands);
-            }
-            out.push(digit);
-        }
-        out
-    } else {
-        integer.to_string()
+    let Ok(magnitude) = digits.parse::<Money>() else {
+        return (negative, plain);
     };
-
-    let mut display = String::new();
+    let formatted = format_number(&magnitude, scale);
     if negative {
-        display.push('\u{2212}');
+        (true, format!("{MINUS}{formatted}"))
+    } else {
+        (false, formatted)
     }
-    display.push_str(&grouped);
-    if let Some(fraction) = fraction {
-        display.push(decimal);
-        display.push_str(&fraction);
-    }
-    (negative, display)
 }
 
 /// [`amount`] with a `+` in front of a positive, non-zero amount -- the Transactions AMOUNT column
 /// is "signed", and the Display preview shows income as `+4,210.00`.
-pub fn signed_amount(money: &Money, separator: DecimalSeparator) -> (bool, String) {
-    let (negative, text) = amount(money, separator);
+pub fn signed_amount(money: &Money) -> (bool, String) {
+    let (negative, text) = amount(money);
     let non_zero = text.chars().any(|c| matches!(c, '1'..='9'));
     if !negative && non_zero {
         (false, format!("+{text}"))
@@ -175,122 +130,84 @@ mod tests {
         NaiveDate::from_ymd_opt(year, month, day).unwrap()
     }
 
-    #[test]
-    fn dates_follow_each_of_the_three_styles_with_the_day_first() {
-        let d = day(2026, 9, 5);
-        assert_eq!(date(d, DateFormat::DayMonthYear), "05 sep 2026");
-        assert_eq!(date(d, DateFormat::Slash), "05/09/2026");
-        assert_eq!(date(d, DateFormat::Iso), "2026-09-05");
-    }
+    use lib_locale::{Locale, with_locale};
 
     #[test]
-    fn every_month_has_its_abbreviation() {
-        let months: Vec<_> = (1..=12)
-            .map(|m| date(day(2026, m, 1), DateFormat::DayMonthYear))
-            .collect();
-        assert_eq!(months[0], "01 jan 2026");
-        assert_eq!(months[7], "01 aug 2026");
-        assert_eq!(months[11], "01 dec 2026");
+    fn dates_follow_the_locale_and_the_chosen_style() {
+        let d = day(2026, 9, 5);
+        with_locale(Locale::EnAu, || {
+            assert_eq!(date(d, None), "5 Sept 2026");
+            assert_eq!(date(d, Some(DateStyle::Short)), "5/9/26");
+            assert_eq!(date(d, Some(DateStyle::Long)), "5 September 2026");
+            assert_eq!(date(d, Some(DateStyle::Iso)), "2026-09-05");
+        });
+        with_locale(Locale::EnUs, || {
+            assert_eq!(date(d, None), "Sep 5, 2026");
+        });
     }
 
     #[test]
     fn dates_agree_with_the_settings_previews_helper() {
-        for format in DateFormat::ALL {
-            assert_eq!(
-                date(day(2026, 9, 12), format),
-                crate::settings::format_preview_date(2026, 9, 12, format)
-            );
-        }
+        with_locale(Locale::EnGb, || {
+            for style in crate::settings::DATE_STYLE_CHOICES {
+                assert_eq!(
+                    date(day(2026, 9, 12), style),
+                    crate::settings::format_preview_date(2026, 9, 12, style)
+                );
+            }
+        });
     }
 
     #[test]
-    fn a_compact_date_drops_this_years_year_in_the_day_month_year_style_only() {
-        let today = day(2026, 9, 19);
-        assert_eq!(
-            date_compact(day(2026, 9, 12), DateFormat::DayMonthYear, today),
-            "12 sep"
-        );
-        assert_eq!(
-            date_compact(day(2025, 1, 28), DateFormat::DayMonthYear, today),
-            "28 jan 2025"
-        );
-        assert_eq!(
-            date_compact(day(2026, 9, 12), DateFormat::Slash, today),
-            "12/09/2026"
-        );
-        assert_eq!(
-            date_compact(day(2026, 9, 12), DateFormat::Iso, today),
-            "2026-09-12"
-        );
-    }
-
-    #[test]
-    fn amounts_use_the_chosen_separators() {
+    fn amounts_group_by_the_locale() {
         let m = money("-1234567.89");
-        assert_eq!(
-            amount(&m, DecimalSeparator::CommaThousands),
-            (true, "\u{2212}1,234,567.89".to_string())
-        );
-        assert_eq!(
-            amount(&m, DecimalSeparator::DotThousands),
-            (true, "\u{2212}1.234.567,89".to_string())
-        );
-        assert_eq!(
-            amount(&m, DecimalSeparator::SpaceThousands),
-            (true, "\u{2212}1 234 567.89".to_string())
-        );
+        for locale in [Locale::EnUs, Locale::EnGb, Locale::EnAu] {
+            with_locale(locale, || {
+                assert_eq!(amount(&m), (true, "\u{2212}1,234,567.89".to_string()));
+            });
+        }
     }
 
     #[test]
     fn amounts_keep_their_own_scale() {
-        let comma = DecimalSeparator::CommaThousands;
-        assert_eq!(amount(&money("0.4120"), comma).1, "0.4120");
-        assert_eq!(amount(&money("1240"), comma).1, "1,240");
-        assert_eq!(amount(&money("240.00"), comma).1, "240.00");
-        assert_eq!(amount(&money("0.00"), comma).1, "0.00");
-        assert_eq!(
-            amount(&money("0.4120"), DecimalSeparator::DotThousands).1,
-            "0,4120"
-        );
+        assert_eq!(amount(&money("0.4120")).1, "0.4120");
+        assert_eq!(amount(&money("1240")).1, "1,240");
+        assert_eq!(amount(&money("240.00")).1, "240.00");
+        assert_eq!(amount(&money("0.00")).1, "0.00");
     }
 
     #[test]
     fn a_zero_is_never_negative_and_a_negative_carries_a_real_minus() {
-        let comma = DecimalSeparator::CommaThousands;
-        assert!(!amount(&money("-0.00"), comma).0);
+        assert!(!amount(&money("-0.00")).0);
         assert_eq!(
-            amount(&money("-2318.44"), comma),
+            amount(&money("-2318.44")),
             (true, "\u{2212}2,318.44".to_string())
         );
-        assert_eq!(amount(&money("999"), comma).1, "999");
-        assert_eq!(amount(&money("1000"), comma).1, "1,000");
+        assert_eq!(amount(&money("999")).1, "999");
+        assert_eq!(amount(&money("1000")).1, "1,000");
     }
 
     #[test]
     fn amounts_agree_with_the_settings_previews_helper_apart_from_the_plus() {
-        for separator in DecimalSeparator::ALL {
-            let expected = crate::settings::format_preview_amount(-864_050, separator);
-            assert_eq!(amount(&money("-8640.50"), separator).1, expected);
-        }
+        let expected = crate::settings::format_preview_amount(-864_050);
+        assert_eq!(amount(&money("-8640.50")).1, expected);
     }
 
     #[test]
     fn a_signed_amount_marks_only_positive_non_zero_amounts() {
-        let comma = DecimalSeparator::CommaThousands;
         assert_eq!(
-            signed_amount(&money("4210.00"), comma),
+            signed_amount(&money("4210.00")),
             (false, "+4,210.00".to_string())
         );
         assert_eq!(
-            signed_amount(&money("-86.40"), comma),
+            signed_amount(&money("-86.40")),
             (true, "\u{2212}86.40".to_string())
         );
+        assert_eq!(signed_amount(&money("0.00")), (false, "0.00".to_string()));
         assert_eq!(
-            signed_amount(&money("0.00"), comma),
-            (false, "0.00".to_string())
+            signed_amount(&money("4210.00")).1,
+            crate::settings::format_preview_amount(421_000)
         );
-        let preview = crate::settings::format_preview_amount(421_000, comma);
-        assert_eq!(signed_amount(&money("4210.00"), comma).1, preview);
     }
 
     #[test]
