@@ -39,10 +39,13 @@ edited outside the running app. Each Preference is individually either Ledger-sc
 (stored in `lib-database`, synced via Change Sets like other Ledger data) or
 Client-scoped (stored locally, never synced); which kind a given Preference is gets
 decided as it's defined, in CC-TUI-001/CC-DESKTOP-001 (`docs/product-requirements.md`).
-As of [ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md), the
-Preferences are the default Unit for new Accounts, colour theme, date format, and
-decimal/thousands separator — all four Ledger-scoped, so they sync across a user's own
-Clients rather than being set separately on each one. No Client-scoped Preference exists
+As of [ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md) and
+[ADR-0021](docs/adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md),
+the Preferences are the default Unit for new Accounts, colour theme, and date style — all
+three Ledger-scoped, so they sync across a user's own Clients rather than being set
+separately on each one. The date style is nullable: no value means "use the Locale's
+default", and only an explicit choice is stored and synced. The Locale is not a Preference
+(see Locale, below). No Client-scoped Preference exists
 yet; that half of the split stays available for whenever a genuinely per-device setting
 shows up.
 _Avoid_: Configuration, setting — "Configuration" is reserved for `lib-config`'s layered,
@@ -58,8 +61,23 @@ for a Client; a single configured file path for the Sync Server, per
 precedence order (see `docs/configuration.md`). Not user-editable from inside a running
 app — see Preference, above, for that. Covers only settings needed before the app (or
 its database) can run — the database connection/pool settings and the telemetry level —
-not display-level settings, which are Preferences instead (see above).
+not display-level settings, which are Preferences instead (see above). The Locale is the one
+display-level exception, because it is per-Client, needed before the interface can be drawn, and
+only changed by editing the file and restarting (see Locale, below).
 _Avoid_: Preference, setting.
+
+**Locale**:
+The language-and-region choice (e.g. `en-AU`, `en-US`, `en-GB`) a Client presents its interface in. It decides both which translated Messages are shown and how numbers, dates and currency amounts are formatted, so the two never disagree. The source Locale, in which every Message is first written and which is the only complete one, is `en-US`; `en-GB` and `en-AU` hold only the Messages that differ, falling back `en-AU` → `en-GB` → `en-US`. A pseudo-Locale (`en-XA`) is a deliberately distorted stand-in used to spot untranslated text and layout overflow, never offered to the user.
+The Locale is Configuration, not a Preference: a Client takes it from the operating system, unless a static `lib-config` setting (file, environment variable or command-line flag) overrides it, falling back to `en-US` when the system value is unsupported or unreadable. It is per-Client, is never synced, and changes only by editing that setting and restarting the Client — there is no in-app switch.
+_Avoid_: language, region, culture.
+
+**Message**:
+One piece of translatable interface text — a button label, a heading, a status-bar hint — identified by a stable id that is the same in every Locale, with one translation per Locale. Not user data: a Payee name or an Account name is Ledger data and is never a Message. Enumerated domain values (an Account Kind, a Transaction Status) are shown to the user through Messages, never by their stored token, which stays stable. Typed command names are an interface, not Messages.
+_Avoid_: string, label, copy, translation (a translation is one Locale's rendering of a Message).
+
+**Catalogue**:
+The complete set of Messages translated into one Locale. A Locale whose Catalogue lacks a Message falls back to a wider Locale's Catalogue, ultimately the source Locale's.
+_Avoid_: bundle, dictionary, resource.
 
 **Sync Server**:
 A separate deployable component — a headless service, not a Client — that syncs each

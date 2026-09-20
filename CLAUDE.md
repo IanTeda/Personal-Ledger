@@ -55,6 +55,8 @@ Binary crates live under `crates/bins/`, library crates under `crates/libs/`. Bi
 - **`crates/libs/lib-core`** — pure business/domain types with no I/O: `RowID` (UUIDv7-based), `CategoryTypes` (accounting categories: assets/liabilities/income/expenses/equity), `UrlSlug`, `HexColor`. Designed for SQLite-backed persistence specifically (no Postgres assumptions in the domain types), despite `sqlx`'s Postgres feature being enabled at the workspace level.
 - **`crates/libs/lib-database`** — SQLx-based persistence layer. `DatabasePool` wraps connection pooling; `categories/` splits CRUD into separate `find.rs`/`insert.rs`/`update.rs`/`delete.rs`/`builder.rs`/`model.rs` files per entity — follow this split (rather than one big repository file) when adding new persisted entities.
 
+**`crates/libs/lib-locale`** is planned, not yet built — the shared localisation crate for `bin-desktop` and `bin-tui` (Fluent Messages, Locale negotiation, ICU4X formatting), specced in `docs/localisation-design.md` (the user guide is `docs/localisation.md`), on the [Localisation of the Desktop and TUI UX](https://github.com/IanTeda/Personal-Ledger/issues/211) Wayfinder map, and [ADR-0021](docs/adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md). The Locale is Configuration (`locale` in `lib-config`'s `[Personal-Ledger]` section, resolved default → system → config), not a Preference. Don't add hardcoded UI strings expecting it to exist; leave literals until its migration tickets land.
+
 Planned-but-not-yet-present binaries/crates mentioned in `docs/directories-files.md` and `README.md` (desktop, web/Leptos frontend) don't exist yet — don't assume they're there.
 
 ## Conventions
