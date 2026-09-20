@@ -58,6 +58,7 @@ use crate::{
     theme::{color, type_scale},
     topbar::{self, TopBar},
     transaction_chips::{self, FilterField},
+    transaction_filter_form::{FilterForm, FormField, FormOptions, SelectKey as FilterSelectKey},
     transaction_query::{self, Ledger, TransactionFilters},
     transaction_rows::{self, DisplayPrefs},
     transactions::{self, Transaction},
@@ -123,8 +124,15 @@ const ACCOUNTS_HINTS: &[(&str, &str)] = &[
 
 /// The Transactions page's status-line legend (`docs/ux/desktop/Transactions/README.md`'s 4a),
 /// without the mockup's `R reconcile`: reconcile is an Accounts action, not a Transactions one.
-/// What `f`, a chip and its `▾` say until the filter popover exists.
-const FILTER_POPOVER_STUB: &str = "filter popover -- not yet built";
+/// The status-line legend while the filter popover is open (`docs/ux/desktop/Transactions/
+/// README.md`'s 4b), with `^r reset` added: the bundle's `reset` is a button, and this shell is
+/// keyboard-first.
+const FILTER_HINTS: &[(&str, &str)] = &[
+    ("tab", "next field"),
+    ("enter", "apply"),
+    ("esc", "cancel"),
+    ("^r", "reset"),
+];
 
 const TRANSACTIONS_HINTS: &[(&str, &str)] = &[
     ("j/k", "row"),
@@ -254,6 +262,13 @@ pub struct Shell {
     transactions_filters: TransactionFilters,
     /// The search box's text, separate from the filters.
     transactions_search: String,
+    /// The filter popover's draft, `Some` while it is open (`NavState::mode` is then
+    /// `InputMode::Filter`). Kept apart from [`Self::transactions_filters`] until **apply**.
+    transactions_filter_form: Option<FilterForm>,
+    /// The chip that opened the popover, which it anchors under.
+    transactions_filter_anchor: FilterField,
+    /// Where each chip was last painted; the header writes it, the popover reads it.
+    transactions_chip_bounds: transactions_view::ChipBounds,
 }
 
 impl Shell {
@@ -305,6 +320,9 @@ impl Shell {
             transactions_scroll: UniformListScrollHandle::new(),
             transactions_filters: TransactionFilters::defaults(today),
             transactions_search: String::new(),
+            transactions_filter_form: None,
+            transactions_filter_anchor: FilterField::Account,
+            transactions_chip_bounds: Default::default(),
         }
     }
 
@@ -375,6 +393,14 @@ impl Shell {
                 self.file_explorer = None;
                 // The README's own Dialog lifecycle table: "`esc` closes any dialog without
                 // saving" -- discards whatever was typed, same as Cancel.
+                // The filter popover's dropdowns work the same way: the first `Esc` closes an open
+                // list only, the next discards the draft and closes the popover.
+                if let Some(form) = self.transactions_filter_form.as_mut()
+                    && form.close_open_select()
+                {
+                    return true;
+                }
+                self.transactions_filter_form = None;
                 self.settings_dialog = None;
                 self.accounts_dialog = None;
                 // README's "Interactions" > "Navigation": `esc` clears the settings index
@@ -403,6 +429,7 @@ impl Shell {
             }
             KeyOutcome::DelegateToSearch => self.handle_search_key(keystroke) || had_status_message,
             KeyOutcome::DelegateToDialog => self.handle_dialog_key(keystroke) || had_status_message,
+            KeyOutcome::DelegateToFilter => self.handle_filter_key(keystroke) || had_status_message,
             KeyOutcome::Swallowed => had_status_message,
             KeyOutcome::JumpToNoun(noun) => {
                 self.nav.set_noun(noun);
@@ -874,10 +901,13 @@ impl Shell {
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
             return false;
         }
+        if keystroke.key == "f" {
+            self.open_filter_popover(None);
+            return true;
+        }
         let message = match keystroke.key.as_str() {
             "n" => "add transaction -- not yet built",
             "e" => "edit transaction -- not yet built",
-            "f" => FILTER_POPOVER_STUB,
             _ => return false,
         };
         self.status_message = Some(message.to_string());
@@ -926,9 +956,164 @@ impl Shell {
         }
     }
 
-    /// A click on a filter chip (or its `▾`): opens the popover, which does not exist yet.
-    fn handle_transactions_chip_click(&mut self, _field: FilterField, cx: &mut Context<Self>) {
-        self.status_message = Some(FILTER_POPOVER_STUB.to_string());
+    /// A click on a filter chip (or its `▾`): opens the popover on that chip's field.
+    fn handle_transactions_chip_click(&mut self, field: FilterField, cx: &mut Context<Self>) {
+        self.open_filter_popover(Some(field));
+        cx.notify();
+    }
+
+    /// The Account and Category selects' options, read live from the stub data.
+    fn filter_form_options(&self) -> FormOptions {
+        FormOptions::new(&self.accounts, &self.categories)
+    }
+
+    /// Opens the filter popover on a draft of the applied filters. A chip focuses its own field
+    /// (the date chip focuses From) and the card anchors under it; `f` (no chip) focuses the first
+    /// field and anchors under the first chip.
+    fn open_filter_popover(&mut self, chip: Option<FilterField>) {
+        let options = self.filter_form_options();
+        let mut form = FilterForm::from_filters(
+            &self.transactions_filters,
+            &options,
+            self.today,
+            self.settings_date_format,
+        );
+        form.focused = chip.map(FormField::for_chip).unwrap_or_default();
+        self.transactions_filter_anchor = chip.unwrap_or(FilterField::Account);
+        self.transactions_filter_form = Some(form);
+        self.nav.enter_mode(InputMode::Filter);
+    }
+
+    /// Keys while the filter popover is open. `Tab` / `Shift-Tab` move between fields; a focused
+    /// select takes `Up` / `Down` / `Enter` / `Space` as the shared dropdown does; the Status control
+    /// steps with `Left` / `Right` (or `Space`); text fields take typing and `Backspace`; `Enter`
+    /// applies (from a select it opens or commits the list instead, so `Tab` off it first); `Ctrl-r`
+    /// resets the draft. `Esc` never reaches here: it is handled with the other modes' exit.
+    fn handle_filter_key(&mut self, keystroke: &Keystroke) -> bool {
+        let options = self.filter_form_options();
+        let (today, date_format) = (self.today, self.settings_date_format);
+        let Some(form) = self.transactions_filter_form.as_mut() else {
+            return false;
+        };
+        let modifiers = &keystroke.modifiers;
+        let mut apply = false;
+
+        if modifiers.control && keystroke.key == "r" {
+            form.reset(&options, today, date_format);
+            return true;
+        }
+        match keystroke.key.as_str() {
+            "tab" => form.cycle_focus(modifiers.shift, &options),
+            "up" => {
+                form.handle_select_key(FilterSelectKey::Up, &options);
+            }
+            "down" => {
+                form.handle_select_key(FilterSelectKey::Down, &options);
+            }
+            "left" if form.focused == FormField::Status => form.step_status(-1),
+            "right" if form.focused == FormField::Status => form.step_status(1),
+            "space" if form.focused.is_select() => {
+                form.handle_select_key(FilterSelectKey::Activate, &options);
+            }
+            "space" if form.focused == FormField::Status => form.step_status(1),
+            "enter" if form.focused.is_select() => {
+                form.handle_select_key(FilterSelectKey::Activate, &options);
+            }
+            "enter" => apply = true,
+            "backspace" => form.backspace(),
+            _ => {
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(text) = keystroke.key_char.as_deref()
+                    && text.chars().count() == 1
+                    && let Some(ch) = text.chars().next()
+                {
+                    form.push_char(ch);
+                }
+            }
+        }
+        if apply {
+            self.apply_filter_form();
+        }
+        true
+    }
+
+    /// **apply**: commits the draft to the applied filters, closes the popover and puts the table
+    /// back on its first row. A no-op while a date does not parse.
+    fn apply_filter_form(&mut self) {
+        let options = self.filter_form_options();
+        let Some(filters) = self
+            .transactions_filter_form
+            .as_ref()
+            .and_then(|form| form.to_filters(&options, self.today, self.settings_date_format))
+        else {
+            return;
+        };
+        self.transactions_filters = filters;
+        self.transactions_filter_form = None;
+        self.nav.exit_mode();
+        self.reset_transactions_selection();
+    }
+
+    /// A click on a popover field: a text field takes focus; a select takes focus and toggles its
+    /// list.
+    fn handle_filter_field_click(&mut self, field: FormField, cx: &mut Context<Self>) {
+        let options = self.filter_form_options();
+        if let Some(form) = self.transactions_filter_form.as_mut() {
+            if field.is_select() {
+                form.click_select(field, &options);
+            } else {
+                form.focus(field);
+            }
+        }
+        cx.notify();
+    }
+
+    fn handle_filter_option_click(
+        &mut self,
+        field: FormField,
+        index: usize,
+        cx: &mut Context<Self>,
+    ) {
+        let options = self.filter_form_options();
+        if let Some(form) = self.transactions_filter_form.as_mut() {
+            form.choose_option(field, index, &options);
+        }
+        cx.notify();
+    }
+
+    fn handle_filter_status_click(
+        &mut self,
+        status: transaction_query::StatusFilter,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(form) = self.transactions_filter_form.as_mut() {
+            form.focus(FormField::Status);
+            form.status = status;
+        }
+        cx.notify();
+    }
+
+    /// `reset`: the draft back to the defaults; the applied filters are untouched.
+    fn handle_filter_reset(&mut self, cx: &mut Context<Self>) {
+        let options = self.filter_form_options();
+        let (today, date_format) = (self.today, self.settings_date_format);
+        if let Some(form) = self.transactions_filter_form.as_mut() {
+            form.reset(&options, today, date_format);
+        }
+        cx.notify();
+    }
+
+    fn handle_filter_apply(&mut self, cx: &mut Context<Self>) {
+        self.apply_filter_form();
+        cx.notify();
+    }
+
+    /// A click outside the card: discards the draft, like `Esc`.
+    fn handle_filter_cancel(&mut self, cx: &mut Context<Self>) {
+        self.transactions_filter_form = None;
+        self.nav.exit_mode();
         cx.notify();
     }
 
@@ -1896,7 +2081,7 @@ impl Focusable for Shell {
 }
 
 impl Render for Shell {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let focus = self.nav.focus();
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
         // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
@@ -2260,6 +2445,72 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_transactions_search_click(cx));
             })
         };
+        let filter_popover = self.transactions_filter_form.as_ref().map(|form| {
+            let entity_for = |shell_call: fn(&mut Shell, &mut Context<Shell>)| {
+                let entity = entity.clone();
+                Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
+                    entity.update(cx, shell_call);
+                }) as Rc<dyn Fn(&mut Window, &mut gpui::App)>
+            };
+            let on_field_click: transactions_view::OnFieldClick = {
+                let entity = entity.clone();
+                Rc::new(move |field, _window, cx| {
+                    entity.update(cx, |shell, cx| shell.handle_filter_field_click(field, cx));
+                })
+            };
+            let on_option_click: transactions_view::OnOptionClick = {
+                let entity = entity.clone();
+                Rc::new(move |field, index, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.handle_filter_option_click(field, index, cx)
+                    });
+                })
+            };
+            let on_status_click: transactions_view::OnStatusClick = {
+                let entity = entity.clone();
+                Rc::new(move |status, _window, cx| {
+                    entity.update(cx, |shell, cx| shell.handle_filter_status_click(status, cx));
+                })
+            };
+            // Anchor just below the chip that opened it, left-aligned to it and kept inside the
+            // window; before any chip has been painted, a fixed spot.
+            let viewport = window.viewport_size();
+            let (left, top) = match self
+                .transactions_chip_bounds
+                .borrow()
+                .get(&self.transactions_filter_anchor)
+                .copied()
+            {
+                Some(bounds) => {
+                    let mut left = bounds.origin.x;
+                    let max_left = viewport.width - px(416.0);
+                    if left > max_left {
+                        left = max_left;
+                    }
+                    if left < px(8.0) {
+                        left = px(8.0);
+                    }
+                    (left, bounds.origin.y + bounds.size.height + px(6.0))
+                }
+                None => (px(300.0), px(200.0)),
+            };
+            let options = self.filter_form_options();
+            transactions_view::render_popover(transactions_view::PopoverProps {
+                form,
+                options: &options,
+                start_hint: form.start_hint(self.today, self.settings_date_format),
+                end_hint: form.end_hint(self.today, self.settings_date_format),
+                can_apply: form.is_valid(self.today, self.settings_date_format),
+                left,
+                top,
+                on_field_click,
+                on_option_click,
+                on_status_click,
+                on_reset: entity_for(Shell::handle_filter_reset),
+                on_apply: entity_for(Shell::handle_filter_apply),
+                on_cancel: entity_for(Shell::handle_filter_cancel),
+            })
+        });
         let transactions_page = (self.nav.noun() == Noun::Transactions).then(|| {
             let ledger = self.transactions_ledger();
             let visible = transaction_query::query(
@@ -2287,6 +2538,7 @@ impl Render for Shell {
                 self.settings_date_format,
             );
             transactions_view::TransactionsPageProps {
+                dimmed: self.transactions_filter_form.is_some(),
                 header: transactions_view::HeaderProps {
                     count_line: transaction_chips::count_line(&self.transactions),
                     chips,
@@ -2298,6 +2550,7 @@ impl Render for Shell {
                     on_chip_clear: on_transactions_chip_clear,
                     on_clear_all: on_transactions_clear_all,
                     on_search_click: on_transactions_search_click,
+                    chip_bounds: self.transactions_chip_bounds.clone(),
                 },
                 selected: transaction_rows::clamp_selection(self.transactions_selected, rows.len()),
                 rows: Rc::new(rows),
@@ -2316,7 +2569,11 @@ impl Render for Shell {
                 },
             }),
             Noun::Transactions => Some(PageStatus {
-                hints: TRANSACTIONS_HINTS,
+                hints: if self.nav.mode() == InputMode::Filter {
+                    FILTER_HINTS
+                } else {
+                    TRANSACTIONS_HINTS
+                },
                 right: format::status_legend(self.settings_status_glyphs),
             }),
             _ => None,
@@ -2433,6 +2690,7 @@ impl Render for Shell {
                     on_explorer_open,
                 )
             }))
+            .children(filter_popover)
             .children(self.accounts_dialog.as_ref().map(|dialog| match dialog {
                 AccountsDialog::Add(form) => accounts_view::add_dialog::render(
                     form,

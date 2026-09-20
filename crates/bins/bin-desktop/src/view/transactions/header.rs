@@ -7,9 +7,9 @@
 //! (changed from the default) ends in a clickable `✕` that resets just that filter, and a click on
 //! the chip itself opens the filter popover.
 
-use std::rc::Rc;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Bounds, Pixels, SharedString, Window, canvas, div, prelude::*, px};
 
 use crate::{
     theme::color,
@@ -18,6 +18,9 @@ use crate::{
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type OnChipClick = Rc<dyn Fn(FilterField, &mut Window, &mut App)>;
+/// Where each chip was last painted, in window coordinates: written while painting, read by
+/// `Shell` to anchor the filter popover under the chip that opened it.
+pub type ChipBounds = Rc<RefCell<HashMap<FilterField, Bounds<Pixels>>>>;
 
 pub struct HeaderProps {
     /// `700 transactions across 4 accounts`.
@@ -37,6 +40,7 @@ pub struct HeaderProps {
     pub on_clear_all: OnPlainClick,
     /// A click on the search box: enters search mode.
     pub on_search_click: OnPlainClick,
+    pub chip_bounds: ChipBounds,
 }
 
 /// `padding:16px 28px 14px; border-bottom:2px solid rgba(32,30,29,.38)`.
@@ -52,6 +56,7 @@ pub fn render(props: HeaderProps) -> AnyElement {
         on_chip_clear,
         on_clear_all,
         on_search_click,
+        chip_bounds,
     } = props;
 
     div()
@@ -77,6 +82,7 @@ pub fn render(props: HeaderProps) -> AnyElement {
                         chip_data,
                         on_chip_click.clone(),
                         on_chip_clear.clone(),
+                        chip_bounds.clone(),
                     )
                 }))
                 .when(show_clear, |this| this.child(clear_link(on_clear_all)))
@@ -146,7 +152,13 @@ fn add_button(on_click: OnPlainClick) -> impl IntoElement {
 /// A filter chip (`.tag`, `padding:2px 8px`): outline with a trailing `▾` at its default, accent
 /// with a trailing clickable `✕` once changed. The `✕` stops the click reaching the chip, which
 /// would otherwise also open the popover.
-fn chip(index: usize, chip: Chip, on_click: OnChipClick, on_clear: OnChipClick) -> AnyElement {
+fn chip(
+    index: usize,
+    chip: Chip,
+    on_click: OnChipClick,
+    on_clear: OnChipClick,
+    bounds_store: ChipBounds,
+) -> AnyElement {
     let field = chip.field;
     let base = div()
         .id(("transactions-chip", index))
@@ -160,8 +172,20 @@ fn chip(index: usize, chip: Chip, on_click: OnChipClick, on_clear: OnChipClick) 
         .border_1()
         .text_size(px(11.5))
         .whitespace_nowrap()
+        .relative()
         .on_click(move |_event, window, cx| on_click(field, window, cx))
-        .child(SharedString::from(chip.label));
+        .child(SharedString::from(chip.label))
+        // An invisible overlay whose only job is to report where this chip is painted.
+        .child(
+            canvas(
+                move |bounds, _window, _cx| {
+                    bounds_store.borrow_mut().insert(field, bounds);
+                },
+                |_bounds, _state, _window, _cx| {},
+            )
+            .absolute()
+            .size_full(),
+        );
 
     if chip.active {
         base.bg(color::TAG_ACCENT_BG)

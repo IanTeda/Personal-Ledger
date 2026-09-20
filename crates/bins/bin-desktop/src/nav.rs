@@ -132,6 +132,10 @@ pub enum InputMode {
     /// feature unrelated to a floating dialog, and conflating the two would make either one
     /// harder to reason about once its own real feature lands.
     Dialog,
+    /// The Transactions filter popover (`docs/ux/desktop/Transactions/README.md`'s 4b) owns every
+    /// keystroke while it is open. Modal like `Dialog`, but its own mode so the status line reads
+    /// `FILTER` (the mockup's own chip) and its legend can differ.
+    Filter,
 }
 
 /// The active entity within a noun's context rail, if any. An index rather than a real

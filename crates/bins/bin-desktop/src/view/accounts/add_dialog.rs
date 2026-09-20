@@ -130,7 +130,7 @@ pub fn render(
 }
 
 /// Two fields side by side: `gap:16px`, each `flex:1`.
-pub(super) fn two_up(fields: [AnyElement; 2]) -> AnyElement {
+pub(crate) fn two_up(fields: [AnyElement; 2]) -> AnyElement {
     div()
         .flex()
         .items_start()
@@ -140,7 +140,7 @@ pub(super) fn two_up(fields: [AnyElement; 2]) -> AnyElement {
 }
 
 /// A field label: `font-weight:800; font-size:12px; margin-bottom:6px`.
-pub(super) fn label(text: &'static str) -> AnyElement {
+pub(crate) fn label(text: &'static str) -> AnyElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(12.0))
@@ -155,7 +155,7 @@ fn optional_label(text: &'static str) -> AnyElement {
 }
 
 /// A label followed by a `suffix` in the tertiary ink, at regular weight.
-pub(super) fn suffixed_label(text: &'static str, suffix: &'static str) -> AnyElement {
+pub(crate) fn suffixed_label(text: &'static str, suffix: &'static str) -> AnyElement {
     div()
         .flex()
         .gap(px(4.0))
@@ -174,7 +174,7 @@ pub(super) fn suffixed_label(text: &'static str, suffix: &'static str) -> AnyEle
 
 /// A label above a clickable text box whose border turns `ACCENT` with a trailing caret while
 /// focused -- the same look as the Settings dialogs' text fields.
-pub(super) fn text_field(
+pub(crate) fn text_field(
     id: &'static str,
     label: AnyElement,
     value: &str,

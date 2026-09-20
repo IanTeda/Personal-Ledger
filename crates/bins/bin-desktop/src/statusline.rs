@@ -107,6 +107,8 @@ fn mode_badge(mode: InputMode) -> impl IntoElement {
         InputMode::Command => ("COMMAND", color::ACCENT),
         // Same accent callout as `Command` -- a modal dialog is exactly as attention-grabbing.
         InputMode::Dialog => ("DIALOG", color::ACCENT),
+        // The same accent callout as the other modal surfaces.
+        InputMode::Filter => ("FILTER", color::ACCENT),
     };
 
     div()

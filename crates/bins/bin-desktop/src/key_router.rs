@@ -59,6 +59,8 @@ pub enum KeyOutcome {
     Swallowed,
     /// `InputMode::Dialog` owns every keystroke -- hand off to `Shell::handle_dialog_key`.
     DelegateToDialog,
+    /// `InputMode::Filter` owns every keystroke -- hand off to `Shell::handle_filter_key`.
+    DelegateToFilter,
     /// A pending `g` completed: jump straight to this noun.
     JumpToNoun(Noun),
     /// A pending `g` was followed by an unbound key: flash this already-formatted hint-strip
@@ -132,6 +134,9 @@ pub fn route_key(
     }
     if mode == InputMode::Dialog {
         return KeyOutcome::DelegateToDialog;
+    }
+    if mode == InputMode::Filter {
+        return KeyOutcome::DelegateToFilter;
     }
     if mode != InputMode::Normal {
         return KeyOutcome::Swallowed;
@@ -212,6 +217,7 @@ mod tests {
             InputMode::Insert,
             InputMode::Search,
             InputMode::Dialog,
+            InputMode::Filter,
         ] {
             assert_eq!(
                 route_key(mode, false, "escape", false, false),
@@ -259,6 +265,17 @@ mod tests {
             route_key(InputMode::Dialog, false, "j", false, false),
             KeyOutcome::DelegateToDialog
         );
+    }
+
+    #[test]
+    fn filter_mode_delegates_every_non_escape_key_including_the_ones_normal_mode_owns() {
+        for key in ["j", "f", "a", "b", ":", "/", "tab", "enter"] {
+            assert_eq!(
+                route_key(InputMode::Filter, false, key, false, false),
+                KeyOutcome::DelegateToFilter,
+                "{key:?}"
+            );
+        }
     }
 
     // Pending g
