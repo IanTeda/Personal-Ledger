@@ -60,7 +60,7 @@ Planned-but-not-yet-present binaries/crates mentioned in `docs/directories-files
 ## Conventions
 
 - Workspace-wide lint: `unsafe_code = "forbid"` (see `Cargo.toml`) — don't introduce `unsafe`.
-- Shared dependency versions live in `[workspace.dependencies]`; reference them from member crates as `dep = { workspace = true }` rather than pinning versions locally.
+- A dependency used by two or more workspace crates goes in `[workspace.dependencies]`, and member crates reference it as `dep = { workspace = true }` rather than pinning versions locally. A dependency used by only one crate is declared in that crate's own `Cargo.toml` with its version, not in the workspace `Cargo.toml`; when a second crate needs it, move it up to `[workspace.dependencies]` and switch both crates to `workspace = true`.
 - Use `thiserror::Error` for domain/crate error enums (see `lib-database/src/error.rs`, `lib-config/src/error.rs`), and map lower-level errors (e.g. `sqlx::Error`) into structured variants rather than propagating them directly.
 - Wrap secrets/tokens in `secrecy::Secret` so they can't leak into logs/traces.
 - Avoid `SELECT *` in SQL queries — list explicit columns.
