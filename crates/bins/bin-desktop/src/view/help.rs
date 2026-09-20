@@ -111,10 +111,21 @@ fn facts_column() -> impl IntoElement {
     div()
         .w(FACTS_WIDTH)
         .flex_none()
+        .p(px(24.0))
+        .child(facts(None, None))
+}
+
+/// The project facts (description, author, links, licence, copyright), shared with Settings'
+/// About section so the two never drift apart. `before_author`/`after_author` slot extra rows
+/// in around the Author fact.
+pub fn facts(
+    before_author: Option<AnyElement>,
+    after_author: Option<AnyElement>,
+) -> impl IntoElement {
+    div()
         .flex()
         .flex_col()
         .gap(px(14.0))
-        .p(px(24.0))
         .text_size(px(12.5))
         .child(
             div()
@@ -122,10 +133,12 @@ fn facts_column() -> impl IntoElement {
                 .child(help::DESCRIPTION),
         )
         .child(rule())
+        .children(before_author)
         .child(fact(
             "Author",
             div().text_color(color::ACCENT).child(help::AUTHOR),
         ))
+        .children(after_author)
         .children(
             help::LINKS.iter().map(|item| {
                 fact(item.label, link(item.label, item.text, item.url)).into_any_element()
