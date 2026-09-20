@@ -13,8 +13,7 @@ pub struct PreferencesBuilder {
     id: Option<lib_core::RowID>,
     default_unit_id: Option<lib_core::RowID>,
     colour_theme: Option<lib_core::HexColor>,
-    date_format: Option<lib_core::DateFormat>,
-    number_format: Option<lib_core::NumberFormat>,
+    date_style: Option<lib_core::DateStyle>,
     created_on: Option<chrono::DateTime<chrono::Utc>>,
     updated_on: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -47,17 +46,10 @@ impl PreferencesBuilder {
         self
     }
 
-    /// Set the date display format.
+    /// Set the date style (or clear it, with `None`, to use the Locale's default).
     #[must_use]
-    pub fn with_date_format(mut self, date_format: lib_core::DateFormat) -> Self {
-        self.date_format = Some(date_format);
-        self
-    }
-
-    /// Set the number display format.
-    #[must_use]
-    pub fn with_number_format(mut self, number_format: lib_core::NumberFormat) -> Self {
-        self.number_format = Some(number_format);
+    pub fn with_date_style(mut self, date_style: Option<lib_core::DateStyle>) -> Self {
+        self.date_style = date_style;
         self
     }
 
@@ -95,8 +87,7 @@ impl PreferencesBuilder {
             colour_theme: self
                 .colour_theme
                 .unwrap_or_else(|| lib_core::HexColor::from_rgb(255, 0, 0)),
-            date_format: self.date_format.unwrap_or_default(),
-            number_format: self.number_format.unwrap_or_default(),
+            date_style: self.date_style,
             created_on: self.created_on.unwrap_or_else(chrono::Utc::now),
             updated_on: self.updated_on.unwrap_or_else(chrono::Utc::now),
         }

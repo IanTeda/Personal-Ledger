@@ -5,7 +5,7 @@ The payees view for `personal-ledger` — a keyboard-only, local-first personal 
 
 **The one idea this design turns on:** a Payee is the only entity the user never deliberately creates. `Payees::resolve_or_create` makes one the first time its name is typed on a Transaction ([ADR-0012](https://github.com/IanTeda/Personal-Ledger/blob/main/docs/adr/0012-payee-entity-with-rename-aliases.md)), so the list fills itself — and fills itself with near-duplicates, because bank feeds spell the same shop three ways. **This screen is therefore a curation screen, not a CRUD screen.** Its two jobs are to fold variant spellings back onto one canonical Payee, and to teach each Payee what it should default to. Creating and deleting are the rare edge cases, not the spine.
 
-What the repo gives us today (`crates/libs/lib-database/src/payees/`, `payee_aliases/`, migration `20260905120000_payee_entity_with_rename_aliases.sql`):
+What the repo gives us today (`crates/libs/lib-database/src/payees/`, `payee_aliases/`, migration `20260905090000_create_payees_table.sql`):
 
 - **`payees`** is `id`, `name` (`TEXT NOT NULL UNIQUE COLLATE NOCASE`), `is_active`, `created_on`, `updated_on`. Nothing else.
 - **`payee_aliases`** is `id`, `payee_id`, `pattern` — a **regex** matched against typed text. Write-once: inserted only by a rename, never updated or deleted, so its `id`'s UUIDv7 stands in for when the rename happened.

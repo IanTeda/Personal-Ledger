@@ -1,12 +1,14 @@
--- Migration: create accounts table -- the Sync Server's own auth user store (ADR-0010:
--- OAuth2 Authorization Code + PKCE, Sync Server as its own authorization server).
+-- Migration: create sync_users table -- the Sync Server's own auth user store (ADR-0010:
+-- OAuth2 Authorization Code + PKCE, Sync Server as its own authorization server). Named
+-- sync_users, not accounts, to keep the domain Account entity's name free (see CONTEXT.md's
+-- SyncUser glossary entry).
 --
 -- Single-account this cycle (ADR-0010): the PRD's deployment profile is one self-hoster,
 -- not multiple distinct human users of one Sync Server. `refresh_token_hash` is nullable
 -- (no active session yet) and rotates on every token refresh -- the previous value stops
 -- being valid the moment a new one is written.
 
-CREATE TABLE IF NOT EXISTS accounts (
+CREATE TABLE IF NOT EXISTS sync_users (
     id UUID PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
@@ -16,13 +18,13 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 
--- Trigger to update updated_on on every account row change (refresh-token rotation, etc.)
-CREATE TRIGGER IF NOT EXISTS trg_accounts_set_updated_on
-AFTER UPDATE ON accounts
+-- Trigger to update updated_on on every sync user row change (refresh-token rotation, etc.)
+CREATE TRIGGER IF NOT EXISTS trg_sync_users_set_updated_on
+AFTER UPDATE ON sync_users
 FOR EACH ROW
 WHEN NEW.updated_on = OLD.updated_on
 BEGIN
-    UPDATE accounts
+    UPDATE sync_users
     SET updated_on = (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
     WHERE rowid = NEW.rowid;
 END;

@@ -54,14 +54,13 @@ impl crate::Preferences {
 
         let insert_result = sqlx::query!(
             r#"
-                INSERT INTO preferences (id, default_unit_id, colour_theme, date_format, number_format, created_on, updated_on)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO preferences (id, default_unit_id, colour_theme, date_style, created_on, updated_on)
+                VALUES (?, ?, ?, ?, ?, ?)
             "#,
             preferences.id,
             preferences.default_unit_id,
             preferences.colour_theme,
-            preferences.date_format,
-            preferences.number_format,
+            preferences.date_style,
             preferences.created_on,
             preferences.updated_on
         )
@@ -81,7 +80,7 @@ impl crate::Preferences {
     }
 
     /// Replace this Preferences row's editable fields (`default_unit_id`, `colour_theme`,
-    /// `date_format`, `number_format`) with its current values, then re-reads the row to
+    /// `date_style`) with its current values, then re-reads the row to
     /// confirm. `id` and `created_on` never change; `updated_on` is refreshed by the
     /// `trg_preferences_set_updated_on` trigger.
     ///
@@ -99,13 +98,12 @@ impl crate::Preferences {
         let result = sqlx::query!(
             r#"
                 UPDATE preferences
-                SET default_unit_id = ?, colour_theme = ?, date_format = ?, number_format = ?
+                SET default_unit_id = ?, colour_theme = ?, date_style = ?
                 WHERE id = ?
             "#,
             self.default_unit_id,
             self.colour_theme,
-            self.date_format,
-            self.number_format,
+            self.date_style,
             self.id
         )
         .execute(pool)
@@ -186,7 +184,7 @@ mod tests {
             .await
             .unwrap();
         preferences.colour_theme = lib_core::HexColor::from_rgb(0, 255, 0);
-        preferences.date_format = lib_core::DateFormat::Iso;
+        preferences.date_style = Some(lib_core::DateStyle::Iso);
 
         let updated = preferences.update(&pool).await.unwrap();
 
@@ -194,7 +192,24 @@ mod tests {
             updated.colour_theme,
             lib_core::HexColor::from_rgb(0, 255, 0)
         );
-        assert_eq!(updated.date_format, lib_core::DateFormat::Iso);
+        assert_eq!(updated.date_style, Some(lib_core::DateStyle::Iso));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn date_style_defaults_to_none_and_can_be_cleared(pool: SqlitePool) {
+        let mut preferences = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
+        assert_eq!(preferences.date_style, None);
+
+        preferences.date_style = Some(lib_core::DateStyle::Long);
+        let set = preferences.update(&pool).await.unwrap();
+        assert_eq!(set.date_style, Some(lib_core::DateStyle::Long));
+
+        let mut cleared = set;
+        cleared.date_style = None;
+        let cleared = cleared.update(&pool).await.unwrap();
+        assert_eq!(cleared.date_style, None);
     }
 
     #[sqlx::test(migrations = "migrations/client")]

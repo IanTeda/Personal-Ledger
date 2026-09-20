@@ -2,7 +2,7 @@
 //!
 //! Defines the `Preferences` struct, the one row of the `preferences` table -- Ledger-scoped
 //! settings a user edits from inside a running Client (ADR-0014): the default Unit for new
-//! Accounts, colour theme, date format, and decimal/thousands separator. Singleton by
+//! Accounts, colour theme, and a nullable date style (ADR-0021). Singleton by
 //! convention (mirroring `sync_users` -- see [`crate::Preferences::find_only`] and
 //! [`crate::Preferences::get_or_create_default`]), not a database constraint.
 
@@ -21,11 +21,8 @@ pub struct Preferences {
     /// and Liabilities, per `docs/ux/tui/README.md`'s style table).
     pub colour_theme: lib_core::HexColor,
 
-    /// How dates are displayed.
-    pub date_format: lib_core::DateFormat,
-
-    /// How amounts' thousands/decimal separators are displayed.
-    pub number_format: lib_core::NumberFormat,
+    /// How dates are displayed. Nullable: `None` means the Locale's default (ADR-0021).
+    pub date_style: Option<lib_core::DateStyle>,
 
     /// UTC timestamp when the Preferences row was first created.
     pub created_on: chrono::DateTime<chrono::Utc>,
@@ -45,8 +42,7 @@ impl Preferences {
             .with_id(lib_core::RowID::mock())
             .with_default_unit_id(Some(lib_core::RowID::mock()))
             .with_colour_theme(lib_core::HexColor::mock())
-            .with_date_format(lib_core::DateFormat::mock())
-            .with_number_format(lib_core::NumberFormat::mock())
+            .with_date_style(Some(lib_core::DateStyle::mock()))
             .with_created_on_opt(Some(now))
             .with_updated_on_opt(Some(now))
             .build()

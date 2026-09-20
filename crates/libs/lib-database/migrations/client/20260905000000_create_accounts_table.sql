@@ -1,7 +1,7 @@
 -- Migration: create accounts table -- the domain Account entity (Cash/Bank/Credit
 -- Card/Investment/Loan, FR.10-15, CC-TUI-008). Not to be confused with the Sync Server's
--- own auth credential, renamed to sync_users to free this name up (see
--- 20260904000000_rename_accounts_to_sync_users.sql and CONTEXT.md's SyncUser entry).
+-- own auth credential, which is named sync_users to keep this name free (see CONTEXT.md's
+-- SyncUser entry).
 --
 -- unit_id is the first real foreign key in the schema: an Account's Unit is fixed at
 -- creation (FR.10) and must reference a real Unit. Enforced by SQLite's foreign_keys
