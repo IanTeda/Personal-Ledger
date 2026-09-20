@@ -135,8 +135,13 @@ pub fn init_with_layers(tag: &str, layers: &[Layer]) -> Locale {
 /// them rather than calling it directly. A miss never panics.
 pub fn format(id: &str, attribute: Option<&str>, args: &[(&str, Arg)]) -> String {
     let loader = LOADER.get_or_init(|| Loader::build(Locale::DEFAULT, &[]));
-    let locale = OVERRIDE.with(Cell::get).unwrap_or(loader.active);
-    loader.format(locale, id, attribute, args)
+    loader.format(locale(), id, attribute, args)
+}
+
+/// The Locale in effect on this thread: the scoped override if any, else the process-wide one.
+pub fn locale() -> Locale {
+    let loader = LOADER.get_or_init(|| Loader::build(Locale::DEFAULT, &[]));
+    OVERRIDE.with(Cell::get).unwrap_or(loader.active)
 }
 
 /// Runs `f` with this thread's Messages rendered in `locale`, leaving the process-wide loader

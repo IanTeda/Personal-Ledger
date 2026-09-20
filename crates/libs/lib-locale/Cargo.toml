@@ -9,6 +9,8 @@ build = "build.rs"
 lib_core = { path = "../lib-core" }
 
 ## -- Workspace Shared Dependencies --
+bigdecimal = { workspace = true }
+chrono = { workspace = true }
 fluent-syntax = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
@@ -17,6 +19,13 @@ unic-langid = { workspace = true }
 ## -- Library Dependencies --
 fluent-bundle = { version = "0.16.0" }
 fluent-pseudo = { version = "0.3.3" }
+fixed_decimal = { version = "0.7.2" }
+icu_calendar = { version = "2.3.0" }
+icu_casemap = { version = "2.3.0" }
+icu_datetime = { version = "2.3.0" }
+icu_decimal = { version = "2.3.0" }
+icu_experimental = { version = "0.6.0" }
+icu_locale = { version = "2.3.1" }
 
 [build-dependencies]
 lib_locale_build = { path = "../lib-locale-build" }

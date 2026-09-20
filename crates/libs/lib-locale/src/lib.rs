@@ -9,7 +9,8 @@
 //! - **Catalogues**: Fluent Messages embedded at compile time, one bundle per Locale composed
 //!   from a shared layer plus an optional per-bin layer, looked up through generated typed
 //!   accessors in [`msg`].
-//! - **Formatting**: number, date and currency formatting driven by the Locale (not yet built).
+//! - **Formatting**: number, date, currency and casing, driven by the Locale in effect and backed
+//!   by ICU4X, in [`format`].
 //!
 //! A bin calls [`init`] once at startup, then any [`msg`] accessor:
 //!
@@ -27,10 +28,11 @@
 
 mod catalogue;
 mod error;
+pub mod format;
 mod locale;
 pub mod msg;
 
-pub use catalogue::{init, init_with_layers, with_locale};
+pub use catalogue::{init, init_with_layers, locale, with_locale};
 pub use error::{Error, Result};
 pub use locale::Locale;
 
