@@ -2,9 +2,10 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[Command {
+    id: CommandId::Help,
     name: "help",
     chord: Chord(&[KeyCode::Char('?')]),
     description: "browse every command",

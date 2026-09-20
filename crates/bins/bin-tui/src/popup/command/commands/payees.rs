@@ -22,16 +22,18 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Arg, Chord, Command};
+use super::{Arg, Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[
     Command {
+        id: CommandId::Payee,
         name: "payee",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('p')]),
         description: "payees ranked by spend, curation flags, record, matches",
         args: &[],
     },
     Command {
+        id: CommandId::PayeeNew,
         name: "payee new <name>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "add a payee — opens the new popup, blank",
@@ -41,6 +43,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::PayeeEdit,
         name: "payee edit <payee>",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted payee",
@@ -50,6 +53,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::PayeeRename,
         name: "payee rename <payee> <new>",
         chord: Chord::NONE,
         description: "rename — keeps the old name as a match",
@@ -59,6 +63,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::PayeeMatch,
         name: "payee match <payee>",
         chord: Chord(&[KeyCode::Char('m')]),
         description: "rename matches — add/edit/remove, live resolution test",
@@ -68,6 +73,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::PayeeMatchAdd,
         name: "payee match add <payee> <text>",
         chord: Chord::NONE,
         description: "adds an exact-text match — refuses on cross-payee collision",
@@ -77,6 +83,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::PayeeDefault,
         name: "payee default <payee> <category>",
         chord: Chord::NONE,
         description: "sets the default category — pre-fills it on transaction entry",
@@ -86,6 +93,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::PayeeOff,
         name: "payee off <payee>",
         chord: Chord(&[KeyCode::Char('a')]),
         description: "is_active = 0 — hides it from the list unless za",
@@ -95,6 +103,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::PayeeOn,
         name: "payee on <payee>",
         chord: Chord::NONE,
         description: "is_active = 1 — reverses payee off",
@@ -104,6 +113,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::PayeeDelete,
         name: "payee delete <payee>",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "opens the delete popup — the database refuses a referenced payee",

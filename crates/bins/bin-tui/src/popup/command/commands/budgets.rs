@@ -6,10 +6,11 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Arg, Chord, Command};
+use super::{Arg, Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[
     Command {
+        id: CommandId::BudgetList,
         name: "budget list [period]",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('b')]),
         description: "budgets vs actual for the period",
@@ -19,6 +20,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::BudgetNew,
         name: "budget new <category> <limit>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "start tracking a category",
@@ -28,6 +30,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::BudgetEdit,
         name: "budget edit <category> [limit]",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "change the limit or period",
@@ -37,6 +40,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::BudgetDelete,
         name: "budget delete <category>",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "stop tracking a category",

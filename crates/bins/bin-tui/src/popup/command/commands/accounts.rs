@@ -21,16 +21,18 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Arg, Chord, Command};
+use super::{Arg, Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[
     Command {
+        id: CommandId::Account,
         name: "account",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('a')]),
         description: "accounts grouped by type, per-unit subtotals, ledger",
         args: &[],
     },
     Command {
+        id: CommandId::AccountNew,
         name: "account new <name> <type> <unit>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "add an account — opens the new popup, blank",
@@ -40,6 +42,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::AccountEdit,
         name: "account edit <acct>",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted account",
@@ -49,6 +52,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::AccountDelete,
         name: "account delete <acct> [into <acct>]",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "delete — a non-empty account needs a same-unit transfer target",
@@ -58,6 +62,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::AccountOff,
         name: "account off <acct>",
         chord: Chord(&[KeyCode::Char('a')]),
         description: "is_active = 0 — hides it from the list unless za",
@@ -67,6 +72,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::AccountOn,
         name: "account on <acct>",
         chord: Chord::NONE,
         description: "is_active = 1 — reverses account off",
@@ -76,6 +82,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::AccountCheck,
         name: "account check <acct> <amount> [date]",
         chord: Chord(&[KeyCode::Char('b')]),
         description: "records a Balance Check, prints the variance",

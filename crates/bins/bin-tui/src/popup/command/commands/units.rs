@@ -5,16 +5,18 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Arg, Chord, Command};
+use super::{Arg, Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[
     Command {
+        id: CommandId::Unit,
         name: "unit",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('u')]),
         description: "Units screen with details, summary and prices",
         args: &[],
     },
     Command {
+        id: CommandId::UnitNew,
         name: "unit new <code> <type>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "add a unit — code is permanent",
@@ -24,6 +26,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::UnitEdit,
         name: "unit edit <code>",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted unit",
@@ -33,6 +36,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::UnitDelete,
         name: "unit delete <code>",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "delete — units in use can't be removed",

@@ -23,16 +23,18 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Arg, Chord, Command};
+use super::{Arg, Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[
     Command {
+        id: CommandId::Category,
         name: "category",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('c')]),
         description: "categories tree — direct vs rollup, spend and transactions",
         args: &[],
     },
     Command {
+        id: CommandId::CategoryNew,
         name: "category new <name> [parent]",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "add a category — parent defaults to the tree selection",
@@ -42,6 +44,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::CategoryEdit,
         name: "category edit <cat>",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted category",
@@ -51,6 +54,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::CategoryMove,
         name: "category move <cat> <parent>",
         chord: Chord(&[KeyCode::Char('m')]),
         description: "move — refuses cycles and a cross-root move with transactions",
@@ -60,6 +64,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::CategoryRename,
         name: "category rename <cat> <name>",
         chord: Chord::NONE,
         description: "rename — nothing else references a category by name",
@@ -69,6 +74,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::CategoryMerge,
         name: "category merge <from> <into>",
         chord: Chord::NONE,
         description: "reassigns transactions to <into>, deletes <from>",
@@ -78,6 +84,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::CategoryArchive,
         name: "category archive <cat>",
         chord: Chord(&[KeyCode::Char('a')]),
         description: "active = 0 — keeps every transaction and total",
@@ -87,6 +94,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::CategoryTree,
         name: "category tree [root]",
         chord: Chord::NONE,
         description: "prints the subtree — scriptable/pipeable",

@@ -7,9 +7,10 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[Command {
+    id: CommandId::Settings,
     name: "settings",
     chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('s')]),
     description: "groups, overrides and the settings table",

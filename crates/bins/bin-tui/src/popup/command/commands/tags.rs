@@ -19,16 +19,18 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Arg, Chord, Command};
+use super::{Arg, Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[
     Command {
+        id: CommandId::Tag,
         name: "tag",
         chord: Chord::NONE,
         description: "flat alphabetical list, summary box, lightweight delete",
         args: &[],
     },
     Command {
+        id: CommandId::TagNew,
         name: "tag new <name>",
         chord: Chord(&[KeyCode::Char('n')]),
         description: "add a tag — opens the new popup, blank",
@@ -38,6 +40,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::TagEdit,
         name: "tag edit <tag>",
         chord: Chord(&[KeyCode::Char('e')]),
         description: "edit the highlighted tag",
@@ -47,6 +50,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::TagOff,
         name: "tag off <tag>",
         chord: Chord::NONE,
         description: "is_active = 0 — hides it from the list unless za",
@@ -56,6 +60,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::TagOn,
         name: "tag on <tag>",
         chord: Chord::NONE,
         description: "is_active = 1 — reverses tag off",
@@ -65,6 +70,7 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::TagDelete,
         name: "tag delete <tag>",
         chord: Chord(&[KeyCode::Char('d')]),
         description: "arms the lightweight delete confirm — y on the list confirms",

@@ -15,6 +15,8 @@
 
 mod commands;
 
+pub use commands::{CommandId, DOMAINS};
+
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -217,6 +219,13 @@ impl CommandPopup {
     /// yet (today, only the unit family and `dashboard` do).
     pub fn selected_command_name(&self) -> Option<&'static str> {
         self.selected_command().map(|command| command.name)
+    }
+
+    /// The stable id and typed name of the highlighted command, if any. The shell dispatches on
+    /// the id; the name is only for the "not yet built" message.
+    pub fn selected(&self) -> Option<(CommandId, &'static str)> {
+        self.selected_command()
+            .map(|command| (command.id, command.name))
     }
 
     /// The highlighted command's args, joined into one combined preview string (`"{placeholder}

@@ -28,7 +28,7 @@ use crate::{
         category::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
-        command::{CommandPopup, record_history},
+        command::{CommandId, CommandPopup, record_history},
         payee::{
             PayeePopup, delete::DeleteCommit, delete::DeletePayeePopup, edit::EditPayeePopup,
             matches::ComposeCommit, matches::PayeeMatchesPopup, new::NewPayeePopup,
@@ -353,166 +353,178 @@ impl Shell {
             KeyCode::Backspace => Some(Action::CommandPopupBackspace),
             KeyCode::Tab => Some(Action::CommandPopupTab),
             KeyCode::Char('r') if ctrl => Some(Action::CommandPopupHistoryRecall),
-            KeyCode::Enter => match self.command_popup.as_ref()?.selected_command_name() {
-                Some("unit") => Some(Action::OpenUnits),
-                Some("unit new <code> <type>") => Some(Action::OpenNewUnitPopup),
-                Some("unit edit <code>") => Some(Action::OpenEditUnitPopup),
-                Some("unit delete <code>") => Some(Action::OpenDeleteUnitPopup),
-                Some("dashboard") => Some(Action::OpenDashboard),
-                Some("settings") => Some(Action::OpenSettings),
-                Some("category") => Some(Action::OpenCategories),
-                // The command popup has no real typed-argument resolution (`popup::command::
-                // commands::categories`'s own module doc), so `<cat>`/`<parent>`/`<name>` all
-                // mean "the Categories tree's current selection" here — the same target its
-                // own `n`/`e`/`m`/`a` keys act on. Falls back to the ordinary "not yet built"
-                // message when there isn't one (Categories isn't the active view), rather than
-                // silently doing nothing.
-                Some(name @ "category new <name> [parent]") => self
-                    .view
-                    .category_selection()
-                    .map(Action::OpenCategoryNewPopup)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "category edit <cat>") => self
-                    .view
-                    .category_selection()
-                    .map(Action::OpenCategoryEditPopup)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "category move <cat> <parent>") => self
-                    .view
-                    .category_selection()
-                    .map(Action::OpenCategoryMovePopup)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "category archive <cat>") => self
-                    .view
-                    .category_selection()
-                    .and_then(|id| {
-                        let node = self.view.category_store()?.find(id)?;
-                        Some(Action::UpdateCategory {
-                            id,
-                            name: node.name.clone(),
-                            note: node.note.clone(),
-                            active: false,
-                        })
-                    })
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some("account") => Some(Action::OpenAccounts),
-                // Mirrors the Categories arm above — the command popup has no real
-                // typed-argument resolution (`popup::command::commands::accounts`'s own module
-                // doc), so `<acct>`/`<name>`/`<type>`/`<unit>` all mean "the Accounts list's
-                // current selection" here, the same target its own `e`/`d`/`a` keys act on.
-                // `account new` doesn't need a selection (it opens blank either way), but still
-                // only opens when the Accounts view is actually active — `account_store`
-                // serves as that guard since there's no selection prerequisite to check
-                // instead.
-                Some(name @ "account new <name> <type> <unit>") => {
-                    if self.view.account_store().is_some() {
-                        Some(Action::OpenAccountNewPopup)
-                    } else {
-                        Some(Action::CommandPopupSetNotYetBuilt(name))
-                    }
-                }
-                Some(name @ "account edit <acct>") => self
-                    .view
-                    .account_selection()
-                    .map(Action::OpenAccountEditPopup)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "account delete <acct> [into <acct>]") => self
-                    .view
-                    .account_selection()
-                    .map(Action::OpenAccountDeletePopup)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "account off <acct>") => self
-                    .view
-                    .account_selection()
-                    .map(|id| Action::SetAccountActive { id, active: false })
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "account on <acct>") => self
-                    .view
-                    .account_selection()
-                    .map(|id| Action::SetAccountActive { id, active: true })
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                // "account check <acct> <amount> [date]" falls through to the catch-all below —
-                // Balance Check/reconcile is out of this map's destination entirely (README
-                // §*Not yet designed*), so it's never special-cased, same as Categories' own
-                // "rename"/"merge"/"tree".
-                Some("tag") => Some(Action::OpenTags),
-                // Mirrors the Accounts arm above — `tag new` has no selection prerequisite,
-                // only the guard that Tags is actually the active view.
-                Some(name @ "tag new <name>") => {
-                    if self.view.tag_store().is_some() {
-                        Some(Action::OpenTagNewPopup)
-                    } else {
-                        Some(Action::CommandPopupSetNotYetBuilt(name))
-                    }
-                }
-                Some(name @ "tag edit <tag>") => self
-                    .view
-                    .tag_selection()
-                    .map(Action::OpenTagEditPopup)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "tag off <tag>") => self
-                    .view
-                    .tag_selection()
-                    .map(|id| Action::SetTagActive { id, active: false })
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "tag on <tag>") => self
-                    .view
-                    .tag_selection()
-                    .map(|id| Action::SetTagActive { id, active: true })
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                // "tag delete <tag>" only arms the same lightweight confirm the bare `d` key
-                // does (`popup::command::commands::tags`'s own module doc) — it never deletes
-                // on its own, so this carries no id, just the same guard every other Tags
-                // entry above uses.
-                Some(name @ "tag delete <tag>") => self
-                    .view
-                    .tag_selection()
-                    .map(|_| Action::ArmTagDelete)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some("payee") => Some(Action::OpenPayees),
-                // Mirrors the Accounts/Tags arms above — `payee new` has no selection
-                // prerequisite, only the guard that Payees is actually the active view.
-                Some(name @ "payee new <name>") => {
-                    if self.view.payee_store().is_some() {
-                        Some(Action::OpenPayeeNewPopup)
-                    } else {
-                        Some(Action::CommandPopupSetNotYetBuilt(name))
-                    }
-                }
-                Some(name @ "payee edit <payee>") => self
-                    .view
-                    .payee_selection()
-                    .map(Action::OpenPayeeEditPopup)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "payee match <payee>") => self
-                    .view
-                    .payee_selection()
-                    .map(Action::OpenPayeeMatchesPopup)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "payee off <payee>") => self
-                    .view
-                    .payee_selection()
-                    .map(|id| Action::SetPayeeActive { id, active: false })
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "payee on <payee>") => self
-                    .view
-                    .payee_selection()
-                    .map(|id| Action::SetPayeeActive { id, active: true })
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                Some(name @ "payee delete <payee>") => self
-                    .view
-                    .payee_selection()
-                    .map(Action::OpenPayeeDeletePopup)
-                    .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
-                // "payee rename <payee> <new>"/"payee match add <payee> <text>"/"payee
-                // default <payee> <category>" fall through to the catch-all below — each
-                // needs a typed argument (a new name, alias text, or category) the command
-                // popup can't resolve yet, matching Categories' own "rename"/"merge"/"tree".
-                Some(name) => Some(Action::CommandPopupSetNotYetBuilt(name)),
-                None => None,
-            },
+            KeyCode::Enter => {
+                let (id, name) = self.command_popup.as_ref()?.selected()?;
+                self.command_action(id, name)
+            }
             KeyCode::Char(c) if !ctrl => Some(Action::CommandPopupInput(c)),
             _ => None,
+        }
+    }
+
+    /// What `Enter` does on the command with stable id `id`. Dispatch is on the id only, never on
+    /// the command's display text, so the usage line, description and placeholders can be
+    /// localised without changing routing. `name` is used only for the "not yet built" message.
+    ///
+    /// A command with real content behind it opens it; one that needs a selection the active view
+    /// cannot give, and every command not built yet, shows the "not yet built" message instead.
+    fn command_action(&self, id: CommandId, name: &'static str) -> Option<Action> {
+        match id {
+            CommandId::Unit => Some(Action::OpenUnits),
+            CommandId::UnitNew => Some(Action::OpenNewUnitPopup),
+            CommandId::UnitEdit => Some(Action::OpenEditUnitPopup),
+            CommandId::UnitDelete => Some(Action::OpenDeleteUnitPopup),
+            CommandId::Dashboard => Some(Action::OpenDashboard),
+            CommandId::Settings => Some(Action::OpenSettings),
+            CommandId::Category => Some(Action::OpenCategories),
+            // The command popup has no real typed-argument resolution (`popup::command::
+            // commands::categories`'s own module doc), so `<cat>`/`<parent>`/`<name>` all
+            // mean "the Categories tree's current selection" here — the same target its
+            // own `n`/`e`/`m`/`a` keys act on. Falls back to the ordinary "not yet built"
+            // message when there isn't one (Categories isn't the active view), rather than
+            // silently doing nothing.
+            CommandId::CategoryNew => self
+                .view
+                .category_selection()
+                .map(Action::OpenCategoryNewPopup)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::CategoryEdit => self
+                .view
+                .category_selection()
+                .map(Action::OpenCategoryEditPopup)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::CategoryMove => self
+                .view
+                .category_selection()
+                .map(Action::OpenCategoryMovePopup)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::CategoryArchive => self
+                .view
+                .category_selection()
+                .and_then(|id| {
+                    let node = self.view.category_store()?.find(id)?;
+                    Some(Action::UpdateCategory {
+                        id,
+                        name: node.name.clone(),
+                        note: node.note.clone(),
+                        active: false,
+                    })
+                })
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::Account => Some(Action::OpenAccounts),
+            // Mirrors the Categories arm above — the command popup has no real
+            // typed-argument resolution (`popup::command::commands::accounts`'s own module
+            // doc), so `<acct>`/`<name>`/`<type>`/`<unit>` all mean "the Accounts list's
+            // current selection" here, the same target its own `e`/`d`/`a` keys act on.
+            // `account new` doesn't need a selection (it opens blank either way), but still
+            // only opens when the Accounts view is actually active — `account_store`
+            // serves as that guard since there's no selection prerequisite to check
+            // instead.
+            CommandId::AccountNew => {
+                if self.view.account_store().is_some() {
+                    Some(Action::OpenAccountNewPopup)
+                } else {
+                    Some(Action::CommandPopupSetNotYetBuilt(name))
+                }
+            }
+            CommandId::AccountEdit => self
+                .view
+                .account_selection()
+                .map(Action::OpenAccountEditPopup)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::AccountDelete => self
+                .view
+                .account_selection()
+                .map(Action::OpenAccountDeletePopup)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::AccountOff => self
+                .view
+                .account_selection()
+                .map(|id| Action::SetAccountActive { id, active: false })
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::AccountOn => self
+                .view
+                .account_selection()
+                .map(|id| Action::SetAccountActive { id, active: true })
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            // "account check <acct> <amount> [date]" falls through to the catch-all below —
+            // Balance Check/reconcile is out of this map's destination entirely (README
+            // §*Not yet designed*), so it's never special-cased, same as Categories' own
+            // "rename"/"merge"/"tree".
+            CommandId::Tag => Some(Action::OpenTags),
+            // Mirrors the Accounts arm above — `tag new` has no selection prerequisite,
+            // only the guard that Tags is actually the active view.
+            CommandId::TagNew => {
+                if self.view.tag_store().is_some() {
+                    Some(Action::OpenTagNewPopup)
+                } else {
+                    Some(Action::CommandPopupSetNotYetBuilt(name))
+                }
+            }
+            CommandId::TagEdit => self
+                .view
+                .tag_selection()
+                .map(Action::OpenTagEditPopup)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::TagOff => self
+                .view
+                .tag_selection()
+                .map(|id| Action::SetTagActive { id, active: false })
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::TagOn => self
+                .view
+                .tag_selection()
+                .map(|id| Action::SetTagActive { id, active: true })
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            // "tag delete <tag>" only arms the same lightweight confirm the bare `d` key
+            // does (`popup::command::commands::tags`'s own module doc) — it never deletes
+            // on its own, so this carries no id, just the same guard every other Tags
+            // entry above uses.
+            CommandId::TagDelete => self
+                .view
+                .tag_selection()
+                .map(|_| Action::ArmTagDelete)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::Payee => Some(Action::OpenPayees),
+            // Mirrors the Accounts/Tags arms above — `payee new` has no selection
+            // prerequisite, only the guard that Payees is actually the active view.
+            CommandId::PayeeNew => {
+                if self.view.payee_store().is_some() {
+                    Some(Action::OpenPayeeNewPopup)
+                } else {
+                    Some(Action::CommandPopupSetNotYetBuilt(name))
+                }
+            }
+            CommandId::PayeeEdit => self
+                .view
+                .payee_selection()
+                .map(Action::OpenPayeeEditPopup)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::PayeeMatch => self
+                .view
+                .payee_selection()
+                .map(Action::OpenPayeeMatchesPopup)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::PayeeOff => self
+                .view
+                .payee_selection()
+                .map(|id| Action::SetPayeeActive { id, active: false })
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::PayeeOn => self
+                .view
+                .payee_selection()
+                .map(|id| Action::SetPayeeActive { id, active: true })
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            CommandId::PayeeDelete => self
+                .view
+                .payee_selection()
+                .map(Action::OpenPayeeDeletePopup)
+                .or(Some(Action::CommandPopupSetNotYetBuilt(name))),
+            // "payee rename <payee> <new>"/"payee match add <payee> <text>"/"payee
+            // default <payee> <category>" fall through to the catch-all below — each
+            // needs a typed argument (a new name, alias text, or category) the command
+            // popup can't resolve yet, matching Categories' own "rename"/"merge"/"tree".
+            _ => Some(Action::CommandPopupSetNotYetBuilt(name)),
         }
     }
 
@@ -1807,6 +1819,85 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
+
+    /// The action a command runs, with the "not yet built" message's text ignored, so two
+    /// routings compare equal whatever display text they were handed.
+    fn routed(action: Option<Action>) -> Option<Action> {
+        match action {
+            Some(Action::CommandPopupSetNotYetBuilt(_)) => {
+                Some(Action::CommandPopupSetNotYetBuilt(""))
+            }
+            other => other,
+        }
+    }
+
+    #[test]
+    fn every_palette_command_dispatches_by_id() {
+        let shell = Shell::new();
+        for domain in crate::popup::command::DOMAINS {
+            for command in domain.commands {
+                assert!(
+                    shell.command_action(command.id, command.name).is_some(),
+                    "{} ({:?}) has no routing",
+                    command.name,
+                    command.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn routing_does_not_depend_on_the_usage_text() {
+        let shell = Shell::new();
+        for domain in crate::popup::command::DOMAINS {
+            for command in domain.commands {
+                assert_eq!(
+                    routed(shell.command_action(command.id, command.name)),
+                    routed(shell.command_action(command.id, "a localised usage line")),
+                    "{} ({:?}) routes on its display text",
+                    command.name,
+                    command.id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_commands_with_content_behind_them_open_it() {
+        let shell = Shell::new();
+        let cases = [
+            (CommandId::Unit, Action::OpenUnits),
+            (CommandId::UnitNew, Action::OpenNewUnitPopup),
+            (CommandId::UnitEdit, Action::OpenEditUnitPopup),
+            (CommandId::UnitDelete, Action::OpenDeleteUnitPopup),
+            (CommandId::Dashboard, Action::OpenDashboard),
+            (CommandId::Settings, Action::OpenSettings),
+            (CommandId::Category, Action::OpenCategories),
+            (CommandId::Account, Action::OpenAccounts),
+            (CommandId::Tag, Action::OpenTags),
+            (CommandId::Payee, Action::OpenPayees),
+        ];
+        for (id, expected) in cases {
+            assert_eq!(
+                shell.command_action(id, "any text"),
+                Some(expected),
+                "{id:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_command_that_needs_a_selection_says_not_yet_built_without_one() {
+        let shell = Shell::new();
+        assert_eq!(
+            shell.command_action(CommandId::CategoryEdit, "category edit <cat>"),
+            Some(Action::CommandPopupSetNotYetBuilt("category edit <cat>"))
+        );
+        assert_eq!(
+            shell.command_action(CommandId::Quit, "quit"),
+            Some(Action::CommandPopupSetNotYetBuilt("quit"))
+        );
+    }
 
     #[test]
     fn renders_the_shell_layout_without_panicking() {

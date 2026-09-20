@@ -2,9 +2,10 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[Command {
+    id: CommandId::Quit,
     name: "quit",
     chord: Chord(&[KeyCode::Char('Q')]),
     description: "quit the app",

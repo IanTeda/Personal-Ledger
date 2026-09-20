@@ -61,10 +61,90 @@ impl fmt::Display for Chord {
     }
 }
 
-/// One command: its `:name` (excluding the leading `:`, added when rendering), its eventual
+/// A command's stable id: what the shell dispatches on. Separate from the display strings
+/// (`name`'s usage line, `description`, `Arg` placeholders and previews), which are Messages to
+/// localise later, so changing that text cannot change what a command does. The typed `name`
+/// stays a stable English string the user types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CommandId {
+    // accounts
+    Account,
+    AccountNew,
+    AccountEdit,
+    AccountDelete,
+    AccountOff,
+    AccountOn,
+    AccountCheck,
+    // balance_checks
+    CheckList,
+    CheckNew,
+    CheckEdit,
+    CheckDelete,
+    CheckImport,
+    // budgets
+    BudgetList,
+    BudgetNew,
+    BudgetEdit,
+    BudgetDelete,
+    // categories
+    Category,
+    CategoryNew,
+    CategoryEdit,
+    CategoryMove,
+    CategoryRename,
+    CategoryMerge,
+    CategoryArchive,
+    CategoryTree,
+    // dashboard
+    Dashboard,
+    // help
+    Help,
+    // payees
+    Payee,
+    PayeeNew,
+    PayeeEdit,
+    PayeeRename,
+    PayeeMatch,
+    PayeeMatchAdd,
+    PayeeDefault,
+    PayeeOff,
+    PayeeOn,
+    PayeeDelete,
+    // quit
+    Quit,
+    // reports
+    ReportList,
+    ReportAccountBalance,
+    ReportCategoryTotal,
+    ReportPayeeTotal,
+    ReportBudgetVariance,
+    ReportBalanceCheckVariance,
+    // settings
+    Settings,
+    // tags
+    Tag,
+    TagNew,
+    TagEdit,
+    TagOff,
+    TagOn,
+    TagDelete,
+    // transactions
+    TxnRecent,
+    TxnNew,
+    TxnEdit,
+    TxnDelete,
+    // units
+    Unit,
+    UnitNew,
+    UnitEdit,
+    UnitDelete,
+}
+
+/// One command: its stable id, its `:name` (excluding the leading `:`, added when rendering), its eventual
 /// binding, its description, and the arguments its name's `<...>`/`[...]` placeholders name —
 /// empty for a command with none.
 pub struct Command {
+    pub id: CommandId,
     pub name: &'static str,
     pub chord: Chord,
     pub description: &'static str,
@@ -172,6 +252,20 @@ mod tests {
                 domain.name
             );
         }
+    }
+
+    #[test]
+    fn every_command_has_its_own_id() {
+        let mut seen = std::collections::HashSet::new();
+        for (domain, command) in all() {
+            assert!(
+                seen.insert(command.id),
+                "{domain}: `{}` reuses the id {:?}",
+                command.name,
+                command.id
+            );
+        }
+        assert_eq!(seen.len(), total_commands());
     }
 
     #[test]

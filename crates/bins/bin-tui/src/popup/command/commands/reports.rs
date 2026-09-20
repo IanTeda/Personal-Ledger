@@ -7,40 +7,46 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Chord, Command};
+use super::{Chord, Command, CommandId};
 
 pub const COMMANDS: &[Command] = &[
     Command {
+        id: CommandId::ReportList,
         name: "report list",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('r')]),
         description: "spending report and charts",
         args: &[],
     },
     Command {
+        id: CommandId::ReportAccountBalance,
         name: "report account-balance",
         chord: Chord::NONE,
         description: "every account's current balance",
         args: &[],
     },
     Command {
+        id: CommandId::ReportCategoryTotal,
         name: "report category-total",
         chord: Chord::NONE,
         description: "spending by category over a range",
         args: &[],
     },
     Command {
+        id: CommandId::ReportPayeeTotal,
         name: "report payee-total",
         chord: Chord::NONE,
         description: "spending by payee over a range",
         args: &[],
     },
     Command {
+        id: CommandId::ReportBudgetVariance,
         name: "report budget-variance",
         chord: Chord::NONE,
         description: "budgets vs actual for the current period",
         args: &[],
     },
     Command {
+        id: CommandId::ReportBalanceCheckVariance,
         name: "report balance-check-variance",
         chord: Chord::NONE,
         description: "asserted vs computed balance, by check",
