@@ -29,6 +29,7 @@ mod tags;
 mod theme;
 mod topbar;
 mod transaction_query;
+mod transaction_rows;
 mod transactions;
 mod view;
 

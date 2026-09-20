@@ -81,14 +81,15 @@ impl Noun {
     /// other noun with entities. See `docs/ux/desktop/README.md`'s "Where this differs from
     /// the handoff".
     ///
-    /// `Accounts` has none either: its page (`docs/ux/desktop/Accounts/README.md`'s 3a) is a
+    /// `Transactions` has none either (its table fills the pane, as its mockup shows), and neither
+    /// does `Accounts`: its page (`docs/ux/desktop/Accounts/README.md`'s 3a) is a
     /// full-width management table with no rail beside it, the same shape as `Settings`.
     ///
     /// Every other noun besides `Dashboard` has its own screen still unbuilt (a placeholder-views
     /// ticket, #153), so this says whether a context rail *could* exist, not that one renders
     /// real data today.
     pub fn has_context_entities(self) -> bool {
-        !matches!(self, Noun::Settings | Noun::Accounts)
+        !matches!(self, Noun::Settings | Noun::Accounts | Noun::Transactions)
     }
 }
 
@@ -528,12 +529,12 @@ mod tests {
 
     // Rule 4
     #[test]
-    fn only_settings_and_accounts_have_no_context_entities() {
+    fn only_settings_accounts_and_transactions_have_no_context_entities() {
         assert!(!Noun::Settings.has_context_entities());
         assert!(!Noun::Accounts.has_context_entities());
+        assert!(!Noun::Transactions.has_context_entities());
         for noun in [
             Noun::Dashboard,
-            Noun::Transactions,
             Noun::Categories,
             Noun::Payees,
             Noun::Tags,

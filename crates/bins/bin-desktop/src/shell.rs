@@ -25,8 +25,8 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle, SharedString, Timer,
-    Window, div, point, prelude::*, px,
+    Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle, ScrollStrategy,
+    SharedString, Timer, UniformListScrollHandle, Window, div, point, prelude::*, px,
 };
 
 use crate::{
@@ -37,6 +37,7 @@ use crate::{
     categories::{self, Category},
     command::{self, AccountsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
+    format,
     key_router::{KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
@@ -56,11 +57,14 @@ use crate::{
     tags::{self, Tag},
     theme::{color, type_scale},
     topbar::{self, TopBar},
+    transaction_query::{self, Ledger, TransactionFilters},
+    transaction_rows::{self, DisplayPrefs},
     transactions::{self, Transaction},
     view::{
         accounts as accounts_view,
         dashboard::Dashboard,
         settings::{self as settings_view, SettingsBodyProps},
+        transactions as transactions_view,
     },
 };
 
@@ -113,6 +117,16 @@ const ACCOUNTS_HINTS: &[(&str, &str)] = &[
     ("enter", "open ledger"),
     ("e", "edit"),
     ("d", "delete"),
+    ("n", "new"),
+];
+
+/// The Transactions page's status-line legend (`docs/ux/desktop/Transactions/README.md`'s 4a),
+/// without the mockup's `R reconcile` (reconcile is an Accounts action) and without `/ filter` until
+/// the chip row wires search.
+const TRANSACTIONS_HINTS: &[(&str, &str)] = &[
+    ("j/k", "row"),
+    ("enter", "open"),
+    ("e", "edit"),
     ("n", "new"),
 ];
 
@@ -230,6 +244,13 @@ pub struct Shell {
     /// order), clamped wherever it is read. Once filters land it becomes a position in the
     /// filtered list.
     transactions_selected: usize,
+    /// The table's `uniform_list` scroll state: scrolls the selected row into view and reports the
+    /// viewport height for half-page moves.
+    transactions_scroll: UniformListScrollHandle,
+    /// What the table is filtered by; starts at the defaults (this year, everything else empty).
+    transactions_filters: TransactionFilters,
+    /// The search box's text, separate from the filters.
+    transactions_search: String,
 }
 
 impl Shell {
@@ -278,6 +299,9 @@ impl Shell {
             tags,
             transactions,
             transactions_selected: 0,
+            transactions_scroll: UniformListScrollHandle::new(),
+            transactions_filters: TransactionFilters::defaults(today),
+            transactions_search: String::new(),
         }
     }
 
@@ -417,7 +441,11 @@ impl Shell {
                 self.apply_movement(movement);
                 true
             }
-            KeyOutcome::NoOp => self.handle_accounts_key(keystroke) || had_status_message,
+            KeyOutcome::NoOp => {
+                self.handle_accounts_key(keystroke)
+                    || self.handle_transactions_key(keystroke)
+                    || had_status_message
+            }
             KeyOutcome::ClearPendingG
             | KeyOutcome::ClosePopupsAndExitMode
             | KeyOutcome::EscapeNoOp => {
@@ -499,6 +527,10 @@ impl Shell {
     fn apply_view_movement(&mut self, movement: Movement) {
         if self.nav.noun() == Noun::Accounts {
             self.apply_accounts_movement(movement);
+            return;
+        }
+        if self.nav.noun() == Noun::Transactions {
+            self.apply_transactions_movement(movement);
             return;
         }
         let offset = self.view_scroll_handle.offset();
@@ -745,6 +777,104 @@ impl Shell {
                 }
             },
         }
+    }
+
+    /// The reference data the Transactions engine reads, borrowed from the shared stubs.
+    fn transactions_ledger(&self) -> Ledger<'_> {
+        Ledger {
+            accounts: &self.accounts,
+            categories: &self.categories,
+            payees: &self.payees,
+            tags: &self.tags,
+        }
+    }
+
+    /// The Display preferences the table's text is formatted with.
+    fn transactions_prefs(&self) -> DisplayPrefs {
+        DisplayPrefs {
+            date_format: self.settings_date_format,
+            separator: self.settings_decimal_separator,
+            glyphs: self.settings_status_glyphs,
+        }
+    }
+
+    /// How many rows the current filters and search leave visible.
+    fn transactions_visible_len(&self) -> usize {
+        transaction_query::query(
+            &self.transactions_ledger(),
+            &self.transactions,
+            &self.transactions_filters,
+            &self.transactions_search,
+        )
+        .rows
+        .len()
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` move the table's row selection and keep it in view;
+    /// `Enter` would open the transaction, which the bundle designs no screen for.
+    ///
+    /// The scroll strategy follows the research note: a non-strict `scroll_to_item` applies its
+    /// strategy only when the row was off-screen, so stepping down uses `Bottom` and stepping up
+    /// `Top` (the new row lands at the edge it came from), and jumps use `Center`.
+    fn apply_transactions_movement(&mut self, movement: Movement) {
+        let len = self.transactions_visible_len();
+        if len == 0 {
+            return;
+        }
+        let selected = transaction_rows::clamp_selection(self.transactions_selected, len);
+        let last = len - 1;
+        let viewport = f32::from(
+            self.transactions_scroll
+                .0
+                .borrow()
+                .base_handle
+                .bounds()
+                .size
+                .height,
+        );
+        let half = transaction_rows::half_page_rows(
+            viewport,
+            format::row_height_px(self.settings_row_density),
+        );
+        let (next, strategy) = match movement {
+            Movement::Next => ((selected + 1).min(last), ScrollStrategy::Bottom),
+            Movement::Prev => (selected.saturating_sub(1), ScrollStrategy::Top),
+            Movement::First => (0, ScrollStrategy::Top),
+            Movement::Last => (last, ScrollStrategy::Bottom),
+            Movement::HalfPageDown => ((selected + half).min(last), ScrollStrategy::Center),
+            Movement::HalfPageUp => (selected.saturating_sub(half), ScrollStrategy::Center),
+            Movement::Enter => {
+                self.status_message = Some("open transaction -- not yet built".to_string());
+                return;
+            }
+        };
+        self.transactions_selected = next;
+        self.transactions_scroll.scroll_to_item(next, strategy);
+    }
+
+    /// The Transactions page's `n` and `e` (only while it is the active noun and the view has focus,
+    /// in `Normal` mode): the bundle designs no add or edit flow, so both say so.
+    fn handle_transactions_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.noun() != Noun::Transactions || self.nav.focus() != FocusZone::View {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        let message = match keystroke.key.as_str() {
+            "n" => "add transaction -- not yet built",
+            "e" => "edit transaction -- not yet built",
+            _ => return false,
+        };
+        self.status_message = Some(message.to_string());
+        true
+    }
+
+    /// A click on a table row selects it.
+    fn handle_transactions_row_click(&mut self, index: usize, cx: &mut Context<Self>) {
+        self.transactions_selected = index;
+        cx.notify();
     }
 
     /// The selected account's index in [`Self::accounts`], `None` when there are none. The stored
@@ -1562,6 +1692,10 @@ impl Shell {
     /// visual effect to, not just a stored preference).
     fn handle_row_density_click(&mut self, density: RowDensity, cx: &mut Context<Self>) {
         self.settings_row_density = density;
+        // The Transactions table's scroll offset is in pixels, so a new row height would leave it
+        // pointing at a different row: re-anchor on the selected one for its next paint.
+        self.transactions_scroll
+            .scroll_to_item_strict(self.transactions_selected, ScrollStrategy::Center);
         cx.notify();
     }
 
@@ -1994,13 +2128,52 @@ impl Render for Shell {
             on_edit_click: on_accounts_edit_click,
             on_delete_click: on_accounts_delete_click,
         };
-        let page_status = (self.nav.noun() == Noun::Accounts).then(|| PageStatus {
-            hints: ACCOUNTS_HINTS,
-            right: match self.accounts.len() {
-                1 => "1 account".to_string(),
-                count => format!("{count} accounts"),
-            },
+        let on_transactions_row_click: transactions_view::OnRowClick = {
+            let entity = entity.clone();
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_transactions_row_click(index, cx)
+                });
+            })
+        };
+        // Built only while the page is showing: formatting every visible row is a pass over the
+        // whole filtered set, which no other page needs.
+        let transactions_page = (self.nav.noun() == Noun::Transactions).then(|| {
+            let ledger = self.transactions_ledger();
+            let visible = transaction_query::query(
+                &ledger,
+                &self.transactions,
+                &self.transactions_filters,
+                &self.transactions_search,
+            );
+            let rows = transaction_rows::build_rows(
+                &visible,
+                &ledger,
+                &self.transactions_prefs(),
+                self.today,
+            );
+            transactions_view::TransactionsPageProps {
+                selected: transaction_rows::clamp_selection(self.transactions_selected, rows.len()),
+                rows: Rc::new(rows),
+                row_height: px(format::row_height_px(self.settings_row_density)),
+                scroll: self.transactions_scroll.clone(),
+                on_row_click: on_transactions_row_click,
+            }
         });
+        let page_status = match self.nav.noun() {
+            Noun::Accounts => Some(PageStatus {
+                hints: ACCOUNTS_HINTS,
+                right: match self.accounts.len() {
+                    1 => "1 account".to_string(),
+                    count => format!("{count} accounts"),
+                },
+            }),
+            Noun::Transactions => Some(PageStatus {
+                hints: TRANSACTIONS_HINTS,
+                right: format::status_legend(self.settings_status_glyphs),
+            }),
+            _ => None,
+        };
 
         div()
             .size_full()
@@ -2056,7 +2229,10 @@ impl Render for Shell {
                                 focus == FocusZone::View,
                                 &self.view_scroll_handle,
                                 on_empty_state_command_click,
-                                accounts_page,
+                                PageProps {
+                                    accounts: accounts_page,
+                                    transactions: transactions_page,
+                                },
                                 SettingsPanelProps {
                                     filter: &self.settings_filter,
                                     selected: self.settings_selected_section,
@@ -2190,6 +2366,13 @@ impl Render for Shell {
     }
 }
 
+/// The per-page props `render_view` needs for the pages that own their whole pane: Accounts, and
+/// Transactions (built only while it is the active page, hence the `Option`).
+struct PageProps<'a> {
+    accounts: accounts_view::AccountsPageProps<'a>,
+    transactions: Option<transactions_view::TransactionsPageProps>,
+}
+
 /// Bundles `render_view`'s Settings-only parameters (keeps the function under Clippy's
 /// `too_many_arguments` threshold) -- ignored entirely for every noun besides `Settings`. Covers
 /// both the index rail's own state and the body's per-section interactive state
@@ -2248,11 +2431,16 @@ fn render_view(
     focused: bool,
     scroll_handle: &ScrollHandle,
     on_empty_state_command_click: OnEmptyStateCommandClick,
-    accounts: accounts_view::AccountsPageProps<'_>,
+    pages: PageProps<'_>,
     settings: SettingsPanelProps<'_>,
 ) -> gpui::AnyElement {
     if noun == Noun::Accounts {
-        return accounts_view::render(focused, scroll_handle, accounts);
+        return accounts_view::render(focused, scroll_handle, pages.accounts);
+    }
+    if noun == Noun::Transactions
+        && let Some(transactions) = pages.transactions
+    {
+        return transactions_view::render(focused, transactions);
     }
 
     if noun == Noun::Settings {
