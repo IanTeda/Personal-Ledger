@@ -105,9 +105,25 @@ fn figure_row() -> impl IntoElement {
 /// 18 monthly net-worth points, trending up -- enough for `LineChart` to draw a real line,
 /// not the mockup's own pre-computed SVG polyline coordinates (which aren't chart input data).
 fn net_worth_series() -> Vec<(SharedString, f64)> {
-    const MONTHS: [&str; 18] = [
-        "mar 25", "apr 25", "may 25", "jun 25", "jul 25", "aug 25", "sep 25", "oct 25", "nov 25",
-        "dec 25", "jan 26", "feb 26", "mar 26", "apr 26", "may 26", "jun 26", "jul 26", "sep 26",
+    const MONTHS: [(i32, u32); 18] = [
+        (2025, 3),
+        (2025, 4),
+        (2025, 5),
+        (2025, 6),
+        (2025, 7),
+        (2025, 8),
+        (2025, 9),
+        (2025, 10),
+        (2025, 11),
+        (2025, 12),
+        (2026, 1),
+        (2026, 2),
+        (2026, 3),
+        (2026, 4),
+        (2026, 5),
+        (2026, 6),
+        (2026, 7),
+        (2026, 9),
     ];
     const VALUES: [f64; 18] = [
         341_200.0, 348_600.0, 344_900.0, 361_500.0, 368_100.0, 365_300.0, 376_800.0, 388_400.0,
@@ -118,12 +134,15 @@ fn net_worth_series() -> Vec<(SharedString, f64)> {
     MONTHS
         .into_iter()
         .zip(VALUES)
-        .map(|(month, value)| (SharedString::from(month), value))
+        .map(|((year, month), value)| {
+            let label = lib_locale::format::format_year_month(year, month).to_lowercase();
+            (SharedString::from(label), value)
+        })
         .collect()
 }
 
 struct MonthFlow {
-    month: &'static str,
+    month: u32,
     expense_pct: f32,
     income_pct: f32,
     /// `true` for the one month the handoff's own mockup flags with the accent color --
@@ -133,37 +152,37 @@ struct MonthFlow {
 
 const MONTH_FLOWS: &[MonthFlow] = &[
     MonthFlow {
-        month: "apr",
+        month: 4,
         expense_pct: 62.0,
         income_pct: 78.0,
         flagged: false,
     },
     MonthFlow {
-        month: "may",
+        month: 5,
         expense_pct: 71.0,
         income_pct: 74.0,
         flagged: false,
     },
     MonthFlow {
-        month: "jun",
+        month: 6,
         expense_pct: 55.0,
         income_pct: 81.0,
         flagged: false,
     },
     MonthFlow {
-        month: "jul",
+        month: 7,
         expense_pct: 88.0,
         income_pct: 76.0,
         flagged: true,
     },
     MonthFlow {
-        month: "aug",
+        month: 8,
         expense_pct: 64.0,
         income_pct: 79.0,
         flagged: false,
     },
     MonthFlow {
-        month: "sep",
+        month: 9,
         expense_pct: 48.0,
         income_pct: 52.0,
         flagged: false,
@@ -290,7 +309,7 @@ fn flow_row(flow: &MonthFlow) -> impl IntoElement {
                 .text_align(gpui::TextAlign::Center)
                 .text_size(px(10.5))
                 .text_color(color::INK_SECONDARY)
-                .child(flow.month),
+                .child(lib_locale::format::format_month(flow.month).to_lowercase()),
         )
         .child(
             div().flex_1().child(
@@ -551,4 +570,42 @@ fn needs_attention() -> impl IntoElement {
                 .child("transactions flagged for review →")
                 .child(bold(":txn recent".into())),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use lib_locale::{Locale, with_locale};
+
+    use super::*;
+
+    fn labels() -> Vec<String> {
+        net_worth_series()
+            .into_iter()
+            .map(|(label, _)| label.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn the_net_worth_axis_names_months_in_the_locale() {
+        with_locale(Locale::EnAu, || {
+            let labels = labels();
+            assert_eq!(labels.len(), 18);
+            assert_eq!(labels[0], "mar 2025");
+            assert_eq!(labels[17], "sept 2026");
+        });
+        with_locale(Locale::EnUs, || {
+            assert_eq!(labels()[17], "sep 2026");
+        });
+    }
+
+    #[test]
+    fn the_in_vs_out_months_are_real_months_named_in_the_locale() {
+        with_locale(Locale::EnAu, || {
+            let names: Vec<String> = MONTH_FLOWS
+                .iter()
+                .map(|flow| lib_locale::format::format_month(flow.month).to_lowercase())
+                .collect();
+            assert_eq!(names, ["apr", "may", "jun", "jul", "aug", "sept"]);
+        });
+    }
 }

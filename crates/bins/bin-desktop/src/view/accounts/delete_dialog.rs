@@ -70,7 +70,7 @@ fn transactions_text(count: u32) -> String {
 fn balance_text(account: &Account) -> String {
     format!(
         "{} {}",
-        accounts::format_amount(&account.balance).1,
+        crate::format::amount(&account.balance).1,
         account.unit
     )
 }

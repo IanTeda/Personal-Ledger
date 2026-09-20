@@ -92,7 +92,7 @@ pub fn render(
                 read_only_field(
                     "edit-account-balance",
                     suffixed_label("Opening balance", "(fixed)"),
-                    accounts::format_amount(&account.balance).1,
+                    crate::format::amount(&account.balance).1,
                 ),
             ]),
             text_field(

@@ -139,7 +139,7 @@ fn summary_line(props: &AccountsPageProps<'_>) -> impl IntoElement {
 
     let mut line = line.child(net.count_text());
     if let Some(base) = &net.base_unit {
-        let (negative, figure) = accounts::format_amount(&net.base_net);
+        let (negative, figure) = crate::format::amount(&net.base_net);
         line = line.child("\u{b7} net worth").child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -266,7 +266,7 @@ fn row(
     props: &AccountsPageProps<'_>,
 ) -> impl IntoElement {
     let id = account.id;
-    let (negative, amount) = accounts::format_amount(&account.balance);
+    let (negative, amount) = crate::format::amount(&account.balance);
     let is_currency = props
         .units
         .iter()

@@ -540,16 +540,6 @@ impl AccountForm {
     }
 }
 
-/// Splits `money` into its sign and its display text: thousands-grouped integer part, fractional
-/// digits kept exactly as the amount carries them (`0.4120` stays four places -- the Unit's own
-/// precision, never a hard-coded two). Negative is a separate flag so the caller can apply the
-/// negative-balance rule (an ink token plus the U+2212 minus, never colour alone); a zero amount
-/// is never negative, even if its text is `-0.00`. Always comma-grouped: the Accounts page does not
-/// yet follow the Display preferences (see [`crate::format`], which does).
-pub fn format_amount(money: &Money) -> (bool, String) {
-    crate::format::amount(money)
-}
-
 /// The page header's figures under the no-cross-Unit rule: one net figure in the base Unit
 /// only, with every other Unit held named rather than summed or silently dropped.
 #[derive(Debug, Clone, PartialEq)]
@@ -911,47 +901,6 @@ mod tests {
     }
 
     #[test]
-    fn format_amount_groups_thousands_and_keeps_the_amounts_own_precision() {
-        assert_eq!(
-            format_amount(&money("463203.10")),
-            (false, "463,203.10".to_string())
-        );
-        assert_eq!(
-            format_amount(&money("4182.55")),
-            (false, "4,182.55".to_string())
-        );
-        assert_eq!(format_amount(&money("1240")), (false, "1,240".to_string()));
-        assert_eq!(
-            format_amount(&money("0.4120")),
-            (false, "0.4120".to_string())
-        );
-        assert_eq!(format_amount(&money("999")), (false, "999".to_string()));
-        assert_eq!(
-            format_amount(&money("1000000")),
-            (false, "1,000,000".to_string())
-        );
-    }
-
-    #[test]
-    fn format_amount_marks_negatives_with_a_real_minus_sign() {
-        assert_eq!(
-            format_amount(&money("-381311.34")),
-            (true, "\u{2212}381,311.34".to_string())
-        );
-        assert_eq!(
-            format_amount(&money("-2318.44")),
-            (true, "\u{2212}2,318.44".to_string())
-        );
-    }
-
-    #[test]
-    fn format_amount_never_treats_zero_as_negative() {
-        let (negative, text) = format_amount(&money("-0.00"));
-        assert!(!negative);
-        assert_eq!(text, "0.00");
-    }
-
-    #[test]
     fn net_worth_sums_base_unit_only_and_names_the_rest() {
         let net = net_worth(&default_accounts(), Some("aud"));
         assert_eq!(net.account_count, 7);
@@ -1256,7 +1205,7 @@ mod tests {
         assert_eq!(account.unit, "aud");
         assert_eq!(account.account_number, None);
         assert_eq!((account.transaction_count, account.budget_count), (0, 0));
-        assert_eq!(format_amount(&account.balance).1, "1,500.00");
+        assert_eq!(crate::format::amount(&account.balance).1, "1,500.00");
     }
 
     #[test]
@@ -1266,7 +1215,7 @@ mod tests {
         form.unit = SelectState::new(Some("vas".to_string()));
         form.opening_balance = "10".to_string();
         let account = form.into_account(9, date(2026, 9), false).expect("valid");
-        assert_eq!(format_amount(&account.balance).1, "10");
+        assert_eq!(crate::format::amount(&account.balance).1, "10");
     }
 
     #[test]
@@ -1276,7 +1225,7 @@ mod tests {
         form.opening_balance = "-250.005".to_string();
         let account = form.into_account(9, date(2026, 9), true).expect("valid");
         assert_eq!(
-            format_amount(&account.balance),
+            crate::format::amount(&account.balance),
             (true, "\u{2212}250.005".to_string())
         );
     }

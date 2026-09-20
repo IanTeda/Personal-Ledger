@@ -5,7 +5,9 @@ use std::str::FromStr;
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{DateStyle, Money, UnitKind};
-use lib_locale::format::{Unit, format_date, format_money, format_number, upper};
+use lib_locale::format::{
+    Unit, format_date, format_money, format_month, format_number, format_year_month, upper,
+};
 use lib_locale::{Locale, with_locale};
 
 fn money(text: &str) -> Money {
@@ -161,5 +163,27 @@ fn upper_uses_full_unicode_casing() {
     with_locale(Locale::EnAu, || {
         assert_eq!(upper("Straße"), "STRASSE");
         assert_eq!(upper("Net position"), "NET POSITION");
+    });
+}
+
+#[test]
+fn months_are_named_by_the_locale() {
+    with_locale(Locale::EnAu, || {
+        assert_eq!(format_month(9), "Sept");
+        assert_eq!(format_month(4), "Apr");
+        assert_eq!(format_year_month(2025, 3), "Mar 2025");
+    });
+    with_locale(Locale::EnUs, || {
+        assert_eq!(format_month(9), "Sep");
+        assert_eq!(format_year_month(2025, 9), "Sep 2025");
+    });
+    with_locale(Locale::EnXa, || assert_eq!(format_month(9), "Sep"));
+}
+
+#[test]
+fn a_bad_month_falls_back_rather_than_panicking() {
+    with_locale(Locale::EnAu, || {
+        assert_eq!(format_month(13), "13");
+        assert_eq!(format_year_month(2025, 13), "2025-13");
     });
 }
