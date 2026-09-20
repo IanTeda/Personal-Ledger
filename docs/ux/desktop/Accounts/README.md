@@ -208,7 +208,7 @@ Each was decided on the map, with Ian, and recorded on its ticket:
 - **No context rail** beside the page, as in the mockup; `Noun::has_context_entities` is now false for Accounts as well as Settings.
 - **Delete removes the account's transactions with it**, as designed here. The TUI design's transfer-to-another-account path (FR.14) is not designed for desktop and is out of scope.
 - **Palette commands, added after the map closed**: `:accounts new [<account name>]`, `:accounts edit [<account name>]` and `:accounts delete [<account name>]`, each opening the same dialog as `n`/`e`/`d` from any page (it jumps to Accounts first). `new` pre-fills Name with the argument; `edit` and `delete` resolve the typed name case-insensitively (an exact name, else a unique prefix, else a unique substring) and, given none, use the selected row. A name matching nothing or several accounts flashes a status-line message naming the problem rather than guessing. The TUI's `account off`/`on`/`check` have no desktop counterpart (no active flag, no balance checks), and the desktop uses the plural noun (`accounts`) to match its `accounts` page jump.
-- **`enter` and a row click flash "open ledger -- not yet built"** — screen 1b, the per-account ledger, is not built.
+- **`enter` and a row click open Transactions filtered to that account** (added by the [Desktop Transactions Surface](https://github.com/IanTeda/Personal-Ledger/issues/199) map), not screen 1b's per-account ledger, which stays unbuilt; they flashed "open ledger -- not yet built" when this pass was written.
 - **Institution column is 170px, not 130px**, so seeded names such as "Cryptocurrency Exchange" fit; NAME has a 140px floor so a narrow window clips the other cells instead of squeezing it to nothing.
 
 ### Verified live vs by code review
@@ -218,7 +218,7 @@ The page and all three dialogs were confirmed in a real window, driven by keystr
 ### Known gaps
 
 - `gpui` 0.2 has no letter-spacing or `tabular-nums` hook, so the table headers' `.11em` tracking and the balance figures' tabular alignment are not reproduced (right-aligned, with Archivo's own digit metrics).
-- The Settings Display section's decimal-separator preference is not applied to balances here.
+- The Settings Display section's decimal-separator preference is not applied to balances here (the Transactions table does honour it, via `format.rs`).
 - Stub counts (transactions, budgets) on every account are fixed figures; nothing real backs them.
 
 ## Files

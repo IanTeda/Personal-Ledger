@@ -122,8 +122,6 @@ const ACCOUNTS_HINTS: &[(&str, &str)] = &[
     ("n", "new"),
 ];
 
-/// The Transactions page's status-line legend (`docs/ux/desktop/Transactions/README.md`'s 4a),
-/// without the mockup's `R reconcile`: reconcile is an Accounts action, not a Transactions one.
 /// The status-line legend while the filter popover is open (`docs/ux/desktop/Transactions/
 /// README.md`'s 4b), with `^r reset` added: the bundle's `reset` is a button, and this shell is
 /// keyboard-first.
@@ -134,11 +132,16 @@ const FILTER_HINTS: &[(&str, &str)] = &[
     ("^r", "reset"),
 ];
 
+/// The Transactions page's status-line legend (`docs/ux/desktop/Transactions/README.md`'s 4a),
+/// without the mockup's `R reconcile` (an Accounts action) and with `/` reading `search` beside a
+/// separate `f filter`, since here `/` searches and `f` opens the filter popover.
 const TRANSACTIONS_HINTS: &[(&str, &str)] = &[
     ("j/k", "row"),
     ("enter", "open"),
     ("e", "edit"),
-    ("/", "filter"),
+    ("n", "add"),
+    ("/", "search"),
+    ("f", "filter"),
 ];
 
 /// Owns the shell's render tree and the live `NavState`.

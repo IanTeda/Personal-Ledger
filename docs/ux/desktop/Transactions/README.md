@@ -121,6 +121,51 @@ filterPopover
 5. **Zero radius, 2px section rules, 1px row rules** — consistent with the rest of the shell.
 6. **Selected-row contrast**: verify the stepped-down secondary text colors (`#d7d3d3`, `#bab6b6`-family) meet contrast against the `#201e1d` row fill in the real theme implementation.
 
+## Acceptance pass
+
+The closing walk of the [Desktop Transactions Surface](https://github.com/IanTeda/Personal-Ledger/issues/199) map: every 4a element and the 4b popover checked against this document, now that both have landed against `crates/bins/bin-desktop/src/view/transactions/`, `transaction_rows.rs`, `transaction_chips.rs`, `transaction_filter_form.rs` and `transaction_query.rs`, the same closing walk the Settings and Accounts bundles made. All data is stubbed and in-memory, as the map's Destination says.
+
+- **4a: header.** Met. Title (26px, 800) with the count line beside it, the `add transaction` button (32px, trailing `n` hint at 75% opacity), then the six-chip row, `clear filters` (shown only once something differs from the defaults), a spacer and the 240px search box, all inside the `16px 28px 14px` block with the 2px rule under it. Outline chips carry `▾`; a chip that differs from its default is an accent chip with a `✕` that clears just that filter. The count line is computed (`700 transactions across 4 accounts`, the accounts that hold any), not the mockup's `1,248`.
+- **4a: table.** Met. Column header (10px, 800, `#9b9797`, 1px rule) over the virtualised rows: status, flag, DATE, ACCOUNT, PAYEE (the flexible column, with a floor), CATEGORY, TAGS, AMOUNT, RUNNING. The selected row is the dark treatment (ink fill, payee and RUNNING at 800, secondary text stepped down); unselected rows take the 1px `#eae9e9` rule and the hover tint. TAGS shows `—` or a neutral chip with `+N` for more; a multi-Split row shows `split · N`; negatives are `#ae1800` (`#ff9783` on the dark row). `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` keep the selection in view.
+- **4a: footer.** Met. `N of M transactions shown` on the left, `RUNNING TOTAL`, the figure (800, 20px, `#ae1800` when negative) and its Unit on the right, on the `#eae9e9` bar with the 2px rule. Mixed Units show `mixed units` instead of a figure. The footer total equals the last row's RUNNING figure.
+- **4a: status bar.** Met, with departures below: `NORMAL` badge, the key legend, and the right-aligned glyph legend in the chosen glyph style.
+- **4b: popover.** Met. 400px, anchored under the chip row rather than centred, with the title bar, the seven fields in the bundle's order (Account, Category, Payee, Tag, From / To side by side, Status as a segmented control) and the `reset` / `apply` footer. It edits a draft apart from the applied filters, so `Esc` cancels without changing them; `Enter` applies and the chips, table and running total recompute; `Tab` steps fields; the status bar switches to the `FILTER` badge and its legend.
+- **One filter state, two entry points.** Met. Chip click, `▾`, and `f` all open the same popover (focused on the clicked field), and `✕` / `clear filters` write the same `TransactionFilters` the popover applies, so they cannot drift.
+- **Selected-row contrast.** Met, checked numerically (WCAG ratios against the `#201e1d` row): primary `#f3f2f2` 14.9:1, secondary `#d7d3d3` 11.2:1, tertiary `#9b9797` 5.8:1, negatives `#ff9783` 7.9:1. On the ground, `#ae1800` negatives are 6.4:1 and `#605d5d` secondary 5.8:1. `#9b9797` on the ground (2.6:1) is the mockup's own tertiary ink for the column headers, count line and empty `—`; kept as designed and not used for anything the reader must act on.
+- **Accounts hand-off.** `enter` or a click on an Accounts row opens Transactions filtered to that account (the account chip goes accent; the range stays this year), filling the "open ledger" stub the Accounts bundle left.
+- **Gaps this pass found and fixed.** The Transactions status-bar legend read `/ filter`, but here `/` is search and `f` opens the filter popover; it now reads `j/k row · enter open · e edit · n add · / search · f filter`. A misplaced doc comment in `shell.rs` (the filter-popover legend's text had been spliced into the Transactions legend's) was also put right.
+
+### Deliberate departures from the mockup
+
+Each was decided on the map, with Ian, and recorded on its ticket:
+
+- **Status and Flagged are independent.** The 20px status column shows `○` open / `◐` cleared / `●` reconciled, and `⚑` sits in a separate narrow column after it, so a flagged reconciled row reads `● ⚑`. The mockup's single four-state glyph column is dropped, since the glossary makes Flagged a separate flag. The status filter stays all / open / cleared / reconciled; a flagged-only filter is not designed.
+- **`n` adds a transaction, not `a`** (the shell's `a` is insert mode). `f` opens the filter popover and `/` is search, so the legend's `/ filter` and `R reconcile` are replaced, and the button's kbd hint is `n`.
+- **No reconcile.** `R` is an Accounts action, not a Transactions one, and is dropped from the legend and the interactions.
+- **Mixed Units blank RUNNING.** The running column and footer total show only when every visible row shares one Unit (the footer then names it); otherwise the column is blank and the footer says `mixed units`. No second-Unit account is seeded, so this is covered by unit tests, not live.
+- **The popover dims the page only.** gpui 0.2 has no blur, so `blur(1.5px) + opacity .55` becomes the `.55` opacity alone; the rail and header stay at full opacity.
+- **One entry point, the popover.** A chip's `▾` opens the full popover focused on that field, not the mockup's separate single-field dropdown (`Interactions`, first bullet).
+- **Splits are modelled.** One row per Transaction; Category, Payee and Tag filters match at Split level; a multi-Split row summarises (`split · 2`, `+N`); AMOUNT and RUNNING show the matching Splits' sum under a Split-level filter. Search matches the description and every Split's Payee at Transaction level.
+- **Default range is this year**, shown as an outline `this year` chip; From / To take `today` and the chosen Date format, with ISO always accepted.
+- **Display preferences are honoured**: date format, decimal separator, row density (26 / 34 / 42px) and status glyphs (unicode or ascii).
+- **Column widths differ slightly** (DATE 92px not 70, CATEGORY 100px not 92, TAGS 96px not 86) so the longest compact date and a tag chip fit without truncating.
+- **The footer reads `N of M transactions shown`**, without the mockup's `groceries` noun, since the filter is not always a category.
+- **No context rail**, as for Accounts. Sorting is newest-first only; the bundle specifies no other.
+- **`enter` (detail), `e` (edit) and add are "not yet built" stubs**; the bundle designs none of them.
+
+### Verified live vs by code review
+
+The resting page, the popover and the search were confirmed in a real window, driven by keystrokes injected through `gpui::Window::dispatch_keystroke` (a temporary, env-driven diagnostic, removed before each commit) and screenshotted: the 4a table against the mockup (dark selected row after `j j`, hover tint, tags chips, `split · N` cells, footer figure and legend); `f` opening the popover anchored under the chip row with the page dimmed and the `FILTER` badge; `Esc` closing it without changing anything; and `/` switching to `SEARCH` with the count and running total narrowing as text was typed. The Accounts `enter` hand-off was confirmed the same way. **Mouse clicks and hover** on chips, `✕`, rows and popover buttons are verified by code review and test coverage only (no synthetic mouse path here). **Flagged rows** and **mixed Units** are covered by unit tests (`transaction_rows`, `transaction_query`, `transaction_chips`), not seen in a screenshot. The pure logic (filter engine, Split rules, running total, chips, the popover's draft and date parsing, formatting) is covered by `cargo test -p bin_desktop`.
+
+### Known gaps
+
+- `gpui` 0.2 has no letter-spacing or `tabular-nums` hook, so the header's `.11em` tracking and the figures' tabular alignment are not reproduced (right-aligned, with Archivo's own digit metrics).
+- The `◐` and `●` glyphs are not in Archivo and render from a fallback font, so they sit smaller than `○` and `⚑`.
+- The popover's Status segmented control gives its last segment (`reconciled`) the leftover width.
+- No blur behind the popover (above).
+- The flagged mark can be seen but not set: no key or row action flags or unflags a transaction, and there is no flagged-state filter, though FR.18 lists one. Palette commands for transactions and search matching a Payee's former names are also not built.
+- Data is stubbed: 700 seeded transactions over four of the seven accounts, with no `lib-database` wiring.
+
 ## Files
 - `Ledger Desktop Shell.dc.html` — the prototype (section `#t4`, options 4a–4b)
 - `README.md` — this document
