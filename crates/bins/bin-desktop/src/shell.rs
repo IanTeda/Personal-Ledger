@@ -57,6 +57,7 @@ use crate::{
     tags::{self, Tag},
     theme::{color, type_scale},
     topbar::{self, TopBar},
+    transaction_chips::{self, FilterField},
     transaction_query::{self, Ledger, TransactionFilters},
     transaction_rows::{self, DisplayPrefs},
     transactions::{self, Transaction},
@@ -121,13 +122,15 @@ const ACCOUNTS_HINTS: &[(&str, &str)] = &[
 ];
 
 /// The Transactions page's status-line legend (`docs/ux/desktop/Transactions/README.md`'s 4a),
-/// without the mockup's `R reconcile` (reconcile is an Accounts action) and without `/ filter` until
-/// the chip row wires search.
+/// without the mockup's `R reconcile`: reconcile is an Accounts action, not a Transactions one.
+/// What `f`, a chip and its `▾` say until the filter popover exists.
+const FILTER_POPOVER_STUB: &str = "filter popover -- not yet built";
+
 const TRANSACTIONS_HINTS: &[(&str, &str)] = &[
     ("j/k", "row"),
     ("enter", "open"),
     ("e", "edit"),
-    ("n", "new"),
+    ("/", "filter"),
 ];
 
 /// Owns the shell's render tree and the live `NavState`.
@@ -377,6 +380,12 @@ impl Shell {
                 // README's "Interactions" > "Navigation": `esc` clears the settings index
                 // rail's own filter, the same as it closes the palette/file explorer above.
                 self.settings_filter.clear();
+                // `Esc` while searching Transactions clears the search text as well as leaving the
+                // mode (the map's decision: search is cleared by `Esc` or by emptying the box).
+                if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Transactions {
+                    self.transactions_search.clear();
+                    self.reset_transactions_selection();
+                }
                 self.nav.exit_mode();
                 return true;
             }
@@ -623,6 +632,9 @@ impl Shell {
     /// Search mode still has no other real input surface (`key_router::KeyOutcome::DelegateToSearch`'s
     /// own doc).
     fn handle_search_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.noun() == Noun::Transactions {
+            return self.handle_transactions_search_key(keystroke);
+        }
         if self.nav.noun() != Noun::Settings {
             return false;
         }
@@ -865,10 +877,86 @@ impl Shell {
         let message = match keystroke.key.as_str() {
             "n" => "add transaction -- not yet built",
             "e" => "edit transaction -- not yet built",
+            "f" => FILTER_POPOVER_STUB,
             _ => return false,
         };
         self.status_message = Some(message.to_string());
         true
+    }
+
+    /// Puts the table back on its first row: called whenever the filters or the search change what
+    /// is visible, since the old selection no longer points at the same row.
+    fn reset_transactions_selection(&mut self) {
+        self.transactions_selected = 0;
+        self.transactions_scroll
+            .scroll_to_item(0, ScrollStrategy::Top);
+    }
+
+    /// Keys while `InputMode::Search` is active on the Transactions page: typing filters live,
+    /// `Backspace` edits, `Enter` keeps the text and returns to browsing the (filtered) rows, and
+    /// `Esc` (handled with the other modes' exit) clears it.
+    fn handle_transactions_search_key(&mut self, keystroke: &Keystroke) -> bool {
+        match keystroke.key.as_str() {
+            "enter" => {
+                self.nav.exit_mode();
+                true
+            }
+            "backspace" => {
+                self.transactions_search.pop();
+                self.reset_transactions_selection();
+                true
+            }
+            _ => {
+                let modifiers = &keystroke.modifiers;
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                match keystroke.key_char.as_deref() {
+                    Some(text)
+                        if text.chars().count() == 1
+                            && text.chars().next().is_some_and(|ch| !ch.is_control()) =>
+                    {
+                        self.transactions_search.push_str(text);
+                        self.reset_transactions_selection();
+                        true
+                    }
+                    _ => false,
+                }
+            }
+        }
+    }
+
+    /// A click on a filter chip (or its `▾`): opens the popover, which does not exist yet.
+    fn handle_transactions_chip_click(&mut self, _field: FilterField, cx: &mut Context<Self>) {
+        self.status_message = Some(FILTER_POPOVER_STUB.to_string());
+        cx.notify();
+    }
+
+    /// The `✕` on an accent chip: resets just that filter.
+    fn handle_transactions_chip_clear(&mut self, field: FilterField, cx: &mut Context<Self>) {
+        transaction_chips::clear_field(&mut self.transactions_filters, field, self.today);
+        self.reset_transactions_selection();
+        cx.notify();
+    }
+
+    /// `clear filters`: every filter back to its default. The search text is separate state and is
+    /// left alone.
+    fn handle_transactions_clear_all(&mut self, cx: &mut Context<Self>) {
+        self.transactions_filters = TransactionFilters::defaults(self.today);
+        self.reset_transactions_selection();
+        cx.notify();
+    }
+
+    /// The header's **add transaction** button: the same message `n` gives.
+    fn handle_transactions_add_click(&mut self, cx: &mut Context<Self>) {
+        self.status_message = Some("add transaction -- not yet built".to_string());
+        cx.notify();
+    }
+
+    /// A click on the search box: the same as pressing `/`.
+    fn handle_transactions_search_click(&mut self, cx: &mut Context<Self>) {
+        self.nav.enter_mode(InputMode::Search);
+        cx.notify();
     }
 
     /// A click on a table row selects it.
@@ -2138,6 +2226,40 @@ impl Render for Shell {
         };
         // Built only while the page is showing: formatting every visible row is a pass over the
         // whole filtered set, which no other page needs.
+        let on_transactions_add_click: transactions_view::OnPlainClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_transactions_add_click(cx));
+            })
+        };
+        let on_transactions_chip_click: transactions_view::OnChipClick = {
+            let entity = entity.clone();
+            Rc::new(move |field, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_transactions_chip_click(field, cx)
+                });
+            })
+        };
+        let on_transactions_chip_clear: transactions_view::OnChipClick = {
+            let entity = entity.clone();
+            Rc::new(move |field, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_transactions_chip_clear(field, cx)
+                });
+            })
+        };
+        let on_transactions_clear_all: transactions_view::OnPlainClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_transactions_clear_all(cx));
+            })
+        };
+        let on_transactions_search_click: transactions_view::OnPlainClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_transactions_search_click(cx));
+            })
+        };
         let transactions_page = (self.nav.noun() == Noun::Transactions).then(|| {
             let ledger = self.transactions_ledger();
             let visible = transaction_query::query(
@@ -2152,12 +2274,37 @@ impl Render for Shell {
                 &self.transactions_prefs(),
                 self.today,
             );
+            let footer = transaction_chips::footer(
+                &visible,
+                &self.transactions_filters,
+                &ledger,
+                self.settings_decimal_separator,
+            );
+            let chips = transaction_chips::chips(
+                &self.transactions_filters,
+                &ledger,
+                self.today,
+                self.settings_date_format,
+            );
             transactions_view::TransactionsPageProps {
+                header: transactions_view::HeaderProps {
+                    count_line: transaction_chips::count_line(&self.transactions),
+                    chips,
+                    show_clear: !self.transactions_filters.is_default(self.today),
+                    search: self.transactions_search.clone(),
+                    searching: self.nav.mode() == InputMode::Search,
+                    on_add_click: on_transactions_add_click,
+                    on_chip_click: on_transactions_chip_click,
+                    on_chip_clear: on_transactions_chip_clear,
+                    on_clear_all: on_transactions_clear_all,
+                    on_search_click: on_transactions_search_click,
+                },
                 selected: transaction_rows::clamp_selection(self.transactions_selected, rows.len()),
                 rows: Rc::new(rows),
                 row_height: px(format::row_height_px(self.settings_row_density)),
                 scroll: self.transactions_scroll.clone(),
                 on_row_click: on_transactions_row_click,
+                footer,
             }
         });
         let page_status = match self.nav.noun() {

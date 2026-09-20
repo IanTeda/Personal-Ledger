@@ -28,6 +28,7 @@ mod statusline;
 mod tags;
 mod theme;
 mod topbar;
+mod transaction_chips;
 mod transaction_query;
 mod transaction_rows;
 mod transactions;
