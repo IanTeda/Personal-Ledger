@@ -7,7 +7,7 @@
 //! struct still picks up its own name/version from its own crate at compile time.
 
 /// Shared configuration-related CLI arguments: where's the config file, plus overrides for
-/// the `[Personal-Ledger]` section's `data`/`file`/`log` settings (see
+/// the `[Personal-Ledger]` section's `data`/`file`/`log`/`locale` settings (see
 /// `docs/configuration.md`) applied via [`Self::apply_overrides`].
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct ConfigArgs {
@@ -28,10 +28,15 @@ pub struct ConfigArgs {
     /// Override the `[Personal-Ledger]` section's logging level.
     #[arg(short = 'l', long = "log", value_name = "LEVEL")]
     pub log: Option<lib_tracing::Levels>,
+
+    /// Override the `[Personal-Ledger]` section's Locale (a BCP-47 tag such as `en-GB`).
+    /// Long form only: `-l` is `--log`, and `-L` would differ from it only by case.
+    #[arg(long = "locale", value_name = "TAG", value_parser = crate::personal_ledger::parse_locale_tag)]
+    pub locale: Option<String>,
 }
 
 impl ConfigArgs {
-    /// Apply this invocation's `--data`/`--file`/`--log` overrides onto an already-parsed
+    /// Apply this invocation's `--data`/`--file`/`--log`/`--locale` overrides onto an already-parsed
     /// [`crate::Config`]. These sit above even environment variables in
     /// `docs/configuration.md`'s precedence hierarchy, so they're applied as a final step
     /// after `LedgerConfig::parse`/`parse_for_sync_server` rather than through the layered
@@ -45,6 +50,9 @@ impl ConfigArgs {
         }
         if let Some(log) = self.log {
             config.personal_ledger.log = log;
+        }
+        if let Some(locale) = &self.locale {
+            config.personal_ledger.locale = Some(locale.clone());
         }
     }
 }
@@ -75,6 +83,7 @@ mod tests {
             data: Some(std::path::PathBuf::from("/tmp/data")),
             file: Some(std::path::PathBuf::from("/tmp/data/ledger.pldb")),
             log: Some(lib_tracing::Levels::TRACE),
+            locale: Some("en-GB".to_string()),
         };
 
         args.apply_overrides(&mut config);
@@ -88,5 +97,31 @@ mod tests {
             std::path::PathBuf::from("/tmp/data/ledger.pldb")
         );
         assert_eq!(config.personal_ledger.log, lib_tracing::Levels::TRACE);
+        assert_eq!(config.personal_ledger.locale(), Some("en-GB"));
+    }
+
+    #[derive(clap::Parser)]
+    struct TestCli {
+        #[command(flatten)]
+        config: ConfigArgs,
+    }
+
+    #[test]
+    fn locale_flag_is_canonicalised_at_parse_time() {
+        use clap::Parser;
+        let cli = TestCli::try_parse_from(["test", "--locale", "en-gb"]).unwrap();
+        assert_eq!(cli.config.locale.as_deref(), Some("en-GB"));
+    }
+
+    #[test]
+    fn malformed_locale_flag_is_rejected_at_parse_time() {
+        use clap::Parser;
+        assert!(TestCli::try_parse_from(["test", "--locale", "not a tag"]).is_err());
+    }
+
+    #[test]
+    fn locale_flag_has_no_short_form() {
+        use clap::Parser;
+        assert!(TestCli::try_parse_from(["test", "-L", "en-GB"]).is_err());
     }
 }

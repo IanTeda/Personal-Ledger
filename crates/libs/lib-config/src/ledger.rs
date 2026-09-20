@@ -94,14 +94,16 @@ impl LedgerConfig {
     /// Returns an error if any present config file can't be read/parsed, or if the merged
     /// result doesn't deserialize into a valid `LedgerConfig`.
     pub fn parse(config_file: Option<&Path>) -> crate::Result<LedgerConfig> {
-        Self::parse_with_env(config_file, None)
+        Self::parse_with_detector(config_file, None, sys_locale::get_locale)
     }
 
     /// [`Self::parse`] with an optional injected environment (`None` reads the process
-    /// environment). Tests use this because mutating the process environment is `unsafe`.
-    fn parse_with_env(
+    /// environment) and operating-system Locale detector. Tests use this because mutating
+    /// the process environment is `unsafe` and the real machine's Locale is not repeatable.
+    fn parse_with_detector(
         config_file: Option<&Path>,
         env: Option<HashMap<String, String>>,
+        detect_locale: impl FnOnce() -> Option<String>,
     ) -> crate::Result<LedgerConfig> {
         let mut config_builder = Self::defaults_builder()?;
 
@@ -126,7 +128,11 @@ impl LedgerConfig {
 
         config_builder = Self::add_explicit_and_env(config_builder, config_file, env)?;
 
-        Self::build(config_builder)
+        let mut ledger_config = Self::build(config_builder)?;
+        ledger_config
+            .personal_ledger
+            .resolve_locale(detect_locale)?;
+        Ok(ledger_config)
     }
 
     /// Parse configuration for the Sync Server: a reduced defaults -> explicit path ->
@@ -136,7 +142,8 @@ impl LedgerConfig {
     ///
     /// # Errors
     /// Returns an error if the explicit config file (when given) can't be read/parsed, or if
-    /// the merged result doesn't deserialize into a valid `LedgerConfig`.
+    /// the merged result doesn't deserialize into a valid `LedgerConfig`. The Locale is not
+    /// resolved: the Sync Server never reads it.
     pub fn parse_for_sync_server(config_file: Option<&Path>) -> crate::Result<LedgerConfig> {
         Self::parse_for_sync_server_with_env(config_file, None)
     }
@@ -697,8 +704,139 @@ mod tests {
     fn client_parse_honours_injected_env() {
         in_empty_cwd(|| {
             let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__LOG", "error")]);
-            let config = LedgerConfig::parse_with_env(None, env).unwrap();
+            let config = LedgerConfig::parse_with_detector(None, env, || None).unwrap();
             assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::ERROR);
         });
+    }
+
+    const LOCALE_ENV: &str = "PERSONAL_LEDGER_PERSONAL_LEDGER__LOCALE";
+
+    fn write_locale_file(dir: &TempDir, locale: &str) -> PathBuf {
+        let config_file = dir.path().join("locale.conf");
+        fs::write(
+            &config_file,
+            format!("[Personal-Ledger]\nlocale = \"{locale}\"\n"),
+        )
+        .unwrap();
+        config_file
+    }
+
+    fn resolve(
+        config_file: Option<&Path>,
+        env: Option<HashMap<String, String>>,
+        system: Option<&str>,
+    ) -> crate::Result<(String, crate::LocaleSource)> {
+        in_empty_cwd(|| {
+            let config =
+                LedgerConfig::parse_with_detector(config_file, env, || system.map(String::from))?;
+            let (tag, source) = config.personal_ledger.resolved_locale();
+            Ok((tag.to_string(), source))
+        })
+    }
+
+    #[test]
+    fn locale_defaults_when_nothing_else_supplies_one() {
+        let (tag, source) = resolve(None, None, None).unwrap();
+        assert_eq!(
+            (tag.as_str(), source),
+            ("en-US", crate::LocaleSource::Default)
+        );
+    }
+
+    #[test]
+    fn locale_uses_the_system_locale_when_unset() {
+        let (tag, source) = resolve(None, None, Some("en-AU")).unwrap();
+        assert_eq!(
+            (tag.as_str(), source),
+            ("en-AU", crate::LocaleSource::System)
+        );
+    }
+
+    #[test]
+    fn locale_file_beats_system() {
+        let temp_dir = TempDir::new().unwrap();
+        let file = write_locale_file(&temp_dir, "en-GB");
+        let (tag, source) = resolve(Some(&file), None, Some("en-AU")).unwrap();
+        assert_eq!(
+            (tag.as_str(), source),
+            ("en-GB", crate::LocaleSource::Config)
+        );
+    }
+
+    #[test]
+    fn locale_env_beats_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let file = write_locale_file(&temp_dir, "en-GB");
+        let env = env_map(&[(LOCALE_ENV, "en-AU")]);
+        let (tag, source) = resolve(Some(&file), env, Some("en-US")).unwrap();
+        assert_eq!(
+            (tag.as_str(), source),
+            ("en-AU", crate::LocaleSource::Config)
+        );
+    }
+
+    #[test]
+    fn locale_cli_beats_env() {
+        let env = env_map(&[(LOCALE_ENV, "en-AU")]);
+        in_empty_cwd(|| {
+            let mut config = LedgerConfig::parse_with_detector(None, env, || None).unwrap();
+            let args = crate::ConfigArgs {
+                locale: Some("en-GB".to_string()),
+                ..crate::ConfigArgs::default()
+            };
+            args.apply_overrides(&mut config);
+            assert_eq!(
+                config.personal_ledger.resolved_locale(),
+                ("en-GB", crate::LocaleSource::Config)
+            );
+        });
+    }
+
+    #[test]
+    fn locale_is_stored_in_canonical_casing() {
+        let env = env_map(&[(LOCALE_ENV, "en-gb")]);
+        let (tag, _) = resolve(None, env, None).unwrap();
+        assert_eq!(tag, "en-GB");
+    }
+
+    #[test]
+    fn malformed_locale_is_a_startup_error() {
+        let env = env_map(&[(LOCALE_ENV, "not a locale")]);
+        let error = resolve(None, env, None).unwrap_err();
+        assert!(
+            matches!(error, crate::Error::InvalidLocale { ref value } if value == "not a locale")
+        );
+    }
+
+    #[test]
+    fn unsupported_but_well_formed_locale_passes_through() {
+        let env = env_map(&[(LOCALE_ENV, "fr-FR")]);
+        let (tag, source) = resolve(None, env, None).unwrap();
+        assert_eq!(
+            (tag.as_str(), source),
+            ("fr-FR", crate::LocaleSource::Config)
+        );
+    }
+
+    #[test]
+    fn unparseable_system_locale_is_ignored() {
+        for value in ["C", "POSIX", "posix", "C.UTF-8", "", "not a locale"] {
+            let (tag, source) = resolve(None, None, Some(value)).unwrap();
+            assert_eq!(
+                (tag.as_str(), source),
+                ("en-US", crate::LocaleSource::Default),
+                "system locale {value:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn sync_server_ignores_the_locale_field() {
+        let env = env_map(&[(LOCALE_ENV, "not a locale")]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
+        assert_eq!(
+            config.personal_ledger.resolved_locale(),
+            ("not a locale", crate::LocaleSource::Config)
+        );
     }
 }

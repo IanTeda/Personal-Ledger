@@ -11,6 +11,22 @@ const DEFAULT_LOG: lib_tracing::Levels = lib_tracing::Levels::INFO;
 /// explicitly configured.
 const DEFAULT_FILE_NAME: &str = "My-Personal-Ledger.pldb";
 
+/// The Locale used when neither the configuration nor the operating system names a usable
+/// one. `lib-config` doesn't know which Locales are supported -- `lib-locale` negotiates
+/// that -- so this is only the last-resort request.
+pub const DEFAULT_LOCALE: &str = "en-US";
+
+/// Where the requested Locale came from, lowest to highest precedence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocaleSource {
+    /// Neither the configuration nor the operating system supplied a usable Locale.
+    Default,
+    /// Detected from the operating system.
+    System,
+    /// Set by a configuration file, environment variable or the `--locale` flag.
+    Config,
+}
+
 /// Configuration for the `[Personal-Ledger]` section.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub struct PersonalLedgerConfig {
@@ -36,6 +52,17 @@ pub struct PersonalLedgerConfig {
     /// from every configuration source.
     #[serde(default)]
     pub log_file_path: Option<std::path::PathBuf>,
+
+    /// The requested Locale as a BCP-47 tag (e.g. `en-GB`), from a configuration file,
+    /// environment variable or `--locale`. Unset means "follow the operating system" -- use
+    /// [`Self::resolved_locale`] rather than reading this directly.
+    #[serde(default)]
+    pub locale: Option<String>,
+
+    /// The operating system's Locale, detected by `LedgerConfig::parse`. Never read from or
+    /// written to a configuration source.
+    #[serde(skip)]
+    system_locale: Option<String>,
 }
 
 impl Default for PersonalLedgerConfig {
@@ -49,6 +76,8 @@ impl Default for PersonalLedgerConfig {
             file,
             log: DEFAULT_LOG,
             log_file_path: None,
+            locale: None,
+            system_locale: None,
         }
     }
 }
@@ -82,6 +111,42 @@ impl PersonalLedgerConfig {
         self.log_file_path.as_deref()
     }
 
+    /// Returns the Locale set by configuration, if any (canonical casing once parsed).
+    pub fn locale(&self) -> Option<&str> {
+        self.locale.as_deref()
+    }
+
+    /// Resolves the requested Locale tag and where it came from: the configured value, else
+    /// the operating system's, else [`DEFAULT_LOCALE`]. The tag is not checked against the
+    /// Locales the application supports -- `lib-locale` negotiates that.
+    pub fn resolved_locale(&self) -> (&str, LocaleSource) {
+        if let Some(locale) = self.locale.as_deref() {
+            (locale, LocaleSource::Config)
+        } else if let Some(locale) = self.system_locale.as_deref() {
+            (locale, LocaleSource::System)
+        } else {
+            (DEFAULT_LOCALE, LocaleSource::Default)
+        }
+    }
+
+    /// Validates the configured Locale (canonicalising its casing) and records the detected
+    /// system Locale, so [`Self::resolved_locale`] can answer. Called once after the layered
+    /// sources are merged; `detect` reports the operating system's Locale.
+    ///
+    /// # Errors
+    /// Returns [`crate::Error::InvalidLocale`] when the configured value isn't a well-formed
+    /// BCP-47 tag.
+    pub(crate) fn resolve_locale(
+        &mut self,
+        detect: impl FnOnce() -> Option<String>,
+    ) -> crate::Result<()> {
+        match self.locale.as_deref() {
+            Some(value) => self.locale = Some(parse_locale_tag(value)?),
+            None => self.system_locale = detect().and_then(|value| usable_system_locale(&value)),
+        }
+        Ok(())
+    }
+
     /// The default data directory: the user's document folder, falling back to the current
     /// working directory when it can't be determined (e.g. `$HOME` unset).
     fn default_data_dir() -> std::path::PathBuf {
@@ -91,9 +156,10 @@ impl PersonalLedgerConfig {
     /// Get the default configuration values as key-value pairs, for seeding a layered
     /// configuration builder's defaults -- mirrors `SyncServerConfig::default_config_values()`.
     ///
-    /// `config` and `log_file_path` are excluded: neither has a meaningful default (see
-    /// [`Self::config`]/[`Self::log_file_path`]) -- both default to `None` when absent from
-    /// every configuration source.
+    /// `config`, `log_file_path` and `locale` are excluded: none has a meaningful default (see
+    /// [`Self::config`]/[`Self::log_file_path`]) -- all default to `None` when absent from
+    /// every configuration source. `locale` in particular must stay unset so the operating
+    /// system's Locale can outrank [`DEFAULT_LOCALE`] (see [`Self::resolved_locale`]).
     pub fn default_config_values() -> Vec<(&'static str, String)> {
         let default_config = Self::default();
         vec![
@@ -108,6 +174,29 @@ impl PersonalLedgerConfig {
             ("personal_ledger.log", default_config.log().to_string()),
         ]
     }
+}
+
+/// Validates a BCP-47 Locale tag and returns it in canonical casing (`en-gb` -> `en-GB`).
+///
+/// # Errors
+/// Returns [`crate::Error::InvalidLocale`] when `value` isn't a well-formed tag.
+pub(crate) fn parse_locale_tag(value: &str) -> crate::Result<String> {
+    value
+        .parse::<unic_langid::LanguageIdentifier>()
+        .map(|langid| langid.to_string())
+        .map_err(|_| crate::Error::InvalidLocale {
+            value: value.to_string(),
+        })
+}
+
+/// The canonical tag for an operating-system Locale, or `None` when it isn't a usable tag.
+/// The POSIX placeholders `C` and `POSIX` mean "no locale", not a language, so they are
+/// ignored quietly.
+fn usable_system_locale(value: &str) -> Option<String> {
+    if value.eq_ignore_ascii_case("posix") {
+        return None;
+    }
+    parse_locale_tag(value).ok()
 }
 
 #[cfg(test)]

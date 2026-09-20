@@ -14,7 +14,7 @@
 //! - [`sync_server`] - Sync-Server-only configuration (bind address, database URI), not
 //!   read by Clients
 //! - [`keybindings`] - Keyboard shortcut configuration, read by the TUI/Desktop Clients
-//! - [`cli`] - Shared `--config`/`-c`/`--data`/`-d`/`--file`/`-f`/`--log`/`-l` CLI
+//! - [`cli`] - Shared `--config`/`-c`/`--data`/`-d`/`--file`/`-f`/`--log`/`-l`/`--locale` CLI
 //!   arguments, flattened into each binary's own parser
 //!
 //! ## Client vs Sync Server
@@ -43,7 +43,7 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub use ledger::LedgerConfig as Config;
 
 /// Personal Ledger configuration.
-pub use personal_ledger::PersonalLedgerConfig;
+pub use personal_ledger::{DEFAULT_LOCALE, LocaleSource, PersonalLedgerConfig};
 
 /// Sync-Server-only configuration (bind address and database URI).
 pub use sync_server::SyncServerConfig;

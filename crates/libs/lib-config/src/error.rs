@@ -17,6 +17,13 @@ pub enum Error {
     #[error("Invalid server address: {0}")]
     InvalidServerAddress(#[from] std::net::AddrParseError),
 
+    /// A `locale` setting that isn't a well-formed BCP-47 language tag.
+    #[error("Invalid locale {value:?}: expected a BCP-47 language tag such as \"en-GB\"")]
+    InvalidLocale {
+        /// The rejected value, as given.
+        value: String,
+    },
+
     /// Two commands are bound to the same key, leaving one unreachable.
     #[error("Invalid key binding config: {0}")]
     InvalidKeyBindingConfig(String),

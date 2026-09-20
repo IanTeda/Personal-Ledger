@@ -37,7 +37,7 @@ Personal Ledger uses the following order of precedence, from lowest to highest.
   * Example: PERSONAL_LEDGER_SYNC_SERVER__DATABASE_URI=sqlite:/tmp/test.db
   * Use double underscores (__) to separate nested keys
 8. Explicit Command Line Flags (highest precedence)
-  * --data/-d, --file/-f, --log/-l -- override the `[Personal-Ledger]` section's
+  * --data/-d, --file/-f, --log/-l, --locale -- override the `[Personal-Ledger]` section's
     corresponding setting directly, applied after every source above (including
     Environment Variables)
 
@@ -163,6 +163,32 @@ log = "debug"
 ```bash
 personal_ledger --log/-l 'debug'
 ```
+
+__locale:__
+
+The Locale the Client uses for its text, numbers, dates and currency amounts, as a BCP-47 language tag. Per Client and never synced; changing it needs a restart. `lib-config` only resolves the request and reports where it came from -- `lib-locale` decides which Locale is actually used, so a well-formed tag it doesn't support (for example `fr-FR`) is passed through unchanged and negotiated there.
+
+* Type: String (Optional)
+* CLI Flag: --locale (long form only)
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__LOCALE
+* Valid Values: any well-formed BCP-47 tag, stored in canonical casing (`en-gb` becomes `en-GB`). A malformed value is a startup error. There is no `system` keyword: leave the key unset to follow the operating system.
+* Default, in order:
+  1. The value from the configuration files, environment variable or `--locale`
+  2. The operating system's Locale, when it is a usable tag (`C` and `POSIX` are ignored)
+  3. "en-US"
+
+Example:
+
+```ini
+[Personal-Ledger]
+locale = "en-GB"
+```
+
+```bash
+personal_ledger --locale 'en-GB'
+```
+
+The Sync Server ignores this setting.
 
 __log_file_path:__
 
