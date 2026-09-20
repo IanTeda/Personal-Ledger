@@ -41,6 +41,8 @@ members = [
   "./crates/bins/bin-tui",
   "./crates/libs/lib-config",
   "./crates/libs/lib-database",
+  "./crates/libs/lib-locale",
+  "./crates/libs/lib-locale-build",
   "./crates/libs/lib-mcp",
   "./crates/libs/lib-omarchy",
   "./crates/libs/lib-tracing",
@@ -71,6 +73,7 @@ fake = { version = "4.4.0", features = [
   "time",
   "uuid",
 ] }
+fluent-syntax = { version = "0.12.0" }
 futures-util = { version = "0.3.34", default-features = false, features = [
   "std",
 ] }
@@ -101,4 +104,5 @@ thiserror = { version = "2.0.6" }
 tokio = { version = "1.48.0", features = ["full"] }
 tonic = { version = "0.14.2", features = ["transport", "codegen"] }
 tracing = { version = "0.1.43" }
+unic-langid = { version = "0.9.6" }
 uuid = { version = "1.19.0", features = ["v7", "serde"] }

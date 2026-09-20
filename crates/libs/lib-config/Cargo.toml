@@ -15,11 +15,11 @@ thiserror = { workspace = true }
 
 ## -- Workspace Shared Dependencies (continued) --
 dirs = { workspace = true }
+unic-langid = { workspace = true }
 
 ## -- Library Dependencies --
 config = { version = "0.15.19" }
 sys-locale = { version = "0.3.2" }
-unic-langid = { version = "0.9.6" }
 
 
 [dev-dependencies]

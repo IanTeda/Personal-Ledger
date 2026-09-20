@@ -1,0 +1,17 @@
+[package]
+name = "lib_locale_build"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+## -- Workspace Shared Dependencies --
+thiserror = { workspace = true }
+
+## -- Library Dependencies --
+fluent-syntax = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,28 @@
+[package]
+name = "lib_locale"
+version = "0.1.0"
+edition = "2024"
+build = "build.rs"
+
+[dependencies]
+## -- Internal Dependencies --
+lib_core = { path = "../lib-core" }
+
+## -- Workspace Shared Dependencies --
+fluent-syntax = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+unic-langid = { workspace = true }
+
+## -- Library Dependencies --
+fluent-bundle = { version = "0.16.0" }
+fluent-pseudo = { version = "0.3.3" }
+
+[build-dependencies]
+lib_locale_build = { path = "../lib-locale-build" }
+
+[dev-dependencies]
+lib_locale_build = { path = "../lib-locale-build" }
+
+[lints]
+workspace = true
