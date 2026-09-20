@@ -12,6 +12,7 @@ mod category;
 mod db;
 mod error;
 mod event;
+mod locale;
 mod payee;
 mod popup;
 mod screen;
@@ -19,6 +20,11 @@ mod shell;
 mod tag;
 mod tui;
 mod view;
+
+/// This bin's own Messages, generated at build time from `i18n/<locale>/*.ftl`.
+mod msg {
+    include!(concat!(env!("OUT_DIR"), "/msg.rs"));
+}
 
 use clap::Parser;
 use shell::Shell;
@@ -47,6 +53,10 @@ async fn main() -> Result<()> {
     // Held for the lifetime of `main` -- dropping it stops the background worker that
     // flushes buffered log lines to `log_file_path` (when configured).
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
+
+    // Resolved once, before the terminal enters raw mode; the Locale never changes at runtime.
+    let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
+    locale::init(requested_locale, locale_source);
 
     Shell::with_keybindings(config.keybindings_config().clone())
         .run()

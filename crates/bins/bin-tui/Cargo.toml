@@ -15,6 +15,7 @@ path = "src/main.rs"
 lib_config = { path = "../../libs/lib-config" }
 lib_database = { path = "../../libs/lib-database" }
 lib_core = { path = "../../libs/lib-core" }
+lib_locale = { path = "../../libs/lib-locale" }
 lib_tracing = { path = "../../libs/lib-tracing" }
 
 ## -- Workspace Dependencies --
@@ -34,6 +35,9 @@ crossterm = { version = "0.29.0", features = ["event-stream"] }
 ratatui = { version = "0.30.2" }
 tui-box-text = { version = "0.3.4" }
 tui-piechart = { version = "1.0.2" }
+
+[build-dependencies]
+lib_locale_build = { path = "../../libs/lib-locale-build" }
 
 [lints]
 workspace = true

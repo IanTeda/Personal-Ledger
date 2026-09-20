@@ -8,7 +8,7 @@
 //!
 //! `e` and `enter` reach `crate::popup::settings`'s two popups — §4b's in-place editor and
 //! §4c's base-unit guard. Neither is routed through a "currently selected setting": this view
-//! has no real row-navigation state yet (`SETTINGS`'s own `selected` flag is hardcoded to
+//! has no real row-navigation state yet (`settings()`'s own `selected` flag is hardcoded to
 //! `base unit`, not driven by `j`/`k`), so unlike a real build — where `enter` on any row opens
 //! §4b, and only committing `general.base_unit` specifically detours through §4c — each popup
 //! here gets its own fixed key and always shows its own worked example (`e` → §4b's
@@ -26,6 +26,8 @@ use ratatui::{
         Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
     },
 };
+
+use lib_core::DateStyle;
 
 use crate::view::{Action, View};
 
@@ -54,7 +56,7 @@ const RESET_SECTION_HEIGHT: u16 = 1 + 1 + 2;
 
 /// Rows inside the settings list: a heading, its rule, the column header, then one row per
 /// fake `general` setting.
-const SETTINGS_LIST_HEIGHT: u16 = 1 + 1 + 1 + SETTINGS.len() as u16;
+const SETTINGS_LIST_HEIGHT: u16 = 1 + 1 + 1 + SETTINGS_COUNT as u16;
 
 /// Rows inside the "selected" box: a heading, its rule, one line of `explain` prose, a rule,
 /// then the three ruled facts (`default`, `accepts`, `changing it`).
@@ -439,72 +441,94 @@ fn render_right_pane(frame: &mut Frame, area: Rect) {
 struct SettingRow {
     /// `true` when a row exists in `settings` for this key (the override dot).
     overridden: bool,
-    setting: &'static str,
-    value: &'static str,
-    note: &'static str,
+    setting: String,
+    value: String,
+    note: String,
     selected: bool,
+}
+
+/// How many rows [`settings`] returns; the list's height is a constant, so it is fixed here and
+/// a test keeps the two in step.
+const SETTINGS_COUNT: usize = 8;
+
+fn row(overridden: bool, setting: &str, value: &str, note: &str, selected: bool) -> SettingRow {
+    SettingRow {
+        overridden,
+        setting: setting.to_string(),
+        value: value.to_string(),
+        note: note.to_string(),
+        selected,
+    }
 }
 
 /// §4a's own worked example: the eight `general` settings, `base unit` selected (the
 /// `selected` box below explains it).
-const SETTINGS: &[SettingRow] = &[
-    SettingRow {
-        overridden: true,
-        setting: "base unit",
-        value: "AUD",
-        note: "every total converts to this",
-        selected: true,
-    },
-    SettingRow {
-        overridden: false,
-        setting: "fiscal year starts",
-        value: "01 jul",
-        note: "drives year-to-date and reports",
-        selected: false,
-    },
-    SettingRow {
-        overridden: false,
-        setting: "week starts",
-        value: "monday",
-        note: "w/c label on weekly prices",
-        selected: false,
-    },
-    SettingRow {
-        overridden: true,
-        setting: "date input",
-        value: "dd/mm/yyyy",
-        note: "accepted when typing a date",
-        selected: false,
-    },
-    SettingRow {
-        overridden: false,
-        setting: "number format",
-        value: "1 234.56",
-        note: "space groups · dot decimal",
-        selected: false,
-    },
-    SettingRow {
-        overridden: true,
-        setting: "negatives",
-        value: "−1 234.56",
-        note: "minus · brackets · trailing",
-        selected: false,
-    },
-    SettingRow {
-        overridden: false,
-        setting: "confirm deletes",
-        value: "type the name",
-        note: "off falls back to y/n",
-        selected: false,
-    },
-    SettingRow {
-        overridden: false,
-        setting: "undo depth",
-        value: "50 commands",
-        note: "kept in the database",
-        selected: false,
-    },
-];
+///
+/// `date format` is the nullable date style Preference: no row exists (no override dot) while it
+/// follows the Locale, and the row here shows an explicit `short`. `locale` is Configuration,
+/// read-only: it shows the effective Locale and where it came from, and has no editor.
+fn settings() -> Vec<SettingRow> {
+    let locale = crate::locale::info();
+    let (locale_tag, locale_note) = crate::locale::describe(&locale);
+    vec![
+        row(
+            true,
+            "base unit",
+            "AUD",
+            "every total converts to this",
+            true,
+        ),
+        row(
+            false,
+            "fiscal year starts",
+            "01 jul",
+            "drives year-to-date and reports",
+            false,
+        ),
+        row(
+            false,
+            "week starts",
+            "monday",
+            "w/c label on weekly prices",
+            false,
+        ),
+        row(
+            true,
+            &crate::msg::tui_settings_date_style_setting(),
+            &crate::locale::date_style_label(Some(DateStyle::Short)),
+            &crate::msg::tui_settings_date_style_note(),
+            false,
+        ),
+        row(
+            false,
+            &crate::msg::tui_settings_locale_setting(),
+            &locale_tag,
+            &locale_note,
+            false,
+        ),
+        row(
+            true,
+            "negatives",
+            "−1 234.56",
+            "minus · brackets · trailing",
+            false,
+        ),
+        row(
+            false,
+            "confirm deletes",
+            "type the name",
+            "off falls back to y/n",
+            false,
+        ),
+        row(
+            false,
+            "undo depth",
+            "50 commands",
+            "kept in the database",
+            false,
+        ),
+    ]
+}
 
 /// The settings list: a "SETTINGS" heading tagged with the focused group and its count, over
 /// the gutter/`SETTING`/`VALUE`/`NOTE` column set, per §4a.
@@ -538,7 +562,8 @@ fn render_settings_column_header(frame: &mut Frame, area: Rect) {
 /// One row per `general` setting, capped to however many rows actually fit `area` — the same
 /// defensive cap `view::units`'s own row renderers use.
 fn render_setting_rows(frame: &mut Frame, area: Rect) {
-    let visible = SETTINGS.len().min(area.height as usize);
+    let settings = settings();
+    let visible = settings.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
         std::iter::repeat_n(Constraint::Length(1), visible).collect();
     let rows = Layout::default()
@@ -546,7 +571,7 @@ fn render_setting_rows(frame: &mut Frame, area: Rect) {
         .constraints(row_constraints)
         .split(area);
 
-    for (setting, row) in SETTINGS.iter().zip(rows.iter()) {
+    for (setting, row) in settings.iter().zip(rows.iter()) {
         render_setting_row(frame, *row, setting);
     }
 }
@@ -575,12 +600,15 @@ fn render_setting_row(frame: &mut Frame, area: Rect, setting: &SettingRow) {
             columns[0],
         );
     }
-    frame.render_widget(Paragraph::new(setting.setting), columns[1]);
+    frame.render_widget(Paragraph::new(setting.setting.as_str()), columns[1]);
     frame.render_widget(
-        Paragraph::new(Span::styled(setting.value, muted)),
+        Paragraph::new(Span::styled(setting.value.as_str(), muted)),
         columns[2],
     );
-    frame.render_widget(Paragraph::new(Span::styled(setting.note, dim)), columns[3]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(setting.note.as_str(), dim)),
+        columns[3],
+    );
 }
 
 /// Splits a settings list row (or its column header) into the gutter / `SETTING` / `VALUE` /
@@ -689,7 +717,7 @@ struct TableRow {
     changed: &'static str,
 }
 
-/// §4a's own worked example rows — `general.base_unit` and `general.date_input` verbatim,
+/// §4a's own worked example rows — `general.base_unit` and the date style row,
 /// plus `general.negatives` (the settings list's third `●`) to make up the "3 rows" the
 /// heading's tag counts, only two of which fit `SETTINGS_TABLE_SHOWN`.
 const TABLE_ROWS: &[TableRow] = &[
@@ -699,8 +727,8 @@ const TABLE_ROWS: &[TableRow] = &[
         changed: "14:02 today",
     },
     TableRow {
-        key: "general.date_input",
-        value: "dmy",
+        key: "general.date_style",
+        value: "short",
         changed: "02 sep",
     },
     TableRow {
@@ -873,20 +901,41 @@ mod tests {
     }
 
     #[test]
+    fn the_settings_list_height_matches_the_row_count() {
+        crate::locale::init_for_tests();
+        assert_eq!(settings().len(), SETTINGS_COUNT);
+    }
+
+    #[test]
+    fn the_locale_row_shows_the_effective_locale_and_its_source_read_only() {
+        crate::locale::init_for_tests();
+        let text = render(&SettingsView::new());
+        assert!(text.contains("locale"), "locale row missing");
+        assert!(text.contains("en-US"), "effective Locale missing");
+        assert!(text.contains("the default"), "source missing");
+        assert!(text.contains("date format"), "date format row missing");
+        assert!(
+            !text.contains("number format"),
+            "the number control should be gone"
+        );
+    }
+
+    #[test]
     fn shows_every_group_and_every_general_setting() {
+        crate::locale::init_for_tests();
         let text = render(&SettingsView::new());
 
         for group in GROUPS {
             assert!(text.contains(group.label), "{} group missing", group.label);
         }
-        for setting in SETTINGS {
+        for setting in settings() {
             assert!(
-                text.contains(setting.setting),
+                text.contains(&setting.setting),
                 "{} setting missing",
                 setting.setting
             );
             assert!(
-                text.contains(setting.value),
+                text.contains(&setting.value),
                 "{}'s value missing",
                 setting.setting
             );
