@@ -3,6 +3,8 @@
 //! <noun>`) was dropped -- the top bar's brand tile now names the active screen instead
 //! (`crate::topbar::brand_mark`), and showing it in both places was a plain duplicate.
 
+use std::rc::Rc;
+
 use gpui::{App, Window, div, prelude::*, px};
 
 use crate::{nav::InputMode, theme::color};
@@ -18,8 +20,20 @@ pub struct PageStatus {
     pub right: String,
 }
 
+/// The shell-wide hint strip's clickable entries -- each does what its key does in `Normal` mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HintAction {
+    Command,
+    Search,
+    Help,
+    ToggleRail,
+}
+
+pub type OnHint = Rc<dyn Fn(HintAction, &mut Window, &mut App)>;
+
 #[derive(IntoElement)]
 pub struct StatusLine {
+    on_hint: Option<OnHint>,
     mode: InputMode,
     /// Replaces the hint strip when `Some` -- the handoff's "Loading and error states" rule
     /// ("the hint strip is replaced by the error ... cleared by any keypress"), reused here
@@ -49,11 +63,18 @@ impl StatusLine {
         command_echo: Option<(String, &'static str)>,
     ) -> Self {
         Self {
+            on_hint: None,
             mode,
             status_message,
             command_echo,
             page: None,
         }
+    }
+
+    /// Makes the shell-wide hint strip's entries clickable.
+    pub fn on_hint(mut self, on_hint: OnHint) -> Self {
+        self.on_hint = Some(on_hint);
+        self
     }
 
     pub fn page(mut self, page: Option<PageStatus>) -> Self {
@@ -86,7 +107,7 @@ impl RenderOnce for StatusLine {
                     .into_any_element(),
                 (None, None) => match &self.page {
                     Some(page) => page_hint_strip(page.hints).into_any_element(),
-                    None => hint_strip().into_any_element(),
+                    None => hint_strip(self.on_hint.clone()).into_any_element(),
                 },
             })
             .child(div().flex_1())
@@ -122,26 +143,47 @@ fn mode_badge(mode: InputMode) -> impl IntoElement {
         .child(label)
 }
 
-fn hint_strip() -> impl IntoElement {
-    let key = |text: &'static str| {
+fn hint_strip(on_hint: Option<OnHint>) -> impl IntoElement {
+    let entry = |id: &'static str, action: HintAction, key: &'static str, label: &'static str| {
+        let on_hint = on_hint.clone();
         div()
-            .font_weight(gpui::FontWeight::EXTRA_BOLD)
-            .text_color(color::INK)
-            .child(text)
+            .id(id)
+            .flex()
+            .items_center()
+            .gap(px(4.0))
+            .when(on_hint.is_some(), |this| {
+                this.cursor_pointer()
+                    .hover(|style| style.bg(color::HOVER_TINT))
+            })
+            .when_some(on_hint, |this, on_hint| {
+                this.on_click(move |_event, window, cx| on_hint(action, window, cx))
+            })
+            .child(
+                div()
+                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    .text_color(color::INK)
+                    .child(key),
+            )
+            .child(label)
     };
+    let dot = || div().child("\u{b7}");
 
     div()
         .flex()
         .items_center()
         .gap(px(4.0))
-        .child(key(":"))
-        .child("command ·")
-        .child(key("/"))
-        .child("search ·")
-        .child(key("?"))
-        .child("help ·")
-        .child(key("b"))
-        .child("toggle sidebar")
+        .child(entry("hint-command", HintAction::Command, ":", "command"))
+        .child(dot())
+        .child(entry("hint-search", HintAction::Search, "/", "search"))
+        .child(dot())
+        .child(entry("hint-help", HintAction::Help, "?", "help"))
+        .child(dot())
+        .child(entry(
+            "hint-rail",
+            HintAction::ToggleRail,
+            "b",
+            "toggle sidebar",
+        ))
 }
 
 /// A page's key legend: `j/k row · enter open ledger · ...`, each key at weight 800 like the

@@ -52,7 +52,7 @@ use crate::{
         DeleteUnitForm, InstitutionRow, PriceSourceRow, RowDensity, SettingsDialog,
         SettingsSection, StatusGlyphs, TracingLevel, UnitForm, UnitKind, UnitRow,
     },
-    statusline::{PageStatus, StatusLine},
+    statusline::{self, HintAction, PageStatus, StatusLine},
     tags::{self, Tag},
     theme::{color, type_scale},
     topbar::{self, TopBar},
@@ -444,8 +444,7 @@ impl Shell {
                 true
             }
             KeyOutcome::EnterCommand => {
-                self.nav.enter_mode(InputMode::Command);
-                self.palette = Some(Palette::with_history(self.command_history.clone()));
+                self.open_palette();
                 true
             }
             KeyOutcome::EnterSearch => {
@@ -499,6 +498,31 @@ impl Shell {
                 unreachable!("handled above")
             }
         }
+    }
+
+    fn open_palette(&mut self) {
+        self.nav.enter_mode(InputMode::Command);
+        self.palette = Some(Palette::with_history(self.command_history.clone()));
+    }
+
+    /// A click on the status line's hint strip: the same action as the matching `Normal`-mode key,
+    /// and ignored in any other mode (where those keys aren't live either).
+    fn handle_hint_click(&mut self, action: HintAction, cx: &mut Context<Self>) {
+        if self.nav.mode() != InputMode::Normal {
+            return;
+        }
+        self.status_message = None;
+        self.pending_g = None;
+        match action {
+            HintAction::Command => self.open_palette(),
+            HintAction::Search => self.nav.enter_mode(InputMode::Search),
+            HintAction::Help => self.nav.enter_mode(InputMode::Help),
+            HintAction::ToggleRail => {
+                self.nav.toggle_primary_rail();
+                self.collapsed_rail_tooltip = None;
+            }
+        }
+        cx.notify();
     }
 
     fn apply_movement(&mut self, movement: Movement) {
@@ -2170,6 +2194,12 @@ impl Render for Shell {
                 });
             })
         };
+        let on_hint: statusline::OnHint = {
+            let entity = entity.clone();
+            Rc::new(move |action, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_hint_click(action, cx));
+            })
+        };
         let on_help_close: help_view::OnClose = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -2719,7 +2749,8 @@ impl Render for Shell {
                     self.status_message.clone(),
                     self.command_echo(),
                 )
-                .page(page_status),
+                .page(page_status)
+                .on_hint(on_hint),
             )
             .children(self.palette.as_ref().map(Palette::render))
             .children(self.file_explorer.as_ref().map(|explorer| {
