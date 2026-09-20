@@ -30,3 +30,8 @@ budget-period-weekly = Weekly
 budget-period-monthly = Monthly
 budget-period-quarterly = Quarterly
 budget-period-yearly = Yearly
+
+## The system-seeded placeholder Institution a Cash Account links to. The row stores a stable key,
+## never this text, so each Client renders it in its own Locale.
+
+institution-none = No institution

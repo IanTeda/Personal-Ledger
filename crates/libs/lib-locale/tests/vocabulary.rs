@@ -84,3 +84,16 @@ fn en_xa_wraps_labels() {
         assert!(label.starts_with('[') && label.ends_with(']'), "{label}");
     });
 }
+
+#[test]
+fn the_seeded_placeholder_institution_has_a_message_in_every_locale() {
+    for locale in Locale::SUPPORTED {
+        with_locale(locale, || {
+            let text = lib_locale::msg::institution_none();
+            assert!(!text.contains('⟦'), "{locale}: {text}");
+        });
+    }
+    with_locale(Locale::EnUs, || {
+        assert_eq!(lib_locale::msg::institution_none(), "No institution")
+    });
+}
