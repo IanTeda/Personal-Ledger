@@ -15,7 +15,9 @@
 
 mod commands;
 
-pub use commands::{CommandId, DOMAINS};
+pub use commands::CommandId;
+#[cfg(test)]
+pub use commands::DOMAINS;
 
 use ratatui::{
     Frame,
