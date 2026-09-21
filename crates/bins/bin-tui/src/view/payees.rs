@@ -51,8 +51,7 @@ use ratatui::{
     },
 };
 
-use crate::payee::{Payee, PayeeCategoryShare, PayeeFixture, PayeeStore, PayeeTransaction};
-use crate::view::{Action, View};
+use crate::{msg, payee::{Payee, PayeeCategoryShare, PayeeFixture, PayeeStore, PayeeTransaction}, view::{Action, View}};
 use lib_core::{Money, RowID};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used for
@@ -605,7 +604,7 @@ impl PayeesView {
         let status = if payee.is_active {
             "active"
         } else {
-            "inactive"
+            &msg::tui_payees_record_inactive()
         };
         let fact_line = format!(
             "{status} · {} txns · since {}",
@@ -994,10 +993,10 @@ fn txn_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect) {
 fn render_txn_column_header(frame: &mut Frame, area: Rect) {
     let (_, date, category, amount) = txn_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled("DATE", dim)), date);
-    frame.render_widget(Paragraph::new(Span::styled("CATEGORY", dim)), category);
+    frame.render_widget(Paragraph::new(Span::styled(&msg::tui_payees_column_date(), dim)), date);
+    frame.render_widget(Paragraph::new(Span::styled(&msg::tui_payees_column_category(), dim)), category);
     frame.render_widget(
-        Paragraph::new(Span::styled("AMOUNT", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(&msg::tui_payees_column_amount(), dim)).alignment(Alignment::Right),
         amount,
     );
 }

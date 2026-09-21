@@ -34,7 +34,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::payee::{PayeeStore, known_category_paths};
+use crate::{msg, payee::{PayeeStore, known_category_paths}};
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
 const ACCENT: Color = Color::Red;
@@ -538,7 +538,7 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
-    use crate::payee::PayeeFixture;
+    use crate::{msg, payee::PayeeFixture};
 
     fn find_id(store: &PayeeFixture, name: &str) -> RowID {
         store
