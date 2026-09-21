@@ -11,6 +11,7 @@
 - [Getting around](navigation.md)
 - [Payees](payees.md)
 - [Tags](tags.md)
+- [Transactions](transactions.md)
 - [Tracing (Logging)](tracing.md)
 - [Units](units.md)
 
@@ -20,6 +21,8 @@
 
 ## Code Structure
 
+- [Accounts](development/accounts.md)
 - [File Structure](directories-files.md)
 - [Localisation Design](localisation-design.md)
 - [Navigation and keyboard grammar: design](navigation-design.md)
+- [Transactions](development/transactions.md)
