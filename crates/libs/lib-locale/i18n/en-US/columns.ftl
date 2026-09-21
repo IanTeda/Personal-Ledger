@@ -2,12 +2,14 @@
 ## heading needs it.
 
 column-account = Account
+column-actions = Actions
 column-amount = Amount
 column-balance = Balance
 column-category = Category
 column-code = Code
 column-colour = Color
 column-date = Date
+column-institution = Institution
 column-from = From
 column-name = Name
 column-payee = Payee

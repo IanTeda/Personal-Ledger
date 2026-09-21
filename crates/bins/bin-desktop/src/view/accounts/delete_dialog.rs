@@ -28,7 +28,7 @@ pub fn render(
         .flex()
         .flex_col()
         .child(dialog::header(
-            format!("Delete account \u{2014} {}", account.name),
+            crate::msg::desktop_accounts_delete_title(&account.name),
             true,
         ))
         .child(dialog::body([
@@ -47,7 +47,7 @@ pub fn render(
             dialog::cancel_button("delete-account-cancel", on_cancel).into_any_element(),
             dialog::confirm_button(
                 "delete-account-confirm",
-                "Delete account",
+                crate::msg::desktop_accounts_delete_submit(),
                 form.matches(&account.name),
                 true,
                 on_confirm,
@@ -56,14 +56,6 @@ pub fn render(
         ]));
 
     dialog::overlay(WIDTH, true, card)
-}
-
-/// `1 transaction` / `204 transactions`.
-fn transactions_text(count: u32) -> String {
-    match count {
-        1 => "1 transaction".to_string(),
-        count => format!("{count} transactions"),
-    }
 }
 
 /// `-2,318.44 aud`, the balance in the account's own Unit.
@@ -77,39 +69,33 @@ fn balance_text(account: &Account) -> String {
 
 /// `204 transactions will be permanently deleted · referenced in 2 budgets`.
 fn reference_notice(account: &Account) -> String {
-    let budgets = match account.budget_count {
-        0 => "not referenced by any budget".to_string(),
-        1 => "referenced in 1 budget".to_string(),
-        count => format!("referenced in {count} budgets"),
-    };
-    format!(
-        "{} will be permanently deleted \u{b7} {budgets}",
-        transactions_text(account.transaction_count)
+    crate::msg::desktop_accounts_delete_reference(
+        i64::from(account.transaction_count),
+        i64::from(account.budget_count),
     )
 }
 
 /// `This account has a balance of **−2,318.44 aud** and **204 transactions**. Deleting it cannot
 /// be undone.` -- the two figures bold, as in the mockup.
 fn warning_copy(account: &Account) -> AnyElement {
-    let bold = |text: String| {
-        div()
-            .font_weight(gpui::FontWeight::EXTRA_BOLD)
-            .child(text)
-            .into_any_element()
-    };
     div()
         .flex()
         .flex_wrap()
-        .gap(px(4.0))
         .text_size(px(13.0))
-        .child("This account has a balance of")
-        .child(bold(balance_text(account)))
-        .child("and")
-        .child(bold(format!(
-            "{}.",
-            transactions_text(account.transaction_count)
-        )))
-        .child("Deleting it cannot be undone.")
+        .children(
+            crate::msg::desktop_accounts_delete_warning(
+                &balance_text(account),
+                i64::from(account.transaction_count),
+            )
+            .into_iter()
+            .map(|segment| match segment.tag.as_deref() {
+                Some("strong") => div()
+                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    .child(segment.text)
+                    .into_any_element(),
+                _ => div().child(segment.text).into_any_element(),
+            }),
+        )
         .into_any_element()
 }
 
@@ -118,7 +104,7 @@ fn confirm_label(name: &str) -> AnyElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(12.0))
         .mb(px(6.0))
-        .child(format!("Type {name} to confirm"))
+        .child(crate::msg::desktop_accounts_delete_confirm_label(name))
         .into_any_element()
 }
 
@@ -135,6 +121,7 @@ mod tests {
 
     #[test]
     fn the_reference_notice_names_the_transactions_and_budgets() {
+        crate::locale::init_for_tests();
         assert_eq!(
             reference_notice(&seeded("Amex Platinum")),
             "204 transactions will be permanently deleted \u{b7} referenced in 2 budgets"
@@ -143,6 +130,7 @@ mod tests {
 
     #[test]
     fn the_reference_notice_handles_singular_and_none() {
+        crate::locale::init_for_tests();
         let mut account = seeded("Amex Platinum");
         account.transaction_count = 1;
         account.budget_count = 1;
@@ -161,5 +149,34 @@ mod tests {
             "\u{2212}2,318.44 aud"
         );
         assert_eq!(balance_text(&seeded("Bitcoin")), "0.4120 btc");
+    }
+
+    #[test]
+    fn the_warning_emphasises_the_balance_and_the_transaction_count() {
+        crate::locale::init_for_tests();
+        let strong: Vec<String> = crate::msg::desktop_accounts_delete_warning("1.00 aud", 3)
+            .into_iter()
+            .filter(|segment| segment.tag.as_deref() == Some("strong"))
+            .map(|segment| segment.text)
+            .collect();
+        assert_eq!(
+            strong,
+            vec!["1.00 aud".to_string(), "3 transactions.".to_string()]
+        );
+    }
+
+    #[test]
+    fn the_accounts_messages_render_in_the_pseudo_locale() {
+        crate::locale::init_for_tests();
+        lib_locale::with_locale(lib_locale::Locale::EnXa, || {
+            let account = seeded("Amex Platinum");
+            assert!(reference_notice(&account).starts_with('['));
+            assert!(crate::msg::desktop_accounts_delete_title("x").starts_with('['));
+            assert!(
+                crate::msg::desktop_accounts_delete_warning("1", 2)
+                    .iter()
+                    .any(|segment| segment.tag.as_deref() == Some("strong"))
+            );
+        });
     }
 }

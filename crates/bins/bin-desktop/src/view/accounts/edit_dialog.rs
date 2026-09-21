@@ -8,6 +8,7 @@
 //! recorded on the Desktop Accounts map). Institution reads as the placeholder while Type is
 //! Cash, as in Add.
 
+use chrono::Datelike;
 use gpui::{AnyElement, SharedString, div, prelude::*, px};
 
 use super::{
@@ -51,20 +52,23 @@ pub fn render(
     let card = div()
         .flex()
         .flex_col()
-        .child(dialog::header("Edit account", false))
+        .child(dialog::header(
+            crate::msg::desktop_accounts_edit_title(),
+            false,
+        ))
         .child(dialog::body([
             text_field(
                 "edit-account-name",
-                label("Name"),
+                label(lib_locale::msg::column_name()),
                 &form.name,
-                "e.g. Everyday Account",
+                &crate::msg::desktop_accounts_name_placeholder(),
                 focused(AccountField::Name),
                 click(AccountField::Name),
             ),
             two_up([
                 select_field::render(SelectFieldProps {
                     id: "edit-account-institution",
-                    label: "Institution".into(),
+                    label: lib_locale::msg::column_institution().into(),
                     options: &options.institutions,
                     state: &form.institution,
                     focused: focused(AccountField::Institution),
@@ -74,7 +78,7 @@ pub fn render(
                 }),
                 select_field::render(SelectFieldProps {
                     id: "edit-account-type",
-                    label: "Type".into(),
+                    label: lib_locale::msg::column_type().into(),
                     options: &options.types,
                     state: &form.account_type,
                     focused: focused(AccountField::Type),
@@ -86,18 +90,24 @@ pub fn render(
             two_up([
                 read_only_field(
                     "edit-account-unit",
-                    suffixed_label("Unit", "(fixed)"),
+                    suffixed_label(
+                        lib_locale::msg::column_unit(),
+                        crate::msg::desktop_field_fixed(),
+                    ),
                     account.unit.clone(),
                 ),
                 read_only_field(
                     "edit-account-balance",
-                    suffixed_label("Opening balance", "(fixed)"),
+                    suffixed_label(
+                        crate::msg::desktop_accounts_field_opening_balance(),
+                        crate::msg::desktop_field_fixed(),
+                    ),
                     crate::format::amount(&account.balance).1,
                 ),
             ]),
             text_field(
                 "edit-account-number",
-                add_dialog::suffixed_label("Account number", "(optional)"),
+                add_dialog::optional_label(crate::msg::desktop_accounts_field_number()),
                 &form.account_number,
                 "\u{2022}\u{2022}\u{2022}\u{2022} \u{2022}\u{2022}\u{2022}\u{2022} 1234",
                 focused(AccountField::AccountNumber),
@@ -109,7 +119,7 @@ pub fn render(
             dialog::cancel_button("edit-account-cancel", on_cancel).into_any_element(),
             dialog::confirm_button(
                 "edit-account-confirm",
-                "Save",
+                crate::msg::desktop_accounts_edit_submit(),
                 form.is_valid(),
                 false,
                 on_confirm,
@@ -123,16 +133,9 @@ pub fn render(
 /// `Opened Mar 2019 · 312 transactions. Renaming is safe. ...` -- the usage notice, with the
 /// reason Unit and Opening balance can't be edited. Counts are the stub figures on the account.
 fn usage_notice(account: &Account) -> String {
-    let count = account.transaction_count;
-    let noun = if count == 1 {
-        "transaction"
-    } else {
-        "transactions"
-    };
-    format!(
-        "Opened {} \u{b7} {count} {noun}. Renaming is safe. Unit and opening balance are fixed \
-         once an account exists.",
-        account.opened_at.format("%b %Y"),
+    crate::msg::desktop_accounts_edit_usage_notice(
+        &lib_locale::format::format_year_month(account.opened_at.year(), account.opened_at.month()),
+        i64::from(account.transaction_count),
     )
 }
 
@@ -165,6 +168,7 @@ mod tests {
 
     #[test]
     fn usage_notice_names_the_month_the_count_and_the_reason() {
+        crate::locale::init_for_tests();
         let mut account = accounts::default_accounts()
             .into_iter()
             .find(|a| a.name == "ANZ Everyday")

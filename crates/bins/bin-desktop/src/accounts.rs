@@ -8,6 +8,7 @@
 
 use chrono::NaiveDate;
 use lib_core::{AccountType, Money};
+use lib_locale::Label;
 
 use crate::select::SelectState;
 
@@ -26,17 +27,6 @@ pub const GROUP_ORDER: [AccountType; 5] = [
     AccountType::Loan,
     AccountType::Investment,
 ];
-
-/// The group heading and Type control label for `account_type`.
-pub fn type_label(account_type: &AccountType) -> &'static str {
-    match account_type {
-        AccountType::Cash => "Cash",
-        AccountType::Bank => "Bank",
-        AccountType::CreditCard => "Credit card",
-        AccountType::Loan => "Loan",
-        AccountType::Investment => "Investment",
-    }
-}
 
 /// One row of the Accounts page. `institution` and `unit` are the Institution's name and the
 /// Unit's code -- the same value keys the select control stores (issue: select control for the
@@ -203,10 +193,7 @@ impl AccountOptions {
     pub fn new(institutions: Vec<String>, units: Vec<String>) -> Self {
         Self {
             institutions,
-            types: GROUP_ORDER
-                .iter()
-                .map(|account_type| type_label(account_type).to_string())
-                .collect(),
+            types: GROUP_ORDER.iter().map(Label::label).collect(),
             units,
         }
     }
@@ -231,11 +218,11 @@ pub enum SelectKey {
     Activate,
 }
 
-/// The type a [`type_label`] names.
+/// The type a [`Label::label`] names in the Locale in effect.
 pub fn account_type_from_label(label: &str) -> Option<AccountType> {
     GROUP_ORDER
         .iter()
-        .find(|account_type| type_label(account_type) == label)
+        .find(|account_type| account_type.label() == label)
         .cloned()
 }
 
@@ -273,7 +260,7 @@ impl AccountForm {
         Self {
             name: String::new(),
             institution: SelectState::new(options.institutions.first().cloned()),
-            account_type: SelectState::new(Some(type_label(&AccountType::Bank).to_string())),
+            account_type: SelectState::new(Some(AccountType::Bank.label())),
             unit: SelectState::new(unit),
             opening_balance: String::new(),
             account_number: String::new(),
@@ -294,7 +281,7 @@ impl AccountForm {
         Self {
             name: account.name.clone(),
             institution: SelectState::new(institution),
-            account_type: SelectState::new(Some(type_label(&account.account_type).to_string())),
+            account_type: SelectState::new(Some(account.account_type.label())),
             unit: SelectState::new(Some(account.unit.clone())),
             opening_balance: String::new(),
             account_number: account.account_number.clone().unwrap_or_default(),
@@ -575,16 +562,13 @@ pub fn net_worth(accounts: &[Account], base_unit: Option<&str>) -> NetWorth {
 impl NetWorth {
     /// `"7 accounts"`, or `"1 account"`.
     pub fn count_text(&self) -> String {
-        match self.account_count {
-            1 => "1 account".to_string(),
-            count => format!("{count} accounts"),
-        }
+        crate::msg::desktop_accounts_count(i64::try_from(self.account_count).unwrap_or(i64::MAX))
     }
 
     /// `"vas, btc held separately"`, or `None` when every account is in the base Unit.
     pub fn held_separately_text(&self) -> Option<String> {
         (!self.held_separately.is_empty())
-            .then(|| format!("{} held separately", self.held_separately.join(", ")))
+            .then(|| crate::msg::desktop_accounts_held_separately(&self.held_separately.join(", ")))
     }
 }
 
@@ -777,7 +761,7 @@ mod tests {
 
     #[test]
     fn group_order_puts_loan_before_investment() {
-        let labels: Vec<_> = GROUP_ORDER.iter().map(type_label).collect();
+        let labels: Vec<_> = GROUP_ORDER.iter().map(Label::label).collect();
         assert_eq!(
             labels,
             vec!["Cash", "Bank", "Credit card", "Loan", "Investment"]
@@ -902,6 +886,7 @@ mod tests {
 
     #[test]
     fn net_worth_sums_base_unit_only_and_names_the_rest() {
+        crate::locale::init_for_tests();
         let net = net_worth(&default_accounts(), Some("aud"));
         assert_eq!(net.account_count, 7);
         assert_eq!(net.base_net, money("83995.87"));
@@ -937,6 +922,7 @@ mod tests {
 
     #[test]
     fn net_worth_count_text_is_singular_for_one_account() {
+        crate::locale::init_for_tests();
         let net = net_worth(&[account(1, "Only", AccountType::Cash)], Some("aud"));
         assert_eq!(net.count_text(), "1 account");
         assert_eq!(net.held_separately_text(), None);

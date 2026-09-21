@@ -49,20 +49,23 @@ pub fn render(
     let card = div()
         .flex()
         .flex_col()
-        .child(dialog::header("Add account", false))
+        .child(dialog::header(
+            crate::msg::desktop_accounts_add_title(),
+            false,
+        ))
         .child(dialog::body([
             text_field(
                 "add-account-name",
-                label("Name"),
+                label(lib_locale::msg::column_name()),
                 &form.name,
-                "e.g. Everyday Account",
+                &crate::msg::desktop_accounts_name_placeholder(),
                 focused(AccountField::Name),
                 click(AccountField::Name),
             ),
             two_up([
                 select_field::render(SelectFieldProps {
                     id: "add-account-institution",
-                    label: "Institution".into(),
+                    label: lib_locale::msg::column_institution().into(),
                     options: &options.institutions,
                     state: &form.institution,
                     focused: focused(AccountField::Institution),
@@ -72,7 +75,7 @@ pub fn render(
                 }),
                 select_field::render(SelectFieldProps {
                     id: "add-account-type",
-                    label: "Type".into(),
+                    label: lib_locale::msg::column_type().into(),
                     options: &options.types,
                     state: &form.account_type,
                     focused: focused(AccountField::Type),
@@ -84,7 +87,7 @@ pub fn render(
             two_up([
                 select_field::render(SelectFieldProps {
                     id: "add-account-unit",
-                    label: "Unit".into(),
+                    label: lib_locale::msg::column_unit().into(),
                     options: &options.units,
                     state: &form.unit,
                     focused: focused(AccountField::Unit),
@@ -97,7 +100,7 @@ pub fn render(
                     .min_w(px(0.0))
                     .child(text_field(
                         "add-account-balance",
-                        label("Opening balance"),
+                        label(crate::msg::desktop_accounts_field_opening_balance()),
                         &form.opening_balance,
                         "0.00",
                         focused(AccountField::OpeningBalance),
@@ -107,7 +110,7 @@ pub fn render(
             ]),
             text_field(
                 "add-account-number",
-                optional_label("Account number"),
+                optional_label(crate::msg::desktop_accounts_field_number()),
                 &form.account_number,
                 "\u{2022}\u{2022}\u{2022}\u{2022} \u{2022}\u{2022}\u{2022}\u{2022} 1234",
                 focused(AccountField::AccountNumber),
@@ -118,7 +121,7 @@ pub fn render(
             dialog::cancel_button("add-account-cancel", on_cancel).into_any_element(),
             dialog::confirm_button(
                 "add-account-confirm",
-                "Add account",
+                crate::msg::desktop_accounts_add_submit(),
                 form.is_valid(),
                 false,
                 on_confirm,
@@ -140,34 +143,37 @@ pub(crate) fn two_up(fields: [AnyElement; 2]) -> AnyElement {
 }
 
 /// A field label: `font-weight:800; font-size:12px; margin-bottom:6px`.
-pub(crate) fn label(text: &'static str) -> AnyElement {
+pub(crate) fn label(text: impl Into<SharedString>) -> AnyElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(12.0))
         .mb(px(6.0))
-        .child(text)
+        .child(text.into())
         .into_any_element()
 }
 
 /// A label suffixed `(optional)` in the tertiary ink.
-fn optional_label(text: &'static str) -> AnyElement {
-    suffixed_label(text, "(optional)")
+pub(crate) fn optional_label(text: impl Into<SharedString>) -> AnyElement {
+    suffixed_label(text, crate::msg::desktop_field_optional())
 }
 
 /// A label followed by a `suffix` in the tertiary ink, at regular weight.
-pub(crate) fn suffixed_label(text: &'static str, suffix: &'static str) -> AnyElement {
+pub(crate) fn suffixed_label(
+    text: impl Into<SharedString>,
+    suffix: impl Into<SharedString>,
+) -> AnyElement {
     div()
         .flex()
         .gap(px(4.0))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(12.0))
         .mb(px(6.0))
-        .child(text)
+        .child(text.into())
         .child(
             div()
                 .font_weight(gpui::FontWeight::NORMAL)
                 .text_color(color::INK_TERTIARY)
-                .child(suffix),
+                .child(suffix.into()),
         )
         .into_any_element()
 }

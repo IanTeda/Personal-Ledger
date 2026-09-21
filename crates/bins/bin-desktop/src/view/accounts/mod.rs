@@ -20,8 +20,11 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*, px};
 
+use lib_locale::{Label, format::upper};
+
 use crate::{
     accounts::{self, Account},
+    nav::Noun,
     settings::UnitRow,
     theme::color,
 };
@@ -85,7 +88,7 @@ pub fn render(
             this.child(
                 div()
                     .text_color(color::INK_SECONDARY)
-                    .child("No accounts yet. Press n to add one."),
+                    .child(crate::msg::desktop_accounts_empty("n")),
             )
         })
         .into_any_element()
@@ -107,7 +110,7 @@ fn page_header(props: &AccountsPageProps<'_>) -> impl IntoElement {
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(28.0))
                         .text_color(color::INK)
-                        .child("Accounts"),
+                        .child(Noun::Accounts.label()),
                 )
                 .child(summary_line(props)),
         )
@@ -127,7 +130,7 @@ fn summary_line(props: &AccountsPageProps<'_>) -> impl IntoElement {
         .text_color(color::INK_TERTIARY);
 
     if props.accounts.is_empty() {
-        return line.child("no accounts yet");
+        return line.child(crate::msg::desktop_accounts_summary_empty());
     }
 
     let base_unit = props
@@ -140,16 +143,21 @@ fn summary_line(props: &AccountsPageProps<'_>) -> impl IntoElement {
     let mut line = line.child(net.count_text());
     if let Some(base) = &net.base_unit {
         let (negative, figure) = crate::format::amount(&net.base_net);
-        line = line.child("\u{b7} net worth").child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_color(if negative {
-                    color::ACCENT_TEXT
-                } else {
-                    color::INK
-                })
-                .child(format!("{figure} {base}")),
-        );
+        line = line
+            .child(format!(
+                "\u{b7} {}",
+                crate::msg::desktop_accounts_net_worth()
+            ))
+            .child(
+                div()
+                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    .text_color(if negative {
+                        color::ACCENT_TEXT
+                    } else {
+                        color::INK
+                    })
+                    .child(format!("{figure} {base}")),
+            );
     }
     if let Some(held) = net.held_separately_text() {
         line = line.child(format!("\u{b7} {held}"));
@@ -173,7 +181,7 @@ fn add_button(on_click: OnAddClick) -> impl IntoElement {
         // button lightens one step within the palette.
         .hover(|style| style.bg(color::INK_SECONDARY))
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child("+ Add account")
+        .child(crate::msg::desktop_accounts_add_button("+"))
 }
 
 /// The NAME column's floor: without one, the fixed columns beside it can squeeze it to nothing in
@@ -199,7 +207,7 @@ fn group_block(
                 .mb(px(14.0))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(16.0))
-                .child(accounts::type_label(&group.account_type)),
+                .child(group.account_type.label()),
         )
         .child(
             div()
@@ -241,20 +249,33 @@ fn table_header() -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .text_color(color::INK_SECONDARY)
-        .child(div().flex_1().min_w(NAME_MIN_WIDTH).child("NAME"))
-        .child(div().w(INSTITUTION_WIDTH).child("INSTITUTION"))
-        .child(div().w(UNIT_WIDTH).child("UNIT"))
+        .child(
+            div()
+                .flex_1()
+                .min_w(NAME_MIN_WIDTH)
+                .child(upper(&lib_locale::msg::column_name())),
+        )
+        .child(
+            div()
+                .w(INSTITUTION_WIDTH)
+                .child(upper(&lib_locale::msg::column_institution())),
+        )
+        .child(
+            div()
+                .w(UNIT_WIDTH)
+                .child(upper(&lib_locale::msg::column_unit())),
+        )
         .child(
             div()
                 .w(BALANCE_WIDTH)
                 .text_align(gpui::TextAlign::Right)
-                .child("BALANCE"),
+                .child(upper(&lib_locale::msg::column_balance())),
         )
         .child(
             div()
                 .w(ACTIONS_WIDTH)
                 .text_align(gpui::TextAlign::Right)
-                .child("ACTIONS"),
+                .child(upper(&lib_locale::msg::column_actions())),
         )
 }
 
@@ -347,12 +368,12 @@ fn row(
                 .gap(px(10.0))
                 .child(row_action_button(
                     SharedString::from(format!("accounts-edit-{id}")),
-                    "edit",
+                    crate::msg::desktop_accounts_row_edit(),
                     Rc::new(move |window: &mut Window, cx: &mut App| on_edit_click(id, window, cx)),
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("accounts-delete-{id}")),
-                    "delete",
+                    crate::msg::desktop_accounts_row_delete(),
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_delete_click(id, window, cx)
                     }),
@@ -363,11 +384,7 @@ fn row(
 /// `padding:4px 10px; font-size:11px; border:1px solid rgba(32,30,29,.30); background:transparent`.
 /// Stops the click reaching the row's own handler, which would otherwise also flash the ledger
 /// stub.
-fn row_action_button(
-    id: SharedString,
-    label: &'static str,
-    on_click: OnPlainClick,
-) -> impl IntoElement {
+fn row_action_button(id: SharedString, label: String, on_click: OnPlainClick) -> impl IntoElement {
     div()
         .id(id)
         .cursor_pointer()

@@ -46,13 +46,6 @@ desktop-status-no-accounts = { $command } — no accounts
 desktop-status-no-account-named = { $command } — no account named "{ $name }"
 desktop-status-account-ambiguous = { $command } — "{ $name }" matches { $matches }
 
-## The Accounts page's status line, right-aligned.
-
-desktop-status-accounts-count = { $count ->
-    [one] { $count } account
-   *[other] { $count } accounts
-}
-
 ## The top bar. `$time` is the time of the last sync.
 
 desktop-topbar-synced = synced { $time }

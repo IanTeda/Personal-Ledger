@@ -2682,7 +2682,7 @@ impl Render for Shell {
         let page_status = match self.nav.noun() {
             Noun::Accounts => Some(PageStatus {
                 hints: accounts_hints(),
-                right: crate::msg::desktop_status_accounts_count(
+                right: crate::msg::desktop_accounts_count(
                     i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
                 ),
             }),
@@ -3137,9 +3137,9 @@ mod tests {
     #[test]
     fn the_accounts_count_is_a_plural_selector() {
         crate::locale::init_for_tests();
-        assert_eq!(crate::msg::desktop_status_accounts_count(1), "1 account");
-        assert_eq!(crate::msg::desktop_status_accounts_count(0), "0 accounts");
-        assert_eq!(crate::msg::desktop_status_accounts_count(7), "7 accounts");
+        assert_eq!(crate::msg::desktop_accounts_count(1), "1 account");
+        assert_eq!(crate::msg::desktop_accounts_count(0), "0 accounts");
+        assert_eq!(crate::msg::desktop_accounts_count(7), "7 accounts");
     }
 
     #[test]
