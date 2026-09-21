@@ -24,8 +24,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::account::AccountStore;
-use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::{account::AccountStore, msg, popup::REFERENCE_TERMINAL_WIDTH};
 
 const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
@@ -216,7 +215,7 @@ impl EditAccountPopup {
         render_text_field(
             frame,
             rows[2],
-            "name",
+            &msg::tui_account_edit_field_name(),
             &self.name,
             self.focus == Field::Name,
         );
@@ -229,17 +228,17 @@ impl EditAccountPopup {
         render_active_field(frame, rows[4], self.active, self.focus == Field::Active);
         // rows[5] is left blank — breathing space above the read-only section.
 
-        render_section_heading(frame, rows[6], "fixed at creation", Some("FR.13"));
+        render_section_heading(frame, rows[6], &msg::tui_account_edit_note_unit_fixed(), Some("FR.13"));
         render_field(
             frame,
             rows[7],
-            "unit",
+            &msg::tui_account_edit_field_unit(),
             Line::from(account.unit.code.clone()),
         );
         render_field(
             frame,
             rows[8],
-            "starting bal",
+            &msg::tui_account_edit_field_opening_balance(),
             Line::from(format_money_at(
                 &account.starting_balance,
                 account.unit.decimal_places,
@@ -247,12 +246,12 @@ impl EditAccountPopup {
         );
         // rows[9] is left blank — breathing space above the computed section.
 
-        render_section_heading(frame, rows[10], "computed", None);
+        render_section_heading(frame, rows[10], &msg::tui_account_edit_heading_computed(), None);
         let balance = store.balance(account.id);
         render_field(
             frame,
             rows[11],
-            "balance now",
+            &msg::tui_account_edit_field_balance_now(),
             Line::from(Span::styled(
                 format!(
                     "{} · not stored",
@@ -269,13 +268,13 @@ impl EditAccountPopup {
         render_field(
             frame,
             rows[12],
-            "transactions",
+            &msg::tui_account_edit_field_transactions(),
             Line::from(Span::styled(transactions_text, dim())),
         );
         render_field(
             frame,
             rows[13],
-            "created",
+            &msg::tui_account_edit_field_created(),
             Line::from(Span::styled(
                 format!(
                     "{} · upd {}",
@@ -328,7 +327,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new("edit account"), columns[0]);
+    frame.render_widget(Paragraph::new(msg::tui_account_edit_title()), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
         columns[1],
@@ -394,7 +393,7 @@ fn render_type_field(frame: &mut Frame, area: Rect, selected: AccountType, focus
         }
     }
 
-    render_field(frame, area, "type", Line::from(spans));
+    render_field(frame, area, &msg::tui_account_edit_field_type(), Line::from(spans));
 }
 
 fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: bool) {
@@ -407,7 +406,7 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
     render_field(
         frame,
         area,
-        "active",
+        &msg::tui_account_edit_field_active(),
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
@@ -417,24 +416,24 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    const HINTS: &[(&str, &str)] = &[
-        ("tab", "next field"),
-        ("^s", "save"),
-        ("^a", "deactivate"),
-        ("^d", "delete"),
-        ("esc", "cancel"),
+    let hints = vec![
+        ("tab", msg::tui_account_edit_help_tab()),
+        ("^s", msg::tui_account_edit_help_save()),
+        ("^a", msg::tui_account_edit_help_deactivate()),
+        ("^d", msg::tui_account_edit_help_delete()),
+        ("esc", msg::tui_account_edit_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = dim();
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (index, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 3);
+    for (index, (key, label)) in hints.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(*key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label.as_str(), label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }

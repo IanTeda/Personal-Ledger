@@ -24,7 +24,7 @@ use ratatui::{
 };
 
 use crate::account::{AccountStore, AccountUnit, known_units};
-use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::{msg, popup::REFERENCE_TERMINAL_WIDTH};
 
 const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
@@ -258,7 +258,7 @@ impl NewAccountPopup {
         render_text_field(
             frame,
             rows[2],
-            "name",
+            &msg::tui_account_new_field_name(),
             &self.name,
             self.focus == Field::Name,
         );
@@ -271,7 +271,7 @@ impl NewAccountPopup {
         render_text_field(
             frame,
             rows[4],
-            "unit",
+            &msg::tui_account_new_field_unit(),
             &self.unit_input,
             self.focus == Field::Unit,
         );
@@ -279,14 +279,14 @@ impl NewAccountPopup {
         render_text_field(
             frame,
             rows[6],
-            "starting bal",
+            &msg::tui_account_new_field_starting_balance(),
             &self.starting_balance_input,
             self.focus == Field::StartingBalance,
         );
         render_active_field(frame, rows[7], self.active, self.focus == Field::Active);
         // rows[8] is left blank — breathing space above the note.
-        render_note(frame, rows[9], "unit cannot change afterwards — to hold a");
-        render_note(frame, rows[10], "second unit, make a second account");
+        render_note(frame, rows[9], msg::tui_account_new_note_unit_1());
+        render_note(frame, rows[10], msg::tui_account_new_note_unit_2());
         // rows[11] is left blank — breathing space above the footer rule.
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[12]);
         render_footer_hints(frame, rows[13]);
@@ -313,7 +313,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new("new account"), columns[0]);
+    frame.render_widget(Paragraph::new(msg::tui_account_new_title()), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
         columns[1],
@@ -365,7 +365,7 @@ fn render_type_field(frame: &mut Frame, area: Rect, selected: AccountType, focus
     spans.push(Span::raw(" "));
     spans.push(Span::styled("· h/l", dim()));
 
-    render_field(frame, area, "type", Line::from(spans));
+    render_field(frame, area, &msg::tui_account_new_field_type(), Line::from(spans));
 }
 
 /// The `active` checkbox row: the glyph in the accent when focused, the "offered when
@@ -380,7 +380,7 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
     render_field(
         frame,
         area,
-        "active",
+        &msg::tui_account_new_field_active(),
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
@@ -398,40 +398,40 @@ fn render_completion_row(frame: &mut Frame, area: Rect, store: &dyn AccountStore
         .map(|unit| unit.code)
         .collect();
     let text = if candidates.is_empty() {
-        "no matches · tab".to_string()
+        msg::tui_account_new_error_no_matches()
     } else {
         format!("{}  · tab", candidates.join(" · "))
     };
     render_field(
         frame,
         area,
-        "completion",
+        &msg::tui_account_new_placeholder_completion(),
         Line::from(Span::styled(text, dim())),
     );
 }
 
-fn render_note(frame: &mut Frame, area: Rect, text: &'static str) {
+fn render_note(frame: &mut Frame, area: Rect, text: String) {
     frame.render_widget(Paragraph::new(Span::styled(text, dim())), area);
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    const HINTS: &[(&str, &str)] = &[
-        ("tab", "next field"),
-        ("^s", "create"),
-        ("^a", "create & add another"),
-        ("esc", "cancel"),
+    let hints = vec![
+        ("tab", msg::tui_account_new_help_tab()),
+        ("^s", msg::tui_account_new_help_create()),
+        ("^a", msg::tui_account_new_help_create_and_add()),
+        ("esc", msg::tui_account_new_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = dim();
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (index, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 3);
+    for (index, (key, label)) in hints.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(*key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label.as_str(), label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }

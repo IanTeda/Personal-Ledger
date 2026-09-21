@@ -53,7 +53,7 @@ impl Tui {
     /// same control code as some other key (e.g. `Ctrl+;` and `Esc` are both `0x1B`) on a
     /// terminal that doesn't speak the enhanced protocol at all (a plain `xterm`, most Linux
     /// VTs, some multiplexer configurations). The command popup's own default
-    /// `open_command_popup` binding is a bare `:` now (`docs/navigation.md`, converged onto
+    /// `open_command_popup` binding is a bare `:` now (`docs/navigation-design.md`, converged onto
     /// from the old default `Ctrl+;` by "Wire `KeyBindingConfig` into `bin-tui`'s Shell/View
     /// global key handling", issue #160), so it no longer needs this -- but `quit`'s hardcoded
     /// `Ctrl+C` still benefits, and so would any user-remapped `Ctrl+<key>` binding via

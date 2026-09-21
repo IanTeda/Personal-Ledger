@@ -897,7 +897,10 @@ fn render_chart_heading(frame: &mut Frame, area: Rect) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled("BALANCE", dim)), columns[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_balance(), dim)),
+        columns[0],
+    );
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -1000,7 +1003,10 @@ fn render_ledger_heading(frame: &mut Frame, area: Rect, shown: usize, total: usi
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled("LEDGER", dim)), columns[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_ledger(), dim)),
+        columns[0],
+    );
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -1010,14 +1016,14 @@ fn render_ledger_heading(frame: &mut Frame, area: Rect, shown: usize, total: usi
 fn render_ledger_column_header(frame: &mut Frame, area: Rect) {
     let (_, date, payee, amount, balance) = ledger_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled("DATE", dim)), date);
-    frame.render_widget(Paragraph::new(Span::styled("PAYEE", dim)), payee);
+    frame.render_widget(Paragraph::new(Span::styled(crate::msg::tui_accounts_column_date(), dim)), date);
+    frame.render_widget(Paragraph::new(Span::styled(crate::msg::tui_accounts_column_payee(), dim)), payee);
     frame.render_widget(
-        Paragraph::new(Span::styled("AMOUNT", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_amount(), dim)).alignment(Alignment::Right),
         amount,
     );
     frame.render_widget(
-        Paragraph::new(Span::styled("BALANCE", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_balance(), dim)).alignment(Alignment::Right),
         balance,
     );
 }

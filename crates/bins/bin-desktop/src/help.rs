@@ -1,6 +1,6 @@
 //! The content of the `?` help overlay -- `gpui`-free, so what it lists is unit-tested without a
 //! window. An About-style card: project facts on the left, the shortcut cheat-sheet on the right
-//! (the shared grammar lives in `docs/navigation.md`).
+//! (the shared grammar lives in `docs/navigation-design.md`).
 
 use crate::key_router::JUMPS;
 

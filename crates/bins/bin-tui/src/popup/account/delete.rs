@@ -32,8 +32,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::account::{Account, AccountStore};
-use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::{account::{Account, AccountStore}, msg, popup::REFERENCE_TERMINAL_WIDTH};
 
 const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
@@ -224,7 +223,7 @@ impl DeleteAccountPopup {
 
         let balance = store.balance(self.deleting_id);
         rows.push(field_row(
-            "holds",
+            msg::tui_account_delete_field_holds(),
             Line::from(format!(
                 "{} txns · {} {}",
                 account.transaction_count,
@@ -246,7 +245,7 @@ impl DeleteAccountPopup {
         if self.needs_transfer {
             rows.push(blank_row());
             rows.push(field_row(
-                "transactions",
+                msg::tui_account_delete_field_transactions(),
                 Line::from(vec![
                     Span::raw("( ) delete them too · "),
                     Span::styled("refused", Style::default().fg(ACCENT)),
@@ -256,13 +255,13 @@ impl DeleteAccountPopup {
                 "(•) move to another account",
             )));
             rows.push(field_row(
-                "move to",
+                msg::tui_account_delete_field_move_to(),
                 text_field_value(&self.target_input, self.focus == Field::MoveTo),
             ));
             let total = store.accounts().len();
             let candidates = store.transfer_candidates(self.deleting_id);
             rows.push(field_row(
-                "candidates",
+                msg::tui_account_delete_field_candidates(),
                 Line::from(Span::styled(
                     format!(
                         "{} only · {} of {total}  · tab",
@@ -279,10 +278,10 @@ impl DeleteAccountPopup {
                     let target_balance = store.balance(target.id);
                     let new_balance =
                         Money(target_balance.0.clone() + account.transactions_sum.0.clone());
-                    rows.push(plain_row(Line::from("after")));
-                    rows.push(field_row("into", Line::from(target.name.clone())));
+                    rows.push(plain_row(Line::from(msg::tui_account_delete_heading_after())));
+                    rows.push(field_row(msg::tui_account_delete_field_into(), Line::from(target.name.clone())));
                     rows.push(field_row(
-                        "its balance",
+                        msg::tui_account_delete_field_balance(),
                         Line::from(format!(
                             "{} → {}",
                             format_money_at(&target_balance, target.unit.decimal_places),
@@ -290,7 +289,7 @@ impl DeleteAccountPopup {
                         )),
                     ));
                     rows.push(field_row(
-                        "moves",
+                        msg::tui_account_delete_field_moves(),
                         Line::from(Span::styled(
                             format!("{} txns · status kept", account.transaction_count),
                             dim(),
@@ -298,7 +297,7 @@ impl DeleteAccountPopup {
                     ));
                     if !account.balance_checks.is_empty() {
                         rows.push(field_row(
-                            "loses",
+                            msg::tui_account_delete_field_loses(),
                             Line::from(Span::styled(
                                 format!(
                                     "{} balance checks · they assert a",
@@ -326,7 +325,7 @@ impl DeleteAccountPopup {
         }
 
         rows.push(field_row(
-            "confirm",
+            msg::tui_account_delete_field_confirm(),
             text_field_value(&self.confirm_input, self.focus == Field::Confirm),
         ));
         rows.push(plain_row(Line::from(Span::styled(
@@ -353,14 +352,14 @@ fn text_field_value(value: &str, focused: bool) -> Line<'static> {
     Line::from(spans)
 }
 
-fn field_row<'a>(label: &'static str, value: Line<'a>) -> RowRenderer<'a> {
+fn field_row<'a>(label: String, value: Line<'a>) -> RowRenderer<'a> {
     let value = value.clone();
     Box::new(move |frame, area| {
         let columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
             .split(area);
-        frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+        frame.render_widget(Paragraph::new(Span::styled(&label, dim())), columns[0]);
         frame.render_widget(Paragraph::new(value.clone()), columns[1]);
     })
 }
@@ -397,7 +396,7 @@ fn render_title(frame: &mut Frame, area: Rect, name: &str) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new(format!("delete {name}")), columns[0]);
+    frame.render_widget(Paragraph::new(format!("{} {name}", msg::tui_account_delete_title())), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
         columns[1],
@@ -405,23 +404,23 @@ fn render_title(frame: &mut Frame, area: Rect, name: &str) {
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    const HINTS: &[(&str, &str)] = &[
-        ("tab", "next field"),
-        ("^s", "delete"),
-        ("^a", "deactivate"),
-        ("esc", "cancel"),
+    let hints = vec![
+        ("tab", msg::tui_account_delete_help_tab()),
+        ("^s", msg::tui_account_delete_help_delete()),
+        ("^a", msg::tui_account_delete_help_deactivate()),
+        ("esc", msg::tui_account_delete_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = dim();
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (index, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 3);
+    for (index, (key, label)) in hints.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(*key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label.as_str(), label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }

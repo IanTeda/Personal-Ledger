@@ -115,13 +115,13 @@ pub struct Shell {
     /// The noun a `g`-jump chord just landed on, when that noun's view is still a bare
     /// placeholder (`budget`/`check`/`report`/`txn` today) -- `Some` replaces the footer's
     /// resting hint with `:{noun} — not yet built` (issue #96), matching the command popup's
-    /// own message for the same situation (`docs/navigation.md`'s "every command with no real
+    /// own message for the same situation (`docs/navigation-design.md`'s "every command with no real
     /// behaviour yet says so explicitly" philosophy) instead of silently opening an empty box.
     /// Cleared at the top of every subsequent keypress, mirroring `bin-desktop`'s own
     /// `status_message` -- "any keypress clears it, not just a timer".
     jump_not_yet_built: Option<&'static str>,
     /// The truly-global key set's own bindings (`quit`/`back`/`help`/open-command-popup) --
-    /// `docs/navigation.md`'s "What's actually configurable", read once at startup via
+    /// `docs/navigation-design.md`'s "What's actually configurable", read once at startup via
     /// `LedgerConfig::keybindings_config()` (`quit` isn't in this set at all -- see the
     /// doc's own "Quit" section -- so it's the only one of the four still hardcoded).
     /// Per-view/per-domain keys stay hardcoded too, out of scope for this map (#155).
@@ -206,7 +206,7 @@ impl Shell {
     /// as its chord
     /// completion (or aborts
     /// silently if it doesn't complete one); otherwise the configured `open_command_popup`
-    /// binding (`self.keybindings`, `:` by default per `docs/navigation.md`) opens the command
+    /// binding (`self.keybindings`, `:` by default per `docs/navigation-design.md`) opens the command
     /// popup, `Ctrl+U` opens the placeholder Units view directly, the configured `help`
     /// binding (`?` by default) opens the placeholder Help view, the configured `back` binding
     /// (`Esc` by default) pops the view-navigation stack ([`Action::PopView`]), `Q` (shift)
@@ -214,7 +214,7 @@ impl Shell {
     /// the leader, and anything left falls to the active view's own `handle_key` (which is how
     /// the Units view's own `n`/`e`/`d` reach [`Action::OpenNewUnitPopup`]/
     /// [`Action::OpenEditUnitPopup`]/[`Action::OpenDeleteUnitPopup`]). `quit`, unlike the other
-    /// three, is deliberately not part of `self.keybindings` at all (`docs/navigation.md`'s own
+    /// three, is deliberately not part of `self.keybindings` at all (`docs/navigation-design.md`'s own
     /// "Quit" section) — `Ctrl+C`/`Q`/`q` stay hardcoded. `Event::Resize` never reaches here —
     /// `run` intercepts it directly to clear the terminal, since that's a `Tui`-level concern
     /// with no `Action` of its own.
@@ -541,7 +541,7 @@ impl Shell {
     }
 
     /// Whether `key` matches the configured `open_command_popup` binding (bare `:` by
-    /// default, per `docs/navigation.md`) -- opens the command popup. Only consulted while it
+    /// default, per `docs/navigation-design.md`) -- opens the command popup. Only consulted while it
     /// isn't already open; while it is, [`Shell::map_command_popup_key`] routes every key to
     /// the popup's own input handling instead, deliberately *not* re-checking this binding (a
     /// bare, printable default key must still be typeable as ordinary input once the popup has

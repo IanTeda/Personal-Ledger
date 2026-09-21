@@ -31,7 +31,7 @@
 //! cancel = "x"
 //! ```
 //!
-//! `quit` is deliberately **not** one of these -- `docs/navigation.md`'s own "Quit" section
+//! `quit` is deliberately **not** one of these -- `docs/navigation-design.md`'s own "Quit" section
 //! explains why: `bin-tui` has three separate, non-configurable quit mechanisms (`Ctrl+C`
 //! hard-quit, `Q`/`q` graceful quit, the `:quit` command), and none of them read this config.
 //!
