@@ -71,6 +71,20 @@ Planned-but-not-yet-present binaries/crates mentioned in `docs/directories-files
 - Commit style: `<area>: <short description>` (e.g. `email-verification: add updated_at to model and migration`).
 - Tests: unit tests live alongside the code (`#[cfg(test)] mod tests`); integration/DB tests use `sqlx::test`; use the `fake` crate with deterministic seeds for generated test data.
 
+## Agent work on independent tickets
+
+When starting work on a GitHub ticket as an agent (especially on Wayfinder maps where tickets are independent and stand-alone):
+- Run `/clear` at the start of your session if the ticket is fully self-contained and the Wayfinder map/GitHub ticket body provides all necessary context
+- This keeps context fresh and prevents accumulated state from prior tickets from creating noise
+- Do NOT clear context if your task depends on understanding prior changes or multi-ticket coordination within the same conversation
+- After clearing, the ticket description will be your primary reference — ensure it has everything needed (acceptance criteria, file lists, specifications)
+
+Wayfinder tickets (like localization migration tickets #247-#252) typically benefit from clearing because:
+- Each ticket is independent in scope
+- All specifications are in the ticket body
+- File paths are explicit
+- Prior ticket's test output/build state is not needed
+
 ## Agent skills
 
 ### Issue tracker
