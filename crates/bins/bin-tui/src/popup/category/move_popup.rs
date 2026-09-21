@@ -26,8 +26,7 @@ use ratatui::{
 use lib_core::RowID;
 
 use super::path::{Resolution, ancestor_names, completions, resolve, tab_complete};
-use crate::category::CategoryStore;
-use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::{category::CategoryStore, msg, popup::REFERENCE_TERMINAL_WIDTH};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
 /// the input cursor and the moving node's marked landing row.
@@ -233,7 +232,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new("move"), columns[0]);
+    frame.render_widget(Paragraph::new(msg::tui_category_move_title()), columns[0]);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
@@ -256,10 +255,11 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
 /// the typed text, and a trailing accent cursor.
 fn render_new_parent_field(frame: &mut Frame, area: Rect, input: &str) {
     let cursor = Style::default().fg(ACCENT);
+    let label = format!("\u{250c} {}", msg::tui_category_move_field_target());
     render_field(
         frame,
         area,
-        "\u{250c} new parent",
+        &label,
         Line::from(vec![
             Span::raw(input.to_string()),
             Span::styled("\u{258c}", cursor),
@@ -273,14 +273,15 @@ fn render_completion_row(frame: &mut Frame, area: Rect, store: &dyn CategoryStor
     let candidates = completions(store, input);
     let dim = Style::default().add_modifier(Modifier::DIM);
     let text = if candidates.is_empty() {
-        "no matches · tab".to_string()
+        msg::tui_category_move_note_no_matches()
     } else {
         format!("{}  · tab", candidates.join(" · "))
     };
+    let label = format!("\u{2514} {}", msg::tui_category_move_note_completion());
     render_field(
         frame,
         area,
-        "\u{2514} completion",
+        &label,
         Line::from(Span::styled(text, dim)),
     );
 }
@@ -400,23 +401,23 @@ fn recomputes_text(store: &dyn CategoryStore, moving_id: RowID, resolution: &Res
 
 /// The window footer hint row — matches the handoff's own `tab` / `^n` / `^s` / `esc` key set.
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    const HINTS: &[(&str, &str)] = &[
-        ("tab", "complete parent"),
-        ("^n", "new parent"),
-        ("^s", "move"),
-        ("esc", "cancel"),
+    let hints = vec![
+        ("tab", msg::tui_category_move_help_tab()),
+        ("^n", msg::tui_category_move_help_new()),
+        ("^s", msg::tui_category_move_help_move()),
+        ("esc", msg::tui_category_move_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = Style::default().add_modifier(Modifier::DIM);
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (index, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 3);
+    for (index, (key, label)) in hints.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(*key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label.as_str(), label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }

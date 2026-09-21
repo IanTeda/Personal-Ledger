@@ -22,8 +22,7 @@ use ratatui::{
 
 use lib_core::RowID;
 
-use crate::category::CategoryStore;
-use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::{category::CategoryStore, msg, popup::REFERENCE_TERMINAL_WIDTH};
 
 const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
@@ -307,7 +306,7 @@ fn render_title(frame: &mut Frame, area: Rect, show_not_yet_built: bool) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new("edit"), columns[0]);
+    frame.render_widget(Paragraph::new(msg::tui_category_edit_title()), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
         columns[1],
@@ -341,7 +340,7 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
     render_field(
         frame,
         area,
-        "active",
+        &msg::tui_category_edit_field_active(),
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
@@ -351,24 +350,24 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    const HINTS: &[(&str, &str)] = &[
-        ("tab", "next field"),
-        ("^s", "save"),
-        ("^a", "archive"),
-        ("X", "merge"),
-        ("esc", "cancel"),
+    let hints = vec![
+        ("tab", msg::tui_category_edit_help_tab()),
+        ("^s", msg::tui_category_edit_help_save()),
+        ("^a", msg::tui_category_edit_help_deactivate()),
+        ("X", msg::tui_category_edit_help_merge()),
+        ("esc", msg::tui_category_edit_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = dim();
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (index, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 3);
+    for (index, (key, label)) in hints.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(*key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label.as_str(), label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }

@@ -21,8 +21,7 @@ use ratatui::{
 use lib_core::RowID;
 
 use super::path::{Resolution, ancestor_names, completions, resolve, tab_complete};
-use crate::category::CategoryStore;
-use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::{category::CategoryStore, msg, popup::REFERENCE_TERMINAL_WIDTH};
 
 const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
@@ -207,14 +206,14 @@ impl NewPopup {
         render_text_field(
             frame,
             rows[2],
-            "name",
+            &msg::tui_category_new_field_name(),
             &self.name,
             self.focus == Field::Name,
         );
         render_text_field(
             frame,
             rows[3],
-            "parent",
+            &msg::tui_category_new_field_parent(),
             &self.parent_input,
             self.focus == Field::Parent,
         );
@@ -227,7 +226,7 @@ impl NewPopup {
         render_field(
             frame,
             rows[5],
-            "kind",
+            &msg::tui_category_new_field_kind(),
             Line::from(Span::styled(kind_text, dim())),
         );
 
@@ -238,14 +237,14 @@ impl NewPopup {
         render_field(
             frame,
             rows[6],
-            "depth",
+            &msg::tui_category_new_field_depth(),
             Line::from(Span::styled(depth_text, dim())),
         );
 
         render_text_field(
             frame,
             rows[7],
-            "note",
+            &msg::tui_category_new_field_note(),
             &self.note,
             self.focus == Field::Note,
         );
@@ -289,7 +288,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new("new"), columns[0]);
+    frame.render_widget(Paragraph::new(msg::tui_category_new_title()), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
         columns[1],
@@ -329,7 +328,7 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
     render_field(
         frame,
         area,
-        "active",
+        &msg::tui_category_new_field_active(),
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
@@ -342,14 +341,14 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
 fn render_completion_row(frame: &mut Frame, area: Rect, store: &dyn CategoryStore, input: &str) {
     let candidates = completions(store, input);
     let text = if candidates.is_empty() {
-        "no matches · tab".to_string()
+        msg::tui_category_new_note_no_matches()
     } else {
         format!("{}  · tab", candidates.join(" · "))
     };
     render_field(
         frame,
         area,
-        "completion",
+        &msg::tui_category_new_note_completion(),
         Line::from(Span::styled(text, dim())),
     );
 }
@@ -414,23 +413,23 @@ fn preview_lines<'a>(
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    const HINTS: &[(&str, &str)] = &[
-        ("tab", "next field"),
-        ("^s", "create"),
-        ("^a", "create & add another"),
-        ("esc", "cancel"),
+    let hints = vec![
+        ("tab", msg::tui_category_new_help_tab()),
+        ("^s", msg::tui_category_new_help_create()),
+        ("^a", msg::tui_category_new_help_create_and_add()),
+        ("esc", msg::tui_category_new_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = dim();
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (index, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 3);
+    for (index, (key, label)) in hints.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(*key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label.as_str(), label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }

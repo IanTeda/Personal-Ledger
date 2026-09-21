@@ -84,6 +84,8 @@ tui-category-edit-note-no-matches = no matches · tab
 tui-category-edit-placeholder-parent = \<parent\>
 tui-category-edit-help-tab = next field
 tui-category-edit-help-save = save
+tui-category-edit-help-deactivate = deactivate
+tui-category-edit-help-merge = merge
 tui-category-edit-help-cancel = cancel
 
 ## The Move category popup.
@@ -98,7 +100,8 @@ tui-category-move-note-sibling-clash = case-insensitive sibling clash
 tui-category-move-note-completion = completion
 tui-category-move-note-no-matches = no matches · tab
 tui-category-move-placeholder-target = \<parent\>
-tui-category-move-help-tab = next field
+tui-category-move-help-tab = complete parent
+tui-category-move-help-new = new parent
 tui-category-move-help-move = move
 tui-category-move-help-cancel = cancel
 

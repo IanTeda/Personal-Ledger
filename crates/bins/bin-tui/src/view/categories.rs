@@ -1183,7 +1183,7 @@ fn format_month(date: NaiveDate) -> String {
 /// The "TRANSACTIONS N of M · newest first" heading.
 fn render_transactions_heading(frame: &mut Frame, area: Rect, shown: usize, total: u32) {
     let dim = Style::default().add_modifier(Modifier::DIM);
-    let tag = format!("{shown} of {total} · newest first");
+    let tag = msg::tui_categories_transactions_heading(&shown.to_string(), &total.to_string());
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -1192,7 +1192,7 @@ fn render_transactions_heading(frame: &mut Frame, area: Rect, shown: usize, tota
         ])
         .split(area);
     frame.render_widget(
-        Paragraph::new(Span::styled("TRANSACTIONS", dim)),
+        Paragraph::new(Span::styled(msg::tui_categories_transactions_title(), dim)),
         columns[0],
     );
     frame.render_widget(
@@ -1241,14 +1241,14 @@ fn transaction_columns(area: Rect, show_category: bool) -> (Rect, Rect, Option<R
 fn render_transactions_column_header(frame: &mut Frame, area: Rect, show_category: bool) {
     let (date, account, category, payee, amount) = transaction_columns(area, show_category);
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled("DATE", dim)), date);
-    frame.render_widget(Paragraph::new(Span::styled("ACCOUNT", dim)), account);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_categories_transactions_column_date(), dim)), date);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_categories_transactions_column_account(), dim)), account);
     if let Some(category_area) = category {
-        frame.render_widget(Paragraph::new(Span::styled("CATEGORY", dim)), category_area);
+        frame.render_widget(Paragraph::new(Span::styled(msg::tui_categories_transactions_column_category(), dim)), category_area);
     }
-    frame.render_widget(Paragraph::new(Span::styled("PAYEE", dim)), payee);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_categories_transactions_column_payee(), dim)), payee);
     frame.render_widget(
-        Paragraph::new(Span::styled("AMOUNT", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(msg::tui_categories_transactions_column_amount(), dim)).alignment(Alignment::Right),
         amount,
     );
 }
@@ -1288,7 +1288,7 @@ fn render_transaction_rows(
 /// doc), the hint is shown as-is regardless.
 fn render_transactions_footer(frame: &mut Frame, area: Rect, direct: u32, subtree: u32) {
     let dim = Style::default().add_modifier(Modifier::DIM);
-    let text = format!("{direct} direct · {subtree} in subtree  ·  enter open txn");
+    let text = msg::tui_categories_transactions_footer(&direct.to_string(), &subtree.to_string());
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
 }
 
