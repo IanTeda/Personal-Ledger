@@ -24,6 +24,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 use crate::tag::TagStore;
 
@@ -157,7 +158,7 @@ impl EditTagPopup {
         render_text_field(
             frame,
             rows[2],
-            "name",
+            &msg::tui_tag_edit_field_name(),
             &self.name,
             self.focus == Field::Name,
         );
@@ -176,7 +177,7 @@ fn dim() -> Style {
 
 /// The title row: "edit tag" flush left, the `:tag edit` command dim and right-aligned.
 fn render_title(frame: &mut Frame, area: Rect) {
-    let tag = ":tag edit";
+    let tag = msg::tui_tag_edit_command();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -184,7 +185,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new("edit tag"), columns[0]);
+    frame.render_widget(Paragraph::new(msg::tui_tag_edit_title()), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
         columns[1],
@@ -218,14 +219,15 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
         Style::default()
     };
     let glyph = if active { "[\u{d7}]" } else { "[ ]" };
+    let note = format!("· {}", msg::tui_tag_edit_active_note());
     render_field(
         frame,
         area,
-        "active",
+        &msg::tui_tag_edit_field_active(),
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
-            Span::styled("· clear to deactivate", dim()),
+            Span::styled(note, dim()),
         ]),
     );
 }
@@ -238,7 +240,7 @@ fn render_clash_note(frame: &mut Frame, area: Rect, store: &dyn TagStore, popup:
     if !trimmed.is_empty() && popup.name_taken(store, trimmed) {
         frame.render_widget(
             Paragraph::new(Span::styled(
-                format!("a tag named \"{trimmed}\" already exists"),
+                msg::tui_tag_edit_note_clash(trimmed),
                 Style::default().fg(ACCENT),
             )),
             area,
@@ -247,7 +249,7 @@ fn render_clash_note(frame: &mut Frame, area: Rect, store: &dyn TagStore, popup:
     }
     frame.render_widget(
         Paragraph::new(Span::styled(
-            "renaming is always safe — nothing derives from the name",
+            msg::tui_tag_edit_note_unique(),
             dim(),
         )),
         area,
@@ -255,23 +257,23 @@ fn render_clash_note(frame: &mut Frame, area: Rect, store: &dyn TagStore, popup:
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    const HINTS: &[(&str, &str)] = &[
-        ("tab", "next field"),
-        ("^s", "save"),
-        ("^a", "deactivate"),
-        ("esc", "cancel"),
+    let hints = vec![
+        ("tab", msg::tui_tag_edit_help_tab()),
+        ("^s", msg::tui_tag_edit_help_save()),
+        ("^a", msg::tui_tag_edit_help_deactivate()),
+        ("esc", msg::tui_tag_edit_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = dim();
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (index, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 3);
+    for (index, (key, label)) in hints.iter().enumerate() {
         if index > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(*key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label.clone(), label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }

@@ -56,6 +56,7 @@ use ratatui::{
     },
 };
 
+use crate::msg;
 use crate::tag::{Tag, TagFixture, TagStore, TagTransaction};
 use crate::view::{Action, View};
 
@@ -423,17 +424,11 @@ impl TagsView {
             && let Some(tag) = self.selected_tag()
         {
             let notice = if tag.tagged_transaction_count > 0 {
-                format!(
-                    ", {} transactions will lose this tag",
-                    tag.tagged_transaction_count
-                )
+                msg::tui_tag_delete_notice_transactions(tag.tagged_transaction_count as i64)
             } else {
                 String::new()
             };
-            let text = format!(
-                "delete \"{}\"{notice} — y confirms, any other key cancels",
-                tag.name
-            );
+            let text = msg::tui_tag_delete_confirm(&tag.name, &notice);
             frame.render_widget(
                 Paragraph::new(Span::styled(text, Style::default().fg(ACCENT)))
                     .wrap(Wrap { trim: true }),
@@ -443,7 +438,7 @@ impl TagsView {
         }
 
         let total = self.store.tags().len();
-        let text = format!("tags {visible_count} of {total}");
+        let text = msg::tui_tags_heading(&visible_count.to_string(), &total.to_string());
         frame.render_widget(
             Paragraph::new(Span::styled(
                 text,
@@ -459,7 +454,7 @@ impl TagsView {
         frame.render_widget(block, area);
 
         let Some(tag) = self.selected_tag() else {
-            frame.render_widget(Paragraph::new("no tags match the current filter"), inner);
+            frame.render_widget(Paragraph::new(msg::tui_tags_empty_filter()), inner);
             return;
         };
 
@@ -479,28 +474,24 @@ impl TagsView {
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         let active_text = if tag.is_active {
-            "[×] offered when tagging"
+            msg::tui_tags_summary_active_value_on()
         } else {
-            "[ ] not offered"
+            msg::tui_tags_summary_active_value_off()
         };
-        frame.render_widget(summary_field_line("active", active_text), rows[2]);
+        frame.render_widget(summary_field_line(&msg::tui_tags_summary_active(), &active_text), rows[2]);
 
-        let tagged_text = if tag.tagged_transaction_count == 0 {
-            "none".to_string()
-        } else {
-            format!("{} transactions", tag.tagged_transaction_count)
-        };
-        frame.render_widget(summary_field_line("tagged", &tagged_text), rows[3]);
+        let tagged_text = msg::tui_tags_summary_tagged_count(tag.tagged_transaction_count as i64);
+        frame.render_widget(summary_field_line(&msg::tui_tags_summary_tagged(), &tagged_text), rows[3]);
 
         // Two separate rows, not one combined "created · upd ..." line (as `view::accounts`'s
         // own `last check` row does) — this pane's narrower inner width (no right pane to
         // spill into) can't fit both dates on one line.
         frame.render_widget(
-            summary_field_line("created", &format_date_full_year(tag.created_on)),
+            summary_field_line(&msg::tui_tags_summary_created(), &format_date_full_year(tag.created_on)),
             rows[4],
         );
         frame.render_widget(
-            summary_field_line("updated", &format_date_full_year(tag.updated_on)),
+            summary_field_line(&msg::tui_tags_summary_updated(), &format_date_full_year(tag.updated_on)),
             rows[5],
         );
     }
@@ -544,7 +535,7 @@ impl TagsView {
             ])
             .split(area);
 
-        render_section_heading(frame, rows[0], "TAGGED SPEND", &tagged_spend_window_tag());
+        render_section_heading(frame, rows[0], &msg::tui_tag_right_pane_spend_heading(), &tagged_spend_window_tag());
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         let series: Vec<f64> = self
@@ -575,15 +566,15 @@ impl TagsView {
         let heading_tag = if breakdown.is_empty() {
             String::new()
         } else {
-            format!("{} categories", breakdown.len())
+            msg::tui_tag_right_pane_lands_heading_tag(breakdown.len() as i64)
         };
-        render_section_heading(frame, rows[0], "WHERE IT LANDS", &heading_tag);
+        render_section_heading(frame, rows[0], &msg::tui_tag_right_pane_lands_heading(), &heading_tag);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         if breakdown.is_empty() {
             let dim = Style::default().add_modifier(Modifier::DIM);
             frame.render_widget(
-                Paragraph::new(Span::styled("no categories yet", dim)),
+                Paragraph::new(Span::styled(msg::tui_tag_right_pane_lands_empty(), dim)),
                 rows[2],
             );
             return;
@@ -607,14 +598,14 @@ impl TagsView {
                 .iter()
                 .map(|(_, amount)| money_to_f64(amount))
                 .sum();
-            let label = format!("{} more", breakdown.len() - shown);
+            let label = msg::tui_tag_right_pane_lands_rollup(&(breakdown.len() - shown).to_string());
             render_category_bar(frame, bar_rows[shown], &label, rest_total, total);
         }
 
         let dim = Style::default().add_modifier(Modifier::DIM);
         frame.render_widget(
             Paragraph::new(Span::styled(
-                "a tag crosses the tree — that is what it is for",
+                msg::tui_tag_right_pane_lands_statement(),
                 dim,
             )),
             rows[3],
@@ -642,8 +633,8 @@ impl TagsView {
             ])
             .split(area);
 
-        let heading_tag = format!("{visible_count} of {total} · newest first");
-        render_section_heading(frame, sections[0], "TRANSACTIONS", &heading_tag);
+        let heading_tag = msg::tui_tag_right_pane_txn_heading_tag(&visible_count.to_string(), &total.to_string());
+        render_section_heading(frame, sections[0], &msg::tui_tag_right_pane_txn_heading(), &heading_tag);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
         render_txn_column_header(frame, sections[2]);
 
@@ -666,7 +657,7 @@ impl TagsView {
     fn render_transactions_footer(&self, frame: &mut Frame, area: Rect, rows: &[TagTransaction]) {
         if self.transactions_not_yet_built {
             frame.render_widget(
-                Paragraph::new("opening filtered Transactions — not yet built"),
+                Paragraph::new(msg::tui_tag_right_pane_txn_not_yet_built()),
                 area,
             );
             return;
@@ -675,17 +666,14 @@ impl TagsView {
         let dim = Style::default().add_modifier(Modifier::DIM);
         if rows.is_empty() {
             frame.render_widget(
-                Paragraph::new(Span::styled("no transactions yet", dim)),
+                Paragraph::new(Span::styled(msg::tui_tag_right_pane_txn_footer_empty(), dim)),
                 area,
             );
             return;
         }
 
         let overlap = rows.iter().filter(|row| row.other_tags > 0).count();
-        let text = format!(
-            "{overlap} of {} carry another tag — rows overlap",
-            rows.len()
-        );
+        let text = msg::tui_tag_right_pane_txn_footer_overlap(&overlap.to_string(), &rows.len().to_string());
         frame.render_widget(
             Paragraph::new(Span::styled(text, Style::default().fg(ACCENT))),
             area,
@@ -705,7 +693,7 @@ fn render_tag_row(frame: &mut Frame, area: Rect, tag: &Tag, selected: bool) {
     let name_text = if tag.is_active {
         tag.name.clone()
     } else {
-        format!("{} · inactive", tag.name)
+        format!("{}{}", tag.name, msg::tui_tag_row_inactive())
     };
     let style = if !tag.is_active && !selected {
         dim
@@ -832,7 +820,7 @@ fn render_spend_footer(frame: &mut Frame, area: Rect, tag: &Tag, series: &[f64])
     let dim = Style::default().add_modifier(Modifier::DIM);
     if tag.tagged_transaction_count == 0 {
         frame.render_widget(
-            Paragraph::new(Span::styled("no transactions yet", dim)),
+            Paragraph::new(Span::styled(msg::tui_tag_right_pane_spend_footer_empty(), dim)),
             area,
         );
         return;
@@ -847,13 +835,12 @@ fn render_spend_footer(frame: &mut Frame, area: Rect, tag: &Tag, series: &[f64])
         .unwrap_or((0, 0.0));
     let last_index = series.len() - 1;
 
-    let text = format!(
-        "first used {} · peak {} {} · {} {}",
-        format_month(spend_chart_month(first_used_index)),
-        format_month(spend_chart_month(peak_index)),
-        format_amount(peak_amount),
-        format_month(spend_chart_month(last_index)),
-        format_amount(series[last_index]),
+    let text = msg::tui_tag_right_pane_spend_footer(
+        &format_month(spend_chart_month(first_used_index)),
+        &format_month(spend_chart_month(peak_index)),
+        &format_amount(peak_amount),
+        &format_month(spend_chart_month(last_index)),
+        &format_amount(series[last_index]),
     );
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
 }
@@ -905,15 +892,15 @@ fn txn_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect, Rect) {
 fn render_txn_column_header(frame: &mut Frame, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let (date, payee, category, other_tags, amount) = txn_row_columns(area);
-    frame.render_widget(Paragraph::new(Span::styled("DATE", dim)), date);
-    frame.render_widget(Paragraph::new(Span::styled("PAYEE", dim)), payee);
-    frame.render_widget(Paragraph::new(Span::styled("CATEGORY", dim)), category);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_tag_txn_column_date(), dim)), date);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_tag_txn_column_payee(), dim)), payee);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_tag_txn_column_category(), dim)), category);
     frame.render_widget(
-        Paragraph::new(Span::styled("T", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(msg::tui_tag_txn_column_tags(), dim)).alignment(Alignment::Right),
         other_tags,
     );
     frame.render_widget(
-        Paragraph::new(Span::styled("AMOUNT", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(msg::tui_tag_txn_column_amount(), dim)).alignment(Alignment::Right),
         amount,
     );
 }
