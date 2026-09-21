@@ -115,36 +115,43 @@ const VIEW_LINE_STEP: f32 = 40.0;
 /// `Ctrl-d`/`Ctrl-u` on the Accounts page: half of a typical screenful of rows.
 const ACCOUNTS_HALF_PAGE: isize = 5;
 
-/// The Accounts page's status-line legend (`docs/ux/desktop/Accounts/README.md`'s 3a).
-const ACCOUNTS_HINTS: &[(&str, &str)] = &[
-    ("j/k", "row"),
-    ("enter", "open ledger"),
-    ("e", "edit"),
-    ("d", "delete"),
-    ("n", "new"),
-];
+/// The Accounts page's status-line legend (`docs/ux/desktop/Accounts/README.md`'s 3a), as
+/// `(key, action)`.
+fn accounts_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("enter", crate::msg::desktop_hint_open_ledger()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("d", crate::msg::desktop_hint_delete()),
+        ("n", crate::msg::desktop_hint_new()),
+    ]
+}
 
 /// The status-line legend while the filter popover is open (`docs/ux/desktop/Transactions/
 /// README.md`'s 4b), with `^r reset` added: the bundle's `reset` is a button, and this shell is
 /// keyboard-first.
-const FILTER_HINTS: &[(&str, &str)] = &[
-    ("tab", "next field"),
-    ("enter", "apply"),
-    ("esc", "cancel"),
-    ("^r", "reset"),
-];
+fn filter_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("tab", crate::msg::desktop_hint_next_field()),
+        ("enter", crate::msg::desktop_hint_apply()),
+        ("esc", crate::msg::desktop_hint_cancel()),
+        ("^r", crate::msg::desktop_hint_reset()),
+    ]
+}
 
 /// The Transactions page's status-line legend (`docs/ux/desktop/Transactions/README.md`'s 4a),
 /// without the mockup's `R reconcile` (an Accounts action) and with `/` reading `search` beside a
 /// separate `f filter`, since here `/` searches and `f` opens the filter popover.
-const TRANSACTIONS_HINTS: &[(&str, &str)] = &[
-    ("j/k", "row"),
-    ("enter", "open"),
-    ("e", "edit"),
-    ("n", "add"),
-    ("/", "search"),
-    ("f", "filter"),
-];
+fn transactions_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("enter", crate::msg::desktop_hint_open()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("n", crate::msg::desktop_hint_add()),
+        ("/", crate::msg::desktop_hint_search()),
+        ("f", crate::msg::desktop_hint_filter()),
+    ]
+}
 
 /// Owns the shell's render tree and the live `NavState`.
 pub struct Shell {
@@ -352,15 +359,21 @@ impl Shell {
     /// `command_echo`): the palette's live input while it's open, or -- once `:open` has been
     /// confirmed and the palette has closed in its favour -- the file explorer's frozen
     /// `"open"` echo, each paired with its own "esc closes ..." hint text.
-    fn command_echo(&self) -> Option<(String, &'static str)> {
+    fn command_echo(&self) -> Option<(String, String)> {
         if let Some(palette) = self.palette.as_ref() {
-            Some((palette.input().to_string(), "esc close command window"))
+            Some((
+                palette.input().to_string(),
+                crate::msg::desktop_status_close_command_window("esc"),
+            ))
         } else if let Some(explorer) = self.file_explorer.as_ref() {
             let name = match explorer.mode() {
                 ExplorerMode::Open => "open",
                 ExplorerMode::New => "new",
             };
-            Some((name.to_string(), "esc close file explorer"))
+            Some((
+                name.to_string(),
+                crate::msg::desktop_status_close_file_explorer("esc"),
+            ))
         } else {
             None
         }
@@ -1825,7 +1838,9 @@ impl Shell {
             match self.selected_account_index() {
                 Some(index) => index,
                 None => {
-                    self.status_message = Some(format!(":{command_name} \u{2014} no accounts"));
+                    self.status_message = Some(crate::msg::desktop_status_no_accounts(&format!(
+                        ":{command_name}"
+                    )));
                     return;
                 }
             }
@@ -1833,15 +1848,17 @@ impl Shell {
             match accounts::find_by_name(&self.accounts, argument) {
                 NameLookup::Found(index) => index,
                 NameLookup::NotFound => {
-                    self.status_message = Some(format!(
-                        ":{command_name} \u{2014} no account named \"{argument}\""
+                    self.status_message = Some(crate::msg::desktop_status_no_account_named(
+                        &format!(":{command_name}"),
+                        argument,
                     ));
                     return;
                 }
                 NameLookup::Ambiguous(names) => {
-                    self.status_message = Some(format!(
-                        ":{command_name} \u{2014} \"{argument}\" matches {}",
-                        names.join(", ")
+                    self.status_message = Some(crate::msg::desktop_status_account_ambiguous(
+                        &format!(":{command_name}"),
+                        argument,
+                        &names.join(", "),
                     ));
                     return;
                 }
@@ -2664,17 +2681,16 @@ impl Render for Shell {
         });
         let page_status = match self.nav.noun() {
             Noun::Accounts => Some(PageStatus {
-                hints: ACCOUNTS_HINTS,
-                right: match self.accounts.len() {
-                    1 => "1 account".to_string(),
-                    count => format!("{count} accounts"),
-                },
+                hints: accounts_hints(),
+                right: crate::msg::desktop_status_accounts_count(
+                    i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
+                ),
             }),
             Noun::Transactions => Some(PageStatus {
                 hints: if self.nav.mode() == InputMode::Filter {
-                    FILTER_HINTS
+                    filter_hints()
                 } else {
-                    TRANSACTIONS_HINTS
+                    transactions_hints()
                 },
                 right: format::status_legend(self.settings_status_glyphs),
             }),
@@ -3037,14 +3053,14 @@ fn render_view(
 /// in exactly the state running it from the palette would (this shell's own repeated invariant
 /// -- rail click, `g`-jump and the palette already all call `NavState::set_noun` identically).
 fn empty_state(on_command_click: OnEmptyStateCommandClick) -> gpui::AnyElement {
-    let command = |name: &'static str, on_command_click: OnEmptyStateCommandClick| {
+    let command = |name: &'static str, on_command_click: OnEmptyStateCommandClick, text: String| {
         div()
             .id(SharedString::from(format!("empty-state-{name}")))
             .cursor_pointer()
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
             .text_color(color::INK)
             .on_click(move |_event, window, cx| on_command_click(name, window, cx))
-            .child(format!(":{name}"))
+            .child(text)
     };
 
     div()
@@ -3060,7 +3076,7 @@ fn empty_state(on_command_click: OnEmptyStateCommandClick) -> gpui::AnyElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(26.0))
                 .line_height(gpui::relative(1.1))
-                .child("No ledger open"),
+                .child(crate::msg::desktop_empty_state_title()),
         )
         .child(
             div()
@@ -3071,11 +3087,17 @@ fn empty_state(on_command_click: OnEmptyStateCommandClick) -> gpui::AnyElement {
                 .text_align(gpui::TextAlign::Center)
                 .text_size(px(13.0))
                 .text_color(color::INK_SECONDARY)
-                .child("Run ")
-                .child(command("open", on_command_click.clone()))
-                .child(" to load a ledger file, or ")
-                .child(command("new", on_command_click))
-                .child(" to start one."),
+                .children(
+                    crate::msg::desktop_empty_state_hint(":open", ":new")
+                        .into_iter()
+                        .map(|segment| match segment.tag.as_deref() {
+                            Some("open") => command("open", on_command_click.clone(), segment.text)
+                                .into_any_element(),
+                            Some("new") => command("new", on_command_click.clone(), segment.text)
+                                .into_any_element(),
+                            _ => div().child(segment.text).into_any_element(),
+                        }),
+                ),
         )
         .into_any_element()
 }
@@ -3109,6 +3131,71 @@ mod tests {
                 "accounts".to_string(),
                 "dashboard".to_string(),
             ]
+        );
+    }
+
+    #[test]
+    fn the_accounts_count_is_a_plural_selector() {
+        crate::locale::init_for_tests();
+        assert_eq!(crate::msg::desktop_status_accounts_count(1), "1 account");
+        assert_eq!(crate::msg::desktop_status_accounts_count(0), "0 accounts");
+        assert_eq!(crate::msg::desktop_status_accounts_count(7), "7 accounts");
+    }
+
+    #[test]
+    fn the_empty_state_hint_tags_both_commands_as_clickable_spans() {
+        crate::locale::init_for_tests();
+        let tagged: Vec<(Option<String>, String)> =
+            crate::msg::desktop_empty_state_hint(":open", ":new")
+                .into_iter()
+                .filter(|segment| segment.tag.is_some())
+                .map(|segment| (segment.tag, segment.text))
+                .collect();
+        assert_eq!(
+            tagged,
+            vec![
+                (Some("open".to_string()), ":open".to_string()),
+                (Some("new".to_string()), ":new".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_empty_state_and_hint_strips_render_in_the_pseudo_locale() {
+        crate::locale::init_for_tests();
+        lib_locale::with_locale(lib_locale::Locale::EnXa, || {
+            assert!(crate::msg::desktop_empty_state_title().starts_with('['));
+            let hint = crate::msg::desktop_empty_state_hint(":open", ":new");
+            assert!(hint.iter().any(|s| s.tag.as_deref() == Some("open")));
+            assert!(hint.iter().any(|s| s.tag.as_deref() == Some("new")));
+            for (_, action) in accounts_hints()
+                .into_iter()
+                .chain(filter_hints())
+                .chain(transactions_hints())
+            {
+                assert!(action.starts_with('['), "{action}");
+            }
+        });
+    }
+
+    #[test]
+    fn command_flashes_carry_the_typed_command_and_name() {
+        crate::locale::init_for_tests();
+        assert_eq!(
+            crate::msg::desktop_status_no_accounts(":accounts edit"),
+            ":accounts edit \u{2014} no accounts"
+        );
+        assert_eq!(
+            crate::msg::desktop_status_no_account_named(":accounts edit", "Rainy"),
+            ":accounts edit \u{2014} no account named \"Rainy\""
+        );
+        assert_eq!(
+            crate::msg::desktop_status_account_ambiguous(
+                ":accounts edit",
+                "ANZ",
+                "ANZ Offset, ANZ Everyday"
+            ),
+            ":accounts edit \u{2014} \"ANZ\" matches ANZ Offset, ANZ Everyday"
         );
     }
 }

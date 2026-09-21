@@ -61,16 +61,53 @@ pub enum AccountsVerb {
     Delete,
 }
 
+/// The palette's resting-state group a command sits under: one per noun, plus `Ledger` for the
+/// file-level `open`/`new`/`close` trio, which has no noun of its own. The header text is a
+/// Message; the variants are the stable ids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Domain {
+    Dashboard,
+    Accounts,
+    Bills,
+    Budgets,
+    Categories,
+    Ledger,
+    Payees,
+    Reports,
+    Settings,
+    Tags,
+    Transactions,
+}
+
+impl Domain {
+    /// The header text in the Locale in effect, in sentence case.
+    pub fn label(self) -> String {
+        match self {
+            Domain::Dashboard => Noun::Dashboard.label(),
+            Domain::Accounts => Noun::Accounts.label(),
+            Domain::Bills => Noun::Bills.label(),
+            Domain::Budgets => Noun::Budgets.label(),
+            Domain::Categories => Noun::Categories.label(),
+            Domain::Ledger => crate::msg::desktop_command_domain_ledger(),
+            Domain::Payees => Noun::Payees.label(),
+            Domain::Reports => Noun::Reports.label(),
+            Domain::Settings => Noun::Settings.label(),
+            Domain::Tags => Noun::Tags.label(),
+            Domain::Transactions => Noun::Transactions.label(),
+        }
+    }
+}
+
 /// One command: the palette's own unit of data. `binding` is a plain display string (unlike the
 /// TUI's `crossterm`-typed `Chord`, since `gpui`'s key model has no equivalent to render) --
 /// `None` renders as an em dash in the palette, matching the TUI's `Chord::NONE`.
 pub struct Command {
+    /// The command as typed: a stable English id, never translated.
     pub name: &'static str,
-    /// The palette's resting-state group header (mirroring `bin-tui`'s own per-domain
-    /// grouping) -- one domain per noun, plus "Ledger" for the file-level `open`/`new`/`close`
-    /// trio, which has no noun of its own.
-    pub domain: &'static str,
-    pub description: &'static str,
+    /// The palette's resting-state group (mirroring `bin-tui`'s own per-domain grouping).
+    pub domain: Domain,
+    /// The description Message, resolved in the Locale in effect when called.
+    pub description: fn() -> String,
     pub binding: Option<&'static str>,
     pub effect: CommandEffect,
 }
@@ -112,128 +149,132 @@ pub fn split_input(input: &str) -> (&str, &str) {
 }
 
 /// Every command the palette can rank and run today, grouped by [`Command::domain`] --
-/// `"Dashboard"` first, then every other domain alphabetically, mirroring the TUI's own
+/// `Dashboard` first, then every other domain alphabetically, mirroring the TUI's own
 /// `commands::DOMAINS` order exactly (`bin-tui/src/popup/command/commands/mod.rs`: "Dashboard
 /// first then alphabetical"). One [`CommandEffect::Navigate`] command per rail item (`Noun::ALL`'s
 /// own order, each its own single-command domain), plus the one real footer affordance
 /// (`crate::rail::context::footer`'s "+ new account · :accounts new", grouped under "Accounts"
 /// alongside its own noun's command) and the file-level `open`/`new`/`close` trio under
-/// "Ledger", which has no noun of its own. The three `accounts <verb>` commands take a typed
+/// `Ledger`, which has no noun of its own. The three `accounts <verb>` commands take a typed
 /// account name (see [`split_input`]).
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "dashboard",
-        domain: "Dashboard",
-        description: "net worth and budget health",
+        domain: Domain::Dashboard,
+        description: crate::msg::desktop_command_dashboard_description,
         binding: Some("g d"),
         effect: CommandEffect::Navigate(Noun::Dashboard),
     },
     Command {
         name: "accounts",
-        domain: "Accounts",
-        description: "accounts grouped by type",
+        domain: Domain::Accounts,
+        description: crate::msg::desktop_command_accounts_description,
         binding: Some("g a"),
         effect: CommandEffect::Navigate(Noun::Accounts),
     },
     Command {
         name: "accounts new",
-        domain: "Accounts",
-        description: "add an account: accounts new <account name>",
+        domain: Domain::Accounts,
+        description: accounts_new_description,
         binding: Some("n"),
         effect: CommandEffect::Accounts(AccountsVerb::New),
     },
     Command {
         name: "accounts edit",
-        domain: "Accounts",
-        description: "edit an account by name, or the selected row",
+        domain: Domain::Accounts,
+        description: crate::msg::desktop_command_accounts_edit_description,
         binding: Some("e"),
         effect: CommandEffect::Accounts(AccountsVerb::Edit),
     },
     Command {
         name: "accounts delete",
-        domain: "Accounts",
-        description: "delete an account by name, or the selected row",
+        domain: Domain::Accounts,
+        description: crate::msg::desktop_command_accounts_delete_description,
         binding: Some("d"),
         effect: CommandEffect::Accounts(AccountsVerb::Delete),
     },
     Command {
         name: "bills",
-        domain: "Bills",
-        description: "recurring and upcoming bills",
+        domain: Domain::Bills,
+        description: crate::msg::desktop_command_bills_description,
         binding: Some("g w"),
         effect: CommandEffect::Navigate(Noun::Bills),
     },
     Command {
         name: "budgets",
-        domain: "Budgets",
-        description: "category limits and actuals",
+        domain: Domain::Budgets,
+        description: crate::msg::desktop_command_budgets_description,
         binding: Some("g b"),
         effect: CommandEffect::Navigate(Noun::Budgets),
     },
     Command {
         name: "categories",
-        domain: "Categories",
-        description: "the category tree",
+        domain: Domain::Categories,
+        description: crate::msg::desktop_command_categories_description,
         binding: Some("g c"),
         effect: CommandEffect::Navigate(Noun::Categories),
     },
     Command {
         name: "open",
-        domain: "Ledger",
-        description: "load a ledger file",
+        domain: Domain::Ledger,
+        description: crate::msg::desktop_command_open_description,
         binding: None,
         effect: CommandEffect::OpenDialog(ExplorerMode::Open),
     },
     Command {
         name: "new",
-        domain: "Ledger",
-        description: "start a new ledger",
+        domain: Domain::Ledger,
+        description: crate::msg::desktop_command_new_description,
         binding: None,
         effect: CommandEffect::OpenDialog(ExplorerMode::New),
     },
     Command {
         name: "close",
-        domain: "Ledger",
-        description: "close the open ledger",
+        domain: Domain::Ledger,
+        description: crate::msg::desktop_command_close_description,
         binding: None,
         effect: CommandEffect::CloseLedger,
     },
     Command {
         name: "payees",
-        domain: "Payees",
-        description: "payees and default categories",
+        domain: Domain::Payees,
+        description: crate::msg::desktop_command_payees_description,
         binding: Some("g p"),
         effect: CommandEffect::Navigate(Noun::Payees),
     },
     Command {
         name: "reports",
-        domain: "Reports",
-        description: "net worth and variance reports",
+        domain: Domain::Reports,
+        description: crate::msg::desktop_command_reports_description,
         binding: Some("g r"),
         effect: CommandEffect::Navigate(Noun::Reports),
     },
     Command {
         name: "settings",
-        domain: "Settings",
-        description: "ledger preferences",
+        domain: Domain::Settings,
+        description: crate::msg::desktop_command_settings_description,
         binding: Some("g s"),
         effect: CommandEffect::Navigate(Noun::Settings),
     },
     Command {
         name: "tags",
-        domain: "Tags",
-        description: "the tags every transaction can carry any number of",
+        domain: Domain::Tags,
+        description: crate::msg::desktop_command_tags_description,
         binding: Some("g t"),
         effect: CommandEffect::Navigate(Noun::Tags),
     },
     Command {
         name: "transactions",
-        domain: "Transactions",
-        description: "the transaction ledger",
+        domain: Domain::Transactions,
+        description: crate::msg::desktop_command_transactions_description,
         binding: Some("g l"),
         effect: CommandEffect::Navigate(Noun::Transactions),
     },
 ];
+
+fn accounts_new_description() -> String {
+    crate::msg::desktop_command_accounts_new_description("accounts new")
+}
 
 /// Every registered command, in registration order -- the palette's resting-state (empty
 /// query) order, and the order ties fall back to once ranked.
@@ -247,9 +288,10 @@ mod tests {
 
     #[test]
     fn every_command_has_a_non_empty_name_and_description() {
+        crate::locale::init_for_tests();
         for command in COMMANDS {
             assert!(!command.name.is_empty());
-            assert!(!command.description.is_empty());
+            assert!(!(command.description)().is_empty());
         }
     }
 
@@ -270,7 +312,7 @@ mod tests {
         // Mirrors bin-tui's own `dashboard_is_first_and_the_rest_are_alphabetical` invariant --
         // the palette's resting-state grouping (`Palette::rows`) assumes each domain's commands
         // sit together, never split across two separate runs.
-        let mut order: Vec<&str> = Vec::new();
+        let mut order: Vec<Domain> = Vec::new();
         for command in COMMANDS {
             if order.last() != Some(&command.domain) {
                 assert!(
@@ -281,10 +323,12 @@ mod tests {
                 order.push(command.domain);
             }
         }
-        assert_eq!(order[0], "Dashboard");
+        assert_eq!(order[0], Domain::Dashboard);
+        // The domains' stable ids (their variant names) sort alphabetically, whatever the Locale
+        // calls them.
         let rest = &order[1..];
         let mut sorted_rest = rest.to_vec();
-        sorted_rest.sort_unstable();
+        sorted_rest.sort_unstable_by_key(|domain| format!("{domain:?}"));
         assert_eq!(rest, sorted_rest.as_slice());
     }
 

@@ -37,7 +37,7 @@ pub struct Generated {
     /// Every Catalogue file and directory read, for `cargo::rerun-if-changed`.
     pub watched: Vec<PathBuf>,
 
-    /// Accessor names no scanned source calls.
+    /// Accessor names no scanned source calls or references.
     pub unused: Vec<String>,
 }
 
@@ -86,7 +86,7 @@ pub fn generate(options: &Options) -> Result<Generated> {
         let haystack = read_sources(&options.scan_dirs)?;
         names
             .into_iter()
-            .filter(|name| !is_called(&haystack, name))
+            .filter(|name| !is_referenced(&haystack, name))
             .collect()
     };
 
@@ -177,13 +177,14 @@ fn read_dir_sources(dir: &Path, all: &mut String) -> Result<()> {
     Ok(())
 }
 
-fn is_called(haystack: &str, name: &str) -> bool {
-    let call = format!("{name}(");
-    haystack.match_indices(&call).any(|(at, _)| {
-        !haystack[..at]
-            .chars()
-            .next_back()
-            .is_some_and(|before| before.is_alphanumeric() || before == '_')
+/// Whether `name` appears as a whole word: a call, or a function pointer such as a registry
+/// field (`description: msg::name`).
+fn is_referenced(haystack: &str, name: &str) -> bool {
+    let word = |ch: char| ch.is_alphanumeric() || ch == '_';
+    haystack.match_indices(name).any(|(at, _)| {
+        let before = haystack[..at].chars().next_back();
+        let after = haystack[at + name.len()..].chars().next();
+        !before.is_some_and(word) && !after.is_some_and(word)
     })
 }
 
@@ -325,16 +326,20 @@ mod tests {
             dir.path(),
             "en-US",
             "a.ftl",
-            "used-one = A\nunused-one = B\n",
+            "used-one = A\npointer-one = C\nunused-one = B\nused-one-extra = D\n",
         );
         let src = dir.path().join("src");
         fs::create_dir_all(&src).unwrap();
-        fs::write(src.join("main.rs"), "fn main() { msg::used_one(); }").unwrap();
+        fs::write(
+            src.join("main.rs"),
+            "fn main() { msg::used_one(); } const F: fn() -> String = msg::pointer_one;",
+        )
+        .unwrap();
         let mut options = options(dir.path(), None);
         options.scan_dirs = vec![src];
         assert_eq!(
             generate(&options).unwrap().unused,
-            vec!["unused_one".to_string()]
+            vec!["unused_one".to_string(), "used_one_extra".to_string()]
         );
     }
 

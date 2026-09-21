@@ -16,7 +16,7 @@ pub const HEIGHT: gpui::Pixels = px(28.0);
 /// page is showing: its key legend (`(key, action)` pairs) and its right-aligned text.
 #[derive(Debug, Clone)]
 pub struct PageStatus {
-    pub hints: &'static [(&'static str, &'static str)],
+    pub hints: Vec<(&'static str, String)>,
     pub right: String,
 }
 
@@ -50,7 +50,7 @@ pub struct StatusLine {
     /// command window'"), or -- once `:open` is confirmed -- the "1e" file explorer's own
     /// frozen `"open"` echo and "esc close file explorer" hint, since `Shell` keeps `mode` at
     /// `Command` for as long as that dialog is open (see `Shell::run_command`'s own doc).
-    command_echo: Option<(String, &'static str)>,
+    command_echo: Option<(String, String)>,
     /// `Some` while a page with its own legend is showing (`docs/ux/desktop/Accounts/README.md`'s
     /// 3a status bar). Ignored in command mode, which owns the whole line.
     page: Option<PageStatus>,
@@ -60,7 +60,7 @@ impl StatusLine {
     pub fn new(
         mode: InputMode,
         status_message: Option<String>,
-        command_echo: Option<(String, &'static str)>,
+        command_echo: Option<(String, String)>,
     ) -> Self {
         Self {
             on_hint: None,
@@ -106,7 +106,7 @@ impl RenderOnce for StatusLine {
                     .child(message)
                     .into_any_element(),
                 (None, None) => match &self.page {
-                    Some(page) => page_hint_strip(page.hints).into_any_element(),
+                    Some(page) => page_hint_strip(&page.hints).into_any_element(),
                     None => hint_strip(self.on_hint.clone()).into_any_element(),
                 },
             })
@@ -121,16 +121,16 @@ impl RenderOnce for StatusLine {
 
 fn mode_badge(mode: InputMode) -> impl IntoElement {
     let (label, bg) = match mode {
-        InputMode::Normal => ("NORMAL", color::INK),
-        InputMode::Insert => ("INSERT", color::INK),
-        InputMode::Search => ("SEARCH", color::INK),
+        InputMode::Normal => (crate::msg::desktop_mode_normal(), color::INK),
+        InputMode::Insert => (crate::msg::desktop_mode_insert(), color::INK),
+        InputMode::Search => (crate::msg::desktop_mode_search(), color::INK),
         // The handoff's own COMMAND-mode callout: the badge fill becomes the accent.
-        InputMode::Command => ("COMMAND", color::ACCENT),
+        InputMode::Command => (crate::msg::desktop_mode_command(), color::ACCENT),
         // Same accent callout as `Command` -- a modal dialog is exactly as attention-grabbing.
-        InputMode::Dialog => ("DIALOG", color::ACCENT),
+        InputMode::Dialog => (crate::msg::desktop_mode_dialog(), color::ACCENT),
         // The same accent callout as the other modal surfaces.
-        InputMode::Filter => ("FILTER", color::ACCENT),
-        InputMode::Help => ("HELP", color::ACCENT),
+        InputMode::Filter => (crate::msg::desktop_mode_filter(), color::ACCENT),
+        InputMode::Help => (crate::msg::desktop_mode_help(), color::ACCENT),
     };
 
     div()
@@ -140,11 +140,11 @@ fn mode_badge(mode: InputMode) -> impl IntoElement {
         .text_size(px(10.0))
         .py(px(2.0))
         .px(px(7.0))
-        .child(label)
+        .child(lib_locale::format::upper(&label))
 }
 
 fn hint_strip(on_hint: Option<OnHint>) -> impl IntoElement {
-    let entry = |id: &'static str, action: HintAction, key: &'static str, label: &'static str| {
+    let entry = |id: &'static str, action: HintAction, key: &'static str, label: String| {
         let on_hint = on_hint.clone();
         div()
             .id(id)
@@ -172,23 +172,38 @@ fn hint_strip(on_hint: Option<OnHint>) -> impl IntoElement {
         .flex()
         .items_center()
         .gap(px(4.0))
-        .child(entry("hint-command", HintAction::Command, ":", "command"))
+        .child(entry(
+            "hint-command",
+            HintAction::Command,
+            ":",
+            crate::msg::desktop_hint_command(),
+        ))
         .child(dot())
-        .child(entry("hint-search", HintAction::Search, "/", "search"))
+        .child(entry(
+            "hint-search",
+            HintAction::Search,
+            "/",
+            crate::msg::desktop_hint_search(),
+        ))
         .child(dot())
-        .child(entry("hint-help", HintAction::Help, "?", "help"))
+        .child(entry(
+            "hint-help",
+            HintAction::Help,
+            "?",
+            crate::msg::desktop_hint_help(),
+        ))
         .child(dot())
         .child(entry(
             "hint-rail",
             HintAction::ToggleRail,
             "b",
-            "toggle sidebar",
+            crate::msg::desktop_hint_toggle_sidebar(),
         ))
 }
 
 /// A page's key legend: `j/k row · enter open ledger · ...`, each key at weight 800 like the
 /// shell-wide hint strip's own.
-fn page_hint_strip(hints: &'static [(&'static str, &'static str)]) -> impl IntoElement {
+fn page_hint_strip(hints: &[(&'static str, String)]) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -201,7 +216,7 @@ fn page_hint_strip(hints: &'static [(&'static str, &'static str)]) -> impl IntoE
                     .text_color(color::INK)
                     .child(*key)
                     .into_any_element(),
-                div().child(*action).into_any_element(),
+                div().child(action.clone()).into_any_element(),
             ])
         }))
 }

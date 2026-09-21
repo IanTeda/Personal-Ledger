@@ -11,7 +11,7 @@
 use gpui::{BoxShadow, div, point, prelude::*, px};
 
 use crate::{
-    command::{self, Command},
+    command::{self, Command, Domain},
     theme::color,
 };
 
@@ -44,7 +44,7 @@ const MAX_ROWS_HEIGHT: gpui::Pixels = px(448.0);
 /// One row of the resting/filtered list: a domain header (resting state only) or a command
 /// entry -- mirrors `bin-tui`'s own `popup::command::Row` exactly.
 enum Row {
-    Header(&'static str),
+    Header(Domain),
     Entry(&'static Command),
 }
 
@@ -172,8 +172,8 @@ impl Palette {
             .filter(|command| {
                 needle.is_empty()
                     || command.name.to_lowercase().contains(&needle)
-                    || command.description.to_lowercase().contains(&needle)
-                    || command.domain.to_lowercase().contains(&needle)
+                    || (command.description)().to_lowercase().contains(&needle)
+                    || command.domain.label().to_lowercase().contains(&needle)
             })
             .collect();
         matches.sort_by_key(|command| match_rank(command, &needle));
@@ -309,7 +309,7 @@ fn match_rank(command: &Command, needle: &str) -> u8 {
     let name = command.name.to_lowercase();
     if needle.is_empty() || name.starts_with(needle) {
         0
-    } else if name.contains(needle) || command.domain.to_lowercase().contains(needle) {
+    } else if name.contains(needle) || command.domain.label().to_lowercase().contains(needle) {
         1
     } else {
         2
@@ -318,7 +318,7 @@ fn match_rank(command: &Command, needle: &str) -> u8 {
 
 /// A domain header in the resting-state list (`Row::Header`) -- mirrors `bin-tui`'s own
 /// section-header styling for its command popup (dim, extra-bold, uppercase, small).
-fn domain_header(domain: &'static str) -> impl IntoElement {
+fn domain_header(domain: Domain) -> impl IntoElement {
     div()
         .px(px(16.0))
         .pt(px(10.0))
@@ -326,7 +326,7 @@ fn domain_header(domain: &'static str) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .text_color(color::INK_TERTIARY)
-        .child(domain.to_uppercase())
+        .child(lib_locale::format::upper(&domain.label()))
 }
 
 /// The "1d" spec's input row: leading `:` (matching the key that opens it; the spec draws `>`), the live query with a block caret, right-aligned
@@ -349,7 +349,10 @@ fn input_row(input: &str, match_count: usize) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::NORMAL)
                 .text_size(px(11.5))
                 .text_color(color::INK_SECONDARY)
-                .child(format!("{match_count} of {}", command::COMMANDS.len())),
+                .child(crate::msg::desktop_palette_match_count(
+                    &match_count.to_string(),
+                    &command::COMMANDS.len().to_string(),
+                )),
         )
 }
 
@@ -405,7 +408,7 @@ fn result_row(command: &'static Command, needle: &str, selected: bool) -> impl I
                 .whitespace_nowrap()
                 .text_ellipsis()
                 .text_color(description_color)
-                .child(command.description),
+                .child((command.description)()),
         )
 }
 
@@ -417,7 +420,16 @@ fn footer_row() -> impl IntoElement {
         .py(px(8.0))
         .text_size(px(11.5))
         .text_color(color::INK_SECONDARY)
-        .child("\u{2191}\u{2193} select \u{b7} tab complete \u{b7} enter run \u{b7} ^r history \u{b7} esc close")
+        .child(
+            [
+                crate::msg::desktop_palette_hint_select("\u{2191}\u{2193}"),
+                crate::msg::desktop_palette_hint_complete("tab"),
+                crate::msg::desktop_palette_hint_run("enter"),
+                crate::msg::desktop_palette_hint_history("^r"),
+                crate::msg::desktop_palette_hint_close("esc"),
+            ]
+            .join(" \u{b7} "),
+        )
 }
 
 /// Splits `name` around the first case-insensitive occurrence of `needle`, rendering the match
@@ -462,9 +474,14 @@ fn highlighted_name(
 mod tests {
     use super::*;
 
+    fn new_palette() -> Palette {
+        crate::locale::init_for_tests();
+        Palette::new()
+    }
+
     #[test]
     fn typing_appends_to_the_input_buffer() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         palette.push_char('b');
         palette.push_char('u');
         palette.push_char('d');
@@ -473,7 +490,7 @@ mod tests {
 
     #[test]
     fn backspace_removes_the_last_character() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         palette.push_char('a');
         palette.backspace();
         assert_eq!(palette.input(), "");
@@ -481,21 +498,21 @@ mod tests {
 
     #[test]
     fn backspace_on_empty_input_does_not_panic() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         palette.backspace();
         assert_eq!(palette.input(), "");
     }
 
     #[test]
     fn resting_state_lists_every_command_in_registration_order() {
-        let palette = Palette::new();
+        let palette = new_palette();
         assert_eq!(palette.matches().len(), command::COMMANDS.len());
         assert_eq!(palette.matches()[0].name, command::COMMANDS[0].name);
     }
 
     #[test]
     fn resting_rows_include_a_header_per_domain() {
-        let palette = Palette::new();
+        let palette = new_palette();
         let header_count = palette
             .rows()
             .iter()
@@ -514,7 +531,7 @@ mod tests {
         // Every header should be followed immediately by its domain's own entries, then the
         // next header -- never re-appear once a different domain's header has been emitted.
         let mut seen = Vec::new();
-        for row in Palette::new().rows() {
+        for row in new_palette().rows() {
             if let Row::Header(domain) = row {
                 assert!(
                     !seen.contains(&domain),
@@ -527,7 +544,7 @@ mod tests {
 
     #[test]
     fn filtered_rows_have_no_headers() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         for c in "tags".chars() {
             palette.push_char(c);
         }
@@ -542,7 +559,7 @@ mod tests {
 
     #[test]
     fn typing_filters_to_matching_commands_only() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         for c in "tags".chars() {
             palette.push_char(c);
         }
@@ -554,7 +571,7 @@ mod tests {
 
     #[test]
     fn typing_resets_the_selection() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         palette.move_down();
         palette.move_down();
         palette.push_char('a');
@@ -563,7 +580,7 @@ mod tests {
 
     #[test]
     fn selection_is_clamped_to_the_current_match_count() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         for c in "account".chars() {
             palette.push_char(c);
         }
@@ -576,14 +593,14 @@ mod tests {
 
     #[test]
     fn move_up_is_clamped_at_the_top() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         palette.move_up();
         assert_eq!(palette.selected, 0);
     }
 
     #[test]
     fn an_exact_name_match_outranks_a_substring_match() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         for c in "reports".chars() {
             palette.push_char(c);
         }
@@ -592,7 +609,7 @@ mod tests {
 
     #[test]
     fn a_description_only_match_still_surfaces() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         for c in "ledger".chars() {
             palette.push_char(c);
         }
@@ -603,7 +620,7 @@ mod tests {
 
     #[test]
     fn a_domain_match_outranks_a_description_only_match() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         for c in "ledger".chars() {
             palette.push_char(c);
         }
@@ -620,7 +637,7 @@ mod tests {
 
     #[test]
     fn tab_completes_to_the_selected_result_full_name() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         for c in "acc".chars() {
             palette.push_char(c);
         }
@@ -630,7 +647,7 @@ mod tests {
 
     #[test]
     fn tab_on_no_results_does_not_panic() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         for c in "nonexistent-command".chars() {
             palette.push_char(c);
         }
@@ -640,7 +657,7 @@ mod tests {
 
     #[test]
     fn ctrl_r_with_no_history_is_a_no_op() {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         palette.push_char('x');
         palette.cycle_history_back();
         assert_eq!(palette.input(), "x");
@@ -679,7 +696,7 @@ mod tests {
     }
 
     fn typed(input: &str) -> Palette {
-        let mut palette = Palette::new();
+        let mut palette = new_palette();
         for c in input.chars() {
             palette.push_char(c);
         }

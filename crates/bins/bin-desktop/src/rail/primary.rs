@@ -33,7 +33,6 @@ const TOOLTIP_GAP: gpui::Pixels = px(12.0);
 
 struct Row {
     noun: Noun,
-    label: &'static str,
     jump_key: Option<&'static str>,
 }
 
@@ -44,32 +43,26 @@ struct Row {
 const LEDGER_GROUP: &[Row] = &[
     Row {
         noun: Noun::Dashboard,
-        label: "Dashboard",
         jump_key: Some("g d"),
     },
     Row {
         noun: Noun::Transactions,
-        label: "Transactions",
         jump_key: Some("g l"),
     },
     Row {
         noun: Noun::Accounts,
-        label: "Accounts",
         jump_key: Some("g a"),
     },
     Row {
         noun: Noun::Categories,
-        label: "Categories",
         jump_key: Some("g c"),
     },
     Row {
         noun: Noun::Payees,
-        label: "Payees",
         jump_key: Some("g p"),
     },
     Row {
         noun: Noun::Tags,
-        label: "Tags",
         jump_key: Some("g t"),
     },
 ];
@@ -77,24 +70,20 @@ const LEDGER_GROUP: &[Row] = &[
 const PLAN_GROUP: &[Row] = &[
     Row {
         noun: Noun::Bills,
-        label: "Bills",
         jump_key: Some("g w"),
     },
     Row {
         noun: Noun::Budgets,
-        label: "Budgets",
         jump_key: Some("g b"),
     },
     Row {
         noun: Noun::Reports,
-        label: "Reports",
         jump_key: Some("g r"),
     },
 ];
 
 const SETTINGS_ROW: Row = Row {
     noun: Noun::Settings,
-    label: "Settings",
     jump_key: Some("g s"),
 };
 
@@ -182,9 +171,9 @@ impl PrimaryRail {
             } else {
                 color::STRUCTURAL_RULE
             })
-            .child(group_heading("LEDGER", true))
+            .child(group_heading(crate::msg::desktop_rail_group_ledger(), true))
             .children(LEDGER_GROUP.iter().map(|row| self.render_row(row)))
-            .child(group_heading("PLAN", false))
+            .child(group_heading(crate::msg::desktop_rail_group_plan(), false))
             .children(PLAN_GROUP.iter().map(|row| self.render_row(row)))
             .child(div().flex_1())
             .child(div().h(px(2.0)).my(px(8.0)).bg(color::RAIL_DIVIDER))
@@ -346,7 +335,7 @@ impl PrimaryRail {
                     .flex_1()
                     .text_color(label_color)
                     .font_weight(label_weight)
-                    .child(row.label),
+                    .child(row.noun.label()),
             )
             .children(badge)
             .when_some(row.jump_key, |this, key| {
@@ -390,7 +379,7 @@ fn collapsed_tooltip(row: &Row) -> impl IntoElement {
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .child(row.label),
+                        .child(row.noun.label()),
                 )
                 .when_some(row.jump_key, |this, key| {
                     this.child(
@@ -411,7 +400,7 @@ fn collapsed_divider() -> impl IntoElement {
     div().w(ROW_BOX).h(px(2.0)).bg(color::RAIL_DIVIDER)
 }
 
-fn group_heading(label: &'static str, first: bool) -> impl IntoElement {
+fn group_heading(label: String, first: bool) -> impl IntoElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
@@ -421,5 +410,5 @@ fn group_heading(label: &'static str, first: bool) -> impl IntoElement {
         .pb(px(8.0))
         .when(first, |this| this.pt(px(0.0)))
         .when(!first, |this| this.pt(px(16.0)))
-        .child(label)
+        .child(lib_locale::format::upper(&label))
 }

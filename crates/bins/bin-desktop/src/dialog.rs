@@ -137,7 +137,7 @@ pub fn cancel_button(id: impl Into<SharedString>, on_click: OnClick) -> impl Int
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_color(color::INK)
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child("Cancel")
+        .child(lib_locale::msg::dialog_cancel())
 }
 
 /// The Info panel: `padding:10-12px; background:#eae9e9; border-left:2px solid #ec3013;

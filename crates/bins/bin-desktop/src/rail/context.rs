@@ -131,13 +131,19 @@ impl RenderOnce for ContextRail {
 
         match self.noun {
             Noun::Dashboard => frame
-                .child(header("ACCOUNTS", &format!("{} active", ACCOUNTS.len())))
+                .child(header(
+                    &lib_locale::format::upper(&Noun::Accounts.label()),
+                    &crate::msg::desktop_context_active_count(&ACCOUNTS.len().to_string()),
+                ))
                 .children(ACCOUNTS.iter().enumerate().map(|(index, account)| {
                     let current = self.focused && self.context == Some(index);
                     account_row(account, index == ACCOUNTS.len() - 1, current)
                 }))
                 .child(div().flex_1())
-                .child(footer("+ new account", ":accounts new")),
+                .child(footer(
+                    crate::msg::desktop_context_new_account("+"),
+                    ":accounts new",
+                )),
             noun => frame
                 .child(header(&noun_label(noun), "not yet built"))
                 .child(div().flex_1()),
@@ -202,7 +208,7 @@ fn account_row(account: &Account, last: bool, current: bool) -> impl IntoElement
         )
 }
 
-fn footer(affordance: &'static str, command: &'static str) -> impl IntoElement {
+fn footer(affordance: String, command: &'static str) -> impl IntoElement {
     div()
         .py(px(10.0))
         .px(px(14.0))
@@ -221,5 +227,5 @@ fn footer(affordance: &'static str, command: &'static str) -> impl IntoElement {
 }
 
 fn noun_label(noun: Noun) -> String {
-    format!("{noun:?}").to_uppercase()
+    lib_locale::format::upper(&noun.label())
 }

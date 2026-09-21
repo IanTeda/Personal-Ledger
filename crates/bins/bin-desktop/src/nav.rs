@@ -43,6 +43,22 @@ impl Noun {
         Noun::Settings,
     ];
 
+    /// The noun's display name in the Locale in effect, in sentence case.
+    pub fn label(self) -> String {
+        match self {
+            Noun::Dashboard => lib_locale::msg::nav_dashboard(),
+            Noun::Transactions => lib_locale::msg::nav_transactions(),
+            Noun::Accounts => lib_locale::msg::nav_accounts(),
+            Noun::Categories => lib_locale::msg::nav_categories(),
+            Noun::Payees => lib_locale::msg::nav_payees(),
+            Noun::Tags => lib_locale::msg::nav_tags(),
+            Noun::Bills => lib_locale::msg::nav_bills(),
+            Noun::Budgets => lib_locale::msg::nav_budgets(),
+            Noun::Reports => lib_locale::msg::nav_reports(),
+            Noun::Settings => lib_locale::msg::nav_settings(),
+        }
+    }
+
     fn row_index(self) -> usize {
         Self::ALL
             .iter()

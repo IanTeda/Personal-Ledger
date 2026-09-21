@@ -56,7 +56,7 @@ fn header() -> impl IntoElement {
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(19.0))
-                .child("Personal Ledger"),
+                .child(lib_locale::msg::app_name()),
         )
         .child(
             div()
@@ -73,7 +73,7 @@ fn header() -> impl IntoElement {
             div()
                 .text_size(px(12.0))
                 .text_color(color::INK_TERTIARY)
-                .child("Help"),
+                .child(lib_locale::msg::nav_help()),
         )
 }
 
@@ -82,25 +82,42 @@ fn kicker(text: impl Into<SharedString>) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.5))
         .text_color(color::INK_SECONDARY)
-        .child(text.into().to_uppercase())
+        .child(lib_locale::format::upper(&text.into()))
 }
 
-fn link(id: &'static str, text: &'static str, url: &'static str) -> impl IntoElement {
+fn link(id: &'static str, text: impl Into<SharedString>, url: &'static str) -> impl IntoElement {
     div()
         .id(id)
         .cursor_pointer()
         .text_color(color::ACCENT)
         .on_click(move |_event, _window: &mut Window, cx: &mut App| cx.open_url(url))
-        .child(text)
+        .child(text.into())
 }
 
-fn fact(kicker_text: &'static str, value: impl IntoElement) -> impl IntoElement {
+fn fact(kicker_text: impl Into<SharedString>, value: impl IntoElement) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
         .gap(px(6.0))
         .child(kicker(kicker_text))
         .child(value)
+}
+
+/// The licence line: the Message's `<license>` span is the link, the rest is plain text.
+fn license() -> impl IntoElement {
+    div()
+        .flex()
+        .flex_wrap()
+        .children(
+            crate::msg::desktop_help_license()
+                .into_iter()
+                .map(|segment| match segment.tag.as_deref() {
+                    Some("license") => {
+                        link("license", segment.text, help::LICENSE_URL).into_any_element()
+                    }
+                    _ => div().child(segment.text).into_any_element(),
+                }),
+        )
 }
 
 fn rule() -> impl IntoElement {
@@ -130,34 +147,25 @@ pub fn facts(
         .child(
             div()
                 .text_color(color::INK_SECONDARY)
-                .child(help::DESCRIPTION),
+                .child(help::description()),
         )
         .child(rule())
         .children(before_author)
         .child(fact(
-            "Author",
+            crate::msg::desktop_help_author_label(),
             div().text_color(color::ACCENT).child(help::AUTHOR),
         ))
         .children(after_author)
-        .children(
-            help::LINKS.iter().map(|item| {
-                fact(item.label, link(item.label, item.text, item.url)).into_any_element()
-            }),
-        )
-        .child(fact(
-            "License",
-            div()
-                .flex()
-                .gap(px(4.0))
-                .child("Distributed under the")
-                .child(link("license", help::LICENSE_NAME, help::LICENSE_URL)),
-        ))
+        .children(help::LINKS.iter().map(|item| {
+            fact((item.label)(), link(item.id, item.text, item.url)).into_any_element()
+        }))
+        .child(fact(crate::msg::desktop_help_license_label(), license()))
         .child(rule())
         .child(
             div()
                 .text_size(px(11.5))
                 .text_color(color::INK_TERTIARY)
-                .child(help::COPYRIGHT),
+                .child(help::copyright()),
         )
 }
 
@@ -208,7 +216,7 @@ fn shortcuts_column() -> impl IntoElement {
         .border_l(px(1.0))
         .border_color(color::HAIRLINE)
         .text_size(px(12.5))
-        .child(kicker("Keyboard shortcuts"))
+        .child(kicker(crate::msg::desktop_help_shortcuts_label()))
         .child(two_columns(
             help::jump_shortcuts()
                 .into_iter()
@@ -217,9 +225,9 @@ fn shortcuts_column() -> impl IntoElement {
         ))
         .child(rule())
         .child(two_columns(
-            help::GLOBAL_SHORTCUTS
-                .iter()
-                .map(|(label, keys)| shortcut(*label, *keys))
+            help::global_shortcuts()
+                .into_iter()
+                .map(|(label, keys)| shortcut(label, keys))
                 .collect(),
         ))
 }
@@ -237,11 +245,11 @@ fn footer(on_close: OnClose) -> impl IntoElement {
             div()
                 .text_size(px(11.5))
                 .text_color(color::INK_TERTIARY)
-                .child(help::FOOTER_NOTE),
+                .child(crate::msg::desktop_help_footer_note()),
         )
         .child(dialog::confirm_button(
             "help-close",
-            "Close",
+            lib_locale::msg::dialog_close(),
             true,
             false,
             Rc::clone(&on_close),

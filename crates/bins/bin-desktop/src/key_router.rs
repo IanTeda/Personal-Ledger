@@ -85,27 +85,27 @@ pub enum KeyOutcome {
     NoOp,
 }
 
-/// Every `g`-prefix jump: the completion key, its noun, and the noun's display label. One table so
-/// [`jump_noun_for_key`] and the `?` help overlay can never drift apart. Every noun has one --
-/// `Transactions` moved off `g t` onto `g l` to free `t` for the newer `Tags` noun.
-pub const JUMPS: [(&str, Noun, &str); 10] = [
-    ("d", Noun::Dashboard, "Dashboard"),
-    ("l", Noun::Transactions, "Transactions"),
-    ("a", Noun::Accounts, "Accounts"),
-    ("c", Noun::Categories, "Categories"),
-    ("p", Noun::Payees, "Payees"),
-    ("t", Noun::Tags, "Tags"),
-    ("w", Noun::Bills, "Bills"),
-    ("b", Noun::Budgets, "Budgets"),
-    ("r", Noun::Reports, "Reports"),
-    ("s", Noun::Settings, "Settings"),
+/// Every `g`-prefix jump: the completion key and its noun (whose display label is [`Noun::label`]).
+/// One table so [`jump_noun_for_key`] and the `?` help overlay can never drift apart. Every noun has
+/// one -- `Transactions` moved off `g t` onto `g l` to free `t` for the newer `Tags` noun.
+pub const JUMPS: [(&str, Noun); 10] = [
+    ("d", Noun::Dashboard),
+    ("l", Noun::Transactions),
+    ("a", Noun::Accounts),
+    ("c", Noun::Categories),
+    ("p", Noun::Payees),
+    ("t", Noun::Tags),
+    ("w", Noun::Bills),
+    ("b", Noun::Budgets),
+    ("r", Noun::Reports),
+    ("s", Noun::Settings),
 ];
 
 fn jump_noun_for_key(key: &str) -> Option<Noun> {
     JUMPS
         .iter()
-        .find(|(jump_key, _, _)| *jump_key == key)
-        .map(|(_, noun, _)| *noun)
+        .find(|(jump_key, _)| *jump_key == key)
+        .map(|(_, noun)| *noun)
 }
 
 /// `?` itself, or the `/` key with Shift held (how a US layout reports it).
@@ -177,7 +177,9 @@ pub fn route_key(
         // The handoff: "`g` + an unbound key is a no-op: clear the pending prefix and flash
         // the hint strip." `key` itself is consumed doing nothing else -- it completes (aborts)
         // the chord rather than also being processed as its own ordinary keystroke.
-        return KeyOutcome::PendingGUnbound(format!("g {key} is not a jump"));
+        return KeyOutcome::PendingGUnbound(crate::msg::desktop_status_not_a_jump(&format!(
+            "g {key}"
+        )));
     }
 
     // Checked before `/`: on some platforms `?` arrives as an unshifted `/` key plus Shift.
@@ -354,7 +356,7 @@ mod tests {
 
     #[test]
     fn every_jump_table_entry_routes_to_its_noun() {
-        for (key, noun, _) in JUMPS {
+        for (key, noun) in JUMPS {
             assert_eq!(
                 route_key(InputMode::Normal, true, key, false, false),
                 KeyOutcome::JumpToNoun(noun)
@@ -381,6 +383,7 @@ mod tests {
 
     #[test]
     fn pending_g_then_an_unbound_key_flashes_a_message_and_consumes_the_key() {
+        crate::locale::init_for_tests();
         assert_eq!(
             route_key(InputMode::Normal, true, "x", false, false),
             KeyOutcome::PendingGUnbound("g x is not a jump".to_string())

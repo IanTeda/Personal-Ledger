@@ -98,10 +98,10 @@ fn brand_mark(active_noun: Noun) -> impl IntoElement {
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child("Personal Ledger"),
+                .child(lib_locale::msg::app_name()),
         )
         .child(div().text_color(color::INK_TERTIARY).child("|"))
-        .child(format!("{active_noun:?}"))
+        .child(active_noun.label())
 }
 
 fn sync_indicator() -> impl IntoElement {
@@ -110,7 +110,7 @@ fn sync_indicator() -> impl IntoElement {
         .text_size(px(12.0))
         .text_color(color::INK_SECONDARY)
         // Representative content -- a real last-write timestamp lands with the sync ticket.
-        .child("synced 14:22")
+        .child(crate::msg::desktop_topbar_synced("14:22"))
 }
 
 /// Minimize/maximize/close, in that order -- the conventional cross-platform window-control
