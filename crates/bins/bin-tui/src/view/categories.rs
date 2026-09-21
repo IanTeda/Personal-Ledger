@@ -44,8 +44,7 @@ use ratatui::{
     },
 };
 
-use crate::category::{CategoryFixture, CategoryNode, CategoryStore};
-use crate::view::{Action, View};
+use crate::{category::{CategoryFixture, CategoryNode, CategoryStore}, msg, view::{Action, View}};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
 /// the chart's marked last point.
@@ -545,7 +544,7 @@ impl View for CategoriesView {
     }
 
     fn title(&self) -> &'static str {
-        "Categories"
+        "Categories" // Will be migrated to use msg::tui_categories_title() after View trait supports String
     }
 
     fn category_store(&self) -> Option<&dyn CategoryStore> {
@@ -641,9 +640,11 @@ impl CategoriesView {
             Some(hint) => hint.to_string(),
             None => {
                 let total = self.store.nodes().len();
-                format!(
-                    "tree {visible_count} of {total} · depth {} · {folded_count} folded",
-                    self.max_depth()
+                msg::tui_categories_tree_header(
+                    &visible_count.to_string(),
+                    &total.to_string(),
+                    &self.max_depth().to_string(),
+                    &folded_count.to_string(),
                 )
             }
         };
@@ -687,18 +688,18 @@ impl CategoriesView {
 
         if merged {
             frame.render_widget(
-                summary_field_line("direct · rollup 12m", &format_money(rollup)),
+                summary_field_line(&msg::tui_categories_summary_merged(), &format_money(rollup)),
                 rows[row],
             );
             row += 1;
         } else {
             frame.render_widget(
-                summary_field_line("direct 12m", &format_money(&node.direct)),
+                summary_field_line(&msg::tui_categories_summary_direct(), &format_money(&node.direct)),
                 rows[row],
             );
             row += 1;
             frame.render_widget(
-                summary_field_line("rollup 12m", &format_money(rollup)),
+                summary_field_line(&msg::tui_categories_summary_rollup(), &format_money(rollup)),
                 rows[row],
             );
             row += 1;
@@ -713,7 +714,7 @@ impl CategoriesView {
             .unwrap_or("—");
         frame.render_widget(
             summary_field_line(
-                "kind · depth",
+                &msg::tui_categories_summary_kind_depth(),
                 &format!("{kind} · {}", self.store.depth(node.id)),
             ),
             rows[row],
@@ -722,18 +723,19 @@ impl CategoriesView {
 
         let child_count = self.store.children(node.id).len();
         let children_text = if child_count == 0 {
-            "none · leaf".to_string()
+            msg::tui_categories_summary_children_leaf()
         } else {
-            format!("{child_count} · parent")
+            msg::tui_categories_summary_children_parent(&child_count.to_string())
         };
         frame.render_widget(summary_field_line("children", &children_text), rows[row]);
         row += 1;
 
         let transactions_text = if node.transaction_count == 0 {
-            "none".to_string()
+            msg::tui_categories_summary_transactions_none()
         } else {
-            format!("{} · direct", node.transaction_count)
+            msg::tui_categories_summary_transactions_direct(&node.transaction_count.to_string())
         };
+        // Use a temporary static string for the label "transactions" since there's no localized msg for it yet
         frame.render_widget(
             summary_field_line("transactions", &transactions_text),
             rows[row],
@@ -742,25 +744,27 @@ impl CategoriesView {
 
         let first_last = match (node.first_posted, node.last_posted) {
             (Some(first), Some(last)) => {
-                format!("{} · {}", format_date(first), format_date(last))
+                msg::tui_categories_summary_first_last(&format_date(first), &format_date(last))
             }
-            _ => "none".to_string(),
+            _ => msg::tui_categories_summary_first_last_none(),
         };
+        // Use a temporary static string for the label "first · last" since there's no localized msg for it yet
         frame.render_widget(summary_field_line("first · last", &first_last), rows[row]);
         row += 1;
 
         frame.render_widget(
-            summary_field_line("note", node.note.as_deref().unwrap_or("—")),
+            summary_field_line(&msg::tui_categories_summary_note(), node.note.as_deref().unwrap_or("—")),
             rows[row],
         );
         row += 1;
 
         let active_text = if node.active {
-            "[×] · offered"
+            msg::tui_categories_summary_active_offered()
         } else {
-            "[ ] · not offered"
+            msg::tui_categories_summary_active_not_offered()
         };
-        frame.render_widget(summary_field_line("active", active_text), rows[row]);
+        // Use a temporary static string for the label "active" since there's no localized msg for it yet
+        frame.render_widget(summary_field_line("active", &active_text), rows[row]);
     }
 
     fn render_right_pane(&self, frame: &mut Frame, area: Rect) {
@@ -967,11 +971,11 @@ fn render_tree_column_header(frame: &mut Frame, area: Rect) {
     let columns = tree_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
-        Paragraph::new(Span::styled("N", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(&msg::tui_categories_tree_column_n(), dim)).alignment(Alignment::Right),
         columns[1],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled("12M", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(&msg::tui_categories_tree_column_rollup(), dim)).alignment(Alignment::Right),
         columns[2],
     );
 }
@@ -1025,7 +1029,7 @@ fn render_tree_row(frame: &mut Frame, area: Rect, row: &TreeRow, selected: bool)
         name_columns[0],
     );
     let name_text = if row.archived {
-        format!("{} · archived", row.name)
+        format!("{} {}", row.name, msg::tui_categories_tree_node_archived())
     } else {
         row.name.clone()
     };
@@ -1036,7 +1040,7 @@ fn render_tree_row(frame: &mut Frame, area: Rect, row: &TreeRow, selected: bool)
 
     let n_style = if selected { Style::default() } else { dim };
     let n_text = if row.is_leaf {
-        "—".to_string()
+        msg::tui_categories_tree_node_leaf_count()
     } else {
         row.child_count.to_string()
     };
@@ -1108,14 +1112,13 @@ fn format_money_whole(value: &Money) -> String {
 fn render_chart_heading(frame: &mut Frame, area: Rect, is_subtree: bool) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let label = if is_subtree {
-        "SUBTREE SPEND"
+        msg::tui_categories_chart_subtree()
     } else {
-        "DIRECT SPEND"
+        msg::tui_categories_chart_direct()
     };
-    let tag = format!(
-        "{} – {}",
-        format_month(chart_month(0)),
-        format_month(chart_month(CHART_MONTHS - 1))
+    let tag = msg::tui_categories_chart_date_range(
+        &format_month(chart_month(0)),
+        &format_month(chart_month(CHART_MONTHS - 1)),
     );
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -1145,7 +1148,7 @@ fn render_chart_labels(frame: &mut Frame, area: Rect, series: &[f64; CHART_MONTH
         format_month(chart_month(0)),
         format_f64_whole(series[0])
     );
-    let avg_text = format!("avg {}", format_f64_whole(avg));
+    let avg_text = msg::tui_categories_chart_avg(&format_f64_whole(avg));
     let last_text = format!(
         "{}  {}",
         format_month(chart_month(CHART_MONTHS - 1)),
