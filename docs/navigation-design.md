@@ -1,6 +1,6 @@
 # Navigation and keyboard grammar: design
 
-This is the developer-facing design. The plain-language guide for people using the apps is [Getting around](navigation.md).
+This is the developer-facing design. The plain-language guide for people using the apps is [Getting around](getting-around.md).
 
 This is the shared keyboard/navigation grammar both Personal Ledger clients — `bin-tui` (terminal, ratatui) and `bin-desktop` (GUI, gpui) — follow. It's the cross-client layer: `docs/ux/tui/navigation.md` and `docs/ux/desktop/README.md` are each client's own living reference for everything client-specific (screen layout, per-view keys, exact component structure); this document is what the two are meant to have in common, so a user moving between them keeps their muscle memory, and so a contributor building out either client's own grammar has one place that states the shared rules rather than two documents quietly drifting apart.
 

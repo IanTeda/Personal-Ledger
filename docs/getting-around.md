@@ -82,7 +82,7 @@ In the desktop app, you close the window like any other app.
 
 ## Changing the keys
 
-If you use the terminal app, you can change the keys for going back, opening help and opening the command box in your config file. See [Configuration](configuration.md) for where that file lives.
+If you use the terminal app, you can change the keys for going back, opening help and opening the command box in your config file. See [Settings](settings.md) for where that file lives.
 
 The desktop app doesn't have this yet. The other keys, such as `g` for jumping and `q` for quitting, are fixed for now.
 

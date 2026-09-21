@@ -2,7 +2,7 @@
 //!
 //! Configuration for the `[Personal-Ledger]` section: settings applied across Personal
 //! Ledger files and the client on a given system, but not intended to sync across computer
-//! systems (see `docs/configuration.md`).
+//! systems (see `docs/settings.md`).
 
 /// Default logging level for the `[Personal-Ledger]` section.
 const DEFAULT_LOG: lib_tracing::Levels = lib_tracing::Levels::INFO;

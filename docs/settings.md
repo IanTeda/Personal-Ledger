@@ -1,4 +1,4 @@
-# Configuration
+# Settings
 
 Personal Ledger has two types of configurations: static and dynamic. Static configurations are needed to bootstrap or start the application, are not intended to change often, or are system-space or user-space configurations applied across different ledger files. Static configurations live in configuration files. Dynamic configurations aren't needed to bootstrap the application, change often, and can be set and updated within the application itself.
 
@@ -281,7 +281,7 @@ Example Configuration File
 # Section names are case-insensitive (e.g., [Personal-Ledger] or [personal-ledger] both work).
 # Values should be quoted strings where appropriate.
 #
-# For more information, see the documentation at docs/configuration.md
+# For more information, see the documentation at docs/settings.md
 
 
 

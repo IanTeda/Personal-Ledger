@@ -1,4 +1,4 @@
-# Deployment
+# Getting started: deploying the Sync Server
 
 This page covers deploying the **Sync Server** — the only component of Personal Ledger that's actually deployed anywhere; the Desktop and TUI apps are installed locally as native binaries (see their own packaging notes in `docs/directories-files.md`). It assumes some familiarity with the architecture below; if you're only interested in `docker compose up`, skip to [Quick start](#quick-start).
 

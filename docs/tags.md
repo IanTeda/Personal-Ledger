@@ -50,4 +50,4 @@ See [Categories](categories.md) and [Payees](payees.md) for more.
 
 ## Getting around
 
-Press `g` then `t` to jump to Tags from anywhere. For the full set of keys, see [Getting around](navigation.md).
+Press `g` then `t` to jump to Tags from anywhere. For the full set of keys, see [Getting around](getting-around.md).

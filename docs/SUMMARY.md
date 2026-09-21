@@ -4,15 +4,14 @@
 - [Accounts](accounts.md)
 - [Bills](bills.md)
 - [Categories](categories.md)
-- [Configuration](configuration.md)
-- [Deployment](deployment.md)
-- [Setting up your ledger](initial_workflow.md)
+- [Getting around](getting-around.md)
 - [Localisation](localisation.md)
-- [Getting around](navigation.md)
 - [Payees](payees.md)
+- [Setting up your ledger](new-ledger-workflow.md)
+- [Settings](settings.md)
 - [Tags](tags.md)
-- [Transactions](transactions.md)
 - [Tracing (Logging)](tracing.md)
+- [Transactions](transactions.md)
 - [Units](units.md)
 
 ## Domain Context
@@ -23,6 +22,7 @@
 
 - [Accounts](development/accounts.md)
 - [File Structure](directories-files.md)
+- [Getting started: deploying the Sync Server](development/getting-started.md)
 - [Localisation Design](localisation-design.md)
 - [Navigation and keyboard grammar: design](navigation-design.md)
 - [Transactions](development/transactions.md)

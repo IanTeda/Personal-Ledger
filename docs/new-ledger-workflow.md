@@ -114,7 +114,7 @@ Once an account matches, you can record a **balance check**: a note of what the 
 
 ## Optional: sync and back up
 
-If you use Personal Ledger on more than one computer, you can connect them through your own sync server. See [Deployment](deployment.md) for how to run one, and **Settings**, then **Sync server**, to connect. Setting up sync is best done after your ledger is in good shape, so you copy a tidy ledger rather than a half-finished one.
+If you use Personal Ledger on more than one computer, you can connect them through your own sync server. See [Deployment](development/getting-started.md) for how to run one, and **Settings**, then **Sync server**, to connect. Setting up sync is best done after your ledger is in good shape, so you copy a tidy ledger rather than a half-finished one.
 
 **Settings**, then **Data & backup** is where your backup options live. Take a backup once your opening balances are in, so you always have a clean starting point to return to.
 
@@ -130,4 +130,4 @@ You're ready for everyday use when:
 - [ ] Your transactions are entered from your opening balance date.
 - [ ] Each account matches its latest statement.
 
-From here, see [Getting around](navigation.md) for the keyboard shortcuts that make daily entry quick.
+From here, see [Getting around](getting-around.md) for the keyboard shortcuts that make daily entry quick.

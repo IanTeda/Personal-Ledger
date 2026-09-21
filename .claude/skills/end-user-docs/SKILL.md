@@ -1,73 +1,69 @@
 ---
 name: end-user-docs
-description: Write or review end-user domain documentation (docs/.md, e.g. payees, tags, units, accounts). Use when creating a new domain page or editing an existing one, so structure, tone and the matching developer page stay consistent.
+description: Write or review an end-user domain page (docs/<domain>.md, e.g. accounts, payees, tags, units, settings) and its matching developer page (docs/development/<domain>.md). Use when creating or editing a domain page so structure, voice, requirements and the developer page stay consistent. Not for guides such as getting-around, new-ledger-workflow, authentication, localisation or tracing.
 ---
 
-End-user domain documentation
+# End-user domain documentation
 
-Every domain (payees, tags, accounts, …) gets one end-user page, docs/<domain>.md, and one matching developer page, docs/development/<domain>.md. Follow the template below. Also follow docs/agents/markdown-style.md (ATX headings, one line per paragraph, - bullets), Australian English, and the vocabulary in CONTEXT.md.
+Every domain gets one end-user page, `docs/<domain>.md`, and one developer page, `docs/development/<domain>.md`. The end-user page is for people using the apps. The developer page is where technical documentation for developers and Claude goes.
 
-Voice
+- End-user page: copy [end-user-template.md](end-user-template.md).
+- Developer page: copy [developer-template.md](developer-template.md). A stub is fine when the domain isn't documented technically yet.
 
-* Extremely concise. Sacrifice grammar for concision.
-* Conversational. Talk to the user (“you”), not about the system.
-* No jargon or implementation details (crates, SQL, gRPC, IDs). That belongs on the developer page.
-* Describe what the user sees and does. Show keys in backticks.
-* Describe intent, not code. If a feature isn’t built yet, say so in the Heads up, and leave its requirement unticked.
+Also follow `docs/agents/markdown-style.md` (ATX headings, one line per paragraph, `-` bullets), Australian English, and the vocabulary in `CONTEXT.md`. Filenames are kebab-case.
 
-Template
+## Scope
 
-Copy this into docs/<domain>.md, replace <...>, delete any section that genuinely doesn’t apply (never leave placeholder text), and add the page to docs/SUMMARY.md (alphabetical, under the end-user list) and the developer page under Code Structure.
+This skill covers domain pages only. Guides (`getting-around`, `new-ledger-workflow`, `authentication`, `localisation`, `tracing`) and `product-requirements.md` are out of scope; they follow the markdown style and the voice rules below, nothing else.
 
-# <Domain>
+## Voice
 
-<One to three lines: what the domain is in plain words, with a concrete example, and how Personal Ledger applies it.>
+- Talk to the user ("you"), not about the system. Conversational.
+- Clarity beats concision. Shorten grammar only in bullets and requirement lines, never in prose.
+- Describe what the user sees and does. Show keys in backticks.
+- No implementation detail (crates, SQL, gRPC, IDs). That belongs on the developer page.
+- `CONTEXT.md` terms are fine only when defined in the page's Terminology section.
+- Describe intent, not code. If a feature isn't built, say so in the Heads up and leave its requirement unticked.
 
-> **Heads up:** <Only while unfinished. What is built vs where it's headed.>
+## Requirements
 
-## Terminology
+The domain page owns its requirements. `docs/product-requirements.md` only lists which requirement IDs are in scope for each cycle and app.
 
-- **<Word 01>:** <What it means here.>
-- **<Word 02>:** <What it means here.>
+- Format: `- [x] ACC-003 (TUI, desktop): List accounts, filter by kind and active status, sort`.
+- The tag names the apps where it is built. Ticked means built in at least one app. Unticked lines carry no tag.
+- IDs use the domain prefix, are unique, and are never reused or renumbered.
+- A dropped requirement stays, struck through with a reason: `- [ ] ~~ACC-014~~: dropped, <reason>`.
+- No phase or priority field. Cycle scope lives in the PRD.
+- Before ticking, find the screen or code path in the named app (the developer page's Traceability table gives the location). If you can't find it, leave it unticked. If you only edited docs and didn't check the code, say so in your reply.
 
-## <Domain> concept
+### Prefix registry
 
-<How Personal Ledger splits or models the domain, in a sentence.>
+A new domain needs a row here first.
 
-### <Area 1>
+| Domain | Prefix | Page |
+| --- | --- | --- |
+| Accounts | ACC | accounts.md |
+| Balance checks | BAL | balance-checks.md |
+| Bills | BIL | bills.md |
+| Budgets | BUD | budgets.md |
+| Categories | CAT | categories.md |
+| Payees | PAY | payees.md |
+| Reports | RPT | reports.md |
+| Settings | SET | settings.md |
+| Tags | TAG | tags.md |
+| Transactions | TXN | transactions.md |
+| Units | UNT | units.md |
 
-<What it is for.>
+## Reviewing a page
 
-### <Area 2>
+When asked to review, don't rewrite. Run the checklist, then report each deviation from the template, the voice rules and the requirements rules, grouped by section, with the fix you'd make. Rewrite only if asked. Existing pages that predate the template are brought into line when next touched, not swept in one go.
 
-<What it is for.>
+## Checklist before finishing
 
-## Approach
-
-<The typical workflow, in the order a user does it. Numbered steps for a sequence, bullets for options.>
-
-## Related
-
-<How this domain differs from and works with neighbours, one line each, linking their pages. Example: Payees vs Categories vs Tags.>
-
-## Getting around
-
-Press `g` then `<key>` to jump to <Domain> from anywhere. For the full set of keys, see [Getting around](navigation.md).
-
-## Feature set and requirements
-
-Intended features for <domain>. Ticked means built.
-
-- [x] DOMAIN-001: <Feature or requirement>
-- [ ] DOMAIN-002: <Feature or requirement>
-
-## For developers
-
-Curious how <domain> is structured in the codebase, or planning to change it? See the [<Domain> development documentation](development/<domain>.md).
-
-Checklist before finishing
-
-* Matching docs/development/<domain>.md exists (create a stub if not).
-* Requirement IDs use the domain prefix, are unique, and ticks match reality—Cross-check with docs/product-requirements.md.
-* Every key binding matches docs/navigation.md.
-* Terms match CONTEXT.md; links resolve; page listed in docs/SUMMARY.md.
+- Required sections are present: What you can do, Scope, Worked example. Only Heads up, Related and Getting around may be dropped, and only for a stated reason. No placeholder text.
+- Matching `docs/development/<domain>.md` exists (a stub if nothing else), and is linked from the end-user page.
+- Page is in `docs/SUMMARY.md`: end-user list alphabetical, developer page under Code Structure.
+- Requirements follow the rules above, and their ticks match reality.
+- Getting around is copied from the table in `docs/getting-around.md`, with both apps' keys. Never write keys from memory.
+- Terms match `CONTEXT.md` and are defined in Terminology. Links resolve (`mdbook build`).
+- The domain has a row in the prefix registry.

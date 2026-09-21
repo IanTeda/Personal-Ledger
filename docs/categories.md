@@ -79,4 +79,4 @@ If you just want a category out of your way but want to keep its history, look f
 
 ## Getting around
 
-If you'd like to jump straight to your categories from anywhere, press `g` then `c`. For the full set of keys, see [Getting around](navigation.md).
+If you'd like to jump straight to your categories from anywhere, press `g` then `c`. For the full set of keys, see [Getting around](getting-around.md).

@@ -12,7 +12,7 @@ One more companion bundle sits alongside it and is **not yet built** — treat i
 
 - `docs/ux/desktop/Categories/` — the `Noun::Categories` management table, a hierarchical tree up to three levels deep grouped Expense / Income with budget and spent-this-month columns (5a), and its Add, Edit and Delete dialogs (5b–5d), the same management-table pattern as Accounts.
 
-The desktop and TUI clients are visual siblings by deliberate design (see the handoff's own "governing constraint"): both speak `g`-jumps, a `:` command palette, and a modal status line, so a user moving between them re-uses muscle memory. [`docs/navigation.md`](../../navigation.md) is now the cross-client layer that grammar lives in — read it first for anything keyboard-shaped. Where it doesn't cover something, `docs/ux/tui/navigation.md` — the TUI's own living reference, playing the same role this document plays here — is the older, decided contract to fall back to.
+The desktop and TUI clients are visual siblings by deliberate design (see the handoff's own "governing constraint"): both speak `g`-jumps, a `:` command palette, and a modal status line, so a user moving between them re-uses muscle memory. [`docs/getting-around.md`](../../navigation.md) is now the cross-client layer that grammar lives in — read it first for anything keyboard-shaped. Where it doesn't cover something, `docs/ux/tui/navigation.md` — the TUI's own living reference, playing the same role this document plays here — is the older, decided contract to fall back to.
 
 The full build-out trail for this document lives on the [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) Wayfinder map and its children (issues #145–#154).
 

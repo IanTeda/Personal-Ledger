@@ -60,7 +60,7 @@ The typical workflow depends on which account kind you're working with:
 
 ## Getting around
 
-Press `g` then `a` to jump to Accounts from anywhere. For the full set of keys, see [Getting around](navigation.md).
+Press `g` then `a` to jump to Accounts from anywhere. For the full set of keys, see [Getting around](getting-around.md).
 
 ## Feature set and requirements
 

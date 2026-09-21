@@ -32,7 +32,7 @@ Personal Ledger looks at your computer's own language and region settings and us
 
 You change your locale in the config file, then restart Personal Ledger. There's no switch inside the app on purpose: your locale belongs to the computer you're using, not to your ledger, so a laptop and a desktop can use different ones without fighting each other over a synced setting.
 
-The simplest way is to add a `locale` line to your config file (see [Configuration](configuration.md) for where that lives):
+The simplest way is to add a `locale` line to your config file (see [Settings](settings.md) for where that lives):
 
 ```ini
 [Personal-Ledger]

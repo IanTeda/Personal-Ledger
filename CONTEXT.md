@@ -49,7 +49,7 @@ default", and only an explicit choice is stored and synced. The Locale is not a 
 yet; that half of the split stays available for whenever a genuinely per-device setting
 shows up.
 _Avoid_: Configuration, setting — "Configuration" is reserved for `lib-config`'s layered,
-deployment-time config (files/env vars, see `docs/configuration.md`); a Preference is
+deployment-time config (files/env vars, see `docs/settings.md`); a Preference is
 edited by the user from inside a running Client instead.
 
 **Configuration**:
@@ -58,7 +58,7 @@ starts — defaults, an explicit path, or environment variables, plus a file-loc
 search in between (the full system/user/executable-directory/working-directory search
 for a Client; a single configured file path for the Sync Server, per
 [ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md)) — in that
-precedence order (see `docs/configuration.md`). Not user-editable from inside a running
+precedence order (see `docs/settings.md`). Not user-editable from inside a running
 app — see Preference, above, for that. Covers only settings needed before the app (or
 its database) can run — the database connection/pool settings and the telemetry level —
 not display-level settings, which are Preferences instead (see above). The Locale is the one

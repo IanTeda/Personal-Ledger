@@ -3,7 +3,7 @@
 # Standalone: this one file is all you need -- pulls the pre-built multi-arch image
 # from GHCR rather than building from source, so unlike earlier versions of this file
 # you don't need to clone the whole repo or run this from anywhere in particular. If
-# you'd rather build from source yourself, see docs/deployment.md's "Building the
+# you'd rather build from source yourself, see docs/development/getting-started.md's "Building the
 # image yourself" section and point `image:` below at your own local tag instead.
 #
 # `docker compose up -d` runs it with a named volume for its durable Change Set log,

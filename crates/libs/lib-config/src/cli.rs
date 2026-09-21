@@ -8,7 +8,7 @@
 
 /// Shared configuration-related CLI arguments: where's the config file, plus overrides for
 /// the `[Personal-Ledger]` section's `data`/`file`/`log`/`locale` settings (see
-/// `docs/configuration.md`) applied via [`Self::apply_overrides`].
+/// `docs/settings.md`) applied via [`Self::apply_overrides`].
 #[derive(Debug, Clone, Default, clap::Args)]
 pub struct ConfigArgs {
     /// Path to an explicit configuration file. Takes precedence over the file-location
@@ -38,7 +38,7 @@ pub struct ConfigArgs {
 impl ConfigArgs {
     /// Apply this invocation's `--data`/`--file`/`--log`/`--locale` overrides onto an already-parsed
     /// [`crate::Config`]. These sit above even environment variables in
-    /// `docs/configuration.md`'s precedence hierarchy, so they're applied as a final step
+    /// `docs/settings.md`'s precedence hierarchy, so they're applied as a final step
     /// after `LedgerConfig::parse`/`parse_for_sync_server` rather than through the layered
     /// `config`-crate builder -- unset (`None`) fields leave the parsed value untouched.
     pub fn apply_overrides(&self, config: &mut crate::Config) {
