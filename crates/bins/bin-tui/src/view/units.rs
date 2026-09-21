@@ -17,6 +17,7 @@ use ratatui::{
     },
 };
 
+use crate::msg;
 use crate::view::{Action, View};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
@@ -157,7 +158,7 @@ impl View for UnitsView {
     }
 
     fn title(&self) -> &'static str {
-        "Units & Prices"
+        "Units & Prices" // Will be migrated after Message return type is refactored
     }
 }
 
@@ -283,7 +284,7 @@ fn render_unit_list(frame: &mut Frame, area: Rect, units: &[UnitListRow]) {
 /// The "UNITS · N OF total" heading, echoing the summary heading's dim label / dim tag
 /// pattern.
 fn render_unit_list_heading(frame: &mut Frame, area: Rect, visible: usize) {
-    let tag = format!("{visible} OF {FAKE_UNIT_TOTAL}");
+    let tag = msg::tui_units_list_heading_tag(&visible.to_string(), &FAKE_UNIT_TOTAL.to_string());
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -293,7 +294,7 @@ fn render_unit_list_heading(frame: &mut Frame, area: Rect, visible: usize) {
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled("UNITS", dim)), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_list_heading(), dim)), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -305,10 +306,10 @@ fn render_unit_list_column_header(frame: &mut Frame, area: Rect) {
     let columns = unit_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
-    frame.render_widget(Paragraph::new(Span::styled("CODE", dim)), columns[0]);
-    frame.render_widget(Paragraph::new(Span::styled("TYPE", dim)), columns[1]);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_column_code(), dim)), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_column_type(), dim)), columns[1]);
     frame.render_widget(
-        Paragraph::new(Span::styled("LAST", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(msg::tui_units_column_last(), dim)).alignment(Alignment::Right),
         columns[2],
     );
 }
@@ -451,7 +452,7 @@ fn render_summary(frame: &mut Frame, area: Rect, summary: &UnitSummary) {
 /// The heading above the summary box: "SUMMARY", dim.
 fn render_summary_heading(frame: &mut Frame, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled("SUMMARY", dim)), area);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_summary_heading(), dim)), area);
 }
 
 /// The bordered `Block` beneath the summary heading: code and type on the first line, the
@@ -474,8 +475,14 @@ fn render_summary_box(frame: &mut Frame, area: Rect, summary: &UnitSummary) {
     frame.render_widget(Paragraph::new(summary.name), rows[1]);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[2]);
 
+    // Render localized summary figures
+    let labels = [
+        msg::tui_units_summary_units_held(),
+        msg::tui_units_summary_last_market_price(),
+        msg::tui_units_summary_last_market_value(),
+    ];
     for (index, figure) in summary.figures.iter().enumerate() {
-        render_summary_figure(frame, rows[3 + index], figure);
+        render_summary_figure_with_label(frame, rows[3 + index], &labels[index], figure);
     }
     frame.render_widget(
         Block::new().borders(Borders::BOTTOM),
@@ -484,9 +491,17 @@ fn render_summary_box(frame: &mut Frame, area: Rect, summary: &UnitSummary) {
 
     let dim = Style::default().add_modifier(Modifier::DIM);
     let fields_start = 3 + summary.figures.len() + 1;
-    for (index, (label, value)) in summary.fields.iter().enumerate() {
+    let localized_labels = [
+        msg::tui_units_summary_priced(),
+        msg::tui_units_summary_week_change(),
+        msg::tui_units_summary_52w_range(),
+        msg::tui_units_summary_symbol(),
+        msg::tui_units_summary_precision(),
+        msg::tui_units_summary_accounts(),
+    ];
+    for (index, (_, value)) in summary.fields.iter().enumerate() {
         frame.render_widget(
-            summary_field_line(label, value, dim),
+            summary_field_line(&localized_labels[index], value, dim),
             rows[fields_start + index],
         );
     }
@@ -504,6 +519,30 @@ fn render_summary_figure(frame: &mut Frame, area: Rect, figure: &SummaryFigure) 
 
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(Paragraph::new(Span::styled(figure.label, dim)), columns[0]);
+
+    let bold = Style::default().add_modifier(Modifier::BOLD);
+    let mut value = vec![Span::styled(figure.value, bold)];
+    if let Some(suffix) = figure.suffix {
+        value.push(Span::raw(" "));
+        value.push(Span::styled(suffix, dim));
+    }
+    frame.render_widget(
+        Paragraph::new(Line::from(value)).alignment(Alignment::Right),
+        columns[1],
+    );
+}
+
+/// One highlighted figure row with localized label.
+fn render_summary_figure_with_label(frame: &mut Frame, area: Rect, label: &str, figure: &SummaryFigure) {
+    let value_width =
+        figure.value.chars().count() + figure.suffix.map_or(0, |suffix| suffix.chars().count() + 1);
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(0), Constraint::Length(value_width as u16)])
+        .split(area);
+
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
 
     let bold = Style::default().add_modifier(Modifier::BOLD);
     let mut value = vec![Span::styled(figure.value, bold)];
@@ -687,7 +726,7 @@ fn render_weekly_prices(frame: &mut Frame, area: Rect, rows: &[WeeklyPriceRow]) 
 /// The "WEEKLY PRICES · W/C MONDAY · N UNITS" heading, echoing the unit list and summary
 /// headings' dim label / dim tag pattern.
 fn render_weekly_prices_heading(frame: &mut Frame, area: Rect) {
-    let tag = format!("W/C MONDAY · {FAKE_UNITS_HELD} UNITS");
+    let tag = msg::tui_units_weekly_prices_tag(FAKE_UNITS_HELD);
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -698,7 +737,7 @@ fn render_weekly_prices_heading(frame: &mut Frame, area: Rect) {
 
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
-        Paragraph::new(Span::styled("WEEKLY PRICES", dim)),
+        Paragraph::new(Span::styled(msg::tui_units_weekly_prices_heading(), dim)),
         columns[0],
     );
     frame.render_widget(
@@ -712,11 +751,11 @@ fn render_weekly_prices_column_header(frame: &mut Frame, area: Rect) {
     let columns = weekly_price_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
-    frame.render_widget(Paragraph::new(Span::styled("W/C", dim)), columns[0]);
-    frame.render_widget(Paragraph::new(Span::styled("CLOSE", dim)), columns[1]);
-    frame.render_widget(Paragraph::new(Span::styled("Δ%", dim)), columns[2]);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_wc(), dim)), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_close(), dim)), columns[1]);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_change(), dim)), columns[2]);
     frame.render_widget(
-        Paragraph::new(Span::styled("MARKET VALUE", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_market_value(), dim)).alignment(Alignment::Right),
         columns[3],
     );
 }
@@ -789,8 +828,13 @@ fn weekly_price_columns(area: Rect) -> [Rect; 4] {
 /// acting on the highlighted unit, then the `:` commands that do the same from the command
 /// line — how to use the units screen at a glance.
 fn render_keybind_hints(frame: &mut Frame, area: Rect) {
+    let command_hints = vec![
+        msg::tui_units_command_new(),
+        msg::tui_units_command_edit(),
+        msg::tui_units_command_price(),
+    ];
     let row_constraints: Vec<Constraint> =
-        std::iter::repeat_n(Constraint::Length(1), 3 + COMMAND_HINTS.len()).collect();
+        std::iter::repeat_n(Constraint::Length(1), 3 + command_hints.len()).collect();
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints(row_constraints)
@@ -798,15 +842,15 @@ fn render_keybind_hints(frame: &mut Frame, area: Rect) {
 
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
-        Paragraph::new(Span::styled("KEYS · COMMANDS", dim)),
+        Paragraph::new(Span::styled(msg::tui_units_hints_heading(), dim)),
         rows[0],
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
     render_key_hints(frame, rows[2]);
 
-    for (index, line) in COMMAND_HINTS.iter().enumerate() {
-        frame.render_widget(Paragraph::new(Span::styled(*line, dim)), rows[3 + index]);
+    for (index, line) in command_hints.iter().enumerate() {
+        frame.render_widget(Paragraph::new(Span::styled(line, dim)), rows[3 + index]);
     }
 }
 
@@ -815,14 +859,24 @@ fn render_key_hints(frame: &mut Frame, area: Rect) {
     let bold = Style::default().add_modifier(Modifier::BOLD);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
+    let key_hints = [
+        ("j/k", msg::tui_units_hint_j_k()),
+        ("Tab", msg::tui_units_hint_tab()),
+        ("n", msg::tui_units_hint_n()),
+        ("e", msg::tui_units_hint_e()),
+        ("d", msg::tui_units_hint_d()),
+        ("p", msg::tui_units_hint_p()),
+        ("[ ]", msg::tui_units_hint_window()),
+    ];
+
     let mut spans = Vec::new();
-    for (index, (key, label)) in KEY_HINTS.iter().enumerate() {
+    for (index, (key, label)) in key_hints.iter().enumerate() {
         if index > 0 {
             spans.push(Span::styled("  ·  ", dim));
         }
         spans.push(Span::styled(*key, bold));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, dim));
+        spans.push(Span::styled(label, dim));
     }
 
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
@@ -850,7 +904,7 @@ fn render_weekly_close(frame: &mut Frame, area: Rect, candles: &[Candle]) {
 
 /// The "WEEKLY CLOSE · VDHG" heading, echoing the other boxes' dim label / dim tag pattern.
 fn render_weekly_close_heading(frame: &mut Frame, area: Rect) {
-    let tag = "SEP 25 – SEP 26 · CANDLESTICK";
+    let tag = msg::tui_units_weekly_close_tag();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -861,7 +915,7 @@ fn render_weekly_close_heading(frame: &mut Frame, area: Rect) {
 
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
-        Paragraph::new(Span::styled("WEEKLY CLOSE · VDHG", dim)),
+        Paragraph::new(Span::styled(msg::tui_units_weekly_close_heading(), dim)),
         columns[0],
     );
     frame.render_widget(

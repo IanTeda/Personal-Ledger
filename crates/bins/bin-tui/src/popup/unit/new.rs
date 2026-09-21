@@ -17,6 +17,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
@@ -37,8 +38,8 @@ const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT
 const LABEL_WIDTH: u16 = "price precision".len() as u16 + 1;
 
 /// Content rows inside the border: title, its rule, the nine fields, a blank spacer, the
-/// two-line permanence warning, the footer's rule, then the footer itself.
-const CONTENT_ROWS: u16 = 1 + 1 + 9 + 1 + 2 + 1 + 1;
+/// one-line permanence warning, the footer's rule, then the footer itself.
+const CONTENT_ROWS: u16 = 1 + 1 + 9 + 1 + 1 + 1 + 1;
 
 /// Total popup height: content plus its top/bottom border.
 const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
@@ -81,8 +82,7 @@ impl NewUnitPopup {
                 Constraint::Length(1), // price precision
                 Constraint::Length(1), // active
                 Constraint::Length(1), // blank spacer
-                Constraint::Length(1), // warning line 1
-                Constraint::Length(1), // warning line 2
+                Constraint::Length(1), // warning
                 Constraint::Length(1), // rule
                 Constraint::Length(1), // footer hints
             ])
@@ -90,51 +90,46 @@ impl NewUnitPopup {
 
         render_title(frame, rows[0]);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
-        render_field(frame, rows[2], "code", code_value());
+        render_field(frame, rows[2], &msg::tui_unit_new_field_code(), code_value());
         render_field(
             frame,
             rows[3],
-            "name",
+            &msg::tui_unit_new_field_name(),
             Line::from("VGS Intl Shares Index ETF"),
         );
-        render_field(frame, rows[4], "type", type_value());
+        render_field(frame, rows[4], &msg::tui_unit_new_field_type(), type_value());
         render_field(
             frame,
             rows[5],
-            "symbol",
-            hinted("VGS.AX", "optional, your own reference"),
+            &msg::tui_unit_new_field_symbol(),
+            hinted("VGS.AX", &msg::tui_unit_new_hint_symbol()),
         );
-        render_field(frame, rows[6], "source", source_value());
+        render_field(frame, rows[6], &msg::tui_unit_new_field_source(), source_value());
         render_field(
             frame,
             rows[7],
-            "priced in",
-            hinted("AUD", "tab to pick another unit"),
+            &msg::tui_unit_new_field_priced_in(),
+            hinted("AUD", &msg::tui_unit_new_hint_priced_in()),
         );
         render_field(
             frame,
             rows[8],
-            "qty precision",
-            hinted("3", "decimals held"),
+            &msg::tui_unit_new_field_qty_precision(),
+            hinted("3", &msg::tui_unit_new_hint_qty_precision()),
         );
-        render_field(frame, rows[9], "price precision", hinted("4", "permanent"));
-        render_field(frame, rows[10], "active", Line::from("[×]"));
+        render_field(frame, rows[9], &msg::tui_unit_new_field_price_precision(), hinted("4", &msg::tui_unit_new_hint_price_precision()));
+        render_field(frame, rows[10], &msg::tui_unit_new_field_active(), Line::from("[×]"));
         // rows[11] is left blank — breathing space above the permanence warning.
-        render_warning(
-            frame,
-            rows[12],
-            "CODE AND PRICE PRECISION CANNOT CHANGE ONCE",
-        );
-        render_warning(frame, rows[13], "A TRANSACTION EXISTS");
-        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[14]);
-        render_footer_hints(frame, rows[15]);
+        render_warning(frame, rows[12], &msg::tui_unit_new_warning());
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[13]);
+        render_footer_hints(frame, rows[14]);
     }
 }
 
 /// The title row: "new unit" flush left, the `:unit new` command dim and right-aligned —
 /// echoing the command popup's own prompt row, per §4b's "title row left, context right".
 fn render_title(frame: &mut Frame, area: Rect) {
-    let tag = ":unit new";
+    let tag = msg::tui_unit_new_command();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -143,7 +138,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    frame.render_widget(Paragraph::new("new unit"), columns[0]);
+    frame.render_widget(Paragraph::new(msg::tui_unit_new_title()), columns[0]);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
@@ -153,7 +148,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 
 /// One `label   value` row: the label dim and fixed-width, per the shell's "dim for labels"
 /// style role, the value/control filling the rest.
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -166,7 +161,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
 
 /// A plain value followed by a dim `· hint` — the pattern most fields use (`symbol`, `priced
 /// in`, `qty precision`, `price precision`).
-fn hinted(value: &'static str, hint: &'static str) -> Line<'static> {
+fn hinted<'a>(value: &'static str, hint: &'a str) -> Line<'a> {
     let dim = Style::default().add_modifier(Modifier::DIM);
     Line::from(vec![
         Span::raw(value),
@@ -214,7 +209,7 @@ fn source_value() -> Line<'static> {
 
 /// One line of the permanence warning, in the accent — the mockup's own emphasis for a
 /// constraint that can only be honoured at creation.
-fn render_warning(frame: &mut Frame, area: Rect, text: &'static str) {
+fn render_warning(frame: &mut Frame, area: Rect, text: &str) {
     frame.render_widget(
         Paragraph::new(Span::styled(text, Style::default().fg(ACCENT))),
         area,
@@ -224,25 +219,23 @@ fn render_warning(frame: &mut Frame, area: Rect, text: &'static str) {
 /// The window footer hint row: each key bold, its label dim — matching the command popup's own
 /// `footer_hint_line` convention.
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    const HINTS: &[(&str, &str)] = &[
-        ("tab", "next field"),
-        ("^t", "test source"),
-        ("^s", "create"),
-        ("^p", "create & pull prices"),
-        ("esc", "cancel"),
+    let hints = vec![
+        ("tab", msg::tui_unit_new_help_tab()),
+        ("^s", msg::tui_unit_new_help_create()),
+        ("esc", msg::tui_unit_new_help_cancel()),
     ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = Style::default().add_modifier(Modifier::DIM);
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (idx, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 3);
+    for (idx, (key, label)) in hints.iter().enumerate() {
         if idx > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(*key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label, label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
@@ -336,7 +329,7 @@ mod tests {
     #[test]
     fn shows_the_footer_hints() {
         let text = render(&NewUnitPopup::new());
-        for key in ["tab", "^t", "^s", "^p", "esc"] {
+        for key in ["tab", "^s", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }
     }

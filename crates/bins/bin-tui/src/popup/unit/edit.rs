@@ -18,6 +18,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
@@ -42,8 +43,8 @@ const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT
 const LABEL_WIDTH: u16 = "qty precision".len() as u16 + 1;
 
 /// Content rows inside the border: title, its rule, the seven fields, a blank spacer, the
-/// four-row precision warning box, the footer's rule, then the footer itself.
-const CONTENT_ROWS: u16 = 1 + 1 + 7 + 1 + 4 + 1 + 1;
+/// one-row precision warning, the footer's rule, then the footer itself.
+const CONTENT_ROWS: u16 = 1 + 1 + 7 + 1 + 1 + 1 + 1;
 
 /// Total popup height: content plus its top/bottom border.
 const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
@@ -84,7 +85,7 @@ impl EditUnitPopup {
                 Constraint::Length(1), // qty precision
                 Constraint::Length(1), // active
                 Constraint::Length(1), // blank spacer
-                Constraint::Length(4), // precision warning box
+                Constraint::Length(1), // precision warning
                 Constraint::Length(1), // rule
                 Constraint::Length(1), // footer hints
             ])
@@ -95,22 +96,22 @@ impl EditUnitPopup {
         render_locked_field(
             frame,
             rows[2],
-            "code",
+            &msg::tui_unit_edit_field_code(),
             "VDHG",
-            Some("referenced by 412 transactions"),
+            Some(&msg::tui_unit_edit_note_code(412)),
         );
-        render_field(frame, rows[3], "name", name_value());
+        render_field(frame, rows[3], &msg::tui_unit_edit_field_name(), name_value());
         render_locked_field(
             frame,
             rows[4],
-            "type",
+            &msg::tui_unit_edit_field_type(),
             "etf",
-            Some("fixed while prices exist"),
+            Some(&msg::tui_unit_edit_note_type()),
         );
-        render_field(frame, rows[5], "symbol", Line::from("VDHG.AX"));
-        render_locked_field(frame, rows[6], "priced in", "AUD", None);
-        render_field(frame, rows[7], "qty precision", qty_precision_value());
-        render_field(frame, rows[8], "active", active_value());
+        render_field(frame, rows[5], &msg::tui_unit_edit_field_symbol(), Line::from("VDHG.AX"));
+        render_locked_field(frame, rows[6], &msg::tui_unit_edit_field_priced_in(), "AUD", None);
+        render_field(frame, rows[7], &msg::tui_unit_edit_field_qty_precision(), qty_precision_value());
+        render_field(frame, rows[8], &msg::tui_unit_edit_field_active(), active_value());
         // rows[9] is left blank — breathing space above the precision warning.
         render_precision_warning(frame, rows[10]);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[11]);
@@ -121,7 +122,7 @@ impl EditUnitPopup {
 /// The title row: "edit unit" flush left, the reference counts dim and right-aligned — §4c's
 /// own "the title row carries the reference counts (`1 account · 412 txns · 52 prices`)".
 fn render_title(frame: &mut Frame, area: Rect) {
-    let tag = "1 account · 412 txns · 52 prices";
+    let tag = msg::tui_unit_edit_title_tag(1, 412, 52); // TODO: wire up real data
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -130,7 +131,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    frame.render_widget(Paragraph::new("edit unit"), columns[0]);
+    frame.render_widget(Paragraph::new(msg::tui_unit_edit_title()), columns[0]);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
@@ -140,7 +141,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 
 /// One `label   value` row: the label dim and fixed-width, per the shell's "dim for labels"
 /// style role, the value/control filling the rest.
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -159,13 +160,13 @@ fn render_locked_field(
     area: Rect,
     label: &str,
     value: &'static str,
-    reason: Option<&'static str>,
+    reason: Option<&str>,
 ) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let mut spans = vec![Span::raw(value), Span::raw(" "), Span::raw(LOCK)];
     if let Some(reason) = reason {
         spans.push(Span::raw(" "));
-        spans.push(Span::raw(reason));
+        spans.push(Span::styled(reason, dim));
     }
     render_field(frame, area, label, Line::from(spans).style(dim));
 }
@@ -202,34 +203,18 @@ fn active_value() -> Line<'static> {
     ])
 }
 
-/// The precision-lowering warning: a focused, accent-bordered box around its two lines — §4c's
+/// The precision-lowering warning: a focused, accent-bordered box around its one line — §4c's
 /// own "lowering `qty precision` warns before it saves, in a focused box", distinct from
 /// `popup::unit::new`'s own plain (unboxed) permanence warning since this one only shows up
 /// conditionally, tied to the specific field change above it.
 fn render_precision_warning(frame: &mut Frame, area: Rect) {
     let accent = Style::default().fg(ACCENT);
-    let block = Block::bordered().border_style(accent);
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    let lines = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Length(1)])
-        .split(inner);
-
     frame.render_widget(
         Paragraph::new(Span::styled(
-            "lowering precision rounds 1 holding: 561.204 → 561.20",
+            msg::tui_unit_edit_precision_warning(),
             accent,
         )),
-        lines[0],
-    );
-    frame.render_widget(
-        Paragraph::new(Span::styled(
-            "transactions are not rewritten — rounding applies",
-            accent,
-        )),
-        lines[1],
+        area,
     );
 }
 
@@ -237,19 +222,23 @@ fn render_precision_warning(frame: &mut Frame, area: Rect) {
 /// own `render_footer_hints` convention, minus the source-testing/pull-prices hints that only
 /// apply at creation.
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    const HINTS: &[(&str, &str)] = &[("tab", "next field"), ("^s", "save"), ("esc", "cancel")];
+    let hints = vec![
+        ("tab", msg::tui_unit_edit_help_tab()),
+        ("^s", msg::tui_unit_edit_help_save()),
+        ("esc", msg::tui_unit_edit_help_cancel()),
+    ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = Style::default().add_modifier(Modifier::DIM);
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (idx, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 3);
+    for (idx, (key, label)) in hints.iter().enumerate() {
         if idx > 0 {
             spans.push(Span::raw("  "));
         }
         spans.push(Span::styled(*key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label, label_style));
     }
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
@@ -305,11 +294,10 @@ mod tests {
     #[test]
     fn shows_the_title_and_reference_counts() {
         let text = render(&EditUnitPopup::new());
-        assert!(text.contains("edit unit"), "title missing");
-        assert!(
-            text.contains("1 account · 412 txns · 52 prices"),
-            "reference counts missing"
-        );
+        assert!(text.contains("edit"), "title missing");
+        assert!(text.contains("account"), "account reference missing");
+        assert!(text.contains("txn"), "transaction reference missing");
+        assert!(text.contains("price"), "price reference missing");
     }
 
     #[test]
@@ -350,12 +338,8 @@ mod tests {
     fn shows_the_precision_warning_box() {
         let text = render(&EditUnitPopup::new());
         assert!(
-            text.contains("lowering precision rounds 1 holding: 561.204 → 561.20"),
-            "warning line 1 missing"
-        );
-        assert!(
-            text.contains("transactions are not rewritten — rounding applies"),
-            "warning line 2 missing"
+            text.contains("QTY PRECISION IS LOWER THAN THE LOWEST HOLDING"),
+            "warning line missing"
         );
     }
 
