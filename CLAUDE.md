@@ -85,6 +85,28 @@ Wayfinder tickets (like localization migration tickets #247-#252) typically bene
 - File paths are explicit
 - Prior ticket's test output/build state is not needed
 
+## Model selection strategy
+
+Use higher-capacity models (Opus/Sonnet) for ambiguous or architectural work that requires broad context and deep reasoning. Use lower-capacity models (Haiku) for well-scoped, actionable work with clear direction. This optimises for both quality and token efficiency.
+
+**Use Opus/Sonnet for:**
+- Planning and architecture (Wayfinder maps, design decisions, multi-ticket coordination)
+- Writing or reviewing documentation (design docs, ADRs, user guides)
+- Open-ended exploration or code review
+- Situations where unclear requirements or unexpected findings need synthesis
+
+**Use Haiku for:**
+- Tickets with explicit acceptance criteria and defined scope
+- Implementation against a fixed design/spec
+- Routine refactors, test additions, or maintenance
+- Adding a feature to an established pattern (e.g. a new CRUD entity following existing structure)
+
+When starting a ticket:
+- If the ticket body is clear, explicit, and self-contained → Haiku
+- If the ticket requires understanding prior changes, weighing tradeoffs, or designing an approach → Opus/Sonnet
+
+If Haiku encounters ambiguity, unexpected findings, or a decision point, it should pause and escalate to the user rather than guess.
+
 ## Agent skills
 
 ### Issue tracker
