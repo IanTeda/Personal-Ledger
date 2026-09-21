@@ -14,6 +14,8 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::msg;
+
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for the
@@ -117,12 +119,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 /// The body's three prose lines, stating the cost before the facts do — §4c's own "prose
 /// first ... then the facts".
 fn render_prose(frame: &mut Frame, area: Rect) {
-    let lines = [
-        "transactions are stored in their own units and are",
-        "not touched. Every reported total is re-converted",
-        "at the weekly USD close.",
-    ];
-    frame.render_widget(Paragraph::new(lines.join("\n")), area);
+    frame.render_widget(Paragraph::new(msg::tui_setting_guard_prose()), area);
 }
 
 /// One `label   value` fact row, the label dim and fixed-width; `accent` styles the value for

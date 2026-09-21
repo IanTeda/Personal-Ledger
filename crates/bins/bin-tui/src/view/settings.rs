@@ -29,6 +29,7 @@ use ratatui::{
 
 use lib_core::DateStyle;
 
+use crate::msg;
 use crate::view::{Action, View};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
@@ -220,7 +221,7 @@ fn render_groups(frame: &mut Frame, area: Rect) {
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled("GROUPS", dim)), sections[0]);
+    frame.render_widget(Paragraph::new(Span::styled(msg::tui_settings_groups_heading(), dim)), sections[0]);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
 
     let row_constraints: Vec<Constraint> =
@@ -264,8 +265,8 @@ fn render_group_row(frame: &mut Frame, area: Rect, group: &GroupRow) {
 /// only for the `overrides` row — the "the red dot ... is the presence of the override" model
 /// stated on screen, per §4a.
 struct WhereValuesFact {
-    label: &'static str,
-    value: &'static str,
+    label: String,
+    value: String,
     accent: bool,
 }
 
@@ -283,7 +284,7 @@ fn render_where_values_live(frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    render_heading(frame, sections[0], "WHERE VALUES LIVE", "H log");
+    render_heading(frame, sections[0], &msg::tui_settings_where_heading(), &msg::tui_settings_where_tag());
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
 
     let block = Block::bordered().padding(Padding::horizontal(1));
@@ -293,22 +294,22 @@ fn render_where_values_live(frame: &mut Frame, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let facts: [WhereValuesFact; 3] = [
         WhereValuesFact {
-            label: "overrides",
-            value: "3 rows",
+            label: msg::tui_settings_where_overrides(),
+            value: msg::tui_settings_where_overrides_value(),
             accent: true,
         },
         WhereValuesFact {
-            label: "defaults",
-            value: "42 in code",
+            label: msg::tui_settings_where_defaults(),
+            value: msg::tui_settings_where_defaults_value(),
             accent: false,
         },
         WhereValuesFact {
-            label: "last commit",
-            value: "14:02",
+            label: msg::tui_settings_where_last_commit(),
+            value: msg::tui_settings_where_last_commit_value(),
             accent: false,
         },
     ];
-    let mut lines: Vec<Line<'static>> = vec![
+    let mut lines: Vec<Line> = vec![
         Line::from(Span::styled("ledger.db · table", dim)),
         Line::from("settings"),
     ];
@@ -329,7 +330,7 @@ fn render_where_values_live(frame: &mut Frame, area: Rect) {
 
 /// One `label   value` line, the label padded to `WHERE_VALUES_LABEL_WIDTH` and dimmed; the
 /// value renders in `ACCENT` when `fact.accent` is set (the `overrides` row).
-fn where_values_fact_line(fact: &WhereValuesFact) -> Line<'static> {
+fn where_values_fact_line(fact: &WhereValuesFact) -> Line {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let value_style = if fact.accent {
         Style::default().fg(ACCENT)
@@ -337,8 +338,8 @@ fn where_values_fact_line(fact: &WhereValuesFact) -> Line<'static> {
         Style::default()
     };
     Line::from(vec![
-        Span::styled(format!("{:<WHERE_VALUES_LABEL_WIDTH$}", fact.label), dim),
-        Span::styled(fact.value, value_style),
+        Span::styled(format!("{:<WHERE_VALUES_LABEL_WIDTH$}", &fact.label), dim),
+        Span::styled(fact.value.clone(), value_style),
     ])
 }
 
@@ -356,10 +357,12 @@ fn render_reset(frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    render_heading(frame, sections[0], "RESET", "deletes the row");
+    render_heading(frame, sections[0], &msg::tui_settings_reset_heading(), &msg::tui_settings_reset_tag());
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-    frame.render_widget(key_hint_line("r", "this setting"), sections[2]);
-    frame.render_widget(key_hint_line("R", "whole group"), sections[3]);
+    let r_hint = msg::tui_settings_reset_hint_r();
+    let big_r_hint = msg::tui_settings_reset_hint_R();
+    render_hint_row(frame, sections[2], "r", &r_hint);
+    render_hint_row(frame, sections[3], "R", &big_r_hint);
 }
 
 /// One bold-key / dim-label line, matching `view::units`'s own `KEY_HINTS` convention.
@@ -371,6 +374,20 @@ fn key_hint_line(key: &'static str, label: &'static str) -> Paragraph<'static> {
         Span::raw("  "),
         Span::styled(label, dim),
     ]))
+}
+
+/// Render a hint row with key and dynamic label text.
+fn render_hint_row(frame: &mut Frame, area: Rect, key: &str, label: &str) {
+    let bold = Style::default().add_modifier(Modifier::BOLD);
+    let dim = Style::default().add_modifier(Modifier::DIM);
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(key, bold),
+            Span::raw("  "),
+            Span::styled(label, dim),
+        ])),
+        area,
+    );
 }
 
 /// A dim label / dim tag heading row, matching `view::units`'s own heading convention —
@@ -468,47 +485,45 @@ fn row(overridden: bool, setting: &str, value: &str, note: &str, selected: bool)
 /// follows the Locale, and the row here shows an explicit `short`. `locale` is Configuration,
 /// read-only: it shows the effective Locale and where it came from, and has no editor.
 fn settings() -> Vec<SettingRow> {
-    let locale = crate::locale::info();
-    let (locale_tag, locale_note) = crate::locale::describe(&locale);
     vec![
         row(
             true,
-            "base unit",
-            "AUD",
-            "every total converts to this",
+            &msg::tui_settings_setting_base_unit(),
+            &msg::tui_settings_setting_base_unit_value(),
+            &msg::tui_settings_selected_explain(),
             true,
         ),
         row(
             false,
-            "fiscal year starts",
-            "01 jul",
+            &msg::tui_settings_setting_fiscal_year(),
+            &msg::tui_settings_setting_fiscal_year_value(),
             "drives year-to-date and reports",
             false,
         ),
         row(
             false,
-            "week starts",
-            "monday",
+            &msg::tui_settings_setting_week_starts(),
+            &msg::tui_settings_setting_week_starts_value(),
             "w/c label on weekly prices",
             false,
         ),
         row(
             true,
-            &crate::msg::tui_settings_date_style_setting(),
+            &msg::tui_settings_setting_date_style(),
             &crate::locale::date_style_label(Some(DateStyle::Short)),
-            &crate::msg::tui_settings_date_style_note(),
+            "date format note",
             false,
         ),
         row(
             false,
-            &crate::msg::tui_settings_locale_setting(),
-            &locale_tag,
-            &locale_note,
+            &msg::tui_settings_setting_locale(),
+            &msg::tui_settings_setting_locale_value(),
+            "en-US in use",
             false,
         ),
         row(
             true,
-            "negatives",
+            &msg::tui_settings_setting_negatives(),
             "−1 234.56",
             "minus · brackets · trailing",
             false,
@@ -522,9 +537,9 @@ fn settings() -> Vec<SettingRow> {
         ),
         row(
             false,
-            "undo depth",
-            "50 commands",
-            "kept in the database",
+            &msg::tui_settings_setting_undo_depth(),
+            &msg::tui_settings_setting_undo_depth_value(),
+            &msg::tui_settings_where_note(),
             false,
         ),
     ]
@@ -543,7 +558,7 @@ fn render_settings_list(frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    render_heading(frame, sections[0], "SETTINGS", "GENERAL · 8");
+    render_heading(frame, sections[0], &msg::tui_settings_list_heading(), &msg::tui_settings_list_heading_tag());
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
     render_settings_column_header(frame, sections[2]);
     render_setting_rows(frame, sections[3]);
@@ -554,8 +569,8 @@ fn render_settings_column_header(frame: &mut Frame, area: Rect) {
     let columns = setting_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
-    frame.render_widget(Paragraph::new(Span::styled("SETTING", dim)), columns[1]);
-    frame.render_widget(Paragraph::new(Span::styled("VALUE", dim)), columns[2]);
+    frame.render_widget(Paragraph::new(Span::styled(&msg::tui_settings_list_column_setting(), dim)), columns[1]);
+    frame.render_widget(Paragraph::new(Span::styled(&msg::tui_settings_list_column_value(), dim)), columns[2]);
     frame.render_widget(Paragraph::new(Span::styled("NOTE", dim)), columns[3]);
 }
 

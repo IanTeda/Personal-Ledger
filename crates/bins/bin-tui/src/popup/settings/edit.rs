@@ -14,6 +14,7 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for the
@@ -110,7 +111,7 @@ impl EditSettingPopup {
 /// The title row: `negatives` flush left, `general.negatives` dim and right-aligned — matches
 /// `popup::unit::edit`'s own "title left, context right" convention.
 fn render_title(frame: &mut Frame, area: Rect) {
-    let tag = "general.negatives";
+    let tag = msg::tui_setting_edit_command();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -119,7 +120,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    frame.render_widget(Paragraph::new("negatives"), columns[0]);
+    frame.render_widget(Paragraph::new(msg::tui_setting_edit_title()), columns[0]);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
