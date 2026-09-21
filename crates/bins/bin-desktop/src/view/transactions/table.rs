@@ -41,8 +41,12 @@ const PAGE_PADDING_X: Pixels = px(28.0);
 
 /// `padding:8px 28px; 10px/800; #9b9797; border-bottom:1px solid #d7d3d3`.
 pub fn column_header() -> impl IntoElement {
-    let head = |width: Pixels, label: &'static str, right: bool| {
-        let cell = div().w(width).flex_none().truncate().child(label);
+    let head = |width: Pixels, label: String, right: bool| {
+        let cell = div()
+            .w(width)
+            .flex_none()
+            .truncate()
+            .child(lib_locale::format::upper(&label));
         if right {
             cell.text_align(gpui::TextAlign::Right)
         } else {
@@ -63,13 +67,34 @@ pub fn column_header() -> impl IntoElement {
         .text_color(color::INK_TERTIARY)
         .child(div().w(STATUS_WIDTH).flex_none())
         .child(div().w(FLAG_WIDTH).flex_none())
-        .child(head(DATE_WIDTH, "DATE", false))
-        .child(head(ACCOUNT_WIDTH, "ACCOUNT", false))
-        .child(div().flex_1().min_w(PAYEE_MIN_WIDTH).child("PAYEE"))
-        .child(head(CATEGORY_WIDTH, "CATEGORY", false))
-        .child(head(TAGS_WIDTH, "TAGS", false))
-        .child(head(AMOUNT_WIDTH, "AMOUNT", true))
-        .child(head(RUNNING_WIDTH, "RUNNING", true))
+        .child(head(DATE_WIDTH, lib_locale::msg::column_date(), false))
+        .child(head(
+            ACCOUNT_WIDTH,
+            lib_locale::msg::column_account(),
+            false,
+        ))
+        .child(
+            div()
+                .flex_1()
+                .min_w(PAYEE_MIN_WIDTH)
+                .child(lib_locale::format::upper(&lib_locale::msg::column_payee())),
+        )
+        .child(head(
+            CATEGORY_WIDTH,
+            lib_locale::msg::column_category(),
+            false,
+        ))
+        .child(head(
+            TAGS_WIDTH,
+            crate::msg::desktop_transactions_column_tags(),
+            false,
+        ))
+        .child(head(AMOUNT_WIDTH, lib_locale::msg::column_amount(), true))
+        .child(head(
+            RUNNING_WIDTH,
+            crate::msg::desktop_transactions_column_running(),
+            true,
+        ))
 }
 
 /// The scrolling body: a `uniform_list` of `rows`, `selected` drawn dark, every row `row_height`
@@ -89,7 +114,7 @@ pub fn rows(
             .px(PAGE_PADDING_X)
             .py(px(24.0))
             .text_color(color::INK_SECONDARY)
-            .child("No transactions match these filters.")
+            .child(crate::msg::desktop_transactions_empty())
             .into_any_element();
     }
 

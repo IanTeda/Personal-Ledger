@@ -62,21 +62,23 @@ pub fn date_label(
 ) -> String {
     let (default_from, default_to) = this_year(today);
     if from == Some(default_from) && to == Some(default_to) {
-        return "this year".to_string();
+        return crate::msg::desktop_transactions_date_this_year();
     }
     let show = |date: NaiveDate| format::date(date, date_style);
     let show_end = |date: NaiveDate| {
         if date == today {
-            "today".to_string()
+            lib_locale::msg::date_word_today()
         } else {
             show(date)
         }
     };
     match (from, to) {
-        (None, None) => "all dates".to_string(),
-        (Some(from), None) => format!("from {}", show(from)),
-        (None, Some(to)) => format!("until {}", show_end(to)),
-        (Some(from), Some(to)) => format!("{} \u{2013} {}", show(from), show_end(to)),
+        (None, None) => crate::msg::desktop_transactions_date_all(),
+        (Some(from), None) => crate::msg::desktop_transactions_date_from(&show(from)),
+        (None, Some(to)) => crate::msg::desktop_transactions_date_until(&show_end(to)),
+        (Some(from), Some(to)) => {
+            crate::msg::desktop_transactions_date_range(&show(from), &show_end(to))
+        }
     }
 }
 
@@ -94,15 +96,23 @@ pub fn chips(
             .iter()
             .find(|account| account.id == id)
             .map(|account| account.name.clone())
-            .unwrap_or_else(|| "unknown".to_string())
+            .unwrap_or_else(crate::msg::desktop_transactions_chip_unknown)
     });
-    let category = filters
-        .category
-        .map(|id| categories::path(ledger.categories, id).unwrap_or_else(|| "unknown".to_string()));
+    let category = filters.category.map(|id| {
+        categories::path(ledger.categories, id)
+            .unwrap_or_else(crate::msg::desktop_transactions_chip_unknown)
+    });
     let payee = filters.payee.trim();
     let tag = filters.tag.trim();
     let date_active = filters.from != defaults.from || filters.to != defaults.to;
 
+    let or_any = |text: &str| {
+        if text.is_empty() {
+            crate::msg::desktop_transactions_chip_any()
+        } else {
+            text.to_string()
+        }
+    };
     let make = |field, label: String, active| Chip {
         field,
         label,
@@ -111,22 +121,32 @@ pub fn chips(
     vec![
         make(
             FilterField::Account,
-            format!("account: {}", account.as_deref().unwrap_or("all accounts")),
+            crate::msg::desktop_transactions_chip_account(
+                account
+                    .clone()
+                    .unwrap_or_else(crate::msg::desktop_transactions_chip_all_accounts)
+                    .as_str(),
+            ),
             account.is_some(),
         ),
         make(
             FilterField::Category,
-            format!("category: {}", category.as_deref().unwrap_or("any")),
+            crate::msg::desktop_transactions_chip_category(
+                category
+                    .clone()
+                    .unwrap_or_else(crate::msg::desktop_transactions_chip_any)
+                    .as_str(),
+            ),
             category.is_some(),
         ),
         make(
             FilterField::Payee,
-            format!("payee: {}", if payee.is_empty() { "any" } else { payee }),
+            crate::msg::desktop_transactions_chip_payee(&or_any(payee)),
             !payee.is_empty(),
         ),
         make(
             FilterField::Tag,
-            format!("tag: {}", if tag.is_empty() { "any" } else { tag }),
+            crate::msg::desktop_transactions_chip_tag(&or_any(tag)),
             !tag.is_empty(),
         ),
         make(
@@ -136,7 +156,7 @@ pub fn chips(
         ),
         make(
             FilterField::Status,
-            format!("status: {}", filters.status.label()),
+            crate::msg::desktop_transactions_chip_status(&filters.status.label()),
             filters.status != defaults.status,
         ),
     ]
@@ -162,17 +182,9 @@ pub fn clear_field(filters: &mut TransactionFilters, field: FilterField, today: 
 /// `700 transactions across 4 accounts`: the whole ledger, and how many accounts hold any of it.
 pub fn count_line(transactions: &[Transaction]) -> String {
     let accounts: HashSet<u32> = transactions.iter().map(|t| t.account_id).collect();
-    let noun = |count: usize, one: &str, many: &str| {
-        if count == 1 {
-            format!("{count} {one}")
-        } else {
-            format!("{count} {many}")
-        }
-    };
-    format!(
-        "{} across {}",
-        noun(transactions.len(), "transaction", "transactions"),
-        noun(accounts.len(), "account", "accounts")
+    crate::msg::desktop_transactions_count_line(
+        i64::try_from(transactions.len()).unwrap_or(i64::MAX),
+        i64::try_from(accounts.len()).unwrap_or(i64::MAX),
     )
 }
 
@@ -212,7 +224,11 @@ impl Footer {
             .as_ref()
             .map(|name| format!("{name} "))
             .unwrap_or_default();
-        format!("{} of {} {category}transactions shown", self.shown, self.of)
+        crate::msg::desktop_transactions_footer(
+            &self.shown.to_string(),
+            i64::try_from(self.of).unwrap_or(i64::MAX),
+            &category,
+        )
     }
 }
 
@@ -271,6 +287,7 @@ mod tests {
     }
 
     fn world() -> World {
+        crate::locale::init_for_tests();
         let accounts = default_accounts();
         let categories = default_categories();
         let payees = default_payees();
@@ -331,7 +348,7 @@ mod tests {
                 "payee: any",
                 "tag: any",
                 "this year",
-                "status: all"
+                "status: All"
             ]
         );
         assert!(chips.iter().all(|c| !c.active));
@@ -360,7 +377,7 @@ mod tests {
                 "payee: wool",
                 "tag: japan",
                 "this year",
-                "status: cleared"
+                "status: Cleared"
             ]
         );
         let active: Vec<bool> = chips.iter().map(|c| c.active).collect();
@@ -369,6 +386,7 @@ mod tests {
 
     #[test]
     fn the_date_chip_reads_this_year_a_range_or_all_dates() {
+        crate::locale::init_for_tests();
         let d = |m, day| NaiveDate::from_ymd_opt(2026, m, day).unwrap();
         let fmt = None;
         lib_locale::with_locale(lib_locale::Locale::EnAu, || {
@@ -413,6 +431,7 @@ mod tests {
 
     #[test]
     fn the_date_chip_follows_the_date_format_preference() {
+        crate::locale::init_for_tests();
         let from = NaiveDate::from_ymd_opt(2025, 1, 28).unwrap();
         let to = NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
         assert_eq!(

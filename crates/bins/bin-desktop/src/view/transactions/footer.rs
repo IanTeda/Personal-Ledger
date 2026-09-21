@@ -40,7 +40,9 @@ fn total(total: &FooterTotal) -> impl IntoElement {
         div()
             .text_size(px(11.0))
             .text_color(color::INK_TERTIARY)
-            .child("RUNNING TOTAL"),
+            .child(lib_locale::format::upper(
+                &crate::msg::desktop_transactions_total_label(),
+            )),
     );
     let figure = |text: String, text_color| {
         div()
@@ -75,7 +77,7 @@ fn total(total: &FooterTotal) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(13.0))
                 .text_color(color::INK_SECONDARY)
-                .child("mixed units"),
+                .child(crate::msg::desktop_transactions_total_mixed()),
         ),
         FooterTotal::Empty => row.child(figure("\u{2014}".to_string(), color::INK_TERTIARY)),
     }

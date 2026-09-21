@@ -12,6 +12,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use gpui::{AnyElement, App, Bounds, Pixels, SharedString, Window, canvas, div, prelude::*, px};
 
 use crate::{
+    nav::Noun,
     theme::color,
     transaction_chips::{Chip, FilterField},
 };
@@ -110,7 +111,7 @@ fn title_row(count_line: String, on_add_click: OnPlainClick) -> impl IntoElement
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(26.0))
                         .text_color(color::INK)
-                        .child("Transactions"),
+                        .child(Noun::Transactions.label()),
                 )
                 .child(
                     div()
@@ -139,7 +140,7 @@ fn add_button(on_click: OnPlainClick) -> impl IntoElement {
         .whitespace_nowrap()
         .hover(|style| style.bg(color::INK_SECONDARY))
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child("add transaction")
+        .child(crate::msg::desktop_transactions_add_button())
         .child(
             div()
                 .opacity(0.75)
@@ -222,7 +223,7 @@ fn clear_link(on_click: OnPlainClick) -> impl IntoElement {
         .text_color(color::INK)
         .underline()
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child("clear filters")
+        .child(crate::msg::desktop_transactions_clear_filters())
 }
 
 /// The right-aligned search box (28px tall, 12px): the `/ search payee or memo` placeholder, or the
@@ -231,7 +232,7 @@ fn search_box(search: String, searching: bool, on_click: OnPlainClick) -> impl I
     let caret = if searching { "\u{2502}" } else { "" };
     let (text, text_color) = if search.is_empty() && !searching {
         (
-            SharedString::from("/ search payee or memo"),
+            SharedString::from(crate::msg::desktop_transactions_search_placeholder()),
             color::INK_TERTIARY,
         )
     } else {

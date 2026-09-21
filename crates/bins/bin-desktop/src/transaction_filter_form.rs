@@ -28,9 +28,14 @@ use crate::{
 };
 
 /// The Account select's first option, meaning no account filter.
-pub const ALL_ACCOUNTS: &str = "All accounts";
+pub fn all_accounts() -> String {
+    crate::msg::desktop_transactions_filter_all_accounts()
+}
+
 /// The Category select's first option, meaning no category filter.
-pub const ANY_CATEGORY: &str = "Any category";
+pub fn any_category() -> String {
+    crate::msg::desktop_transactions_filter_any_category()
+}
 
 /// The popover's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -89,13 +94,13 @@ pub struct FormOptions {
 
 impl FormOptions {
     pub fn new(accounts: &[Account], all_categories: &[Category]) -> Self {
-        let mut account_options = vec![(None, ALL_ACCOUNTS.to_string())];
+        let mut account_options = vec![(None, all_accounts())];
         account_options.extend(
             accounts
                 .iter()
                 .map(|account| (Some(account.id), account.name.clone())),
         );
-        let mut category_options = vec![(None, ANY_CATEGORY.to_string())];
+        let mut category_options = vec![(None, any_category())];
         category_options.extend(
             categories::paths_in_tree_order(all_categories)
                 .into_iter()
@@ -121,18 +126,18 @@ impl FormOptions {
         }
     }
 
-    fn account_label(&self, id: Option<u32>) -> &str {
+    fn account_label(&self, id: Option<u32>) -> String {
         self.accounts
             .iter()
             .find(|(candidate, _)| *candidate == id)
-            .map_or(ALL_ACCOUNTS, |(_, label)| label.as_str())
+            .map_or_else(all_accounts, |(_, label)| label.clone())
     }
 
-    fn category_label(&self, id: Option<u32>) -> &str {
+    fn category_label(&self, id: Option<u32>) -> String {
         self.categories
             .iter()
             .find(|(candidate, _)| *candidate == id)
-            .map_or(ANY_CATEGORY, |(_, label)| label.as_str())
+            .map_or_else(any_category, |(_, label)| label.clone())
     }
 
     fn account_id(&self, label: &str) -> Option<u32> {
@@ -204,8 +209,8 @@ impl FilterForm {
         date_style: Option<DateStyle>,
     ) -> Self {
         Self {
-            account: SelectState::new(Some(options.account_label(filters.account).to_string())),
-            category: SelectState::new(Some(options.category_label(filters.category).to_string())),
+            account: SelectState::new(Some(options.account_label(filters.account))),
+            category: SelectState::new(Some(options.category_label(filters.category))),
             payee: filters.payee.clone(),
             tag: filters.tag.clone(),
             from: filters
@@ -213,7 +218,7 @@ impl FilterForm {
                 .map(|date| format_date_input(date, date_style))
                 .unwrap_or_default(),
             to: match filters.to {
-                Some(date) if date == today => "today".to_string(),
+                Some(date) if date == today => lib_locale::msg::date_word_today(),
                 Some(date) => format_date_input(date, date_style),
                 None => String::new(),
             },
@@ -540,8 +545,8 @@ mod tests {
             let form = defaults_form();
             assert_eq!(form.from, "1/1/2026");
             assert_eq!(form.to, "today");
-            assert_eq!(form.account.value(), Some(ALL_ACCOUNTS));
-            assert_eq!(form.category.value(), Some(ANY_CATEGORY));
+            assert_eq!(form.account.value(), Some(all_accounts().as_str()));
+            assert_eq!(form.category.value(), Some(any_category().as_str()));
             assert_eq!(form.status, StatusFilter::All);
             assert_eq!(form.focused, FormField::Account);
         });
@@ -730,7 +735,7 @@ mod tests {
         form.focus(FormField::Account);
         form.push_char('x');
         assert_eq!((form.payee.as_str(), form.tag.as_str()), ("w", "j"));
-        assert_eq!(form.account.value(), Some(ALL_ACCOUNTS));
+        assert_eq!(form.account.value(), Some(all_accounts().as_str()));
         form.focus(FormField::From);
         form.backspace();
         assert_eq!(form.from, "1/1/202");
@@ -752,11 +757,11 @@ mod tests {
     fn the_category_options_are_paths_in_tree_order_led_by_any() {
         let options = options();
         let labels = options.for_field(FormField::Category);
-        assert_eq!(labels[0], ANY_CATEGORY);
+        assert_eq!(labels[0], any_category());
         assert_eq!(labels.len(), 13);
         assert_eq!(labels[1], "Housing");
         assert!(labels.contains(&"Housing \u{203a} Utilities \u{203a} Electricity".to_string()));
-        assert_eq!(options.for_field(FormField::Account)[0], ALL_ACCOUNTS);
+        assert_eq!(options.for_field(FormField::Account)[0], all_accounts());
         assert_eq!(options.for_field(FormField::Account).len(), 8);
         assert!(options.for_field(FormField::Payee).is_empty());
     }

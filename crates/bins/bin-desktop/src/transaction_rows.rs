@@ -88,7 +88,9 @@ pub fn category_summary(transaction: &Transaction, all: &[categories::Category])
             .find(|category| category.id == only.category_id)
             .map(|category| category.name.clone())
             .unwrap_or_else(|| EMPTY_CELL.to_string()),
-        several => format!("split \u{b7} {}", several.len()),
+        several => {
+            crate::msg::desktop_transactions_split_summary(several.len().to_string().as_str())
+        }
     }
 }
 

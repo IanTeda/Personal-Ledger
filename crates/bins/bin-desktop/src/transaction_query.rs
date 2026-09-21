@@ -25,6 +25,7 @@ use std::collections::HashMap;
 
 use chrono::{Datelike, NaiveDate};
 use lib_core::{Money, TransactionStatus};
+use lib_locale::Label;
 
 use crate::{
     accounts::Account,
@@ -48,12 +49,13 @@ pub enum StatusFilter {
 impl StatusFilter {
     pub const ALL: [StatusFilter; 4] = [Self::All, Self::Open, Self::Cleared, Self::Reconciled];
 
-    pub fn label(self) -> &'static str {
+    /// The word for this filter in the Locale in effect: the shared Status label, or "All".
+    pub fn label(self) -> String {
         match self {
-            Self::All => "all",
-            Self::Open => "open",
-            Self::Cleared => "cleared",
-            Self::Reconciled => "reconciled",
+            Self::All => crate::msg::desktop_transactions_status_all(),
+            Self::Open => TransactionStatus::Open.label(),
+            Self::Cleared => TransactionStatus::Cleared.label(),
+            Self::Reconciled => TransactionStatus::Reconciled.label(),
         }
     }
 
@@ -893,9 +895,10 @@ mod tests {
 
     #[test]
     fn the_status_filter_labels_and_matching() {
+        crate::locale::init_for_tests();
         assert_eq!(
             StatusFilter::ALL.map(StatusFilter::label),
-            ["all", "open", "cleared", "reconciled"]
+            ["All", "Open", "Cleared", "Reconciled"]
         );
         assert!(StatusFilter::All.matches(&TransactionStatus::Open));
         assert!(StatusFilter::Cleared.matches(&TransactionStatus::Cleared));
