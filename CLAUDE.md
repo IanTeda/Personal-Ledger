@@ -103,6 +103,10 @@ Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/do
 
 Headings get a blank line before and after; paragraphs and list items are written as a single unwrapped line relying on word wrap, not hard-wrapped. See `docs/agents/markdown-style.md`.
 
+### End-user documentation
+
+End-user domain pages (`docs/<domain>.md`) follow a fixed template with a matching `docs/development/<domain>.md`. Invoke `/end-user-docs` (or let it auto-trigger) when writing or reviewing them.
+
 ### Writing docs, tracing, and tests
 
 Project skills under `.claude/skills/` capture this repo's conventions in more depth than fits here — invoke them (or let them auto-trigger) when doing the matching work: `/rustdocs` for rustdoc comments, `/tracing` for `tracing::instrument`/log-level conventions, `/unit-tests` for `fake`-crate mock data and `sqlx::test` patterns.
