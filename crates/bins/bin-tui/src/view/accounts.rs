@@ -38,7 +38,7 @@
 //! real, checkable logic, not a comment nobody enforces — a future ledger-filtering ticket
 //! only needs to start passing it real state.
 
-use bigdecimal::{BigDecimal, FromPrimitive};
+use bigdecimal::BigDecimal;
 use chrono::{Datelike, Months, NaiveDate};
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::{AccountType, Money, RowID};
@@ -858,44 +858,13 @@ fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
 }
 
 fn format_date(date: chrono::NaiveDate) -> String {
-    date.format("%d %b").to_string().to_lowercase()
+    crate::format::day_month(date)
 }
 
-/// Formats `value` at `decimal_places`, with a space thousands-separator — e.g. `412.4800`
-/// for a fund at 4dp, `0.18400000` for BTC at 8dp, `1 284.30` for currency at 2dp.
+/// Formats `value` at the Unit's own `decimal_places` (`412.4800` for a fund at 4dp, `0.18400000`
+/// for BTC at 8dp), grouped by the Locale.
 fn format_money_at(value: &Money, decimal_places: i64) -> String {
-    group_thousands(&value.0.with_scale(decimal_places).to_plain_string())
-}
-
-fn group_thousands(plain: &str) -> String {
-    let (sign, rest) = match plain.strip_prefix('-') {
-        Some(rest) => ("-", rest),
-        None => ("", plain),
-    };
-    let (int_part, frac_part) = match rest.split_once('.') {
-        Some((int_part, frac_part)) => (int_part, Some(frac_part)),
-        None => (rest, None),
-    };
-
-    let mut grouped: String = int_part
-        .chars()
-        .rev()
-        .enumerate()
-        .flat_map(|(index, ch)| {
-            let mut chars = Vec::with_capacity(2);
-            if index != 0 && index % 3 == 0 {
-                chars.push(' ');
-            }
-            chars.push(ch);
-            chars
-        })
-        .collect();
-    grouped = grouped.chars().rev().collect();
-
-    match frac_part {
-        Some(frac_part) => format!("{sign}{grouped}.{frac_part}"),
-        None => format!("{sign}{grouped}"),
-    }
+    crate::format::money(value, decimal_places)
 }
 
 fn money_to_f64(value: &Money) -> f64 {
@@ -996,14 +965,11 @@ fn chart_month(index: usize) -> NaiveDate {
 }
 
 fn format_month(date: NaiveDate) -> String {
-    date.format("%b %y").to_string().to_lowercase()
+    crate::format::month_year(date)
 }
 
 fn format_money_at_f64(amount: f64, decimal_places: i64) -> String {
-    format_money_at(
-        &Money(BigDecimal::from_f64(amount).unwrap_or_default()),
-        decimal_places,
-    )
+    crate::format::money_f64(amount, decimal_places)
 }
 
 /// Splits a ledger row (or its column header) into status-glyph(1) / `DATE` / `PAYEE`
@@ -1321,14 +1287,14 @@ mod tests {
         let view = AccountsView::new();
         let text = render(&view);
         // Everyday Spending 4 210.65 + Mortgage Offset 24 429.50.
-        assert!(text.contains("28 640.15"));
+        assert!(text.contains("28,640.15"));
     }
 
     #[test]
     fn negative_balances_render_with_a_minus_sign() {
         let view = AccountsView::new();
         let text = render(&view);
-        assert!(text.contains("-1 284.3") || text.contains("-1284.3"));
+        assert!(text.contains("\u{2212}1,284.3"));
     }
 
     #[test]
@@ -1439,7 +1405,7 @@ mod tests {
         view.selected = find_id(&view, "Everyday Spending");
         let text = render(&view);
         assert!(text.contains("BALANCE"));
-        assert!(text.contains("oct 24 – sep 26"));
+        assert!(text.contains("oct 2024 – sep 2026"));
     }
 
     #[test]
@@ -1459,7 +1425,7 @@ mod tests {
         let text = render(&view);
         // Wallet 320.40 + Everyday Spending 4 210.65 + Mortgage Offset 24 429.50
         // + Amex Platinum -1 284.30 + Home Loan -612 400.00 = -584 723.75.
-        assert!(text.contains("net AUD -584 723.75"));
+        assert!(text.contains("net AUD \u{2212}584,723.75"));
         assert!(text.contains("BTC, VDHG held separately"));
     }
 
@@ -1475,7 +1441,7 @@ mod tests {
         view.handle_key(key(KeyCode::Enter));
 
         let text = render(&view);
-        assert!(text.contains("net AUD -612 400.00"));
+        assert!(text.contains("net AUD \u{2212}612,400.00"));
         assert!(!text.contains("held separately"));
     }
 

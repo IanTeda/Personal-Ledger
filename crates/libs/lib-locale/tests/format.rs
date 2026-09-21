@@ -6,7 +6,8 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{DateStyle, Money, UnitKind};
 use lib_locale::format::{
-    Unit, format_date, format_money, format_month, format_number, format_year_month, upper,
+    Unit, format_date, format_money, format_month, format_month_day, format_number,
+    format_year_month, upper,
 };
 use lib_locale::{Locale, with_locale};
 
@@ -185,5 +186,18 @@ fn a_bad_month_falls_back_rather_than_panicking() {
     with_locale(Locale::EnAu, || {
         assert_eq!(format_month(13), "13");
         assert_eq!(format_year_month(2025, 13), "2025-13");
+    });
+}
+
+#[test]
+fn a_month_and_day_follow_the_locale_order() {
+    with_locale(Locale::EnAu, || {
+        assert_eq!(format_month_day(date(2026, 9, 12)), "12 Sept")
+    });
+    with_locale(Locale::EnUs, || {
+        assert_eq!(format_month_day(date(2026, 9, 12)), "Sep 12")
+    });
+    with_locale(Locale::EnGb, || {
+        assert_eq!(format_month_day(date(2026, 1, 5)), "5 Jan")
     });
 }

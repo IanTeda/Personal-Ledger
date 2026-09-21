@@ -456,50 +456,16 @@ fn popup_rect(area: Rect) -> Rect {
 }
 
 fn format_date_full_year(date: chrono::NaiveDate) -> String {
-    date.format("%d %b %Y").to_string().to_lowercase()
+    crate::format::date(date)
 }
 
 fn format_date_short_year(date: chrono::NaiveDate) -> String {
-    date.format("%d %b %y").to_string().to_lowercase()
+    crate::format::date(date)
 }
 
-/// Formats `value` at `decimal_places`, with a space thousands-separator — duplicated from
-/// `view::accounts`' own helper of the same name (this codebase's established convention:
-/// `view::units`/`view::categories`/`view::accounts` each keep a private copy rather than
-/// sharing one).
+/// Formats `value` at `decimal_places`, grouped by the Locale.
 fn format_money_at(value: &Money, decimal_places: i64) -> String {
-    group_thousands(&value.0.with_scale(decimal_places).to_plain_string())
-}
-
-fn group_thousands(plain: &str) -> String {
-    let (sign, rest) = match plain.strip_prefix('-') {
-        Some(rest) => ("-", rest),
-        None => ("", plain),
-    };
-    let (int_part, frac_part) = match rest.split_once('.') {
-        Some((int_part, frac_part)) => (int_part, Some(frac_part)),
-        None => (rest, None),
-    };
-
-    let mut grouped: String = int_part
-        .chars()
-        .rev()
-        .enumerate()
-        .flat_map(|(index, ch)| {
-            let mut chars = Vec::with_capacity(2);
-            if index != 0 && index % 3 == 0 {
-                chars.push(' ');
-            }
-            chars.push(ch);
-            chars
-        })
-        .collect();
-    grouped = grouped.chars().rev().collect();
-
-    match frac_part {
-        Some(frac_part) => format!("{sign}{grouped}.{frac_part}"),
-        None => format!("{sign}{grouped}"),
-    }
+    crate::format::money(value, decimal_places)
 }
 
 #[cfg(test)]
@@ -658,7 +624,7 @@ mod tests {
         assert!(text.contains("fixed at creation"));
         assert!(text.contains("FR.13"));
         assert!(text.contains("AUD"));
-        assert!(text.contains("1 000.00"));
+        assert!(text.contains("1,000.00"));
     }
 
     #[test]
@@ -668,9 +634,9 @@ mod tests {
         let text = render(&EditAccountPopup::new(&store, everyday), &store);
 
         assert!(text.contains("computed"));
-        assert!(text.contains("4 210.65 · not stored"));
+        assert!(text.contains("4,210.65 · not stored"));
         assert!(text.contains("1284 · enter ledger"));
-        assert!(text.contains("14 oct 2024"));
+        assert!(text.contains("oct 14, 2024"));
     }
 
     #[test]

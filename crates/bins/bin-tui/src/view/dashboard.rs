@@ -801,17 +801,9 @@ fn render_budget_bar(
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-/// Formats a whole-dollar amount with thousands separators, e.g. `1200.0` -> `"1,200"`.
+/// Formats a whole-dollar amount, grouped by the Locale.
 fn format_thousands(amount: f64) -> String {
-    let digits = (amount.round() as i64).to_string();
-    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
-    for (index, ch) in digits.chars().rev().enumerate() {
-        if index != 0 && index % 3 == 0 {
-            grouped.push(',');
-        }
-        grouped.push(ch);
-    }
-    grouped.chars().rev().collect()
+    crate::format::money_f64(amount, 0)
 }
 
 /// The fake current-period budget progress behind the budget rows — seven entries even

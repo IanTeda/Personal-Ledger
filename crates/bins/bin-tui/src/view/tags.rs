@@ -724,7 +724,7 @@ fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
 }
 
 fn format_date_full_year(date: chrono::NaiveDate) -> String {
-    date.format("%d %b %Y").to_string().to_lowercase()
+    crate::format::date(date)
 }
 
 /// A section heading row shared by every right-pane widget: the label flush left (dim), a
@@ -750,16 +750,13 @@ fn money_to_f64(value: &Money) -> f64 {
     value.0.to_string().parse().unwrap_or(0.0)
 }
 
-/// Formats a right-pane figure to two decimal places — deliberately simpler than `view::
-/// accounts::format_money_at`'s own thousands-grouped, per-unit-precision formatting: nothing
-/// here carries a real Unit (the design doc's own off-unit/"AUD only" apparatus is out of
-/// scope for this map), so there's no precision to look up and no unit to denominate by.
+/// Formats a right-pane figure to two decimal places, grouped by the Locale.
 fn format_amount(value: f64) -> String {
-    format!("{value:.2}")
+    crate::format::money_f64(value, 2)
 }
 
 fn format_date(date: chrono::NaiveDate) -> String {
-    date.format("%d %b").to_string().to_lowercase()
+    crate::format::day_month(date)
 }
 
 /// "Tagged spend"'s fixed end-of-window month — `crate::tag::FIXTURE_NOW`'s own month, mirroring
@@ -779,7 +776,7 @@ fn spend_chart_month(index: usize) -> NaiveDate {
 }
 
 fn format_month(date: NaiveDate) -> String {
-    date.format("%b %y").to_string().to_lowercase()
+    crate::format::month_year(date)
 }
 
 fn tagged_spend_window_tag() -> String {
@@ -1224,8 +1221,8 @@ mod tests {
         assert!(text.contains("Tax Deductible"));
         assert!(text.contains("[×]"));
         assert!(text.contains("23 transactions"));
-        assert!(text.contains("01 jul 2024"));
-        assert!(text.contains("30 jun 2026"));
+        assert!(text.contains("jul 1, 2024"));
+        assert!(text.contains("jun 30, 2026"));
     }
 
     #[test]
@@ -1286,8 +1283,8 @@ mod tests {
 
         // Mirrors `view::dashboard::render_net_worth_chart`'s own first/middle/last x-axis
         // labels — the chart should read as a graph on its own, not just a footer statement.
-        assert!(text.contains("oct 24"));
-        assert!(text.contains("sep 26"));
+        assert!(text.contains("oct 2024"));
+        assert!(text.contains("sep 2026"));
     }
 
     #[test]

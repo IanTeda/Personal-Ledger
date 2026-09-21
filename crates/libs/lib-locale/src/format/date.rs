@@ -3,7 +3,7 @@
 use chrono::{Datelike, NaiveDate};
 use icu_calendar::Date;
 use icu_datetime::DateTimeFormatter;
-use icu_datetime::fieldsets::{M, YM, YMD};
+use icu_datetime::fieldsets::{M, MD, YM, YMD};
 use lib_core::DateStyle;
 
 use std::rc::Rc;
@@ -16,6 +16,7 @@ thread_local! {
     static FORMATTERS: Cache<(Locale, u8), DateTimeFormatter<YMD>> = Cache::default();
     static YEAR_MONTH: Cache<Locale, DateTimeFormatter<YM>> = Cache::default();
     static MONTH: Cache<Locale, DateTimeFormatter<M>> = Cache::default();
+    static MONTH_DAY: Cache<Locale, DateTimeFormatter<MD>> = Cache::default();
 }
 
 /// `DateStyle` is not `Hash`, and `Iso` never reaches a formatter.
@@ -112,5 +113,29 @@ pub fn format_month(month: u32) -> String {
     try_month(month).unwrap_or_else(|error| {
         tracing::warn!(%error, "month formatting failed; using the number");
         month.to_string()
+    })
+}
+
+fn try_month_day(date: NaiveDate) -> Result<String> {
+    let locale = crate::locale();
+    let formatter = cached(&MONTH_DAY, locale, || {
+        DateTimeFormatter::try_new(icu_locale(locale)?.into(), MD::medium())
+            .map_err(|error| Error::Format(format!("month-day formatter for {locale}: {error}")))
+    })?;
+    let month = u8::try_from(date.month())
+        .map_err(|_| Error::Format(format!("month out of range: {}", date.month())))?;
+    let day = u8::try_from(date.day())
+        .map_err(|_| Error::Format(format!("day out of range: {}", date.day())))?;
+    let iso = Date::try_new_iso(date.year(), month, day)
+        .map_err(|error| Error::Format(format!("date {date} is not representable: {error}")))?;
+    Ok(formatter.format(&iso).to_string())
+}
+
+/// A day and month without the year, abbreviated by the Locale (`12 Sept` in `en-AU`, `Sep 12` in
+/// `en-US`), for a narrow column. Falls back to ISO if the date cannot be formatted.
+pub fn format_month_day(date: NaiveDate) -> String {
+    try_month_day(date).unwrap_or_else(|error| {
+        tracing::warn!(%error, "month-day formatting failed; using ISO");
+        date.format("%Y-%m-%d").to_string()
     })
 }

@@ -530,7 +530,7 @@ fn popup_rect(area: Rect) -> Rect {
 }
 
 fn format_date(date: chrono::NaiveDate) -> String {
-    date.format("%d %b %Y").to_string().to_lowercase()
+    crate::format::date(date)
 }
 
 #[cfg(test)]

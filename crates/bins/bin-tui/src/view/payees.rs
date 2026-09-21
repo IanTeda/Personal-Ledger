@@ -870,44 +870,13 @@ fn record_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
 }
 
 fn format_month(date: chrono::NaiveDate) -> String {
-    date.format("%b %y").to_string().to_lowercase()
+    crate::format::month_year(date)
 }
 
-/// Formats `value` at 2 decimal places (every Payee total is stated in the base unit) with a
-/// space thousands-separator — e.g. `-18 402.55`, `165 360.00`.
+/// Formats `value` at 2 decimal places (every Payee total is stated in the base unit), grouped by
+/// the Locale.
 fn format_money(value: &Money) -> String {
-    group_thousands(&value.0.with_scale(2).to_plain_string())
-}
-
-fn group_thousands(plain: &str) -> String {
-    let (sign, rest) = match plain.strip_prefix('-') {
-        Some(rest) => ("-", rest),
-        None => ("", plain),
-    };
-    let (int_part, frac_part) = match rest.split_once('.') {
-        Some((int_part, frac_part)) => (int_part, Some(frac_part)),
-        None => (rest, None),
-    };
-
-    let mut grouped: String = int_part
-        .chars()
-        .rev()
-        .enumerate()
-        .flat_map(|(index, ch)| {
-            let mut chars = Vec::with_capacity(2);
-            if index != 0 && index % 3 == 0 {
-                chars.push(' ');
-            }
-            chars.push(ch);
-            chars
-        })
-        .collect();
-    grouped = grouped.chars().rev().collect();
-
-    match frac_part {
-        Some(frac_part) => format!("{sign}{grouped}.{frac_part}"),
-        None => format!("{sign}{grouped}"),
-    }
+    crate::format::money(value, 2)
 }
 
 /// A section heading row shared by both right-pane widgets: the label flush left (dim), a
@@ -1054,7 +1023,7 @@ fn render_txn_row(frame: &mut Frame, area: Rect, row: &PayeeTransaction) {
 }
 
 fn format_date(date: chrono::NaiveDate) -> String {
-    date.format("%d %b").to_string().to_lowercase()
+    crate::format::day_month(date)
 }
 
 #[cfg(test)]
@@ -1277,7 +1246,7 @@ mod tests {
     fn negative_totals_render_with_a_minus_sign() {
         let view = PayeesView::new();
         let text = render(&view);
-        assert!(text.contains("-42 180.00") || text.contains("-42180.00"));
+        assert!(text.contains("\u{2212}42,180.00"));
     }
 
     #[test]
@@ -1288,7 +1257,7 @@ mod tests {
 
         assert!(text.contains("active"));
         assert!(text.contains("184 txns"));
-        assert!(text.contains("since oct 24"));
+        assert!(text.contains("since oct 2024"));
         assert!(text.contains("total"));
         assert!(text.contains("website"));
         assert!(text.contains("woolworths.com.au"));
@@ -1415,8 +1384,8 @@ mod tests {
         view.selected = find_id(&view, "Woolworths");
         let text = render(&view);
         assert!(text.contains("184 txns"));
-        assert!(text.contains("oct 24"));
-        assert!(text.contains("sep 26"));
+        assert!(text.contains("oct 2024"));
+        assert!(text.contains("sep 2026"));
     }
 
     #[test]

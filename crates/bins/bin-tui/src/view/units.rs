@@ -624,8 +624,8 @@ fn fake_weekly_prices() -> Vec<WeeklyPriceRow> {
         let previous_close = (close / (1.0 + change_percent / 100.0)).max(1.0);
 
         rows.push(WeeklyPriceRow {
-            week_commencing: week_commencing.format("%d %b").to_string().to_lowercase(),
-            close: format!("{previous_close:.2}"),
+            week_commencing: crate::format::day_month(week_commencing),
+            close: crate::format::money_f64(previous_close, 2),
             change_percent: format!("{change_percent:+.2}"),
             market_value: format_market_value(previous_close * FAKE_UNITS_HELD_QTY),
             is_negative: change_percent < 0.0,
@@ -637,23 +637,9 @@ fn fake_weekly_prices() -> Vec<WeeklyPriceRow> {
     rows
 }
 
-/// Formats a dollar amount with a space thousands separator and two decimal places, e.g.
-/// `40637.79` -> `"40 637.79"`, matching the weekly prices table's own fake figures.
+/// Formats a dollar amount to two decimal places, grouped by the Locale.
 fn format_market_value(amount: f64) -> String {
-    let whole = amount.trunc().abs() as i64;
-    let cents = ((amount.abs() - whole as f64) * 100.0).round() as u32;
-
-    let digits = whole.to_string();
-    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
-    for (index, ch) in digits.chars().rev().enumerate() {
-        if index != 0 && index % 3 == 0 {
-            grouped.push(' ');
-        }
-        grouped.push(ch);
-    }
-    let grouped: String = grouped.chars().rev().collect();
-
-    format!("{grouped}.{cents:02}")
+    crate::format::money_f64(amount, 2)
 }
 
 /// The weekly prices table (middle right): a "WEEKLY PRICES · W/C MONDAY · N UNITS" heading

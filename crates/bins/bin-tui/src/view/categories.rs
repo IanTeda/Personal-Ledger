@@ -1086,58 +1086,19 @@ fn summary_section_height(merged: bool) -> u16 {
     content_rows + 2 // top/bottom border
 }
 
-fn format_date(date: NaiveDate) -> String {
-    date.format("%d %b").to_string().to_lowercase()
+fn format_date(date: chrono::NaiveDate) -> String {
+    crate::format::day_month(date)
 }
 
-/// Formats a `Money` amount with a space thousands-separator, keeping decimals only when the
-/// amount actually has a fractional part (e.g. `142100` -> `"142 100"`, `12480.40` ->
-/// `"12 480.40"`) — used by the summary box, where full precision matters.
+/// Formats a `Money` amount, keeping decimals only when it has a fractional part -- used by the
+/// summary box, where full precision matters.
 fn format_money(value: &Money) -> String {
-    let normalized = if value.0.is_integer() {
-        value.0.with_scale(0)
-    } else {
-        value.0.with_scale(2)
-    };
-    group_thousands(&normalized.to_plain_string())
+    crate::format::money_natural(value)
 }
 
-/// Formats a `Money` amount rounded to whole dollars, with a space thousands-separator — used
-/// by the tree's narrow `12M` column, which the handoff draws without cents (see
-/// `CategoryFixture`'s own module doc on `Food`'s rollup).
+/// Formats a `Money` amount rounded to whole dollars -- used by the tree's narrow column.
 fn format_money_whole(value: &Money) -> String {
-    group_thousands(&value.0.with_scale(0).to_plain_string())
-}
-
-fn group_thousands(plain: &str) -> String {
-    let (sign, rest) = match plain.strip_prefix('-') {
-        Some(rest) => ("-", rest),
-        None => ("", plain),
-    };
-    let (int_part, frac_part) = match rest.split_once('.') {
-        Some((int_part, frac_part)) => (int_part, Some(frac_part)),
-        None => (rest, None),
-    };
-
-    let mut grouped: String = int_part
-        .chars()
-        .rev()
-        .enumerate()
-        .flat_map(|(index, ch)| {
-            let mut chars = Vec::with_capacity(2);
-            if index != 0 && index % 3 == 0 {
-                chars.push(' ');
-            }
-            chars.push(ch);
-            chars
-        })
-        .collect();
-    grouped = grouped.chars().rev().collect();
-
-    match frac_part {
-        Some(frac_part) => format!("{sign}{grouped}.{frac_part}"),
-        None => format!("{sign}{grouped}"),
-    }
+    crate::format::money(value, 0)
 }
 
 /// The "DIRECT SPEND"/"SUBTREE SPEND" heading over the chart, with the trailing window as its
@@ -1202,10 +1163,9 @@ fn render_chart_labels(frame: &mut Frame, area: Rect, series: &[f64; CHART_MONTH
     );
 }
 
-/// A whole-dollar amount with a space thousands-separator, no decimals — for the chart's
-/// first/avg/last labels, which the handoff shows without cents.
+/// A whole-dollar amount with no decimals, for the chart's first/avg/last labels.
 fn format_f64_whole(amount: f64) -> String {
-    group_thousands(&format!("{:.0}", amount.round()))
+    crate::format::money_f64(amount, 0)
 }
 
 /// The chart's x-axis month for `index` (`0` oldest, `CHART_MONTHS - 1` newest).
@@ -1214,7 +1174,7 @@ fn chart_month(index: usize) -> NaiveDate {
 }
 
 fn format_month(date: NaiveDate) -> String {
-    date.format("%b %y").to_string().to_lowercase()
+    crate::format::month_year(date)
 }
 
 /// The "TRANSACTIONS N of M · newest first" heading.
@@ -1782,7 +1742,7 @@ mod tests {
             text.contains("direct · rollup 12m"),
             "merged direct/rollup label missing"
         );
-        assert!(text.contains("12 480.40"), "exact rollup value missing");
+        assert!(text.contains("12,480.40"), "exact rollup value missing");
         assert!(
             text.contains("expense · 3"),
             "kind · depth missing (groceries is depth 3)"
@@ -1805,7 +1765,7 @@ mod tests {
         let text = render(&view);
         assert!(text.contains("direct 12m"), "direct label missing");
         assert!(text.contains("rollup 12m"), "rollup label missing");
-        assert!(text.contains("24 120.4"), "rollup value missing");
+        assert!(text.contains("24,120.4"), "rollup value missing");
         assert!(
             text.contains("4 · parent"),
             "children field missing for a parent"
@@ -1913,13 +1873,13 @@ mod tests {
 
     #[test]
     fn format_money_keeps_decimals_only_when_the_amount_has_a_fractional_part() {
-        assert_eq!(format_money(&"142100".parse().unwrap()), "142 100");
-        assert_eq!(format_money(&"12480.40".parse().unwrap()), "12 480.40");
+        assert_eq!(format_money(&"142100".parse().unwrap()), "142,100");
+        assert_eq!(format_money(&"12480.40".parse().unwrap()), "12,480.40");
     }
 
     #[test]
     fn format_money_whole_always_drops_decimals() {
-        assert_eq!(format_money_whole(&"12480.40".parse().unwrap()), "12 480");
+        assert_eq!(format_money_whole(&"12480.40".parse().unwrap()), "12,480");
     }
 
     #[test]

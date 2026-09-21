@@ -12,6 +12,7 @@ mod category;
 mod db;
 mod error;
 mod event;
+mod format;
 mod locale;
 mod payee;
 mod popup;

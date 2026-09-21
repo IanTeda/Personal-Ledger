@@ -442,42 +442,9 @@ fn popup_rect(area: Rect, content_rows: u16) -> Rect {
     }
 }
 
-/// Formats `value` at `decimal_places`, with a space thousands-separator — duplicated from
-/// `view::accounts`'s own helper of the same name, this codebase's established convention
-/// (each popup/view module keeps its own private copy rather than sharing one).
+/// Formats `value` at `decimal_places`, grouped by the Locale.
 fn format_money_at(value: &Money, decimal_places: i64) -> String {
-    group_thousands(&value.0.with_scale(decimal_places).to_plain_string())
-}
-
-fn group_thousands(plain: &str) -> String {
-    let (sign, rest) = match plain.strip_prefix('-') {
-        Some(rest) => ("-", rest),
-        None => ("", plain),
-    };
-    let (int_part, frac_part) = match rest.split_once('.') {
-        Some((int_part, frac_part)) => (int_part, Some(frac_part)),
-        None => (rest, None),
-    };
-
-    let mut grouped: String = int_part
-        .chars()
-        .rev()
-        .enumerate()
-        .flat_map(|(index, ch)| {
-            let mut chars = Vec::with_capacity(2);
-            if index != 0 && index % 3 == 0 {
-                chars.push(' ');
-            }
-            chars.push(ch);
-            chars
-        })
-        .collect();
-    grouped = grouped.chars().rev().collect();
-
-    match frac_part {
-        Some(frac_part) => format!("{sign}{grouped}.{frac_part}"),
-        None => format!("{sign}{grouped}"),
-    }
+    crate::format::money(value, decimal_places)
 }
 
 #[cfg(test)]
@@ -622,7 +589,7 @@ mod tests {
         let text = render(&DeleteAccountPopup::new(&store, everyday), &store);
 
         assert!(text.contains("1284 txns"));
-        assert!(text.contains("4 210.65 AUD"));
+        assert!(text.contains("4,210.65 AUD"));
         assert!(text.contains("12 unreconciled · 8 balance checks"));
         assert!(text.contains("delete them too"));
         assert!(text.contains("refused"));
@@ -642,8 +609,8 @@ mod tests {
         assert!(text.contains("Mortgage Offset"));
         // Mortgage Offset 24 429.50 -> 24 429.50 + 3 210.65 (Everyday Spending's
         // transactions_sum) = 27 640.15.
-        assert!(text.contains("24 429.50"));
-        assert!(text.contains("27 640.15"));
+        assert!(text.contains("24,429.50"));
+        assert!(text.contains("27,640.15"));
         assert!(text.contains("1284 txns · status kept"));
         assert!(text.contains("8 balance checks · they assert a"));
         assert!(text.contains("balance this account no longer has"));
