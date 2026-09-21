@@ -15,15 +15,13 @@ pub fn render() -> AnyElement {
     let version = div()
         .flex()
         .gap(px(4.0))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .child(format!("Personal Ledger v{}", env!("CARGO_PKG_VERSION"))),
-        )
+        .child(div().font_weight(gpui::FontWeight::EXTRA_BOLD).child(
+            crate::msg::desktop_settings_about_version(env!("CARGO_PKG_VERSION")),
+        ))
         .child("(08 September 2026)");
     let built_with = div()
         .text_color(color::INK_TERTIARY)
-        .child("Built with Rust + GPUI + SQLite");
+        .child(crate::msg::desktop_settings_about_built_with());
     let before_author = div()
         .flex()
         .flex_col()

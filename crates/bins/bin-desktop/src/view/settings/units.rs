@@ -28,6 +28,7 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use crate::{
     settings::{PriceSourceRow, UnitRow},
     theme::color,
+    view::settings::SettingsSection,
 };
 
 pub type OnRowIndexClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -51,15 +52,23 @@ pub fn render(
     div()
         .flex()
         .flex_col()
-        .child(subsection_label("UNITS"))
+        .child(subsection_label(lib_locale::format::upper(
+            &SettingsSection::Units.label(),
+        )))
         .child(table(units, on_edit_click, on_delete_click))
-        .child(add_button("settings-add-unit", "+ Add unit", on_add_click))
+        .child(add_button(
+            "settings-add-unit",
+            crate::msg::desktop_settings_units_add_button("+"),
+            on_add_click,
+        ))
         .child(
             div()
                 .mt(px(32.0))
                 .flex()
                 .flex_col()
-                .child(subsection_label("PRICE SOURCES"))
+                .child(subsection_label(lib_locale::format::upper(
+                    &crate::msg::desktop_settings_price_sources_heading(),
+                )))
                 .child(price_source_table(
                     price_sources,
                     on_price_source_test_click,
@@ -68,7 +77,7 @@ pub fn render(
                 ))
                 .child(add_button(
                     "settings-add-price-source",
-                    "+ Add price source",
+                    crate::msg::desktop_settings_price_sources_add("+"),
                     on_add_price_source_click,
                 )),
         )
@@ -77,7 +86,7 @@ pub fn render(
 
 /// `font:800 10px/1 'Archivo'; letter-spacing:.11em; color:#9b9797; margin-bottom:10px` -- the
 /// same treatment "PRICE SOURCES" and General's own "THIS LEDGER" label use.
-fn subsection_label(text: &'static str) -> impl IntoElement {
+fn subsection_label(text: String) -> impl IntoElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
@@ -128,16 +137,32 @@ fn table_header() -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .text_color(color::INK_SECONDARY)
-        .child(div().w(CODE_WIDTH).child("CODE"))
-        .child(div().w(NAME_WIDTH).child("NAME"))
-        .child(div().flex_1().child("FLAGS"))
-        .child(div().w(SOURCE_WIDTH).child("SOURCE"))
-        .child(div().w(TYPE_WIDTH).child("TYPE"))
+        .child(
+            div()
+                .w(CODE_WIDTH)
+                .child(lib_locale::format::upper(&lib_locale::msg::column_code())),
+        )
+        .child(
+            div()
+                .w(NAME_WIDTH)
+                .child(lib_locale::format::upper(&lib_locale::msg::column_name())),
+        )
+        .child(div().flex_1().child(lib_locale::format::upper(
+            &crate::msg::desktop_settings_units_column_flags(),
+        )))
+        .child(div().w(SOURCE_WIDTH).child(lib_locale::format::upper(
+            &crate::msg::desktop_settings_units_column_source(),
+        )))
+        .child(
+            div()
+                .w(TYPE_WIDTH)
+                .child(lib_locale::format::upper(&lib_locale::msg::column_type())),
+        )
         .child(
             div()
                 .w(ACTIONS_WIDTH)
                 .text_align(gpui::TextAlign::Right)
-                .child("ACTIONS"),
+                .child(lib_locale::format::upper(&lib_locale::msg::column_actions())),
         )
 }
 
@@ -184,14 +209,14 @@ fn row(
                 .gap(px(10.0))
                 .child(row_action_button(
                     SharedString::from(format!("unit-edit-{index}")),
-                    "edit",
+                    crate::msg::desktop_hint_edit(),
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_edit_click(index, window, cx)
                     }),
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("unit-delete-{index}")),
-                    "delete",
+                    crate::msg::desktop_hint_delete(),
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_delete_click(index, window, cx)
                     }),
@@ -208,15 +233,21 @@ fn flags_cell(unit: &UnitRow) -> impl IntoElement {
         .flex()
         .gap(px(6.0))
         .justify_start()
-        .when(unit.is_base, |this| this.child(tag_accent("base")))
-        .when(unit.is_default, |this| this.child(tag_outline("default")))
+        .when(unit.is_base, |this| {
+            this.child(tag_accent(crate::msg::desktop_settings_units_flag_base()))
+        })
+        .when(unit.is_default, |this| {
+            this.child(tag_outline(
+                crate::msg::desktop_settings_units_flag_default(),
+            ))
+        })
 }
 
 /// `.tag.tag-accent`: `background: var(--color-accent-100); color: var(--color-accent-800)`.
 /// Square corners, not the shared design system's own rounded pill -- this crate's "Radius 0
 /// everywhere" rule (`theme::color::TAG_ACCENT_BG`'s own doc) has no exception for a general tag
 /// shape.
-fn tag_accent(label: &'static str) -> impl IntoElement {
+fn tag_accent(label: String) -> impl IntoElement {
     div()
         .bg(color::TAG_ACCENT_BG)
         .text_color(color::TAG_ACCENT_TEXT)
@@ -227,7 +258,7 @@ fn tag_accent(label: &'static str) -> impl IntoElement {
 }
 
 /// `.tag.tag-outline`: `border: 1px solid var(--color-accent); color: var(--color-accent)`.
-fn tag_outline(label: &'static str) -> impl IntoElement {
+fn tag_outline(label: String) -> impl IntoElement {
     div()
         .border_1()
         .border_color(color::ACCENT)
@@ -280,18 +311,26 @@ fn price_source_table_header() -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .text_color(color::INK_SECONDARY)
-        .child(div().w(PRICE_SOURCE_NAME_WIDTH).child("NAME"))
-        .child(div().flex_1().child("SOURCE"))
+        .child(
+            div()
+                .w(PRICE_SOURCE_NAME_WIDTH)
+                .child(lib_locale::format::upper(&lib_locale::msg::column_name())),
+        )
+        .child(div().flex_1().child(lib_locale::format::upper(
+            &crate::msg::desktop_settings_units_column_source(),
+        )))
         .child(
             div()
                 .w(PRICE_SOURCE_LAST_UPDATED_WIDTH)
-                .child("LAST UPDATED"),
+                .child(lib_locale::format::upper(
+                    &crate::msg::desktop_settings_units_column_last_updated(),
+                )),
         )
         .child(
             div()
                 .w(PRICE_SOURCE_ACTIONS_WIDTH)
                 .text_align(gpui::TextAlign::Right)
-                .child("ACTIONS"),
+                .child(lib_locale::format::upper(&lib_locale::msg::column_actions())),
         )
 }
 
@@ -335,21 +374,21 @@ fn price_source_row(
                 .gap(px(10.0))
                 .child(row_action_button(
                     SharedString::from(format!("price-source-test-{index}")),
-                    "test",
+                    crate::msg::desktop_settings_units_test(),
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_test_click(index, window, cx)
                     }),
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("price-source-edit-{index}")),
-                    "edit",
+                    crate::msg::desktop_hint_edit(),
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_edit_click(index, window, cx)
                     }),
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("price-source-delete-{index}")),
-                    "delete",
+                    crate::msg::desktop_hint_delete(),
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_delete_click(index, window, cx)
                     }),
@@ -359,11 +398,7 @@ fn price_source_row(
 
 /// A row action button: `padding:4px 10px; border:1px solid rgba(32,30,29,.30);
 /// background:transparent; font-size:11px`.
-fn row_action_button(
-    id: SharedString,
-    label: &'static str,
-    on_click: OnPlainClick,
-) -> impl IntoElement {
+fn row_action_button(id: SharedString, label: String, on_click: OnPlainClick) -> impl IntoElement {
     div()
         .id(id)
         .cursor_pointer()
@@ -380,7 +415,7 @@ fn row_action_button(
 /// background:#eae9e9; font-weight:800; width:fit-content` -- see the module doc for why this
 /// sits `mt(16px)` below its own table rather than replicating the table's own inline
 /// `margin-bottom:48px`.
-fn add_button(id: &'static str, label: &'static str, on_click: OnAddClick) -> impl IntoElement {
+fn add_button(id: &'static str, label: String, on_click: OnAddClick) -> impl IntoElement {
     // `align_self: flex-start` (no direct `Styled` builder for it, unlike the container-level
     // `items_start`/etc.) -- without it, this button stretches to the full width of its column
     // parent instead of shrinking to its own content, unlike `width:fit-content` in the mockup.

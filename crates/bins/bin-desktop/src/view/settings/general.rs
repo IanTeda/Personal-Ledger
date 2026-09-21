@@ -12,12 +12,20 @@ use super::{field_label, field_value};
 /// One ledger's worth of "THIS LEDGER" summary figures -- representative content matching the
 /// mockup's own row order (accounts, transactions, units, institutions), not real
 /// `lib_database` counts.
-const LEDGER_SUMMARY: &[(&str, &str)] = &[
-    ("accounts", "7"),
-    ("transactions", "680"),
-    ("units", "3"),
-    ("institutions", "7"),
-];
+fn ledger_summary() -> [(String, &'static str); 4] {
+    [
+        (crate::msg::desktop_settings_general_summary_accounts(), "7"),
+        (
+            crate::msg::desktop_settings_general_summary_transactions(),
+            "680",
+        ),
+        (crate::msg::desktop_settings_general_summary_units(), "3"),
+        (
+            crate::msg::desktop_settings_general_summary_institutions(),
+            "7",
+        ),
+    ]
+}
 
 pub fn render() -> AnyElement {
     div()
@@ -37,13 +45,29 @@ fn field_column() -> impl IntoElement {
         .flex()
         .flex_col()
         .gap(px(16.0))
-        .child(field("Ledger name", "Personal Ledger", false))
-        .child(field("Owner", "alex@teda.id.au", false))
-        .child(field("Financial year starts", "july", true))
-        .child(field("Base unit", "aud \u{2014} Australian Dollar", true))
+        .child(field(
+            crate::msg::desktop_settings_general_name(),
+            "Personal Ledger",
+            false,
+        ))
+        .child(field(
+            crate::msg::desktop_settings_general_owner(),
+            "alex@teda.id.au",
+            false,
+        ))
+        .child(field(
+            crate::msg::desktop_settings_general_financial_year(),
+            "july",
+            true,
+        ))
+        .child(field(
+            crate::msg::desktop_settings_general_base_unit(),
+            "aud \u{2014} Australian Dollar",
+            true,
+        ))
 }
 
-fn field(label: &'static str, value: &'static str, select_style: bool) -> impl IntoElement {
+fn field(label: String, value: &'static str, select_style: bool) -> impl IntoElement {
     div()
         .child(field_label(label))
         .child(field_value(value, select_style))
@@ -63,7 +87,9 @@ fn summary_panel() -> impl IntoElement {
                 .text_size(px(10.0))
                 .text_color(color::INK_TERTIARY)
                 .mb(px(10.0))
-                .child("THIS LEDGER"),
+                .child(lib_locale::format::upper(
+                    &crate::msg::desktop_settings_general_summary_title(),
+                )),
         )
         .child(
             div()
@@ -72,28 +98,27 @@ fn summary_panel() -> impl IntoElement {
                 .bg(color::CHROME)
                 .flex()
                 .flex_col()
-                .children(
-                    LEDGER_SUMMARY
-                        .iter()
+                .children({
+                    let summary = ledger_summary();
+                    let last = summary.len() - 1;
+                    summary
+                        .into_iter()
                         .enumerate()
-                        .map(|(index, (label, value))| {
-                            summary_row(label, value, index == LEDGER_SUMMARY.len() - 1)
-                        }),
-                ),
+                        .map(move |(index, (label, value))| {
+                            summary_row(label, value, index == last)
+                        })
+                }),
         )
         .child(
             div()
                 .mt(px(14.0))
                 .text_size(px(12.0))
                 .text_color(color::INK_SECONDARY)
-                .child(
-                    "General settings are ledger-scoped Preferences \u{2014} they travel with \
-                     the ledger as Change Sets. Client-only Configuration lives under Display.",
-                ),
+                .child(crate::msg::desktop_settings_general_note()),
         )
 }
 
-fn summary_row(label: &'static str, value: &'static str, last: bool) -> impl IntoElement {
+fn summary_row(label: String, value: &'static str, last: bool) -> impl IntoElement {
     div()
         .flex()
         .justify_between()

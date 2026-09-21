@@ -41,31 +41,32 @@ impl SettingsSection {
     ];
 
     /// The index-rail label / section heading text.
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::General => "General",
-            Self::Display => "Display",
-            Self::Units => "Units",
-            Self::Institutions => "Institutions",
-            Self::SyncServer => "Sync server",
-            Self::DataBackup => "Data & backup",
-            Self::Tracing => "Tracing (Logs)",
-            Self::About => "About",
+            Self::General => crate::msg::desktop_settings_section_general(),
+            Self::Display => crate::msg::desktop_settings_section_display(),
+            Self::Units => crate::msg::desktop_settings_section_units(),
+            Self::Institutions => crate::msg::desktop_settings_section_institutions(),
+            Self::SyncServer => crate::msg::desktop_settings_section_sync_server(),
+            Self::DataBackup => crate::msg::desktop_settings_section_data_backup(),
+            Self::Tracing => crate::msg::desktop_settings_section_tracing(),
+            Self::About => crate::msg::desktop_settings_section_about(),
         }
     }
 
     /// The section heading's right-aligned scope note -- the Configuration-vs-Preferences
     /// distinction the README calls "the UI must make ... legible" (issue #63/#101/ADR-0014).
-    pub fn scope_note(self) -> &'static str {
+    pub fn scope_note(self) -> String {
         match self {
-            Self::General => "ledger identity",
-            Self::Units => "synced · change sets",
-            Self::Institutions => "synced · change sets",
-            Self::Display => "client-scoped · never synced",
-            Self::SyncServer => "synced · every 30 seconds",
-            Self::DataBackup => "local files · aud · 2.84 mb",
-            Self::Tracing => "diagnostic · last 1000 entries",
-            Self::About => "version info",
+            Self::General => crate::msg::desktop_settings_scope_general(),
+            Self::Units | Self::Institutions => {
+                crate::msg::desktop_settings_scope_synced_change_sets()
+            }
+            Self::Display => crate::msg::desktop_settings_scope_display(),
+            Self::SyncServer => crate::msg::desktop_settings_scope_sync_server(30),
+            Self::DataBackup => crate::msg::desktop_settings_scope_data_backup("aud", "2.84 mb"),
+            Self::Tracing => crate::msg::desktop_settings_scope_tracing(1000),
+            Self::About => crate::msg::desktop_settings_scope_about(),
         }
     }
 
@@ -146,11 +147,11 @@ pub enum RowDensity {
 impl RowDensity {
     pub const ALL: [RowDensity; 3] = [Self::Compact, Self::Regular, Self::Roomy];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::Compact => "compact",
-            Self::Regular => "regular",
-            Self::Roomy => "roomy",
+            Self::Compact => crate::msg::desktop_settings_density_compact(),
+            Self::Regular => crate::msg::desktop_settings_density_regular(),
+            Self::Roomy => crate::msg::desktop_settings_density_roomy(),
         }
     }
 
@@ -180,10 +181,12 @@ pub enum StatusGlyphs {
 impl StatusGlyphs {
     pub const ALL: [StatusGlyphs; 2] = [Self::Unicode, Self::AsciiFallback];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::Unicode => "unicode \u{2014} \u{25cb} \u{25d0} \u{25cf} \u{2691}",
-            Self::AsciiFallback => "ascii fallback \u{2014} o / x !",
+            Self::Unicode => {
+                crate::msg::desktop_settings_glyphs_unicode("\u{25cb} \u{25d0} \u{25cf} \u{2691}")
+            }
+            Self::AsciiFallback => crate::msg::desktop_settings_glyphs_ascii("o / x !"),
         }
     }
 }
@@ -388,11 +391,11 @@ pub enum UnitKind {
 impl UnitKind {
     pub const ALL: [UnitKind; 3] = [Self::Currency, Self::Cryptocurrency, Self::Custom];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::Currency => "currency",
-            Self::Cryptocurrency => "cryptocurrency",
-            Self::Custom => "custom",
+            Self::Currency => crate::msg::desktop_settings_unit_kind_currency(),
+            Self::Cryptocurrency => crate::msg::desktop_settings_unit_kind_cryptocurrency(),
+            Self::Custom => crate::msg::desktop_settings_unit_kind_custom(),
         }
     }
 
@@ -595,13 +598,13 @@ impl AccountType {
         Self::Investment,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::Savings => "savings",
-            Self::CreditCard => "credit card",
-            Self::Offset => "offset",
-            Self::Loan => "loan",
-            Self::Investment => "investment",
+            Self::Savings => crate::msg::desktop_settings_account_type_savings(),
+            Self::CreditCard => lib_locale::msg::account_kind_credit_card(),
+            Self::Offset => crate::msg::desktop_settings_account_type_offset(),
+            Self::Loan => lib_locale::msg::account_kind_loan(),
+            Self::Investment => lib_locale::msg::account_kind_investment(),
         }
     }
 }
@@ -682,12 +685,12 @@ pub enum TracingLevel {
 impl TracingLevel {
     pub const ALL: [TracingLevel; 4] = [Self::Error, Self::Warn, Self::Info, Self::Debug];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> String {
         match self {
-            Self::Error => "error",
-            Self::Warn => "warn",
-            Self::Info => "info",
-            Self::Debug => "debug",
+            Self::Error => crate::msg::desktop_settings_tracing_level_error(),
+            Self::Warn => crate::msg::desktop_settings_tracing_level_warn(),
+            Self::Info => crate::msg::desktop_settings_tracing_level_info(),
+            Self::Debug => crate::msg::desktop_settings_tracing_level_debug(),
         }
     }
 }
@@ -727,6 +730,7 @@ mod tests {
 
     #[test]
     fn filter_matches_case_insensitively_and_by_substring() {
+        crate::locale::init_for_tests();
         assert!(SettingsSection::SyncServer.matches_filter("sync"));
         assert!(SettingsSection::SyncServer.matches_filter("SYNC"));
         assert!(!SettingsSection::SyncServer.matches_filter("units"));
@@ -779,6 +783,7 @@ mod tests {
 
     #[test]
     fn unit_kind_from_label_matches_exactly_or_falls_back_to_custom() {
+        crate::locale::init_for_tests();
         assert_eq!(UnitKind::from_label("currency"), UnitKind::Currency);
         assert_eq!(
             UnitKind::from_label("cryptocurrency"),
@@ -1010,6 +1015,40 @@ mod tests {
         assert_eq!(
             PreviewStatus::Flagged.glyph(StatusGlyphs::AsciiFallback),
             "!"
+        );
+    }
+
+    #[test]
+    fn scope_notes_keep_the_configuration_and_preference_terms_and_pluralise() {
+        crate::locale::init_for_tests();
+        assert_eq!(
+            SettingsSection::Display.scope_note(),
+            "client-scoped · never synced"
+        );
+        assert_eq!(SettingsSection::Units.scope_note(), "synced · change sets");
+        assert_eq!(
+            SettingsSection::SyncServer.scope_note(),
+            "synced · every 30 seconds"
+        );
+        assert_eq!(
+            crate::msg::desktop_settings_scope_units(1),
+            "1 unit · synced"
+        );
+        assert_eq!(
+            crate::msg::desktop_settings_scope_institutions(7),
+            "7 institutions · synced"
+        );
+    }
+
+    #[test]
+    fn local_enum_labels_come_from_the_catalogue() {
+        crate::locale::init_for_tests();
+        assert_eq!(RowDensity::Roomy.label(), "roomy");
+        assert_eq!(AccountType::CreditCard.label(), "Credit card");
+        assert_eq!(TracingLevel::Warn.label(), "warn");
+        assert_eq!(
+            StatusGlyphs::AsciiFallback.label(),
+            "ascii fallback \u{2014} o / x !"
         );
     }
 }

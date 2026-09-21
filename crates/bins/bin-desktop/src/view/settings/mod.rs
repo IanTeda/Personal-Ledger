@@ -29,6 +29,7 @@ use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
 use lib_core::DateStyle;
 
 use crate::{
+    nav::Noun,
     settings::{
         InstitutionRow, PriceSourceRow, RowDensity, SettingsSection, StatusGlyphs, TracingLevel,
         UnitRow,
@@ -113,13 +114,13 @@ fn page_heading() -> impl IntoElement {
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(28.0))
                         .text_color(color::INK)
-                        .child("Settings"),
+                        .child(Noun::Settings.label()),
                 )
                 .child(
                     div()
                         .text_size(px(11.5))
                         .text_color(color::INK_TERTIARY)
-                        .child("preferences · synced"),
+                        .child(crate::msg::desktop_settings_scope_preferences()),
                 ),
         )
         .child(
@@ -169,17 +170,24 @@ fn section_block(section: SettingsSection, props: &SettingsBodyProps<'_>) -> imp
         .child(section_content(section, props))
 }
 
+/// A row count as the number a plural selector takes.
+fn count(len: usize) -> i64 {
+    i64::try_from(len).unwrap_or(i64::MAX)
+}
+
 /// The section heading's own right-aligned scope note. Static for every section except Units,
 /// which the mockup gives a **dynamic**, row-count-based note ("3 units · synced") instead of
 /// the generic "synced · change sets" `SettingsSection::scope_note` otherwise returns --
 /// confirmed against the raw markup, not just the README's coarser Components table.
 fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String {
     match section {
-        SettingsSection::Units => format!("{} units \u{b7} synced", props.units.len()),
-        SettingsSection::Institutions => {
-            format!("{} institutions \u{b7} synced", props.institutions.len())
+        SettingsSection::Units => {
+            crate::msg::desktop_settings_scope_units(count(props.units.len()))
         }
-        other => other.scope_note().to_string(),
+        SettingsSection::Institutions => {
+            crate::msg::desktop_settings_scope_institutions(count(props.institutions.len()))
+        }
+        other => other.scope_note(),
     }
 }
 

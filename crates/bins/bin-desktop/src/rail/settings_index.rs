@@ -55,7 +55,9 @@ impl RenderOnce for SettingsIndexRail {
                     .min_h(px(0.0))
                     .flex()
                     .flex_col()
-                    .child(rail_label("SETTINGS"))
+                    .child(rail_label(&lib_locale::format::upper(
+                        &crate::nav::Noun::Settings.label(),
+                    )))
                     .children(
                         SettingsSection::ALL
                             .into_iter()
@@ -95,7 +97,7 @@ fn filter_box(filter: &str) -> impl IntoElement {
                 .child(if filter.is_empty() {
                     div()
                         .text_color(color::INK_TERTIARY)
-                        .child("filter")
+                        .child(crate::msg::desktop_hint_filter())
                         .into_any_element()
                 } else {
                     div()
@@ -140,5 +142,5 @@ fn footer() -> impl IntoElement {
         .px(px(12.0))
         .text_size(px(11.5))
         .text_color(color::INK_TERTIARY)
-        .child("preferences sync \u{b7} configuration local")
+        .child(crate::msg::desktop_settings_index_footer())
 }

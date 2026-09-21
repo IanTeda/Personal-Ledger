@@ -70,7 +70,7 @@ fn radio_option(level: TracingLevel, checked: bool, on_click: OnPlainClick) -> i
     div()
         .id(SharedString::from(format!(
             "tracing-level-{}",
-            level.label()
+            format!("{level:?}").to_lowercase()
         )))
         .cursor_pointer()
         .flex()
@@ -155,7 +155,7 @@ fn clear_logs_button(on_click: OnClearLogsClick) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child("Clear logs");
+        .child(crate::msg::desktop_settings_tracing_clear());
     button.style().align_self = Some(gpui::AlignItems::FlexStart);
     button
 }

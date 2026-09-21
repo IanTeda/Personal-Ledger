@@ -54,22 +54,25 @@ pub fn render(
     let card = div()
         .flex()
         .flex_col()
-        .child(dialog::header("Add unit", false))
+        .child(dialog::header(
+            crate::msg::desktop_settings_units_add_title(),
+            false,
+        ))
         .child(dialog::body([
             text_field(
                 "add-unit-code",
-                "Code",
+                lib_locale::msg::column_code(),
                 &form.code,
-                "e.g. usd",
+                &crate::msg::desktop_settings_units_code_placeholder(),
                 form.focused_field == AddUnitField::Code,
                 field_click(AddUnitField::Code, on_field_click.clone()),
             )
             .into_any_element(),
             text_field(
                 "add-unit-name",
-                "Name",
+                lib_locale::msg::column_name(),
                 &form.name,
-                "e.g. US Dollar",
+                &crate::msg::desktop_settings_units_name_placeholder(),
                 form.focused_field == AddUnitField::Name,
                 field_click(AddUnitField::Name, on_field_click),
             )
@@ -80,7 +83,7 @@ pub fn render(
             dialog::cancel_button("add-unit-cancel", on_cancel).into_any_element(),
             dialog::confirm_button(
                 "add-unit-confirm",
-                "Add",
+                crate::msg::desktop_settings_units_add_submit(),
                 form.is_valid(),
                 false,
                 on_confirm,
@@ -148,13 +151,15 @@ pub(super) fn type_field(
     selected: UnitKind,
     on_click: OnKindClick,
 ) -> impl IntoElement {
-    div().child(field_label("Type")).child(segmented_control(
-        id_prefix,
-        &UnitKind::ALL,
-        selected,
-        UnitKind::label,
-        on_click,
-    ))
+    div()
+        .child(field_label(lib_locale::msg::column_type()))
+        .child(segmented_control(
+            id_prefix,
+            &UnitKind::ALL,
+            selected,
+            UnitKind::label,
+            on_click,
+        ))
 }
 
 /// `.seg`/`.seg-opt`: a bordered, radius-0 pill row, each option separated by a 1px rule, the

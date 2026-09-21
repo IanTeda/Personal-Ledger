@@ -101,7 +101,9 @@ fn field_column(
         )
         .child(
             div()
-                .child(field_label("Row density"))
+                .child(field_label(
+                    crate::msg::desktop_settings_display_row_density(),
+                ))
                 .child(segmented_control(
                     "display-row-density",
                     &RowDensity::ALL,
@@ -161,7 +163,11 @@ fn start_sidebar_minimised_toggle(checked: bool, on_click: OnPlainClick) -> impl
                     color::GROUND
                 }),
         )
-        .child(div().text_size(px(12.0)).child("Start Sidebar minimised"))
+        .child(
+            div()
+                .text_size(px(12.0))
+                .child(crate::msg::desktop_settings_display_start_minimised()),
+        )
 }
 
 /// `.field > label`: `display:block; font-size:12px; margin-bottom:5px; color: color-mix(text
@@ -177,25 +183,29 @@ fn field_label(label: impl Into<SharedString>) -> impl IntoElement {
 }
 
 fn status_glyphs_field(selected: StatusGlyphs, on_click: OnStatusGlyphsClick) -> impl IntoElement {
-    div().child(field_label("Status glyphs")).child(
-        div().flex().flex_col().gap(px(7.0)).mt(px(2.0)).children(
-            StatusGlyphs::ALL
-                .into_iter()
-                .enumerate()
-                .map(|(index, option)| {
-                    let checked = option == selected;
-                    let on_click = on_click.clone();
-                    status_glyphs_option(
-                        index,
-                        option,
-                        checked,
-                        Rc::new(move |window: &mut Window, cx: &mut App| {
-                            on_click(option, window, cx)
-                        }),
-                    )
-                }),
-        ),
-    )
+    div()
+        .child(field_label(
+            crate::msg::desktop_settings_display_status_glyphs(),
+        ))
+        .child(
+            div().flex().flex_col().gap(px(7.0)).mt(px(2.0)).children(
+                StatusGlyphs::ALL
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, option)| {
+                        let checked = option == selected;
+                        let on_click = on_click.clone();
+                        status_glyphs_option(
+                            index,
+                            option,
+                            checked,
+                            Rc::new(move |window: &mut Window, cx: &mut App| {
+                                on_click(option, window, cx)
+                            }),
+                        )
+                    }),
+            ),
+        )
 }
 
 fn status_glyphs_option(
@@ -230,7 +240,9 @@ fn preview_column(
                 .text_size(px(10.0))
                 .text_color(color::INK_TERTIARY)
                 .mb(px(10.0))
-                .child("PREVIEW"),
+                .child(lib_locale::format::upper(
+                    &crate::msg::desktop_settings_display_preview(),
+                )),
         )
         .child(preview_table(date_style, row_density, status_glyphs))
         .child(
@@ -238,12 +250,7 @@ fn preview_column(
                 .mt(px(14.0))
                 .text_size(px(12.0))
                 .text_color(color::INK_SECONDARY)
-                .child(
-                    "Display settings are Configuration, not Preferences \u{2014} they are \
-                     read from personal-ledger.conf at start-up and written back here. \
-                     Ledger-scoped Preferences (like the default Unit for new entries) live \
-                     under Units and sync as Change Sets.",
-                ),
+                .child(crate::msg::desktop_settings_display_note()),
         )
 }
 
@@ -287,13 +294,21 @@ fn preview_table_header() -> impl IntoElement {
         .border_b(px(1.0))
         .border_color(color::HAIRLINE)
         .child(div().w(PREVIEW_GLYPH_WIDTH))
-        .child(div().w(PREVIEW_DATE_WIDTH).child("DATE"))
-        .child(div().flex_1().child("PAYEE"))
+        .child(
+            div()
+                .w(PREVIEW_DATE_WIDTH)
+                .child(lib_locale::format::upper(&lib_locale::msg::column_date())),
+        )
+        .child(
+            div()
+                .flex_1()
+                .child(lib_locale::format::upper(&lib_locale::msg::column_payee())),
+        )
         .child(
             div()
                 .w(PREVIEW_AMOUNT_WIDTH)
                 .text_align(gpui::TextAlign::Right)
-                .child("AMOUNT"),
+                .child(lib_locale::format::upper(&lib_locale::msg::column_amount())),
         )
 }
 

@@ -49,7 +49,10 @@ pub fn render(
     let card = div()
         .flex()
         .flex_col()
-        .child(dialog::header("Add institution", false))
+        .child(dialog::header(
+            crate::msg::desktop_settings_institutions_add_title(),
+            false,
+        ))
         .child(dialog::body([
             name_field(&form.name).into_any_element(),
             account_types_field(&form.account_types, on_account_type_click).into_any_element(),
@@ -60,7 +63,7 @@ pub fn render(
             dialog::cancel_button("add-institution-cancel", on_cancel).into_any_element(),
             dialog::confirm_button(
                 "add-institution-confirm",
-                "Add institution",
+                crate::msg::desktop_settings_institutions_add_submit(),
                 form.is_valid(),
                 false,
                 on_confirm,
@@ -71,30 +74,34 @@ pub fn render(
     dialog::overlay(WIDTH, false, card)
 }
 
-fn name_field(value: &str) -> impl IntoElement {
+fn name_field(value: &str) -> AnyElement {
+    let placeholder = crate::msg::desktop_settings_institutions_name_placeholder();
     text_field(
         "add-institution-name",
-        "Institution name",
+        crate::msg::desktop_settings_institutions_name_label(),
         value,
-        "e.g. Commonwealth Bank",
+        &placeholder,
         true,
         Rc::new(|_window: &mut Window, _cx: &mut App| {}),
     )
+    .into_any_element()
 }
 
 /// The `.chip` multi-select row (`docs/ux/desktop/Settings/README.md`'s Dialog components:
 /// `display:flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid
 /// rgba(32,30,29,.30); font-size:12px; cursor:pointer`, selected takes the dark treatment).
 fn account_types_field(selected: &[AccountType], on_click: OnAccountTypeClick) -> impl IntoElement {
-    div().child(field_label("Account types")).child(
-        div().flex().flex_wrap().gap(px(8.0)).mt(px(4.0)).children(
+    div()
+        .child(field_label(
+            crate::msg::desktop_settings_institutions_account_types(),
+        ))
+        .child(div().flex().flex_wrap().gap(px(8.0)).mt(px(4.0)).children(
             AccountType::ALL.into_iter().map(|account_type| {
                 let checked = selected.contains(&account_type);
                 let on_click = on_click.clone();
                 chip(account_type, checked, on_click)
             }),
-        ),
-    )
+        ))
 }
 
 fn chip(
@@ -105,7 +112,7 @@ fn chip(
     div()
         .id(SharedString::from(format!(
             "add-institution-chip-{}",
-            account_type.label().replace(' ', "-")
+            format!("{account_type:?}").to_lowercase()
         )))
         .cursor_pointer()
         .flex()
@@ -133,12 +140,14 @@ fn default_unit_field(
     on_click: OnUnitClick,
 ) -> impl IntoElement {
     div()
-        .child(field_label("Default unit"))
+        .child(field_label(
+            crate::msg::desktop_settings_institutions_default_unit(),
+        ))
         .child(if units.is_empty() {
             div()
                 .text_size(px(13.0))
                 .text_color(color::INK_TERTIARY)
-                .child("No units available")
+                .child(crate::msg::desktop_settings_institutions_no_units())
                 .into_any_element()
         } else {
             div()

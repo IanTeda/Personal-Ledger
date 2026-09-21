@@ -22,8 +22,6 @@ use super::add_unit_dialog::{
     OnCancel, OnConfirm, OnFieldClick, OnKindClick, field_click, text_field, type_field,
 };
 
-const USAGE_NOTICE: &str = "Used by 4 accounts \u{b7} 604 transactions. Renaming is safe; changing the code rewrites references.";
-
 pub fn render(
     form: &UnitForm,
     on_field_click: OnFieldClick,
@@ -35,36 +33,37 @@ pub fn render(
         .flex()
         .flex_col()
         .child(dialog::header(
-            format!("Edit unit \u{2014} {}", form.code),
+            crate::msg::desktop_settings_units_edit_title(&form.code),
             false,
         ))
         .child(dialog::body([
             text_field(
                 "edit-unit-code",
-                "Code",
+                lib_locale::msg::column_code(),
                 &form.code,
-                "e.g. usd",
+                &crate::msg::desktop_settings_units_code_placeholder(),
                 form.focused_field == AddUnitField::Code,
                 field_click(AddUnitField::Code, on_field_click.clone()),
             )
             .into_any_element(),
             text_field(
                 "edit-unit-name",
-                "Name",
+                lib_locale::msg::column_name(),
                 &form.name,
-                "e.g. US Dollar",
+                &crate::msg::desktop_settings_units_name_placeholder(),
                 form.focused_field == AddUnitField::Name,
                 field_click(AddUnitField::Name, on_field_click),
             )
             .into_any_element(),
             type_field("edit-unit-type", form.kind, on_kind_click).into_any_element(),
-            dialog::info_panel(USAGE_NOTICE).into_any_element(),
+            dialog::info_panel(crate::msg::desktop_settings_units_usage_notice(4, 604))
+                .into_any_element(),
         ]))
         .child(dialog::action_row([
             dialog::cancel_button("edit-unit-cancel", on_cancel).into_any_element(),
             dialog::confirm_button(
                 "edit-unit-confirm",
-                "Save",
+                crate::msg::desktop_settings_units_edit_submit(),
                 form.is_valid(),
                 false,
                 on_confirm,

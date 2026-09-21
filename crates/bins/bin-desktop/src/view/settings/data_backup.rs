@@ -29,24 +29,32 @@ pub fn render(
         .flex()
         .flex_col()
         .gap(px(12.0))
-        .child(row("Store location", "~/.ledger/personal", px(11.0)))
-        .child(row("Last backup", "12 sep 2026 \u{b7} 23:10", px(12.0)))
+        .child(row(
+            crate::msg::desktop_settings_backup_location(),
+            "~/.ledger/personal",
+            px(11.0),
+        ))
+        .child(row(
+            crate::msg::desktop_settings_backup_last(),
+            "12 sep 2026 \u{b7} 23:10",
+            px(12.0),
+        ))
         .child(button(
             "settings-backup-now",
-            "Backup now",
+            crate::msg::desktop_settings_backup_now(),
             true,
             move |window, cx| on_backup_now_click(window, cx),
         ))
         .child(button(
             "settings-export-ledger",
-            "Export ledger (CSV)",
+            crate::msg::desktop_settings_backup_export(),
             false,
             move |window, cx| on_export_ledger_click(window, cx),
         ))
         .into_any_element()
 }
 
-fn row(label: &'static str, value: &'static str, value_size: gpui::Pixels) -> impl IntoElement {
+fn row(label: String, value: &'static str, value_size: gpui::Pixels) -> impl IntoElement {
     div()
         .flex()
         .justify_between()
@@ -67,7 +75,7 @@ fn row(label: &'static str, value: &'static str, value_size: gpui::Pixels) -> im
 /// raw markup exactly (no inline margin on "Export ledger (CSV)").
 fn button(
     id: &'static str,
-    label: &'static str,
+    label: String,
     top_gap: bool,
     on_click: impl Fn(&mut Window, &mut App) + 'static,
 ) -> impl IntoElement {

@@ -37,12 +37,14 @@ pub fn render(
     let card = div()
         .flex()
         .flex_col()
-        .child(dialog::header(format!("Delete unit \u{2014} {code}"), true))
+        .child(dialog::header(
+            crate::msg::desktop_settings_units_delete_title(code),
+            true,
+        ))
         .child(dialog::body([
             warning_copy().into_any_element(),
-            dialog::info_panel(format!(
-                "{name} \u{b7} 0.4120 u held in {name} account",
-                name = row.name
+            dialog::info_panel(crate::msg::desktop_settings_units_delete_held(
+                &row.name, "0.4120 u",
             ))
             .into_any_element(),
             confirm_field(code, &form.confirm_input).into_any_element(),
@@ -51,7 +53,7 @@ pub fn render(
             dialog::cancel_button("delete-unit-cancel", on_cancel).into_any_element(),
             dialog::confirm_button(
                 "delete-unit-confirm",
-                "Delete unit",
+                crate::msg::desktop_settings_units_delete_submit(),
                 form.matches(code),
                 true,
                 on_confirm,
@@ -63,15 +65,15 @@ pub fn render(
 }
 
 fn warning_copy() -> impl IntoElement {
-    div().text_size(px(13.0)).child(
-        "This unit is referenced by 1 account and 9 transactions. Deleting it cannot be undone.",
-    )
+    div()
+        .text_size(px(13.0))
+        .child(crate::msg::desktop_settings_units_delete_warning(1, 9))
 }
 
 fn confirm_field(code: &str, value: &str) -> impl IntoElement {
     text_field(
         "delete-unit-confirm-input",
-        format!("Type {code} to confirm"),
+        crate::msg::desktop_settings_units_delete_confirm_label(code),
         value,
         code,
         true,

@@ -35,14 +35,20 @@ pub fn render(on_sync_now_click: OnSyncNowClick) -> AnyElement {
         .flex()
         .flex_col()
         .gap(px(12.0))
-        .child(row("Server URL", "sync.ledger.localhost"))
+        .child(row(
+            crate::msg::desktop_settings_sync_url(),
+            "sync.ledger.localhost",
+        ))
         .child(status_row())
-        .child(row("Last sync", "14 sep 2026 \u{b7} 09:14"))
+        .child(row(
+            crate::msg::desktop_settings_sync_last(),
+            "14 sep 2026 \u{b7} 09:14",
+        ))
         .child(sync_now_button(on_sync_now_click))
         .into_any_element()
 }
 
-fn row(label: &'static str, value: &'static str) -> impl IntoElement {
+fn row(label: String, value: &'static str) -> impl IntoElement {
     div()
         .flex()
         .justify_between()
@@ -63,7 +69,11 @@ fn status_row() -> impl IntoElement {
         .justify_between()
         .items_center()
         .py(px(8.0))
-        .child(div().text_color(color::INK_SECONDARY).child("Status"))
+        .child(
+            div()
+                .text_color(color::INK_SECONDARY)
+                .child(crate::msg::desktop_settings_sync_status()),
+        )
         .child(
             div()
                 .flex()
@@ -74,7 +84,7 @@ fn status_row() -> impl IntoElement {
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_color(color::POSITIVE)
-                        .child("connected"),
+                        .child(crate::msg::desktop_settings_sync_connected()),
                 ),
         )
 }
@@ -106,7 +116,7 @@ fn sync_now_button(on_click: OnSyncNowClick) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child("Sync now");
+        .child(crate::msg::desktop_settings_sync_now());
     button.style().align_self = Some(gpui::AlignItems::FlexStart);
     button
 }

@@ -74,13 +74,17 @@ fn table_header() -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .text_color(color::INK_SECONDARY)
-        .child(div().flex_1().child("INSTITUTION"))
-        .child(div().w(ACCOUNT_TYPE_WIDTH).child("ACCOUNT TYPE"))
+        .child(div().flex_1().child(lib_locale::format::upper(
+            &lib_locale::msg::column_institution(),
+        )))
+        .child(div().w(ACCOUNT_TYPE_WIDTH).child(lib_locale::format::upper(
+            &crate::msg::desktop_settings_institutions_column_account_types(),
+        )))
         .child(
             div()
                 .w(ACTIONS_WIDTH)
                 .text_align(gpui::TextAlign::Right)
-                .child("ACTIONS"),
+                .child(lib_locale::format::upper(&lib_locale::msg::column_actions())),
         )
 }
 
@@ -119,14 +123,14 @@ fn row(
                 .gap(px(10.0))
                 .child(row_action_button(
                     SharedString::from(format!("institution-edit-{index}")),
-                    "edit",
+                    crate::msg::desktop_hint_edit(),
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_edit_click(index, window, cx)
                     }),
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("institution-delete-{index}")),
-                    "delete",
+                    crate::msg::desktop_hint_delete(),
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_delete_click(index, window, cx)
                     }),
@@ -136,11 +140,7 @@ fn row(
 
 /// A row action button: `padding:4px 10px; border:1px solid rgba(32,30,29,.30);
 /// background:transparent; font-size:11px`.
-fn row_action_button(
-    id: SharedString,
-    label: &'static str,
-    on_click: OnPlainClick,
-) -> impl IntoElement {
+fn row_action_button(id: SharedString, label: String, on_click: OnPlainClick) -> impl IntoElement {
     div()
         .id(id)
         .cursor_pointer()
@@ -174,7 +174,7 @@ fn add_button(on_click: OnAddClick) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child("+ Add institution");
+        .child(crate::msg::desktop_settings_institutions_add_button("+"));
     button.style().align_self = Some(gpui::AlignItems::FlexStart);
     button
 }
