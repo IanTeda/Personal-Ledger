@@ -7,7 +7,7 @@
 use gpui::{App, SharedString, Window, div, prelude::*, px, relative};
 use gpui_component::chart::{LineChart, PieChart};
 
-use crate::theme::color;
+use crate::{msg, theme::color};
 
 #[derive(IntoElement)]
 pub struct Dashboard;
@@ -58,7 +58,7 @@ fn header() -> impl IntoElement {
         .flex()
         .items_baseline()
         .justify_between()
-        .child(div().text_size(px(19.0)).child("Financial position"))
+        .child(div().text_size(px(19.0)).child(msg::desktop_dashboard_title()))
         .child(
             div()
                 .text_size(px(11.5))
@@ -78,27 +78,76 @@ fn figure_row() -> impl IntoElement {
         )
     };
 
+    let net_position = msg::desktop_dashboard_net_position();
+    let metric_30_day = msg::desktop_dashboard_metric_30_day();
+    let metric_assets = msg::desktop_dashboard_metric_assets();
+    let metric_liabilities = msg::desktop_dashboard_metric_liabilities();
+
     div()
         .flex()
         .items_end()
         .gap(px(36.0))
         .mt(px(14.0))
         .child(
-            div().child(kicker("NET POSITION")).child(
-                div()
+            div()
+                .child(div()
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_size(px(38.0))
-                    .child("428,610.22"),
-            ),
+                    .text_size(px(10.0))
+                    .text_color(color::INK_TERTIARY)
+                    .mb(px(5.0))
+                    .child(net_position))
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                        .text_size(px(38.0))
+                        .child("428,610.22"),
+                ),
         )
         .child(
             div()
                 .flex()
                 .gap(px(28.0))
                 .pb(px(4.0))
-                .child(secondary("30-DAY", "+3,412.08", false))
-                .child(secondary("ASSETS", "812,240.00", false))
-                .child(secondary("LIABILITIES", "\u{2212}383,629.78", true)),
+                .child(
+                    div().child(div()
+                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                        .text_size(px(10.0))
+                        .text_color(color::INK_TERTIARY)
+                        .mb(px(5.0))
+                        .child(metric_30_day)).child(
+                        div()
+                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                            .text_size(px(15.0))
+                            .child("+3,412.08"),
+                    )
+                )
+                .child(
+                    div().child(div()
+                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                        .text_size(px(10.0))
+                        .text_color(color::INK_TERTIARY)
+                        .mb(px(5.0))
+                        .child(metric_assets)).child(
+                        div()
+                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                            .text_size(px(15.0))
+                            .child("812,240.00"),
+                    )
+                )
+                .child(
+                    div().child(div()
+                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                        .text_size(px(10.0))
+                        .text_color(color::INK_TERTIARY)
+                        .mb(px(5.0))
+                        .child(metric_liabilities)).child(
+                        div()
+                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                            .text_size(px(15.0))
+                            .text_color(color::ACCENT_TEXT)
+                            .child("\u{2212}383,629.78"),
+                    )
+                ),
         )
 }
 
@@ -222,13 +271,13 @@ fn net_worth_chart() -> impl IntoElement {
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(10.0))
-                        .child("NET WORTH · 18 MONTHS"),
+                        .child(msg::desktop_dashboard_net_worth_title()),
                 )
                 .child(
                     div()
                         .text_size(px(11.0))
                         .text_color(color::INK_TERTIARY)
-                        .child("monthly close"),
+                        .child(msg::desktop_dashboard_net_worth_close()),
                 ),
         )
         .child(
@@ -262,7 +311,7 @@ fn in_vs_out() -> impl IntoElement {
                 div()
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
                     .text_size(px(10.0))
-                    .child("IN VS OUT · 6 MONTHS"),
+                    .child(msg::desktop_dashboard_in_vs_out_title()),
             ),
         )
         .child(
@@ -279,8 +328,8 @@ fn in_vs_out() -> impl IntoElement {
                 .text_size(px(11.0))
                 .text_color(color::INK_TERTIARY)
                 .mt(px(6.0))
-                .child("◀ expense")
-                .child("income ▶"),
+                .child(msg::desktop_dashboard_in_vs_out_expense())
+                .child(msg::desktop_dashboard_in_vs_out_income()),
         )
 }
 
@@ -373,7 +422,7 @@ fn donut() -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .mb(px(10.0))
-                .child("WHERE IT WENT · 30 DAYS"),
+                .child(msg::desktop_dashboard_where_it_went_title()),
         )
         .child(
             div()
@@ -458,7 +507,7 @@ fn budget_list() -> impl IntoElement {
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(10.0))
-                        .child("BUDGETS THIS PERIOD"),
+                        .child(msg::desktop_dashboard_budgets_title()),
                 )
                 .child(
                     div()
@@ -479,7 +528,7 @@ fn budget_list() -> impl IntoElement {
                         .text_size(px(11.0))
                         .text_color(color::INK_TERTIARY)
                         .mt(px(2.0))
-                        .child("│ = period progress · bar = spent / budget"),
+                        .child(msg::desktop_dashboard_budgets_legend()),
                 ),
         )
 }
@@ -547,7 +596,7 @@ fn needs_attention() -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .mb(px(3.0))
-                .child("NEEDS ATTENTION"),
+                .child(msg::desktop_dashboard_needs_attention()),
         )
         .child(
             div()
@@ -559,7 +608,7 @@ fn needs_attention() -> impl IntoElement {
                         .text_color(color::ACCENT_TEXT)
                         .child("14"),
                 )
-                .child("unreconciled transactions on ANZ Everyday →")
+                .child(msg::desktop_dashboard_unreconciled("ANZ Everyday", 14i64))
                 .child(bold(":reconcile".into())),
         )
         .child(
@@ -567,7 +616,7 @@ fn needs_attention() -> impl IntoElement {
                 .flex()
                 .gap(px(4.0))
                 .child(bold("3".into()))
-                .child("transactions flagged for review →")
+                .child(msg::desktop_dashboard_flagged_transactions(3i64))
                 .child(bold(":txn recent".into())),
         )
 }

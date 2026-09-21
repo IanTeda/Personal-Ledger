@@ -20,7 +20,7 @@ use std::{
 use gpui::{App, BoxShadow, SharedString, Window, div, point, prelude::*, px};
 use gpui_component::Sizable;
 
-use crate::{icon::DesktopIcon, theme::color};
+use crate::{icon::DesktopIcon, theme::color, msg};
 
 /// Dialog width: the "1e" spec's own `640px`.
 pub const WIDTH: gpui::Pixels = px(640.0);
@@ -250,23 +250,22 @@ fn format_size(bytes: u64) -> String {
 fn format_modified(modified: SystemTime, now: SystemTime) -> String {
     let elapsed = now.duration_since(modified).unwrap_or_default().as_secs();
     if elapsed < 60 {
-        return "just now".to_string();
+        return msg::desktop_explorer_modified_just_now();
     }
-    let (value, unit) = if elapsed < 3_600 {
-        (elapsed / 60, "minute")
+    let value = if elapsed < 3_600 {
+        msg::desktop_explorer_modified_minutes(i64::try_from(elapsed / 60).unwrap_or(i64::MAX))
     } else if elapsed < 86_400 {
-        (elapsed / 3_600, "hour")
+        msg::desktop_explorer_modified_hours(i64::try_from(elapsed / 3_600).unwrap_or(i64::MAX))
     } else if elapsed < 7 * 86_400 {
-        (elapsed / 86_400, "day")
+        msg::desktop_explorer_modified_days(i64::try_from(elapsed / 86_400).unwrap_or(i64::MAX))
     } else if elapsed < 30 * 86_400 {
-        (elapsed / (7 * 86_400), "week")
+        msg::desktop_explorer_modified_weeks(i64::try_from(elapsed / (7 * 86_400)).unwrap_or(i64::MAX))
     } else if elapsed < 365 * 86_400 {
-        (elapsed / (30 * 86_400), "month")
+        msg::desktop_explorer_modified_months(i64::try_from(elapsed / (30 * 86_400)).unwrap_or(i64::MAX))
     } else {
-        (elapsed / (365 * 86_400), "year")
+        msg::desktop_explorer_modified_years(i64::try_from(elapsed / (365 * 86_400)).unwrap_or(i64::MAX))
     };
-    let plural = if value == 1 { "" } else { "s" };
-    format!("{value} {unit}{plural} ago")
+    value
 }
 
 /// A row click: the clicked entry's path and the platform's own click count (`2` for a real
@@ -340,10 +339,8 @@ impl FileExplorer {
 
 fn header(mode: ExplorerMode) -> impl IntoElement {
     let title = match mode {
-        ExplorerMode::Open => "Open ledger file",
-        // A literal copy of the Open dialog's own title, per issue #167 -- `:new`'s real
-        // "create a fresh .pldb" workflow is still fog, not this.
-        ExplorerMode::New => "New ledger file",
+        ExplorerMode::Open => msg::desktop_explorer_open(),
+        ExplorerMode::New => msg::desktop_explorer_new(),
     };
     div()
         .px(px(20.0))
@@ -395,7 +392,7 @@ fn path_bar(
             ),
         )
         .child(div().flex_1())
-        .child(div().child(format!("{entry_count} items")))
+        .child(div().child(msg::desktop_explorer_item_count(i64::from(entry_count as u32))))
 }
 
 fn breadcrumb_segment(
@@ -425,9 +422,9 @@ fn column_header() -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .text_color(color::INK_TERTIARY)
-        .child(div().flex_1().child("NAME"))
-        .child(div().w(px(90.0)).child("SIZE"))
-        .child(div().w(px(120.0)).child("MODIFIED"))
+        .child(div().flex_1().child(msg::desktop_explorer_column_name()))
+        .child(div().w(px(90.0)).child(msg::desktop_explorer_column_size()))
+        .child(div().w(px(120.0)).child(msg::desktop_explorer_column_modified()))
 }
 
 fn row(
@@ -503,8 +500,8 @@ fn footer(
     on_open: OnOpen,
 ) -> impl IntoElement {
     let confirm_label = match mode {
-        ExplorerMode::Open => "Open",
-        ExplorerMode::New => "New",
+        ExplorerMode::Open => msg::desktop_explorer_open_button(),
+        ExplorerMode::New => msg::desktop_explorer_new_button(),
     };
     div()
         .flex()
@@ -519,14 +516,14 @@ fn footer(
         .child(
             div()
                 .flex()
-                .child("only ")
+                .child(msg::desktop_explorer_file_type_info_prefix())
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_color(color::INK)
                         .child(".pldb"),
                 )
-                .child(" files can be opened"),
+                .child(msg::desktop_explorer_file_type_info_suffix()),
         )
         .child(div().flex_1())
         .child(
@@ -540,7 +537,7 @@ fn footer(
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_color(color::INK)
                 .on_click(move |_event, window, cx| on_cancel(window, cx))
-                .child("Cancel"),
+                .child(msg::desktop_explorer_cancel()),
         )
         .child(
             div()
