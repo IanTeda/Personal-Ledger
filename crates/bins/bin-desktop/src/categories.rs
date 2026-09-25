@@ -238,6 +238,23 @@ impl Default for DeleteCategoryForm {
     }
 }
 
+/// Errors for category operations.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CategoryError {
+    /// Attempted to nest a category deeper than the 3-level cap.
+    DepthExceeded,
+    /// Attempted to make a category its own parent (directly or via a cycle).
+    CycleDetected,
+    /// Attempted to move an Expense to Income (or vice versa) or parent has different type.
+    TypeMismatch,
+    /// Attempted to delete a non-leaf category with children.
+    NonLeafDeletion,
+    /// Category not found.
+    NotFound,
+    /// Parent category not found.
+    ParentNotFound,
+}
+
 /// The categories dialog's state: Add { parent } / Edit(id) / Delete(id).
 pub enum CategoriesDialog {
     /// Adding a new category under a parent (or None for top-level).
@@ -280,6 +297,120 @@ impl CategoriesDialog {
             _ => None,
         }
     }
+}
+
+/// Whether `child_id` is a descendant of `parent_id` (cycle detection).
+fn is_descendant(categories: &[Category], parent_id: u32, child_id: u32) -> bool {
+    if parent_id == child_id {
+        return true;
+    }
+    let children: Vec<_> = categories
+        .iter()
+        .filter(|c| c.parent == Some(parent_id))
+        .map(|c| c.id)
+        .collect();
+    children.iter().any(|&id| is_descendant(categories, id, child_id))
+}
+
+/// Insert a new category with validation.
+/// - Parent must exist (if not None)
+/// - Parent and category must match types
+/// - Depth must not exceed 3 levels
+/// - No cycles
+pub fn insert_category(
+    categories: &mut Vec<Category>,
+    name: String,
+    parent_id: Option<u32>,
+    category_type: CategoryTypes,
+) -> Result<u32, CategoryError> {
+    if let Some(parent_id) = parent_id {
+        let parent = get(categories, parent_id).ok_or(CategoryError::ParentNotFound)?;
+        // Type must match
+        if parent.category_type != category_type {
+            return Err(CategoryError::TypeMismatch);
+        }
+        // Depth check
+        if depth(categories, parent_id) >= 2 {
+            return Err(CategoryError::DepthExceeded);
+        }
+    }
+
+    let next_id = categories.iter().map(|c| c.id).max().unwrap_or(0) + 1;
+    categories.push(Category {
+        id: next_id,
+        name,
+        parent: parent_id,
+        category_type,
+    });
+    Ok(next_id)
+}
+
+/// Edit a category's name (parent changes use `move_category`).
+pub fn edit_category(
+    categories: &mut Vec<Category>,
+    id: u32,
+    name: String,
+) -> Result<(), CategoryError> {
+    let category = categories.iter_mut().find(|c| c.id == id).ok_or(CategoryError::NotFound)?;
+    category.name = name;
+    Ok(())
+}
+
+/// Move a category to a new parent.
+/// - New parent must exist (if not None)
+/// - Types must match
+/// - Depth must not exceed 3 levels
+/// - No cycles allowed
+pub fn move_category(
+    categories: &mut Vec<Category>,
+    id: u32,
+    new_parent_id: Option<u32>,
+) -> Result<(), CategoryError> {
+    let category = categories.iter().find(|c| c.id == id).ok_or(CategoryError::NotFound)?;
+    let category_type = category.category_type.clone();
+
+    if let Some(parent_id) = new_parent_id {
+        let parent = get(categories, parent_id).ok_or(CategoryError::ParentNotFound)?;
+        // Type must match
+        if parent.category_type != category_type {
+            return Err(CategoryError::TypeMismatch);
+        }
+        // Cycle check: new parent must not be a descendant of id
+        if is_descendant(categories, id, parent_id) {
+            return Err(CategoryError::CycleDetected);
+        }
+        // Depth check
+        if depth(categories, parent_id) >= 2 {
+            return Err(CategoryError::DepthExceeded);
+        }
+    }
+
+    if let Some(cat) = categories.iter_mut().find(|c| c.id == id) {
+        cat.parent = new_parent_id;
+    }
+    Ok(())
+}
+
+/// Delete a category (leaf only). Re-points its splits to Uncategorised.
+pub fn delete_category(
+    categories: &mut Vec<Category>,
+    id: u32,
+) -> Result<(), CategoryError> {
+    let category = get(categories, id).ok_or(CategoryError::NotFound)?;
+    let category_type = category.category_type.clone();
+
+    // Only leaf categories can be deleted
+    if !is_leaf(categories, id) {
+        return Err(CategoryError::NonLeafDeletion);
+    }
+
+    // Get or create Uncategorised (future: re-point splits to this category)
+    let _uncategorised_id = get_or_create_uncategorised(categories, category_type);
+
+    // Remove the category
+    categories.retain(|c| c.id != id);
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -418,7 +549,106 @@ mod tests {
         assert_eq!(uncategorised_expense, uncategorised_expense_again, "should reuse");
         assert_eq!(categories.len(), original_count + 1, "should not create duplicate");
 
-        let uncategorised_income = get_or_create_uncategorised(&mut categories, CategoryTypes::Income);
+        let _uncategorised_income = get_or_create_uncategorised(&mut categories, CategoryTypes::Income);
         assert_eq!(categories.len(), original_count + 2, "should create second for Income type");
+    }
+
+    #[test]
+    fn insert_category_succeeds_with_valid_parent() {
+        let mut categories = default_categories();
+        let food = find_by_name(&categories, "Food").unwrap();
+        let result = insert_category(&mut categories, "Takeaway".to_string(), Some(food), CategoryTypes::Expense);
+        assert!(result.is_ok());
+        let new_id = result.unwrap();
+        let new_cat = get(&categories, new_id).unwrap();
+        assert_eq!(new_cat.name, "Takeaway");
+        assert_eq!(new_cat.parent, Some(food));
+    }
+
+    #[test]
+    fn insert_category_rejects_mismatched_type() {
+        let mut categories = default_categories();
+        let salary = find_by_name(&categories, "Salary").unwrap();
+        let result = insert_category(&mut categories, "Bonus".to_string(), Some(salary), CategoryTypes::Expense);
+        assert_eq!(result, Err(CategoryError::TypeMismatch));
+    }
+
+    #[test]
+    fn insert_category_rejects_nonexistent_parent() {
+        let mut categories = default_categories();
+        let result = insert_category(&mut categories, "Invalid".to_string(), Some(999), CategoryTypes::Expense);
+        assert_eq!(result, Err(CategoryError::ParentNotFound));
+    }
+
+    #[test]
+    fn insert_category_rejects_depth_exceeded() {
+        let mut categories = default_categories();
+        let electricity = find_by_name(&categories, "Electricity").unwrap();
+        // Electricity is at depth 2, can't add a child
+        let result = insert_category(&mut categories, "SubElectric".to_string(), Some(electricity), CategoryTypes::Expense);
+        assert_eq!(result, Err(CategoryError::DepthExceeded));
+    }
+
+    #[test]
+    fn move_category_succeeds_with_valid_parent() {
+        let mut categories = default_categories();
+        let transport = find_by_name(&categories, "Transport").unwrap();
+        let food = find_by_name(&categories, "Food").unwrap();
+
+        // Transport is at depth 0, food is at depth 0; moving Transport to be under Food
+        let result = move_category(&mut categories, transport, Some(food));
+        assert!(result.is_ok());
+        assert_eq!(get(&categories, transport).unwrap().parent, Some(food));
+    }
+
+    #[test]
+    fn move_category_rejects_cycle() {
+        let mut categories = default_categories();
+        let food = find_by_name(&categories, "Food").unwrap();
+        let groceries = find_by_name(&categories, "Groceries").unwrap();
+
+        // Try to make Food a child of Groceries (its own child) -- cycle
+        let result = move_category(&mut categories, food, Some(groceries));
+        assert_eq!(result, Err(CategoryError::CycleDetected));
+    }
+
+    #[test]
+    fn move_category_rejects_type_mismatch() {
+        let mut categories = default_categories();
+        let transport = find_by_name(&categories, "Transport").unwrap();
+        let salary = find_by_name(&categories, "Salary").unwrap();
+
+        // Can't move an Expense under an Income parent
+        let result = move_category(&mut categories, transport, Some(salary));
+        assert_eq!(result, Err(CategoryError::TypeMismatch));
+    }
+
+    #[test]
+    fn delete_category_leaf_succeeds() {
+        let mut categories = default_categories();
+        let groceries = find_by_name(&categories, "Groceries").unwrap();
+        let result = delete_category(&mut categories, groceries);
+        assert!(result.is_ok());
+        assert!(!categories.iter().any(|c| c.id == groceries));
+    }
+
+    #[test]
+    fn delete_category_non_leaf_fails() {
+        let mut categories = default_categories();
+        let food = find_by_name(&categories, "Food").unwrap();
+
+        // Food has children (Groceries, Dining), so deletion should fail
+        let result = delete_category(&mut categories, food);
+        assert_eq!(result, Err(CategoryError::NonLeafDeletion));
+        assert!(categories.iter().any(|c| c.id == food));
+    }
+
+    #[test]
+    fn edit_category_succeeds() {
+        let mut categories = default_categories();
+        let housing = find_by_name(&categories, "Housing").unwrap();
+        let result = edit_category(&mut categories, housing, "Real Estate".to_string());
+        assert!(result.is_ok());
+        assert_eq!(get(&categories, housing).unwrap().name, "Real Estate");
     }
 }
