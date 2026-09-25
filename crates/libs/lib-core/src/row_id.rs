@@ -68,9 +68,7 @@
 /// assert!(id1 < id2);
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
-#[derive(
-    Debug, Copy, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RowID(uuid::Uuid);
 
 impl From<uuid::Error> for RowIDError {
@@ -102,7 +100,8 @@ impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for RowID {
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for RowID {
     fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
-        let uuid = uuid::Uuid::parse_str(&s).map_err(|e| format!("Invalid UUID string in DB: {}", e))?;
+        let uuid =
+            uuid::Uuid::parse_str(&s).map_err(|e| format!("Invalid UUID string in DB: {}", e))?;
         let row_id = RowID::try_from(uuid).map_err(|e| format!("Invalid RowID in DB: {}", e))?;
         Ok(row_id)
     }
@@ -144,7 +143,7 @@ impl TryFrom<uuid::Uuid> for RowID {
 
 impl std::str::FromStr for RowID {
     type Err = RowIDError;
-    
+
     /// Parse a RowID from a UUID string.
     ///
     /// This is the primary way to parse RowIDs from string input, including
@@ -249,11 +248,11 @@ impl RowID {
     /// let id = RowID::from_timestamp(timestamp);
     /// ```
     pub fn from_timestamp(timestamp: chrono::DateTime<chrono::Utc>) -> Self {
-        let ts = uuid::Timestamp::from_unix(
-            uuid::NoContext,
-            timestamp.timestamp() as u64,
-            timestamp.timestamp_nanos_opt().expect("valid DateTime always has a nanosecond component") as u32,
-        );
+        #[allow(clippy::expect_used)]
+        let nanos = timestamp
+            .timestamp_nanos_opt()
+            .expect("valid DateTime always has a nanosecond component") as u32;
+        let ts = uuid::Timestamp::from_unix(uuid::NoContext, timestamp.timestamp() as u64, nanos);
         let row_id = uuid::Uuid::new_v7(ts);
         Self(row_id)
     }
@@ -511,7 +510,6 @@ impl RowID {
         self > other
     }
 
-
     /// Create a mock RowID with a random timestamp for testing.
     ///
     /// This generates a RowID with a random creation time between the Unix epoch
@@ -530,19 +528,20 @@ impl RowID {
     /// ```
     pub fn mock() -> Self {
         use chrono::{DateTime, Utc};
-        use fake::faker::chrono::en::DateTimeAfter;
         use fake::Fake;
+        use fake::faker::chrono::en::DateTimeAfter;
 
         // Generate random DateTime after UNIX time epoch (00:00:00 UTC on 1 January 1970)
-        let random_datetime: DateTime<Utc> =
-            DateTimeAfter(chrono::DateTime::UNIX_EPOCH).fake();
+        let random_datetime: DateTime<Utc> = DateTimeAfter(chrono::DateTime::UNIX_EPOCH).fake();
 
         // Convert datetime to a UUID timestamp
-        let random_uuid_timestamp: uuid::Timestamp = uuid::Timestamp::from_unix(
-            uuid::NoContext,
-            random_datetime.timestamp() as u64,
-            random_datetime.timestamp_nanos_opt().expect("faker-generated DateTime always has nanosecond component") as u32,
-        );
+        #[allow(clippy::expect_used)]
+        let nanos = random_datetime
+            .timestamp_nanos_opt()
+            .expect("faker-generated DateTime always has nanosecond component")
+            as u32;
+        let random_uuid_timestamp: uuid::Timestamp =
+            uuid::Timestamp::from_unix(uuid::NoContext, random_datetime.timestamp() as u64, nanos);
 
         // Generate Uuid V7
         let row_id = uuid::Uuid::new_v7(random_uuid_timestamp);
@@ -698,7 +697,12 @@ impl RowID {
     /// ```
     pub fn to_i64(&self) -> i64 {
         let uuid_bytes = self.0.as_bytes();
-        i64::from_be_bytes(uuid_bytes[8..16].try_into().expect("UUID is always 16 bytes, slice [8..16] is always exactly 8 bytes"))
+        #[allow(clippy::expect_used)]
+        i64::from_be_bytes(
+            uuid_bytes[8..16]
+                .try_into()
+                .expect("UUID is always 16 bytes, slice [8..16] is always exactly 8 bytes"),
+        )
     }
 }
 
@@ -712,7 +716,7 @@ pub enum RowIDError {
     /// This occurs when parsing fails due to invalid UUID syntax.
     #[error("Invalid UUID format: {0}")]
     InvalidUuid(String),
-    
+
     /// The provided UUID is not version 7.
     ///
     /// RowIDs require UUID v7 for chronological ordering. This error is returned
@@ -918,7 +922,9 @@ mod tests {
     #[test]
     fn test_from_timestamp() {
         use chrono::{DateTime, Utc};
-        let timestamp = DateTime::parse_from_rfc3339("2023-01-01T00:00:00Z").unwrap().with_timezone(&Utc);
+        let timestamp = DateTime::parse_from_rfc3339("2023-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
         let id = RowID::from_timestamp(timestamp);
         assert_eq!(id.0.get_version_num(), 7);
         // Note: We can't easily test the exact timestamp due to UUID v7 encoding

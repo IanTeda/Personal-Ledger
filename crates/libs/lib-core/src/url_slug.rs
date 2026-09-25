@@ -47,7 +47,7 @@ pub enum UrlSlugError {
     /// The slug starts or ends with a hyphen.
     #[error("Slug cannot start or end with hyphen: {0}")]
     StartsOrEndsWithHyphen(String),
-    
+
     /// The slug contains consecutive hyphens.
     #[error("Slug cannot contain consecutive hyphens: {0}")]
     ConsecutiveHyphens(String),
@@ -225,7 +225,9 @@ impl From<String> for UrlSlug {
     /// Panics if the string cannot be parsed as a valid UrlSlug.
     /// For fallible conversion, use `UrlSlug::parse()` or implement TryFrom.
     fn from(s: String) -> Self {
-        UrlSlug::parse(s).expect("String must be parseable as a UrlSlug")
+        #[allow(clippy::expect_used)]
+        let slug = UrlSlug::parse(s).expect("String must be parseable as a UrlSlug");
+        slug
     }
 }
 
@@ -237,7 +239,9 @@ impl From<&str> for UrlSlug {
     /// Panics if the string cannot be parsed as a valid UrlSlug.
     /// For fallible conversion, use `UrlSlug::parse()` or implement TryFrom.
     fn from(s: &str) -> Self {
-        UrlSlug::parse(s).expect("&str must be parseable as a UrlSlug")
+        #[allow(clippy::expect_used)]
+        let slug = UrlSlug::parse(s).expect("&str must be parseable as a UrlSlug");
+        slug
     }
 }
 
@@ -398,10 +402,10 @@ mod tests {
         for _ in 0..20 {
             let sentence: String = Sentence(3..10).fake();
             let slug = UrlSlug::parse(&sentence).unwrap();
-            
+
             // Verify the slug is valid
             assert!(!slug.is_empty());
-            
+
             // Verify it contains only valid characters
             for c in slug.as_str().chars() {
                 assert!(c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
@@ -433,7 +437,7 @@ mod tests {
         for _ in 0..10 {
             let word: String = Word().fake();
             let slug = UrlSlug::parse(&word).unwrap();
-            
+
             // Single words should become lowercase
             assert_eq!(slug.as_str(), word.to_lowercase());
         }
@@ -483,10 +487,10 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(slug1.clone(), "value1");
         map.insert(slug2.clone(), "value2"); // Should overwrite value1
-        
+
         assert_eq!(map.len(), 1);
         assert_eq!(map.get(&slug1), Some(&"value2"));
-        
+
         // Different slugs should have different entries
         map.insert(slug3.clone(), "value3");
         assert_eq!(map.len(), 2);
@@ -618,17 +622,15 @@ mod tests {
 
     #[test]
     fn test_validate_slug_starts_with_hyphen() {
-        let test_cases = vec![
-            "-starts-with-hyphen",
-            "-",
-            "-a",
-            "-valid-slug",
-        ];
+        let test_cases = vec!["-starts-with-hyphen", "-", "-a", "-valid-slug"];
 
         for case in test_cases {
             let result = UrlSlug::validate_slug(case);
-            assert!(matches!(result, Err(UrlSlugError::StartsOrEndsWithHyphen(_))), 
-                   "Failed for input: {}", case);
+            assert!(
+                matches!(result, Err(UrlSlugError::StartsOrEndsWithHyphen(_))),
+                "Failed for input: {}",
+                case
+            );
             if let Err(UrlSlugError::StartsOrEndsWithHyphen(msg)) = result {
                 assert_eq!(msg, case);
             }
@@ -637,17 +639,15 @@ mod tests {
 
     #[test]
     fn test_validate_slug_ends_with_hyphen() {
-        let test_cases = vec![
-            "ends-with-hyphen-",
-            "-",
-            "a-",
-            "valid-slug-",
-        ];
+        let test_cases = vec!["ends-with-hyphen-", "-", "a-", "valid-slug-"];
 
         for case in test_cases {
             let result = UrlSlug::validate_slug(case);
-            assert!(matches!(result, Err(UrlSlugError::StartsOrEndsWithHyphen(_))), 
-                   "Failed for input: {}", case);
+            assert!(
+                matches!(result, Err(UrlSlugError::StartsOrEndsWithHyphen(_))),
+                "Failed for input: {}",
+                case
+            );
             if let Err(UrlSlugError::StartsOrEndsWithHyphen(msg)) = result {
                 assert_eq!(msg, case);
             }
@@ -667,8 +667,11 @@ mod tests {
 
         for case in test_cases {
             let result = UrlSlug::validate_slug(case);
-            assert!(matches!(result, Err(UrlSlugError::ConsecutiveHyphens(_))), 
-                   "Failed for input: {}", case);
+            assert!(
+                matches!(result, Err(UrlSlugError::ConsecutiveHyphens(_))),
+                "Failed for input: {}",
+                case
+            );
             if let Err(UrlSlugError::ConsecutiveHyphens(msg)) = result {
                 assert_eq!(msg, case);
             }
@@ -678,40 +681,43 @@ mod tests {
     #[test]
     fn test_validate_slug_invalid_characters() {
         let test_cases = vec![
-            "UPPERCASE",           // uppercase letters
-            "Mixed_Case",          // uppercase with underscore
-            "slug with spaces",    // spaces
-            "special!chars",       // special characters
-            "unicode-café",        // unicode characters
-            "email@test.com",      // @ symbol
-            "path/to/file",        // forward slash
-            "question?mark",       // question mark
-            "hash#tag",            // hash symbol
-            "percent%sign",        // percent sign
-            "ampersand&test",      // ampersand
-            "asterisk*test",       // asterisk
-            "parentheses(test)",   // parentheses
-            "brackets[test]",      // brackets
-            "braces{test}",        // braces
-            "plus+sign",           // plus sign
-            "equals=sign",         // equals sign
-            "pipe|symbol",         // pipe symbol
-            "backslash\\test",     // backslash
-            "colon:test",          // colon
-            "semicolon;test",      // semicolon
-            "quote'test",          // single quote
-            "double\"quote",       // double quote
-            "lessthan<test",       // less than
-            "greaterthan>test",    // greater than
-            "caret^test",          // caret
-            "tilde~test",          // tilde
-            "backtick`test",       // backtick
+            "UPPERCASE",         // uppercase letters
+            "Mixed_Case",        // uppercase with underscore
+            "slug with spaces",  // spaces
+            "special!chars",     // special characters
+            "unicode-café",      // unicode characters
+            "email@test.com",    // @ symbol
+            "path/to/file",      // forward slash
+            "question?mark",     // question mark
+            "hash#tag",          // hash symbol
+            "percent%sign",      // percent sign
+            "ampersand&test",    // ampersand
+            "asterisk*test",     // asterisk
+            "parentheses(test)", // parentheses
+            "brackets[test]",    // brackets
+            "braces{test}",      // braces
+            "plus+sign",         // plus sign
+            "equals=sign",       // equals sign
+            "pipe|symbol",       // pipe symbol
+            "backslash\\test",   // backslash
+            "colon:test",        // colon
+            "semicolon;test",    // semicolon
+            "quote'test",        // single quote
+            "double\"quote",     // double quote
+            "lessthan<test",     // less than
+            "greaterthan>test",  // greater than
+            "caret^test",        // caret
+            "tilde~test",        // tilde
+            "backtick`test",     // backtick
         ];
 
         for case in test_cases {
             let result = UrlSlug::validate_slug(case);
-            assert!(matches!(result, Err(UrlSlugError::InvalidCharacters(_))), 
-                   "Failed for input: {}", case);
+            assert!(
+                matches!(result, Err(UrlSlugError::InvalidCharacters(_))),
+                "Failed for input: {}",
+                case
+            );
             if let Err(UrlSlugError::InvalidCharacters(msg)) = result {
                 assert_eq!(msg, case);
             }
@@ -722,11 +728,17 @@ mod tests {
     fn test_validate_slug_edge_cases() {
         // Test that single hyphen fails (starts and ends with hyphen)
         let result = UrlSlug::validate_slug("-");
-        assert!(matches!(result, Err(UrlSlugError::StartsOrEndsWithHyphen(_))));
+        assert!(matches!(
+            result,
+            Err(UrlSlugError::StartsOrEndsWithHyphen(_))
+        ));
 
         // Test multiple consecutive hyphens at start/end - should fail on starts/ends check first
         let result = UrlSlug::validate_slug("--");
-        assert!(matches!(result, Err(UrlSlugError::StartsOrEndsWithHyphen(_))));
+        assert!(matches!(
+            result,
+            Err(UrlSlugError::StartsOrEndsWithHyphen(_))
+        ));
 
         // Test valid single character
         assert!(UrlSlug::validate_slug("a").is_ok());
@@ -745,9 +757,20 @@ mod tests {
     fn test_validate_slug_comprehensive() {
         // Test a comprehensive set of valid and invalid cases
         let valid_cases = vec![
-            "a", "1", "a1", "1a", "a-b", "1-2", "a-1", "1-a",
-            "valid-slug", "slug-with-numbers-123", "multiple-parts-1-2-3",
-            "abcdefghijklmnopqrstuvwxyz", "0123456789", "a1b2c3d4",
+            "a",
+            "1",
+            "a1",
+            "1a",
+            "a-b",
+            "1-2",
+            "a-1",
+            "1-a",
+            "valid-slug",
+            "slug-with-numbers-123",
+            "multiple-parts-1-2-3",
+            "abcdefghijklmnopqrstuvwxyz",
+            "0123456789",
+            "a1b2c3d4",
         ];
 
         let invalid_cases = vec![
@@ -757,13 +780,26 @@ mod tests {
             ("-a", UrlSlugError::StartsOrEndsWithHyphen("-a".to_string())),
             ("a-", UrlSlugError::StartsOrEndsWithHyphen("a-".to_string())),
             ("a--b", UrlSlugError::ConsecutiveHyphens("a--b".to_string())),
-            ("UPPER", UrlSlugError::InvalidCharacters("UPPER".to_string())),
-            ("space test", UrlSlugError::InvalidCharacters("space test".to_string())),
-            ("special!@#", UrlSlugError::InvalidCharacters("special!@#".to_string())),
+            (
+                "UPPER",
+                UrlSlugError::InvalidCharacters("UPPER".to_string()),
+            ),
+            (
+                "space test",
+                UrlSlugError::InvalidCharacters("space test".to_string()),
+            ),
+            (
+                "special!@#",
+                UrlSlugError::InvalidCharacters("special!@#".to_string()),
+            ),
         ];
 
         for case in valid_cases {
-            assert!(UrlSlug::validate_slug(case).is_ok(), "Expected '{}' to be valid", case);
+            assert!(
+                UrlSlug::validate_slug(case).is_ok(),
+                "Expected '{}' to be valid",
+                case
+            );
         }
 
         for (input, expected_error) in invalid_cases {

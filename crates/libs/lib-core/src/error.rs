@@ -5,9 +5,9 @@
 //! to handle multiple error variants.
 
 use crate::{
-    AccountTypeError, BudgetPeriodError, CategoryTypesError, DateStyleError,
-    HexColorError, HybridLogicalClockError, MoneyError, RowIDError,
-    TransactionStatusError, UnitKindError, UrlSlugError,
+    AccountTypeError, BudgetPeriodError, CategoryTypesError, DateStyleError, HexColorError,
+    HybridLogicalClockError, MoneyError, RowIDError, TransactionStatusError, UnitKindError,
+    UrlSlugError,
 };
 
 /// Unified error type for domain operations in `lib-core`.

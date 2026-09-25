@@ -62,13 +62,8 @@ Planned-but-not-yet-present crates/binaries mentioned in `docs/directories-files
 
 ## Conventions
 
-- Workspace-wide lint: `unsafe_code = "forbid"` (see `Cargo.toml`) — don't introduce `unsafe`.
-- A dependency used by two or more workspace crates goes in `[workspace.dependencies]`, and member crates reference it as `dep = { workspace = true }` rather than pinning versions locally. A dependency used by only one crate is declared in that crate's own `Cargo.toml` with its version, not in the workspace `Cargo.toml`; when a second crate needs it, move it up to `[workspace.dependencies]` and switch both crates to `workspace = true`.
-- Use `thiserror::Error` for domain/crate error enums (see `lib-database/src/error.rs`, `lib-config/src/error.rs`), and map lower-level errors (e.g. `sqlx::Error`) into structured variants rather than propagating them directly.
-- Wrap secrets/tokens in `secrecy::SecretString` (or `SecretBox<T>` for other types — `secrecy` 0.10 has no bare `Secret<T>`) so they can't leak into logs/traces.
-- Avoid `SELECT *` in SQL queries — list explicit columns.
-- Comments and rustdoc use Australian English.
-- Avoid `unwrap()`/`expect()`/`panic!()` outside tests — propagate with `?` or map into a `thiserror` variant. Every crate has an `error.rs` module exporting its own `Error` enum and `Result<T>` alias (see `lib-database/src/error.rs`); if the crate you are working in lacks one, create it (add `thiserror` per the dependency rule below) before adding fallible code, and have fallible functions return that `Result` rather than `Option`, `Box<dyn Error>` or a panic. Start a new `Error` enum with a single `Generic(String)` catch-all variant (as in `lib-database`) and use it for one-off failures; do not pre-design a variant per failure. Once the same kind of failure has appeared three or more times, promote it to its own specific variant (or a dedicated error type when it carries structure) and convert the call sites. Any error inherited from an external crate gets its own derived variant with `#[from]` (e.g. `Sqlx(#[from] sqlx::Error)`, `Migration(#[from] sqlx::migrate::MigrateError)`) so `?` converts it, rather than being flattened into `Generic` via `to_string()`. The one accepted exception is an invariant proven by the surrounding code (e.g. a literal date) — prefer restructuring so the type system carries the proof, and where an `expect` remains, its message must state the invariant. Binary `main` returns the bin's own `error.rs` `Result`.
+**Rust code style and safety:** See `/rust-style` skill for error handling (error.rs shapes, promoting variants, #[from] for external errors), database persistence (CRUD file split), secrets (secrecy::SecretString), dependencies, comments (Australian English, WHY not WHAT), and validated invariants in expect messages. Workspace lints in `Cargo.toml` [workspace.lints] enforce `unsafe_code = "forbid"` (Rust), `clippy::{unwrap_used, expect_used, panic} = "deny"` (clippy, allowed in tests via clippy.toml). CI runs `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check`.
+
 - Commit style: `<area>: <short description>` (e.g. `email-verification: add updated_at to model and migration`).
 - Tests: unit tests live alongside the code (`#[cfg(test)] mod tests`); integration/DB tests use `sqlx::test`; use the `fake` crate with deterministic seeds for generated test data.
 
@@ -130,6 +125,6 @@ Headings get a blank line before and after; paragraphs and list items are writte
 
 End-user domain pages (`docs/<domain>.md`) follow a fixed template with a matching `docs/development/<domain>.md`. Invoke `/end-user-docs` (or let it auto-trigger) when writing or reviewing them.
 
-### Tracing and tests
+### Rust style, tracing and tests
 
-Project skills under `.claude/skills/` capture this repo's conventions in more depth than fits here — invoke them (or let them auto-trigger) when doing the matching work: `/tracing` for `tracing::instrument`/log-level conventions, `/unit-tests` for `fake`-crate mock data and `sqlx::test` patterns.
+Project skills under `.claude/skills/` capture this repo's conventions in more depth than fits here — invoke them (or let them auto-trigger) when doing the matching work: `/rust-style` for error handling, persistence patterns, secrets and comments (hand-checked rules beyond lints), `/tracing` for `tracing::instrument`/log-level conventions, `/unit-tests` for `fake`-crate mock data and `sqlx::test` patterns.

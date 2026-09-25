@@ -199,6 +199,7 @@ impl HlcClock {
     pub fn observe(&mut self, remote: HybridLogicalClock) -> HybridLogicalClock {
         let now = chrono::Utc::now();
         let last_physical = self.last.map(|l| l.physical);
+        #[allow(clippy::expect_used)]
         let max_physical = [Some(now), last_physical, Some(remote.physical)]
             .into_iter()
             .flatten()

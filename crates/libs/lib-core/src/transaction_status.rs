@@ -44,7 +44,9 @@ impl std::str::FromStr for TransactionStatus {
             "open" => Ok(TransactionStatus::Open),
             "cleared" => Ok(TransactionStatus::Cleared),
             "reconciled" => Ok(TransactionStatus::Reconciled),
-            _ => Err(TransactionStatusError::InvalidTransactionStatus(s.to_string())),
+            _ => Err(TransactionStatusError::InvalidTransactionStatus(
+                s.to_string(),
+            )),
         }
     }
 }
@@ -109,14 +111,23 @@ mod tests {
     #[test]
     fn round_trips_through_as_str_and_from_str() {
         for status in TransactionStatus::all() {
-            assert_eq!(&TransactionStatus::from_str(status.as_str()).unwrap(), status);
+            assert_eq!(
+                &TransactionStatus::from_str(status.as_str()).unwrap(),
+                status
+            );
         }
     }
 
     #[test]
     fn from_str_is_case_insensitive() {
-        assert_eq!(TransactionStatus::from_str("OPEN"), Ok(TransactionStatus::Open));
-        assert_eq!(TransactionStatus::from_str("Reconciled"), Ok(TransactionStatus::Reconciled));
+        assert_eq!(
+            TransactionStatus::from_str("OPEN"),
+            Ok(TransactionStatus::Open)
+        );
+        assert_eq!(
+            TransactionStatus::from_str("Reconciled"),
+            Ok(TransactionStatus::Reconciled)
+        );
     }
 
     #[test]

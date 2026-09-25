@@ -30,15 +30,7 @@
 /// assert_eq!(category.as_str(), "asset");
 /// assert!(category.is_asset());
 /// ```
-#[derive(
-    Debug,
-    Clone,
-    Default,
-    PartialEq,
-    PartialOrd,
-    serde::Deserialize,
-    serde::Serialize,
-)]
+#[derive(Debug, Clone, Default, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
 pub enum CategoryTypes {
     /// Resources owned that have economic value (cash, investments, property).
     Asset,
@@ -118,7 +110,7 @@ impl CategoryTypes {
     pub fn as_str(&self) -> &'static str {
         match self {
             CategoryTypes::Asset => "asset",
-            CategoryTypes::Liability => "liability", 
+            CategoryTypes::Liability => "liability",
             CategoryTypes::Income => "income",
             CategoryTypes::Expense => "expense",
             CategoryTypes::Equity => "equity",
@@ -304,7 +296,8 @@ impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for CategoryTypes {
     fn decode(value: sqlx::sqlite::SqliteValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         let s = <String as sqlx::Decode<sqlx::Sqlite>>::decode(value)?;
         use std::str::FromStr;
-        Ok(CategoryTypes::from_str(&s).map_err(|e| format!("Invalid category type in DB: {}", e))?)
+        Ok(CategoryTypes::from_str(&s)
+            .map_err(|e| format!("Invalid category type in DB: {}", e))?)
     }
 }
 
@@ -326,7 +319,8 @@ impl<'r> sqlx::Decode<'r, sqlx::Any> for CategoryTypes {
     fn decode(value: sqlx::any::AnyValueRef<'r>) -> Result<Self, sqlx::error::BoxDynError> {
         use std::str::FromStr;
         let s = <String as sqlx::Decode<sqlx::Any>>::decode(value)?;
-        Ok(CategoryTypes::from_str(&s).map_err(|e| format!("Invalid category type in database: {}", e))?)
+        Ok(CategoryTypes::from_str(&s)
+            .map_err(|e| format!("Invalid category type in database: {}", e))?)
     }
 }
 
@@ -405,29 +399,41 @@ mod tests {
     #[test]
     fn test_from_str_valid() {
         use std::str::FromStr;
-        
+
         assert_eq!(CategoryTypes::from_str("asset"), Ok(CategoryTypes::Asset));
-        assert_eq!(CategoryTypes::from_str("liability"), Ok(CategoryTypes::Liability));
+        assert_eq!(
+            CategoryTypes::from_str("liability"),
+            Ok(CategoryTypes::Liability)
+        );
         assert_eq!(CategoryTypes::from_str("income"), Ok(CategoryTypes::Income));
-        assert_eq!(CategoryTypes::from_str("expense"), Ok(CategoryTypes::Expense));
+        assert_eq!(
+            CategoryTypes::from_str("expense"),
+            Ok(CategoryTypes::Expense)
+        );
         assert_eq!(CategoryTypes::from_str("equity"), Ok(CategoryTypes::Equity));
     }
 
     #[test]
     fn test_from_str_case_insensitive() {
         use std::str::FromStr;
-        
+
         assert_eq!(CategoryTypes::from_str("ASSET"), Ok(CategoryTypes::Asset));
-        assert_eq!(CategoryTypes::from_str("LiAbIlItY"), Ok(CategoryTypes::Liability));
+        assert_eq!(
+            CategoryTypes::from_str("LiAbIlItY"),
+            Ok(CategoryTypes::Liability)
+        );
         assert_eq!(CategoryTypes::from_str("InCoMe"), Ok(CategoryTypes::Income));
-        assert_eq!(CategoryTypes::from_str("EXPENSE"), Ok(CategoryTypes::Expense));
+        assert_eq!(
+            CategoryTypes::from_str("EXPENSE"),
+            Ok(CategoryTypes::Expense)
+        );
         assert_eq!(CategoryTypes::from_str("equity"), Ok(CategoryTypes::Equity));
     }
 
     #[test]
     fn test_from_str_invalid() {
         use std::str::FromStr;
-        
+
         assert!(CategoryTypes::from_str("invalid").is_err());
         assert!(CategoryTypes::from_str("").is_err());
         assert!(CategoryTypes::from_str("assets").is_err()); // plural
@@ -460,12 +466,12 @@ mod tests {
             (CategoryTypes::Expense, "\"Expense\""),
             (CategoryTypes::Equity, "\"Equity\""),
         ];
-        
+
         for (category_type, expected_json) in test_cases {
             // Test serialization
             let serialized = serde_json::to_string(&category_type).unwrap();
             assert_eq!(serialized, expected_json);
-            
+
             // Test deserialization round-trip
             let deserialized: CategoryTypes = serde_json::from_str(&serialized).unwrap();
             assert_eq!(deserialized, category_type);
@@ -490,14 +496,14 @@ mod tests {
     fn test_mock() {
         // Test that mock() returns valid CategoryTypes
         let mock_type = CategoryTypes::mock();
-        
+
         // Should be one of the valid variants
         let all_types = CategoryTypes::all();
         assert!(all_types.contains(&mock_type));
-        
+
         // Should have a valid string representation
         assert!(!mock_type.as_str().is_empty());
-        
+
         // Should be parseable back from its string representation
         assert_eq!(CategoryTypes::from_str(mock_type.as_str()), Ok(mock_type));
     }

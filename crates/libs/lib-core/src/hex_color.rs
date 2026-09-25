@@ -65,6 +65,7 @@ impl HexColor {
             return Err(HexColorError::InvalidCharacters(input.to_string()));
         }
 
+        #[allow(clippy::expect_used)]
         let value = u32::from_str_radix(digits, 16).expect("validated hex digits");
         let canonical = format!("#{:06X}", value);
         let red = ((value >> 16) & 0xFF) as u8;
@@ -141,20 +142,18 @@ impl HexColor {
         use fake::faker::color::en::HexColor as FakeHex;
 
         let value: String = FakeHex().fake();
-        HexColor::parse(value).expect("fake hex colour should be valid")
+        #[allow(clippy::expect_used)]
+        let color = HexColor::parse(value).expect("fake hex colour should be valid");
+        color
     }
 
-    // Generate a random option colour or None for testing scenarios.
+    /// Generate a random option colour or None for testing scenarios.
     pub fn mock_with_option() -> Option<Self> {
         use fake::Fake;
         use fake::faker::boolean::en::Boolean;
 
         let is_some: bool = Boolean(50).fake(); // 50% chance of Some
-        if is_some {
-            Some(Self::mock())
-        } else {
-            None
-        }
+        if is_some { Some(Self::mock()) } else { None }
     }
 }
 

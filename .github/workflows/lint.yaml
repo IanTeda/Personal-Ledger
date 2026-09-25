@@ -1,0 +1,23 @@
+name: Lint
+
+on:
+  push:
+    branches: [main, concept]
+  pull_request:
+    branches: [main, concept]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install mise-pinned toolchain
+        uses: jdx/mise-action@v4
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings

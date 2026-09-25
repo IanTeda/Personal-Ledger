@@ -23,6 +23,12 @@ dead_code = { level = "allow", priority = -1 }
 # For exploratory dev, comment out for commits
 # unused = { level = "allow", priority = -1 }
 
+[workspace.lints.clippy]
+
+# Deny unwrap, expect, and panic outside test code (tests can still use them)
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
 
 # Workspace configuration for managing multiple crates in the personal-ledger project
 [workspace]
