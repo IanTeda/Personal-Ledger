@@ -839,4 +839,80 @@ mod tests {
             ("not a locale", crate::LocaleSource::Config)
         );
     }
+
+    /// The example configuration shipped at the repository root. It is not merely
+    /// documentation: `get_cwd_config_path` puts `config/personal-ledger.conf` in the
+    /// working-directory precedence tier, so this exact file is loaded whenever a binary is
+    /// run from the repository root. The two tests below keep it honest against the schema.
+    fn shipped_conf_path() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../config/personal-ledger.conf")
+    }
+
+    /// Guards against a section going stale: the file once shipped `[Database]` and
+    /// `[Tracing]` sections, long after `LedgerConfig` stopped reading either. Nothing
+    /// complained, because `serde` ignores unknown fields here -- every key under them was
+    /// silently discarded in favour of the built-in defaults. Parsing alone therefore proves
+    /// nothing; the section headers have to be checked against the three that are read.
+    #[test]
+    fn shipped_conf_has_no_section_lib_config_ignores() {
+        let raw = fs::read_to_string(shipped_conf_path()).unwrap();
+
+        // The same normalisation `normalise_ini` applies before the file reaches `serde`, so
+        // `[Sync-Server]`, `[sync-server]` and `[sync_server]` all compare equal here.
+        let sections: Vec<String> = raw
+            .lines()
+            .map(str::trim)
+            .filter_map(|line| line.strip_prefix('[')?.strip_suffix(']'))
+            .map(|name| name.to_lowercase().replace('-', "_"))
+            .collect();
+
+        assert!(
+            !sections.is_empty(),
+            "no sections found -- the file or this parser is wrong"
+        );
+
+        for section in &sections {
+            assert!(
+                matches!(
+                    section.as_str(),
+                    "personal_ledger" | "keybindings" | "sync_server"
+                ),
+                "[{section}] is not a section LedgerConfig reads, so every key under it is \
+                 silently ignored -- remove it or wire it up"
+            );
+        }
+    }
+
+    /// The other half of the guard: that the values in the file actually land on the parsed
+    /// config, so renaming a section (or breaking `normalise_ini`) fails here rather than
+    /// quietly falling back to defaults. Both assertions deliberately use values the file
+    /// sets *differently* from the built-in defaults -- `bind_address` and `database_uri`
+    /// are not asserted, because the file repeats their defaults verbatim and asserting them
+    /// would pass even if the whole section were dropped.
+    #[test]
+    fn shipped_conf_values_reach_the_parsed_config() {
+        in_empty_cwd(|| {
+            let config = LedgerConfig::parse(Some(&shipped_conf_path())).unwrap();
+
+            // The file sets `log = "debug"`; the built-in default is `INFO`.
+            assert_eq!(
+                config.personal_ledger.log(),
+                lib_tracing::Levels::DEBUG,
+                "[Personal-Ledger] log did not reach the config"
+            );
+
+            // The file's `file` key is a literal tilde path -- `config` does no shell
+            // expansion -- whereas the default is an expanded absolute path.
+            assert_eq!(
+                config.personal_ledger.file(),
+                Path::new("~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"),
+                "[Personal-Ledger] file did not reach the config"
+            );
+
+            // `super_key` and the ten command bindings match the built-in defaults, so they
+            // cannot discriminate -- but the file must at least not define an invalid
+            // modifier or bind two commands to one key.
+            config.keybindings.validate().unwrap();
+        });
+    }
 }
