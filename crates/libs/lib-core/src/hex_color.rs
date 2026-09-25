@@ -10,9 +10,13 @@
 /// Use [`HexColor::parse`] or [`HexColor::from_rgb`] to create instances. The
 /// internal string is guaranteed to be uppercase, always begins with `#`, and
 /// contains exactly six hexadecimal digits.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-#[serde(transparent)]
-pub struct HexColor(String);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct HexColor {
+    hex_string: String,
+    red: u8,
+    green: u8,
+    blue: u8,
+}
 
 /// Errors that can occur when parsing or constructing a [`HexColor`].
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
@@ -63,7 +67,16 @@ impl HexColor {
 
         let value = u32::from_str_radix(digits, 16).expect("validated hex digits");
         let canonical = format!("#{:06X}", value);
-        Ok(HexColor(canonical))
+        let red = ((value >> 16) & 0xFF) as u8;
+        let green = ((value >> 8) & 0xFF) as u8;
+        let blue = (value & 0xFF) as u8;
+
+        Ok(HexColor {
+            hex_string: canonical,
+            red,
+            green,
+            blue,
+        })
     }
 
     /// Creates a [`HexColor`] from individual RGB components.
@@ -78,22 +91,24 @@ impl HexColor {
     /// ```
     #[must_use]
     pub fn from_rgb(red: u8, green: u8, blue: u8) -> Self {
-        HexColor(format!("#{:02X}{:02X}{:02X}", red, green, blue))
+        HexColor {
+            hex_string: format!("#{:02X}{:02X}{:02X}", red, green, blue),
+            red,
+            green,
+            blue,
+        }
     }
 
     /// Gets the canonical `#RRGGBB` representation as a string slice.
     #[must_use]
     pub fn as_str(&self) -> &str {
-        &self.0
+        &self.hex_string
     }
 
     /// Returns the individual red, green, and blue components as a tuple.
     #[must_use]
     pub fn components(&self) -> (u8, u8, u8) {
-        let red = u8::from_str_radix(&self.0[1..3], 16).expect("validated red channel");
-        let green = u8::from_str_radix(&self.0[3..5], 16).expect("validated green channel");
-        let blue = u8::from_str_radix(&self.0[5..7], 16).expect("validated blue channel");
-        (red, green, blue)
+        (self.red, self.green, self.blue)
     }
 
     /// Returns the red channel as an integer between 0 and 255.
@@ -147,13 +162,13 @@ impl HexColor {
     /// Converts the colour into its owned String representation.
     #[must_use]
     pub fn into_string(self) -> String {
-        self.0
+        self.hex_string
     }
 }
 
 impl std::fmt::Display for HexColor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
+        write!(f, "{}", self.hex_string)
     }
 }
 
@@ -167,13 +182,13 @@ impl std::str::FromStr for HexColor {
 
 impl From<HexColor> for String {
     fn from(value: HexColor) -> Self {
-        value.0
+        value.hex_string
     }
 }
 
 impl From<&HexColor> for String {
     fn from(value: &HexColor) -> Self {
-        value.0.clone()
+        value.hex_string.clone()
     }
 }
 
@@ -197,6 +212,26 @@ impl TryFrom<&str> for HexColor {
     }
 }
 
+// Serde implementations for serializing to/from the canonical hex string format.
+impl serde::Serialize for HexColor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.hex_string.serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for HexColor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        HexColor::parse(s).map_err(serde::de::Error::custom)
+    }
+}
+
 // SQLx trait implementations ensure the colour can be stored as TEXT.
 impl sqlx::Type<sqlx::Sqlite> for HexColor {
     fn type_info() -> sqlx::sqlite::SqliteTypeInfo {
@@ -216,7 +251,7 @@ impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for HexColor {
         &self,
         buf: &mut <sqlx::Sqlite as sqlx::Database>::ArgumentBuffer<'q>,
     ) -> Result<sqlx::encode::IsNull, sqlx::error::BoxDynError> {
-        <String as sqlx::Encode<'q, sqlx::Sqlite>>::encode(self.0.clone(), buf)
+        <String as sqlx::Encode<'q, sqlx::Sqlite>>::encode(self.hex_string.clone(), buf)
     }
 }
 
