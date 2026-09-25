@@ -6,7 +6,11 @@ tui-categories-title = Categories
 
 ## The tree list: header showing visible count, total count, depth and folded count.
 
-tui-categories-tree-header = tree { $visible } of { $total } · depth { $depth } · { $folded } folded
+tui-categories-tree-header = tree { $visible } of { $total } · depth { $depth } · { $folded ->
+    [0] 0 folded
+    [one] 1 folded
+    *[other] { $folded } folded
+}
 
 ## The tree column headers and symbols.
 
@@ -22,9 +26,15 @@ tui-categories-summary-direct = direct 12m
 tui-categories-summary-rollup = rollup 12m
 tui-categories-summary-kind-depth = kind · depth
 tui-categories-summary-children-leaf = none · leaf
-tui-categories-summary-children-parent = { $count } · parent
+tui-categories-summary-children-parent = { $count ->
+    [one] 1 · parent
+    *[other] { $count } · parent
+}
 tui-categories-summary-transactions-none = none
-tui-categories-summary-transactions-direct = { $count } · direct
+tui-categories-summary-transactions-direct = { $count ->
+    [one] 1 · direct
+    *[other] { $count } · direct
+}
 tui-categories-summary-first-last-none = none
 tui-categories-summary-first-last = { $first } · { $last }
 tui-categories-summary-note = note
@@ -41,13 +51,22 @@ tui-categories-chart-avg = avg { $value }
 ## The transactions list: column headers and footer.
 
 tui-categories-transactions-title = TRANSACTIONS
-tui-categories-transactions-heading = { $shown } of { $total } · newest first
+tui-categories-transactions-heading = { $shown ->
+    [one] 1 of { $total } · newest first
+    *[other] { $shown } of { $total } · newest first
+}
 tui-categories-transactions-column-date = DATE
 tui-categories-transactions-column-account = ACCOUNT
 tui-categories-transactions-column-category = CATEGORY
 tui-categories-transactions-column-payee = PAYEE
 tui-categories-transactions-column-amount = AMOUNT
-tui-categories-transactions-footer = { $direct } direct · { $subtree } in subtree  ·  enter open txn
+tui-categories-transactions-footer = { $direct ->
+    [one] 1 direct
+    *[other] { $direct } direct
+} · { $subtree ->
+    [one] 1 in subtree
+    *[other] { $subtree } in subtree
+}  ·  enter open txn
 
 ## The New category popup.
 

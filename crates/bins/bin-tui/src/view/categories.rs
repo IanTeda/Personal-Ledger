@@ -652,7 +652,7 @@ impl CategoriesView {
                     &visible_count.to_string(),
                     &total.to_string(),
                     &self.max_depth().to_string(),
-                    &folded_count.to_string(),
+                    folded_count as i64,
                 )
             }
         };
@@ -736,7 +736,7 @@ impl CategoriesView {
         let children_text = if child_count == 0 {
             msg::tui_categories_summary_children_leaf()
         } else {
-            msg::tui_categories_summary_children_parent(&child_count.to_string())
+            msg::tui_categories_summary_children_parent(child_count as i64)
         };
         frame.render_widget(summary_field_line("children", &children_text), rows[row]);
         row += 1;
@@ -744,7 +744,7 @@ impl CategoriesView {
         let transactions_text = if node.transaction_count == 0 {
             msg::tui_categories_summary_transactions_none()
         } else {
-            msg::tui_categories_summary_transactions_direct(&node.transaction_count.to_string())
+            msg::tui_categories_summary_transactions_direct(node.transaction_count as i64)
         };
         // Use a temporary static string for the label "transactions" since there's no localized msg for it yet
         frame.render_widget(
@@ -1199,7 +1199,7 @@ fn format_month(date: NaiveDate) -> String {
 /// The "TRANSACTIONS N of M · newest first" heading.
 fn render_transactions_heading(frame: &mut Frame, area: Rect, shown: usize, total: u32) {
     let dim = Style::default().add_modifier(Modifier::DIM);
-    let tag = msg::tui_categories_transactions_heading(&shown.to_string(), &total.to_string());
+    let tag = msg::tui_categories_transactions_heading(shown as i64, &total.to_string());
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -1332,7 +1332,7 @@ fn render_transaction_rows(
 /// doc), the hint is shown as-is regardless.
 fn render_transactions_footer(frame: &mut Frame, area: Rect, direct: u32, subtree: u32) {
     let dim = Style::default().add_modifier(Modifier::DIM);
-    let text = msg::tui_categories_transactions_footer(&direct.to_string(), &subtree.to_string());
+    let text = msg::tui_categories_transactions_footer(direct as i64, subtree as i64);
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
 }
 
