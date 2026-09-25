@@ -231,7 +231,7 @@ impl DeleteAccountPopup {
             Line::from(format!(
                 "{} txns · {} {}",
                 account.transaction_count,
-                format_money_at(&balance, account.unit.decimal_places),
+                crate::format::money(&balance, account.unit.decimal_places),
                 account.unit.code
             )),
         ));
@@ -293,8 +293,8 @@ impl DeleteAccountPopup {
                         msg::tui_account_delete_field_balance(),
                         Line::from(format!(
                             "{} → {}",
-                            format_money_at(&target_balance, target.unit.decimal_places),
-                            format_money_at(&new_balance, target.unit.decimal_places)
+                            crate::format::money(&target_balance, target.unit.decimal_places),
+                            crate::format::money(&new_balance, target.unit.decimal_places)
                         )),
                     ));
                     rows.push(field_row(
@@ -451,11 +451,6 @@ fn popup_rect(area: Rect, content_rows: u16) -> Rect {
         width,
         height,
     }
-}
-
-/// Formats `value` at `decimal_places`, grouped by the Locale.
-fn format_money_at(value: &Money, decimal_places: i64) -> String {
-    crate::format::money(value, decimal_places)
 }
 
 #[cfg(test)]

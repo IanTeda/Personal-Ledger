@@ -695,7 +695,10 @@ impl CategoriesView {
 
         if merged {
             frame.render_widget(
-                summary_field_line(&msg::tui_categories_summary_merged(), &format_money(rollup)),
+                summary_field_line(
+                    &msg::tui_categories_summary_merged(),
+                    &crate::format::money_natural(rollup),
+                ),
                 rows[row],
             );
             row += 1;
@@ -703,13 +706,16 @@ impl CategoriesView {
             frame.render_widget(
                 summary_field_line(
                     &msg::tui_categories_summary_direct(),
-                    &format_money(&node.direct),
+                    &crate::format::money_natural(&node.direct),
                 ),
                 rows[row],
             );
             row += 1;
             frame.render_widget(
-                summary_field_line(&msg::tui_categories_summary_rollup(), &format_money(rollup)),
+                summary_field_line(
+                    &msg::tui_categories_summary_rollup(),
+                    &crate::format::money_natural(rollup),
+                ),
                 rows[row],
             );
             row += 1;
@@ -1065,8 +1071,11 @@ fn render_tree_row(frame: &mut Frame, area: Rect, row: &TreeRow, selected: bool)
 
     let rollup_style = if selected { Style::default() } else { n_style };
     frame.render_widget(
-        Paragraph::new(Span::styled(format_money_whole(&row.rollup), rollup_style))
-            .alignment(Alignment::Right),
+        Paragraph::new(Span::styled(
+            crate::format::money(&row.rollup, 0),
+            rollup_style,
+        ))
+        .alignment(Alignment::Right),
         columns[2],
     );
 }
@@ -1106,17 +1115,6 @@ fn summary_section_height(merged: bool) -> u16 {
 
 fn format_date(date: chrono::NaiveDate) -> String {
     crate::format::day_month(date)
-}
-
-/// Formats a `Money` amount, keeping decimals only when it has a fractional part -- used by the
-/// summary box, where full precision matters.
-fn format_money(value: &Money) -> String {
-    crate::format::money_natural(value)
-}
-
-/// Formats a `Money` amount rounded to whole dollars -- used by the tree's narrow column.
-fn format_money_whole(value: &Money) -> String {
-    crate::format::money(value, 0)
 }
 
 /// The "DIRECT SPEND"/"SUBTREE SPEND" heading over the chart, with the trailing window as its
@@ -1319,7 +1317,7 @@ fn render_transaction_rows(
         }
         frame.render_widget(Paragraph::new(row.payee), payee);
         frame.render_widget(
-            Paragraph::new(format_money(&row.amount)).alignment(Alignment::Right),
+            Paragraph::new(crate::format::money_natural(&row.amount)).alignment(Alignment::Right),
             amount,
         );
     }
@@ -1357,10 +1355,6 @@ fn xorshift(seed: u64) -> u64 {
     seed
 }
 
-fn money_to_f64(value: &Money) -> f64 {
-    value.0.to_string().parse().unwrap_or(0.0)
-}
-
 fn f64_to_money(amount: f64) -> Money {
     Money(BigDecimal::from_f64(amount).unwrap_or_default())
 }
@@ -1375,7 +1369,7 @@ fn direct_series(node: &CategoryNode) -> [f64; CHART_MONTHS] {
         return points;
     }
 
-    let total = money_to_f64(&node.direct);
+    let total = crate::format::money_to_f64(&node.direct);
     let active = (node.transaction_count as usize).clamp(1, CHART_MONTHS);
     let mut seed = seed_from_id(node.id);
     let mut weights = Vec::with_capacity(active);
@@ -1405,7 +1399,7 @@ fn transactions_for_node(node: &CategoryNode) -> Vec<TransactionRow> {
     }
 
     let span_days = (last - first).num_days().max(0) as u64;
-    let per_transaction = money_to_f64(&node.direct) / count as f64;
+    let per_transaction = crate::format::money_to_f64(&node.direct) / count as f64;
     let mut seed = seed_from_id(node.id);
     let mut rows = Vec::with_capacity(count);
 
@@ -1907,17 +1901,6 @@ mod tests {
     }
 
     #[test]
-    fn format_money_keeps_decimals_only_when_the_amount_has_a_fractional_part() {
-        assert_eq!(format_money(&"142100".parse().unwrap()), "142,100");
-        assert_eq!(format_money(&"12480.40".parse().unwrap()), "12,480.40");
-    }
-
-    #[test]
-    fn format_money_whole_always_drops_decimals() {
-        assert_eq!(format_money_whole(&"12480.40".parse().unwrap()), "12,480");
-    }
-
-    #[test]
     fn shows_the_direct_spend_chart_heading_and_labels() {
         let mut view = CategoriesView::new();
         view.selected = find_by_name(&view, "Groceries");
@@ -1971,7 +1954,7 @@ mod tests {
             .descendants(food)
             .into_iter()
             .filter_map(|id| view.store.find(id))
-            .map(|node| money_to_f64(&node.direct))
+            .map(|node| crate::format::money_to_f64(&node.direct))
             .sum();
         assert!(
             (total - expected).abs() < 0.01,
@@ -1991,7 +1974,7 @@ mod tests {
         let series = direct_series(&groceries);
         let total: f64 = series.iter().sum();
         assert!(
-            (total - money_to_f64(&groceries.direct)).abs() < 0.01,
+            (total - crate::format::money_to_f64(&groceries.direct)).abs() < 0.01,
             "series should sum to the node's direct amount, got {total}"
         );
     }

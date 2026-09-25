@@ -5,15 +5,20 @@
 //! exact: [`Money`](lib_core::Money) is converted through its plain decimal string, never
 //! `Display` (which can emit `1e+30`) and never `f64`.
 //!
+//! A signed amount goes through [`format_amount`], which owns the minus (U+2212) and the rule that
+//! a value rounding to zero is never negative; [`format_number`] is for plain quantities.
+//!
 //! A formatting failure never panics or reaches the caller: it is logged and the value falls
 //! back to plain, unlocalised text.
 
+mod amount;
 mod casing;
 mod currency;
 mod date;
 mod input;
 mod number;
 
+pub use amount::{Amount, AmountStyle, Places, format_amount};
 pub use casing::upper;
 pub use currency::{Unit, format_money};
 pub use date::{format_date, format_month, format_month_day, format_year_month};

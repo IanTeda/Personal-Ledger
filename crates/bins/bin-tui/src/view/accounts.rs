@@ -268,7 +268,7 @@ impl AccountsView {
                         .iter()
                         .map(|account| self.store.balance(account.id).0)
                         .sum();
-                    format_money_at(&Money(subtotal), unit.decimal_places)
+                    crate::format::money(&Money(subtotal), unit.decimal_places)
                 }
                 None => "mixed units".to_string(),
             };
@@ -536,7 +536,7 @@ impl AccountsView {
             "{} · {} · start {}",
             account.account_type.as_str().replace('_', " "),
             account.unit.code,
-            format_money_at(&account.starting_balance, account.unit.decimal_places)
+            crate::format::money(&account.starting_balance, account.unit.decimal_places)
         );
         frame.render_widget(Paragraph::new(fact_line), rows[0]);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
@@ -545,7 +545,7 @@ impl AccountsView {
         frame.render_widget(
             summary_field_line(
                 "balance now · computed",
-                &format_money_at(&balance, account.unit.decimal_places),
+                &crate::format::money(&balance, account.unit.decimal_places),
             ),
             rows[2],
         );
@@ -570,7 +570,7 @@ impl AccountsView {
                 format!(
                     "{} · var {}",
                     format_date(check.date),
-                    format_money_at(&variance, account.unit.decimal_places)
+                    crate::format::money(&variance, account.unit.decimal_places)
                 )
             }
             None => "none".to_string(),
@@ -628,7 +628,7 @@ impl AccountsView {
             .store
             .monthly_balances(account.id, CHART_MONTHS, FIXTURE_NOW)
             .iter()
-            .map(money_to_f64)
+            .map(crate::format::money_to_f64)
             .collect();
         let points: Vec<(f64, f64)> = series
             .iter()
@@ -834,7 +834,7 @@ fn render_list_line(frame: &mut Frame, area: Rect, line: &ListLine<'_>, selected
             };
             frame.render_widget(
                 Paragraph::new(Span::styled(
-                    format_money_at(&balance, account.unit.decimal_places),
+                    crate::format::money(&balance, account.unit.decimal_places),
                     balance_style,
                 ))
                 .alignment(Alignment::Right),
@@ -863,16 +863,6 @@ fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
 
 fn format_date(date: chrono::NaiveDate) -> String {
     crate::format::day_month(date)
-}
-
-/// Formats `value` at the Unit's own `decimal_places` (`412.4800` for a fund at 4dp, `0.18400000`
-/// for BTC at 8dp), grouped by the Locale.
-fn format_money_at(value: &Money, decimal_places: i64) -> String {
-    crate::format::money(value, decimal_places)
-}
-
-fn money_to_f64(value: &Money) -> f64 {
-    value.0.to_string().parse().unwrap_or(0.0)
 }
 
 /// The handoff's own rule for the ledger's running `BALANCE` column — "it is only meaningful
@@ -933,18 +923,18 @@ fn render_chart_labels(frame: &mut Frame, area: Rect, series: &[f64], decimal_pl
     let first_text = format!(
         "{}  {}",
         format_month(chart_month(0)),
-        format_money_at_f64(series[0], decimal_places)
+        crate::format::money_f64(series[0], decimal_places)
     );
     let low_text = format!(
         "low {}  {}",
         format_month(chart_month(low_index)),
-        format_money_at_f64(low_value, decimal_places)
+        crate::format::money_f64(low_value, decimal_places)
     );
     let last_index = series.len() - 1;
     let last_text = format!(
         "{}  {}",
         format_month(chart_month(last_index)),
-        format_money_at_f64(series[last_index], decimal_places)
+        crate::format::money_f64(series[last_index], decimal_places)
     );
 
     frame.render_widget(Paragraph::new(Span::styled(first_text, dim)), columns[0]);
@@ -972,10 +962,6 @@ fn chart_month(index: usize) -> NaiveDate {
 
 fn format_month(date: NaiveDate) -> String {
     crate::format::month_year(date)
-}
-
-fn format_money_at_f64(amount: f64, decimal_places: i64) -> String {
-    crate::format::money_f64(amount, decimal_places)
 }
 
 /// Splits a ledger row (or its column header) into status-glyph(1) / `DATE` / `PAYEE`
@@ -1070,7 +1056,7 @@ fn render_ledger_rows(
         };
         frame.render_widget(
             Paragraph::new(Span::styled(
-                format_money_at(&row.amount, decimal_places),
+                crate::format::money(&row.amount, decimal_places),
                 amount_style,
             ))
             .alignment(Alignment::Right),
@@ -1080,7 +1066,7 @@ fn render_ledger_rows(
         let balance_text = if blank_balance {
             String::new()
         } else {
-            format_money_at(balance, decimal_places)
+            crate::format::money(balance, decimal_places)
         };
         let balance_style = if !blank_balance && balance.0 < 0 {
             Style::default().fg(ACCENT)
@@ -1121,11 +1107,14 @@ fn render_net_line(frame: &mut Frame, area: Rect, visible_accounts: Vec<&Account
     excluded.dedup();
 
     let text = if excluded.is_empty() {
-        format!("net {BASE_UNIT_CODE} {}", format_money_at(&Money(net), 2))
+        format!(
+            "net {BASE_UNIT_CODE} {}",
+            crate::format::money(&Money(net), 2)
+        )
     } else {
         format!(
             "net {BASE_UNIT_CODE} {} · {} held separately",
-            format_money_at(&Money(net), 2),
+            crate::format::money(&Money(net), 2),
             excluded.join(", ")
         )
     };
@@ -1342,16 +1331,16 @@ mod tests {
     }
 
     #[test]
-    fn format_money_at_renders_each_units_own_precision() {
+    fn amounts_render_at_each_units_own_precision() {
         assert_eq!(
-            format_money_at(
+            crate::format::money(
                 &Money(bigdecimal::BigDecimal::from_str("412.48").unwrap()),
                 4
             ),
             "412.4800"
         );
         assert_eq!(
-            format_money_at(
+            crate::format::money(
                 &Money(bigdecimal::BigDecimal::from_str("0.184").unwrap()),
                 8
             ),

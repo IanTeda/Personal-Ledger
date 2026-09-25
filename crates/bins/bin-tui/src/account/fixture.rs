@@ -71,10 +71,6 @@ fn unit(code: &str, decimal_places: i64) -> AccountUnit {
     }
 }
 
-fn money_to_f64(value: &Money) -> f64 {
-    value.0.to_string().parse().unwrap_or(0.0)
-}
-
 fn round_money(amount: f64, decimal_places: i64) -> Money {
     Money(
         BigDecimal::from_f64(amount)
@@ -124,7 +120,7 @@ pub(super) fn ledger_for(account: &Account) -> Vec<AccountTransaction> {
     }
 
     let span_days = (last - first).num_days().max(0) as u64;
-    let avg = money_to_f64(&account.transactions_sum) / count as f64;
+    let avg = crate::format::money_to_f64(&account.transactions_sum) / count as f64;
     let mut seed = seed_from_id(account.id);
     let mut rows = Vec::with_capacity(count);
     let mut running = BigDecimal::from(0);

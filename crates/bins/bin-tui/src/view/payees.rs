@@ -571,7 +571,7 @@ impl PayeesView {
             Style::default()
         };
         frame.render_widget(
-            Paragraph::new(Span::styled(format_money(&total), total_style))
+            Paragraph::new(Span::styled(crate::format::money(&total, 2), total_style))
                 .alignment(Alignment::Right),
             total_area,
         );
@@ -626,7 +626,7 @@ impl PayeesView {
         frame.render_widget(
             record_field_line(
                 "total",
-                &format!("{} {BASE_UNIT_CODE}", format_money(&total)),
+                &format!("{} {BASE_UNIT_CODE}", crate::format::money(&total, 2)),
             ),
             rows[2],
         );
@@ -880,12 +880,6 @@ fn format_month(date: chrono::NaiveDate) -> String {
     crate::format::month_year(date)
 }
 
-/// Formats `value` at 2 decimal places (every Payee total is stated in the base unit), grouped by
-/// the Locale.
-fn format_money(value: &Money) -> String {
-    crate::format::money(value, 2)
-}
-
 /// A section heading row shared by both right-pane widgets: the label flush left (dim), a
 /// short dim tag right-aligned — mirrors `view::tags::render_section_heading`.
 fn render_section_heading(frame: &mut Frame, area: Rect, label: &str, tag: &str) {
@@ -938,7 +932,7 @@ fn render_mix_bar(frame: &mut Frame, area: Rect, label: &str, share: f64, amount
         Style::default()
     };
     frame.render_widget(
-        Paragraph::new(Span::styled(format_money(amount), amount_style))
+        Paragraph::new(Span::styled(crate::format::money(amount, 2), amount_style))
             .alignment(Alignment::Right),
         columns[2],
     );
@@ -1030,8 +1024,11 @@ fn render_txn_row(frame: &mut Frame, area: Rect, row: &PayeeTransaction) {
         Style::default()
     };
     frame.render_widget(
-        Paragraph::new(Span::styled(format_money(&row.amount), amount_style))
-            .alignment(Alignment::Right),
+        Paragraph::new(Span::styled(
+            crate::format::money(&row.amount, 2),
+            amount_style,
+        ))
+        .alignment(Alignment::Right),
         amount_area,
     );
 }

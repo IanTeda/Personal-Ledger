@@ -13,8 +13,8 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{DateStyle, Money, UnitKind};
 use lib_locale::format::{
-    Unit, format_date, format_money, format_month, format_month_day, format_number,
-    format_year_month, upper,
+    Amount, AmountStyle, Unit, format_amount, format_date, format_money, format_month,
+    format_month_day, format_number, format_year_month, upper,
 };
 use lib_locale::{Locale, with_locale};
 
@@ -55,6 +55,102 @@ fn rounding_is_half_away_from_zero_and_never_negative_zero() {
         assert_eq!(format_number(&money("0.5"), 0), "1");
         assert_eq!(format_number(&money("-0.004"), 2), "0.00");
     });
+}
+
+fn amount(text: &str, style: AmountStyle) -> Amount {
+    format_amount(&money(text), style)
+}
+
+fn negative(text: &str) -> Amount {
+    Amount {
+        text: text.to_string(),
+        is_negative: true,
+    }
+}
+
+fn not_negative(text: &str) -> Amount {
+    Amount {
+        text: text.to_string(),
+        is_negative: false,
+    }
+}
+
+#[test]
+fn a_negative_amount_carries_a_real_minus_in_every_locale() {
+    for locale in [Locale::EnUs, Locale::EnGb, Locale::EnAu, Locale::EnXa] {
+        with_locale(locale, || {
+            assert_eq!(
+                amount("-1234567.89", AmountStyle::own()),
+                negative("\u{2212}1,234,567.89")
+            );
+            assert_eq!(
+                amount("-18402.55", AmountStyle::fixed(2)),
+                negative("\u{2212}18,402.55")
+            );
+            assert_eq!(
+                amount("-86.40", AmountStyle::own().with_plus()),
+                negative("\u{2212}86.40")
+            );
+            assert_eq!(
+                amount("1234.5", AmountStyle::fixed(2)),
+                not_negative("1,234.50")
+            );
+        });
+    }
+}
+
+#[test]
+fn an_amount_that_rounds_to_zero_is_never_negative_in_every_locale() {
+    for locale in [Locale::EnUs, Locale::EnGb, Locale::EnAu, Locale::EnXa] {
+        with_locale(locale, || {
+            assert_eq!(
+                amount("-0.004", AmountStyle::fixed(2)),
+                not_negative("0.00")
+            );
+            assert_eq!(amount("-0.00", AmountStyle::fixed(2)), not_negative("0.00"));
+            assert_eq!(amount("-0.00", AmountStyle::own()), not_negative("0.00"));
+            assert_eq!(amount("-0.4", AmountStyle::fixed(0)), not_negative("0"));
+            assert_eq!(
+                amount("-0.00", AmountStyle::own().with_plus()),
+                not_negative("0.00")
+            );
+        });
+    }
+}
+
+#[test]
+fn a_plus_marks_only_positive_non_zero_amounts() {
+    for locale in [Locale::EnUs, Locale::EnGb, Locale::EnAu] {
+        with_locale(locale, || {
+            let signed = AmountStyle::own().with_plus();
+            assert_eq!(amount("4210.00", signed), not_negative("+4,210.00"));
+            assert_eq!(amount("0.00", signed), not_negative("0.00"));
+            assert_eq!(
+                amount("4210.00", AmountStyle::own()),
+                not_negative("4,210.00")
+            );
+            assert_eq!(
+                amount("0.004", AmountStyle::fixed(2).with_plus()),
+                not_negative("0.00")
+            );
+        });
+    }
+}
+
+#[test]
+fn amount_places_are_fixed_own_or_natural() {
+    for locale in [Locale::EnUs, Locale::EnGb, Locale::EnAu] {
+        with_locale(locale, || {
+            assert_eq!(amount("412.48", AmountStyle::fixed(4)).text, "412.4800");
+            assert_eq!(amount("0.184", AmountStyle::fixed(8)).text, "0.18400000");
+            assert_eq!(amount("12480.40", AmountStyle::fixed(0)).text, "12,480");
+            assert_eq!(amount("0.4120", AmountStyle::own()).text, "0.4120");
+            assert_eq!(amount("1240", AmountStyle::own()).text, "1,240");
+            assert_eq!(amount("0.00", AmountStyle::own()).text, "0.00");
+            assert_eq!(amount("142100", AmountStyle::natural()).text, "142,100");
+            assert_eq!(amount("12480.4", AmountStyle::natural()).text, "12,480.40");
+        });
+    }
 }
 
 #[test]

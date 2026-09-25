@@ -11,12 +11,9 @@
 
 use chrono::NaiveDate;
 use lib_core::{DateStyle, Money, TransactionStatus};
-use lib_locale::format::{format_date, format_number};
+use lib_locale::format::{AmountStyle, format_amount, format_date};
 
 use crate::settings::{RowDensity, StatusGlyphs};
-
-/// The minus shown before a negative amount: U+2212, not a hyphen. The one place it is spelt.
-const MINUS: char = '\u{2212}';
 
 /// A date in the chosen style, or in the Locale's default form when there is none. `Iso` is
 /// always `2026-09-12`; the others follow the Locale (`12 Sept 2026` in `en-AU`).
@@ -24,41 +21,19 @@ pub fn date(date: NaiveDate, style: Option<DateStyle>) -> String {
     format_date(date, style)
 }
 
-/// An amount as `(is_negative, text)`: grouped and marked by the Locale, at the amount's **own**
-/// fractional digits (a fund's `0.4120` keeps four places; a zero keeps the scale it was entered
-/// with), with [`MINUS`] for a negative. The flag lets the caller apply the negative-balance
-/// token so a negative is never colour alone. A zero is never negative, even if its text is
-/// `-0.00`.
+/// An amount as `(is_negative, text)` at the amount's **own** fractional digits (a fund's `0.4120`
+/// keeps four places; a zero keeps the scale it was entered with). The flag lets the caller apply
+/// the negative-balance token so a negative is never colour alone.
 pub fn amount(money: &Money) -> (bool, String) {
-    let plain = money.0.to_plain_string();
-    let (signed, digits) = match plain.strip_prefix('-') {
-        Some(rest) => (true, rest),
-        None => (false, plain.as_str()),
-    };
-    let negative = signed && digits.chars().any(|c| matches!(c, '1'..='9'));
-    let scale = u32::try_from(money.0.fractional_digit_count().max(0)).unwrap_or(0);
-
-    let Ok(magnitude) = digits.parse::<Money>() else {
-        return (negative, plain);
-    };
-    let formatted = format_number(&magnitude, scale);
-    if negative {
-        (true, format!("{MINUS}{formatted}"))
-    } else {
-        (false, formatted)
-    }
+    let formatted = format_amount(money, AmountStyle::own());
+    (formatted.is_negative, formatted.text)
 }
 
 /// [`amount`] with a `+` in front of a positive, non-zero amount -- the Transactions AMOUNT column
 /// is "signed", and the Display preview shows income as `+4,210.00`.
 pub fn signed_amount(money: &Money) -> (bool, String) {
-    let (negative, text) = amount(money);
-    let non_zero = text.chars().any(|c| matches!(c, '1'..='9'));
-    if !negative && non_zero {
-        (false, format!("+{text}"))
-    } else {
-        (negative, text)
-    }
+    let formatted = format_amount(money, AmountStyle::own().with_plus());
+    (formatted.is_negative, formatted.text)
 }
 
 /// The status glyph: Open ○, Cleared ◐, Reconciled ● in the unicode style. The ascii fallback keeps
@@ -159,32 +134,11 @@ mod tests {
     }
 
     #[test]
-    fn amounts_group_by_the_locale() {
-        let m = money("-1234567.89");
-        for locale in [Locale::EnUs, Locale::EnGb, Locale::EnAu] {
-            with_locale(locale, || {
-                assert_eq!(amount(&m), (true, "\u{2212}1,234,567.89".to_string()));
-            });
-        }
-    }
-
-    #[test]
     fn amounts_keep_their_own_scale() {
         assert_eq!(amount(&money("0.4120")).1, "0.4120");
         assert_eq!(amount(&money("1240")).1, "1,240");
         assert_eq!(amount(&money("240.00")).1, "240.00");
         assert_eq!(amount(&money("0.00")).1, "0.00");
-    }
-
-    #[test]
-    fn a_zero_is_never_negative_and_a_negative_carries_a_real_minus() {
-        assert!(!amount(&money("-0.00")).0);
-        assert_eq!(
-            amount(&money("-2318.44")),
-            (true, "\u{2212}2,318.44".to_string())
-        );
-        assert_eq!(amount(&money("999")).1, "999");
-        assert_eq!(amount(&money("1000")).1, "1,000");
     }
 
     #[test]
@@ -199,10 +153,7 @@ mod tests {
             signed_amount(&money("4210.00")),
             (false, "+4,210.00".to_string())
         );
-        assert_eq!(
-            signed_amount(&money("-86.40")),
-            (true, "\u{2212}86.40".to_string())
-        );
+        assert!(signed_amount(&money("-86.40")).0);
         assert_eq!(signed_amount(&money("0.00")), (false, "0.00".to_string()));
         assert_eq!(
             signed_amount(&money("4210.00")).1,

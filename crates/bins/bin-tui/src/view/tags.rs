@@ -43,7 +43,7 @@
 
 use chrono::NaiveDate;
 use crossterm::event::{KeyCode, KeyEvent};
-use lib_core::{Money, RowID};
+use lib_core::RowID;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -563,7 +563,7 @@ impl TagsView {
             .store
             .monthly_spend(tag.id, SPEND_MONTHS, crate::tag::FIXTURE_NOW)
             .iter()
-            .map(money_to_f64)
+            .map(crate::format::money_to_f64)
             .collect();
 
         render_spend_chart(frame, rows[2], &series);
@@ -608,7 +608,7 @@ impl TagsView {
 
         let total: f64 = breakdown
             .iter()
-            .map(|(_, amount)| money_to_f64(amount))
+            .map(|(_, amount)| crate::format::money_to_f64(amount))
             .sum();
         let shown = breakdown.len().min(CATEGORY_ROWS_SHOWN);
         let bar_rows = Layout::default()
@@ -617,12 +617,18 @@ impl TagsView {
             .split(rows[2]);
 
         for (index, (path, amount)) in breakdown[..shown].iter().enumerate() {
-            render_category_bar(frame, bar_rows[index], path, money_to_f64(amount), total);
+            render_category_bar(
+                frame,
+                bar_rows[index],
+                path,
+                crate::format::money_to_f64(amount),
+                total,
+            );
         }
         if breakdown.len() > shown {
             let rest_total: f64 = breakdown[shown..]
                 .iter()
-                .map(|(_, amount)| money_to_f64(amount))
+                .map(|(_, amount)| crate::format::money_to_f64(amount))
                 .sum();
             let label =
                 msg::tui_tag_right_pane_lands_rollup(&(breakdown.len() - shown).to_string());
@@ -768,15 +774,6 @@ fn render_section_heading(frame: &mut Frame, area: Rect, label: &str, tag: &str)
     );
 }
 
-fn money_to_f64(value: &Money) -> f64 {
-    value.0.to_string().parse().unwrap_or(0.0)
-}
-
-/// Formats a right-pane figure to two decimal places, grouped by the Locale.
-fn format_amount(value: f64) -> String {
-    crate::format::money_f64(value, 2)
-}
-
 fn format_date(date: chrono::NaiveDate) -> String {
     crate::format::day_month(date)
 }
@@ -874,9 +871,9 @@ fn render_spend_footer(frame: &mut Frame, area: Rect, tag: &Tag, series: &[f64])
     let text = msg::tui_tag_right_pane_spend_footer(
         &format_month(spend_chart_month(first_used_index)),
         &format_month(spend_chart_month(peak_index)),
-        &format_amount(peak_amount),
+        &crate::format::money_f64(peak_amount, 2),
         &format_month(spend_chart_month(last_index)),
-        &format_amount(series[last_index]),
+        &crate::format::money_f64(series[last_index], 2),
     );
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
 }
@@ -903,7 +900,7 @@ fn render_category_bar(frame: &mut Frame, area: Rect, label: &str, amount: f64, 
     frame.render_widget(Paragraph::new(label.to_string()), columns[0]);
     frame.render_widget(Paragraph::new(format!("{bar} {pct}%")), columns[1]);
     frame.render_widget(
-        Paragraph::new(format_amount(amount)).alignment(Alignment::Right),
+        Paragraph::new(crate::format::money_f64(amount, 2)).alignment(Alignment::Right),
         columns[2],
     );
 }
@@ -963,7 +960,11 @@ fn render_txn_row(frame: &mut Frame, area: Rect, row: &TagTransaction) {
         other_tags_area,
     );
     frame.render_widget(
-        Paragraph::new(format_amount(money_to_f64(&row.amount))).alignment(Alignment::Right),
+        Paragraph::new(crate::format::money_f64(
+            crate::format::money_to_f64(&row.amount),
+            2,
+        ))
+        .alignment(Alignment::Right),
         amount_area,
     );
 }

@@ -15,7 +15,7 @@
 //! **`^d` (delete)** hands straight off to `crate::popup::account::delete` — `Shell` swaps
 //! this popup for that one rather than this struct knowing anything about deletion itself.
 
-use lib_core::{AccountType, Money, RowID};
+use lib_core::{AccountType, RowID};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -244,7 +244,7 @@ impl EditAccountPopup {
             frame,
             rows[8],
             &msg::tui_account_edit_field_opening_balance(),
-            Line::from(format_money_at(
+            Line::from(crate::format::money(
                 &account.starting_balance,
                 account.unit.decimal_places,
             )),
@@ -265,7 +265,7 @@ impl EditAccountPopup {
             Line::from(Span::styled(
                 format!(
                     "{} · not stored",
-                    format_money_at(&balance, account.unit.decimal_places)
+                    crate::format::money(&balance, account.unit.decimal_places)
                 ),
                 dim(),
             )),
@@ -475,11 +475,6 @@ fn format_date_full_year(date: chrono::NaiveDate) -> String {
 
 fn format_date_short_year(date: chrono::NaiveDate) -> String {
     crate::format::date(date)
-}
-
-/// Formats `value` at `decimal_places`, grouped by the Locale.
-fn format_money_at(value: &Money, decimal_places: i64) -> String {
-    crate::format::money(value, decimal_places)
 }
 
 #[cfg(test)]
