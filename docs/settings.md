@@ -206,39 +206,49 @@ log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 
 ## Keybindings Section
 
-The [Keybindings] section includes settings that define the keyboard navigation keys and key combinations.  Refer to [Navigation#keyboard] for Personal Ledgers' philosophy and approach to navigation and keyboard navigation specifically.
+The `[Keybindings]` section defines the keyboard navigation keys and key combinations. Refer to [Navigation and keyboard grammar](navigation-design.md) for Personal Ledger's philosophy and approach to keyboard navigation.
 
-* goto_dashboard = g d 
-* goto_transactions = g x 
-* goto_account = g a
-* goto_categories = g c 
-* goto_payees = g p 
-* goto_tags = g t 
-* goto_bills = g w 
-* goto_budget = g b 
-* goto_reports = g r 
-* goto_settings = g s 
+The section has one fixed key, `super_key` — the modifier held down for global shortcuts, mirroring a window manager's mod/prefix key. It accepts `"ctrl"`, `"alt"`, `"shift"`, `"super"`, or `"none"` to require no modifier at all, and defaults to `"ctrl"`. Everything else in the section is an open-ended map of command name to key, so new screens can add their own commands without a schema change. Binding two commands to the same key is a startup error, since it would leave one of them unreachable.
+
+The built-in defaults are:
+
+| Command              | Default key |
+| -------------------- | ----------- |
+| `back`               | `esc`       |
+| `help`               | `?`         |
+| `open_command_popup` | `:`         |
+| `move_up`            | `k`         |
+| `move_down`          | `j`         |
+| `select`             | `enter`     |
+| `new`                | `n`         |
+| `delete`             | `d`         |
+| `confirm`            | `y`         |
+| `cancel`             | `x`         |
+
+`quit` is deliberately **not** configurable: `bin-tui` has three separate, hardcoded quit mechanisms (`Ctrl+C` hard-quit, `Q`/`q` graceful quit, and the `:quit` command), none of which read this section.
+
+Individual bindings can be overridden by environment variable with the `PERSONAL_LEDGER_KEYBINDINGS__` prefix, e.g. `PERSONAL_LEDGER_KEYBINDINGS__BACK=ctrl+h` or `PERSONAL_LEDGER_KEYBINDINGS__SUPER_KEY=alt`.
+
+Note that the `g`-leader navigation grammar described in [navigation-design.md](navigation-design.md) (`g d` for the dashboard, `g a` for accounts, and so on) is the intended design, but neither Client reads its bindings from this section yet — `lib-config` parses and validates the section, and the bins still use their own hardcoded shortcuts.
 
 Example:
 
 ```ini
 [Keybindings]
-goto_leader = "g'"
-goto_dashboard = "d"
-goto_transactions = "x" 
-goto_account = "a"
-goto_categories = "c"
-goto_payees = "p"
-goto_tags = "t"
-goto_bills = "w"
-goto_budget = "b"
-goto_reports = "r"
-goto_settings = "s"
+super_key = "ctrl"
+back = "esc"
+help = "?"
+open_command_popup = ":"
+move_up = "k"
+move_down = "j"
+select = "enter"
+new = "n"
+delete = "d"
+confirm = "y"
+cancel = "x"
 ```
 
 ## Sync Server Section
-
-TODO: Update when starting to work on sync server
 
 bin-sync-server uses a reduced precedence chain instead (ADR-0014): Environment Variables → Explicit Configuration File (--config/-c) → Built-in Defaults. The Current Working Directory/Executable Directory/User/System tiers don’t apply – they don’t correspond to anything meaningful inside a Docker container, the Sync Server’s only deployment target.
 
@@ -289,14 +299,14 @@ Example Configuration File
 # they are not intended to sync across computer systems.
 [Personal-Ledger]
 
-# Static configuration file (this file)
-config = "~/.config/personal_ledger.conf"
+# Points to a configuration file outside the normal search hierarchy. Usually left unset.
+# config = "~/.config/personal-ledger/personal-ledger.conf"
 
 # Client data directory
 data = "~/Documents/Personal-Ledger"
 
 # Personal Ledger database file to open with
-file = "~/Documents/My-Personal-Ledger.pldb"
+file = "~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"
 
 # Client tracing log level
 log = "debug"
@@ -304,28 +314,34 @@ log = "debug"
 # Optional: also write log output to this file, in addition to the console
 # log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 
+# Optional: the interface Locale, as a BCP-47 tag -- "en-US", "en-GB" or "en-AU".
+# When absent, the operating system's locale is used, falling back to "en-US".
+# locale = "en-AU"
+
 
 
 # Keyboard navigation keys and key combinations.
 [Keybindings]
 
-goto_leader = "g'
-goto_dashboard = "d"
-goto_transactions = "x" 
-goto_account = "a"
-goto_categories = "c"
-goto_payees = "p"
-goto_tags = "t"
-goto_bills = "w"
-goto_budget = "b"
-goto_reports = "r"
-goto_settings = "s"
+super_key = "ctrl"
+back = "esc"
+help = "?"
+open_command_popup = ":"
+move_up = "k"
+move_down = "j"
+select = "enter"
+new = "n"
+delete = "d"
+confirm = "y"
+cancel = "x"
 
 # Only read by bin-sync-server -- bin-tui/bin-desktop ignore this section.
 [Sync-Server]
 bind_address = "0.0.0.0:50051"
 database_uri = "sqlite:./sync-server.sqlite"
 ```
+
+This example is kept in sync with the file shipped at `config/personal-ledger.conf`.
 
 
 References
