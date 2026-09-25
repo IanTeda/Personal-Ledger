@@ -1,115 +1,131 @@
 # Bills
 
-Personal Ledger tracks recurring and one-off payment obligations, such as rent, subscriptions, and utilities, as Bills. This allows you to see what’s coming up before it’s due, what’s overdue, and what’s already been paid. This page explains the Bill workflow in Personal Ledger, the list of Bills, Bill Schedule entries, and the Anticipated Bill preview fit together, and how Bills show up inside Budget.
+Personal Ledger tracks recurring and one-off payment obligations like rent, subscriptions, and utilities as Bills. This lets you see what's coming up before it's due, what's overdue, and what you've already paid. Bills are still in the design phase, so this page shows the planned workflow.
 
-See CONTEXT.md for the one-paragraph canonical definition of each term, and ADR-0019 for why Bill Schedule entries are real, persisted rows linked to a Transaction rather than a lightweight, ledger-independent checklist. This document is where the fuller shape and workflow live, the same way docs/accounts.md covers Account Kinds.
+> **Heads up:** Bills are not yet built. Nothing on this page is implemented — it describes the design for future development.
 
-## Bills Workflow
+## What you can do
 
-Personal Ledger Bills start with adding Bills to the Bill Planner list. The planned list is then used to populate the Bill Schedule over the plan period. Bill Schedule line items are then mirrored and displayed in the associated Account transactions and the budgets known expenses. Individual Bill Schedule line items are marked as paid and updated with the actual amount. The paid Bill is stored historically for future reference and verifying Bill Plan amounts.
+- Create bills for recurring or one-time payments
+- Set up recurrence (weekly, monthly, quarterly, yearly, or one-time)
+- Track whether each bill is paid, overdue, or upcoming
+- Record payments against bills
+- See upcoming bills in accounts and budgets
+- Filter bills by status and history
+- View spending totals and averages for each bill
 
-## Why Bill Plan and Bill Schedule are Separate
+## Terminology
 
-A Bill on its own — “Telstra Internet, ~$89, due the 3rd of every month” — is a definition, not an individual planned Bill or record of anything that’s happened. What you actually pay, and when, is a series of separate dated events: January’s payment, February’s, March’s, each potentially a different amount, each with its own paid/unpaid status. As such, Personal Ledger keeps these as two things:
+- **Bill:** A recurring or one-time payment obligation (e.g. rent, internet subscription).
+- **Bill Plan:** The definition of a bill (name, amount, recurrence, account, category).
+- **Bill Schedule:** Individual due dates generated from a bill plan (one per billing cycle).
+- **Anticipated Bill:** A preview row showing where a bill will land in your account's transaction list before it's paid.
+- **Known Costs:** The total of unpaid bills in a budget, shown alongside actual spending.
 
-* Bill Plan — the recurring definition: what it’s for, roughly how much, which Account pays it, how often it recurs.
-* Bill Schedule — one row per due date, generated ahead of time for the plan period from the Bill’s recurrence. A Monthly Bill has a new Bill Schedule entry every month. A One-shot Bill has exactly one schedule line item.
+## Bills concept
 
-Similarly, this mirrors how a Loan Account’s interest rate is tracked as a history of dated entries rather than a single field rewritten in place, or how an Account is the umbrella and Account Kind is which specific shape it takes — one definition, many dated instances, each able to carry its own status and history.
+A Bill Plan is the definition: "Telstra Internet, ~$89, due the 3rd of every month". A Bill Schedule is what you actually pay — the individual due dates. January's payment, February's, March's — each is a separate Bill Schedule entry with its own date and paid/unpaid status.
 
-## Bill Plan
+Personal Ledger generates Bill Schedule entries ahead of time for the plan period so you can see what's coming. A monthly bill creates a new entry every month. A one-off bill creates exactly one entry. This separation keeps your bill definitions clean while tracking the history of what you actually paid.
 
-A Bill is added to the Plan once and edited occasionally. It’s what you fill in when you set up “I pay this.”
+### Bill Plan fields
 
-| -- Column 1 -- | -- Column 2 -- |
-|-----------------|-----------------|
-| Field | Meaning |
-|-------|---------|
-| Name | A human-readable label (e.g. "Telstra Internet"). |
-| Category | Exactly one, Expense-type only — the same restriction Budget already enforces, since a Bill is always an outgoing cost. |
-| Unit | Fixed at creation, the currency the Bill is paid in. |
-| Account | Mandatory — which Transaction/Credit Card Account this Bill is expected to be paid from. This is what lets the Anticipated Bill preview (see below) know which Account's list to appear in. |
-| Payee | Optional — who the money goes to. |
-| Planned Amount | An estimate of what's owed each time — see Fixed/Estimated below for how strictly it's treated. |
-| Fixed or Estimated | Fixed for a Bill that's always the same (a Netflix subscription); Estimated for one that varies (an electricity bill) — the Amount is then a planning figure, not a promise. |
-| Recurrence | Weekly, Fortnightly, Monthly (on a fixed day of the month), Quarterly, Annually, or One-shoot for a single, non-repeating due date. |
-| Ends On | Optional, and only meaningful for a recurring Bill. Leave unset for a Bill that recurs indefinitely; set it when you know a Bill has a natural end (e.g. a 12-month contract). |
-| Attention Lead | Optional day count, unset by default (meaning Overdue-only). When set, a Bill Schedule entry that's Due (not yet Overdue) but within this many days of its due date also shows up in Needs Attention — see docs/needs-attention.md. Set per Bill, since how much early notice is useful varies (rent versus a small subscription). |
-| Active | Soft-delete, the same pattern as Account/Category/Payee/Tag — deactivating a Bill stops new Bill Schedule entries from being generated but leaves its history untouched. |
+When you create a bill, you fill in:
 
+- **Name:** A label like "Telstra Internet".
+- **Category:** Exactly one Expense category — bills are always money going out.
+- **Unit:** The currency (fixed at creation).
+- **Account:** Which account this bill is paid from (so Anticipated Bills can show in the right place).
+- **Payee:** Optional — who the money goes to.
+- **Planned Amount:** An estimate of what's owed each time.
+- **Fixed or Estimated:** Fixed (Netflix) or Estimated (electricity) — estimates are planning figures, not promises.
+- **Recurrence:** Weekly, Fortnightly, Monthly, Quarterly, Annually, or One-time.
+- **Ends On:** Optional — when a recurring bill stops generating new entries.
+- **Attention Lead:** Optional — days before due date to flag it in Needs Attention (different for rent vs a small subscription).
+- **Active:** Deactivating a bill stops new entries but keeps its history.
 
-## Bill Schedule
+### Bill Schedule statuses
 
-Each Bill Schedule entry is given a unique UUIDv7 and number prefixed with the bill plan period name. It moves through a status as its due date approaches and passes:
+Each Bill Schedule entry moves through statuses as its due date approaches and passes:
 
-| Status | Meaning |
-|-------|---------|
-| Upcoming | The due date falls in a future calendar month. |
-| Due | The due date falls within the current calendar month, from the 1st up to and including the due day itself. |
-| Overdue | The due day has passed this month and it's still unpaid. |
-| Paid | Linked to the Transaction that settled it. |
-| Skipped | Deliberately not paid — a recurring cycle you chose to skip, or a One-shoot Bill you cancelled. |
+- **Upcoming:** The due date is in a future month.
+- **Due:** The due date is this month, up to and including the due day.
+- **Overdue:** The due day has passed this month and it's still unpaid.
+- **Paid:** Linked to the real transaction that settled it.
+- **Skipped:** Deliberately not paid — a recurring cycle you skipped, or a one-time bill you cancelled.
 
-An Overdue entry doesn’t reset when the month rolls over — it just stays Overdue until you either pay or Skip it. Next month’s due date is a wholly separate Bill Schedule entry, starting its own Upcoming/Due cycle independently.
+### Paying a bill
 
-## Marking one as Paid
+A bill never becomes "paid" with a checkbox. Instead, you link it to a real transaction. There are two ways:
 
-A Bill Schedule entry only ever becomes Paid by linking to a real Transaction — never a plain “mark as paid” toggle with nothing behind it. There are two ways to get there:
+1. **Create new:** Personal Ledger creates a transaction for you, seeded from the bill's category, payee, account, and amount, then links the bill to it.
+2. **Merge existing:** You link the bill to a transaction you already recorded (e.g. from a CSV import).
 
-1. Pay it directly — Personal Ledger creates a new Transaction for you, seeded from the Bill’s Category, Payee, Account, and Amount, and links it to this Bill Schedule entry.
-2. Merge or Link an existing Transaction — if you’d already entered the payment separately (or it came in through a CSV/Balance Check import), you point that Transaction at this Bill Schedule entry instead of creating a duplicate.
+Once linked, the transaction's actual date and amount are what count — the bill's "planned amount" was only ever an estimate.
 
-Either way, once linked, the Transaction’s own date and amount are what count — the Bill’s Amount was only ever an estimate to plan against.
+### Anticipated Bills and Known Costs
 
-Wherever that Transaction shows up afterwards (its Account’s list, reports), it’s visually marked as carrying a Bill, so you can tell at a glance it’s a recurring obligation rather than a one-off purchase. This is unrelated to the ordinary Flagged marker you can put on any Transaction for your own follow-up — a Transaction can carry a Bill, be Flagged, or both, independently.
+Before a bill is paid, its next due date shows up as a shaded preview row in its account's transaction list — sitting where the real payment will eventually land. This "Anticipated Bill" preview disappears when you pay the bill and link the real transaction.
 
-## Bill History
+In a Budget, bills show up as "Known Costs" — the total of unpaid bills in that budget's category within the current period, shown alongside actual spending. An Overdue bill counts as committed spending but is visually distinct from a merely-Due one. Once a bill is paid, its linked transaction moves into the budget's ordinary spend figure, so it's never counted twice.
 
-For each Bill, Personal Ledger shows the last amount paid, an average over time, and the same period last year — computed from Paid entries’ actual Transaction amounts only. A Skipped entry doesn’t count as a $0 payment; it’s left out of the average entirely, since skipping a bill one cycle isn’t the same as it costing nothing.
+### Bill history
 
-No Bill Schedule entry is ever deleted, regardless of what happens to its Bill afterwards — deactivating a Bill, or it reaching its Ends On date, only stops future entries from being generated; every entry already generated stays exactly as it was, whether Paid, Skipped, or left Overdue. This makes Bill Schedule itself the historical record: a full, permanent list of what was due, when, and what happened to it.
+For each bill, Personal Ledger tracks the last amount paid, an average over time, and figures from the same period last year (calculated from paid entries only — a Skipped entry doesn't count as $0). No Bill Schedule entry is ever deleted, so you have a complete record of what was due, when, and what happened to it.
 
-That list can be filtered when reviewing history by any combination of:
+## Approach
 
-* Status — e.g. only Paid, or only Skipped, to see what you’ve actually let lapse over time.
-* Bill — every past entry for one specific Bill, the raw data behind its “last paid / average / same time last year” figures (see above).
-* Category, Payee, or Account — the same filters already available elsewhere in Personal Ledger (e.g. Budget’s own Category/active-status filtering), so Bill history reviews the same way the rest of the Ledger does.
-* Date range — e.g. everything due last financial year.
+1. Create a bill plan with a name, amount, category, account and recurrence pattern (weekly, fortnightly, monthly, quarterly, annually, or one-time).
+2. Personal Ledger generates Bill Schedule entries ahead of time so you can see what's due and when.
+3. As each due date approaches, check Needs Attention to see upcoming and overdue bills.
+4. When you pay a bill, either create a new transaction directly from the bill, or link an existing transaction you've already recorded.
+5. View bill history (last paid, average, same period last year) to understand your payment patterns.
 
-## Anticipated Bill — seeing what’s coming, inline
+## Worked example
 
-Before a Bill Schedule entry is paid, its next due date shows up as a shaded preview row directly inside its target Account’s transaction list — sitting where the real payment will eventually land, so you can see it coming while reviewing your Account like any other line, without needing to check a separate screen. It isn’t a real Transaction: it disappears the moment the Bill Schedule entry resolves to Paid, replaced by the one real, linked Transaction — the two never sit in the list side by side.
+You're setting up your bills. You create "Telstra Internet" with a planned amount of $89, monthly recurrence on the 3rd, paid from your Everyday account in the Utilities category. You create "Netflix" with a fixed amount of $16, monthly recurrence on the 15th. You create "Electricity" with an estimated amount of $150 (it varies), monthly recurrence on the 20th.
 
-## Known Costs (Bills) in Budget
+Personal Ledger generates Bill Schedule entries for the next few months. On the 5th of the month, you see the Telstra bill has moved to Overdue in Needs Attention. You open it, create a new transaction for $89 on the 4th (it was posted early), and link the bill. It's now Paid. On the 12th you manually create an electricity transaction for $145 (less than expected), then link the bill to it. On the 20th you decide to skip Netflix this month — you mark that Bill Schedule entry as Skipped. At month-end, your budget shows: Spent $234 (Telstra $89 + Electricity $145), Known Costs $150 (Electricity expected next cycle? no, just Telstra and Netflix of next month within current known costs?). The bill history for Telstra now shows last paid $89, average (if you had a year's history) and same month last year.
 
-Bill and Budget stay independent entities — a Bill isn’t attached to any particular Budget — but a Budget’s progress view adds a Known Costs (Bills) figure alongside its actual spend, summing every unpaid (Due or Overdue) Bill Schedule entry that matches the Budget’s Category and Unit within its current period.
+## Scope
 
-Example — a “$300/month for Utilities” Budget, with a Telstra Internet Bill (~$89, due the 3rd) and an Electricity Bill (~$150 estimated, due the 20th), viewed on the 10th of the month:
+- OS-level push notifications or a background reminder service are future considerations beyond the in-app Needs Attention dashboard.
+- Relative-to-last-payment recurrence (e.g. "30 days after last paid") is future; V1 supports fixed calendar recurrence only.
+- Dedicated Bill Planner screen layout is future.
+- The exact cadence for populating future Bill Schedule entries is to be decided during implementation.
 
-| -- Column 1 -- |-- Column 2 -- |-- Column 3 -- |
-|-|--|--|
-| Description | Amount | Note |
-| Spent so far | $0.00 | No Utilities Transactions yet this period |
-| Known Costs (Bills) | $239.00 | $89.00 Overdue (Telstra, due the 3rd, unpaid) + $150.00 Due (Electricity, due the 20th) |
-| Remaining after known costs | $61.00 | $300 limit − $239 known costs |
+## Related
 
+- **Accounts:** each bill is paid from one account.
+- **Categories:** bills are classified by expense category.
+- **Budgets:** bills appear as Known Costs within a budget's period.
+- **Needs Attention:** Overdue and Due (within lead time) bills appear here.
+- **Transactions:** linked transactions are the actual payments.
 
-An Overdue entry stays inside the Known Costs total — it’s still unpaid, committed spending — but is visually distinguished from a merely-Due one, so you can tell “coming up” apart from “already late.” Once a Bill Schedule entry is Paid, its linked Transaction’s actual amount moves into the Budget’s ordinary spend figure instead, so it’s never counted in both places at once.
+## Getting around
 
-## Reminders
+| Go to | Terminal app | Desktop app |
+| --- | --- | --- |
+| Bills | not in the terminal app yet | `g` `w` |
 
-Overdue Bill Schedule entries — and Due ones within a Bill’s own Attention Lead, see above — feed into Needs Attention, the one cross-Ledger list of everything wanting action, surfaced on each Client’s own Dashboard (TUI and Desktop) whenever you have it open. See docs/needs-attention.md for the fuller picture, including how Bills sit alongside Flagged and unreconciled Transactions there. A merely Upcoming or plain-Due (outside its Attention Lead) Bill Schedule entry isn’t part of Needs Attention — it’s still visible in Bill Planner and Budget’s Known Costs (Bills) as usual, just not flagged as needing action yet.
+For the full set of keys, see [Getting around](getting-around.md).
 
-## What’s deliberately out of scope here
+## Feature set and requirements
 
-This document captures the shape agreed so far — it is not a functional spec, and nothing here has been built yet (no migrations, tables, or screens exist for Bill or Bill Schedule). Left for later, once that work is actually scoped:
+Intended features for Bills. Ticked means built in at least one app; the tag says which. None are ticked because Bills are not yet built.
 
-* OS-level push notifications or a background reminder service — a Future Consideration beyond the in-app Dashboard surfacing described above.
-* Relative-to-last-payment recurrence (e.g. “30 days after it was last paid”) — V1 supports fixed calendar recurrence only.
-* Any dedicated Bill Planner screen layout for the TUI or Desktop app.
-* The exact cadence/trigger for the process that keeps future Bill Schedule entries populated — ADR-0019 records why entries must be materialised ahead of time, not when that process runs.
-
-A planned Bill can be merged with an actual transaction, linking and marking the bill as paid
+- [ ] BIL-001: Create a bill plan with name, category, account, amount, recurrence, and end date
+- [ ] BIL-002: List bills with filtering by active status and recurrence type
+- [ ] BIL-003: Edit a bill plan (name, amount, recurrence, category, account)
+- [ ] BIL-004: Deactivate a bill plan without losing history
+- [ ] BIL-005: Generate Bill Schedule entries for a plan period
+- [ ] BIL-006: Mark a Bill Schedule entry as Paid by linking or creating a transaction
+- [ ] BIL-007: Mark a Bill Schedule entry as Skipped
+- [ ] BIL-008: View Anticipated Bills (previews) in account transaction lists
+- [ ] BIL-009: Show Known Costs (unpaid bills) within a budget's period
+- [ ] BIL-010: Filter and view bill history with status, date range, category, payee, or account filters
+- [ ] BIL-011: Calculate and display bill history (last paid, average, same period last year)
+- [ ] BIL-012: Set Attention Lead per bill to flag upcoming bills in Needs Attention
 
 ## For developers
 

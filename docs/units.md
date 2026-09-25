@@ -1,290 +1,89 @@
 # Units
 
-In Personal Ledger, a Unit represents the denomination used to measure value. Every Account balance and every Transaction line (or split line) is recorded in a Unit.
+A Unit is the denomination you use to measure value in an account. Your bank account is in AUD (Australian dollars). Your Bitcoin wallet is in BTC. Your Apple share holding is in AAPL. Personal Ledger tracks all of them the same way: one Unit per account, set when you create it and fixed forever.
 
-A Unit may represent:
+## What you can do
 
-* A fiat currency (AUD, USD, EUR)
-* A cryptocurrency or digital asset (BTC, ETH)
-* A listed equity or stock (AAPL, BHP)
-* An exchange-traded fund (VAS, IVV)
-* A commodity or precious metal (XAU, XAG)
-* Or, any other user-defined instrument
+- Create units for currencies, cryptocurrencies, stocks, ETFs, commodities and custom assets
+- Assign a unit to each account at creation
+- View and manage your holdings in each unit
+- Set optional pricing information for valuations
+- Track multiple units without cross-unit conversion
 
-The system treats all Units uniformly. From the application's perspective, a Unit is simply an identifier with associated metadata that defines how values are displayed, stored, and priced.
+## Terminology
 
-## Relationship to Accounts
+- **Unit:** The denomination or asset class an account is denominated in (e.g. AUD, BTC, AAPL).
+- **Unit Code:** A unique uppercase identifier (e.g. AUD, BTC, AAPL).
+- **Unit Type:** The category of unit (Currency, Crypto, Equity, ETF, Commodity, Custom).
+- **Pricing Pair:** The unit you use to price another unit (e.g. BTC priced in AUD).
+- **Precision:** The number of decimal places supported (e.g. AUD uses 2, BTC uses 8).
 
-Every Account is assigned exactly one Unit when it is created, and that assignment remains immutable.
+## Units concept
 
-The Account's Unit:
+In Personal Ledger, every account holds a single unit from the moment you create it. That unit is fixed and cannot be changed later. Your bank account is always AUD. Your Bitcoin wallet is always BTC. Your Apple shares are always AAPL.
 
-* Defines the denomination of the Account balance.
-* Determines how transaction amounts are interpreted.
-* Cannot be changed after Account creation.
+A unit can represent a fiat currency (AUD, USD, EUR), a cryptocurrency (BTC, ETH), a listed stock (AAPL, BHP), an ETF (VAS, IVV), a commodity (XAU for gold, XAG for silver), or anything else you define. Personal Ledger treats all units uniformly — the same storage and calculation rules apply to currencies as to crypto or stocks.
 
-For example:
+### Why units are fixed per account
 
-Account	Unit
-Everyday Banking	AUD
-Brokerage Account	AUD
-Bitcoin Wallet	BTC
-Apple Shares	AAPL
+An account's unit defines what its balance means. If you decide "this account is in AUD" and later change your mind, every transaction amount, balance calculation, and report would need recalculation. Keeping it fixed makes those calculations reliable and history unambiguous.
 
+## Approach
 
-An Account holding Bitcoin records balances in BTC. An Account holding Apple shares records balances in AAPL units.
+When you create an account, choose a unit. If the unit already exists in your ledger (from another account), select it. If it's new, create it with a name and type (currency, crypto, stock, etc.). You can optionally set its precision (how many decimal places it uses — AUD uses 2, Bitcoin uses 8) and a pricing pair if you want valuations (e.g. "price Bitcoin in AUD").
 
-## Relationship to Transactions
+## Worked example
 
-All Transaction amounts are denominated in the Unit of the destination (incoming) Account. Transfers between Accounts with different Units are supported through an exchange rate recorded in the transactions.
+You create your first account, an everyday bank account, and choose AUD as the unit — you're in Australia and use Australian dollars. You create a second account for your Bitcoin holdings and choose BTC as the unit, setting precision to 8 decimal places (Bitcoin's standard). You create a third account for Apple shares and choose AAPL as the unit, setting precision to 6. These three accounts now hold completely separate balances in completely separate units. Personal Ledger does not automatically convert between them or show a single "total" — each unit's balance stands alone.
 
-Examples:
+## Types of units
 
-* Transfer AUD → AUD: no conversion required.
-* Transfer AUD → USD: exchange rate required.
-* Transfer AUD → BTC: exchange rate required.
-* Transfer BTC → ETH: exchange rate required.
+Personal Ledger supports currencies (AUD, USD, EUR), cryptocurrencies (BTC, ETH), equities (AAPL, BHP), ETFs (VAS, IVV), commodities (XAU for gold, XAG for silver), and custom units for assets that don't fit predefined categories (employee share schemes, loyalty points, store credit).
 
-The exchange rate defines the relationship between the source Unit and destination Unit at the time of the transaction.
+## Screens
 
-## Unit Types
+The Units screen lists all units you've created with their names, types, precision, and whether they're currently in use by an account. In the terminal app, press `g` then `u` to jump there. The Units screen in the desktop app is still in design.
 
-Personal Ledger supports Fiat Currencies, Cryptocurrencies or Digital Assets, Stocks or Equities, Exchange Traded Funds (ETFs), Managed or Mutual Funds, Commodities, and free-form or custom types.
+## Rules to know
 
-### Currencies
+- A unit, once created and assigned to an account, cannot be changed.
+- Cross-unit transactions (moving money between accounts in different units) require manual exchange-rate tracking in a transaction split — they are not supported directly.
+- Precision (decimal places) is set when creating a unit and controls value entry and display.
+- Inactive units are kept if they have historical transactions associated with them.
 
-Government-issued fiat currencies identified by standard currency codes.
+## Scope
 
-Examples:
+- Cross-unit aggregation (showing a total across multiple units) is not supported — each unit's balance stands alone.
+- Automatic pricing and valuation (market value, unrealised gains) are future considerations.
+- Exchange rate workflows and multi-unit reporting are future considerations.
+- Bulk unit creation from currency/commodity lists is not built yet.
 
-* AUD
-* USD
-* EUR
-* GBP
-* JPY
+## Related
 
-### Cryptocurrency or Digital Asset
+- **Accounts:** each account is denominated in exactly one unit.
+- **Transactions:** amounts are recorded in the account's unit.
+- **Reports:** each report covers one unit at a time.
 
-Blockchain-based digital assets.
+## Getting around
 
-Examples:
+| Go to | Terminal app | Desktop app |
+| --- | --- | --- |
+| Units | `g` `u` | not in the desktop app yet |
 
-* BTC
-* ETH
-* SOL
-* ADA
+For the full set of keys, see [Getting around](getting-around.md).
 
-### Equity or Stock
+## Feature set and requirements
 
-Shares traded on public or private exchanges.
+Intended features for Units. Ticked means built in at least one app; the tag says which.
 
-Examples:
-
-* AAPL
-* MSFT
-* BHP
-* CBA
-
-### Exchange Traded Fund (ETF)
-
-Exchange-traded funds and similar pooled investment securities.
-
-Examples:
-
-* VAS
-* IVV
-* VGS
-* NDQ
-
-### Commodity or Precious Metal
-
-Tradable physical commodities or precious metals.
-
-Examples:
-
-* XAU (Gold)
-* XAG (Silver)
-* WTI (Crude Oil)
-
-### Custom
-
-User-defined Units for assets that do not fit predefined categories.
-
-Examples:
-
-* Employee Share Scheme Units
-* Private Company Shares
-* Loyalty Points
-* Store Credit
-* Reward Tokens
-
-## Unit Metadata
-
-An uppercase Code uniquely identifies each Unit.
-
-Examples:
-
-* AUD
-* BTC
-* AAPL
-* XAU
-
-The Code acts as the primary identifier throughout the system and must be unique.
-
-Each Unit also stores the following metadata.
-
-### Code <String>
-
-A unique uppercase identifier for the Unit.
-
-Examples:
-
-* AUD
-* BTC
-* AAPL
-
-Rules:
-
-* Must be unique.
-* Stored in uppercase.
-* Cannot be changed once created.
-
-### Name <String>
-
-The human-readable name of the Unit.
-
-Examples:
-
-* Australian Dollar
-* Bitcoin
-* Apple Inc.
-* Vanguard Australian Shares ETF
-
-### Type <Enum>
-
-The category of Unit.
-
-Allowed values:
-
-* Currency
-* Crypto
-* Equity
-* ETF
-* Commodity
-* Custom
-
-### Symbol <String>
-
-The symbol used for market pricing or external integrations.
-
-Examples:
-
-* AUD
-* BTC
-* AAPL
-* VAS.AX
-
-This value may differ from the Unit Code where required by pricing providers.
-
-### Pricing Pair <Unit Reference>
-
-Defines the Unit used to value or price this Unit.
-
-Examples:
-
-Unit	Pricing Pair
-BTC	AUD
-ETH	AUD
-AAPL	USD
-VAS	AUD
-
-
-Pricing services and portfolio valuation calculations use this information.
-
-### Precision <UInt>
-
-The number of decimal places supported by the Unit.
-
-Examples:
-
-Unit	Precision
-AUD	2
-USD	2
-BTC	8
-ETH	18
-AAPL	6
-
-
-Precision controls:
-
-* Data validation
-* Value entry
-* Display formatting
-* Rounding behaviour
-
-### Status <Enum>
-
-Indicates whether the Unit is available for use.
-
-Values:
-
-* Active - Available for new Accounts and Transactions.
-* Inactive - Retained for historical records but unavailable for new use.
-
-Inactive Units are never deleted if they have historical transactions associated with them.
-
-## Valuation and Pricing
-
-Units may optionally be associated with market pricing data.
-
-Where pricing data is available, Personal Ledger can calculate:
-
-* Current market value
-* Portfolio value
-* Unrealised gains and losses
-* Asset allocation
-
-Pricing is always performed relative to the Unit's configured Pricing Pair.
-
-Examples:
-
-* BTC priced in AUD
-* AAPL priced in USD
-* Gold priced in AUD
-
-Pricing data does not affect a Unit's stored quantity. It is used only for valuation and reporting.
-
-## Design Principles
-
-The Unit model is intentionally generic.
-
-Personal Ledger does not distinguish between currencies, cryptocurrencies, shares, commodities, or other assets when storing balances and transactions. All assets are represented using the same core Unit abstraction.
-
-This provides several benefits:
-
-* Consistent balance calculations.
-* Simplified transaction processing.
-* Support for both financial and non-financial assets.
-* Extensibility without database schema changes.
-* Uniform reporting and valuation workflows.
-
-In practice, a Unit is:
-
-A unique identifier that defines how value is measured, displayed, and optionally priced within Personal Ledger.
-
-## Examples
-
-Code	Name	Type	Pricing Pair	Precision
-AUD	Australian Dollar	Currency	AUD	2
-USD	United States Dollar	Currency	AUD	2
-BTC	Bitcoin	Crypto	AUD	8
-ETH	Ethereum	Crypto	AUD	18
-AAPL	Apple Inc.	Equity	USD	6
-VAS	Vanguard Australian Shares ETF	ETF	AUD	6
-XAU	Gold	Commodity	AUD	4
-
-
-This structure lets Personal Ledger represent cash, investments, digital assets, commodities, and custom instruments with a single, consistent model.
+- [x] UNT-001 (TUI, desktop): Create a unit with a code, name, type (Currency, Crypto, Equity, ETF, Commodity, Custom), and precision
+- [x] UNT-002 (TUI, desktop): List units with filtering by active status
+- [x] UNT-003 (TUI, desktop): Edit a unit's name and active status
+- [x] UNT-004 (TUI, desktop): Set a pricing pair for optional valuation (AUD, USD, etc.)
+- [x] UNT-005 (TUI, desktop): Deactivate a unit without deleting it if it has transactions
+- [ ] UNT-006: Bulk import units from standard currency/commodity/crypto lists
+- [ ] UNT-007: Market pricing integration and valuation calculations
+- [ ] UNT-008: Cross-unit aggregate reporting and portfolio valuation
 
 ## For developers
 
