@@ -230,7 +230,6 @@ impl PayeeFixture {
 
         let mut id = crate::fixture::id_sequence(crate::fixture::EPOCH_2021);
 
-
         // Read once, then discarded — see this module's own doc on why nothing here keeps a
         // `CategoryFixture` or a `RowID` back to it.
         let categories = CategoryFixture::new();
