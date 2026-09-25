@@ -18,4 +18,8 @@ pub enum Error {
     /// Errors from the Desktop app's embedded Ledger store (connection, migration, query).
     #[error("Database error: {0}")]
     Database(#[from] lib_database::Error),
+
+    /// Generic errors during initialization or window management.
+    #[error("Desktop error: {0}")]
+    Generic(String),
 }
