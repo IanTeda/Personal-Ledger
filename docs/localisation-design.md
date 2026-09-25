@@ -123,7 +123,8 @@ The crate is `lib-locale` (crate `lib_locale`), chosen over `lib-localisation` a
   - The chain `en-AU -> en-GB -> en-US` works with sparse Locales.
 - Measured on a `ratatui` stand-in, for a stripped release binary: Fluent adds about 2.1 MB (1.4 MB with a size-tuned profile) and 11 s of clean build, and ICU4X with its default data adds about 1.3 MB and 24 s. An `icu4x-datagen` trim to `en-US`, `en-GB` and `en-AU` cuts the ICU4X share to about 0.3 MB and saves about 12 s. The trim is a separate, later ticket, and must be regenerated when a new ICU4X marker is used.
 - Since landed: the per-screen string migration, the Preference migration (the number-separator column is gone and `date_format` is now the nullable `date_style`), and the TUI palette's move from dispatch-on-display-text to dispatch-on-id.
-- Still outstanding: the `icu4x-datagen` trim above; the seeded-row keys (the `institution-none` Message exists, but there is no Institutions table yet and `bin-desktop` still holds a `NO_INSTITUTION` literal); translation workflow; per-Locale command aliases; user-supplied Catalogues; and mapping Commonwealth variants (`en-NZ`, `en-IN`) to `en-GB`.
+- Seeded rows: no database table seeds display text yet. The one seeded row, `bin-desktop`'s in-memory placeholder Institution, stores the key `system:institution-none` (`accounts::NO_INSTITUTION`) and renders `institution-none` through `accounts::institution_label`. When Institutions are persisted, the same key goes into the seeded row.
+- Still outstanding: the `icu4x-datagen` trim above; translation workflow; per-Locale command aliases; user-supplied Catalogues; and mapping Commonwealth variants (`en-NZ`, `en-IN`) to `en-GB`.
 - The cost figures come from a stand-in binary, not a real `bin-tui` or `bin-desktop` build. Both bins now carry `lib-locale`, so the figures can be re-measured for real.
 
 ## Research

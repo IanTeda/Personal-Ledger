@@ -339,7 +339,7 @@ fn row(
                 .w(INSTITUTION_WIDTH)
                 .truncate()
                 .text_color(color::INK_SECONDARY)
-                .child(account.institution.clone()),
+                .child(accounts::institution_label(&account.institution)),
         )
         .child(
             div()

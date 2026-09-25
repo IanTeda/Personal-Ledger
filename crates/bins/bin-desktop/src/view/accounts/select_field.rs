@@ -21,7 +21,7 @@ pub struct SelectFieldProps<'a> {
     pub state: &'a SelectState,
     pub focused: bool,
     /// `Some` makes the field read-only, showing this text instead of the value.
-    pub read_only: Option<&'a str>,
+    pub read_only: Option<SharedString>,
     pub on_field_click: dialog::OnClick,
     pub on_option_click: OnOptionClick,
 }
@@ -39,6 +39,8 @@ pub fn render(props: SelectFieldProps<'_>) -> AnyElement {
     } = props;
 
     let text = read_only
+        .as_ref()
+        .map(SharedString::as_str)
         .or_else(|| state.value())
         .unwrap_or("")
         .to_string();

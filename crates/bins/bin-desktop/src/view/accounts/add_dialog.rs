@@ -13,7 +13,7 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use super::select_field::{self, SelectFieldProps};
 use crate::{
-    accounts::{AccountField, AccountForm, AccountOptions, NO_INSTITUTION},
+    accounts::{self, AccountField, AccountForm, AccountOptions, NO_INSTITUTION},
     dialog,
     theme::color,
 };
@@ -69,7 +69,9 @@ pub fn render(
                     options: &options.institutions,
                     state: &form.institution,
                     focused: focused(AccountField::Institution),
-                    read_only: form.is_cash().then_some(NO_INSTITUTION),
+                    read_only: form
+                        .is_cash()
+                        .then(|| accounts::institution_label(NO_INSTITUTION).into()),
                     on_field_click: click(AccountField::Institution),
                     on_option_click: option_click(AccountField::Institution),
                 }),

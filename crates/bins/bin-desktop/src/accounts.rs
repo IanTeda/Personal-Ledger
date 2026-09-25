@@ -15,7 +15,20 @@ use crate::select::SelectState;
 /// The Institution a Cash account links to. The glossary gives every Account a mandatory
 /// Institution, and Cash has no real one, so it points at a system-seeded placeholder. It is
 /// deliberately absent from `settings::default_institutions()`: it is not a user-managed row.
-pub const NO_INSTITUTION: &str = "No institution";
+///
+/// This is a stable key, never display text: the row syncs between Clients, so storing a rendered
+/// name would show one Client's Locale on another. Render it with [`institution_label`].
+pub const NO_INSTITUTION: &str = "system:institution-none";
+
+/// What to show for an account's `institution`: the placeholder's Message in the Locale in
+/// effect, or a user-managed Institution's name unchanged (Ledger data, not a Message).
+pub fn institution_label(institution: &str) -> String {
+    if institution == NO_INSTITUTION {
+        lib_locale::msg::institution_none()
+    } else {
+        institution.to_string()
+    }
+}
 
 /// The order the Accounts page groups accounts in -- fixed, never alphabetised or sorted by
 /// balance (the README's implementation note 3). Not `AccountType::all()`, whose order puts
@@ -1060,6 +1073,27 @@ mod tests {
         let account = form.into_account(9, date(2026, 9), true).expect("valid");
         assert_eq!(account.account_type, AccountType::Cash);
         assert_eq!(account.institution, NO_INSTITUTION);
+    }
+
+    #[test]
+    fn the_placeholder_institution_stores_a_key_not_display_text() {
+        for locale in lib_locale::Locale::SUPPORTED {
+            lib_locale::with_locale(locale, || {
+                assert_ne!(
+                    NO_INSTITUTION,
+                    lib_locale::msg::institution_none(),
+                    "{locale}"
+                );
+            });
+        }
+    }
+
+    #[test]
+    fn institution_label_renders_the_placeholder_and_passes_names_through() {
+        lib_locale::with_locale(lib_locale::Locale::EnUs, || {
+            assert_eq!(institution_label(NO_INSTITUTION), "No institution");
+            assert_eq!(institution_label("ANZ Banking Group"), "ANZ Banking Group");
+        });
     }
 
     #[test]
