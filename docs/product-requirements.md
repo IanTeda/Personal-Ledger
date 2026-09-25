@@ -35,7 +35,7 @@ The overarching goals and objectives describe the product's ultimate end state. 
 - __Sync Server App:__ A headless service, deployable via Docker on a homelab, that acts as the always-on sync hub for the native (Desktop/TUI) apps.
 - __Local Offline First:__ Provide a self-hosted, offline, local-first ledger for tracking expenses, investments, and assets without a cloud dependency or subscription.
 - __Multiple Operating Systems and Devices:__ Support multiple operating systems and devices, each holding its own local-first data store, synced via a sync server when devices come online.
-- __Transactions:__ Model transactions against accounts, payees and categories using the five standard accounting categories (asset, liability, equity, income, expense) to classify transactions, without requiring double-entry bookkeeping.
+- __Transactions:__ Model transactions against accounts, payees and categories using Expense and Income Categories to classify transactions, without requiring double-entry bookkeeping.
 - __Understand Spending:__ Users interested in gaining insight and understanding their spending habits now and over time to make informed decisions.
 - __Track Against Budget:__ Users interested in tracking spending against a target budget to achieve financial goals.
 - __Reconcile Accounts:__ Users can verify their accounts and transactions against reality through reconciliation of account ledgers.
@@ -157,7 +157,7 @@ The requirements below describe the product's ultimate end state across all deve
 
 ### Categories
 
-- __FR.4:__ The system shall allow creating a category with a code, name, optional description, optional URL slug, one of the five accounting types, optional colour, and optional icon.
+- __FR.4:__ The system shall allow creating a category with a code, name, optional description, optional URL slug, a Category Type (Expense or Income), an optional parent Category (up to three levels deep), optional colour, and optional icon.
 - __FR.5:__ The system shall allow retrieving a category by ID, by code, or by slug.
 - __FR.6:__ The system shall allow listing categories with pagination, filtering by type and/or active status, and sorting.
 - __FR.7:__ The system shall allow partially updating a category via a field mask.

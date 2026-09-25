@@ -258,6 +258,16 @@ pub struct Shell {
     /// The shared stub Categories tree, Payees and Tags. Owned here so the Categories, Payees and
     /// Tags views the later maps build can read and grow the same data the Transactions view uses.
     categories: Vec<Category>,
+    /// The shared stub Budgets, seeded from `budgets::default_budgets()`. A real, mutable `Vec`
+    /// that survives leaving and re-entering the Categories view.
+    budgets: Vec<crate::budgets::Budget>,
+    /// The selected category row in the tree view (the position in a depth-first enumeration).
+    categories_selected: usize,
+    /// Which category nodes are expanded in the tree view.
+    categories_expanded: Vec<u32>,
+    /// The currently open Categories dialog, if any -- `NavState::mode` is `InputMode::Dialog`
+    /// for exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
+    categories_dialog: Option<crate::categories::CategoriesDialog>,
     payees: Vec<Payee>,
     tags: Vec<Tag>,
     /// The Transactions view's stub dataset, newest first (`transactions::default_transactions`).
@@ -326,6 +336,10 @@ impl Shell {
             accounts_dialog: None,
             today,
             categories,
+            budgets: crate::budgets::default_budgets(),
+            categories_selected: 0,
+            categories_expanded: vec![1, 3, 6],  // Housing, Utilities, Food expanded by default
+            categories_dialog: None,
             payees,
             tags,
             transactions,

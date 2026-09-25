@@ -7,6 +7,7 @@
 
 mod accounts;
 mod assets;
+mod budgets;
 mod categories;
 mod command;
 mod dialog;

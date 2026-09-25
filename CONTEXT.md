@@ -172,15 +172,18 @@ computed total from its Transactions; a Balance Check is a separate assertion co
 against that total, not the total itself.
 
 **Category**:
-A user-defined label (e.g. "Groceries", "Salary") used to classify a Split (see below) — the unit a Transaction is actually broken into — carrying exactly one Category Type.
+A user-defined label (e.g. "Groceries", "Salary") used to classify a Split (see below) — the unit a Transaction is actually broken into — carrying exactly one Category Type. Categories nest up to three levels deep (e.g. Housing › Utilities › Electricity): a sub-category always carries its parent's Category Type, only a leaf (a Category with nothing nested under it) is assigned to a Split, and a parent's totals roll up its descendants'.
 _Avoid_: Group. Tag was once considered a synonym for Category and rejected on those
 grounds; Tag is now its own independent entity (see below), not a revival of that
 rejected idea.
 
 **Category Type**:
-One of the five fixed accounting classifications a Category carries: asset, liability,
-equity, income, or expense.
+One of the two fixed classifications a Category carries: Expense (money going out) or Income (money coming in). Assets and liabilities are held by Accounts, not classified by Category, so the asset, liability and equity types once listed here were dropped.
 _Avoid_: Account type.
+
+**Uncategorised**:
+The system-provided leaf Category, one per Category Type, that a deleted Category's Splits are re-pointed to, so deleting a Category never deletes a Split. Created the first time it is needed.
+_Avoid_: Unknown, Other — those read as user-made Categories.
 
 **Payee**:
 A canonical, user-visible name for the business, organisation, or individual money moved to or from on a Split (e.g. "Woolworths", an employer), recorded so spending or income can be totalled by who it went to or came from. Optional on a Split (see below) — a Split, not the Transaction as a whole, is what actually carries a Payee. A first-class entity as of [ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md) — a Split links to a Payee, rather than storing its name as free text — with its own lifecycle (`is_active`, no hard delete once referenced). A Payee not yet seen is auto-created the first time its name is entered on a Split; no separate manual "create a Payee" step is required, though one exists for consistency (see `docs/product-requirements.md`, Constraints).
@@ -234,7 +237,7 @@ The mechanism for paying down a Loan Account (see above): moves cash out of a Tr
 _Avoid_: Transaction — a Repayment crosses from a Transaction Account into a Loan Account, which a same-Account Transaction structurally cannot do; it uses Splits internally for its principal/interest breakdown but is its own mechanism, not a plain Transaction. Credit Card repayment — deliberately not called a Repayment; see Credit Card Account, above.
 
 **Budget**:
-A limit on the total amount of Splits in one Category over a recurring period (e.g. "$500 per month for Groceries"), denominated in one Unit, compared against actual spending in that Category and Unit to show how much of the period's limit remains. Its progress view also carries a Known Costs (Bills) figure (see below) alongside actual spend, but Budget itself has no direct link to any Bill — the two remain independent entities.
+A limit (on an Expense Category) or target (on an Income Category) on the total amount of Splits in one Category over a recurring period (e.g. "$500 per month for Groceries", "$4,200 per month from Salary"), denominated in one Unit, compared against the actual total in that Category and Unit to show how much of the period's amount remains. Only an Expense Budget can be over budget; an Income Budget at or past its amount has simply met its target. A parent Category shows the sum of its descendants' Budgets rather than a Budget of its own. Its progress view also carries a Known Costs (Bills) figure (see below) alongside actual spend, but Budget itself has no direct link to any Bill — the two remain independent entities.
 _Avoid_: Limit, allowance, envelope — envelope budgeting allocates every dollar of
 income across categories; a Budget here is a cap on one Category, not a full
 allocation.

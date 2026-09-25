@@ -1,12 +1,14 @@
 //! Shared stub Categories -- a tree, seeded from the sample tree in `docs/ux/desktop/Categories/`
 //! (Housing, Food, Transport, Household, Salary, Interest and their children: 12 categories, three
-//! levels deep). `gpui`-free, and deliberately small: the Transactions map needs paths, leaves and
-//! descendants; the future Categories map grows this module (budgets, spent rollups, editing).
+//! levels deep). `gpui`-free, deliberately grows from the Transactions map's need for paths, leaves
+//! and descendants to support budgets, spent rollups, tree navigation with expand/collapse, and editing.
 //!
 //! Only **leaf** categories are assigned to Splits (glossary); a parent exists to roll up and to
-//! filter by. All data is stubbed and in-memory.
+//! filter by. All data is stubbed and in-memory. Depth is capped at 3 levels.
 
-use lib_core::CategoryTypes;
+use bigdecimal::BigDecimal;
+use chrono::Datelike;
+use lib_core::{CategoryTypes, Money};
 
 /// Joins a category's ancestors in a path label: `Food › Groceries`.
 pub const PATH_SEPARATOR: &str = " \u{203a} ";
@@ -115,6 +117,171 @@ pub fn paths_in_tree_order(categories: &[Category]) -> Vec<(u32, String)> {
     out
 }
 
+/// The depth of a category in the tree (0 for top-level, capped at 3).
+pub fn depth(categories: &[Category], id: u32) -> u32 {
+    let mut d = 0;
+    let mut current = get(categories, id).and_then(|c| c.parent);
+    while let Some(parent_id) = current {
+        d += 1;
+        current = get(categories, parent_id).and_then(|c| c.parent);
+        if d >= 3 {
+            break;
+        }
+    }
+    d
+}
+
+/// Month-to-date amount for a category (and its descendants if a parent), summed from Transactions.
+/// Expenses are negative; Income is positive. Returns zero if no transactions in the month.
+pub fn month_to_date_spent(
+    categories: &[Category],
+    transactions: &[crate::transactions::Transaction],
+    accounts: &[crate::accounts::Account],
+    category_id: u32,
+    today: chrono::NaiveDate,
+) -> Money {
+    let category_ids = descendants_inclusive(categories, category_id);
+    let month_start = today.with_day(1).expect("always valid");
+
+    let mut total = BigDecimal::from(0);
+    for transaction in transactions {
+        if transaction.date < month_start {
+            continue;
+        }
+        if transaction.date > today {
+            continue;
+        }
+        for split in &transaction.splits {
+            if category_ids.contains(&split.category_id) {
+                total = total + split.amount.0.clone();
+            }
+        }
+    }
+    Money(total)
+}
+
+/// Rollup of month-to-date for a parent category (sum of its children).
+pub fn rollup_month_to_date(
+    categories: &[Category],
+    transactions: &[crate::transactions::Transaction],
+    accounts: &[crate::accounts::Account],
+    category_id: u32,
+    today: chrono::NaiveDate,
+) -> Money {
+    let children: Vec<_> = categories
+        .iter()
+        .filter(|c| c.parent == Some(category_id))
+        .map(|c| c.id)
+        .collect();
+
+    if children.is_empty() {
+        month_to_date_spent(categories, transactions, accounts, category_id, today)
+    } else {
+        let mut total = BigDecimal::from(0);
+        for child_id in children {
+            let Money(amount) = month_to_date_spent(categories, transactions, accounts, child_id, today);
+            total = total + amount;
+        }
+        Money(total)
+    }
+}
+
+/// Find or create an Uncategorised category for a type. Returns the id if found or created.
+pub fn get_or_create_uncategorised(
+    categories: &mut Vec<Category>,
+    category_type: CategoryTypes,
+) -> u32 {
+    if let Some(cat) = categories.iter().find(|c| {
+        c.name == "Uncategorised" && c.category_type == category_type && c.parent.is_none()
+    }) {
+        return cat.id;
+    }
+
+    // Find next available id
+    let next_id = categories.iter().map(|c| c.id).max().unwrap_or(0) + 1;
+    categories.push(Category {
+        id: next_id,
+        name: "Uncategorised".to_string(),
+        parent: None,
+        category_type,
+    });
+    next_id
+}
+
+/// A form for adding or editing a category: name and parent.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CategoryForm {
+    pub name: String,
+    pub parent_id: Option<u32>,
+}
+
+impl Default for CategoryForm {
+    fn default() -> Self {
+        CategoryForm {
+            name: String::new(),
+            parent_id: None,
+        }
+    }
+}
+
+/// A form for deleting a category: confirmation name.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DeleteCategoryForm {
+    pub confirmation_name: String,
+}
+
+impl Default for DeleteCategoryForm {
+    fn default() -> Self {
+        DeleteCategoryForm {
+            confirmation_name: String::new(),
+        }
+    }
+}
+
+/// The categories dialog's state: Add { parent } / Edit(id) / Delete(id).
+pub enum CategoriesDialog {
+    /// Adding a new category under a parent (or None for top-level).
+    Add { parent_id: Option<u32>, form: CategoryForm },
+    /// Editing the category with this [`Category::id`].
+    Edit(u32, CategoryForm),
+    /// Deleting the category with this [`Category::id`], once its name has been typed back.
+    Delete(u32, DeleteCategoryForm),
+}
+
+impl CategoriesDialog {
+    /// The form behind the Add and Edit dialogs; Delete has its own, single-field form.
+    pub fn form(&self) -> Option<&CategoryForm> {
+        match self {
+            CategoriesDialog::Add { form, .. } | CategoriesDialog::Edit(_, form) => Some(form),
+            CategoriesDialog::Delete(_, _) => None,
+        }
+    }
+
+    /// The mutable form behind the Add and Edit dialogs; Delete has its own, single-field form.
+    pub fn form_mut(&mut self) -> Option<&mut CategoryForm> {
+        match self {
+            CategoriesDialog::Add { form, .. } | CategoriesDialog::Edit(_, form) => Some(form),
+            CategoriesDialog::Delete(_, _) => None,
+        }
+    }
+
+    /// The delete form, if this is a Delete dialog.
+    pub fn delete_form(&self) -> Option<&DeleteCategoryForm> {
+        match self {
+            CategoriesDialog::Delete(_, form) => Some(form),
+            _ => None,
+        }
+    }
+
+    /// The mutable delete form, if this is a Delete dialog.
+    pub fn delete_form_mut(&mut self) -> Option<&mut DeleteCategoryForm> {
+        match self {
+            CategoriesDialog::Delete(_, form) => Some(form),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -220,5 +387,38 @@ mod tests {
             get(&categories, groceries).unwrap().category_type,
             CategoryTypes::Expense
         );
+    }
+
+    #[test]
+    fn depth_is_zero_for_top_level() {
+        let categories = default_categories();
+        let housing = find_by_name(&categories, "Housing").unwrap();
+        assert_eq!(depth(&categories, housing), 0);
+    }
+
+    #[test]
+    fn depth_increases_for_nested_categories() {
+        let categories = default_categories();
+        let utilities = find_by_name(&categories, "Utilities").unwrap();
+        let electricity = find_by_name(&categories, "Electricity").unwrap();
+        assert_eq!(depth(&categories, utilities), 1);
+        assert_eq!(depth(&categories, electricity), 2);
+    }
+
+    #[test]
+    fn get_or_create_uncategorised_creates_one_per_type() {
+        let mut categories = default_categories();
+        let original_count = categories.len();
+
+        let uncategorised_expense = get_or_create_uncategorised(&mut categories, CategoryTypes::Expense);
+        assert_eq!(categories.len(), original_count + 1);
+        assert_eq!(categories.iter().find(|c| c.id == uncategorised_expense).unwrap().name, "Uncategorised");
+
+        let uncategorised_expense_again = get_or_create_uncategorised(&mut categories, CategoryTypes::Expense);
+        assert_eq!(uncategorised_expense, uncategorised_expense_again, "should reuse");
+        assert_eq!(categories.len(), original_count + 1, "should not create duplicate");
+
+        let uncategorised_income = get_or_create_uncategorised(&mut categories, CategoryTypes::Income);
+        assert_eq!(categories.len(), original_count + 2, "should create second for Income type");
     }
 }
