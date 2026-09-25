@@ -12,13 +12,7 @@
 //! - **Formatting**: number, date, currency and casing, driven by the Locale in effect and backed
 //!   by ICU4X, in [`format`].
 //!
-//! A bin calls [`init`] once at startup, then any [`msg`] accessor:
-//!
-//! ```
-//! let locale = lib_locale::init("en-AU");
-//! assert_eq!(locale, lib_locale::Locale::EnAu);
-//! assert_eq!(lib_locale::msg::nav_accounts(), "Accounts");
-//! ```
+//! A bin calls [`init`] once at startup, then reads text through any [`msg`] accessor.
 //!
 //! No Fluent, ICU or `unic-langid` type appears in the public API, so those dependencies can
 //! change without touching the bins.

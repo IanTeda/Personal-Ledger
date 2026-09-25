@@ -38,7 +38,7 @@ mise run docs-build     # docs-rustdoc + docs-mdbook
 mise run docs-serve     # serves mdBook on :8001
 ```
 
-Building `lib_rpc` requires a system `protoc` (protobuf compiler) — provided via `mise.toml`. `tonic_prost_build` regenerates `crates/libs/lib-rpc/src/generated/*.rs` from the `.proto` files on every build; the generated files are checked in but should be treated as build output, not hand-edited.
+Building `lib_rpc` requires a system `protoc` (protobuf compiler) — provided via `mise.toml`. `tonic_prost_build` regenerates `crates/libs/lib-rpc/src/generated/*.rs` from the `.proto` files on every build; the generated files are checked in but should be treated as build output, not hand-edited, and `#[rustfmt::skip]` on their `mod` declarations in `generated/mod.rs` keeps `cargo fmt` off them so a build never leaves a formatting diff.
 
 ## Workspace layout
 
@@ -65,7 +65,7 @@ Planned-but-not-yet-present crates/binaries mentioned in `docs/directories-files
 **Rust code style and safety:** See `/rust-style` skill for error handling (error.rs shapes, promoting variants, #[from] for external errors), database persistence (CRUD file split), secrets (secrecy::SecretString), dependencies, comments (Australian English, WHY not WHAT), and validated invariants in expect messages. Workspace lints in `Cargo.toml` [workspace.lints] enforce `unsafe_code = "forbid"` (Rust), `clippy::{unwrap_used, expect_used, panic} = "deny"` (clippy, allowed in tests via clippy.toml). CI runs `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check`.
 
 - Commit style: `<area>: <short description>` (e.g. `email-verification: add updated_at to model and migration`).
-- Tests: unit tests live alongside the code (`#[cfg(test)] mod tests`); integration/DB tests use `sqlx::test`; use the `fake` crate with deterministic seeds for generated test data.
+- Tests: unit tests live alongside the code (`#[cfg(test)] mod tests`); integration/DB tests use `sqlx::test`; use the `fake` crate with deterministic seeds for generated test data. No doctests: usage is specified by unit tests, doc comments explain why rather than carrying `# Examples`, and every library crate sets `[lib] doctest = false`.
 
 ## Agent work on independent tickets
 

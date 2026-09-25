@@ -21,19 +21,6 @@
 //! - `400 Bad Request`: Validation and argument errors
 //! - `500 Internal Server Error`: Server-side failures
 //! - `502 Bad Gateway`: Connection issues
-//!
-//! ## Usage
-//!
-//! ```rust,no_run
-//! use lib_rpc::error::RpcError;
-//!
-//! // Convert validation errors
-//! let validation_error = RpcError::Validation("Invalid category code".to_string());
-//!
-//! // Convert to gRPC status
-//! let status: tonic::Status = validation_error.into();
-//! assert_eq!(status.code(), tonic::Code::InvalidArgument);
-//! ```
 
 pub type RpcResult<T> = std::result::Result<T, RpcError>;
 
@@ -55,20 +42,6 @@ pub type RpcResult<T> = std::result::Result<T, RpcError>;
 /// | `Grpc` | 500 | gRPC protocol-level errors |
 /// | `Client` | 500 | Internal client state errors |
 /// | `Database` | 500 | Database operation failures |
-///
-/// ## Examples
-///
-/// ```rust
-/// use lib_rpc::error::RpcError;
-///
-/// // Create different types of errors
-/// let validation = RpcError::Validation("Category name cannot be empty".to_string());
-/// let db_error = RpcError::Database(lib_database::DatabaseError::Connection("DB down".to_string()));
-///
-/// // All errors can be converted to gRPC status
-/// let status: tonic::Status = validation.into();
-/// assert_eq!(status.code(), tonic::Code::InvalidArgument);
-/// ```
 #[derive(thiserror::Error, Debug)]
 pub enum RpcError {
     /// Failed to establish or maintain connection to the gRPC service.
@@ -135,21 +108,6 @@ pub enum RpcError {
 /// - Validation errors become `INVALID_ARGUMENT` (400)
 /// - Connection errors become `UNAVAILABLE` (502)
 /// - Server errors become `INTERNAL` (500)
-///
-/// ## Examples
-///
-/// ```rust
-/// use lib_rpc::error::RpcError;
-/// use tonic::Code;
-///
-/// let validation_error = RpcError::Validation("Invalid input".to_string());
-/// let status: tonic::Status = validation_error.into();
-/// assert_eq!(status.code(), Code::InvalidArgument);
-///
-/// let connection_error = RpcError::Connection(tonic::transport::Error::from(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "Connection refused")));
-/// let status: tonic::Status = connection_error.into();
-/// assert_eq!(status.code(), Code::Unavailable);
-/// ```
 impl From<RpcError> for tonic::Status {
     fn from(err: RpcError) -> Self {
         match err {
@@ -179,21 +137,6 @@ impl From<RpcError> for tonic::Status {
 /// - `400`: Client errors (validation, invalid arguments)
 /// - `500`: Server errors (database, client state, gRPC protocol)
 /// - `502`: Gateway errors (connection issues)
-///
-/// ## Examples
-///
-/// ```rust
-/// use lib_rpc::error::RpcError;
-///
-/// let validation_error = RpcError::Validation("Invalid data".to_string());
-/// assert_eq!(validation_error.http_status_code(), 400);
-///
-/// let db_error = RpcError::Database(lib_database::DatabaseError::Connection("DB down".to_string()));
-/// assert_eq!(db_error.http_status_code(), 500);
-///
-/// let conn_error = RpcError::Connection(tonic::transport::Error::from(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "refused")));
-/// assert_eq!(conn_error.http_status_code(), 502);
-/// ```
 impl RpcError {
     pub fn http_status_code(&self) -> u16 {
         match self {
@@ -204,5 +147,80 @@ impl RpcError {
             RpcError::Client(_) => 500,
             RpcError::Database(_) => 500,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn connection_error() -> RpcError {
+        // An unparseable URI is the simplest way to get a real `tonic::transport::Error`, which
+        // has no public constructor.
+        let error = tonic::transport::Endpoint::from_shared("not a uri").unwrap_err();
+        RpcError::Connection(error)
+    }
+
+    #[test]
+    fn validation_maps_to_invalid_argument_and_400() {
+        let error = RpcError::Validation("Category name cannot be empty".to_string());
+        assert_eq!(error.http_status_code(), 400);
+
+        let status: tonic::Status = error.into();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert_eq!(status.message(), "Category name cannot be empty");
+    }
+
+    #[test]
+    fn invalid_argument_maps_to_invalid_argument_and_400() {
+        let error = RpcError::InvalidArgument("malformed id".to_string());
+        assert_eq!(error.http_status_code(), 400);
+
+        let status: tonic::Status = error.into();
+        assert_eq!(status.code(), tonic::Code::InvalidArgument);
+        assert_eq!(status.message(), "malformed id");
+    }
+
+    #[test]
+    fn connection_maps_to_unavailable_and_502() {
+        let error = connection_error();
+        assert_eq!(error.http_status_code(), 502);
+
+        let status: tonic::Status = error.into();
+        assert_eq!(status.code(), tonic::Code::Unavailable);
+        assert!(status.message().starts_with("Connection error: "));
+    }
+
+    #[test]
+    fn grpc_preserves_the_original_code_and_message() {
+        let error = RpcError::Grpc(tonic::Status::not_found("no such change set"));
+        assert_eq!(error.http_status_code(), 500);
+
+        let status: tonic::Status = error.into();
+        assert_eq!(status.code(), tonic::Code::NotFound);
+        assert_eq!(status.message(), "no such change set");
+    }
+
+    #[test]
+    fn client_maps_to_internal_and_500() {
+        let error = RpcError::Client("client not connected".to_string());
+        assert_eq!(error.http_status_code(), 500);
+
+        let status: tonic::Status = error.into();
+        assert_eq!(status.code(), tonic::Code::Internal);
+        assert_eq!(status.message(), "client not connected");
+    }
+
+    #[test]
+    fn database_maps_to_internal_and_500() {
+        let error = RpcError::Database(lib_database::Error::CategoryBuilder("DB down".to_string()));
+        assert_eq!(error.http_status_code(), 500);
+
+        let status: tonic::Status = error.into();
+        assert_eq!(status.code(), tonic::Code::Internal);
+        assert_eq!(
+            status.message(),
+            "Database error: Error building category: DB down"
+        );
     }
 }

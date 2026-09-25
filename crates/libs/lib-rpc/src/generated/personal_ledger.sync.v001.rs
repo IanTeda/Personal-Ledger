@@ -67,10 +67,10 @@ pub mod sync_service_client {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
-    use tonic::codegen::http::Uri;
     use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
     /// gRPC service for pushing and pulling Change Sets through the Sync Server.
     #[derive(Debug, Clone)]
     pub struct SyncServiceClient<T> {
@@ -110,13 +110,14 @@ pub mod sync_service_client {
             F: tonic::service::Interceptor,
             T::ResponseBody: Default,
             T: tonic::codegen::Service<
-                    http::Request<tonic::body::Body>,
-                    Response = http::Response<
-                        <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
-                    >,
+                http::Request<tonic::body::Body>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::Body>>::ResponseBody,
                 >,
-            <T as tonic::codegen::Service<http::Request<tonic::body::Body>>>::Error:
-                Into<StdError> + std::marker::Send + std::marker::Sync,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::Body>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
         {
             SyncServiceClient::new(InterceptedService::new(inner, interceptor))
         }
@@ -156,17 +157,23 @@ pub mod sync_service_client {
             &mut self,
             request: impl tonic::IntoRequest<super::PushRequest>,
         ) -> std::result::Result<tonic::Response<super::PushResponse>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path =
-                http::uri::PathAndQuery::from_static("/personal_ledger.sync.v001.SyncService/Push");
+            let path = http::uri::PathAndQuery::from_static(
+                "/personal_ledger.sync.v001.SyncService/Push",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "personal_ledger.sync.v001.SyncService",
-                "Push",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("personal_ledger.sync.v001.SyncService", "Push"),
+                );
             self.inner.unary(req, path, codec).await
         }
         /// Pull Change Sets from the Sync Server's durable Change Set log since a cursor.
@@ -174,17 +181,23 @@ pub mod sync_service_client {
             &mut self,
             request: impl tonic::IntoRequest<super::PullRequest>,
         ) -> std::result::Result<tonic::Response<super::PullResponse>, tonic::Status> {
-            self.inner.ready().await.map_err(|e| {
-                tonic::Status::unknown(format!("Service was not ready: {}", e.into()))
-            })?;
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
             let codec = tonic_prost::ProstCodec::default();
-            let path =
-                http::uri::PathAndQuery::from_static("/personal_ledger.sync.v001.SyncService/Pull");
+            let path = http::uri::PathAndQuery::from_static(
+                "/personal_ledger.sync.v001.SyncService/Pull",
+            );
             let mut req = request.into_request();
-            req.extensions_mut().insert(GrpcMethod::new(
-                "personal_ledger.sync.v001.SyncService",
-                "Pull",
-            ));
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("personal_ledger.sync.v001.SyncService", "Pull"),
+                );
             self.inner.unary(req, path, codec).await
         }
     }
@@ -196,7 +209,7 @@ pub mod sync_service_server {
         dead_code,
         missing_docs,
         clippy::wildcard_imports,
-        clippy::let_unit_value
+        clippy::let_unit_value,
     )]
     use tonic::codegen::*;
     /// Generated trait containing gRPC methods that should be implemented for use with SyncServiceServer.
@@ -235,7 +248,10 @@ pub mod sync_service_server {
                 max_encoding_message_size: None,
             }
         }
-        pub fn with_interceptor<F>(inner: T, interceptor: F) -> InterceptedService<Self, F>
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
         where
             F: tonic::service::Interceptor,
         {
@@ -290,16 +306,21 @@ pub mod sync_service_server {
                 "/personal_ledger.sync.v001.SyncService/Push" => {
                     #[allow(non_camel_case_types)]
                     struct PushSvc<T: SyncService>(pub Arc<T>);
-                    impl<T: SyncService> tonic::server::UnaryService<super::PushRequest> for PushSvc<T> {
+                    impl<T: SyncService> tonic::server::UnaryService<super::PushRequest>
+                    for PushSvc<T> {
                         type Response = super::PushResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::PushRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut =
-                                async move { <T as SyncService>::push(&inner, request).await };
+                            let fut = async move {
+                                <T as SyncService>::push(&inner, request).await
+                            };
                             Box::pin(fut)
                         }
                     }
@@ -328,16 +349,21 @@ pub mod sync_service_server {
                 "/personal_ledger.sync.v001.SyncService/Pull" => {
                     #[allow(non_camel_case_types)]
                     struct PullSvc<T: SyncService>(pub Arc<T>);
-                    impl<T: SyncService> tonic::server::UnaryService<super::PullRequest> for PullSvc<T> {
+                    impl<T: SyncService> tonic::server::UnaryService<super::PullRequest>
+                    for PullSvc<T> {
                         type Response = super::PullResponse;
-                        type Future = BoxFuture<tonic::Response<Self::Response>, tonic::Status>;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
                         fn call(
                             &mut self,
                             request: tonic::Request<super::PullRequest>,
                         ) -> Self::Future {
                             let inner = Arc::clone(&self.0);
-                            let fut =
-                                async move { <T as SyncService>::pull(&inner, request).await };
+                            let fut = async move {
+                                <T as SyncService>::pull(&inner, request).await
+                            };
                             Box::pin(fut)
                         }
                     }
@@ -363,19 +389,25 @@ pub mod sync_service_server {
                     };
                     Box::pin(fut)
                 }
-                _ => Box::pin(async move {
-                    let mut response = http::Response::new(tonic::body::Body::default());
-                    let headers = response.headers_mut();
-                    headers.insert(
-                        tonic::Status::GRPC_STATUS,
-                        (tonic::Code::Unimplemented as i32).into(),
-                    );
-                    headers.insert(
-                        http::header::CONTENT_TYPE,
-                        tonic::metadata::GRPC_CONTENT_TYPE,
-                    );
-                    Ok(response)
-                }),
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(
+                            tonic::body::Body::default(),
+                        );
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
             }
         }
     }

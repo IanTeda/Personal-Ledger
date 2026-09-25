@@ -40,16 +40,6 @@ impl HexColor {
     ///
     /// Returns [`HexColorError`] if the value is empty, the number of
     /// hexadecimal digits is not six, or the string contains non-hex digits.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::HexColor;
-    ///
-    /// let colour = HexColor::parse("#ff8800")?;
-    /// assert_eq!(colour.as_str(), "#FF8800");
-    /// # Ok::<(), lib_core::HexColorError>(())
-    /// ```
     pub fn parse<S: AsRef<str>>(input: S) -> Result<Self, HexColorError> {
         let input = input.as_ref().trim();
         if input.is_empty() {
@@ -81,15 +71,6 @@ impl HexColor {
     }
 
     /// Creates a [`HexColor`] from individual RGB components.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::HexColor;
-    ///
-    /// let colour = HexColor::from_rgb(255, 136, 0);
-    /// assert_eq!(colour.as_str(), "#FF8800");
-    /// ```
     #[must_use]
     pub fn from_rgb(red: u8, green: u8, blue: u8) -> Self {
         HexColor {

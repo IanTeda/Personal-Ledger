@@ -11,17 +11,6 @@
 //! - **Validation**: Prevents invalid characters and formats
 //! - **Type Safety**: Prevents mixing slugs with regular strings
 //! - **SEO Friendly**: Creates readable, search-engine optimized identifiers
-//!
-//! ## Example Usage
-//!
-//! ```rust
-//! use lib_core::UrlSlug;
-//!
-//! // Parse a title into a slug
-//! let slug = UrlSlug::parse("Hello World! How are you?")?;
-//! assert_eq!(slug.as_str(), "hello-world-how-are-you");
-//! # Ok::<(), lib_core::UrlSlugError>(())
-//! ```
 
 use std::fmt;
 
@@ -67,19 +56,6 @@ impl UrlSlug {
     ///
     /// Returns a `UrlSlugError` if the input cannot be converted to a valid slug.
     ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::UrlSlug;
-    ///
-    /// let slug = UrlSlug::parse("Hello World! How are you?")?;
-    /// assert_eq!(slug.as_str(), "hello-world-how-are-you");
-    ///
-    /// let slug = UrlSlug::parse("valid-slug-123")?;
-    /// assert_eq!(slug.as_str(), "valid-slug-123");
-    /// # Ok::<(), lib_core::UrlSlugError>(())
-    /// ```
-    ///
     /// This replaces the previous `new` function and is the primary constructor for `UrlSlug`.
     pub fn parse<S: Into<String>>(s: S) -> Result<Self, UrlSlugError> {
         let s = s.into();
@@ -93,32 +69,11 @@ impl UrlSlug {
     }
 
     /// Get the slug as a string slice.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::UrlSlug;
-    ///
-    /// let slug = UrlSlug::parse("test-slug")?;
-    /// assert_eq!(slug.as_str(), "test-slug");
-    /// # Ok::<(), lib_core::UrlSlugError>(())
-    /// ```
     pub fn as_str(&self) -> &str {
         &self.0
     }
 
     /// Convert the slug into its underlying string.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::UrlSlug;
-    ///
-    /// let slug = UrlSlug::parse("test-slug")?;
-    /// let string = slug.into_string();
-    /// assert_eq!(string, "test-slug");
-    /// # Ok::<(), lib_core::UrlSlugError>(())
-    /// ```
     pub fn into_string(self) -> String {
         self.0
     }

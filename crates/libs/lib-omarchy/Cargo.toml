@@ -3,6 +3,10 @@ name = "lib-omarchy"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+# Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
+doctest = false
+
 [dependencies]
 
 [lints]

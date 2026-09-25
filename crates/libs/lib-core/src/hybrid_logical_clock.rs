@@ -9,17 +9,6 @@
 //! [`HybridLogicalClock`] values for its own events (`tick`) and to merge in a
 //! timestamp observed on an incoming Change Set (`observe`), following the standard
 //! Hybrid Logical Clock algorithm (Kulkarni et al., "Logical Physical Clocks").
-//!
-//! ## Examples
-//!
-//! ```rust
-//! use lib_core::HlcClock;
-//!
-//! let mut clock = HlcClock::new();
-//! let first = clock.tick();
-//! let second = clock.tick();
-//! assert!(first < second);
-//! ```
 
 /// A Hybrid Logical Clock timestamp: physical time plus a logical tie-breaking counter.
 ///
@@ -28,17 +17,6 @@
 /// last-write-wins rule needs. Client-ID tie-breaking on an exact match (same physical
 /// *and* logical) is the caller's responsibility (see the Change Set's own `client_id`
 /// field), since a bare `HybridLogicalClock` doesn't know which Client produced it.
-///
-/// # Examples
-///
-/// ```rust
-/// use lib_core::HybridLogicalClock;
-///
-/// let a: HybridLogicalClock = "2026-01-01T00:00:00Z:0".parse()?;
-/// let b: HybridLogicalClock = "2026-01-01T00:00:00Z:1".parse()?;
-/// assert!(a < b);
-/// # Ok::<(), lib_core::HybridLogicalClockError>(())
-/// ```
 #[derive(Debug, Copy, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct HybridLogicalClock {
     physical: chrono::DateTime<chrono::Utc>,

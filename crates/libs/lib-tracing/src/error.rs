@@ -24,12 +24,6 @@ impl Error {
     /// # Arguments
     ///
     /// * `message` - A description of the configuration issue
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// let error = lib_tracing::Error::generic("There is a non-defined error in the telemetry");
-    /// ```
     pub fn generic<S: Into<String>>(message: S) -> Self {
         Self::Generic(message.into())
     }

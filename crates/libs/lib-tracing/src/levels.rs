@@ -5,19 +5,6 @@
 //! The `Levels` enum serves as a configuration-friendly wrapper around `tracing`'s
 //! `LevelFilter`, enabling telemetry level configuration through configuration files, environment
 //! variables, and other serde-compatible sources.
-//!
-//! ## Usage
-//!
-//! ```rust
-//! use lib_tracing::Levels;
-//!
-//! // Parse from string (useful for config files)
-//! let level: Levels = serde_json::from_str("\"debug\"").unwrap();
-//! assert_eq!(level, Levels::DEBUG);
-//!
-//! // Convert to tracing LevelFilter for runtime use
-//! let filter = tracing::level_filters::LevelFilter::from(level);
-//! ```
 
 // A serde-friendly representation of telemetry levels used in configuration.
 /// The tracing crate's `LevelFilter` type does not implement `serde::{Deserialize, Serialize}`
@@ -37,19 +24,6 @@
 ///
 /// Defaults to `WARN` level, providing a balance between visibility of important issues
 /// and avoiding excessive telemetry noise in production environments.
-///
-/// # Examples
-///
-/// ```rust
-/// use lib_tracing::Levels;
-///
-/// // Default level
-/// let default_level = Levels::default();
-/// assert_eq!(default_level, Levels::WARN);
-///
-/// // Convert to tracing filter
-/// let filter = tracing::level_filters::LevelFilter::from(default_level);
-/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Levels {
@@ -100,17 +74,6 @@ pub enum Levels {
 /// The conversion is infallible and maintains the same semantic meaning for each level.
 impl From<Levels> for tracing::level_filters::LevelFilter {
     /// Converts a `Levels` to the corresponding `tracing::LevelFilter`.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_tracing::Levels;
-    /// use tracing::level_filters::LevelFilter;
-    ///
-    /// let telemetry_level = Levels::INFO;
-    /// let filter: LevelFilter = telemetry_level.into();
-    /// assert_eq!(filter, LevelFilter::INFO);
-    /// ```
     fn from(level: Levels) -> Self {
         match level {
             Levels::OFF => tracing::level_filters::LevelFilter::OFF,
@@ -129,15 +92,6 @@ impl std::fmt::Display for Levels {
     /// This implementation matches the serde serialization format, producing
     /// lowercase strings like "info", "debug", etc. This ensures consistency
     /// between serialized configuration and string representations.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_tracing::Levels;
-    ///
-    /// assert_eq!(format!("{}", Levels::INFO), "info");
-    /// assert_eq!(format!("{}", Levels::DEBUG), "debug");
-    /// ```
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let level_str = match self {
             Levels::OFF => "off",
@@ -162,16 +116,6 @@ impl std::str::FromStr for Levels {
     /// Parses a level from its lowercase string form -- the same vocabulary as
     /// [`std::fmt::Display`]/serde, so config files, environment variables, and CLI flags
     /// (`--log`) all accept the same values. Case-insensitive for CLI ergonomics.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_tracing::Levels;
-    ///
-    /// assert_eq!("debug".parse::<Levels>().unwrap(), Levels::DEBUG);
-    /// assert_eq!("DEBUG".parse::<Levels>().unwrap(), Levels::DEBUG);
-    /// assert!("verbose".parse::<Levels>().is_err());
-    /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
             "off" => Ok(Levels::OFF),

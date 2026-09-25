@@ -18,6 +18,7 @@ path = "src/main.rs"
 [lib]
 name = "bin_sync_server"
 path = "src/lib.rs"
+doctest = false
 
 [dependencies]
 ## -- Internal Dependencies --

@@ -12,24 +12,6 @@
 //! - **Database-ready**: SQLx integration for SQLite storage
 //! - **Sortable**: Built-in sorting and comparison operations
 //! - **Mock support**: Test utilities for generating predictable IDs
-//!
-//! ## Examples
-//!
-//! ```rust
-//! use lib_core::RowID;
-//!
-//! // Create a new time-ordered identifier
-//! let id = RowID::new();
-//!
-//! // Parse from string
-//! let parsed = "01800000-0000-7000-8000-000000000000".parse::<RowID>()?;
-//!
-//! // Compare IDs (time-ordered)
-//! let id1 = RowID::new();
-//! let id2 = RowID::new();
-//! assert!(id1 < id2); // id1 was created first
-//! # Ok::<(), Box<dyn std::error::Error>>(())
-//! ```
 
 /// A unique row identifier based on UUID v7.
 ///
@@ -47,27 +29,6 @@
 /// - Serialized as UUID strings in JSON
 /// - Validated on creation and deserialization to ensure version 7
 /// - Copy-able for efficient passing by value
-///
-/// # Examples
-///
-/// ```rust
-/// use lib_core::RowID;
-///
-/// // Create a new RowID with current timestamp
-/// let id = RowID::new();
-///
-/// // Parse from string (validates UUID v7)
-/// let parsed: RowID = "01800000-0000-7000-8000-000000000000".parse()?;
-///
-/// // Convert to UUID
-/// let uuid = id.into_uuid();
-///
-/// // Compare IDs (chronologically ordered)
-/// let id1 = RowID::new();
-/// let id2 = RowID::new();
-/// assert!(id1 < id2);
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
 #[derive(Debug, Copy, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct RowID(uuid::Uuid);
 
@@ -118,21 +79,6 @@ impl TryFrom<uuid::Uuid> for RowID {
     /// # Errors
     ///
     /// Returns [`RowIDError::InvalidVersion`] if the UUID is not version 7.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// // Valid v7 UUID
-    /// let uuid = uuid::Uuid::now_v7();
-    /// let row_id = RowID::try_from(uuid)?;
-    ///
-    /// // Invalid version will fail
-    /// let uuid_v4 = uuid::Uuid::new_v4();
-    /// assert!(RowID::try_from(uuid_v4).is_err());
-    /// # Ok::<(), lib_core::RowIDError>(())
-    /// ```
     fn try_from(uuid: uuid::Uuid) -> Result<Self, Self::Error> {
         if uuid.get_version_num() != 7 {
             return Err(RowIDError::InvalidVersion(uuid.get_version_num() as u8));
@@ -154,23 +100,6 @@ impl std::str::FromStr for RowID {
     ///
     /// Returns [`RowIDError::InvalidUuid`] if the string is not a valid UUID format,
     /// or [`RowIDError::InvalidVersion`] if the UUID is not version 7.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use std::str::FromStr;
-    /// use lib_core::RowID;
-    ///
-    /// // Using parse()
-    /// let id: RowID = "01800000-0000-7000-8000-000000000000".parse()?;
-    ///
-    /// // Using FromStr explicitly
-    /// let id = RowID::from_str("01800000-0000-7000-8000-000000000000")?;
-    ///
-    /// // Invalid format fails
-    /// assert!("not-a-uuid".parse::<RowID>().is_err());
-    /// # Ok::<(), lib_core::RowIDError>(())
-    /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let uuid = uuid::Uuid::parse_str(s).map_err(RowIDError::from)?;
         RowID::try_from(uuid)
@@ -211,16 +140,6 @@ impl RowID {
     /// UUID v7 ensures that RowIDs created in sequence will be naturally
     /// ordered by creation time, making them suitable for chronological sorting.
     /// This is the primary method for creating new identifiers.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id1 = RowID::new();
-    /// let id2 = RowID::new();
-    /// assert!(id1 < id2); // id1 was created before id2
-    /// ```
     pub fn new() -> Self {
         let row_id = uuid::Uuid::now_v7();
         Self(row_id)
@@ -235,18 +154,6 @@ impl RowID {
     /// # Arguments
     ///
     /// * `timestamp` - The UTC timestamp to embed in the UUID
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use chrono::{DateTime, Utc};
-    /// use lib_core::RowID;
-    ///
-    /// let timestamp = DateTime::parse_from_rfc3339("2023-01-01T00:00:00Z")
-    ///     .unwrap()
-    ///     .with_timezone(&Utc);
-    /// let id = RowID::from_timestamp(timestamp);
-    /// ```
     pub fn from_timestamp(timestamp: chrono::DateTime<chrono::Utc>) -> Self {
         #[allow(clippy::expect_used)]
         let nanos = timestamp
@@ -261,16 +168,6 @@ impl RowID {
     ///
     /// This consumes the RowID and returns the wrapped UUID v7.
     /// Use [`as_uuid()`](Self::as_uuid) if you need a reference without consuming.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id = RowID::new();
-    /// let uuid = id.into_uuid();
-    /// assert_eq!(uuid.get_version_num(), 7);
-    /// ```
     pub fn into_uuid(self) -> uuid::Uuid {
         self.0
     }
@@ -279,17 +176,6 @@ impl RowID {
     ///
     /// Use this when you need to access the UUID but want to keep the RowID.
     /// For consuming conversion, use [`into_uuid()`](Self::into_uuid).
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id = RowID::new();
-    /// let uuid_ref = id.as_uuid();
-    /// // `id` is still valid here
-    /// assert_eq!(uuid_ref.get_version_num(), 7);
-    /// ```
     pub fn as_uuid(&self) -> &uuid::Uuid {
         &self.0
     }
@@ -305,15 +191,6 @@ impl RowID {
     /// # Errors
     ///
     /// Returns [`RowIDError::InvalidVersion`] if the UUID is not version 7.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id = RowID::new();
-    /// assert!(id.validate().is_ok());
-    /// ```
     pub fn validate(&self) -> Result<(), RowIDError> {
         if self.0.get_version_num() != 7 {
             Err(RowIDError::InvalidVersion(self.0.get_version_num() as u8))
@@ -326,20 +203,6 @@ impl RowID {
     ///
     /// This sorts in-place, with earlier IDs (older timestamps) appearing first.
     /// For a non-mutating version, use [`sorted_ascending()`](Self::sorted_ascending).
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id1 = RowID::new();
-    /// let id2 = RowID::new();
-    /// let id3 = RowID::new();
-    ///
-    /// let mut ids = vec![id3, id1, id2];
-    /// RowID::sort_ascending(&mut ids);
-    /// assert_eq!(ids, vec![id1, id2, id3]); // chronological order
-    /// ```
     pub fn sort_ascending(ids: &mut [RowID]) {
         ids.sort();
     }
@@ -348,20 +211,6 @@ impl RowID {
     ///
     /// This sorts in-place, with later IDs (newer timestamps) appearing first.
     /// For a non-mutating version, use [`sorted_descending()`](Self::sorted_descending).
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id1 = RowID::new();
-    /// let id2 = RowID::new();
-    /// let id3 = RowID::new();
-    ///
-    /// let mut ids = vec![id1, id3, id2];
-    /// RowID::sort_descending(&mut ids);
-    /// assert_eq!(ids, vec![id3, id2, id1]); // newest first
-    /// ```
     pub fn sort_descending(ids: &mut [RowID]) {
         ids.sort_by(|a, b| b.cmp(a));
     }
@@ -370,20 +219,6 @@ impl RowID {
     ///
     /// This returns a new vector without modifying the input. The original
     /// collection is consumed. For in-place sorting, use [`sort_ascending()`](Self::sort_ascending).
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id1 = RowID::new();
-    /// let id2 = RowID::new();
-    /// let id3 = RowID::new();
-    ///
-    /// let ids = vec![id3, id1, id2];
-    /// let sorted = RowID::sorted_ascending(ids);
-    /// assert_eq!(sorted, vec![id1, id2, id3]);
-    /// ```
     pub fn sorted_ascending<I>(ids: I) -> Vec<RowID>
     where
         I: IntoIterator<Item = RowID>,
@@ -397,20 +232,6 @@ impl RowID {
     ///
     /// This returns a new vector without modifying the input. The original
     /// collection is consumed. For in-place sorting, use [`sort_descending()`](Self::sort_descending).
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id1 = RowID::new();
-    /// let id2 = RowID::new();
-    /// let id3 = RowID::new();
-    ///
-    /// let ids = vec![id1, id3, id2];
-    /// let sorted = RowID::sorted_descending(ids);
-    /// assert_eq!(sorted, vec![id3, id2, id1]); // newest first
-    /// ```
     pub fn sorted_descending<I>(ids: I) -> Vec<RowID>
     where
         I: IntoIterator<Item = RowID>,
@@ -424,20 +245,6 @@ impl RowID {
     ///
     /// Returns `None` if the collection is empty. Due to chronological ordering,
     /// the minimum RowID is the one that was created first.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id1 = RowID::new();
-    /// let id2 = RowID::new();
-    /// let id3 = RowID::new();
-    ///
-    /// let ids = vec![id2, id1, id3];
-    /// let earliest = RowID::min(ids).unwrap();
-    /// assert_eq!(earliest, id1); // id1 was created first
-    /// ```
     pub fn min<I>(ids: I) -> Option<RowID>
     where
         I: IntoIterator<Item = RowID>,
@@ -449,20 +256,6 @@ impl RowID {
     ///
     /// Returns `None` if the collection is empty. Due to chronological ordering,
     /// the maximum RowID is the one that was created most recently.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id1 = RowID::new();
-    /// let id2 = RowID::new();
-    /// let id3 = RowID::new();
-    ///
-    /// let ids = vec![id2, id1, id3];
-    /// let latest = RowID::max(ids).unwrap();
-    /// assert_eq!(latest, id3); // id3 was created last
-    /// ```
     pub fn max<I>(ids: I) -> Option<RowID>
     where
         I: IntoIterator<Item = RowID>,
@@ -473,19 +266,6 @@ impl RowID {
     /// Check if this RowID was created before another RowID.
     ///
     /// This is equivalent to `self < other` but provides a more semantic method name.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id1 = RowID::new();
-    /// std::thread::sleep(std::time::Duration::from_millis(1));
-    /// let id2 = RowID::new();
-    ///
-    /// assert!(id1.is_before(&id2));
-    /// assert!(!id2.is_before(&id1));
-    /// ```
     pub fn is_before(&self, other: &RowID) -> bool {
         self < other
     }
@@ -493,19 +273,6 @@ impl RowID {
     /// Check if this RowID was created after another RowID.
     ///
     /// This is equivalent to `self > other` but provides a more semantic method name.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id1 = RowID::new();
-    /// std::thread::sleep(std::time::Duration::from_millis(1));
-    /// let id2 = RowID::new();
-    ///
-    /// assert!(id2.is_after(&id1));
-    /// assert!(!id1.is_after(&id2));
-    /// ```
     pub fn is_after(&self, other: &RowID) -> bool {
         self > other
     }
@@ -517,15 +284,6 @@ impl RowID {
     /// The generated RowID is always a valid UUID v7.
     ///
     /// **Note**: This function is only available in test builds.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let mock_id = RowID::mock();
-    /// assert_eq!(mock_id.as_uuid().get_version_num(), 7);
-    /// ```
     pub fn mock() -> Self {
         use chrono::{DateTime, Utc};
         use fake::Fake;
@@ -560,19 +318,6 @@ impl RowID {
     /// # Arguments
     ///
     /// * `date_time` - The UTC timestamp to embed in the UUID
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use chrono::{DateTime, Utc};
-    /// use lib_core::RowID;
-    ///
-    /// let timestamp = DateTime::parse_from_rfc3339("2023-01-01T00:00:00Z")
-    ///     .unwrap()
-    ///     .with_timezone(&Utc);
-    /// let id = RowID::mock_from_datetime(timestamp);
-    /// assert_eq!(id.as_uuid().get_version_num(), 7);
-    /// ```
     #[cfg(test)]
     pub fn mock_from_datetime(date_time: chrono::DateTime<chrono::Utc>) -> Self {
         // Convert datetime to a UUID timestamp
@@ -596,16 +341,6 @@ impl RowID {
     ///
     /// **Warning**: This does not validate that the UUID is version 7.
     /// Using non-v7 UUIDs will break ordering guarantees.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use uuid::Uuid;
-    /// use lib_core::RowID;
-    ///
-    /// let uuid = Uuid::now_v7();
-    /// let id = RowID::from_uuid(uuid);
-    /// ```
     pub fn from_uuid(uuid: uuid::Uuid) -> Self {
         RowID(uuid)
     }
@@ -619,19 +354,6 @@ impl RowID {
     ///
     /// Returns [`RowIDError::InvalidUuid`] if the string is not a valid UUID format,
     /// or [`RowIDError::InvalidVersion`] if the UUID is not version 7.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// // Using from_string
-    /// let id = RowID::from_string("01800000-0000-7000-8000-000000000000")?;
-    ///
-    /// // Prefer using parse() for idiomatic code
-    /// let id: RowID = "01800000-0000-7000-8000-000000000000".parse()?;
-    /// # Ok::<(), lib_core::RowIDError>(())
-    /// ```
     pub fn from_string(s: &str) -> Result<Self, RowIDError> {
         s.parse()
     }
@@ -649,19 +371,6 @@ impl RowID {
     /// # Errors
     ///
     /// Returns [`RowIDError::TypeCast`] if the provided i64 is negative.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let id = RowID::from_i64(12345)?;
-    /// assert_eq!(id.to_i64(), 12345);
-    ///
-    /// // Negative values are rejected
-    /// assert!(RowID::from_i64(-1).is_err());
-    /// # Ok::<(), lib_core::RowIDError>(())
-    /// ```
     pub fn from_i64(id: i64) -> Result<Self, RowIDError> {
         if id < 0 {
             return Err(RowIDError::TypeCast("Negative IDs not allowed".to_string()));
@@ -683,18 +392,6 @@ impl RowID {
     ///
     /// **Warning**: Calling this on RowIDs created with [`new()`](Self::new) or
     /// other methods will return meaningless values.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::RowID;
-    ///
-    /// let original_id = 12345i64;
-    /// let row_id = RowID::from_i64(original_id)?;
-    /// let extracted_id = row_id.to_i64();
-    /// assert_eq!(original_id, extracted_id);
-    /// # Ok::<(), lib_core::RowIDError>(())
-    /// ```
     pub fn to_i64(&self) -> i64 {
         let uuid_bytes = self.0.as_bytes();
         #[allow(clippy::expect_used)]
@@ -810,6 +507,23 @@ mod tests {
     fn test_row_id_mock() {
         let mock_id = RowID::mock();
         assert_eq!(mock_id.as_uuid().get_version_num(), 7);
+    }
+
+    #[test]
+    fn test_mock_from_datetime_orders_by_timestamp() {
+        use chrono::{DateTime, Utc};
+        let earlier = DateTime::parse_from_rfc3339("2023-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let later = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        let earlier_id = RowID::mock_from_datetime(earlier);
+        let later_id = RowID::mock_from_datetime(later);
+
+        assert_eq!(earlier_id.as_uuid().get_version_num(), 7);
+        assert!(earlier_id < later_id);
     }
 
     #[test]

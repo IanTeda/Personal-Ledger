@@ -20,16 +20,6 @@
 /// Assets = Liabilities + Equity
 ///
 /// Income increases assets or equity, while expenses decrease assets or increase liabilities.
-///
-/// # Examples
-///
-/// ```rust
-/// use lib_core::CategoryTypes;
-///
-/// let category = CategoryTypes::Asset;
-/// assert_eq!(category.as_str(), "asset");
-/// assert!(category.is_asset());
-/// ```
 #[derive(Debug, Clone, Default, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
 pub enum CategoryTypes {
     /// Resources owned that have economic value (cash, investments, property).
@@ -71,19 +61,6 @@ impl std::str::FromStr for CategoryTypes {
     /// # Errors
     ///
     /// Returns `CategoryTypesError::InvalidCategoryType` if the string doesn't match any valid category type.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use std::str::FromStr;
-    /// use lib_core::CategoryTypes;
-    ///
-    /// let category = CategoryTypes::from_str("asset").unwrap();
-    /// assert_eq!(category, CategoryTypes::Asset);
-    ///
-    /// // Invalid strings return an error
-    /// assert!(CategoryTypes::from_str("invalid").is_err());
-    /// ```
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
             "asset" => Ok(CategoryTypes::Asset),
@@ -98,15 +75,6 @@ impl std::str::FromStr for CategoryTypes {
 
 impl CategoryTypes {
     /// Returns the string representation of the category type (lowercase).
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::CategoryTypes;
-    ///
-    /// assert_eq!(CategoryTypes::Asset.as_str(), "asset");
-    /// assert_eq!(CategoryTypes::Expense.as_str(), "expense");
-    /// ```
     pub fn as_str(&self) -> &'static str {
         match self {
             CategoryTypes::Asset => "asset",
@@ -120,16 +88,6 @@ impl CategoryTypes {
     /// Returns all valid category types as a slice.
     ///
     /// Useful for validation, UI dropdowns, or iteration.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::CategoryTypes;
-    ///
-    /// let all_types = CategoryTypes::all();
-    /// assert_eq!(all_types.len(), 5);
-    /// assert!(all_types.contains(&CategoryTypes::Asset));
-    /// ```
     pub fn all() -> &'static [CategoryTypes] {
         &[
             CategoryTypes::Asset,
@@ -144,15 +102,6 @@ impl CategoryTypes {
     ///
     /// This method randomly selects one of the five category types using
     /// the `fake` crate, useful for generating test data and mock objects.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::CategoryTypes;
-    ///
-    /// let random_type = CategoryTypes::mock();
-    /// // random_type will be one of: Asset, Liability, Income, Expense, or Equity
-    /// ```
     pub fn mock() -> Self {
         use fake::Fake;
 
@@ -163,71 +112,26 @@ impl CategoryTypes {
     }
 
     /// Returns true if this category type represents an asset.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::CategoryTypes;
-    ///
-    /// assert!(CategoryTypes::Asset.is_asset());
-    /// assert!(!CategoryTypes::Liability.is_asset());
-    /// ```
     pub fn is_asset(&self) -> bool {
         matches!(self, CategoryTypes::Asset)
     }
 
     /// Returns true if this category type represents a liability.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::CategoryTypes;
-    ///
-    /// assert!(CategoryTypes::Liability.is_liability());
-    /// assert!(!CategoryTypes::Asset.is_liability());
-    /// ```
     pub fn is_liability(&self) -> bool {
         matches!(self, CategoryTypes::Liability)
     }
 
     /// Returns true if this category type represents income.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::CategoryTypes;
-    ///
-    /// assert!(CategoryTypes::Income.is_income());
-    /// assert!(!CategoryTypes::Expense.is_income());
-    /// ```
     pub fn is_income(&self) -> bool {
         matches!(self, CategoryTypes::Income)
     }
 
     /// Returns true if this category type represents an expense.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::CategoryTypes;
-    ///
-    /// assert!(CategoryTypes::Expense.is_expense());
-    /// assert!(!CategoryTypes::Income.is_expense());
-    /// ```
     pub fn is_expense(&self) -> bool {
         matches!(self, CategoryTypes::Expense)
     }
 
     /// Returns true if this category type represents equity.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::CategoryTypes;
-    ///
-    /// assert!(CategoryTypes::Equity.is_equity());
-    /// assert!(!CategoryTypes::Asset.is_equity());
-    /// ```
     pub fn is_equity(&self) -> bool {
         matches!(self, CategoryTypes::Equity)
     }
@@ -248,18 +152,6 @@ impl CategoryTypes {
     /// # Errors
     ///
     /// Returns a `String` error message if the provided i32 value is not valid.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use lib_core::CategoryTypes;
-    ///
-    /// let asset = CategoryTypes::from_rpc_i32(1).unwrap();
-    /// assert_eq!(asset, CategoryTypes::Asset);
-    ///
-    /// let invalid = CategoryTypes::from_rpc_i32(0);
-    /// assert!(invalid.is_err());
-    /// ```
     pub fn from_rpc_i32(value: i32) -> Result<Self, String> {
         match value {
             1 => Ok(CategoryTypes::Asset),
@@ -329,16 +221,6 @@ impl<'r> sqlx::Decode<'r, sqlx::Any> for CategoryTypes {
 /// This wrapper provides SQLx database integration for UTC timestamps, storing them
 /// as RFC 3339 formatted strings in the database for maximum compatibility across
 /// different database backends (SQLite and PostgreSQL).
-///
-/// # Examples
-///
-/// ```rust,no_run
-/// use chrono::Utc;
-/// // Note: UtcDateTime is internal and not exposed in the public API.
-/// // It's used internally for database serialization.
-/// let now = Utc::now();
-/// // let wrapped = UtcDateTime::from(now);
-/// ```
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UtcDateTime(pub chrono::DateTime<chrono::Utc>);
 
@@ -522,5 +404,19 @@ mod tests {
         assert!(CategoryTypes::from_rpc_i32(0).is_err()); // UNSPECIFIED
         assert!(CategoryTypes::from_rpc_i32(6).is_err());
         assert!(CategoryTypes::from_rpc_i32(999).is_err());
+    }
+
+    #[test]
+    fn test_predicates_match_only_their_own_variant() {
+        for category in CategoryTypes::all() {
+            assert_eq!(category.is_asset(), *category == CategoryTypes::Asset);
+            assert_eq!(
+                category.is_liability(),
+                *category == CategoryTypes::Liability
+            );
+            assert_eq!(category.is_income(), *category == CategoryTypes::Income);
+            assert_eq!(category.is_expense(), *category == CategoryTypes::Expense);
+            assert_eq!(category.is_equity(), *category == CategoryTypes::Equity);
+        }
     }
 }

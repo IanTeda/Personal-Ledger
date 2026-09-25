@@ -83,6 +83,8 @@ let token: SecretString = api_response.token.into();
 
 **Never comment the WHAT:** Well-named identifiers already say what the code does. Don't repeat it.
 
+**No doctests:** Don't put Rust code examples (`# Examples` sections, ` ```rust ` or untagged fences) in `///` or `//!` comments. Usage is specified by unit tests in the module's `#[cfg(test)] mod tests`, and uncompiled examples go stale silently. Every library crate sets `[lib] doctest = false`, so a stray example wouldn't even run. Non-Rust fences (` ```ini `, ` ```bash `) that illustrate config or shell usage are fine.
+
 ## Patterns
 
 **Builder pattern:** For complex construction (especially with optional fields). Use `builder.rs` for the builder struct.
@@ -99,6 +101,7 @@ let token: SecretString = api_response.token.into();
 - [ ] All fallible functions return the crate's `Result` (or a compatible error type).
 - [ ] Secrets are wrapped in `secrecy::SecretString` or `SecretBox`.
 - [ ] Comments explain the WHY, not the WHAT.
+- [ ] No Rust code examples in doc comments; usage is covered by unit tests.
 - [ ] Australian English in comments and docs.
 - [ ] No `unsafe` code.
 - [ ] External crate errors map with `#[from]`.

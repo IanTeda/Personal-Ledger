@@ -19,20 +19,8 @@
 //!
 //! ## Usage
 //!
-//! ```rust,ignore
-//! use lib_tracing::{init, TracingLevels};
-//!
-//! // Initialize with default INFO level, console output only
-//! init(None, None)?;
-//!
-//! // Initialize with custom DEBUG level, also writing to a log file. The returned guard
-//! // must be kept alive for as long as file logging is needed -- dropping it stops the
-//! // background worker that flushes buffered log lines to disk.
-//! let level = TracingLevels::DEBUG;
-//! let _guard = init(Some(&level), Some(std::path::Path::new("personal-ledger.log")))?;
-//!
-//! # Ok::<(), lib_tracing::TelemetryError>(())
-//! ```
+//! Call `init` once at startup and hold any returned guard for the life of `main`: dropping it
+//! stops the background worker that flushes buffered log lines to the log file.
 
 use std::path::Path;
 
