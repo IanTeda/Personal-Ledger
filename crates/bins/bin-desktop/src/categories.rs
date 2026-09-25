@@ -413,6 +413,66 @@ pub fn delete_category(
     Ok(())
 }
 
+/// Information about a category in the tree view (used for rendering).
+#[derive(Debug, Clone)]
+pub struct TreeNode {
+    pub id: u32,
+    pub name: String,
+    pub depth: u32,
+    pub is_leaf: bool,
+    pub is_expanded: bool,
+    pub has_children: bool,
+}
+
+/// Get tree view rows in display order, respecting expand/collapse state.
+/// Only includes nodes and their descendants if the node is expanded.
+pub fn tree_rows(
+    categories: &[Category],
+    expanded: &[u32],
+) -> Vec<TreeNode> {
+    fn walk(
+        categories: &[Category],
+        expanded: &[u32],
+        parent: Option<u32>,
+        out: &mut Vec<TreeNode>,
+    ) {
+        for category in categories.iter().filter(|c| c.parent == parent) {
+            let d = depth(categories, category.id);
+            let is_leaf = is_leaf(categories, category.id);
+            let has_children = !is_leaf;
+            let is_expanded = expanded.contains(&category.id);
+
+            out.push(TreeNode {
+                id: category.id,
+                name: category.name.clone(),
+                depth: d,
+                is_leaf,
+                is_expanded,
+                has_children,
+            });
+
+            if is_expanded {
+                walk(categories, expanded, Some(category.id), out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(categories, expanded, None, &mut out);
+    out
+}
+
+/// Toggle the expanded state of a category (only for non-leaf categories).
+pub fn toggle_expanded(expanded: &mut Vec<u32>, id: u32, is_leaf: bool) {
+    if is_leaf {
+        return;
+    }
+    if expanded.contains(&id) {
+        expanded.retain(|&i| i != id);
+    } else {
+        expanded.push(id);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -650,5 +710,63 @@ mod tests {
         let result = edit_category(&mut categories, housing, "Real Estate".to_string());
         assert!(result.is_ok());
         assert_eq!(get(&categories, housing).unwrap().name, "Real Estate");
+    }
+
+    #[test]
+    fn tree_rows_includes_all_when_all_expanded() {
+        let categories = default_categories();
+        let expanded = vec![1, 3, 6, 9, 10, 11, 12]; // All parents expanded
+        let rows = tree_rows(&categories, &expanded);
+        assert_eq!(rows.len(), categories.len(), "should include all categories when all expanded");
+    }
+
+    #[test]
+    fn tree_rows_respects_collapsed_state() {
+        let categories = default_categories();
+        let expanded = vec![1]; // Only Housing expanded, not Food
+        let rows = tree_rows(&categories, &expanded);
+
+        // Should include Housing and its children (Rent, Utilities, Electricity, Water)
+        // All top-level categories appear, but Food's children don't (it's not expanded)
+        assert!(rows.iter().any(|r| r.id == 1)); // Housing (expanded)
+        assert!(rows.iter().any(|r| r.id == 2)); // Rent (child of Housing, shown)
+        assert!(rows.iter().any(|r| r.id == 6)); // Food (top-level, always shown)
+        assert!(!rows.iter().any(|r| r.id == 7)); // Groceries (child of Food, not shown because Food not expanded)
+    }
+
+    #[test]
+    fn tree_rows_depth_increases_for_nested() {
+        let categories = default_categories();
+        let expanded = vec![1, 3, 6];
+        let rows = tree_rows(&categories, &expanded);
+
+        let housing = rows.iter().find(|r| r.id == 1).unwrap();
+        let utilities = rows.iter().find(|r| r.id == 3).unwrap();
+        let electricity = rows.iter().find(|r| r.id == 4).unwrap();
+
+        assert_eq!(housing.depth, 0);
+        assert_eq!(utilities.depth, 1);
+        assert_eq!(electricity.depth, 2);
+    }
+
+    #[test]
+    fn toggle_expanded_adds_and_removes() {
+        let mut expanded = vec![1];
+        let food = find_by_name(&default_categories(), "Food").unwrap();
+
+        toggle_expanded(&mut expanded, food, false);
+        assert!(expanded.contains(&food));
+
+        toggle_expanded(&mut expanded, food, false);
+        assert!(!expanded.contains(&food));
+    }
+
+    #[test]
+    fn toggle_expanded_ignores_leaves() {
+        let mut expanded = vec![];
+        let groceries = find_by_name(&default_categories(), "Groceries").unwrap();
+
+        toggle_expanded(&mut expanded, groceries, true);
+        assert!(!expanded.contains(&groceries), "leaves should not be expanded");
     }
 }
