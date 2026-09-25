@@ -179,7 +179,8 @@ pub fn rollup_month_to_date(
     } else {
         let mut total = BigDecimal::from(0);
         for child_id in children {
-            let Money(amount) = month_to_date_spent(categories, transactions, accounts, child_id, today);
+            let Money(amount) =
+                month_to_date_spent(categories, transactions, accounts, child_id, today);
             total = total + amount;
         }
         Money(total)
@@ -258,7 +259,10 @@ pub enum CategoryError {
 /// The categories dialog's state: Add { parent } / Edit(id) / Delete(id).
 pub enum CategoriesDialog {
     /// Adding a new category under a parent (or None for top-level).
-    Add { parent_id: Option<u32>, form: CategoryForm },
+    Add {
+        parent_id: Option<u32>,
+        form: CategoryForm,
+    },
     /// Editing the category with this [`Category::id`].
     Edit(u32, CategoryForm),
     /// Deleting the category with this [`Category::id`], once its name has been typed back.
@@ -309,7 +313,9 @@ fn is_descendant(categories: &[Category], parent_id: u32, child_id: u32) -> bool
         .filter(|c| c.parent == Some(parent_id))
         .map(|c| c.id)
         .collect();
-    children.iter().any(|&id| is_descendant(categories, id, child_id))
+    children
+        .iter()
+        .any(|&id| is_descendant(categories, id, child_id))
 }
 
 /// Insert a new category with validation.
@@ -351,7 +357,10 @@ pub fn edit_category(
     id: u32,
     name: String,
 ) -> Result<(), CategoryError> {
-    let category = categories.iter_mut().find(|c| c.id == id).ok_or(CategoryError::NotFound)?;
+    let category = categories
+        .iter_mut()
+        .find(|c| c.id == id)
+        .ok_or(CategoryError::NotFound)?;
     category.name = name;
     Ok(())
 }
@@ -366,7 +375,10 @@ pub fn move_category(
     id: u32,
     new_parent_id: Option<u32>,
 ) -> Result<(), CategoryError> {
-    let category = categories.iter().find(|c| c.id == id).ok_or(CategoryError::NotFound)?;
+    let category = categories
+        .iter()
+        .find(|c| c.id == id)
+        .ok_or(CategoryError::NotFound)?;
     let category_type = category.category_type.clone();
 
     if let Some(parent_id) = new_parent_id {
@@ -392,10 +404,7 @@ pub fn move_category(
 }
 
 /// Delete a category (leaf only). Re-points its splits to Uncategorised.
-pub fn delete_category(
-    categories: &mut Vec<Category>,
-    id: u32,
-) -> Result<(), CategoryError> {
+pub fn delete_category(categories: &mut Vec<Category>, id: u32) -> Result<(), CategoryError> {
     let category = get(categories, id).ok_or(CategoryError::NotFound)?;
     let category_type = category.category_type.clone();
 
@@ -426,10 +435,7 @@ pub struct TreeNode {
 
 /// Get tree view rows in display order, respecting expand/collapse state.
 /// Only includes nodes and their descendants if the node is expanded.
-pub fn tree_rows(
-    categories: &[Category],
-    expanded: &[u32],
-) -> Vec<TreeNode> {
+pub fn tree_rows(categories: &[Category], expanded: &[u32]) -> Vec<TreeNode> {
     fn walk(
         categories: &[Category],
         expanded: &[u32],
@@ -601,23 +607,49 @@ mod tests {
         let mut categories = default_categories();
         let original_count = categories.len();
 
-        let uncategorised_expense = get_or_create_uncategorised(&mut categories, CategoryTypes::Expense);
+        let uncategorised_expense =
+            get_or_create_uncategorised(&mut categories, CategoryTypes::Expense);
         assert_eq!(categories.len(), original_count + 1);
-        assert_eq!(categories.iter().find(|c| c.id == uncategorised_expense).unwrap().name, "Uncategorised");
+        assert_eq!(
+            categories
+                .iter()
+                .find(|c| c.id == uncategorised_expense)
+                .unwrap()
+                .name,
+            "Uncategorised"
+        );
 
-        let uncategorised_expense_again = get_or_create_uncategorised(&mut categories, CategoryTypes::Expense);
-        assert_eq!(uncategorised_expense, uncategorised_expense_again, "should reuse");
-        assert_eq!(categories.len(), original_count + 1, "should not create duplicate");
+        let uncategorised_expense_again =
+            get_or_create_uncategorised(&mut categories, CategoryTypes::Expense);
+        assert_eq!(
+            uncategorised_expense, uncategorised_expense_again,
+            "should reuse"
+        );
+        assert_eq!(
+            categories.len(),
+            original_count + 1,
+            "should not create duplicate"
+        );
 
-        let _uncategorised_income = get_or_create_uncategorised(&mut categories, CategoryTypes::Income);
-        assert_eq!(categories.len(), original_count + 2, "should create second for Income type");
+        let _uncategorised_income =
+            get_or_create_uncategorised(&mut categories, CategoryTypes::Income);
+        assert_eq!(
+            categories.len(),
+            original_count + 2,
+            "should create second for Income type"
+        );
     }
 
     #[test]
     fn insert_category_succeeds_with_valid_parent() {
         let mut categories = default_categories();
         let food = find_by_name(&categories, "Food").unwrap();
-        let result = insert_category(&mut categories, "Takeaway".to_string(), Some(food), CategoryTypes::Expense);
+        let result = insert_category(
+            &mut categories,
+            "Takeaway".to_string(),
+            Some(food),
+            CategoryTypes::Expense,
+        );
         assert!(result.is_ok());
         let new_id = result.unwrap();
         let new_cat = get(&categories, new_id).unwrap();
@@ -629,14 +661,24 @@ mod tests {
     fn insert_category_rejects_mismatched_type() {
         let mut categories = default_categories();
         let salary = find_by_name(&categories, "Salary").unwrap();
-        let result = insert_category(&mut categories, "Bonus".to_string(), Some(salary), CategoryTypes::Expense);
+        let result = insert_category(
+            &mut categories,
+            "Bonus".to_string(),
+            Some(salary),
+            CategoryTypes::Expense,
+        );
         assert_eq!(result, Err(CategoryError::TypeMismatch));
     }
 
     #[test]
     fn insert_category_rejects_nonexistent_parent() {
         let mut categories = default_categories();
-        let result = insert_category(&mut categories, "Invalid".to_string(), Some(999), CategoryTypes::Expense);
+        let result = insert_category(
+            &mut categories,
+            "Invalid".to_string(),
+            Some(999),
+            CategoryTypes::Expense,
+        );
         assert_eq!(result, Err(CategoryError::ParentNotFound));
     }
 
@@ -645,7 +687,12 @@ mod tests {
         let mut categories = default_categories();
         let electricity = find_by_name(&categories, "Electricity").unwrap();
         // Electricity is at depth 2, can't add a child
-        let result = insert_category(&mut categories, "SubElectric".to_string(), Some(electricity), CategoryTypes::Expense);
+        let result = insert_category(
+            &mut categories,
+            "SubElectric".to_string(),
+            Some(electricity),
+            CategoryTypes::Expense,
+        );
         assert_eq!(result, Err(CategoryError::DepthExceeded));
     }
 
@@ -717,7 +764,11 @@ mod tests {
         let categories = default_categories();
         let expanded = vec![1, 3, 6, 9, 10, 11, 12]; // All parents expanded
         let rows = tree_rows(&categories, &expanded);
-        assert_eq!(rows.len(), categories.len(), "should include all categories when all expanded");
+        assert_eq!(
+            rows.len(),
+            categories.len(),
+            "should include all categories when all expanded"
+        );
     }
 
     #[test]
@@ -767,6 +818,9 @@ mod tests {
         let groceries = find_by_name(&default_categories(), "Groceries").unwrap();
 
         toggle_expanded(&mut expanded, groceries, true);
-        assert!(!expanded.contains(&groceries), "leaves should not be expanded");
+        assert!(
+            !expanded.contains(&groceries),
+            "leaves should not be expanded"
+        );
     }
 }

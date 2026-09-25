@@ -32,13 +32,13 @@ fn cents_money(cents: i64) -> Money {
 /// All budgets are in the base Unit (unit_id 1, typically AUD).
 pub fn default_budgets() -> Vec<Budget> {
     vec![
-        budget(1, 1, 1, cents_money(150_000)), // Housing: 1500.00
-        budget(2, 2, 1, cents_money(100_000)), // Rent: 1000.00 (child of Housing)
-        budget(3, 3, 1, cents_money(50_000)),  // Utilities: 500.00 (child of Housing)
-        budget(4, 6, 1, cents_money(80_000)),  // Food: 800.00
-        budget(5, 7, 1, cents_money(50_000)),  // Groceries: 500.00 (child of Food)
-        budget(6, 8, 1, cents_money(30_000)),  // Dining: 300.00 (child of Food, OVER BUDGET in seed)
-        budget(7, 9, 1, cents_money(60_000)),  // Transport: 600.00
+        budget(1, 1, 1, cents_money(150_000)),  // Housing: 1500.00
+        budget(2, 2, 1, cents_money(100_000)),  // Rent: 1000.00 (child of Housing)
+        budget(3, 3, 1, cents_money(50_000)),   // Utilities: 500.00 (child of Housing)
+        budget(4, 6, 1, cents_money(80_000)),   // Food: 800.00
+        budget(5, 7, 1, cents_money(50_000)),   // Groceries: 500.00 (child of Food)
+        budget(6, 8, 1, cents_money(30_000)), // Dining: 300.00 (child of Food, OVER BUDGET in seed)
+        budget(7, 9, 1, cents_money(60_000)), // Transport: 600.00
         budget(8, 10, 1, cents_money(40_000)), // Household: 400.00
         budget(9, 11, 1, cents_money(400_000)), // Salary: 4000.00 (Income)
         budget(10, 12, 1, cents_money(50_000)), // Interest: 500.00 (Income)
@@ -46,8 +46,14 @@ pub fn default_budgets() -> Vec<Budget> {
 }
 
 /// Find a budget for a specific category and unit.
-pub fn find_by_category_and_unit(budgets: &[Budget], category_id: u32, unit_id: u32) -> Option<&Budget> {
-    budgets.iter().find(|b| b.category_id == category_id && b.unit_id == unit_id)
+pub fn find_by_category_and_unit(
+    budgets: &[Budget],
+    category_id: u32,
+    unit_id: u32,
+) -> Option<&Budget> {
+    budgets
+        .iter()
+        .find(|b| b.category_id == category_id && b.unit_id == unit_id)
 }
 
 /// Calculate the rollup budget for a category (sum of its children if they exist, otherwise its own budget).
@@ -121,6 +127,9 @@ mod tests {
         let budgets = default_budgets();
         let dining_budget = find_by_category_and_unit(&budgets, 8, 1); // Dining, base unit
         assert!(dining_budget.is_some());
-        assert_eq!(dining_budget.unwrap().monthly_amount.0, BigDecimal::new(30_000.into(), 2));
+        assert_eq!(
+            dining_budget.unwrap().monthly_amount.0,
+            BigDecimal::new(30_000.into(), 2)
+        );
     }
 }

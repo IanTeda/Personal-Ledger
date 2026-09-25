@@ -65,6 +65,7 @@ use crate::{
     transactions::{self, Transaction},
     view::{
         accounts as accounts_view,
+        categories as categories_view,
         dashboard::Dashboard,
         help as help_view,
         settings::{self as settings_view, SettingsBodyProps},
@@ -338,7 +339,7 @@ impl Shell {
             categories,
             budgets: crate::budgets::default_budgets(),
             categories_selected: 0,
-            categories_expanded: vec![1, 3, 6],  // Housing, Utilities, Food expanded by default
+            categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
             categories_dialog: None,
             payees,
             tags,
@@ -1588,6 +1589,26 @@ impl Shell {
         cx.notify();
     }
 
+    fn handle_categories_add_click(&mut self, cx: &mut Context<Self>) {
+        // Not yet built (issue #273)
+        cx.notify();
+    }
+
+    fn handle_categories_edit_click(&mut self, cx: &mut Context<Self>) {
+        // Not yet built (issue #274)
+        cx.notify();
+    }
+
+    fn handle_categories_delete_click(&mut self, cx: &mut Context<Self>) {
+        // Not yet built (issue #275)
+        cx.notify();
+    }
+
+    fn handle_categories_disclosure_click(&mut self, id: u32, cx: &mut Context<Self>) {
+        categories::toggle_expanded(&mut self.categories_expanded, id, false);
+        cx.notify();
+    }
+
     /// The Units section's own "+ Add unit" button (issue #184, replacing the stub #177 left
     /// behind): opens the Add unit dialog rather than flashing a status message.
     fn handle_add_unit_click(&mut self, cx: &mut Context<Self>) {
@@ -2501,6 +2522,50 @@ impl Render for Shell {
             on_edit_click: on_accounts_edit_click,
             on_delete_click: on_accounts_delete_click,
         };
+        let on_categories_add_click: categories_view::OnAddClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_categories_add_click(cx));
+            })
+        };
+        let on_categories_add_sub_click: categories_view::OnAddSubClick = {
+            let entity = entity.clone();
+            Rc::new(move |_id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_categories_add_click(cx));
+            })
+        };
+        let on_categories_edit_click: categories_view::OnEditClick = {
+            let entity = entity.clone();
+            Rc::new(move |_id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_categories_edit_click(cx));
+            })
+        };
+        let on_categories_delete_click: categories_view::OnDeleteClick = {
+            let entity = entity.clone();
+            Rc::new(move |_id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_categories_delete_click(cx));
+            })
+        };
+        let on_categories_disclosure_click: categories_view::OnDisclosureClick = {
+            let entity = entity.clone();
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_categories_disclosure_click(id, cx));
+            })
+        };
+        let categories_page = categories_view::CategoriesPageProps {
+            categories: &self.categories,
+            budgets: &self.budgets,
+            transactions: &self.transactions,
+            selected_index: None,
+            expanded: &self.categories_expanded,
+            base_unit_id: 1,
+            today: self.today,
+            on_add_click: on_categories_add_click,
+            on_add_sub_click: on_categories_add_sub_click,
+            on_edit_click: on_categories_edit_click,
+            on_delete_click: on_categories_delete_click,
+            on_disclosure_click: on_categories_disclosure_click,
+        };
         let on_transactions_row_click: transactions_view::OnRowClick = {
             let entity = entity.clone();
             Rc::new(move |index, _window, cx| {
@@ -2724,6 +2789,7 @@ impl Render for Shell {
                                 on_empty_state_command_click,
                                 PageProps {
                                     accounts: accounts_page,
+                                    categories: categories_page,
                                     transactions: transactions_page,
                                 },
                                 SettingsPanelProps {
@@ -2868,6 +2934,7 @@ impl Render for Shell {
 /// Transactions (built only while it is the active page, hence the `Option`).
 struct PageProps<'a> {
     accounts: accounts_view::AccountsPageProps<'a>,
+    categories: categories_view::CategoriesPageProps<'a>,
     transactions: Option<transactions_view::TransactionsPageProps>,
 }
 
@@ -2934,6 +3001,9 @@ fn render_view(
 ) -> gpui::AnyElement {
     if noun == Noun::Accounts {
         return accounts_view::render(focused, scroll_handle, pages.accounts);
+    }
+    if noun == Noun::Categories {
+        return categories_view::render(focused, scroll_handle, pages.categories);
     }
     if noun == Noun::Transactions
         && let Some(transactions) = pages.transactions
