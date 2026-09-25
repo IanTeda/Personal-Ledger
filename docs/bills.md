@@ -110,3 +110,7 @@ This document captures the shape agreed so far — it is not a functional spec, 
 * The exact cadence/trigger for the process that keeps future Bill Schedule entries populated — ADR-0019 records why entries must be materialised ahead of time, not when that process runs.
 
 A planned Bill can be merged with an actual transaction, linking and marking the bill as paid
+
+## For developers
+
+Curious how bills are structured in the codebase, or planning to change them? See the [Bills development documentation](development/bills.md).

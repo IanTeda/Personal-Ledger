@@ -48,7 +48,7 @@ Personal Ledger uses the INI (Initialisation) file format for static configurati
 ### Basic Syntax
 
 * Sections: Enclosed in square brackets [], e.g., [Personal-Ledger]
-* Keys and Values: key = value, e.g., Tracing_Level = "debug"
+* Keys and Values: key = value, e.g., log = "debug"
 * Comments: Lines starting with # or ; are comments.
 * Case Sensitivity: Section names are case-insensitive (e.g., [Personal-Ledger] and [personal-ledger] are equivalent)
 
@@ -349,3 +349,7 @@ References
 Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s `[Personal-Ledger] file`, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, decimal/thousands separator, default Unit — is a Preference instead, stored in the Ledger’s own database, not here.
 
 lib-config is shared by all three consumers (bin-tui, bin-desktop, bin-sync-server), but they don’t all see the same sections or search the same locations — see Configuration Hierarchy and Sync Server Section below.
+
+## For developers
+
+Curious how settings are structured in the codebase, or planning to change them? See the [Settings development documentation](development/settings.md).

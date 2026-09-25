@@ -285,3 +285,7 @@ XAU	Gold	Commodity	AUD	4
 
 
 This structure lets Personal Ledger represent cash, investments, digital assets, commodities, and custom instruments with a single, consistent model.
+
+## For developers
+
+Curious how units are structured in the codebase, or planning to change them? See the [Units development documentation](development/units.md).

@@ -38,3 +38,7 @@ See [Categories](categories.md) and [Tags](tags.md) for more.
 ## Getting around
 
 Press `g` then `p` to jump to Payees from anywhere. For the full set of keys, see [Getting around](getting-around.md).
+
+## For developers
+
+Curious how payees are structured in the codebase, or planning to change them? See the [Payees development documentation](development/payees.md).

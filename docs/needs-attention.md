@@ -63,3 +63,7 @@ This document captures the shape agreed so far — it is not a functional spec, 
 - Any formal Alert/Outstanding severity tier — purely a display decision (already sketched as `is_alert` in the dummy dashboard code), not a domain concept.
 - A calendar-driven "end of month" system category — dropped for simplicity; a user wanting a recurring monthly check-in creates their own Task manually. Task itself carries no Recurrence the way Bill does.
 - OS-level push notifications or a background reminder service — same Future Consideration `docs/bills.md` already defers; opening the app is what surfaces Needs Attention in V1.
+
+## For developers
+
+Curious how needs attention are structured in the codebase, or planning to change them? See the [Needs Attention development documentation](development/needs-attention.md).

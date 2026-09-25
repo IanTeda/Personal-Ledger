@@ -47,6 +47,7 @@ A new domain needs a row here first.
 | Bills | BIL | bills.md |
 | Budgets | BUD | budgets.md |
 | Categories | CAT | categories.md |
+| Needs attention | NAT | needs-attention.md |
 | Payees | PAY | payees.md |
 | Reports | RPT | reports.md |
 | Settings | SET | settings.md |
