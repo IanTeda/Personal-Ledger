@@ -59,6 +59,10 @@ impl Noun {
         }
     }
 
+    #[expect(
+        clippy::expect_used,
+        reason = "ALL is a fixed-length array of every Noun, and row_index_round_trips_every_noun checks each one is present exactly once"
+    )]
     fn row_index(self) -> usize {
         Self::ALL
             .iter()
@@ -391,6 +395,13 @@ impl NavState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn row_index_round_trips_every_noun() {
+        for (index, noun) in Noun::ALL.into_iter().enumerate() {
+            assert_eq!(noun.row_index(), index, "{noun:?} is listed more than once");
+        }
+    }
 
     #[test]
     fn default_state_is_dashboard_normal_focus_in_view() {

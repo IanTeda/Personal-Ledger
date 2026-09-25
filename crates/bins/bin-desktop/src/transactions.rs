@@ -19,6 +19,7 @@
 //! until an account in another Unit holds transactions; seeding one would mean changing the
 //! Accounts and Settings stubs the earlier maps reconciled to their mockups.
 
+use bigdecimal::BigDecimal;
 use chrono::{Duration, NaiveDate};
 use lib_core::{AccountType, Money, TransactionStatus};
 
@@ -82,11 +83,7 @@ const MULTI_SPLIT_PERCENT: u64 = 14;
 
 /// Builds an exact `Money` from a signed count of cents: `-1850` is `-18.50`.
 fn cents_money(cents: i64) -> Money {
-    let sign = if cents < 0 { "-" } else { "" };
-    let magnitude = cents.unsigned_abs();
-    format!("{sign}{}.{:02}", magnitude / 100, magnitude % 100)
-        .parse()
-        .expect("a count of cents always formats as a valid decimal")
+    Money(BigDecimal::new(cents.into(), 2))
 }
 
 /// A small, dependency-free, deterministic generator (splitmix64).

@@ -14,7 +14,7 @@ use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
 use super::add_dialog::{WIDTH, text_field};
 use crate::{
-    accounts::{self, Account, DeleteAccountForm},
+    accounts::{Account, DeleteAccountForm},
     dialog,
 };
 
@@ -113,7 +113,7 @@ mod tests {
     use super::*;
 
     fn seeded(name: &str) -> Account {
-        accounts::default_accounts()
+        crate::accounts::default_accounts()
             .into_iter()
             .find(|account| account.name == name)
             .expect("seeded")

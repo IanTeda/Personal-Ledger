@@ -6,6 +6,7 @@
 //! All data is stubbed and in-memory (the Desktop Accounts Surface map's Destination): nothing
 //! here reads `lib_database`.
 
+use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{AccountType, Money};
 use lib_locale::Label;
@@ -469,7 +470,7 @@ impl AccountForm {
     /// what was typed is not a decimal amount.
     pub fn opening_balance_money(&self) -> Option<Money> {
         match self.opening_balance.trim() {
-            "" => Some(money("0")),
+            "" => Some(Money(BigDecimal::from(0))),
             text => text.parse().ok(),
         }
     }
@@ -555,7 +556,7 @@ pub struct NetWorth {
 
 /// Computes the header's [`NetWorth`] for `accounts` against the Settings base Unit.
 pub fn net_worth(accounts: &[Account], base_unit: Option<&str>) -> NetWorth {
-    let mut base_net = money("0");
+    let mut base_net = Money(BigDecimal::from(0));
     let mut held_separately: Vec<String> = Vec::new();
     for account in accounts {
         if base_unit == Some(account.unit.as_str()) {
@@ -647,12 +648,20 @@ pub fn find_by_name(accounts: &[Account], text: &str) -> NameLookup {
     NameLookup::NotFound
 }
 
+#[expect(
+    clippy::expect_used,
+    reason = "only called with hand-written seed literals, and seed_rows_parse_and_link builds every one, so an invalid literal fails the test suite"
+)]
 fn money(text: &str) -> Money {
     text.parse()
         .expect("seed amounts are valid decimals (see seed_rows_parse_and_link)")
 }
 
-fn date(year: i32, month: u32) -> NaiveDate {
+#[expect(
+    clippy::expect_used,
+    reason = "only called with hand-written seed literals, and seed_rows_parse_and_link builds every one, so an invalid literal fails the test suite"
+)]
+const fn date(year: i32, month: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(year, month, 1).expect("seed dates are valid calendar dates")
 }
 

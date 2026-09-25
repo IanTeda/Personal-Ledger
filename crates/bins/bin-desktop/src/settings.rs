@@ -88,6 +88,10 @@ impl SettingsSection {
     }
 
     /// This section's position among [`Self::ALL`].
+    #[expect(
+        clippy::expect_used,
+        reason = "ALL is a fixed-length array of every SettingsSection, and index_round_trips_every_section checks each one is present exactly once"
+    )]
     pub fn index(self) -> usize {
         Self::ALL
             .iter()
@@ -710,6 +714,17 @@ pub const DEFAULT_LOG_LINES: &[&str] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn index_round_trips_every_section() {
+        for (index, section) in SettingsSection::ALL.into_iter().enumerate() {
+            assert_eq!(
+                section.index(),
+                index,
+                "{section:?} is listed more than once"
+            );
+        }
+    }
 
     #[test]
     fn every_section_has_a_unique_body_child_index_after_the_heading() {

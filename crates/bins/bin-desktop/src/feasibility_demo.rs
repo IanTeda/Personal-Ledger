@@ -465,7 +465,10 @@ impl Screen {
     ];
 
     fn index(self) -> usize {
-        Self::ALL.iter().position(|screen| *screen == self).unwrap()
+        Self::ALL
+            .iter()
+            .position(|screen| *screen == self)
+            .unwrap_or(0)
     }
 
     fn label(self) -> &'static str {
@@ -702,6 +705,69 @@ impl Render for DesktopApp {
     }
 }
 
+// `#[tokio::main]` so a real Tokio runtime exists for the Live Categories screen's
+// `lib-database`/`sqlx` work to run on -- see the module doc for why `GPUI`'s own
+// (`smol`-based) executor can't run it directly. `Application::run` below is still a plain
+// synchronous, blocking call (GPUI owns the native event loop until the app quits); running
+// it un-awaited inside this async fn body just means it executes on Tokio's `block_on`
+// thread rather than a worker thread, which is exactly where the main/UI thread needs to be.
+//
+// Not called from anywhere -- kept so this demo still compiles and its tests still run, per
+// the module doc. A real `main` (`crate::main`) boots `Shell` instead.
+#[tokio::main]
+async fn run() -> Result<()> {
+    let cli = Cli::parse();
+    let config = lib_config::Config::parse(cli.config.path.as_deref())?;
+    let telemetry_level = Some(&config.personal_ledger_config().log());
+    let log_file_path = config.personal_ledger_config().log_file_path();
+    // Held for the lifetime of `main` -- dropping it stops the background worker that
+    // flushes buffered log lines to `log_file_path` (when configured).
+    let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    Application::new().run(move |cx: &mut App| {
+        gpui_component::init(cx);
+
+        let bounds = Bounds::centered(None, size(px(800.0), px(500.0)), cx);
+        let opened = cx.open_window(
+            WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(bounds)),
+                ..Default::default()
+            },
+            move |window, cx| {
+                cx.new(|cx| {
+                    let table_state = cx.new(|state_cx| {
+                        TableState::new(
+                            TransactionTableDelegate::new(dummy_transactions()),
+                            window,
+                            state_cx,
+                        )
+                    });
+                    spawn_live_categories_load(cx, tokio_handle.clone());
+                    DesktopApp {
+                        screen: Screen::Line,
+                        spend: dummy_spend(),
+                        categories: dummy_categories(),
+                        candles: dummy_candles(),
+                        variances: dummy_variances(),
+                        table_state,
+                        live_categories: LiveCategoriesStatus::Loading,
+                    }
+                })
+            },
+        );
+        if let Err(error) = opened {
+            tracing::error!(%error, "Failed to open the feasibility demo window");
+            cx.quit();
+            return;
+        }
+        cx.activate(true);
+    });
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,63 +853,4 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
     }
-}
-
-// `#[tokio::main]` so a real Tokio runtime exists for the Live Categories screen's
-// `lib-database`/`sqlx` work to run on -- see the module doc for why `GPUI`'s own
-// (`smol`-based) executor can't run it directly. `Application::run` below is still a plain
-// synchronous, blocking call (GPUI owns the native event loop until the app quits); running
-// it un-awaited inside this async fn body just means it executes on Tokio's `block_on`
-// thread rather than a worker thread, which is exactly where the main/UI thread needs to be.
-//
-// Not called from anywhere -- kept so this demo still compiles and its tests still run, per
-// the module doc. A real `main` (`crate::main`) boots `Shell` instead.
-#[tokio::main]
-async fn run() -> Result<()> {
-    let cli = Cli::parse();
-    let config = lib_config::Config::parse(cli.config.path.as_deref())?;
-    let telemetry_level = Some(&config.personal_ledger_config().log());
-    let log_file_path = config.personal_ledger_config().log_file_path();
-    // Held for the lifetime of `main` -- dropping it stops the background worker that
-    // flushes buffered log lines to `log_file_path` (when configured).
-    let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    Application::new().run(move |cx: &mut App| {
-        gpui_component::init(cx);
-
-        let bounds = Bounds::centered(None, size(px(800.0), px(500.0)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                ..Default::default()
-            },
-            move |window, cx| {
-                cx.new(|cx| {
-                    let table_state = cx.new(|state_cx| {
-                        TableState::new(
-                            TransactionTableDelegate::new(dummy_transactions()),
-                            window,
-                            state_cx,
-                        )
-                    });
-                    spawn_live_categories_load(cx, tokio_handle.clone());
-                    DesktopApp {
-                        screen: Screen::Line,
-                        spend: dummy_spend(),
-                        categories: dummy_categories(),
-                        candles: dummy_candles(),
-                        variances: dummy_variances(),
-                        table_state,
-                        live_categories: LiveCategoriesStatus::Loading,
-                    }
-                })
-            },
-        )
-        .unwrap();
-        cx.activate(true);
-    });
-
-    Ok(())
 }

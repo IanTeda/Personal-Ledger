@@ -96,14 +96,15 @@ async fn main() -> Result<()> {
 
             // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
             // .. }` request resolves against the bundled weights rather than a fallback.
-            // The bundled fonts are embedded in the binary and verified at build time.
-            cx.text_system()
-                .add_fonts(vec![
-                    Cow::Borrowed(ARCHIVO_REGULAR),
-                    Cow::Borrowed(ARCHIVO_SEMIBOLD),
-                    Cow::Borrowed(ARCHIVO_EXTRA_BOLD),
-                ])
-                .expect("bundled fonts are embedded and verified at build time");
+            // A failure here only costs the bundled face -- text still renders in gpui's
+            // fallback font -- so it's reported rather than stopping the app.
+            if let Err(error) = cx.text_system().add_fonts(vec![
+                Cow::Borrowed(ARCHIVO_REGULAR),
+                Cow::Borrowed(ARCHIVO_SEMIBOLD),
+                Cow::Borrowed(ARCHIVO_EXTRA_BOLD),
+            ]) {
+                tracing::error!(%error, "Failed to register the bundled Archivo fonts");
+            }
 
             // `noun`/`primary_rail`/window geometry survive restart (`docs/ux/desktop/README.md`'s
             // "State machine"); everything else in `NavState` starts fresh every launch, so there's
@@ -134,35 +135,42 @@ async fn main() -> Result<()> {
                 None => Bounds::centered(None, size(px(1280.0), px(800.0)), cx),
             };
 
-            let window_handle = cx
-                .open_window(
-                    WindowOptions {
-                        window_bounds: Some(WindowBounds::Windowed(bounds)),
-                        // Wayland app_id / X11 WM_CLASS -- without this the window reports an
-                        // empty class, which leaves window-manager rules (workspace assignment,
-                        // etc.) with nothing to match on. Mirrors the packager identifier in
-                        // this crate's Cargo.toml (`[package.metadata.packager]`).
-                        app_id: Some("au.id.teda.personal-ledger.desktop".into()),
-                        titlebar: Some(TitlebarOptions {
-                            title: Some("Personal Ledger".into()),
-                            ..Default::default()
-                        }),
+            let opened = cx.open_window(
+                WindowOptions {
+                    window_bounds: Some(WindowBounds::Windowed(bounds)),
+                    // Wayland app_id / X11 WM_CLASS -- without this the window reports an
+                    // empty class, which leaves window-manager rules (workspace assignment,
+                    // etc.) with nothing to match on. Mirrors the packager identifier in
+                    // this crate's Cargo.toml (`[package.metadata.packager]`).
+                    app_id: Some("au.id.teda.personal-ledger.desktop".into()),
+                    titlebar: Some(TitlebarOptions {
+                        title: Some("Personal Ledger".into()),
                         ..Default::default()
-                    },
-                    move |window, cx| {
-                        let focus_handle = cx.focus_handle();
-                        // Grabs keyboard focus for the shell's own key handling (issue #149)
-                        // as soon as the window opens -- nothing else in the window competes
-                        // for it yet.
-                        window.focus(&focus_handle);
-                        cx.new(|_cx| {
-                            let mut shell = Shell::new(nav, focus_handle);
-                            shell.set_start_sidebar_minimised(start_sidebar_minimised);
-                            shell
-                        })
-                    },
-                )
-                .expect("window opening is infallible in gpui application context");
+                    }),
+                    ..Default::default()
+                },
+                move |window, cx| {
+                    let focus_handle = cx.focus_handle();
+                    // Grabs keyboard focus for the shell's own key handling (issue #149)
+                    // as soon as the window opens -- nothing else in the window competes
+                    // for it yet.
+                    window.focus(&focus_handle);
+                    cx.new(|_cx| {
+                        let mut shell = Shell::new(nav, focus_handle);
+                        shell.set_start_sidebar_minimised(start_sidebar_minimised);
+                        shell
+                    })
+                },
+            );
+            // Without a window there is nothing to run, so report and quit rather than panic.
+            let window_handle = match opened {
+                Ok(handle) => handle,
+                Err(error) => {
+                    tracing::error!(%error, "Failed to open the main window");
+                    cx.quit();
+                    return;
+                }
+            };
 
             // No action mutates `NavState` yet (the keybinding/rail-toggle tickets do), so this
             // currently ever only re-saves whatever `persistence::load` produced -- registered now

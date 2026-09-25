@@ -23,6 +23,7 @@
 
 use std::collections::HashMap;
 
+use bigdecimal::BigDecimal;
 use chrono::{Datelike, NaiveDate};
 use lib_core::{Money, TransactionStatus};
 use lib_locale::Label;
@@ -171,7 +172,7 @@ pub struct Visible<'a> {
 }
 
 fn zero() -> Money {
-    "0.00".parse().expect("a literal zero is a valid decimal")
+    Money(BigDecimal::new(0.into(), 2))
 }
 
 fn add(a: &Money, b: &Money) -> Money {

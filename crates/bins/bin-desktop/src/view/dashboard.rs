@@ -44,7 +44,7 @@ impl RenderOnce for Dashboard {
     }
 }
 
-fn kicker(label: &'static str) -> impl IntoElement {
+fn kicker(label: String) -> impl IntoElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
@@ -58,7 +58,11 @@ fn header() -> impl IntoElement {
         .flex()
         .items_baseline()
         .justify_between()
-        .child(div().text_size(px(19.0)).child(msg::desktop_dashboard_title()))
+        .child(
+            div()
+                .text_size(px(19.0))
+                .child(msg::desktop_dashboard_title()),
+        )
         .child(
             div()
                 .text_size(px(11.5))
@@ -68,7 +72,7 @@ fn header() -> impl IntoElement {
 }
 
 fn figure_row() -> impl IntoElement {
-    let secondary = |label, value: &'static str, negative: bool| {
+    let secondary = |label: String, value: &'static str, negative: bool| {
         div().child(kicker(label)).child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -78,11 +82,6 @@ fn figure_row() -> impl IntoElement {
         )
     };
 
-    let net_position = msg::desktop_dashboard_net_position();
-    let metric_30_day = msg::desktop_dashboard_metric_30_day();
-    let metric_assets = msg::desktop_dashboard_metric_assets();
-    let metric_liabilities = msg::desktop_dashboard_metric_liabilities();
-
     div()
         .flex()
         .items_end()
@@ -90,12 +89,7 @@ fn figure_row() -> impl IntoElement {
         .mt(px(14.0))
         .child(
             div()
-                .child(div()
-                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_size(px(10.0))
-                    .text_color(color::INK_TERTIARY)
-                    .mb(px(5.0))
-                    .child(net_position))
+                .child(kicker(msg::desktop_dashboard_net_position()))
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -108,46 +102,21 @@ fn figure_row() -> impl IntoElement {
                 .flex()
                 .gap(px(28.0))
                 .pb(px(4.0))
-                .child(
-                    div().child(div()
-                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .text_size(px(10.0))
-                        .text_color(color::INK_TERTIARY)
-                        .mb(px(5.0))
-                        .child(metric_30_day)).child(
-                        div()
-                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                            .text_size(px(15.0))
-                            .child("+3,412.08"),
-                    )
-                )
-                .child(
-                    div().child(div()
-                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .text_size(px(10.0))
-                        .text_color(color::INK_TERTIARY)
-                        .mb(px(5.0))
-                        .child(metric_assets)).child(
-                        div()
-                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                            .text_size(px(15.0))
-                            .child("812,240.00"),
-                    )
-                )
-                .child(
-                    div().child(div()
-                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .text_size(px(10.0))
-                        .text_color(color::INK_TERTIARY)
-                        .mb(px(5.0))
-                        .child(metric_liabilities)).child(
-                        div()
-                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                            .text_size(px(15.0))
-                            .text_color(color::ACCENT_TEXT)
-                            .child("\u{2212}383,629.78"),
-                    )
-                ),
+                .child(secondary(
+                    msg::desktop_dashboard_metric_30_day(),
+                    "+3,412.08",
+                    false,
+                ))
+                .child(secondary(
+                    msg::desktop_dashboard_metric_assets(),
+                    "812,240.00",
+                    false,
+                ))
+                .child(secondary(
+                    msg::desktop_dashboard_metric_liabilities(),
+                    "\u{2212}383,629.78",
+                    true,
+                )),
         )
 }
 

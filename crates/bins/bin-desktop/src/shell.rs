@@ -730,19 +730,13 @@ impl Shell {
                 }
                 true
             }
-            _ => {
-                let modifiers = &keystroke.modifiers;
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
+            _ => match typed_char(keystroke) {
+                Some(ch) => {
+                    palette.push_char(ch);
+                    true
                 }
-                match keystroke.key_char.as_deref() {
-                    Some(text) if text.chars().count() == 1 => {
-                        palette.push_char(text.chars().next().expect("checked above"));
-                        true
-                    }
-                    _ => false,
-                }
-            }
+                None => false,
+            },
         }
     }
 
@@ -765,20 +759,13 @@ impl Shell {
                 self.settings_filter.pop();
                 true
             }
-            _ => {
-                let modifiers = &keystroke.modifiers;
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
+            _ => match typed_char(keystroke) {
+                Some(ch) => {
+                    self.settings_filter.push(ch);
+                    true
                 }
-                match keystroke.key_char.as_deref() {
-                    Some(text) if text.chars().count() == 1 => {
-                        self.settings_filter
-                            .push(text.chars().next().expect("checked above"));
-                        true
-                    }
-                    _ => false,
-                }
-            }
+                None => false,
+            },
         }
     }
 
@@ -816,23 +803,13 @@ impl Shell {
                         }
                         true
                     }
-                    _ => {
-                        let modifiers = &keystroke.modifiers;
-                        if modifiers.control
-                            || modifiers.alt
-                            || modifiers.platform
-                            || modifiers.function
-                        {
-                            return false;
+                    _ => match typed_char(keystroke) {
+                        Some(ch) => {
+                            form.push_char(ch);
+                            true
                         }
-                        match keystroke.key_char.as_deref() {
-                            Some(text) if text.chars().count() == 1 => {
-                                form.push_char(text.chars().next().expect("checked above"));
-                                true
-                            }
-                            _ => false,
-                        }
-                    }
+                        None => false,
+                    },
                 }
             }
             // No `Tab` field to cycle -- the confirmation input is the dialog's only field, so
@@ -855,23 +832,13 @@ impl Shell {
                         }
                         true
                     }
-                    _ => {
-                        let modifiers = &keystroke.modifiers;
-                        if modifiers.control
-                            || modifiers.alt
-                            || modifiers.platform
-                            || modifiers.function
-                        {
-                            return false;
+                    _ => match typed_char(keystroke) {
+                        Some(ch) => {
+                            form.push_char(ch);
+                            true
                         }
-                        match keystroke.key_char.as_deref() {
-                            Some(text) if text.chars().count() == 1 => {
-                                form.push_char(text.chars().next().expect("checked above"));
-                                true
-                            }
-                            _ => false,
-                        }
-                    }
+                        None => false,
+                    },
                 }
             }
             // Institution name is the dialog's only text field, same shape as `DeleteUnit`'s
@@ -891,23 +858,13 @@ impl Shell {
                     }
                     true
                 }
-                _ => {
-                    let modifiers = &keystroke.modifiers;
-                    if modifiers.control
-                        || modifiers.alt
-                        || modifiers.platform
-                        || modifiers.function
-                    {
-                        return false;
+                _ => match typed_char(keystroke) {
+                    Some(ch) => {
+                        form.push_char(ch);
+                        true
                     }
-                    match keystroke.key_char.as_deref() {
-                        Some(text) if text.chars().count() == 1 => {
-                            form.push_char(text.chars().next().expect("checked above"));
-                            true
-                        }
-                        _ => false,
-                    }
-                }
+                    None => false,
+                },
             },
         }
     }
@@ -3100,6 +3057,20 @@ fn empty_state(on_command_click: OnEmptyStateCommandClick) -> gpui::AnyElement {
                 ),
         )
         .into_any_element()
+}
+
+/// The one character an unmodified keystroke types into a text field, or `None` for a modified
+/// key (a chord this field gives no meaning to) or anything that isn't a single character.
+fn typed_char(keystroke: &Keystroke) -> Option<char> {
+    let modifiers = &keystroke.modifiers;
+    if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+        return None;
+    }
+    let mut chars = keystroke.key_char.as_deref()?.chars();
+    match (chars.next(), chars.next()) {
+        (Some(ch), None) => Some(ch),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

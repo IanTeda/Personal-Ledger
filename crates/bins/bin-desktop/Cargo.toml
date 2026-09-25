@@ -19,6 +19,7 @@ lib_locale = { path = "../../libs/lib-locale" }
 lib_tracing = { path = "../../libs/lib-tracing" }
 
 ## -- Workspace Dependencies --
+bigdecimal = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 dirs = { workspace = true }
@@ -27,6 +28,7 @@ serde_json = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+tracing = { workspace = true }
 
 ## -- Crate Dependencies --
 gpui = { version = "0.2.2" }

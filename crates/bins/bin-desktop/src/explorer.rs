@@ -20,7 +20,7 @@ use std::{
 use gpui::{App, BoxShadow, SharedString, Window, div, point, prelude::*, px};
 use gpui_component::Sizable;
 
-use crate::{icon::DesktopIcon, theme::color, msg};
+use crate::{icon::DesktopIcon, msg, theme::color};
 
 /// Dialog width: the "1e" spec's own `640px`.
 pub const WIDTH: gpui::Pixels = px(640.0);
@@ -252,20 +252,25 @@ fn format_modified(modified: SystemTime, now: SystemTime) -> String {
     if elapsed < 60 {
         return msg::desktop_explorer_modified_just_now();
     }
-    let value = if elapsed < 3_600 {
+    if elapsed < 3_600 {
         msg::desktop_explorer_modified_minutes(i64::try_from(elapsed / 60).unwrap_or(i64::MAX))
     } else if elapsed < 86_400 {
         msg::desktop_explorer_modified_hours(i64::try_from(elapsed / 3_600).unwrap_or(i64::MAX))
     } else if elapsed < 7 * 86_400 {
         msg::desktop_explorer_modified_days(i64::try_from(elapsed / 86_400).unwrap_or(i64::MAX))
     } else if elapsed < 30 * 86_400 {
-        msg::desktop_explorer_modified_weeks(i64::try_from(elapsed / (7 * 86_400)).unwrap_or(i64::MAX))
+        msg::desktop_explorer_modified_weeks(
+            i64::try_from(elapsed / (7 * 86_400)).unwrap_or(i64::MAX),
+        )
     } else if elapsed < 365 * 86_400 {
-        msg::desktop_explorer_modified_months(i64::try_from(elapsed / (30 * 86_400)).unwrap_or(i64::MAX))
+        msg::desktop_explorer_modified_months(
+            i64::try_from(elapsed / (30 * 86_400)).unwrap_or(i64::MAX),
+        )
     } else {
-        msg::desktop_explorer_modified_years(i64::try_from(elapsed / (365 * 86_400)).unwrap_or(i64::MAX))
-    };
-    value
+        msg::desktop_explorer_modified_years(
+            i64::try_from(elapsed / (365 * 86_400)).unwrap_or(i64::MAX),
+        )
+    }
 }
 
 /// A row click: the clicked entry's path and the platform's own click count (`2` for a real
@@ -392,7 +397,9 @@ fn path_bar(
             ),
         )
         .child(div().flex_1())
-        .child(div().child(msg::desktop_explorer_item_count(i64::from(entry_count as u32))))
+        .child(div().child(msg::desktop_explorer_item_count(i64::from(
+            entry_count as u32,
+        ))))
 }
 
 fn breadcrumb_segment(
@@ -424,7 +431,11 @@ fn column_header() -> impl IntoElement {
         .text_color(color::INK_TERTIARY)
         .child(div().flex_1().child(msg::desktop_explorer_column_name()))
         .child(div().w(px(90.0)).child(msg::desktop_explorer_column_size()))
-        .child(div().w(px(120.0)).child(msg::desktop_explorer_column_modified()))
+        .child(
+            div()
+                .w(px(120.0))
+                .child(msg::desktop_explorer_column_modified()),
+        )
 }
 
 fn row(
