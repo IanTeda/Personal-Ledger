@@ -47,7 +47,10 @@ tui-tag-right-pane-lands-statement = a tag crosses the tree — that is what it 
 tui-tag-right-pane-txn-heading = TRANSACTIONS
 tui-tag-right-pane-txn-heading-tag = { $visible } of { $total } · newest first
 tui-tag-right-pane-txn-empty = no transactions yet
-tui-tag-right-pane-txn-footer-overlap = { $overlap } of { $total } carry another tag — rows overlap
+tui-tag-right-pane-txn-footer-overlap = { $overlap ->
+    [one] 1 of { $total } carries another tag — rows overlap
+    *[other] { $overlap } of { $total } carry another tag — rows overlap
+}
 tui-tag-right-pane-txn-footer-empty = no transactions yet
 tui-tag-right-pane-txn-not-yet-built = opening filtered Transactions — not yet built
 

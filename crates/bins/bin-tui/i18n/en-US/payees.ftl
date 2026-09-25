@@ -17,8 +17,14 @@ tui-payees-record-default = default
 tui-payees-record-default-note = default follows the mix
 tui-payees-record-matches = matches
 tui-payees-record-inactive = inactive
-tui-payees-record-status-with-count = { $count } · { $status }
-tui-payees-record-missing = { $count } · m manage
+tui-payees-record-status-with-count = { $count ->
+    [one] 1 · { $status }
+    *[other] { $count } · { $status }
+}
+tui-payees-record-missing = { $count ->
+    [one] 1 · manage
+    *[other] { $count } · manage
+}
 
 ## The payees summary box: labels and field values.
 

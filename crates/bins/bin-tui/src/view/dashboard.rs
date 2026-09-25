@@ -177,7 +177,7 @@ fn render_headline_stats(frame: &mut Frame, label_area: Rect, value_area: Rect) 
 
     let dim = Style::default().add_modifier(Modifier::DIM);
     let labels = [
-        crate::msg::tui_dashboard_stat_days(&crate::format::count(HEADLINE_WINDOW_DAYS)),
+        crate::msg::tui_dashboard_stat_days(HEADLINE_WINDOW_DAYS),
         crate::msg::tui_dashboard_stat_assets(),
         crate::msg::tui_dashboard_stat_liabilities(),
     ];

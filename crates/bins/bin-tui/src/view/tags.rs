@@ -707,7 +707,7 @@ impl TagsView {
 
         let overlap = rows.iter().filter(|row| row.other_tags > 0).count();
         let text = msg::tui_tag_right_pane_txn_footer_overlap(
-            &overlap.to_string(),
+            overlap as i64,
             &rows.len().to_string(),
         );
         frame.render_widget(
