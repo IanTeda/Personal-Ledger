@@ -82,9 +82,9 @@ const FIXED_ROWS: u16 = 4;
 /// One row of the resting/filtered body: a domain header (resting state only, per the user's
 /// own ask) or a command entry.
 enum Row {
-    Header(&'static str),
+    Header(String),
     Entry {
-        domain: &'static str,
+        domain: String,
         command: &'static commands::Command,
     },
 }
@@ -242,7 +242,7 @@ impl CommandPopup {
             command
                 .args
                 .iter()
-                .map(|arg| format!("{} — {}", arg.placeholder, arg.preview))
+                .map(|arg| format!("{} — {}", arg.placeholder, (arg.preview)()))
                 .collect::<Vec<_>>()
                 .join(" · "),
         )
@@ -255,7 +255,10 @@ impl CommandPopup {
     /// render at all, and the popup is one row shorter.
     pub(crate) fn info_row(&self) -> Option<(String, bool)> {
         if let Some(name) = self.not_yet_built {
-            return Some((format!(":{name} — not yet built"), true));
+            return Some((
+                crate::msg::tui_command_not_yet_built(&format!(":{name}")),
+                true,
+            ));
         }
         self.arg_preview().map(|preview| (preview, false))
     }
@@ -265,12 +268,12 @@ impl CommandPopup {
     /// typing `category` should surface the bare `:category` command before `budget new
     /// <category> <limit>`, whose name only contains it mid-string), falling back to
     /// `commands::all`'s own fixed display order for ties within a tier.
-    fn filtered(&self) -> Vec<(&'static str, &'static commands::Command)> {
+    fn filtered(&self) -> Vec<(String, &'static commands::Command)> {
         let needle = self.input.to_lowercase();
         let mut matches: Vec<_> = commands::all()
             .filter(|(domain, command)| {
                 command.name.to_lowercase().contains(&needle)
-                    || command.description.to_lowercase().contains(&needle)
+                    || (command.description)().to_lowercase().contains(&needle)
                     || domain.to_lowercase().contains(&needle)
             })
             .collect();
@@ -296,7 +299,7 @@ impl CommandPopup {
         }
 
         let description_offset = 1 + command_column_width() + binding_column_width();
-        if let Some(pos) = command.description.to_lowercase().find(&needle) {
+        if let Some(pos) = (command.description)().to_lowercase().find(&needle) {
             let start = description_offset + pos;
             return Some((start, start + needle.len()));
         }
@@ -320,10 +323,11 @@ impl CommandPopup {
         if self.input.is_empty() {
             let mut rows = Vec::with_capacity(commands::total_commands() + commands::DOMAINS.len());
             for domain in commands::DOMAINS {
-                rows.push(Row::Header(domain.name));
+                let name = (domain.name)();
+                rows.push(Row::Header(name.clone()));
                 for command in domain.commands {
                     rows.push(Row::Entry {
-                        domain: domain.name,
+                        domain: name.clone(),
                         command,
                     });
                 }
@@ -440,10 +444,9 @@ impl CommandPopup {
     /// §3a's own `>`, so the prompt itself signals that what's typed is a `:command`.
     fn prompt_line(&self, width: u16) -> Line<'static> {
         let left = format!(":{}▌", self.input);
-        let right = format!(
-            "{} of {}",
-            self.selectable_count(),
-            commands::total_commands()
+        let right = crate::msg::tui_command_match_count(
+            &crate::format::count(self.selectable_count() as i64),
+            &crate::format::count(commands::total_commands() as i64),
         );
         Line::from(pad_between(&left, &right, width))
     }
@@ -482,7 +485,7 @@ impl CommandPopup {
                         ":{command:<command_col$}{binding:<binding_col$}{description}",
                         command = command.name,
                         binding = command.chord.to_string(),
-                        description = command.description,
+                        description = (command.description)(),
                     );
                     let text = pad_line(&text, line_rows[idx].width);
                     let base_style = if row_idx == selected_row {
@@ -563,25 +566,27 @@ fn binding_column_width() -> usize {
 /// separates it from the candidate list; each key is bold instead, which doesn't depend on
 /// the palette.
 fn footer_hint_line() -> Line<'static> {
-    const HINTS: &[(&str, &str)] = &[
-        ("↑↓", "select"),
-        ("tab", "complete"),
-        ("enter", "run"),
-        ("^r", "history"),
-        ("esc", "close"),
+    // The key tokens stay here beside their label Messages, never inside them -- so each key is
+    // rendered (and bolded) on its own, and no Catalogue ever carries a key.
+    let hints: [(&str, String); 5] = [
+        ("\u{2191}\u{2193}", crate::msg::tui_command_hint_select()),
+        ("tab", crate::msg::tui_command_hint_complete()),
+        ("enter", crate::msg::tui_command_hint_run()),
+        ("^r", crate::msg::tui_command_hint_history()),
+        ("esc", crate::msg::tui_command_hint_close()),
     ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = Style::default().fg(FOOTER_LABEL);
 
-    let mut spans = Vec::with_capacity(HINTS.len() * 3);
-    for (idx, (key, label)) in HINTS.iter().enumerate() {
+    let mut spans = Vec::with_capacity(hints.len() * 4);
+    for (idx, (key, label)) in hints.into_iter().enumerate() {
         if idx > 0 {
             spans.push(Span::raw("  "));
         }
-        spans.push(Span::styled(*key, key_style));
+        spans.push(Span::styled(key, key_style));
         spans.push(Span::raw(" "));
-        spans.push(Span::styled(*label, label_style));
+        spans.push(Span::styled(label, label_style));
     }
     Line::from(spans)
 }
@@ -736,6 +741,7 @@ mod tests {
 
     #[test]
     fn resting_rows_include_a_header_per_domain() {
+        crate::locale::init_for_tests();
         let popup = CommandPopup::new();
         let rows = popup.rows();
         let header_count = rows
@@ -751,6 +757,116 @@ mod tests {
         popup.push_char('u');
         let rows = popup.rows();
         assert!(rows.iter().all(|row| matches!(row, Row::Entry { .. })));
+    }
+
+    /// The whole rendered popup as one string, for asserting on what it actually shows.
+    fn drawn(popup: &CommandPopup) -> String {
+        use ratatui::{Terminal, backend::TestBackend};
+
+        let backend = TestBackend::new(96, 40);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| popup.render(frame, frame.area()))
+            .expect("rendering the popup should not error");
+
+        let buffer = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+            text.push('\n');
+        }
+        text
+    }
+
+    #[test]
+    fn a_domain_header_is_the_shared_navigation_message_upper_cased() {
+        crate::locale::init_for_tests();
+        let rows = CommandPopup::new().rows();
+        let headers: Vec<String> = rows
+            .iter()
+            .filter_map(|row| match row {
+                Row::Header(name) => Some(name.clone()),
+                Row::Entry { .. } => None,
+            })
+            .collect();
+        assert_eq!(headers[0], "Dashboard");
+        assert!(headers.contains(&"Balance checks".to_string()));
+        assert!(headers.contains(&"Units & prices".to_string()));
+        assert!(drawn(&CommandPopup::new()).contains("DASHBOARD"));
+    }
+
+    #[test]
+    fn the_prompt_row_counts_the_matches_against_the_total() {
+        crate::locale::init_for_tests();
+        let popup = CommandPopup::new();
+        let total = commands::total_commands();
+        assert!(
+            drawn(&popup).contains(&format!("{total} of {total}")),
+            "the resting count should be every command"
+        );
+    }
+
+    #[test]
+    fn the_footer_names_each_key_beside_its_label() {
+        crate::locale::init_for_tests();
+        let text = drawn(&CommandPopup::new());
+        for hint in [
+            "select",
+            "tab complete",
+            "enter run",
+            "^r history",
+            "esc close",
+        ] {
+            assert!(
+                text.contains(hint),
+                "`{hint}` missing from the footer:\n{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_argument_preview_names_its_token_then_its_example() {
+        crate::locale::init_for_tests();
+        let mut popup = CommandPopup::new();
+        filter_to(&mut popup, "account new");
+        assert_eq!(
+            popup.arg_preview().as_deref(),
+            Some("<name> — e.g. Everyday Spending, Mortgage Offset")
+        );
+    }
+
+    /// The pseudo-Locale sweep: the popup's headers, descriptions, previews, counts and hints are
+    /// all Messages, so none of the source wording survives `en-XA`. The command names and their
+    /// `<...>` tokens are stable ids and deliberately do.
+    #[test]
+    fn the_popup_is_fully_pseudo_localised() {
+        crate::locale::init_for_tests();
+        lib_locale::with_locale(lib_locale::Locale::EnXa, || {
+            let mut popup = CommandPopup::new();
+            popup.set_not_yet_built("quit");
+            let text = drawn(&popup);
+
+            for word in [
+                "DASHBOARD",
+                "BALANCE CHECKS",
+                "financial position",
+                "not yet built",
+                "select",
+                "history",
+            ] {
+                assert!(
+                    !text.contains(word),
+                    "`{word}` is not a Message -- it survived en-XA:\n{text}"
+                );
+            }
+            assert!(
+                text.contains(":dashboard"),
+                "command names stay stable English:\n{text}"
+            );
+            assert!(text.contains('['), "nothing was pseudo-localised:\n{text}");
+        });
     }
 
     #[test]
@@ -860,6 +976,7 @@ mod tests {
 
     #[test]
     fn a_zero_arg_command_has_no_arg_preview() {
+        crate::locale::init_for_tests();
         let mut popup = CommandPopup::new();
         filter_to(&mut popup, "dashboard");
         assert_eq!(popup.selected_command_name(), Some("dashboard"));
@@ -869,6 +986,7 @@ mod tests {
 
     #[test]
     fn info_row_prefers_the_not_yet_built_message_over_the_argument_preview() {
+        crate::locale::init_for_tests();
         let mut popup = CommandPopup::new();
         filter_to(&mut popup, "unit edit");
         assert!(popup.info_row().is_some_and(|(_, is_message)| !is_message));
@@ -1011,8 +1129,7 @@ mod tests {
             .highlight_range(command)
             .expect("a description match should be found");
         let description_start = 1 + command_column_width() + binding_column_width();
-        let match_offset = command
-            .description
+        let match_offset = (command.description)()
             .to_lowercase()
             .find("asserted")
             .expect("the description contains the needle");
@@ -1043,7 +1160,7 @@ mod tests {
             .selected_command()
             .expect("a Reports command should be selected");
         assert!(!command.name.to_lowercase().contains("reports"));
-        assert!(!command.description.to_lowercase().contains("reports"));
+        assert!(!(command.description)().to_lowercase().contains("reports"));
         assert_eq!(popup.highlight_range(command), None);
     }
 

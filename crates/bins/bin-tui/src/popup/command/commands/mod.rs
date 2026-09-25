@@ -61,10 +61,10 @@ impl fmt::Display for Chord {
     }
 }
 
-/// A command's stable id: what the shell dispatches on. Separate from the display strings
-/// (`name`'s usage line, `description`, `Arg` placeholders and previews), which are Messages to
-/// localise later, so changing that text cannot change what a command does. The typed `name`
-/// stays a stable English string the user types.
+/// A command's stable id: what the shell dispatches on. Separate from the display text
+/// (`description` and each `Arg`'s own `preview`), which are Messages, so changing that text
+/// cannot change what a command does. The typed `name` and the `<...>`/`[...]` tokens inside it
+/// stay stable English the user types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum CommandId {
     // accounts
@@ -147,78 +147,106 @@ pub struct Command {
     pub id: CommandId,
     pub name: &'static str,
     pub chord: Chord,
-    pub description: &'static str,
+    /// The description Message, resolved in the Locale in effect when called — a function rather
+    /// than a string so this table stays a `const`, mirroring `bin-desktop`'s own palette.
+    pub description: fn() -> String,
     pub args: &'static [Arg],
 }
 
 /// One argument a command takes, feeding the command popup's single combined preview row
-/// (`CommandPopup::arg_preview`) for whichever command is currently highlighted. Plain
-/// constant data — no resolver function; `preview` may be as rich as the command needs (e.g.
-/// a budget's current actual-vs-limit alongside its category), not structurally split between
-/// "the argument's value" and "context about it".
+/// (`CommandPopup::arg_preview`) for whichever command is currently highlighted. Still fixed
+/// content, now behind a Message rather than a literal — no resolver against real data yet;
+/// `preview` may be as rich as the command needs (e.g. a budget's current actual-vs-limit
+/// alongside its category), not structurally split between "the argument's value" and "context
+/// about it".
 pub struct Arg {
+    /// The argument's own token as the command's `name` spells it (`<acct>`, `[period]`). Command
+    /// syntax, not a Message: it must read exactly as the usage line the user types against, and
+    /// that line is a stable English id.
     pub placeholder: &'static str,
-    pub preview: &'static str,
+
+    /// The example Message shown beside the token, resolved in the Locale in effect when called.
+    pub preview: fn() -> String,
 }
 
-/// One domain's commands, grouped for the command popup's resting-state list.
+/// One domain's commands, grouped for the command popup's resting-state list. The header text is a
+/// Message; `DOMAINS`' own order is what fixes the grouping, so nothing navigates on this name.
 pub struct Domain {
-    pub name: &'static str,
+    pub name: fn() -> String,
     pub commands: &'static [Command],
+}
+
+/// The chord that holds inactive rows visible on a list, named by the `off`/`on` commands' own
+/// descriptions and previews. Display text for the hint, not a binding this table dispatches on.
+const SHOW_INACTIVE_CHORD: &str = "za";
+
+/// The description every `<noun> off` command shares, word for word.
+fn off_description() -> String {
+    crate::msg::tui_command_off_description(SHOW_INACTIVE_CHORD)
+}
+
+/// The preview every argument that resolves against the list's own selection shares.
+fn list_selection_preview() -> String {
+    crate::msg::tui_command_preview_list_selection()
+}
+
+/// The same, for an `on` command: its effect is only visible with the inactive rows showing.
+fn list_selection_inactive_preview() -> String {
+    crate::msg::tui_command_preview_list_selection_inactive(SHOW_INACTIVE_CHORD)
 }
 
 /// Every domain, Dashboard first then alphabetical — the command popup's resting-state order.
 pub const DOMAINS: &[Domain] = &[
     Domain {
-        name: "Dashboard",
+        name: lib_locale::msg::nav_dashboard,
         commands: dashboard::COMMANDS,
     },
     Domain {
-        name: "Accounts",
+        name: lib_locale::msg::nav_accounts,
         commands: accounts::COMMANDS,
     },
     Domain {
-        name: "Balance Checks",
+        name: crate::msg::tui_view_balance_checks_title,
         commands: balance_checks::COMMANDS,
     },
     Domain {
-        name: "Budgets",
+        name: lib_locale::msg::nav_budgets,
         commands: budgets::COMMANDS,
     },
     Domain {
-        name: "Categories",
+        name: lib_locale::msg::nav_categories,
         commands: categories::COMMANDS,
     },
     Domain {
-        name: "Help",
+        name: lib_locale::msg::nav_help,
         commands: help::COMMANDS,
     },
     Domain {
-        name: "Payees",
+        name: lib_locale::msg::nav_payees,
         commands: payees::COMMANDS,
     },
     Domain {
-        name: "Quit",
+        name: crate::msg::tui_command_domain_quit,
         commands: quit::COMMANDS,
     },
     Domain {
-        name: "Reports",
+        name: lib_locale::msg::nav_reports,
         commands: reports::COMMANDS,
     },
     Domain {
-        name: "Settings",
+        name: lib_locale::msg::nav_settings,
         commands: settings::COMMANDS,
     },
     Domain {
-        name: "Tags",
+        name: lib_locale::msg::nav_tags,
         commands: tags::COMMANDS,
     },
     Domain {
-        name: "Transactions",
+        name: lib_locale::msg::nav_transactions,
         commands: transactions::COMMANDS,
     },
     Domain {
-        name: "Units",
+        name: crate::msg::tui_view_units_title,
         commands: units::COMMANDS,
     },
 ];
@@ -228,14 +256,15 @@ pub fn total_commands() -> usize {
     DOMAINS.iter().map(|domain| domain.commands.len()).sum()
 }
 
-/// Every command with its owning domain's name, in `DOMAINS` order — the flat shape a
-/// filtered (non-resting) command popup view renders from.
-pub fn all() -> impl Iterator<Item = (&'static str, &'static Command)> {
+/// Every command with its owning domain's header text in the Locale in effect, in `DOMAINS`
+/// order — the flat shape a filtered (non-resting) command popup view renders from.
+pub fn all() -> impl Iterator<Item = (String, &'static Command)> {
     DOMAINS.iter().flat_map(|domain| {
+        let name = (domain.name)();
         domain
             .commands
             .iter()
-            .map(move |command| (domain.name, command))
+            .map(move |command| (name.clone(), command))
     })
 }
 
@@ -245,17 +274,19 @@ mod tests {
 
     #[test]
     fn every_domain_has_at_least_one_command() {
+        crate::locale::init_for_tests();
         for domain in DOMAINS {
             assert!(
                 !domain.commands.is_empty(),
                 "{} has no commands",
-                domain.name
+                (domain.name)()
             );
         }
     }
 
     #[test]
     fn every_command_has_its_own_id() {
+        crate::locale::init_for_tests();
         let mut seen = std::collections::HashSet::new();
         for (domain, command) in all() {
             assert!(
@@ -270,16 +301,69 @@ mod tests {
 
     #[test]
     fn total_commands_matches_the_flat_count() {
+        crate::locale::init_for_tests();
         assert_eq!(total_commands(), all().count());
     }
 
+    /// Checked against the source Locale's own headers: `DOMAINS`' order is fixed here, and a
+    /// translated header never reorders the list.
     #[test]
     fn dashboard_is_first_and_the_rest_are_alphabetical() {
-        assert_eq!(DOMAINS[0].name, "Dashboard");
-        let rest: Vec<&str> = DOMAINS[1..].iter().map(|domain| domain.name).collect();
+        crate::locale::init_for_tests();
+        assert_eq!((DOMAINS[0].name)(), "Dashboard");
+        let rest: Vec<String> = DOMAINS[1..].iter().map(|domain| (domain.name)()).collect();
         let mut sorted = rest.clone();
         sorted.sort_unstable();
         assert_eq!(rest, sorted);
+    }
+
+    /// Every description and preview resolves to a real Message, in every supported Locale — a
+    /// missing id would otherwise only show as the id itself, on screen.
+    #[test]
+    fn every_description_and_preview_resolves_in_every_locale() {
+        for locale in [
+            lib_locale::Locale::EnUs,
+            lib_locale::Locale::EnGb,
+            lib_locale::Locale::EnAu,
+            lib_locale::Locale::EnXa,
+        ] {
+            crate::locale::init_for_tests();
+            lib_locale::with_locale(locale, || {
+                for (_, command) in all() {
+                    let description = (command.description)();
+                    assert!(
+                        !description.is_empty() && !description.contains("tui-command"),
+                        "{locale:?}: `{}` has no description Message",
+                        command.name
+                    );
+                    for arg in command.args {
+                        let preview = (arg.preview)();
+                        assert!(
+                            !preview.is_empty() && !preview.contains("tui-command"),
+                            "{locale:?}: `{}`'s `{}` has no preview Message",
+                            command.name,
+                            arg.placeholder
+                        );
+                    }
+                }
+            });
+        }
+    }
+
+    /// Each argument's token is the one its command's own usage line spells, so the preview row and
+    /// the usage line can never drift apart.
+    #[test]
+    fn every_argument_token_appears_in_its_commands_usage_line() {
+        for (_, command) in all() {
+            for arg in command.args {
+                assert!(
+                    command.name.contains(arg.placeholder),
+                    "`{}` does not spell `{}`",
+                    command.name,
+                    arg.placeholder
+                );
+            }
+        }
     }
 
     #[test]

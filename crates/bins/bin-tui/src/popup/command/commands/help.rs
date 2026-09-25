@@ -8,6 +8,6 @@ pub const COMMANDS: &[Command] = &[Command {
     id: CommandId::Help,
     name: "help",
     chord: Chord(&[KeyCode::Char('?')]),
-    description: "browse every command",
+    description: crate::msg::tui_command_help_description,
     args: &[],
 }];

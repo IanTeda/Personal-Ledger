@@ -30,7 +30,7 @@ use ratatui::{
 use lib_core::DateStyle;
 
 use crate::msg;
-use crate::view::{Action, View};
+use crate::view::{Action, View, ViewId};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
 /// the override dot, the "3 overridden" figure and a setting's `consequence` warning.
@@ -132,8 +132,12 @@ impl View for SettingsView {
         render_right_pane(frame, columns[1]);
     }
 
-    fn title(&self) -> &'static str {
-        "Settings"
+    fn id(&self) -> ViewId {
+        ViewId::Settings
+    }
+
+    fn title(&self) -> String {
+        lib_locale::msg::nav_settings()
     }
 }
 
@@ -221,7 +225,10 @@ fn render_groups(frame: &mut Frame, area: Rect) {
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_settings_groups_heading(), dim)), sections[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(msg::tui_settings_groups_heading(), dim)),
+        sections[0],
+    );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
 
     let row_constraints: Vec<Constraint> =
@@ -284,7 +291,12 @@ fn render_where_values_live(frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    render_heading(frame, sections[0], &msg::tui_settings_where_heading(), &msg::tui_settings_where_tag());
+    render_heading(
+        frame,
+        sections[0],
+        &msg::tui_settings_where_heading(),
+        &msg::tui_settings_where_tag(),
+    );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
 
     let block = Block::bordered().padding(Padding::horizontal(1));
@@ -357,7 +369,12 @@ fn render_reset(frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    render_heading(frame, sections[0], &msg::tui_settings_reset_heading(), &msg::tui_settings_reset_tag());
+    render_heading(
+        frame,
+        sections[0],
+        &msg::tui_settings_reset_heading(),
+        &msg::tui_settings_reset_tag(),
+    );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
     let r_hint = msg::tui_settings_reset_hint_r();
     let big_r_hint = msg::tui_settings_reset_hint_R();
@@ -478,6 +495,19 @@ fn row(overridden: bool, setting: &str, value: &str, note: &str, selected: bool)
     }
 }
 
+/// The read-only `locale` row: the Locale startup actually resolved, and a note naming where it
+/// came from — both from [`crate::locale::describe`], never a fixed value.
+fn locale_row() -> SettingRow {
+    let (tag, source) = crate::locale::describe(&crate::locale::info());
+    row(
+        false,
+        &msg::tui_settings_setting_locale(),
+        &tag,
+        &source,
+        false,
+    )
+}
+
 /// §4a's own worked example: the eight `general` settings, `base unit` selected (the
 /// `selected` box below explains it).
 ///
@@ -514,13 +544,7 @@ fn settings() -> Vec<SettingRow> {
             "date format note",
             false,
         ),
-        row(
-            false,
-            &msg::tui_settings_setting_locale(),
-            &msg::tui_settings_setting_locale_value(),
-            "en-US in use",
-            false,
-        ),
+        locale_row(),
         row(
             true,
             &msg::tui_settings_setting_negatives(),
@@ -558,7 +582,12 @@ fn render_settings_list(frame: &mut Frame, area: Rect) {
         ])
         .split(area);
 
-    render_heading(frame, sections[0], &msg::tui_settings_list_heading(), &msg::tui_settings_list_heading_tag());
+    render_heading(
+        frame,
+        sections[0],
+        &msg::tui_settings_list_heading(),
+        &msg::tui_settings_list_heading_tag(),
+    );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
     render_settings_column_header(frame, sections[2]);
     render_setting_rows(frame, sections[3]);
@@ -569,8 +598,14 @@ fn render_settings_column_header(frame: &mut Frame, area: Rect) {
     let columns = setting_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
-    frame.render_widget(Paragraph::new(Span::styled(&msg::tui_settings_list_column_setting(), dim)), columns[1]);
-    frame.render_widget(Paragraph::new(Span::styled(&msg::tui_settings_list_column_value(), dim)), columns[2]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(&msg::tui_settings_list_column_setting(), dim)),
+        columns[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(&msg::tui_settings_list_column_value(), dim)),
+        columns[2],
+    );
     frame.render_widget(Paragraph::new(Span::styled("NOTE", dim)), columns[3]);
 }
 
@@ -894,7 +929,9 @@ mod tests {
 
     #[test]
     fn title_is_settings() {
+        crate::locale::init_for_tests();
         assert_eq!(SettingsView::new().title(), "Settings");
+        assert_eq!(SettingsView::new().id(), ViewId::Settings);
     }
 
     #[test]

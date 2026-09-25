@@ -111,28 +111,3 @@ tui-category-error-not-found = category not found
 tui-category-error-creation-failed = failed to create category
 tui-category-error-edit-failed = failed to edit category
 tui-category-error-move-failed = failed to move category
-
-## The command palette: Categories domain commands and their help text.
-
-tui-command-category = browse the expense/income tree, plot spend by month
-tui-command-category-new = add a child category · opens the new popup, blank
-tui-command-category-new-placeholder = \<name\>
-tui-command-category-new-preview = e.g. Groceries, Rent
-
-tui-command-category-edit = edit the highlighted category
-tui-command-category-edit-placeholder = \<name\>
-tui-command-category-edit-preview = Food · parent Expenses
-
-tui-command-category-move = move to a different parent
-tui-command-category-move-placeholder = \<parent\>
-tui-command-category-move-preview = Expenses/Food to Expenses/Household
-
-tui-command-category-archive = archive the highlighted category
-tui-command-category-archive-placeholder = \<name\>
-tui-command-category-archive-preview = Food
-
-tui-command-category-unarchive = unarchive a category
-tui-command-category-unarchive-placeholder = \<name\>
-tui-command-category-unarchive-preview = Food
-
-tui-command-category-merge = merge — not yet built

@@ -19,64 +19,80 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Arg, Chord, Command, CommandId};
+use super::{
+    Arg, Chord, Command, CommandId, list_selection_inactive_preview, list_selection_preview,
+    off_description,
+};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         id: CommandId::Tag,
         name: "tag",
         chord: Chord::NONE,
-        description: "flat alphabetical list, summary box, lightweight delete",
+        description: crate::msg::tui_command_tag_description,
         args: &[],
     },
     Command {
         id: CommandId::TagNew,
         name: "tag new <name>",
         chord: Chord(&[KeyCode::Char('n')]),
-        description: "add a tag — opens the new popup, blank",
+        description: crate::msg::tui_command_tag_new_description,
         args: &[Arg {
             placeholder: "<name>",
-            preview: "e.g. Japan Trip 2026, Tax Deductible",
+            preview: crate::msg::tui_command_preview_tag_new,
         }],
     },
     Command {
         id: CommandId::TagEdit,
         name: "tag edit <tag>",
         chord: Chord(&[KeyCode::Char('e')]),
-        description: "edit the highlighted tag",
+        description: crate::msg::tui_command_tag_edit_description,
         args: &[Arg {
             placeholder: "<tag>",
-            preview: "Japan Trip 2026 · active · 7 transactions",
+            preview: crate::msg::tui_command_preview_tag_edit,
         }],
     },
     Command {
         id: CommandId::TagOff,
         name: "tag off <tag>",
         chord: Chord::NONE,
-        description: "is_active = 0 — hides it from the list unless za",
+        description: off_description,
         args: &[Arg {
             placeholder: "<tag>",
-            preview: "the list selection",
+            preview: list_selection_preview,
         }],
     },
     Command {
         id: CommandId::TagOn,
         name: "tag on <tag>",
         chord: Chord::NONE,
-        description: "is_active = 1 — reverses tag off",
+        description: on_description,
         args: &[Arg {
             placeholder: "<tag>",
-            preview: "the list selection, with za held to see it",
+            preview: list_selection_inactive_preview,
         }],
     },
     Command {
         id: CommandId::TagDelete,
         name: "tag delete <tag>",
         chord: Chord(&[KeyCode::Char('d')]),
-        description: "arms the lightweight delete confirm — y on the list confirms",
+        description: delete_description,
         args: &[Arg {
             placeholder: "<tag>",
-            preview: "the list selection",
+            preview: list_selection_preview,
         }],
     },
 ];
+
+/// `:tag on`'s description names the command it reverses, which stays a stable English id.
+fn on_description() -> String {
+    crate::msg::tui_command_on_description("tag off")
+}
+
+/// `:tag delete`'s description names the key that confirms the armed delete.
+fn delete_description() -> String {
+    crate::msg::tui_command_tag_delete_description(TAG_DELETE_CONFIRM_KEY)
+}
+
+/// The key the Tags list confirms an armed delete with.
+const TAG_DELETE_CONFIRM_KEY: &str = "y";

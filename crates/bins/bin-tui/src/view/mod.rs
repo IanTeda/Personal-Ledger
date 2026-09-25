@@ -531,6 +531,26 @@ pub enum Action {
     DeletePayee(RowID),
 }
 
+/// A view's stable identity: what `Shell` compares to decide whether a requested view is
+/// already active, and whether it is the home view. Separate from [`View::title`], which is a
+/// Message and so changes with the Locale in effect -- comparing titles would make navigation
+/// depend on translated text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ViewId {
+    Accounts,
+    BalanceChecks,
+    Budgets,
+    Categories,
+    Dashboard,
+    Help,
+    Payees,
+    Reports,
+    Settings,
+    Tags,
+    Transactions,
+    Units,
+}
+
 /// The single view `Shell` hosts at a time.
 pub trait View {
     /// Called once when the view becomes active, with a sender any background work (e.g. a
@@ -553,8 +573,12 @@ pub trait View {
     /// the status line and above the command line.
     fn view(&self, frame: &mut Frame, area: Rect);
 
-    /// Short name for the view, shown in the shell's status line.
-    fn title(&self) -> &'static str;
+    /// This view's stable id, which `Shell` navigates on.
+    fn id(&self) -> ViewId;
+
+    /// Short name for the view, as a Message in the Locale in effect, shown in the shell's
+    /// status line. Never used for identity -- that is [`View::id`].
+    fn title(&self) -> String;
 
     /// Read-only access to this view's Category tree, if it has one — `Some` only for
     /// `view::categories::CategoriesView`. Lets `Shell` render and resolve the Category

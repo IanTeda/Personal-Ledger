@@ -18,7 +18,7 @@ use ratatui::{
 };
 
 use crate::msg;
-use crate::view::{Action, View};
+use crate::view::{Action, View, ViewId};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
 /// a negative weekly `Δ%`.
@@ -157,8 +157,12 @@ impl View for UnitsView {
         render_price_history(frame, columns[1]);
     }
 
-    fn title(&self) -> &'static str {
-        "Units & Prices" // Will be migrated after Message return type is refactored
+    fn id(&self) -> ViewId {
+        ViewId::Units
+    }
+
+    fn title(&self) -> String {
+        crate::msg::tui_view_units_title()
     }
 }
 
@@ -294,7 +298,10 @@ fn render_unit_list_heading(frame: &mut Frame, area: Rect, visible: usize) {
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_list_heading(), dim)), columns[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(msg::tui_units_list_heading(), dim)),
+        columns[0],
+    );
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -306,8 +313,14 @@ fn render_unit_list_column_header(frame: &mut Frame, area: Rect) {
     let columns = unit_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_column_code(), dim)), columns[0]);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_column_type(), dim)), columns[1]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(msg::tui_units_column_code(), dim)),
+        columns[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(msg::tui_units_column_type(), dim)),
+        columns[1],
+    );
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_units_column_last(), dim)).alignment(Alignment::Right),
         columns[2],
@@ -452,7 +465,10 @@ fn render_summary(frame: &mut Frame, area: Rect, summary: &UnitSummary) {
 /// The heading above the summary box: "SUMMARY", dim.
 fn render_summary_heading(frame: &mut Frame, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_summary_heading(), dim)), area);
+    frame.render_widget(
+        Paragraph::new(Span::styled(msg::tui_units_summary_heading(), dim)),
+        area,
+    );
 }
 
 /// The bordered `Block` beneath the summary heading: code and type on the first line, the
@@ -533,7 +549,12 @@ fn render_summary_figure(frame: &mut Frame, area: Rect, figure: &SummaryFigure) 
 }
 
 /// One highlighted figure row with localized label.
-fn render_summary_figure_with_label(frame: &mut Frame, area: Rect, label: &str, figure: &SummaryFigure) {
+fn render_summary_figure_with_label(
+    frame: &mut Frame,
+    area: Rect,
+    label: &str,
+    figure: &SummaryFigure,
+) {
     let value_width =
         figure.value.chars().count() + figure.suffix.map_or(0, |suffix| suffix.chars().count() + 1);
     let columns = Layout::default()
@@ -751,11 +772,30 @@ fn render_weekly_prices_column_header(frame: &mut Frame, area: Rect) {
     let columns = weekly_price_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_wc(), dim)), columns[0]);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_close(), dim)), columns[1]);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_change(), dim)), columns[2]);
     frame.render_widget(
-        Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_market_value(), dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_wc(), dim)),
+        columns[0],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            msg::tui_units_weekly_prices_column_close(),
+            dim,
+        )),
+        columns[1],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            msg::tui_units_weekly_prices_column_change(),
+            dim,
+        )),
+        columns[2],
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            msg::tui_units_weekly_prices_column_market_value(),
+            dim,
+        ))
+        .alignment(Alignment::Right),
         columns[3],
     );
 }
@@ -1488,6 +1528,8 @@ mod tests {
 
     #[test]
     fn title_is_units_and_prices() {
-        assert_eq!(UnitsView::new().title(), "Units & Prices");
+        crate::locale::init_for_tests();
+        assert_eq!(UnitsView::new().title(), "Units & prices");
+        assert_eq!(UnitsView::new().id(), ViewId::Units);
     }
 }

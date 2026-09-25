@@ -13,40 +13,40 @@ pub const COMMANDS: &[Command] = &[
         id: CommandId::BudgetList,
         name: "budget list [period]",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('b')]),
-        description: "budgets vs actual for the period",
+        description: crate::msg::tui_command_budget_list_description,
         args: &[Arg {
             placeholder: "[period]",
-            preview: "current: SEP 2026 · optional, defaults to this period",
+            preview: crate::msg::tui_command_preview_budget_list,
         }],
     },
     Command {
         id: CommandId::BudgetNew,
         name: "budget new <category> <limit>",
         chord: Chord(&[KeyCode::Char('n')]),
-        description: "start tracking a category",
+        description: crate::msg::tui_command_budget_new_description,
         args: &[Arg {
             placeholder: "<category>",
-            preview: "e.g. dining, groceries — one budget per category",
+            preview: crate::msg::tui_command_preview_budget_new,
         }],
     },
     Command {
         id: CommandId::BudgetEdit,
         name: "budget edit <category> [limit]",
         chord: Chord(&[KeyCode::Char('e')]),
-        description: "change the limit or period",
+        description: crate::msg::tui_command_budget_edit_description,
         args: &[Arg {
             placeholder: "<category>",
-            preview: "dining · limit 300.00 · actual 412.00 · over by 112.00",
+            preview: crate::msg::tui_command_preview_budget_edit,
         }],
     },
     Command {
         id: CommandId::BudgetDelete,
         name: "budget delete <category>",
         chord: Chord(&[KeyCode::Char('d')]),
-        description: "stop tracking a category",
+        description: crate::msg::tui_command_budget_delete_description,
         args: &[Arg {
             placeholder: "<category>",
-            preview: "dining · limit 300.00 — stops tracking, keeps past transactions",
+            preview: crate::msg::tui_command_preview_budget_delete,
         }],
     },
 ];

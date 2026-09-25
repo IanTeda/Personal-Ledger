@@ -4,7 +4,7 @@
 
 use ratatui::{Frame, layout::Rect, widgets::Block};
 
-use crate::view::{Action, View};
+use crate::view::{Action, View, ViewId};
 
 /// A trivial placeholder Transactions `View`: one bordered box, no content yet.
 #[derive(Default)]
@@ -20,11 +20,15 @@ impl View for TransactionsView {
     fn update(&mut self, _action: &Action) {}
 
     fn view(&self, frame: &mut Frame, area: Rect) {
-        frame.render_widget(Block::bordered().title(" Transactions "), area);
+        frame.render_widget(Block::bordered().title(format!(" {} ", self.title())), area);
     }
 
-    fn title(&self) -> &'static str {
-        "Transactions"
+    fn id(&self) -> ViewId {
+        ViewId::Transactions
+    }
+
+    fn title(&self) -> String {
+        lib_locale::msg::nav_transactions()
     }
 }
 
@@ -47,6 +51,8 @@ mod tests {
 
     #[test]
     fn title_is_transactions() {
+        crate::locale::init_for_tests();
         assert_eq!(TransactionsView::new().title(), "Transactions");
+        assert_eq!(TransactionsView::new().id(), ViewId::Transactions);
     }
 }

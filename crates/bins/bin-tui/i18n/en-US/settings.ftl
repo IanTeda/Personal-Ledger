@@ -61,7 +61,6 @@ tui-settings-setting-date-style-value = short
 tui-settings-setting-negatives = negatives
 tui-settings-setting-negatives-value = minus
 tui-settings-setting-locale = locale
-tui-settings-setting-locale-value = en-US
 tui-settings-setting-week-starts = week starts
 tui-settings-setting-week-starts-value = monday
 tui-settings-setting-fiscal-year = fiscal year starts

@@ -5,7 +5,7 @@
 
 use ratatui::{Frame, layout::Rect, widgets::Block};
 
-use crate::view::{Action, View};
+use crate::view::{Action, View, ViewId};
 
 /// A trivial placeholder Balance Checks `View`: one bordered box, no content yet.
 #[derive(Default)]
@@ -21,11 +21,15 @@ impl View for BalanceChecksView {
     fn update(&mut self, _action: &Action) {}
 
     fn view(&self, frame: &mut Frame, area: Rect) {
-        frame.render_widget(Block::bordered().title(" Balance Checks "), area);
+        frame.render_widget(Block::bordered().title(format!(" {} ", self.title())), area);
     }
 
-    fn title(&self) -> &'static str {
-        "Balance Checks"
+    fn id(&self) -> ViewId {
+        ViewId::BalanceChecks
+    }
+
+    fn title(&self) -> String {
+        crate::msg::tui_view_balance_checks_title()
     }
 }
 
@@ -48,6 +52,8 @@ mod tests {
 
     #[test]
     fn title_is_balance_checks() {
-        assert_eq!(BalanceChecksView::new().title(), "Balance Checks");
+        crate::locale::init_for_tests();
+        assert_eq!(BalanceChecksView::new().title(), "Balance checks");
+        assert_eq!(BalanceChecksView::new().id(), ViewId::BalanceChecks);
     }
 }

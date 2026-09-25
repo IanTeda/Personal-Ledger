@@ -8,6 +8,6 @@ pub const COMMANDS: &[Command] = &[Command {
     id: CommandId::Quit,
     name: "quit",
     chord: Chord(&[KeyCode::Char('Q')]),
-    description: "quit the app",
+    description: crate::msg::tui_command_quit_description,
     args: &[],
 }];

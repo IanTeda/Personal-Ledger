@@ -4,7 +4,7 @@
 
 use ratatui::{Frame, layout::Rect, widgets::Block};
 
-use crate::view::{Action, View};
+use crate::view::{Action, View, ViewId};
 
 /// A trivial placeholder Budgets `View`: one bordered box, no content yet.
 #[derive(Default)]
@@ -20,11 +20,15 @@ impl View for BudgetsView {
     fn update(&mut self, _action: &Action) {}
 
     fn view(&self, frame: &mut Frame, area: Rect) {
-        frame.render_widget(Block::bordered().title(" Budgets "), area);
+        frame.render_widget(Block::bordered().title(format!(" {} ", self.title())), area);
     }
 
-    fn title(&self) -> &'static str {
-        "Budgets"
+    fn id(&self) -> ViewId {
+        ViewId::Budgets
+    }
+
+    fn title(&self) -> String {
+        lib_locale::msg::nav_budgets()
     }
 }
 
@@ -47,6 +51,8 @@ mod tests {
 
     #[test]
     fn title_is_budgets() {
+        crate::locale::init_for_tests();
         assert_eq!(BudgetsView::new().title(), "Budgets");
+        assert_eq!(BudgetsView::new().id(), ViewId::Budgets);
     }
 }

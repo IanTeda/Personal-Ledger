@@ -12,31 +12,39 @@ pub const COMMANDS: &[Command] = &[
         id: CommandId::TxnRecent,
         name: "txn recent",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('t')]),
-        description: "last 50 transactions, all accounts",
+        description: recent_description,
         args: &[],
     },
     Command {
         id: CommandId::TxnNew,
         name: "txn new [account]",
         chord: Chord(&[KeyCode::Char('a')]),
-        description: "add a transaction from anywhere",
+        description: crate::msg::tui_command_txn_new_description,
         args: &[Arg {
             placeholder: "[account]",
-            preview: "optional · defaults to the current account, if any",
+            preview: crate::msg::tui_command_preview_txn_new,
         }],
     },
     Command {
         id: CommandId::TxnEdit,
         name: "txn edit",
         chord: Chord(&[KeyCode::Char('e')]),
-        description: "edit the highlighted transaction",
+        description: crate::msg::tui_command_txn_edit_description,
         args: &[],
     },
     Command {
         id: CommandId::TxnDelete,
         name: "txn delete",
         chord: Chord(&[KeyCode::Char('d')]),
-        description: "delete — confirms by payee and amount",
+        description: crate::msg::tui_command_txn_delete_description,
         args: &[],
     },
 ];
+
+/// How many transactions `:txn recent` shows, named in its own description.
+const RECENT_LIMIT: i64 = 50;
+
+/// `:txn recent`'s description, whose noun agrees with the count it names.
+fn recent_description() -> String {
+    crate::msg::tui_command_txn_recent_description(RECENT_LIMIT)
+}

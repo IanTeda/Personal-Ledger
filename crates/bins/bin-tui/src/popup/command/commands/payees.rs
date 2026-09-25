@@ -22,104 +22,112 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Arg, Chord, Command, CommandId};
+use super::{
+    Arg, Chord, Command, CommandId, list_selection_inactive_preview, list_selection_preview,
+    off_description,
+};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         id: CommandId::Payee,
         name: "payee",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('p')]),
-        description: "payees ranked by spend, curation flags, record, matches",
+        description: crate::msg::tui_command_payee_description,
         args: &[],
     },
     Command {
         id: CommandId::PayeeNew,
         name: "payee new <name>",
         chord: Chord(&[KeyCode::Char('n')]),
-        description: "add a payee — opens the new popup, blank",
+        description: crate::msg::tui_command_payee_new_description,
         args: &[Arg {
             placeholder: "<name>",
-            preview: "e.g. Woolworths, ATO, Telstra",
+            preview: crate::msg::tui_command_preview_payee_new,
         }],
     },
     Command {
         id: CommandId::PayeeEdit,
         name: "payee edit <payee>",
         chord: Chord(&[KeyCode::Char('e')]),
-        description: "edit the highlighted payee",
+        description: crate::msg::tui_command_payee_edit_description,
         args: &[Arg {
             placeholder: "<payee>",
-            preview: "Woolworths · -18 402.55 · 184 txns",
+            preview: crate::msg::tui_command_preview_payee_edit,
         }],
     },
     Command {
         id: CommandId::PayeeRename,
         name: "payee rename <payee> <new>",
         chord: Chord::NONE,
-        description: "rename — keeps the old name as a match",
+        description: crate::msg::tui_command_payee_rename_description,
         args: &[Arg {
             placeholder: "<new>",
-            preview: "e.g. Woolworths Group",
+            preview: crate::msg::tui_command_preview_payee_rename,
         }],
     },
     Command {
         id: CommandId::PayeeMatch,
         name: "payee match <payee>",
         chord: Chord(&[KeyCode::Char('m')]),
-        description: "rename matches — add/edit/remove, live resolution test",
+        description: crate::msg::tui_command_payee_match_description,
         args: &[Arg {
             placeholder: "<payee>",
-            preview: "Woolworths · 2 matches",
+            preview: crate::msg::tui_command_preview_payee_match,
         }],
     },
     Command {
         id: CommandId::PayeeMatchAdd,
         name: "payee match add <payee> <text>",
         chord: Chord::NONE,
-        description: "adds an exact-text match — refuses on cross-payee collision",
+        description: crate::msg::tui_command_payee_match_add_description,
         args: &[Arg {
             placeholder: "<text>",
-            preview: "e.g. WW Metro",
+            preview: crate::msg::tui_command_preview_payee_match_add,
         }],
     },
     Command {
         id: CommandId::PayeeDefault,
         name: "payee default <payee> <category>",
         chord: Chord::NONE,
-        description: "sets the default category — pre-fills it on transaction entry",
+        description: crate::msg::tui_command_payee_default_description,
         args: &[Arg {
             placeholder: "<category>",
-            preview: "e.g. food/groceries",
+            preview: crate::msg::tui_command_preview_payee_default,
         }],
     },
     Command {
         id: CommandId::PayeeOff,
         name: "payee off <payee>",
         chord: Chord(&[KeyCode::Char('a')]),
-        description: "is_active = 0 — hides it from the list unless za",
+        description: off_description,
         args: &[Arg {
             placeholder: "<payee>",
-            preview: "the list selection",
+            preview: list_selection_preview,
         }],
     },
     Command {
         id: CommandId::PayeeOn,
         name: "payee on <payee>",
         chord: Chord::NONE,
-        description: "is_active = 1 — reverses payee off",
+        description: on_description,
         args: &[Arg {
             placeholder: "<payee>",
-            preview: "the list selection, with za held to see it",
+            preview: list_selection_inactive_preview,
         }],
     },
     Command {
         id: CommandId::PayeeDelete,
         name: "payee delete <payee>",
         chord: Chord(&[KeyCode::Char('d')]),
-        description: "opens the delete popup — the database refuses a referenced payee",
+        description: crate::msg::tui_command_payee_delete_description,
         args: &[Arg {
             placeholder: "<payee>",
-            preview: "Woolworths · 184 txns · 2 matches — refused",
+            preview: crate::msg::tui_command_preview_payee_delete,
         }],
     },
 ];
+
+/// `:payee on`'s description names the command it reverses, which stays a stable English id.
+fn on_description() -> String {
+    crate::msg::tui_command_on_description("payee off")
+}

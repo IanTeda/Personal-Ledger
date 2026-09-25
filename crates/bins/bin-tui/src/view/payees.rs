@@ -51,7 +51,11 @@ use ratatui::{
     },
 };
 
-use crate::{msg, payee::{Payee, PayeeCategoryShare, PayeeFixture, PayeeStore, PayeeTransaction}, view::{Action, View}};
+use crate::{
+    msg,
+    payee::{Payee, PayeeCategoryShare, PayeeFixture, PayeeStore, PayeeTransaction},
+    view::{Action, View, ViewId},
+};
 use lib_core::{Money, RowID};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used for
@@ -446,8 +450,12 @@ impl View for PayeesView {
         self.render_right_pane(frame, columns[1]);
     }
 
-    fn title(&self) -> &'static str {
-        "Payees"
+    fn id(&self) -> ViewId {
+        ViewId::Payees
+    }
+
+    fn title(&self) -> String {
+        lib_locale::msg::nav_payees()
     }
 
     fn payee_store(&self) -> Option<&dyn PayeeStore> {
@@ -993,10 +1001,17 @@ fn txn_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect) {
 fn render_txn_column_header(frame: &mut Frame, area: Rect) {
     let (_, date, category, amount) = txn_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled(&msg::tui_payees_column_date(), dim)), date);
-    frame.render_widget(Paragraph::new(Span::styled(&msg::tui_payees_column_category(), dim)), category);
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_payees_column_amount(), dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(&msg::tui_payees_column_date(), dim)),
+        date,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(&msg::tui_payees_column_category(), dim)),
+        category,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(&msg::tui_payees_column_amount(), dim))
+            .alignment(Alignment::Right),
         amount,
     );
 }
@@ -1065,7 +1080,9 @@ mod tests {
 
     #[test]
     fn title_is_payees() {
+        crate::locale::init_for_tests();
         assert_eq!(PayeesView::new().title(), "Payees");
+        assert_eq!(PayeesView::new().id(), ViewId::Payees);
     }
 
     #[test]

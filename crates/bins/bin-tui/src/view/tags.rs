@@ -58,7 +58,7 @@ use ratatui::{
 
 use crate::msg;
 use crate::tag::{Tag, TagFixture, TagStore, TagTransaction};
-use crate::view::{Action, View};
+use crate::view::{Action, View, ViewId};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
 /// the delete confirm line.
@@ -370,8 +370,12 @@ impl View for TagsView {
         self.render_right_pane(frame, columns[1]);
     }
 
-    fn title(&self) -> &'static str {
-        "Tags"
+    fn id(&self) -> ViewId {
+        ViewId::Tags
+    }
+
+    fn title(&self) -> String {
+        lib_locale::msg::nav_tags()
     }
 
     fn tag_store(&self) -> Option<&dyn TagStore> {
@@ -478,20 +482,32 @@ impl TagsView {
         } else {
             msg::tui_tags_summary_active_value_off()
         };
-        frame.render_widget(summary_field_line(&msg::tui_tags_summary_active(), &active_text), rows[2]);
+        frame.render_widget(
+            summary_field_line(&msg::tui_tags_summary_active(), &active_text),
+            rows[2],
+        );
 
         let tagged_text = msg::tui_tags_summary_tagged_count(tag.tagged_transaction_count as i64);
-        frame.render_widget(summary_field_line(&msg::tui_tags_summary_tagged(), &tagged_text), rows[3]);
+        frame.render_widget(
+            summary_field_line(&msg::tui_tags_summary_tagged(), &tagged_text),
+            rows[3],
+        );
 
         // Two separate rows, not one combined "created · upd ..." line (as `view::accounts`'s
         // own `last check` row does) — this pane's narrower inner width (no right pane to
         // spill into) can't fit both dates on one line.
         frame.render_widget(
-            summary_field_line(&msg::tui_tags_summary_created(), &format_date_full_year(tag.created_on)),
+            summary_field_line(
+                &msg::tui_tags_summary_created(),
+                &format_date_full_year(tag.created_on),
+            ),
             rows[4],
         );
         frame.render_widget(
-            summary_field_line(&msg::tui_tags_summary_updated(), &format_date_full_year(tag.updated_on)),
+            summary_field_line(
+                &msg::tui_tags_summary_updated(),
+                &format_date_full_year(tag.updated_on),
+            ),
             rows[5],
         );
     }
@@ -535,7 +551,12 @@ impl TagsView {
             ])
             .split(area);
 
-        render_section_heading(frame, rows[0], &msg::tui_tag_right_pane_spend_heading(), &tagged_spend_window_tag());
+        render_section_heading(
+            frame,
+            rows[0],
+            &msg::tui_tag_right_pane_spend_heading(),
+            &tagged_spend_window_tag(),
+        );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         let series: Vec<f64> = self
@@ -568,7 +589,12 @@ impl TagsView {
         } else {
             msg::tui_tag_right_pane_lands_heading_tag(breakdown.len() as i64)
         };
-        render_section_heading(frame, rows[0], &msg::tui_tag_right_pane_lands_heading(), &heading_tag);
+        render_section_heading(
+            frame,
+            rows[0],
+            &msg::tui_tag_right_pane_lands_heading(),
+            &heading_tag,
+        );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         if breakdown.is_empty() {
@@ -598,16 +624,14 @@ impl TagsView {
                 .iter()
                 .map(|(_, amount)| money_to_f64(amount))
                 .sum();
-            let label = msg::tui_tag_right_pane_lands_rollup(&(breakdown.len() - shown).to_string());
+            let label =
+                msg::tui_tag_right_pane_lands_rollup(&(breakdown.len() - shown).to_string());
             render_category_bar(frame, bar_rows[shown], &label, rest_total, total);
         }
 
         let dim = Style::default().add_modifier(Modifier::DIM);
         frame.render_widget(
-            Paragraph::new(Span::styled(
-                msg::tui_tag_right_pane_lands_statement(),
-                dim,
-            )),
+            Paragraph::new(Span::styled(msg::tui_tag_right_pane_lands_statement(), dim)),
             rows[3],
         );
     }
@@ -633,8 +657,14 @@ impl TagsView {
             ])
             .split(area);
 
-        let heading_tag = msg::tui_tag_right_pane_txn_heading_tag(&visible_count.to_string(), &total.to_string());
-        render_section_heading(frame, sections[0], &msg::tui_tag_right_pane_txn_heading(), &heading_tag);
+        let heading_tag =
+            msg::tui_tag_right_pane_txn_heading_tag(&visible_count.to_string(), &total.to_string());
+        render_section_heading(
+            frame,
+            sections[0],
+            &msg::tui_tag_right_pane_txn_heading(),
+            &heading_tag,
+        );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
         render_txn_column_header(frame, sections[2]);
 
@@ -666,14 +696,20 @@ impl TagsView {
         let dim = Style::default().add_modifier(Modifier::DIM);
         if rows.is_empty() {
             frame.render_widget(
-                Paragraph::new(Span::styled(msg::tui_tag_right_pane_txn_footer_empty(), dim)),
+                Paragraph::new(Span::styled(
+                    msg::tui_tag_right_pane_txn_footer_empty(),
+                    dim,
+                )),
                 area,
             );
             return;
         }
 
         let overlap = rows.iter().filter(|row| row.other_tags > 0).count();
-        let text = msg::tui_tag_right_pane_txn_footer_overlap(&overlap.to_string(), &rows.len().to_string());
+        let text = msg::tui_tag_right_pane_txn_footer_overlap(
+            &overlap.to_string(),
+            &rows.len().to_string(),
+        );
         frame.render_widget(
             Paragraph::new(Span::styled(text, Style::default().fg(ACCENT))),
             area,
@@ -820,7 +856,10 @@ fn render_spend_footer(frame: &mut Frame, area: Rect, tag: &Tag, series: &[f64])
     let dim = Style::default().add_modifier(Modifier::DIM);
     if tag.tagged_transaction_count == 0 {
         frame.render_widget(
-            Paragraph::new(Span::styled(msg::tui_tag_right_pane_spend_footer_empty(), dim)),
+            Paragraph::new(Span::styled(
+                msg::tui_tag_right_pane_spend_footer_empty(),
+                dim,
+            )),
             area,
         );
         return;
@@ -892,15 +931,26 @@ fn txn_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect, Rect) {
 fn render_txn_column_header(frame: &mut Frame, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let (date, payee, category, other_tags, amount) = txn_row_columns(area);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_tag_txn_column_date(), dim)), date);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_tag_txn_column_payee(), dim)), payee);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_tag_txn_column_category(), dim)), category);
     frame.render_widget(
-        Paragraph::new(Span::styled(msg::tui_tag_txn_column_tags(), dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(msg::tui_tag_txn_column_date(), dim)),
+        date,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(msg::tui_tag_txn_column_payee(), dim)),
+        payee,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(msg::tui_tag_txn_column_category(), dim)),
+        category,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(msg::tui_tag_txn_column_tags(), dim))
+            .alignment(Alignment::Right),
         other_tags,
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(msg::tui_tag_txn_column_amount(), dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(msg::tui_tag_txn_column_amount(), dim))
+            .alignment(Alignment::Right),
         amount,
     );
 }
@@ -961,7 +1011,9 @@ mod tests {
 
     #[test]
     fn title_is_tags() {
+        crate::locale::init_for_tests();
         assert_eq!(TagsView::new().title(), "Tags");
+        assert_eq!(TagsView::new().id(), ViewId::Tags);
     }
 
     #[test]

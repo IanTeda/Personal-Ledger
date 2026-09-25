@@ -83,22 +83,3 @@ tui-payee-matches-help-tab = next field
 tui-payee-matches-help-add = add pattern
 tui-payee-matches-help-delete = delete
 tui-payee-matches-help-cancel = cancel
-
-## The command palette: Payees domain commands and their help text.
-
-tui-command-payee = payees · transaction categorisation
-tui-command-payee-new = add a payee
-tui-command-payee-new-placeholder = \<name\>
-tui-command-payee-new-preview = e.g. Coles, Woolworths
-
-tui-command-payee-edit = edit the highlighted payee
-tui-command-payee-edit-placeholder = \<payee\>
-tui-command-payee-edit-preview = Coles · 184 txns
-
-tui-command-payee-delete = delete the highlighted payee
-tui-command-payee-delete-placeholder = \<payee\>
-tui-command-payee-delete-preview = Coles · unassigns 184 txns
-
-tui-command-payee-manage = manage payee matches
-tui-command-payee-manage-placeholder = \<payee\>
-tui-command-payee-manage-preview = Coles — add patterns

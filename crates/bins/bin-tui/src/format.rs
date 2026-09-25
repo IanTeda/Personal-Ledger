@@ -43,6 +43,12 @@ pub fn money_f64(amount: f64, decimal_places: i64) -> String {
     )
 }
 
+/// A whole count, grouped by the Locale (`1 284`), for a Message that names a number of rows, days
+/// or months. Counts a Message pluralises on are passed as `i64` instead and formatted by Fluent.
+pub fn count(value: i64) -> String {
+    money(&Money(BigDecimal::from(value)), 0)
+}
+
 /// A full date in the Locale's medium form, lower case (`12 sept 2026`).
 pub fn date(date: NaiveDate) -> String {
     format_date(date, None).to_lowercase()

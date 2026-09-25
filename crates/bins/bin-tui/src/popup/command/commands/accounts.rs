@@ -21,74 +21,93 @@
 
 use crossterm::event::KeyCode;
 
-use super::{Arg, Chord, Command, CommandId};
+use super::{
+    Arg, Chord, Command, CommandId, list_selection_inactive_preview, list_selection_preview,
+    off_description,
+};
 
 pub const COMMANDS: &[Command] = &[
     Command {
         id: CommandId::Account,
         name: "account",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('a')]),
-        description: "accounts grouped by type, per-unit subtotals, ledger",
+        description: crate::msg::tui_command_account_description,
         args: &[],
     },
     Command {
         id: CommandId::AccountNew,
         name: "account new <name> <type> <unit>",
         chord: Chord(&[KeyCode::Char('n')]),
-        description: "add an account — opens the new popup, blank",
+        description: crate::msg::tui_command_account_new_description,
         args: &[Arg {
             placeholder: "<name>",
-            preview: "e.g. Everyday Spending, Mortgage Offset",
+            preview: crate::msg::tui_command_preview_account_new,
         }],
     },
     Command {
         id: CommandId::AccountEdit,
         name: "account edit <acct>",
         chord: Chord(&[KeyCode::Char('e')]),
-        description: "edit the highlighted account",
+        description: crate::msg::tui_command_account_edit_description,
         args: &[Arg {
             placeholder: "<acct>",
-            preview: "Everyday Spending · bank · AUD 4 210.65",
+            preview: crate::msg::tui_command_preview_account_edit,
         }],
     },
     Command {
         id: CommandId::AccountDelete,
         name: "account delete <acct> [into <acct>]",
         chord: Chord(&[KeyCode::Char('d')]),
-        description: "delete — a non-empty account needs a same-unit transfer target",
+        description: crate::msg::tui_command_account_delete_description,
         args: &[Arg {
             placeholder: "<acct>",
-            preview: "Everyday Spending · 1 284 txns — needs [into <acct>]",
+            preview: delete_preview,
         }],
     },
     Command {
         id: CommandId::AccountOff,
         name: "account off <acct>",
         chord: Chord(&[KeyCode::Char('a')]),
-        description: "is_active = 0 — hides it from the list unless za",
+        description: off_description,
         args: &[Arg {
             placeholder: "<acct>",
-            preview: "the list selection",
+            preview: list_selection_preview,
         }],
     },
     Command {
         id: CommandId::AccountOn,
         name: "account on <acct>",
         chord: Chord::NONE,
-        description: "is_active = 1 — reverses account off",
+        description: on_description,
         args: &[Arg {
             placeholder: "<acct>",
-            preview: "the list selection, with za held to see it",
+            preview: list_selection_inactive_preview,
         }],
     },
     Command {
         id: CommandId::AccountCheck,
         name: "account check <acct> <amount> [date]",
         chord: Chord(&[KeyCode::Char('b')]),
-        description: "records a Balance Check, prints the variance",
+        description: crate::msg::tui_command_account_check_description,
         args: &[Arg {
             placeholder: "<amount>",
-            preview: "not yet designed — docs/ux/tui/accounts/README.md",
+            preview: check_preview,
         }],
     },
 ];
+
+/// `:account on`'s description names the command it reverses, which stays a stable English id.
+fn on_description() -> String {
+    crate::msg::tui_command_on_description("account off")
+}
+
+/// `:account delete`'s preview names the optional transfer-target argument its own usage line
+/// spells, so the two always read the same.
+fn delete_preview() -> String {
+    crate::msg::tui_command_preview_account_delete("[into <acct>]")
+}
+
+/// `:account check` has no design yet, so its preview points at the doc that will carry one.
+fn check_preview() -> String {
+    crate::msg::tui_command_preview_account_check("docs/ux/tui/accounts/README.md")
+}

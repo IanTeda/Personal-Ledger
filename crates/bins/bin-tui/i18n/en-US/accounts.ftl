@@ -74,30 +74,3 @@ tui-account-error-requires-transfer = holds transactions or Balance Checks — c
 tui-account-error-transfer-unit-mismatch = the transfer target must share the account's unit
 tui-account-error-transfer-is-source = can't transfer an account's transactions to itself
 tui-account-error-transfer-inactive = the transfer target must be active
-
-## The command palette: Accounts domain commands and their help text.
-
-tui-command-account = accounts grouped by type, per-unit subtotals, ledger
-tui-command-account-new = add an account — opens the new popup, blank
-tui-command-account-new-placeholder = \<name\>
-tui-command-account-new-preview = e.g. Everyday Spending, Mortgage Offset
-
-tui-command-account-edit = edit the highlighted account
-tui-command-account-edit-placeholder = \<acct\>
-tui-command-account-edit-preview = Everyday Spending · bank · AUD 4 210.65
-
-tui-command-account-delete = delete — a non-empty account needs a same-unit transfer target
-tui-command-account-delete-placeholder = \<acct\>
-tui-command-account-delete-preview = Everyday Spending · 1 284 txns — needs [into \<acct\>]
-
-tui-command-account-off = is_active = 0 — hides it from the list unless za
-tui-command-account-off-placeholder = \<acct\>
-tui-command-account-off-preview = the list selection
-
-tui-command-account-on = is_active = 1 — reverses account off
-tui-command-account-on-placeholder = \<acct\>
-tui-command-account-on-preview = the list selection, with za held to see it
-
-tui-command-account-check = records a Balance Check, prints the variance
-tui-command-account-check-placeholder = \<amount\>
-tui-command-account-check-preview = not yet designed — docs/ux/tui/accounts/README.md

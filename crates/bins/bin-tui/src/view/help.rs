@@ -4,7 +4,7 @@
 
 use ratatui::{Frame, layout::Rect, widgets::Block};
 
-use crate::view::{Action, View};
+use crate::view::{Action, View, ViewId};
 
 /// A trivial placeholder Help `View`: one bordered box, no content yet.
 #[derive(Default)]
@@ -20,11 +20,15 @@ impl View for HelpView {
     fn update(&mut self, _action: &Action) {}
 
     fn view(&self, frame: &mut Frame, area: Rect) {
-        frame.render_widget(Block::bordered().title(" Help "), area);
+        frame.render_widget(Block::bordered().title(format!(" {} ", self.title())), area);
     }
 
-    fn title(&self) -> &'static str {
-        "Help"
+    fn id(&self) -> ViewId {
+        ViewId::Help
+    }
+
+    fn title(&self) -> String {
+        lib_locale::msg::nav_help()
     }
 }
 
@@ -47,6 +51,8 @@ mod tests {
 
     #[test]
     fn title_is_help() {
+        crate::locale::init_for_tests();
         assert_eq!(HelpView::new().title(), "Help");
+        assert_eq!(HelpView::new().id(), ViewId::Help);
     }
 }

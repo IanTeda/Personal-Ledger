@@ -11,7 +11,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
 use crate::msg;
@@ -119,7 +119,12 @@ fn render_title(frame: &mut Frame, area: Rect) {
 /// The body's three prose lines, stating the cost before the facts do — §4c's own "prose
 /// first ... then the facts".
 fn render_prose(frame: &mut Frame, area: Rect) {
-    frame.render_widget(Paragraph::new(msg::tui_setting_guard_prose()), area);
+    // One Message for the whole paragraph, wrapped across the three rows -- a sentence is never
+    // split into a Message per rendered line, so the widget does the wrapping.
+    frame.render_widget(
+        Paragraph::new(msg::tui_setting_guard_prose()).wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 /// One `label   value` fact row, the label dim and fixed-width; `accent` styles the value for

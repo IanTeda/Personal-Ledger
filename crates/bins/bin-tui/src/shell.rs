@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
+use lib_locale::format::upper;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -39,7 +40,7 @@ use crate::{
     },
     tui::Tui,
     view::{
-        Action, View, accounts::AccountsView, balance_checks::BalanceChecksView,
+        Action, View, ViewId, accounts::AccountsView, balance_checks::BalanceChecksView,
         budgets::BudgetsView, categories::CategoriesView, dashboard::DashboardView, help::HelpView,
         payees::PayeesView, reports::ReportsView, settings::SettingsView, tags::TagsView,
         transactions::TransactionsView, units::UnitsView,
@@ -48,6 +49,17 @@ use crate::{
 
 /// How often an [`Action::Tick`] fires in the absence of input.
 const TICK_RATE: Duration = Duration::from_millis(250);
+
+/// The ledger glyph the status line opens with. Passed into the status-line Message as an
+/// argument rather than written into its text, so a Catalogue never carries the glyph.
+const LEDGER_GLYPH: &str = "\u{1f4d2}";
+
+/// What separates one hint item from the next in the footer bar.
+const HINT_SEPARATOR: &str = " \u{b7} ";
+
+/// The key the footer spells for `search`. Unlike `command` and `help` it has no entry in the
+/// configured bindings, because there is no search surface to bind yet.
+const SEARCH_KEY: &str = "/";
 
 /// Owns terminal lifecycle and the single active `View`, and drives the async event loop.
 pub struct Shell {
@@ -548,6 +560,26 @@ impl Shell {
     /// focus).
     fn is_open_command_popup(&self, key: KeyEvent) -> bool {
         self.matches_binding(key, "open_command_popup", ":")
+    }
+
+    /// The key spec configured for `command`, or `default_spec` if the config layer has no entry
+    /// for it -- the display half of [`Shell::matches_binding`], so a hint always names the key
+    /// that actually works.
+    fn key_token<'a>(&'a self, command: &str, default_spec: &'a str) -> &'a str {
+        self.keybindings.key_for(command).unwrap_or(default_spec)
+    }
+
+    /// The footer's resting hint items, each a key token and its label Message, in the order the
+    /// bar shows them.
+    fn footer_hints(&self) -> Vec<(&str, String)> {
+        vec![
+            (
+                self.key_token("open_command_popup", ":"),
+                crate::msg::tui_hint_command(),
+            ),
+            (SEARCH_KEY, crate::msg::tui_hint_search()),
+            (self.key_token("help", "?"), crate::msg::tui_hint_help()),
+        ]
     }
 
     /// Matches `key` against `command`'s configured key spec, falling back to `default_spec`
@@ -1520,7 +1552,8 @@ impl Shell {
 
     /// Swaps the active view, hands it a fresh clone of `action_tx` (as `new()` does for the
     /// initial Dashboard), and closes both popups — the common tail of every `Open*` action.
-    /// Also drives `view_stack`: opening the already-active view (compared by `View::title()`)
+    /// Also drives `view_stack`: opening the already-active view (compared by `View::id()`, a
+    /// stable id rather than the Locale-dependent title)
     /// is a no-op for the stack and the view itself; opening Dashboard clears the stack
     /// entirely, since it's the app's one home view and going there always resets navigation;
     /// opening anything else pushes the outgoing view onto the stack first, so `Esc`
@@ -1528,7 +1561,7 @@ impl Shell {
     fn open<V: View + 'static>(&mut self, view: V) {
         let mut view: Box<dyn View> = Box::new(view);
 
-        if view.title() == self.view.title() {
+        if view.id() == self.view.id() {
             self.command_popup = None;
             self.unit_popup = None;
             self.category_popup = None;
@@ -1538,7 +1571,7 @@ impl Shell {
 
         view.init(self.action_tx.clone());
 
-        if view.title() == "Dashboard" {
+        if view.id() == ViewId::Dashboard {
             self.view_stack.clear();
             self.view = view;
         } else {
@@ -1588,27 +1621,32 @@ impl Shell {
         // isn't reproduced here — the shell's status line is a flat title, not the design's own
         // breadcrumb, the same simplification every other view already makes).
         let mode = if command_popup_open {
-            " · COMMAND"
+            Some(crate::msg::tui_mode_command())
         } else if unit_popup_open
             || category_popup_open
             || account_popup_open
             || tag_popup_open
             || payee_popup_open
         {
-            " · INSERT"
+            Some(crate::msg::tui_mode_insert())
         } else if edit_setting_popup_open {
-            " · EDIT"
+            Some(crate::msg::tui_mode_edit())
         } else if base_unit_guard_popup_open {
-            " · CONFIRM"
+            Some(crate::msg::tui_mode_confirm())
         } else {
-            ""
+            None
+        };
+        let name = lib_locale::msg::app_name();
+        let title = self.view.title();
+        let status = match &mode {
+            Some(mode) => {
+                crate::msg::tui_status_line_with_mode(LEDGER_GLYPH, &name, &title, &upper(mode))
+            }
+            None => crate::msg::tui_status_line(LEDGER_GLYPH, &name, &title),
         };
         frame.render_widget(
-            Paragraph::new(Line::from(format!(
-                " 📒 Personal Ledger | {}{mode} ",
-                self.view.title()
-            )))
-            .style(Style::default().add_modifier(Modifier::REVERSED)),
+            Paragraph::new(Line::from(format!(" {status} ")))
+                .style(Style::default().add_modifier(Modifier::REVERSED)),
             rows[0],
         );
 
@@ -1623,41 +1661,63 @@ impl Shell {
         // popup is open the whole bar greys out and gains its own close hint: §3a for the
         // command popup, "The forms" ("the app's footer greyed to `esc close unit form`") for
         // a unit form.
-        let footer = if command_popup_open {
-            Line::from(" : command · / search · ? help · esc close command window ")
-                .style(Style::default().fg(Color::DarkGray))
-        } else if unit_popup_open {
-            Line::from(" esc close unit form ").style(Style::default().fg(Color::DarkGray))
+        let back_key = self.key_token("back", "esc");
+        // Generic across every form variant — the Category popup's Move/New/Edit share one
+        // hint, as the unit form's own footer already did, rather than tailoring the wording
+        // per variant.
+        let close_form_noun = if unit_popup_open {
+            Some(crate::msg::tui_form_noun_unit())
         } else if category_popup_open {
-            // Generic across Move/New (and, later, Edit) — mirrors `unit_popup`'s own footer,
-            // which likewise doesn't tailor its wording per form variant.
-            Line::from(" esc close category form ").style(Style::default().fg(Color::DarkGray))
+            Some(crate::msg::tui_form_noun_category())
         } else if edit_setting_popup_open {
-            Line::from(" esc close edit form ").style(Style::default().fg(Color::DarkGray))
-        } else if base_unit_guard_popup_open {
-            Line::from(" esc close dialog ").style(Style::default().fg(Color::DarkGray))
+            Some(crate::msg::tui_form_noun_edit())
         } else if account_popup_open {
-            Line::from(" esc close account form ").style(Style::default().fg(Color::DarkGray))
+            Some(crate::msg::tui_form_noun_account())
         } else if tag_popup_open {
-            Line::from(" esc close tag form ").style(Style::default().fg(Color::DarkGray))
+            Some(crate::msg::tui_form_noun_tag())
         } else if payee_popup_open {
-            Line::from(" esc close payee form ").style(Style::default().fg(Color::DarkGray))
-        } else if let Some(noun) = self.jump_not_yet_built {
+            Some(crate::msg::tui_form_noun_payee())
+        } else {
+            None
+        };
+
+        let dim = Style::default().fg(Color::DarkGray);
+        let footer = if command_popup_open {
+            let hints = hint_text(&self.footer_hints());
+            let close = crate::msg::tui_footer_close_command_window(back_key);
+            Line::from(format!(" {hints}{HINT_SEPARATOR}{close} ")).style(dim)
+        } else if let Some(noun) = close_form_noun {
+            Line::from(format!(
+                " {} ",
+                crate::msg::tui_footer_close_form(back_key, &noun)
+            ))
+            .style(dim)
+        } else if base_unit_guard_popup_open {
+            Line::from(format!(
+                " {} ",
+                crate::msg::tui_footer_close_dialog(back_key)
+            ))
+            .style(dim)
+        } else if let Some(command) = self.jump_not_yet_built {
             // Plain (not dimmed) styling, matching the command popup's own "not yet built"
             // message treatment (`CommandPopup::render_info_row`) -- it reads as a real
             // message, not secondary chrome the way the popup-close hints above do.
-            Line::from(format!(" :{noun} — not yet built "))
+            Line::from(format!(
+                " {} ",
+                crate::msg::tui_footer_not_yet_built(&format!(":{command}"))
+            ))
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
-            Line::from(vec![
-                Span::raw(" "),
-                Span::styled(":", key),
-                Span::raw(" command · "),
-                Span::styled("/", key),
-                Span::raw(" search · "),
-                Span::styled("?", key),
-                Span::raw(" help "),
-            ])
+            let mut spans = vec![Span::raw(" ")];
+            for (index, (token, label)) in self.footer_hints().into_iter().enumerate() {
+                if index > 0 {
+                    spans.push(Span::raw(HINT_SEPARATOR));
+                }
+                spans.push(Span::styled(token, key));
+                spans.push(Span::raw(format!(" {label}")));
+            }
+            spans.push(Span::raw(" "));
+            Line::from(spans)
         };
         frame.render_widget(Paragraph::new(footer), rows[3]);
 
@@ -1694,6 +1754,16 @@ impl Shell {
             }
         }
     }
+}
+
+/// Joins hint items into one flat string, for the dimmed footer a popup shows (which styles the
+/// whole bar the same, so it needs no per-key spans).
+fn hint_text(hints: &[(&str, String)]) -> String {
+    hints
+        .iter()
+        .map(|(key, label)| format!("{key} {label}"))
+        .collect::<Vec<_>>()
+        .join(HINT_SEPARATOR)
 }
 
 /// `Ctrl+C` — the one key that always quits immediately, regardless of the active view.
@@ -1897,6 +1967,136 @@ mod tests {
             shell.command_action(CommandId::Quit, "quit"),
             Some(Action::CommandPopupSetNotYetBuilt("quit"))
         );
+    }
+
+    /// Every row of a drawn frame as one string, for asserting on what the chrome actually shows.
+    fn drawn(shell: &Shell) -> String {
+        let backend = TestBackend::new(96, 30);
+        let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+        terminal
+            .draw(|frame| shell.draw(frame))
+            .expect("drawing the shell should not error");
+
+        let buffer = terminal.backend().buffer();
+        let mut text = String::new();
+        for y in 0..buffer.area.height {
+            for x in 0..buffer.area.width {
+                text.push_str(buffer[(x, y)].symbol());
+            }
+            text.push('\n');
+        }
+        text
+    }
+
+    #[test]
+    fn the_status_line_names_the_product_and_the_active_view() {
+        crate::locale::init_for_tests();
+        let text = drawn(&Shell::new());
+        // The glyph is double-width, so the buffer holds a blank continuation cell after it --
+        // the assertion starts at the product name rather than counting those cells.
+        assert!(
+            text.contains("Personal Ledger | Dashboard"),
+            "status line missing:\n{text}"
+        );
+        assert!(
+            text.contains("\u{1f4d2}"),
+            "the ledger glyph is missing:\n{text}"
+        );
+    }
+
+    #[test]
+    fn the_status_line_names_the_mode_upper_cased_while_a_popup_is_open() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        assert!(
+            drawn(&shell).contains("| Dashboard \u{b7} COMMAND"),
+            "command mode missing from the status line"
+        );
+
+        let mut shell = Shell::new();
+        shell.update(Action::OpenNewUnitPopup);
+        assert!(
+            drawn(&shell).contains("\u{b7} INSERT"),
+            "insert mode missing from the status line"
+        );
+    }
+
+    #[test]
+    fn the_resting_footer_names_each_configured_key_with_its_label() {
+        crate::locale::init_for_tests();
+        let text = drawn(&Shell::new());
+        assert!(
+            text.contains(": command \u{b7} / search \u{b7} ? help"),
+            "resting hints missing:\n{text}"
+        );
+    }
+
+    #[test]
+    fn the_footer_hints_follow_a_rebound_key() {
+        crate::locale::init_for_tests();
+        let mut keybindings = KeyBindingConfig::default();
+        keybindings.bindings.insert("help".into(), "F1".into());
+        let text = drawn(&Shell::with_keybindings(keybindings));
+        assert!(
+            text.contains("F1 help"),
+            "the hint should name the rebound key:\n{text}"
+        );
+    }
+
+    #[test]
+    fn every_overlay_footer_names_its_own_close_hint() {
+        crate::locale::init_for_tests();
+        let cases: &[(Action, &str)] = &[
+            (Action::OpenCommandPopup, "esc close command window"),
+            (Action::OpenNewUnitPopup, "esc close unit form"),
+            (Action::OpenEditSettingPopup, "esc close edit form"),
+            (Action::OpenBaseUnitGuardPopup, "esc close dialog"),
+        ];
+        for (action, hint) in cases {
+            let mut shell = Shell::new();
+            shell.update(action.clone());
+            let text = drawn(&shell);
+            assert!(text.contains(hint), "{hint} missing:\n{text}");
+        }
+    }
+
+    #[test]
+    fn a_jump_with_nothing_behind_it_flashes_the_command_it_names() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.jump_not_yet_built = Some("report");
+        assert!(
+            drawn(&shell).contains(":report \u{2014} not yet built"),
+            "the not-yet-built flash should name the command"
+        );
+    }
+
+    /// The pseudo-Locale sweep: every piece of chrome the shell draws is a Message, so under
+    /// `en-XA` none of the source wording survives and each part is bracketed.
+    #[test]
+    fn the_chrome_is_fully_pseudo_localised() {
+        crate::locale::init_for_tests();
+        lib_locale::with_locale(lib_locale::Locale::EnXa, || {
+            let mut shell = Shell::new();
+            shell.update(Action::OpenCommandPopup);
+            let text = drawn(&shell);
+
+            for word in [
+                "Personal Ledger",
+                "Dashboard",
+                "COMMAND",
+                "command window",
+                "search",
+                "help",
+            ] {
+                assert!(
+                    !text.contains(word),
+                    "`{word}` is not a Message -- it survived en-XA:\n{text}"
+                );
+            }
+            assert!(text.contains('['), "nothing was pseudo-localised:\n{text}");
+        });
     }
 
     #[test]
@@ -2153,7 +2353,7 @@ mod tests {
     #[test]
     fn ctrl_u_opens_the_units_view() {
         let mut shell = Shell::new();
-        assert_eq!(shell.view.title(), "Dashboard");
+        assert_eq!(shell.view.id(), ViewId::Dashboard);
 
         let action = shell
             .map_event(Event::Key(KeyEvent::new(
@@ -2163,7 +2363,7 @@ mod tests {
             .expect("ctrl+u always maps to an action while no popup is open");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view.id(), ViewId::Units);
     }
 
     #[test]
@@ -2188,7 +2388,7 @@ mod tests {
             .expect("enter on the `unit` command always maps to an action");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view.id(), ViewId::Units);
         assert!(shell.command_popup.is_none());
     }
 
@@ -2223,14 +2423,14 @@ mod tests {
         shell.update(action);
 
         assert!(shell.command_popup.is_some(), "popup should stay open");
-        assert_eq!(shell.view.title(), "Dashboard", "no view should open");
+        assert_eq!(shell.view.id(), ViewId::Dashboard, "no view should open");
     }
 
     #[test]
     fn selecting_the_dashboard_command_and_pressing_enter_opens_the_dashboard_view() {
         let mut shell = Shell::new();
         shell.update(Action::OpenUnits);
-        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view.id(), ViewId::Units);
 
         shell.update(Action::OpenCommandPopup);
         for c in "dashboard".chars() {
@@ -2251,7 +2451,7 @@ mod tests {
             .expect("enter on the `dashboard` command always maps to an action");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Dashboard");
+        assert_eq!(shell.view.id(), ViewId::Dashboard);
         assert!(shell.command_popup.is_none());
     }
 
@@ -2259,7 +2459,7 @@ mod tests {
     fn g_then_d_opens_the_dashboard_view() {
         let mut shell = Shell::new();
         shell.update(Action::OpenUnits);
-        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view.id(), ViewId::Units);
 
         let armed = shell.map_event(Event::Key(KeyEvent::new(
             KeyCode::Char('g'),
@@ -2276,7 +2476,7 @@ mod tests {
             .expect("`d` completing the `g d` chord always maps to an action");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Dashboard");
+        assert_eq!(shell.view.id(), ViewId::Dashboard);
         assert!(!shell.pending_leader);
     }
 
@@ -2320,7 +2520,7 @@ mod tests {
     fn g_then_g_opens_the_tags_view() {
         let mut shell = Shell::new();
         shell.update(Action::OpenUnits);
-        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view.id(), ViewId::Units);
 
         let armed = shell.map_event(Event::Key(KeyEvent::new(
             KeyCode::Char('g'),
@@ -2337,7 +2537,7 @@ mod tests {
             .expect("the second `g` completing the `g g` chord always maps to an action");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Tags");
+        assert_eq!(shell.view.id(), ViewId::Tags);
         assert!(!shell.pending_leader);
     }
 
@@ -2347,17 +2547,17 @@ mod tests {
         // (below) are still bare placeholder boxes and covered by their own test instead,
         // since completing their chord now flashes "not yet built" rather than navigating
         // (issue #96).
-        let cases: &[(char, &str)] = &[
-            ('a', "Accounts"),
-            ('c', "Categories"),
-            ('d', "Dashboard"),
-            ('g', "Tags"),
-            ('p', "Payees"),
-            ('s', "Settings"),
-            ('u', "Units & Prices"),
+        let cases: &[(char, ViewId)] = &[
+            ('a', ViewId::Accounts),
+            ('c', ViewId::Categories),
+            ('d', ViewId::Dashboard),
+            ('g', ViewId::Tags),
+            ('p', ViewId::Payees),
+            ('s', ViewId::Settings),
+            ('u', ViewId::Units),
         ];
 
-        for (letter, expected_title) in cases {
+        for (letter, expected_view) in cases {
             let mut shell = Shell::new();
             let armed = shell.map_event(Event::Key(KeyEvent::new(
                 KeyCode::Char('g'),
@@ -2373,7 +2573,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("g {letter} should complete a known chord"));
             shell.update(action);
 
-            assert_eq!(shell.view.title(), *expected_title, "g {letter}");
+            assert_eq!(shell.view.id(), *expected_view, "g {letter}");
             assert!(!shell.pending_leader, "g {letter}");
         }
     }
@@ -2414,8 +2614,8 @@ mod tests {
                 "g {letter}: should flash the not-yet-built message"
             );
             assert_eq!(
-                shell.view.title(),
-                "Dashboard",
+                shell.view.id(),
+                ViewId::Dashboard,
                 "g {letter}: should stay on the Dashboard, not open the placeholder view"
             );
             assert!(!shell.pending_leader, "g {letter}");
@@ -2454,7 +2654,7 @@ mod tests {
             .expect("? always maps to an action while no popup is open");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Help");
+        assert_eq!(shell.view.id(), ViewId::Help);
     }
 
     #[test]
@@ -2638,7 +2838,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("enter on `{filter}` should map to an action"));
             shell.update(action);
 
-            assert_eq!(shell.view.title(), "Dashboard", "{filter}");
+            assert_eq!(shell.view.id(), ViewId::Dashboard, "{filter}");
             assert!(shell.command_popup.is_some(), "{filter}");
         }
     }
@@ -3055,7 +3255,7 @@ mod tests {
             .expect("enter on the `settings` command always maps to an action");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Settings");
+        assert_eq!(shell.view.id(), ViewId::Settings);
         assert!(shell.command_popup.is_none());
     }
 
@@ -3210,7 +3410,7 @@ mod tests {
         assert_eq!(action, Action::PopView);
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Dashboard");
+        assert_eq!(shell.view.id(), ViewId::Dashboard);
         assert!(shell.view_stack.is_empty());
     }
 
@@ -3218,11 +3418,11 @@ mod tests {
     fn opening_a_new_view_pushes_the_outgoing_one_and_esc_pops_back_to_it() {
         let mut shell = Shell::new();
         shell.update(Action::OpenUnits);
-        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view.id(), ViewId::Units);
         assert_eq!(shell.view_stack.len(), 1);
 
         shell.update(Action::OpenAccounts);
-        assert_eq!(shell.view.title(), "Accounts");
+        assert_eq!(shell.view.id(), ViewId::Accounts);
         assert_eq!(shell.view_stack.len(), 2);
 
         let action = shell
@@ -3230,7 +3430,7 @@ mod tests {
             .expect("esc while no popup is open always maps to an action");
         shell.update(action);
 
-        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view.id(), ViewId::Units);
         assert_eq!(shell.view_stack.len(), 1);
     }
 
@@ -3243,7 +3443,7 @@ mod tests {
 
         shell.update(Action::OpenDashboard);
 
-        assert_eq!(shell.view.title(), "Dashboard");
+        assert_eq!(shell.view.id(), ViewId::Dashboard);
         assert!(shell.view_stack.is_empty());
     }
 
@@ -3255,7 +3455,7 @@ mod tests {
 
         shell.update(Action::OpenUnits);
 
-        assert_eq!(shell.view.title(), "Units & Prices");
+        assert_eq!(shell.view.id(), ViewId::Units);
         assert_eq!(
             shell.view_stack.len(),
             1,

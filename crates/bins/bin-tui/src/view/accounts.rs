@@ -58,7 +58,7 @@ use crate::account::{
     Account, AccountFixture, AccountStore, AccountTransaction, AccountUnit, FIXTURE_NOW,
     shared_unit,
 };
-use crate::view::{Action, View};
+use crate::view::{Action, View, ViewId};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
 /// negative balances.
@@ -442,8 +442,12 @@ impl View for AccountsView {
         self.render_right_pane(frame, columns[1]);
     }
 
-    fn title(&self) -> &'static str {
-        "Accounts"
+    fn id(&self) -> ViewId {
+        ViewId::Accounts
+    }
+
+    fn title(&self) -> String {
+        lib_locale::msg::nav_accounts()
     }
 
     fn account_store(&self) -> Option<&dyn AccountStore> {
@@ -1016,14 +1020,22 @@ fn render_ledger_heading(frame: &mut Frame, area: Rect, shown: usize, total: usi
 fn render_ledger_column_header(frame: &mut Frame, area: Rect) {
     let (_, date, payee, amount, balance) = ledger_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled(crate::msg::tui_accounts_column_date(), dim)), date);
-    frame.render_widget(Paragraph::new(Span::styled(crate::msg::tui_accounts_column_payee(), dim)), payee);
     frame.render_widget(
-        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_amount(), dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_date(), dim)),
+        date,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_payee(), dim)),
+        payee,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_amount(), dim))
+            .alignment(Alignment::Right),
         amount,
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_balance(), dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(crate::msg::tui_accounts_column_balance(), dim))
+            .alignment(Alignment::Right),
         balance,
     );
 }
@@ -1161,7 +1173,9 @@ mod tests {
 
     #[test]
     fn title_is_accounts() {
+        crate::locale::init_for_tests();
         assert_eq!(AccountsView::new().title(), "Accounts");
+        assert_eq!(AccountsView::new().id(), ViewId::Accounts);
     }
 
     #[test]

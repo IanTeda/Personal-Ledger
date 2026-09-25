@@ -44,7 +44,11 @@ use ratatui::{
     },
 };
 
-use crate::{category::{CategoryFixture, CategoryNode, CategoryStore}, msg, view::{Action, View}};
+use crate::{
+    category::{CategoryFixture, CategoryNode, CategoryStore},
+    msg,
+    view::{Action, View, ViewId},
+};
 
 /// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
 /// the chart's marked last point.
@@ -543,8 +547,12 @@ impl View for CategoriesView {
         self.render_right_pane(frame, columns[1]);
     }
 
-    fn title(&self) -> &'static str {
-        "Categories" // Will be migrated to use msg::tui_categories_title() after View trait supports String
+    fn id(&self) -> ViewId {
+        ViewId::Categories
+    }
+
+    fn title(&self) -> String {
+        lib_locale::msg::nav_categories()
     }
 
     fn category_store(&self) -> Option<&dyn CategoryStore> {
@@ -694,7 +702,10 @@ impl CategoriesView {
             row += 1;
         } else {
             frame.render_widget(
-                summary_field_line(&msg::tui_categories_summary_direct(), &format_money(&node.direct)),
+                summary_field_line(
+                    &msg::tui_categories_summary_direct(),
+                    &format_money(&node.direct),
+                ),
                 rows[row],
             );
             row += 1;
@@ -753,7 +764,10 @@ impl CategoriesView {
         row += 1;
 
         frame.render_widget(
-            summary_field_line(&msg::tui_categories_summary_note(), node.note.as_deref().unwrap_or("—")),
+            summary_field_line(
+                &msg::tui_categories_summary_note(),
+                node.note.as_deref().unwrap_or("—"),
+            ),
             rows[row],
         );
         row += 1;
@@ -971,11 +985,13 @@ fn render_tree_column_header(frame: &mut Frame, area: Rect) {
     let columns = tree_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_categories_tree_column_n(), dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(&msg::tui_categories_tree_column_n(), dim))
+            .alignment(Alignment::Right),
         columns[1],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_categories_tree_column_rollup(), dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(&msg::tui_categories_tree_column_rollup(), dim))
+            .alignment(Alignment::Right),
         columns[2],
     );
 }
@@ -1241,14 +1257,42 @@ fn transaction_columns(area: Rect, show_category: bool) -> (Rect, Rect, Option<R
 fn render_transactions_column_header(frame: &mut Frame, area: Rect, show_category: bool) {
     let (date, account, category, payee, amount) = transaction_columns(area, show_category);
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_categories_transactions_column_date(), dim)), date);
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_categories_transactions_column_account(), dim)), account);
-    if let Some(category_area) = category {
-        frame.render_widget(Paragraph::new(Span::styled(msg::tui_categories_transactions_column_category(), dim)), category_area);
-    }
-    frame.render_widget(Paragraph::new(Span::styled(msg::tui_categories_transactions_column_payee(), dim)), payee);
     frame.render_widget(
-        Paragraph::new(Span::styled(msg::tui_categories_transactions_column_amount(), dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(
+            msg::tui_categories_transactions_column_date(),
+            dim,
+        )),
+        date,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            msg::tui_categories_transactions_column_account(),
+            dim,
+        )),
+        account,
+    );
+    if let Some(category_area) = category {
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                msg::tui_categories_transactions_column_category(),
+                dim,
+            )),
+            category_area,
+        );
+    }
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            msg::tui_categories_transactions_column_payee(),
+            dim,
+        )),
+        payee,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            msg::tui_categories_transactions_column_amount(),
+            dim,
+        ))
+        .alignment(Alignment::Right),
         amount,
     );
 }
@@ -1510,7 +1554,9 @@ mod tests {
 
     #[test]
     fn title_is_categories() {
+        crate::locale::init_for_tests();
         assert_eq!(CategoriesView::new().title(), "Categories");
+        assert_eq!(CategoriesView::new().id(), ViewId::Categories);
     }
 
     #[test]

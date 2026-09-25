@@ -30,77 +30,83 @@ pub const COMMANDS: &[Command] = &[
         id: CommandId::Category,
         name: "category",
         chord: Chord(&[KeyCode::Char('g'), KeyCode::Char('c')]),
-        description: "categories tree — direct vs rollup, spend and transactions",
+        description: crate::msg::tui_command_category_description,
         args: &[],
     },
     Command {
         id: CommandId::CategoryNew,
         name: "category new <name> [parent]",
         chord: Chord(&[KeyCode::Char('n')]),
-        description: "add a category — parent defaults to the tree selection",
+        description: crate::msg::tui_command_category_new_description,
         args: &[Arg {
             placeholder: "<name>",
-            preview: "e.g. dining, groceries, salary",
+            preview: crate::msg::tui_command_preview_category_new,
         }],
     },
     Command {
         id: CommandId::CategoryEdit,
         name: "category edit <cat>",
         chord: Chord(&[KeyCode::Char('e')]),
-        description: "edit the highlighted category",
+        description: crate::msg::tui_command_category_edit_description,
         args: &[Arg {
             placeholder: "<cat>",
-            preview: "groceries · expense · depth 3",
+            preview: crate::msg::tui_command_preview_category_edit,
         }],
     },
     Command {
         id: CommandId::CategoryMove,
         name: "category move <cat> <parent>",
         chord: Chord(&[KeyCode::Char('m')]),
-        description: "move — refuses cycles and a cross-root move with transactions",
+        description: crate::msg::tui_command_category_move_description,
         args: &[Arg {
             placeholder: "<parent>",
-            preview: "e.g. expenses/food/daily — completes on full paths",
+            preview: crate::msg::tui_command_preview_category_move,
         }],
     },
     Command {
         id: CommandId::CategoryRename,
         name: "category rename <cat> <name>",
         chord: Chord::NONE,
-        description: "rename — nothing else references a category by name",
+        description: crate::msg::tui_command_category_rename_description,
         args: &[Arg {
             placeholder: "<name>",
-            preview: "e.g. dining",
+            preview: crate::msg::tui_command_preview_category_rename,
         }],
     },
     Command {
         id: CommandId::CategoryMerge,
         name: "category merge <from> <into>",
         chord: Chord::NONE,
-        description: "reassigns transactions to <into>, deletes <from>",
+        description: merge_description,
         args: &[Arg {
             placeholder: "<into>",
-            preview: "the surviving category",
+            preview: crate::msg::tui_command_preview_category_merge,
         }],
     },
     Command {
         id: CommandId::CategoryArchive,
         name: "category archive <cat>",
         chord: Chord(&[KeyCode::Char('a')]),
-        description: "active = 0 — keeps every transaction and total",
+        description: crate::msg::tui_command_category_archive_description,
         args: &[Arg {
             placeholder: "<cat>",
-            preview: "the tree selection",
+            preview: crate::msg::tui_command_preview_tree_selection,
         }],
     },
     Command {
         id: CommandId::CategoryTree,
         name: "category tree [root]",
         chord: Chord::NONE,
-        description: "prints the subtree — scriptable/pipeable",
+        description: crate::msg::tui_command_category_tree_description,
         args: &[Arg {
             placeholder: "[root]",
-            preview: "defaults to both roots",
+            preview: crate::msg::tui_command_preview_category_tree,
         }],
     },
 ];
+
+/// `:category merge`'s description names both of its own argument tokens, which stay stable
+/// English exactly as its usage line spells them.
+fn merge_description() -> String {
+    crate::msg::tui_command_category_merge_description("<into>", "<from>")
+}

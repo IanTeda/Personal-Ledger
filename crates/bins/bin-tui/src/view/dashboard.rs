@@ -16,11 +16,24 @@ use ratatui::{
 use tui_box_text::BoxChar;
 use tui_piechart::{PieChart, PieSlice, Resolution, symbols::PIE_CHAR_LIGHT};
 
-use crate::view::{Action, View};
+use lib_locale::format::upper;
+
+use crate::view::{Action, View, ViewId};
 
 /// The theme's one accent colour — reserved for negatives, over-budget, variance, and
 /// Liabilities, per `docs/ux/tui/README.md`'s style table.
 const ACCENT: Color = Color::Red;
+
+/// The window the headline delta and the spending pie both report over, in days — named by their
+/// own Messages rather than written into them.
+const HEADLINE_WINDOW_DAYS: i64 = 30;
+
+/// How many months of income-vs-expense bars the trend band shows, named by its tag Message.
+const DIVERGENT_WINDOW_MONTHS: i64 = 8;
+
+/// The glyph marking period progress on a budget bar, passed into the caption Message as an
+/// argument so no Catalogue carries it.
+const PERIOD_PROGRESS_GLYPH: &str = "\u{2502}";
 
 /// The fake net position figure shown in the headline box, box-text rendered.
 const NET_POSITION: &str = "$245,824.10";
@@ -83,8 +96,12 @@ impl View for DashboardView {
         render_lower_band(frame, rows[5]);
     }
 
-    fn title(&self) -> &'static str {
-        "Dashboard"
+    fn id(&self) -> ViewId {
+        ViewId::Dashboard
+    }
+
+    fn title(&self) -> String {
+        lib_locale::msg::nav_dashboard()
     }
 }
 
@@ -114,7 +131,13 @@ fn render_net_position(frame: &mut Frame, area: Rect) {
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled("NET POSITION", dim)), rows[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            upper(&lib_locale::msg::dashboard_net_position_title()),
+            dim,
+        )),
+        rows[0],
+    );
     render_box_text(frame, rows[1], NET_POSITION);
 }
 
@@ -153,11 +176,13 @@ fn render_headline_stats(frame: &mut Frame, label_area: Rect, value_area: Rect) 
         .split(value_area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
-    for (label, column) in ["30 DAYS", "ASSETS", "LIABILITIES"]
-        .into_iter()
-        .zip(label_columns.iter())
-    {
-        frame.render_widget(Paragraph::new(Span::styled(label, dim)), *column);
+    let labels = [
+        crate::msg::tui_dashboard_stat_days(&crate::format::count(HEADLINE_WINDOW_DAYS)),
+        crate::msg::tui_dashboard_stat_assets(),
+        crate::msg::tui_dashboard_stat_liabilities(),
+    ];
+    for (label, column) in labels.into_iter().zip(label_columns.iter()) {
+        frame.render_widget(Paragraph::new(Span::styled(upper(&label), dim)), *column);
     }
 
     let bold = Style::default().add_modifier(Modifier::BOLD);
@@ -176,6 +201,13 @@ fn render_headline_stats(frame: &mut Frame, label_area: Rect, value_area: Rect) 
         Paragraph::new(Span::styled("$320,334", bold.fg(ACCENT))),
         value_columns[2],
     );
+}
+
+/// The width a right-aligned heading tag needs: measured from the rendered Message, never a fixed
+/// column count, so a longer Locale (or an `en-XA` sweep) isn't clipped. Every supported Locale is
+/// Latin, so one `char` is one cell here.
+fn tag_column(tag: &str) -> Constraint {
+    Constraint::Length(tag.chars().count() as u16)
 }
 
 /// Renders `text` using `tui_box_text::BoxChar`, one character per fixed-width column —
@@ -239,7 +271,13 @@ fn render_net_worth_chart(frame: &mut Frame, area: Rect, net_worth: &[NetWorthPo
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
-    frame.render_widget(Paragraph::new(Span::styled("NET WORTH", dim)), rows[0]);
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            upper(&crate::msg::tui_dashboard_net_worth_title()),
+            dim,
+        )),
+        rows[0],
+    );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
     let points: Vec<(f64, f64)> = net_worth
@@ -334,16 +372,22 @@ fn render_income_vs_expense(frame: &mut Frame, area: Rect, flows: &[MonthFlow]) 
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
+    let tag = upper(&crate::msg::tui_dashboard_income_vs_expense_tag(
+        &crate::format::count(DIVERGENT_WINDOW_MONTHS),
+    ));
     let heading_columns = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(12)])
+        .constraints([Constraint::Min(0), tag_column(&tag)])
         .split(rows[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled("INCOME VS EXPENSE", dim)),
+        Paragraph::new(Span::styled(
+            upper(&crate::msg::tui_dashboard_income_vs_expense_title()),
+            dim,
+        )),
         heading_columns[0],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled("8M DIVERGENT", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         heading_columns[1],
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
@@ -377,11 +421,19 @@ fn render_income_vs_expense(frame: &mut Frame, area: Rect, flows: &[MonthFlow]) 
     // A trailing/leading space on each label keeps it a column clear of the halves'
     // shared boundary, so the two words don't run together.
     frame.render_widget(
-        Paragraph::new(Span::styled("expense ", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(
+            format!("{} ", crate::msg::tui_dashboard_caption_expense()),
+            dim,
+        ))
+        .alignment(Alignment::Right),
         halves[0],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(" income", dim)).alignment(Alignment::Left),
+        Paragraph::new(Span::styled(
+            format!(" {}", crate::msg::tui_dashboard_caption_income()),
+            dim,
+        ))
+        .alignment(Alignment::Left),
         halves[1],
     );
 }
@@ -538,16 +590,22 @@ fn render_where_it_went(frame: &mut Frame, area: Rect, slices: &[SpendingSlice])
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
+    let tag = upper(&crate::msg::tui_dashboard_pie_chart_tag());
     let heading_columns = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(9)])
+        .constraints([Constraint::Min(0), tag_column(&tag)])
         .split(rows[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled("WHERE IT WENT · 30D", dim)),
+        Paragraph::new(Span::styled(
+            upper(&crate::msg::tui_dashboard_where_it_went_title(
+                &crate::format::count(HEADLINE_WINDOW_DAYS),
+            )),
+            dim,
+        )),
         heading_columns[0],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled("PIE CHART", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         heading_columns[1],
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
@@ -645,8 +703,8 @@ struct BudgetCategory {
 /// The current budget period's label and how far through it the period is — shared across
 /// every budget row so their `period_progress` ticks all land on the same column.
 struct BudgetPeriod {
-    /// e.g. `"SEP · DAY 21/30"`.
-    label: &'static str,
+    /// The period as the tag names it, already a Message (e.g. `"SEP · day 21/30"`).
+    label: String,
     elapsed_percent: f64,
 }
 
@@ -686,16 +744,19 @@ fn render_budgets_this_period(
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
-    let period_tag = format!("{} · {:.0}% ELAPSED", period.label, period.elapsed_percent);
+    let period_tag = upper(&crate::msg::tui_dashboard_budget_period_tag(
+        &period.label,
+        &crate::format::count(period.elapsed_percent.round() as i64),
+    ));
     let heading_columns = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Min(0),
-            Constraint::Length(period_tag.chars().count() as u16),
-        ])
+        .constraints([Constraint::Min(0), tag_column(&period_tag)])
         .split(rows[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled("BUDGETS THIS PERIOD", dim)),
+        Paragraph::new(Span::styled(
+            upper(&lib_locale::msg::dashboard_budgets_this_period_title()),
+            dim,
+        )),
         heading_columns[0],
     );
     frame.render_widget(
@@ -718,7 +779,7 @@ fn render_budgets_this_period(
 
     frame.render_widget(
         Paragraph::new(Span::styled(
-            "│ = period progress · bar = actual / limit",
+            crate::msg::tui_dashboard_budget_caption(PERIOD_PROGRESS_GLYPH),
             dim,
         )),
         rows[3],
@@ -856,7 +917,11 @@ fn fake_budgets() -> Vec<BudgetCategory> {
 /// The fake current budget period — 70% of the way through September.
 fn fake_budget_period() -> BudgetPeriod {
     BudgetPeriod {
-        label: "SEP · DAY 21/30",
+        label: crate::msg::tui_dashboard_budget_period_label(
+            "SEP",
+            &crate::format::count(21),
+            &crate::format::count(30),
+        ),
         elapsed_percent: 70.0,
     }
 }
@@ -866,7 +931,9 @@ fn fake_budget_period() -> BudgetPeriod {
 /// (e.g. a balance-check variance) rather than merely outstanding (e.g. unreconciled
 /// transactions).
 struct AttentionItem {
-    description: &'static str,
+    /// The row's own Message, resolved in the Locale in effect when called.
+    description: fn() -> String,
+    /// The command (or context) that resolves it — a stable English command name, not a Message.
     action: &'static str,
     is_alert: bool,
 }
@@ -887,16 +954,20 @@ fn render_needs_attention(frame: &mut Frame, area: Rect, items: &[AttentionItem]
         .split(area);
 
     let dim = Style::default().add_modifier(Modifier::DIM);
+    let tag = upper(&crate::msg::tui_dashboard_attention_command_heading());
     let heading_columns = Layout::default()
         .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(0), Constraint::Length(7)])
+        .constraints([Constraint::Min(0), tag_column(&tag)])
         .split(rows[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled("NEEDS ATTENTION", dim)),
+        Paragraph::new(Span::styled(
+            upper(&lib_locale::msg::dashboard_needs_attention_title()),
+            dim,
+        )),
         heading_columns[0],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled("COMMAND", dim)).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         heading_columns[1],
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
@@ -916,13 +987,19 @@ fn render_needs_attention(frame: &mut Frame, area: Rect, items: &[AttentionItem]
         render_attention_row(
             frame,
             *row,
-            item.description,
+            &(item.description)(),
             description_style,
             item.action,
         );
     }
 
-    render_attention_row(frame, rows[3], "...more", dim, ":to-do");
+    render_attention_row(
+        frame,
+        rows[3],
+        &crate::msg::tui_dashboard_attention_more(),
+        dim,
+        ":to-do",
+    );
     // rows[4] is left blank — any leftover height falls below the "more" row.
 }
 
@@ -963,16 +1040,33 @@ fn render_attention_row(
 fn fake_attention_items() -> Vec<AttentionItem> {
     vec![
         AttentionItem {
-            description: "14 unreconciled transactions",
+            description: unreconciled_description,
             action: ":reconcile",
             is_alert: false,
         },
         AttentionItem {
-            description: "balance check variance -12.40",
+            description: variance_description,
             action: "31 aug",
             is_alert: true,
         },
     ]
+}
+
+/// How many transactions the wireframe's unreconciled row reports — fake data, but the noun beside
+/// it still has to agree with it, so it goes through the Message's own plural selector.
+const FAKE_UNRECONCILED_COUNT: i64 = 14;
+
+/// The fake balance-check variance the wireframe's alert row reports.
+const FAKE_VARIANCE: &str = "-12.40";
+
+/// The unreconciled-transactions row, whose noun agrees with the count it names.
+fn unreconciled_description() -> String {
+    crate::msg::tui_dashboard_attention_unreconciled(FAKE_UNRECONCILED_COUNT)
+}
+
+/// The balance-check variance row.
+fn variance_description() -> String {
+    crate::msg::tui_dashboard_attention_variance(FAKE_VARIANCE)
 }
 
 /// A bordered, titled box standing in for a region's real widget content.
@@ -990,7 +1084,18 @@ mod tests {
     use super::*;
 
     fn render(view: &DashboardView) -> String {
-        let backend = TestBackend::new(96, 30);
+        render_at(view, 30)
+    }
+
+    /// The 96x30 minimum from `docs/ux/tui/README.md` cuts the lower band off, so anything below
+    /// the trend band needs a taller backend to appear at all.
+    fn render_tall(view: &DashboardView) -> String {
+        render_at(view, 50)
+    }
+
+    fn render_at(view: &DashboardView, height: u16) -> String {
+        crate::locale::init_for_tests();
+        let backend = TestBackend::new(96, height);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
             .draw(|frame| {
@@ -1016,12 +1121,107 @@ mod tests {
     }
 
     #[test]
+    fn needs_attention_rows_agree_with_the_counts_they_name() {
+        let text = render_tall(&DashboardView::new());
+        assert!(
+            text.contains("14 unreconciled transactions"),
+            "the unreconciled row should name its count:\n{text}"
+        );
+        assert!(
+            text.contains("balance check variance -12.40"),
+            "the variance row is missing:\n{text}"
+        );
+        assert!(text.contains("...more"), "the more row is missing:\n{text}");
+    }
+
+    #[test]
+    fn the_unreconciled_row_uses_the_singular_for_one() {
+        crate::locale::init_for_tests();
+        assert_eq!(
+            crate::msg::tui_dashboard_attention_unreconciled(1),
+            "1 unreconciled transaction"
+        );
+    }
+
+    #[test]
+    fn the_budget_caption_and_period_tag_are_messages() {
+        let text = render_tall(&DashboardView::new());
+        assert!(
+            text.contains("\u{2502} = period progress \u{b7} bar = actual / limit"),
+            "the budget caption is missing:\n{text}"
+        );
+        assert!(
+            text.contains("SEP \u{b7} DAY 21/30 \u{b7} 70% ELAPSED"),
+            "the period tag is missing:\n{text}"
+        );
+    }
+
+    /// The pseudo-Locale sweep: every label, caption and tag the Dashboard draws is a Message, so
+    /// none of the source wording survives `en-XA`. The wireframe's own figures and month names are
+    /// mock data and deliberately do.
+    #[test]
+    fn the_labels_and_captions_are_fully_pseudo_localised() {
+        crate::locale::init_for_tests();
+        lib_locale::with_locale(lib_locale::Locale::EnXa, || {
+            let backend = TestBackend::new(96, 50);
+            let mut terminal = Terminal::new(backend).expect("test backend should initialise");
+            terminal
+                .draw(|frame| {
+                    let area = frame.area();
+                    DashboardView::new().view(frame, area);
+                })
+                .expect("drawing the dashboard should not error");
+            let buffer = terminal.backend().buffer();
+            let mut text = String::new();
+            for y in 0..buffer.area.height {
+                for x in 0..buffer.area.width {
+                    text.push_str(buffer[(x, y)].symbol());
+                }
+                text.push('\n');
+            }
+
+            for word in [
+                "NET POSITION",
+                "ASSETS",
+                "LIABILITIES",
+                "NET WORTH",
+                "INCOME VS EXPENSE",
+                "WHERE IT WENT",
+                "BUDGETS THIS PERIOD",
+                "NEEDS ATTENTION",
+                "period progress",
+                "unreconciled",
+                "expense",
+                "income",
+            ] {
+                assert!(
+                    !text.contains(word),
+                    "`{word}` is not a Message -- it survived en-XA:\n{text}"
+                );
+            }
+            assert!(text.contains('['), "nothing was pseudo-localised:\n{text}");
+            // Each right-aligned tag sizes its own column from its own rendered text, so it still
+            // shows whole under a Locale a third longer than the source.
+            for tag in [
+                upper(&crate::msg::tui_dashboard_pie_chart_tag()),
+                upper(&crate::msg::tui_dashboard_attention_command_heading()),
+                upper(&crate::msg::tui_dashboard_income_vs_expense_tag(
+                    &crate::format::count(DIVERGENT_WINDOW_MONTHS),
+                )),
+            ] {
+                assert!(text.contains(&tag), "the tag `{tag}` was clipped:\n{text}");
+            }
+        });
+    }
+
+    #[test]
     fn shows_all_seven_headline_regions() {
         // The 96x30 minimum from `docs/ux/tui/README.md` doesn't leave enough height for
         // both the "Budgets this period" and "Needs attention" boxes once the latter grows
         // to 3 content lines — the same pre-existing space crunch as
         // `where_it_went_legend_shows_all_five_slices`, so this uses the same taller
         // backend.
+        crate::locale::init_for_tests();
         let backend = TestBackend::new(96, 50);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
@@ -1075,6 +1275,7 @@ mod tests {
         // full-width rule directly beneath it. Row 6 is the label (row 0 is the blank
         // spacer above the headline, rows 1-4 the headline, row 5 the blank spacer below
         // it); row 7 is the rule.
+        crate::locale::init_for_tests();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
@@ -1202,6 +1403,7 @@ mod tests {
         // the full 5-row legend once the headline and trend band grow to their current
         // sizes, so this uses a taller backend to check the legend content itself is
         // correct, independent of that pre-existing space crunch.
+        crate::locale::init_for_tests();
         let backend = TestBackend::new(96, 50);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
@@ -1464,6 +1666,8 @@ mod tests {
 
     #[test]
     fn title_is_dashboard() {
+        crate::locale::init_for_tests();
         assert_eq!(DashboardView::new().title(), "Dashboard");
+        assert_eq!(DashboardView::new().id(), ViewId::Dashboard);
     }
 }
