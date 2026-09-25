@@ -18,8 +18,6 @@
 //! - `UtilitiesService`: Server trait for implementing utilities service
 //! - `UtilitiesServiceServer`: Server implementation for utilities service
 
-
-
 /// gRPC client for the UtilitiesService.
 /// Provides methods for utility operations, such as health checks via ping.
 pub use crate::generated::utilities::utilities_service_client::UtilitiesServiceClient;
@@ -33,7 +31,4 @@ pub use crate::generated::utilities::utilities_service_server::{
 /// Utilities-related message types.
 /// Includes structs for ping requests and responses used in the UtilitiesService.
 /// These are protobuf-generated types for serialization and deserialization.
-pub use crate::generated::utilities::{
-    PingRequest,
-    PingResponse,
-};
+pub use crate::generated::utilities::{PingRequest, PingResponse};

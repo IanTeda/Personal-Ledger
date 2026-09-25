@@ -25,9 +25,7 @@ impl crate::Preferences {
         level = "debug",
         skip(pool)
     )]
-    pub async fn get_or_create_default(
-        pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::Result<Self> {
+    pub async fn get_or_create_default(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Self> {
         if let Some(existing) = Self::find_only(pool).await? {
             return Ok(existing);
         }

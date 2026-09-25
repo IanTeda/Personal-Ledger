@@ -92,9 +92,7 @@ impl crate::Payees {
     /// # Errors
     /// Returns an error if the query fails.
     #[tracing::instrument(name = "Find all active Payees: ", level = "debug", skip(pool))]
-    pub async fn find_all_active(
-        pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::Result<Vec<Self>> {
+    pub async fn find_all_active(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let payees = sqlx::query_as!(
             crate::Payees,
             r#"

@@ -1,5 +1,5 @@
-pub (crate) mod proto;
+pub(crate) mod proto;
 mod service;
 
+pub use proto::{PingRequest, PingResponse, UtilitiesServiceClient, UtilitiesServiceServer};
 pub use service::UtilitiesService;
-pub use proto::{UtilitiesServiceClient, UtilitiesServiceServer, PingRequest, PingResponse};

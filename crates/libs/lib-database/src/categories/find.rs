@@ -266,9 +266,7 @@ impl crate::Categories {
     ///
     /// # Tracing
     /// Logs INFO with the number of categories retrieved.
-    pub async fn find_all_active(
-        pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::Result<Vec<Self>> {
+    pub async fn find_all_active(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         let categories = sqlx::query_as!(
             crate::Categories,
             r#"
@@ -320,9 +318,7 @@ impl crate::Categories {
         fields(operation = "find_inactive"),
         err
     )]
-    pub async fn find_inactive(
-        pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::Result<Vec<Self>> {
+    pub async fn find_inactive(pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<Vec<Self>> {
         tracing::trace!("Starting find inactive categories operation");
 
         tracing::debug!("Executing query to find inactive categories");

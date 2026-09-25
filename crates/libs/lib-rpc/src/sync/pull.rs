@@ -4,8 +4,8 @@
 //! Client's cursor, oldest first -- including every Change Set queued while the Client
 //! was offline, in one ordered batch (ADR-0009, FC-SYNC-003).
 
-use lib_database as database;
 use lib_core as domain;
+use lib_database as database;
 
 use crate::error::{RpcError, RpcResult};
 use crate::sync::proto;

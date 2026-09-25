@@ -324,10 +324,7 @@ impl crate::Categories {
         fields(category_code = %code),
         err
     )]
-    pub async fn delete_by_code(
-        code: &str,
-        pool: &sqlx::Pool<sqlx::Sqlite>,
-    ) -> crate::Result<()> {
+    pub async fn delete_by_code(code: &str, pool: &sqlx::Pool<sqlx::Sqlite>) -> crate::Result<()> {
         tracing::trace!(
             category_code = %code,
             "Starting category deletion by code operation"
