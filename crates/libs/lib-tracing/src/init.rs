@@ -117,11 +117,10 @@ pub fn init(
     // source on every frame -- pure event-loop bookkeeping, never useful outside debugging
     // calloop itself. Capped independently of the configured/`RUST_LOG` level, since a
     // directive with a target always outranks the global default regardless of verbosity.
-    let env_filter = env_filter.add_directive(
-        "calloop=warn"
-            .parse()
-            .expect("static calloop directive is valid"),
-    );
+    let calloop_directive: tracing_subscriber::filter::Directive = "calloop=warn"
+        .parse()
+        .map_err(|e| Error::generic(format!("Failed to parse calloop directive: {}", e)))?;
+    let env_filter = env_filter.add_directive(calloop_directive);
 
     // ============================================================================
     // Phase 2: Configure Event Collection
