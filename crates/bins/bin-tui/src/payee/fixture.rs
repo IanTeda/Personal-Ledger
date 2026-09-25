@@ -35,6 +35,42 @@ use super::{
 use crate::category::{CategoryFixture, CategoryStore};
 use lib_core::{Money, RowID};
 
+use crate::fixture::{date, seed_from_id};
+
+/// The fixture's fixed "now" — matches `crate::account::fixture`'s/`crate::tag::fixture`'s own
+/// `2026-09-08`, so anything cross-referencing every screen (the shell's status line, "today")
+/// stays consistent.
+pub const FIXTURE_NOW: NaiveDate = date(2026, 9, 8);
+
+/// Builds an exact `Money` amount from a whole part and a fractional numerator over
+/// `10^scale` — avoids both `f64` rounding error and `unwrap`/`expect` on parsed string
+/// literals for seed data that's obviously always well-formed (mirrors
+/// `crate::account::fixture`'s own `money` helper).
+fn money(whole: i64, frac: i64, scale: u32) -> Money {
+    let sign = if whole < 0 { -1 } else { 1 };
+    let magnitude = BigDecimal::from(whole.abs())
+        + BigDecimal::from(frac.abs()) / BigDecimal::from(10i64.pow(scale));
+    Money(magnitude * BigDecimal::from(sign))
+}
+
+fn round_money(amount: f64) -> Money {
+    Money(
+        BigDecimal::from_f64(amount)
+            .unwrap_or_default()
+            .with_scale(2),
+    )
+}
+
+/// A tiny xorshift PRNG step — deterministic across runs/platforms, the same technique
+/// `crate::account::fixture`'s/`crate::tag::fixture`'s own fake data already uses.
+fn xorshift(seed: u64) -> u64 {
+    let mut seed = seed;
+    seed ^= seed << 13;
+    seed ^= seed >> 7;
+    seed ^= seed << 17;
+    seed
+}
+
 /// Walks `id` up through `categories` to its root, lowercasing each name along the way — a
 /// local copy of `crate::tag::fixture::ancestor_path`'s own technique (domain modules
 /// shouldn't depend on each other for a private helper this small).
@@ -121,7 +157,7 @@ pub(super) fn transactions_for(payee: &Payee) -> Vec<PayeeTransaction> {
     } else {
         1.0
     };
-    let avg_magnitude = money_to_f64(&payee.transactions_sum).abs() / count as f64;
+    let avg_magnitude = crate::format::money_to_f64(&payee.transactions_sum).abs() / count as f64;
 
     let mut seed = seed_from_id(payee.id);
     let mut rows = Vec::with_capacity(count);
@@ -226,8 +262,6 @@ impl PayeeFixture {
     /// `crate::account::fixture`, issue #116; still open against `crate::category::fixture`,
     /// issue #124).
     pub fn new() -> Self {
-        use chrono::{DateTime, Utc};
-
         let mut id = crate::fixture::id_sequence(crate::fixture::EPOCH_2021);
 
         // Read once, then discarded — see this module's own doc on why nothing here keeps a
@@ -609,7 +643,7 @@ impl PayeeStore for PayeeFixture {
             .payees
             .iter_mut()
             .find(|payee| payee.id == id)
-            .expect("existence just checked above");
+            .ok_or(PayeeError::NotFound)?;
         payee.name = new_name;
         payee.updated_on = FIXTURE_NOW;
         Ok(())
