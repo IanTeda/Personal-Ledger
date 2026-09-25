@@ -95,22 +95,22 @@ impl BudgetPeriod {
             }
             BudgetPeriod::Monthly => {
                 let start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
-                    .expect("day 1 is always valid");
+                    .expect("day 1 of any month is always valid for any valid year");
                 let end = last_day_of_month(today.year(), today.month());
                 (start, end)
             }
             BudgetPeriod::Quarterly => {
                 let quarter_start_month = ((today.month0() / 3) * 3) + 1;
                 let start = NaiveDate::from_ymd_opt(today.year(), quarter_start_month, 1)
-                    .expect("day 1 is always valid");
+                    .expect("day 1 of any month is always valid for any valid year");
                 let end = last_day_of_month(today.year(), quarter_start_month + 2);
                 (start, end)
             }
             BudgetPeriod::Yearly => {
-                let start =
-                    NaiveDate::from_ymd_opt(today.year(), 1, 1).expect("Jan 1 is always valid");
-                let end =
-                    NaiveDate::from_ymd_opt(today.year(), 12, 31).expect("Dec 31 is always valid");
+                let start = NaiveDate::from_ymd_opt(today.year(), 1, 1)
+                    .expect("Jan 1 is always valid for any valid year");
+                let end = NaiveDate::from_ymd_opt(today.year(), 12, 31)
+                    .expect("Dec 31 is always valid for any valid year");
                 (start, end)
             }
         }
@@ -134,7 +134,8 @@ fn last_day_of_month(year: i32, month: u32) -> NaiveDate {
     } else {
         (year, month + 1)
     };
-    NaiveDate::from_ymd_opt(next_year, next_month, 1).expect("a valid first-of-month always exists")
+    NaiveDate::from_ymd_opt(next_year, next_month, 1)
+        .expect("constructing the 1st of next month is always valid when current month/year are valid")
         - chrono::Duration::days(1)
 }
 
