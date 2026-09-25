@@ -489,6 +489,33 @@ fn specials(lookup: &Lookup<'_>, today: NaiveDate) -> Vec<(&'static str, Transac
             Some("Interest looks off"),
             vec![lookup.split(21_235, "Interest", Some("ANZ Banking Group"), &[])],
         ),
+        make(
+            "ANZ Everyday",
+            5,
+            Open,
+            false,
+            Some("Team lunch"),
+            vec![lookup.split(-8_500, "Dining", Some("Cafe Vittoria"), &[])],
+        ),
+        make(
+            "Amex Platinum",
+            7,
+            Cleared,
+            false,
+            Some("Client dinner"),
+            vec![
+                lookup.split(-15_200, "Dining", Some("Kura Sushi"), &[]),
+                lookup.split(-4_100, "Household", Some("Kura Sushi"), &[]),
+            ],
+        ),
+        make(
+            "ANZ Everyday",
+            14,
+            Open,
+            false,
+            Some("Date night and drinks"),
+            vec![lookup.split(-12_300, "Dining", Some("Cafe Vittoria"), &[])],
+        ),
     ]
     .into_iter()
     .flatten()

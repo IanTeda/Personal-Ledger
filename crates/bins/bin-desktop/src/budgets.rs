@@ -113,4 +113,14 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn dining_budget_is_set() {
+        use bigdecimal::BigDecimal;
+
+        let budgets = default_budgets();
+        let dining_budget = find_by_category_and_unit(&budgets, 8, 1); // Dining, base unit
+        assert!(dining_budget.is_some());
+        assert_eq!(dining_budget.unwrap().monthly_amount.0, BigDecimal::new(30_000.into(), 2));
+    }
 }
