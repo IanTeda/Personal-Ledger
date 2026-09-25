@@ -44,6 +44,7 @@ use ratatui::{
     },
 };
 
+use crate::fixture::seed_from_id;
 use crate::{
     category::{CategoryFixture, CategoryNode, CategoryStore},
     msg,
@@ -62,7 +63,7 @@ const CHART_MONTHS: usize = 24;
 /// not a per-category one; a category's own series is just mostly zero outside where it has
 /// activity. Matches `CategoryFixture`'s own fixed "now" (`2026-09-08`).
 fn chart_end_month() -> NaiveDate {
-    NaiveDate::from_ymd_opt(2026, 9, 1).expect("fixed literal is a valid date")
+    crate::fixture::date(2026, 9, 1)
 }
 
 /// Width of the left pane (tree + summary) — matches `view::units`'s own `LEFT_COLUMN_WIDTH`,
@@ -177,7 +178,7 @@ impl CategoriesView {
             .iter()
             .find(|node| node.parent_id.is_none())
             .map(|node| node.id)
-            .expect("CategoryFixture always seeds at least one root");
+            .unwrap_or_default();
 
         Self {
             store,
@@ -238,10 +239,9 @@ impl CategoriesView {
             if index > 0 {
                 lines.push(TreeLine::Blank);
             }
-            let root = self
-                .store
-                .find(*root_id)
-                .expect("root id came from this store's own nodes()");
+            let Some(root) = self.store.find(*root_id) else {
+                continue;
+            };
             let glyph = self.fold_glyph_or_dash(root.id);
             lines.push(TreeLine::Node(TreeRow {
                 id: root.id,
@@ -566,10 +566,9 @@ impl View for CategoriesView {
 
 impl CategoriesView {
     fn render_left_pane(&self, frame: &mut Frame, area: Rect) {
-        let node = self
-            .store
-            .find(self.selected)
-            .expect("selected always points at a real node in this store");
+        let Some(node) = self.store.find(self.selected) else {
+            return;
+        };
         let rollup = self.store.rollup(self.selected);
         let merged = node.direct == rollup;
 
@@ -782,10 +781,9 @@ impl CategoriesView {
     }
 
     fn render_right_pane(&self, frame: &mut Frame, area: Rect) {
-        let node = self
-            .store
-            .find(self.selected)
-            .expect("selected always points at a real node in this store");
+        let Some(node) = self.store.find(self.selected) else {
+            return;
+        };
 
         let rows = Layout::default()
             .direction(Direction::Vertical)
@@ -985,12 +983,12 @@ fn render_tree_column_header(frame: &mut Frame, area: Rect) {
     let columns = tree_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_categories_tree_column_n(), dim))
+        Paragraph::new(Span::styled(msg::tui_categories_tree_column_n(), dim))
             .alignment(Alignment::Right),
         columns[1],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_categories_tree_column_rollup(), dim))
+        Paragraph::new(Span::styled(msg::tui_categories_tree_column_rollup(), dim))
             .alignment(Alignment::Right),
         columns[2],
     );
@@ -1357,18 +1355,6 @@ fn xorshift(seed: u64) -> u64 {
     seed ^= seed >> 7;
     seed ^= seed << 17;
     seed
-}
-
-/// A deterministic seed derived from a `RowID`, so the same category always generates the
-/// same fake chart series and transaction rows.
-fn seed_from_id(id: RowID) -> u64 {
-    let uuid = id.into_uuid();
-    let bytes = uuid.as_bytes();
-    u64::from_be_bytes(
-        bytes[8..16]
-            .try_into()
-            .expect("a uuid's byte array is always at least 16 bytes long"),
-    )
 }
 
 fn money_to_f64(value: &Money) -> f64 {

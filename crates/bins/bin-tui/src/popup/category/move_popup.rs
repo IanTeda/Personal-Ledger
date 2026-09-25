@@ -396,7 +396,7 @@ fn recomputes_text(store: &dyn CategoryStore, moving_id: RowID, resolution: &Res
 
 /// The window footer hint row — matches the handoff's own `tab` / `^n` / `^s` / `esc` key set.
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    let hints = vec![
+    let hints = [
         ("tab", msg::tui_category_move_help_tab()),
         ("^n", msg::tui_category_move_help_new()),
         ("^s", msg::tui_category_move_help_move()),

@@ -33,7 +33,6 @@ use ratatui::{
 };
 
 use crate::{
-    msg,
     payee::{Payee, PayeeStore, known_category_paths},
     popup::REFERENCE_TERMINAL_WIDTH,
 };

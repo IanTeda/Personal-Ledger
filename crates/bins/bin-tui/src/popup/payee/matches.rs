@@ -41,11 +41,8 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::payee::{AliasMode, AliasSource, PayeeAlias, PayeeResolution, PayeeStore};
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-use crate::{
-    msg,
-    payee::{AliasMode, AliasSource, PayeeAlias, PayeeResolution, PayeeStore},
-};
 
 const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
@@ -619,7 +616,7 @@ mod tests {
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
-    use crate::{msg, payee::PayeeFixture};
+    use crate::payee::PayeeFixture;
 
     fn find_id(store: &PayeeFixture, name: &str) -> RowID {
         store

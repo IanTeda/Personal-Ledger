@@ -244,7 +244,7 @@ fn render_warning(frame: &mut Frame, area: Rect, text: &str) {
 /// The window footer hint row: each key bold, its label dim — matching the command popup's own
 /// `footer_hint_line` convention.
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    let hints = vec![
+    let hints = [
         ("tab", msg::tui_unit_new_help_tab()),
         ("^s", msg::tui_unit_new_help_create()),
         ("esc", msg::tui_unit_new_help_cancel()),

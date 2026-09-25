@@ -245,7 +245,7 @@ fn render_precision_warning(frame: &mut Frame, area: Rect) {
 /// own `render_footer_hints` convention, minus the source-testing/pull-prices hints that only
 /// apply at creation.
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    let hints = vec![
+    let hints = [
         ("tab", msg::tui_unit_edit_help_tab()),
         ("^s", msg::tui_unit_edit_help_save()),
         ("esc", msg::tui_unit_edit_help_cancel()),

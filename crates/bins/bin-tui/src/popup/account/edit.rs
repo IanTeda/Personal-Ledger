@@ -431,7 +431,7 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    let hints = vec![
+    let hints = [
         ("tab", msg::tui_account_edit_help_tab()),
         ("^s", msg::tui_account_edit_help_save()),
         ("^a", msg::tui_account_edit_help_deactivate()),

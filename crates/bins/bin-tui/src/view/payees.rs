@@ -1002,15 +1002,15 @@ fn render_txn_column_header(frame: &mut Frame, area: Rect) {
     let (_, date, category, amount) = txn_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_payees_column_date(), dim)),
+        Paragraph::new(Span::styled(msg::tui_payees_column_date(), dim)),
         date,
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_payees_column_category(), dim)),
+        Paragraph::new(Span::styled(msg::tui_payees_column_category(), dim)),
         category,
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_payees_column_amount(), dim))
+        Paragraph::new(Span::styled(msg::tui_payees_column_amount(), dim))
             .alignment(Alignment::Right),
         amount,
     );

@@ -162,6 +162,12 @@ impl Layer {
                     "`{key}` gives the accessor `{accessor}`, a Rust keyword"
                 ));
             }
+            // An uppercase letter survives into the accessor and trips `non_snake_case`.
+            if accessor.chars().any(|c| c.is_ascii_uppercase()) {
+                problems.push(format!(
+                    "`{key}` gives the accessor `{accessor}`, which is not snake_case"
+                ));
+            }
             for param in item.params.keys() {
                 if is_keyword(&snake(param)) {
                     problems.push(format!(

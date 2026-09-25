@@ -13,6 +13,7 @@ mod category;
 mod db;
 mod error;
 mod event;
+mod fixture;
 mod format;
 mod locale;
 mod payee;

@@ -342,7 +342,7 @@ fn render_where_values_live(frame: &mut Frame, area: Rect) {
 
 /// One `label   value` line, the label padded to `WHERE_VALUES_LABEL_WIDTH` and dimmed; the
 /// value renders in `ACCENT` when `fact.accent` is set (the `overrides` row).
-fn where_values_fact_line(fact: &WhereValuesFact) -> Line {
+fn where_values_fact_line(fact: &WhereValuesFact) -> Line<'_> {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let value_style = if fact.accent {
         Style::default().fg(ACCENT)
@@ -350,7 +350,7 @@ fn where_values_fact_line(fact: &WhereValuesFact) -> Line {
         Style::default()
     };
     Line::from(vec![
-        Span::styled(format!("{:<WHERE_VALUES_LABEL_WIDTH$}", &fact.label), dim),
+        Span::styled(format!("{:<WHERE_VALUES_LABEL_WIDTH$}", fact.label), dim),
         Span::styled(fact.value.clone(), value_style),
     ])
 }
@@ -377,7 +377,7 @@ fn render_reset(frame: &mut Frame, area: Rect) {
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
     let r_hint = msg::tui_settings_reset_hint_r();
-    let big_r_hint = msg::tui_settings_reset_hint_R();
+    let big_r_hint = msg::tui_settings_reset_hint_group();
     render_hint_row(frame, sections[2], "r", &r_hint);
     render_hint_row(frame, sections[3], "R", &big_r_hint);
 }
@@ -599,11 +599,11 @@ fn render_settings_column_header(frame: &mut Frame, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
 
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_settings_list_column_setting(), dim)),
+        Paragraph::new(Span::styled(msg::tui_settings_list_column_setting(), dim)),
         columns[1],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(&msg::tui_settings_list_column_value(), dim)),
+        Paragraph::new(Span::styled(msg::tui_settings_list_column_value(), dim)),
         columns[2],
     );
     frame.render_widget(Paragraph::new(Span::styled("NOTE", dim)), columns[3]);

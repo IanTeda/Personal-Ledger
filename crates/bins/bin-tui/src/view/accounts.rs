@@ -39,7 +39,7 @@
 //! only needs to start passing it real state.
 
 use bigdecimal::BigDecimal;
-use chrono::{Datelike, Months, NaiveDate};
+use chrono::NaiveDate;
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::{AccountType, Money, RowID};
 use ratatui::{
@@ -921,11 +921,13 @@ fn render_chart_labels(frame: &mut Frame, area: Rect, series: &[f64], decimal_pl
         .constraints([Constraint::Min(0), Constraint::Min(0), Constraint::Min(0)])
         .split(area);
 
-    let (low_index, &low_value) = series
+    let Some((low_index, &low_value)) = series
         .iter()
         .enumerate()
         .min_by(|(_, a), (_, b)| a.total_cmp(b))
-        .expect("the chart always plots at least one month");
+    else {
+        return;
+    };
 
     let dim = Style::default().add_modifier(Modifier::DIM);
     let first_text = format!(
@@ -960,15 +962,12 @@ fn render_chart_labels(frame: &mut Frame, area: Rect, series: &[f64], decimal_pl
 /// shares the same trailing [`CHART_MONTHS`]-month x-axis, matching
 /// `view::categories`'s own `chart_end_month` convention.
 fn chart_end_month() -> NaiveDate {
-    NaiveDate::from_ymd_opt(FIXTURE_NOW.year(), FIXTURE_NOW.month(), 1)
-        .expect("FIXTURE_NOW's own year/month with day 1 is always a valid date")
+    crate::fixture::month_start(FIXTURE_NOW, 0)
 }
 
 /// The chart's x-axis month for `index` (`0` oldest, `CHART_MONTHS - 1` newest).
 fn chart_month(index: usize) -> NaiveDate {
-    chart_end_month()
-        .checked_sub_months(Months::new((CHART_MONTHS - 1 - index) as u32))
-        .expect("CHART_MONTHS stays well within chrono's representable range")
+    crate::fixture::month_start(chart_end_month(), index as i32 + 1 - CHART_MONTHS as i32)
 }
 
 fn format_month(date: NaiveDate) -> String {

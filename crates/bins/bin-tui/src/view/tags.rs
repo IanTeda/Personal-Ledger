@@ -41,7 +41,7 @@
 //! just sets `pending_delete = true` — the exact same state bare `d` arms, still gated behind
 //! `y` on this view before anything is actually deleted.
 
-use chrono::{Datelike, Months, NaiveDate};
+use chrono::NaiveDate;
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::{Money, RowID};
 use ratatui::{
@@ -706,10 +706,8 @@ impl TagsView {
         }
 
         let overlap = rows.iter().filter(|row| row.other_tags > 0).count();
-        let text = msg::tui_tag_right_pane_txn_footer_overlap(
-            overlap as i64,
-            &rows.len().to_string(),
-        );
+        let text =
+            msg::tui_tag_right_pane_txn_footer_overlap(overlap as i64, &rows.len().to_string());
         frame.render_widget(
             Paragraph::new(Span::styled(text, Style::default().fg(ACCENT))),
             area,
@@ -786,17 +784,16 @@ fn format_date(date: chrono::NaiveDate) -> String {
 /// "Tagged spend"'s fixed end-of-window month — `crate::tag::FIXTURE_NOW`'s own month, mirroring
 /// `view::accounts::chart_end_month`'s convention.
 fn spend_chart_end_month() -> NaiveDate {
-    let now = crate::tag::FIXTURE_NOW;
-    NaiveDate::from_ymd_opt(now.year(), now.month(), 1)
-        .expect("FIXTURE_NOW's own year/month with day 1 is always a valid date")
+    crate::fixture::month_start(crate::tag::FIXTURE_NOW, 0)
 }
 
 /// The chart's x-axis month for `index` (`0` oldest, `SPEND_MONTHS - 1` newest) — mirrors
 /// `view::accounts::chart_month`.
 fn spend_chart_month(index: usize) -> NaiveDate {
-    spend_chart_end_month()
-        .checked_sub_months(Months::new((SPEND_MONTHS - 1 - index) as u32))
-        .expect("SPEND_MONTHS stays well within chrono's representable range")
+    crate::fixture::month_start(
+        spend_chart_end_month(),
+        index as i32 + 1 - SPEND_MONTHS as i32,
+    )
 }
 
 fn format_month(date: NaiveDate) -> String {
@@ -1300,7 +1297,7 @@ mod tests {
         let real_text = render(&view);
         assert!(!real_text.contains("no transactions yet"));
         assert!(!real_text.contains("no categories yet"));
-        assert!(real_text.contains("carry another tag"));
+        assert!(real_text.contains("another tag — rows overlap"));
     }
 
     #[test]
@@ -1373,9 +1370,9 @@ mod tests {
 
         view.selected = tag;
         let text = render(&view);
-        assert!(text.contains(&format!(
-            "{expected_overlap} of {} carry another tag",
-            rows.len()
+        assert!(text.contains(&msg::tui_tag_right_pane_txn_footer_overlap(
+            expected_overlap as i64,
+            &rows.len().to_string(),
         )));
     }
 

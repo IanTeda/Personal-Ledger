@@ -420,7 +420,7 @@ fn render_note(frame: &mut Frame, area: Rect, text: String) {
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    let hints = vec![
+    let hints = [
         ("tab", msg::tui_account_new_help_tab()),
         ("^s", msg::tui_account_new_help_create()),
         ("^a", msg::tui_account_new_help_create_and_add()),

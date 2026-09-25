@@ -42,7 +42,7 @@ tui-settings-where-bootstrap = bootstrap 4 keys
 tui-settings-reset-heading = RESET
 tui-settings-reset-tag = deletes the row
 tui-settings-reset-hint-r = r this setting
-tui-settings-reset-hint-R = R whole group
+tui-settings-reset-hint-group = R whole group
 
 ## The Settings list section.
 

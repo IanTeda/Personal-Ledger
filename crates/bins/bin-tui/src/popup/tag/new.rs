@@ -248,7 +248,7 @@ fn render_clash_note(frame: &mut Frame, area: Rect, store: &dyn TagStore, name: 
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    let hints = vec![
+    let hints = [
         ("tab", msg::tui_tag_new_help_tab()),
         ("^s", msg::tui_tag_new_help_create()),
         ("^a", msg::tui_tag_new_help_create_next()),

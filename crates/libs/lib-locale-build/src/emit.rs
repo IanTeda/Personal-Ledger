@@ -290,6 +290,13 @@ mod tests {
     }
 
     #[test]
+    fn rejects_uppercase_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "en-US", "a.ftl", "hint-R = R whole group\n");
+        assert!(failure(&options(dir.path(), None)).contains("not snake_case"));
+    }
+
+    #[test]
     fn enforces_id_prefix_rules() {
         let dir = tempfile::tempdir().unwrap();
         write(dir.path(), "en-US", "a.ftl", "tui-hint = Hint\n");

@@ -35,59 +35,6 @@ use super::{
 use crate::category::{CategoryFixture, CategoryStore};
 use lib_core::{Money, RowID};
 
-/// The fixture's fixed "now" — matches `crate::account::fixture`'s/`crate::tag::fixture`'s own
-/// `2026-09-08`, so anything cross-referencing every screen (the shell's status line, "today")
-/// stays consistent.
-pub const FIXTURE_NOW: NaiveDate = match NaiveDate::from_ymd_opt(2026, 9, 8) {
-    Some(date) => date,
-    None => panic!("fixed literal is a valid date"),
-};
-
-/// Builds an exact `Money` amount from a whole part and a fractional numerator over
-/// `10^scale` — avoids both `f64` rounding error and `unwrap`/`expect` on parsed string
-/// literals for seed data that's obviously always well-formed (mirrors
-/// `crate::account::fixture`'s own `money` helper).
-fn money(whole: i64, frac: i64, scale: u32) -> Money {
-    let sign = if whole < 0 { -1 } else { 1 };
-    let magnitude = BigDecimal::from(whole.abs())
-        + BigDecimal::from(frac.abs()) / BigDecimal::from(10i64.pow(scale));
-    Money(magnitude * BigDecimal::from(sign))
-}
-
-fn money_to_f64(value: &Money) -> f64 {
-    value.0.to_string().parse().unwrap_or(0.0)
-}
-
-fn round_money(amount: f64) -> Money {
-    Money(
-        BigDecimal::from_f64(amount)
-            .unwrap_or_default()
-            .with_scale(2),
-    )
-}
-
-/// A tiny xorshift PRNG step — deterministic across runs/platforms, the same technique
-/// `crate::account::fixture`'s/`crate::tag::fixture`'s own fake data already uses.
-fn xorshift(seed: u64) -> u64 {
-    let mut seed = seed;
-    seed ^= seed << 13;
-    seed ^= seed >> 7;
-    seed ^= seed << 17;
-    seed
-}
-
-/// A deterministic seed derived from a `RowID`, so the same Payee always generates the same
-/// fake transactions — mirrors `crate::account::fixture::seed_from_id`.
-fn seed_from_id(id: RowID) -> u64 {
-    let uuid = id.into_uuid();
-    let bytes = uuid.as_bytes();
-    u64::from_be_bytes(
-        bytes[8..16]
-            .try_into()
-            .expect("a uuid's byte array is always at least 16 bytes long"),
-    )
-}
-
 /// Walks `id` up through `categories` to its root, lowercasing each name along the way — a
 /// local copy of `crate::tag::fixture::ancestor_path`'s own technique (domain modules
 /// shouldn't depend on each other for a private helper this small).
@@ -281,24 +228,8 @@ impl PayeeFixture {
     pub fn new() -> Self {
         use chrono::{DateTime, Utc};
 
-        let mut next = DateTime::parse_from_rfc3339("2021-01-01T00:00:00Z")
-            .expect("fixed literal is a valid RFC3339 timestamp")
-            .with_timezone(&Utc);
-        let mut counter: u64 = 0;
-        let mut id = move || {
-            let millis = next.timestamp_millis() as u64;
-            next += chrono::Duration::seconds(1);
-            counter += 1;
-            let mut counter_bytes = [0u8; 10];
-            counter_bytes[2..10].copy_from_slice(&counter.to_be_bytes());
-            let uuid =
-                uuid::Builder::from_unix_timestamp_millis(millis, &counter_bytes).into_uuid();
-            RowID::from_uuid(uuid)
-        };
+        let mut id = crate::fixture::id_sequence(crate::fixture::EPOCH_2021);
 
-        let date = |year, month, day| {
-            NaiveDate::from_ymd_opt(year, month, day).expect("seed literal is a valid date")
-        };
 
         // Read once, then discarded — see this module's own doc on why nothing here keeps a
         // `CategoryFixture` or a `RowID` back to it.

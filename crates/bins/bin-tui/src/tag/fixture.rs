@@ -17,19 +17,17 @@
 //! `CategoryFixture` itself is discarded once its paths are read.
 
 use bigdecimal::{BigDecimal, FromPrimitive};
-use chrono::{DateTime, Datelike, Duration, Months, NaiveDate, Utc};
+use chrono::{Duration, Months, NaiveDate};
 use lib_core::{Money, RowID};
 
 use super::{Tag, TagError, TagStore, TagTransaction};
 use crate::category::{CategoryFixture, CategoryStore};
+use crate::fixture::{date, month_start, seed_from_id};
 
 /// The fixture's fixed "now" — matches `crate::account::fixture`'s own `2026-09-08`. `pub` so
 /// `view::tags` can pin its own "Tagged spend" chart window to the same date, mirroring
 /// `crate::account::fixture::FIXTURE_NOW`'s own re-export for exactly that reason.
-pub const FIXTURE_NOW: NaiveDate = match NaiveDate::from_ymd_opt(2026, 9, 8) {
-    Some(date) => date,
-    None => panic!("fixed literal is a valid date"),
-};
+pub const FIXTURE_NOW: NaiveDate = date(2026, 9, 8);
 
 /// How many trailing months the "Tagged spend" sparkline plots — matches
 /// `crate::account::fixture`'s own `CHART_MONTHS` convention (`view::accounts`'s 24-month
@@ -55,18 +53,6 @@ fn xorshift(seed: u64) -> u64 {
     seed ^= seed >> 7;
     seed ^= seed << 17;
     seed
-}
-
-/// A deterministic seed derived from a `RowID`, so the same Tag always generates the same fake
-/// transactions — mirrors `crate::account::fixture::seed_from_id`.
-fn seed_from_id(id: RowID) -> u64 {
-    let uuid = id.into_uuid();
-    let bytes = uuid.as_bytes();
-    u64::from_be_bytes(
-        bytes[8..16]
-            .try_into()
-            .expect("a uuid's byte array is always at least 16 bytes long"),
-    )
 }
 
 fn round_money(amount: f64) -> Money {
@@ -133,17 +119,10 @@ fn pool_containing(paths: &[String], needles: &[&str]) -> Vec<String> {
 /// of `crate::account::fixture::month_end`'s technique, extended to return the month's start
 /// too (`monthly_spend_for` sums a window, not a running balance, so it needs both ends).
 fn month_bounds(as_of: NaiveDate, months_back: usize) -> (NaiveDate, NaiveDate) {
-    let first_of_as_of_month = NaiveDate::from_ymd_opt(as_of.year(), as_of.month(), 1)
-        .expect("as_of's own year/month with day 1 is always valid");
-    let first_of_target_month = first_of_as_of_month
-        .checked_sub_months(Months::new(months_back as u32))
-        .expect("months_back stays well within chrono's representable range");
-    let first_of_next_month = first_of_target_month
-        .checked_add_months(Months::new(1))
-        .expect("adding one month to a valid first-of-month date stays in range");
+    let months_back = months_back as i32;
     (
-        first_of_target_month,
-        first_of_next_month - Duration::days(1),
+        month_start(as_of, -months_back),
+        month_start(as_of, 1 - months_back) - Duration::days(1),
     )
 }
 
@@ -272,24 +251,7 @@ impl TagFixture {
     /// `crate::category::fixture`, issue #124). Confirmed deterministic here the same way: by
     /// diffing two separate `cargo test` process runs' generated ids.
     pub fn new() -> Self {
-        let mut next = DateTime::parse_from_rfc3339("2021-01-01T00:00:00Z")
-            .expect("fixed literal is a valid RFC3339 timestamp")
-            .with_timezone(&Utc);
-        let mut counter: u64 = 0;
-        let mut id = move || {
-            let millis = next.timestamp_millis() as u64;
-            next += chrono::Duration::seconds(1);
-            counter += 1;
-            let mut counter_bytes = [0u8; 10];
-            counter_bytes[2..10].copy_from_slice(&counter.to_be_bytes());
-            let uuid =
-                uuid::Builder::from_unix_timestamp_millis(millis, &counter_bytes).into_uuid();
-            RowID::from_uuid(uuid)
-        };
-
-        let date = |year, month, day| {
-            NaiveDate::from_ymd_opt(year, month, day).expect("seed literal is a valid date")
-        };
+        let mut id = crate::fixture::id_sequence(crate::fixture::EPOCH_2021);
 
         // Read once, then discarded — see this module's own doc on why nothing here keeps a
         // `CategoryFixture` or a `RowID` back to it.

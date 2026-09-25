@@ -23,12 +23,13 @@
 //! and matches `§7d`'s own "holds 1 284 txns ... 8 balance checks" example exactly).
 
 use bigdecimal::{BigDecimal, FromPrimitive};
-use chrono::{Datelike, Months, NaiveDate};
+use chrono::NaiveDate;
 
 use super::{
     Account, AccountBalanceCheck, AccountError, AccountStore, AccountTransaction, AccountUnit,
     TransactionStatus,
 };
+use crate::fixture::{date, month_start, seed_from_id};
 use lib_core::{AccountType, Money, RowID};
 
 /// The fixture's fixed "now" — matches `crate::category::fixture`'s own `2026-09-08`, so
@@ -36,10 +37,7 @@ use lib_core::{AccountType, Money, RowID};
 /// consistent. `pub` so `view::accounts` can pin its own balance-chart window to the same
 /// date rather than drifting onto the real `Utc::now()` and disagreeing with this fixture's
 /// own seeded history.
-pub const FIXTURE_NOW: NaiveDate = match NaiveDate::from_ymd_opt(2026, 9, 8) {
-    Some(date) => date,
-    None => panic!("fixed literal is a valid date"),
-};
+pub const FIXTURE_NOW: NaiveDate = date(2026, 9, 8);
 
 const FAKE_PAYEES: &[&str] = &[
     "Woolworths",
@@ -109,18 +107,6 @@ fn xorshift(seed: u64) -> u64 {
     seed ^= seed >> 7;
     seed ^= seed << 17;
     seed
-}
-
-/// A deterministic seed derived from a `RowID`, so the same account always generates the same
-/// fake ledger.
-fn seed_from_id(id: RowID) -> u64 {
-    let uuid = id.into_uuid();
-    let bytes = uuid.as_bytes();
-    u64::from_be_bytes(
-        bytes[8..16]
-            .try_into()
-            .expect("a uuid's byte array is always at least 16 bytes long"),
-    )
 }
 
 /// Generates `account`'s ledger rows, deterministically seeded from its id — see [`Account`]'s
@@ -202,15 +188,7 @@ fn balance_as_of_for(account: &Account, date: NaiveDate) -> Money {
 
 /// `as_of`'s own month-end, `months_back` months earlier (`0` is `as_of`'s own month).
 fn month_end(as_of: NaiveDate, months_back: usize) -> NaiveDate {
-    let first_of_as_of_month = NaiveDate::from_ymd_opt(as_of.year(), as_of.month(), 1)
-        .expect("as_of's own year/month with day 1 is always valid");
-    let first_of_target_month = first_of_as_of_month
-        .checked_sub_months(Months::new(months_back as u32))
-        .expect("months_back stays well within chrono's representable range");
-    let first_of_next_month = first_of_target_month
-        .checked_add_months(Months::new(1))
-        .expect("adding one month to a valid first-of-month date stays in range");
-    first_of_next_month - chrono::Duration::days(1)
+    month_start(as_of, 1 - months_back as i32) - chrono::Duration::days(1)
 }
 
 /// One pass over `account`'s generated ledger (sorted ascending once), sweeping a running
@@ -226,12 +204,8 @@ fn monthly_balances_for(account: &Account, months: usize, as_of: NaiveDate) -> V
 
     for months_back in (0..months).rev() {
         let boundary = month_end(as_of, months_back);
-        while let Some(row) = rows.peek() {
-            if row.date <= boundary {
-                running += rows.next().expect("just peeked Some").amount.0;
-            } else {
-                break;
-            }
+        while let Some(row) = rows.next_if(|row| row.date <= boundary) {
+            running += row.amount.0;
         }
         result.push(Money(running.clone()));
     }
@@ -257,29 +231,7 @@ impl AccountFixture {
     /// fixture is deterministic across runs, matching the repo's "deterministic seeds for
     /// generated test data" convention.
     pub fn new() -> Self {
-        use chrono::{DateTime, Utc};
-
-        let mut next = DateTime::parse_from_rfc3339("2021-01-01T00:00:00Z")
-            .expect("fixed literal is a valid RFC3339 timestamp")
-            .with_timezone(&Utc);
-        // `RowID::from_timestamp` delegates to `uuid::Uuid::new_v7`, which fills a real UUIDv7's
-        // non-timestamp bits from the OS RNG — two calls with the *same* timestamp still produce
-        // different ids, and every id (and therefore every `seed_from_id`-derived ledger) this
-        // fixture seeds comes out different on every run, contradicting this very module doc's
-        // "deterministic across runs" claim. Build the UUID ourselves instead, via the same
-        // timestamp sequence plus a plain incrementing counter standing in for the random bits
-        // — deterministic, and still sorts by creation order like a real v7 id would.
-        let mut counter: u64 = 0;
-        let mut id = move || {
-            let millis = next.timestamp_millis() as u64;
-            next += chrono::Duration::seconds(1);
-            counter += 1;
-            let mut counter_bytes = [0u8; 10];
-            counter_bytes[2..10].copy_from_slice(&counter.to_be_bytes());
-            let uuid =
-                uuid::Builder::from_unix_timestamp_millis(millis, &counter_bytes).into_uuid();
-            RowID::from_uuid(uuid)
-        };
+        let mut id = crate::fixture::id_sequence(crate::fixture::EPOCH_2021);
 
         let aud = || unit("AUD", 2);
         let usd = || unit("USD", 2);
@@ -291,8 +243,8 @@ impl AccountFixture {
             unit: aud(),
             starting_balance: money(320, 40, 2),
             is_active: true,
-            created_on: NaiveDate::from_ymd_opt(2024, 1, 10).expect("valid date"),
-            updated_on: NaiveDate::from_ymd_opt(2024, 1, 10).expect("valid date"),
+            created_on: date(2024, 1, 10),
+            updated_on: date(2024, 1, 10),
             transactions_sum: money(0, 0, 2),
             transaction_count: 0,
             open_count: 0,
@@ -310,8 +262,8 @@ impl AccountFixture {
             unit: usd(),
             starting_balance: money(1_500, 0, 2),
             is_active: false,
-            created_on: NaiveDate::from_ymd_opt(2024, 3, 2).expect("valid date"),
-            updated_on: NaiveDate::from_ymd_opt(2024, 3, 2).expect("valid date"),
+            created_on: date(2024, 3, 2),
+            updated_on: date(2024, 3, 2),
             transactions_sum: money(0, 0, 2),
             transaction_count: 0,
             open_count: 0,
@@ -327,13 +279,13 @@ impl AccountFixture {
             unit: aud(),
             starting_balance: money(1_000, 0, 2),
             is_active: true,
-            created_on: NaiveDate::from_ymd_opt(2024, 10, 14).expect("valid date"),
+            created_on: date(2024, 10, 14),
             updated_on: FIXTURE_NOW,
             transactions_sum: money(3_210, 65, 2),
             transaction_count: 1_284,
             open_count: 12,
-            first_posted: Some(NaiveDate::from_ymd_opt(2024, 8, 31).expect("valid date")),
-            last_posted: Some(NaiveDate::from_ymd_opt(2026, 8, 31).expect("valid date")),
+            first_posted: Some(date(2024, 8, 31)),
+            last_posted: Some(date(2026, 8, 31)),
             balance_checks: Vec::new(),
         };
         // Eight month-end Balance Checks, each asserting exactly what the ledger computes for
@@ -341,7 +293,7 @@ impl AccountFixture {
         // figure for this account.
         for months_back in (0..8).rev() {
             let date = month_end(
-                everyday_spending.last_posted.expect("just set this above"),
+                everyday_spending.last_posted.unwrap_or(FIXTURE_NOW),
                 months_back,
             );
             let asserted = balance_as_of_for(&everyday_spending, date);
@@ -357,13 +309,13 @@ impl AccountFixture {
             unit: aud(),
             starting_balance: money(20_000, 0, 2),
             is_active: true,
-            created_on: NaiveDate::from_ymd_opt(2021, 9, 8).expect("valid date"),
-            updated_on: NaiveDate::from_ymd_opt(2026, 8, 20).expect("valid date"),
+            created_on: date(2021, 9, 8),
+            updated_on: date(2026, 8, 20),
             transactions_sum: money(4_429, 50, 2),
             transaction_count: 60,
             open_count: 0,
-            first_posted: Some(NaiveDate::from_ymd_opt(2021, 9, 15).expect("valid date")),
-            last_posted: Some(NaiveDate::from_ymd_opt(2026, 8, 28).expect("valid date")),
+            first_posted: Some(date(2021, 9, 15)),
+            last_posted: Some(date(2026, 8, 28)),
             balance_checks: Vec::new(),
         };
 
@@ -374,13 +326,13 @@ impl AccountFixture {
             unit: aud(),
             starting_balance: money(0, 0, 2),
             is_active: true,
-            created_on: NaiveDate::from_ymd_opt(2023, 6, 1).expect("valid date"),
-            updated_on: NaiveDate::from_ymd_opt(2026, 9, 2).expect("valid date"),
+            created_on: date(2023, 6, 1),
+            updated_on: date(2026, 9, 2),
             transactions_sum: money(-1_284, 30, 2),
             transaction_count: 47,
             open_count: 5,
-            first_posted: Some(NaiveDate::from_ymd_opt(2025, 10, 1).expect("valid date")),
-            last_posted: Some(NaiveDate::from_ymd_opt(2026, 9, 5).expect("valid date")),
+            first_posted: Some(date(2025, 10, 1)),
+            last_posted: Some(date(2026, 9, 5)),
             balance_checks: Vec::new(),
         };
 
@@ -391,13 +343,13 @@ impl AccountFixture {
             unit: unit("VDHG", 4),
             starting_balance: money(0, 0, 4),
             is_active: true,
-            created_on: NaiveDate::from_ymd_opt(2022, 11, 1).expect("valid date"),
-            updated_on: NaiveDate::from_ymd_opt(2026, 8, 15).expect("valid date"),
+            created_on: date(2022, 11, 1),
+            updated_on: date(2026, 8, 15),
             transactions_sum: money(412, 4800, 4),
             transaction_count: 18,
             open_count: 0,
-            first_posted: Some(NaiveDate::from_ymd_opt(2022, 12, 1).expect("valid date")),
-            last_posted: Some(NaiveDate::from_ymd_opt(2026, 8, 1).expect("valid date")),
+            first_posted: Some(date(2022, 12, 1)),
+            last_posted: Some(date(2026, 8, 1)),
             balance_checks: Vec::new(),
         };
 
@@ -408,13 +360,13 @@ impl AccountFixture {
             unit: unit("BTC", 8),
             starting_balance: money(0, 0, 8),
             is_active: true,
-            created_on: NaiveDate::from_ymd_opt(2024, 2, 1).expect("valid date"),
-            updated_on: NaiveDate::from_ymd_opt(2026, 7, 1).expect("valid date"),
+            created_on: date(2024, 2, 1),
+            updated_on: date(2026, 7, 1),
             transactions_sum: money(0, 18_400_000, 8),
             transaction_count: 4,
             open_count: 0,
-            first_posted: Some(NaiveDate::from_ymd_opt(2024, 4, 1).expect("valid date")),
-            last_posted: Some(NaiveDate::from_ymd_opt(2026, 5, 1).expect("valid date")),
+            first_posted: Some(date(2024, 4, 1)),
+            last_posted: Some(date(2026, 5, 1)),
             balance_checks: Vec::new(),
         };
 
@@ -425,13 +377,13 @@ impl AccountFixture {
             unit: aud(),
             starting_balance: money(-650_000, 0, 2),
             is_active: true,
-            created_on: NaiveDate::from_ymd_opt(2023, 9, 8).expect("valid date"),
-            updated_on: NaiveDate::from_ymd_opt(2026, 9, 1).expect("valid date"),
+            created_on: date(2023, 9, 8),
+            updated_on: date(2026, 9, 1),
             transactions_sum: money(37_600, 0, 2),
             transaction_count: 36,
             open_count: 0,
-            first_posted: Some(NaiveDate::from_ymd_opt(2023, 10, 8).expect("valid date")),
-            last_posted: Some(NaiveDate::from_ymd_opt(2026, 9, 8).expect("valid date")),
+            first_posted: Some(date(2023, 10, 8)),
+            last_posted: Some(date(2026, 9, 8)),
             balance_checks: Vec::new(),
         };
 
@@ -444,8 +396,8 @@ impl AccountFixture {
             unit: aud(),
             starting_balance: money(5_000, 0, 2),
             is_active: false,
-            created_on: NaiveDate::from_ymd_opt(2020, 1, 1).expect("valid date"),
-            updated_on: NaiveDate::from_ymd_opt(2023, 1, 1).expect("valid date"),
+            created_on: date(2020, 1, 1),
+            updated_on: date(2023, 1, 1),
             transactions_sum: money(0, 0, 2),
             transaction_count: 0,
             open_count: 0,
@@ -622,7 +574,7 @@ impl AccountStore for AccountFixture {
                 .accounts
                 .iter_mut()
                 .find(|account| account.id == target_id)
-                .expect("existence just checked above");
+                .ok_or(AccountError::NotFound)?;
             target_mut.transactions_sum =
                 Money(target_mut.transactions_sum.0.clone() + source.transactions_sum.0.clone());
             target_mut.transaction_count += source.transaction_count;

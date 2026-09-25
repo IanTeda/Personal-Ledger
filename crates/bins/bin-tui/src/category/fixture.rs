@@ -45,12 +45,12 @@ fn money(dollars: i64, cents: i64) -> Money {
 /// parent's zero), so seed calls don't need two more positional dates threaded through every
 /// row — deterministic and plausible, not meant to be checked against specific values.
 fn posting_dates(transaction_count: u32) -> (Option<chrono::NaiveDate>, Option<chrono::NaiveDate>) {
-    use chrono::{Months, NaiveDate};
+    use chrono::Months;
 
     if transaction_count == 0 {
         return (None, None);
     }
-    let last = NaiveDate::from_ymd_opt(2026, 9, 8).expect("fixed literal is a valid date");
+    let last = crate::fixture::date(2026, 9, 8);
     let first = last - Months::new(transaction_count.min(24));
     (Some(first), Some(last))
 }
@@ -82,31 +82,8 @@ impl CategoryFixture {
     /// (not `RowID::new()`/`RowID::mock()`) so a fresh fixture is deterministic across runs,
     /// matching the repo's "deterministic seeds for generated test data" convention.
     pub fn new() -> Self {
-        use chrono::{DateTime, Utc};
-
         // A fresh, distinct RowID for each seeded node, ordered by seed position.
-        let mut next = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
-            .expect("fixed literal is a valid RFC3339 timestamp")
-            .with_timezone(&Utc);
-        // `RowID::from_timestamp` delegates to `uuid::Uuid::new_v7`, which fills a real UUIDv7's
-        // non-timestamp bits from the OS RNG — two calls with the *same* timestamp still produce
-        // different ids, and every id (and therefore every `seed_from_id`-derived fake chart/
-        // transaction value in `view::categories`) this fixture seeds came out different on every
-        // run, contradicting this very module doc's "deterministic across runs" claim (see issue
-        // #124, and #118's identical fix for `AccountFixture`). Build the UUID ourselves instead,
-        // via the same timestamp sequence plus a plain incrementing counter standing in for the
-        // random bits — deterministic, and still sorts by creation order like a real v7 id would.
-        let mut counter: u64 = 0;
-        let mut id = move || {
-            let millis = next.timestamp_millis() as u64;
-            next += chrono::Duration::seconds(1);
-            counter += 1;
-            let mut counter_bytes = [0u8; 10];
-            counter_bytes[2..10].copy_from_slice(&counter.to_be_bytes());
-            let uuid =
-                uuid::Builder::from_unix_timestamp_millis(millis, &counter_bytes).into_uuid();
-            RowID::from_uuid(uuid)
-        };
+        let mut id = crate::fixture::id_sequence(crate::fixture::EPOCH_2024);
 
         let income = id();
         let salary = id();

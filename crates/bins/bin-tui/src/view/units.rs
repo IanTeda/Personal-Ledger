@@ -670,8 +670,7 @@ fn fake_weekly_prices() -> Vec<WeeklyPriceRow> {
     )
     .collect();
 
-    let mut week_commencing =
-        chrono::NaiveDate::from_ymd_opt(2025, 6, 29).expect("29 june 2025 is a valid date");
+    let mut week_commencing = crate::fixture::date(2025, 6, 29);
     let mut close = 69.03_f64;
     let mut seed: u64 = 29;
     for _ in rows.len()..FAKE_WEEK_COUNT {
@@ -868,7 +867,7 @@ fn weekly_price_columns(area: Rect) -> [Rect; 4] {
 /// acting on the highlighted unit, then the `:` commands that do the same from the command
 /// line — how to use the units screen at a glance.
 fn render_keybind_hints(frame: &mut Frame, area: Rect) {
-    let command_hints = vec![
+    let command_hints = [
         msg::tui_units_command_new(),
         msg::tui_units_command_edit(),
         msg::tui_units_command_price(),

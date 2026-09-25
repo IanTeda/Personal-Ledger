@@ -416,7 +416,7 @@ fn render_title(frame: &mut Frame, area: Rect, name: &str) {
 }
 
 fn render_footer_hints(frame: &mut Frame, area: Rect) {
-    let hints = vec![
+    let hints = [
         ("tab", msg::tui_account_delete_help_tab()),
         ("^s", msg::tui_account_delete_help_delete()),
         ("^a", msg::tui_account_delete_help_deactivate()),
