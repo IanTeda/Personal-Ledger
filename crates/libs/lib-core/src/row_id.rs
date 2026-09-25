@@ -528,7 +528,6 @@ impl RowID {
     /// let mock_id = RowID::mock();
     /// assert_eq!(mock_id.as_uuid().get_version_num(), 7);
     /// ```
-    #[cfg(test)]
     pub fn mock() -> Self {
         use chrono::{DateTime, Utc};
         use fake::faker::chrono::en::DateTimeAfter;
@@ -542,7 +541,7 @@ impl RowID {
         let random_uuid_timestamp: uuid::Timestamp = uuid::Timestamp::from_unix(
             uuid::NoContext,
             random_datetime.timestamp() as u64,
-            random_datetime.timestamp_nanos_opt().unwrap() as u32,
+            random_datetime.timestamp_nanos_opt().expect("faker-generated DateTime always has nanosecond component") as u32,
         );
 
         // Generate Uuid V7
