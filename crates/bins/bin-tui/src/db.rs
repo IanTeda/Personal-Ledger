@@ -1,9 +1,12 @@
-//! Shared connection to the TUI's own local embedded-SQLite Ledger store — every screen
-//! that reads or writes real data (starting with the feasibility cycle's Categories demo,
-//! now every Concept-cycle entity screen built on this skeleton) goes through the same
-//! database file and the same Client migration set (`docs/adr/0003-...`'s async-from-the-
-//! start model: each screen still opens its own connection per `init()`, but they all agree
-//! on where the file lives and which migrations apply).
+//! Shared connection to the TUI's own local embedded-SQLite Ledger store: one agreed
+//! database file and one Client migration set (`migrations/client`), so every caller that
+//! reads or writes real data opens its own pool but agrees on where the file lives and
+//! which migrations apply.
+//!
+//! Currently unreferenced. Its only callers were the retired `app`/`screen` stack (ADR-0013);
+//! the `view/` layer that replaced it renders in-memory mock data, and wiring persistence
+//! back in is a later phase. Kept because it is neutral plumbing, not part of the retired
+//! screen architecture — the first `View` that needs real data starts here.
 
 use std::path::PathBuf;
 

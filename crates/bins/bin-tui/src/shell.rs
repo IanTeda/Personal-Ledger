@@ -1,6 +1,6 @@
 //! `Shell` — owns terminal lifecycle, the async event loop, and hosts one active `View`
 //! (ADR-0013, `docs/adr/0013-shell-view-replaces-breadcrumb-app-screen-nav.md`). Replaces the
-//! breadcrumb-stack `App` (`app.rs`, left compiling but disconnected from `main.rs`) for the
+//! now-deleted breadcrumb-stack `App` (see the ADR, and Git history for the old code) for the
 //! shell chrome and dashboard being rebuilt against `docs/ux/tui/README.md`: a status line,
 //! one full-bleed view region, and a keybind hint bar — no breadcrumb, no navigation stack.
 

@@ -1,13 +1,14 @@
 //! Personal Ledger TUI entry point. Boots into `Shell`, the status-line/single-view/command-
 //! line/keybind-hint-bar chrome ADR-0013
 //! (`docs/adr/0013-shell-view-replaces-breadcrumb-app-screen-nav.md`) introduces in place of
-//! the breadcrumb `App`/`Screen` stack. `app`/`screen` are kept as workspace modules so they
-//! still compile — see the ADR — but are no longer referenced here; each of their real
-//! screens is migrated into `view/` behind its own redesign pass.
+//! the breadcrumb `App`/`Screen` stack. That stack is now fully retired: `app`, `screen/` and
+//! the `action::Action` message type they alone routed are deleted, so `Shell`/`view/` is the
+//! only screen architecture in the crate. The domains whose real CRUD and report logic had
+//! only ever lived in `screen/` (Transactions, Budgets, Balance Checks, Reports, CSV import)
+//! are wireframe `view/` placeholders until each gets its own redesign pass; recover the old
+//! implementation from Git history rather than from a dead module.
 
 mod account;
-mod action;
-mod app;
 mod category;
 mod db;
 mod error;
@@ -16,7 +17,6 @@ mod format;
 mod locale;
 mod payee;
 mod popup;
-mod screen;
 mod shell;
 mod tag;
 mod tui;

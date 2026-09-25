@@ -1,7 +1,7 @@
 //! The per-view model each `View` implements, hosted by `Shell` — the new navigation shape
 //! ADR-0013 (`docs/adr/0013-shell-view-replaces-breadcrumb-app-screen-nav.md`) introduces in
-//! place of the breadcrumb `App`/`Screen` stack (`app.rs`/`screen/`, left compiling but
-//! disconnected from `main.rs`). `Shell` hosts exactly one active `View` at a time — no
+//! place of the breadcrumb `App`/`Screen` stack (`app.rs`/`screen/`, since deleted — see Git
+//! history for the old code). `Shell` hosts exactly one active `View` at a time — no
 //! navigation stack, no breadcrumb; the shell's own command window (a later ticket) is the
 //! only way the design specifies for switching which `View` is active.
 

@@ -1,6 +1,7 @@
-//! The command list the command popup renders — grounded in what `crate::screen` actually
-//! implements today (Units, Categories, Accounts, Transactions, Payees, Balance Checks,
-//! Budgets, Reports, CSV import), grouped one file per domain, rather than
+//! The command list the command popup renders — grounded in the domains the retired
+//! `App`/`Screen` stack had actually implemented (Units, Categories, Accounts, Transactions,
+//! Payees, Balance Checks, Budgets, Reports, CSV import), grouped one file per domain,
+//! rather than
 //! `docs/ux/tui/README.md`'s aspirational grammar where nothing yet backs it (`sync`,
 //! `price`).
 //!

@@ -1,4 +1,4 @@
-//! The Help domain — a single command, opening `crate::screen::help`.
+//! The Help domain — a single command, opening the Help `View` (`crate::view::help`).
 
 use crossterm::event::KeyCode;
 

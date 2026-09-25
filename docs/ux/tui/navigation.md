@@ -91,6 +91,8 @@ Two views have real (if wireframe-stage) content: **Dashboard**, the default hom
 
 **Update:** several of the domains named above (Accounts, Categories, Payees, Tags, Settings) have since gained real content and are out of date in this section — see the module docs under `crate::view` for current status. The `g`-jump inconsistency this section used to describe is resolved: a `g`-jump landing on a still-placeholder noun (`budget`, `check`, `report`, `txn`) now flashes the same "not yet built" message in the footer that the command popup shows for the same commands (`Shell::jump_not_yet_built`), rather than opening the empty box silently. See [#96](https://github.com/IanTeda/Personal-Ledger/issues/96)'s resolution.
 
+**The old `App`/`Screen` stack is gone.** `app.rs`, `screen/` and the `action::Action` message type they alone routed were deleted in [#254](https://github.com/IanTeda/Personal-Ledger/issues/254), completing the partial retirement [#161](https://github.com/IanTeda/Personal-Ledger/issues/161) began: they had been unreachable from `main.rs` since ADR-0013 and so never rendered. `Shell`/`view/` is now the only screen architecture in the crate. The domains whose real CRUD and report logic had only ever lived there — Transactions, Budgets, Balance Checks, Reports and CSV import — stay wireframe placeholders until each gets its own redesign pass; the old implementation is in Git history, not in a dead module.
+
 ## Where this differs from the handoff
 
 `README.md` in this directory is the original design reference and is treated as an idea inventory, not a binding spec — real implementation decisions have superseded a few of its specifics:

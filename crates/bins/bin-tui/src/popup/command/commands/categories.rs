@@ -5,7 +5,7 @@
 //! three popups (`crate::popup::category`) actually support now that all of "Categories
 //! screen, views and popup" (issue #106) is built. Bindings are the tree screen's own real
 //! keys (`g c`, `n`, `e`, `m`, `a`), not the old flat-Categories screen's aspirational ones
-//! this domain used to describe (`crate::screen::categories_list` is retired — see "Retire old
+//! this domain used to describe (`screen::categories_list` is retired — see "Retire old
 //! Screen-architecture Categories code").
 //!
 //! **Dispatch is narrower than the grammar's own argument lists suggest.** The command popup

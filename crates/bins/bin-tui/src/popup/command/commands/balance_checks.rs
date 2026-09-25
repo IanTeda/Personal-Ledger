@@ -1,5 +1,5 @@
 //! The Balance Checks domain — commands grounded in what
-//! `crate::screen::balance_checks_list`/`balance_check_detail` actually support
+//! the retired `screen::balance_checks_list`/`balance_check_detail` actually supported
 //! (list/new/edit/delete/import); `docs/ux/tui/README.md` calls this domain "reconcile" in
 //! its navigation jump (`g k`) but "check" in its command grammar — the real screen's own
 //! `i` import key (CSV import, FR.33) has no README precedent, so it's carried over as-is.

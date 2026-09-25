@@ -36,7 +36,7 @@
 //!
 //! **List, not a grouped tree**: unlike Accounts/Categories, Payees has no classification
 //! dimension to group by — the README's own 8a is a flat list, **sorted by `abs(total)`
-//! descending**, not by name (today's dead `screen::payees_list` sorted by name; this
+//! descending**, not by name (the retired `screen::payees_list` sorted by name; this
 //! deliberately replaces that).
 
 use bigdecimal::BigDecimal;

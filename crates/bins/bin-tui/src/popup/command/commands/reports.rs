@@ -1,6 +1,7 @@
-//! The Reports domain — `crate::screen::reports` is one screen with an internal picker
+//! The Reports domain — the retired `screen::reports` was one screen with an internal picker
 //! across five real report kinds (Account Balance, Category Total, Payee Total, Budget vs
-//! Actual, Balance Check Variance) rather than `docs/ux/tui/README.md`'s own aspirational
+//! Actual, Balance Check Variance), the shape `crate::view::reports` is to be rebuilt to,
+//! rather than `docs/ux/tui/README.md`'s own aspirational
 //! `category`/`payee`/`networth`/`variance` sub-verbs, which don't match what's built. Only
 //! opening the screen has a global jump (`g r`); a specific report is reached via the
 //! screen's own Tab/Left/Right picker, so each has no binding yet.

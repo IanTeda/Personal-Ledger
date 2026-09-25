@@ -5,7 +5,7 @@
 //! its three popups (`crate::popup::account`) actually support now that all of "Accounts
 //! screen, views and popup" (issue #115) is built. Bindings are the list's own real keys (`g
 //! a`, `n`, `e`, `d`, `a`), not the old flat-Accounts screen's aspirational ones this domain
-//! used to describe (`crate::screen::accounts_list`/`account_detail` are retired — see
+//! used to describe (`screen::accounts_list`/`account_detail` are retired — see
 //! "Retire old Screen-architecture Accounts code").
 //!
 //! **Dispatch is narrower than the grammar's own argument lists suggest**, for exactly the

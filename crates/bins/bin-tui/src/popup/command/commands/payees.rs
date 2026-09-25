@@ -3,7 +3,7 @@
 //! (`crate::popup::payee`) actually support now that all of "Payees screen, views and popup"
 //! (issue #134) is built. Bindings are the list's own real keys (`g p`, `n`, `e`, `m`, `a`,
 //! `d`), not the old flat-Payees screen's aspirational ones this domain used to describe
-//! (`crate::screen::payees_list`/`payee_detail` are retired — see "Retire old
+//! (`screen::payees_list`/`payee_detail` are retired — see "Retire old
 //! Screen-architecture Payees code").
 //!
 //! **Dispatch is narrower than the grammar's own argument lists suggest**, for exactly the
