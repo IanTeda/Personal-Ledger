@@ -9,9 +9,10 @@
 //! Like `view::settings` and `view::accounts`, the page owns its scroll container directly:
 //! `Shell` scrolls a section into view with `ScrollHandle::scroll_to_item`. Context rail is hidden.
 
+pub mod add_dialog;
+
 use std::rc::Rc;
 
-use bigdecimal::BigDecimal;
 use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*, px};
 use lib_core::{CategoryTypes, Money};
 use lib_locale::format::upper;

@@ -136,7 +136,7 @@ pub fn depth(categories: &[Category], id: u32) -> u32 {
 pub fn month_to_date_spent(
     categories: &[Category],
     transactions: &[crate::transactions::Transaction],
-    accounts: &[crate::accounts::Account],
+    _accounts: &[crate::accounts::Account],
     category_id: u32,
     today: chrono::NaiveDate,
 ) -> Money {
@@ -209,11 +209,13 @@ pub fn get_or_create_uncategorised(
     next_id
 }
 
-/// A form for adding or editing a category: name and parent.
+/// A form for adding or editing a category: name, parent, type, and monthly budget.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CategoryForm {
     pub name: String,
     pub parent_id: Option<u32>,
+    pub category_type: Option<CategoryTypes>,
+    pub budget: String,
 }
 
 impl Default for CategoryForm {
@@ -221,6 +223,8 @@ impl Default for CategoryForm {
         CategoryForm {
             name: String::new(),
             parent_id: None,
+            category_type: Some(CategoryTypes::Expense),
+            budget: String::new(),
         }
     }
 }
