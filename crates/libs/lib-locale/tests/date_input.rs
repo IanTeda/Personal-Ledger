@@ -1,5 +1,12 @@
 //! Typed date input for each shipped Locale.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test crate: a failed setup should fail the test"
+)]
+
 use chrono::NaiveDate;
 use lib_core::DateStyle;
 use lib_locale::format::{

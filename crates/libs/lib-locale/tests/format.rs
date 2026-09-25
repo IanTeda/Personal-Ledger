@@ -1,5 +1,12 @@
 //! Expected outputs for the formatting API in each shipped Locale.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test crate: a failed setup should fail the test"
+)]
+
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;

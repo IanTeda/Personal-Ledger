@@ -373,9 +373,9 @@ mod tests {
         let mut has_none = false;
         for _ in 0..20 {
             let desc = Categories::generate_mock_description();
-            if desc.is_some() {
+            if let Some(desc) = &desc {
                 has_some = true;
-                assert!(!desc.as_ref().unwrap().is_empty());
+                assert!(!desc.is_empty());
             } else {
                 has_none = true;
             }
@@ -405,10 +405,10 @@ mod tests {
         let mut has_none = false;
         for _ in 0..20 {
             let icon = Categories::generate_mock_icon();
-            if icon.is_some() {
+            if let Some(icon) = &icon {
                 has_some = true;
-                assert!(!icon.as_ref().unwrap().is_empty());
-                assert!(icon.as_ref().unwrap().chars().all(|c| c.is_alphabetic()));
+                assert!(!icon.is_empty());
+                assert!(icon.chars().all(|c| c.is_alphabetic()));
             } else {
                 has_none = true;
             }

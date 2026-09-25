@@ -13,6 +13,13 @@
 //! with a real (but throwaway) `axum` listener, exactly the RFC 8252 mechanic a real
 //! native-app Client uses -- see `docs/adr/0010-oauth2-pkce-native-app-auth.md`.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test crate: a failed setup should fail the test"
+)]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 

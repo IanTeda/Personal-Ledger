@@ -60,6 +60,7 @@ async fn create_category_with_mock_data(pool: sqlx::SqlitePool) {
 ## Structure
 
 - Unit tests live in `#[cfg(test)] mod tests` alongside the code they test, not in a separate `tests/` file, unless it's a true cross-crate integration test.
+- Integration test files under a crate's `tests/` directory open with a file-level `#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, reason = "integration test crate: a failed setup should fail the test")]`, placed after the `//!` doc comment. `clippy.toml`'s `allow-*-in-tests` only exempts `#[test]` functions and `#[cfg(test)]` modules, so helper functions in `tests/` (server spawn, client connect, fixture builders) are otherwise linted. The whole file is test-only by construction, so the file-level allow is the one place a blanket allow is acceptable; don't rewrite helpers to return `Result` just to satisfy the lint.
 - Group related tests into nested modules (`mod validation`, `mod edge_cases`) when a file's test count grows large enough that flat organisation stops helping.
 - Cover: happy path, edge cases (empty/max-length/unicode/whitespace input), and error conditions — not just the happy path.
 

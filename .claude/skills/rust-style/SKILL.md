@@ -89,6 +89,8 @@ let token: SecretString = api_response.token.into();
 
 **Mock helpers in tests:** Gate behind `#[cfg(test)]` or document invariants in the `expect` message. For test fixtures of literal dates, a small helper (returning `Result` or built via `const`) is preferred over dozens of repeated `expect("valid date")`.
 
+**Integration test files (`tests/*.rs`):** Open with a file-level `#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, reason = "integration test crate: a failed setup should fail the test")]` after the `//!` doc comment. `allow-*-in-tests` doesn't reach helper functions there, and the file is test-only by construction. This is the only sanctioned blanket allow; everywhere else a proven invariant gets a targeted `#[expect(clippy::expect_used, reason = "...")]`. See `/unit-tests`.
+
 **Workspace lints:** All members opt in with `[lints] workspace = true`. Workspace lints are in `[workspace.lints.rust]` and `[workspace.lints.clippy]`; individual crate overrides are rare and must be documented.
 
 ## Checklist before finishing

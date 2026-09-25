@@ -16,6 +16,13 @@
 //! the same account (ADR-0010's single-account-per-cycle decision maps naturally onto
 //! "one self-hoster's own multiple devices").
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test crate: a failed setup should fail the test"
+)]
+
 use std::sync::Arc;
 
 use bin_sync_server::auth;

@@ -23,6 +23,13 @@
 //! rather than driving the full HTTP OAuth2/PKCE dance (that's `tests/auth_flow.rs`'s
 //! job); this test's actual subject is push/pull, not auth.
 
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    reason = "integration test crate: a failed setup should fail the test"
+)]
+
 use std::sync::Arc;
 
 use bin_sync_server::auth;
