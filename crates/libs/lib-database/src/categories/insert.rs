@@ -729,12 +729,9 @@ mod tests {
             fake::rand::random::<u8>() % 100
         );
 
-        let category_type = match fake::rand::random::<u8>() % 5 {
-            0 => CategoryTypes::Asset,
-            1 => CategoryTypes::Liability,
-            2 => CategoryTypes::Income,
-            3 => CategoryTypes::Expense,
-            _ => CategoryTypes::Equity,
+        let category_type = match fake::rand::random::<u8>() % 2 {
+            0 => CategoryTypes::Income,
+            _ => CategoryTypes::Expense,
         };
 
         let color = if Boolean(70).fake() {
@@ -899,7 +896,7 @@ mod tests {
             name: "Minimal Category".to_string(),
             description: None,
             url_slug: Some(UrlSlug::parse("minimal-category").unwrap()),
-            category_type: CategoryTypes::Asset,
+            category_type: CategoryTypes::Income,
             color: None,
             icon: None,
             is_active: false,
@@ -1167,17 +1164,10 @@ mod tests {
 
     /// Tests that categories with all possible category types can be inserted.
     ///
-    /// Verifies that all five category types (Asset, Liability, Income, Expense, Equity)
-    /// can be inserted successfully.
+    /// Verifies that both category types (Income, Expense) can be inserted successfully.
     #[sqlx::test(migrations = "migrations/client")]
     async fn test_insert_all_category_types(pool: SqlitePool) {
-        let category_types = vec![
-            CategoryTypes::Asset,
-            CategoryTypes::Liability,
-            CategoryTypes::Income,
-            CategoryTypes::Expense,
-            CategoryTypes::Equity,
-        ];
+        let category_types = vec![CategoryTypes::Income, CategoryTypes::Expense];
 
         for category_type in category_types {
             let category_type_name = category_type.as_str().to_string();

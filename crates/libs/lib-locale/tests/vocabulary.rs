@@ -36,8 +36,8 @@ fn every_label() -> Vec<(String, String)> {
 }
 
 #[test]
-fn there_are_twenty_three_labels() {
-    with_locale(Locale::EnUs, || assert_eq!(every_label().len(), 23));
+fn there_are_twenty_labels() {
+    with_locale(Locale::EnUs, || assert_eq!(every_label().len(), 20));
 }
 
 #[test]

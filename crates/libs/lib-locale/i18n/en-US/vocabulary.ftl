@@ -14,11 +14,8 @@ transaction-status-reconciled = Reconciled
 
 transaction-flagged = Flagged
 
-category-type-asset = Asset
-category-type-equity = Equity
 category-type-expense = Expense
 category-type-income = Income
-category-type-liability = Liability
 
 unit-kind-fiat = Fiat
 unit-kind-crypto = Crypto

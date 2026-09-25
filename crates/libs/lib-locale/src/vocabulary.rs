@@ -42,11 +42,8 @@ impl Label for TransactionStatus {
 impl Label for CategoryTypes {
     fn label(&self) -> String {
         match self {
-            CategoryTypes::Asset => msg::category_type_asset(),
-            CategoryTypes::Equity => msg::category_type_equity(),
             CategoryTypes::Expense => msg::category_type_expense(),
             CategoryTypes::Income => msg::category_type_income(),
-            CategoryTypes::Liability => msg::category_type_liability(),
         }
     }
 }

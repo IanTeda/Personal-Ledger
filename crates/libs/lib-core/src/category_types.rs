@@ -5,38 +5,26 @@
 //!
 //! ## Category Types
 //!
-//! The five fundamental accounting categories are:
-//! - **Asset**: Resources owned (cash, investments, property)
-//! - **Liability**: Debts owed (loans, credit cards, mortgages)
+//! The two fundamental accounting categories are:
 //! - **Income**: Money earned (salary, dividends, interest)
 //! - **Expense**: Money spent (groceries, utilities, entertainment)
-//! - **Equity**: Net worth (assets minus liabilities)
+//!
+//! Accounts (not categories) hold assets and liabilities in this non-double-entry ledger.
 
 // crates::lib_rpc;
 
 /// Represents the fundamental accounting categories for financial transactions.
 ///
-/// These categories follow the standard accounting equation:
-/// Assets = Liabilities + Equity
-///
-/// Income increases assets or equity, while expenses decrease assets or increase liabilities.
+/// In this non-double-entry ledger, accounts handle assets and liabilities,
+/// while categories classify transactions as income or expenses.
 #[derive(Debug, Clone, Default, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
 pub enum CategoryTypes {
-    /// Resources owned that have economic value (cash, investments, property).
-    Asset,
-
-    /// Owner's Capital, Owner's Drawings (Withdrawals), Retained Earnings, Common Stock
-    Equity,
-
     /// Money spent or costs incurred (groceries, utilities, entertainment).
     #[default]
     Expense,
 
     /// Money earned or received (salary, dividends, interest, sales).
     Income,
-
-    /// Debts or obligations owed to others (loans, credit cards, mortgages).
-    Liability,
 }
 
 /// Error type for CategoryTypes parsing operations.
@@ -63,11 +51,8 @@ impl std::str::FromStr for CategoryTypes {
     /// Returns `CategoryTypesError::InvalidCategoryType` if the string doesn't match any valid category type.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_ascii_lowercase().as_str() {
-            "asset" => Ok(CategoryTypes::Asset),
-            "liability" => Ok(CategoryTypes::Liability),
             "income" => Ok(CategoryTypes::Income),
             "expense" => Ok(CategoryTypes::Expense),
-            "equity" => Ok(CategoryTypes::Equity),
             _ => Err(CategoryTypesError::InvalidCategoryType(s.to_string())),
         }
     }
@@ -77,11 +62,8 @@ impl CategoryTypes {
     /// Returns the string representation of the category type (lowercase).
     pub fn as_str(&self) -> &'static str {
         match self {
-            CategoryTypes::Asset => "asset",
-            CategoryTypes::Liability => "liability",
             CategoryTypes::Income => "income",
             CategoryTypes::Expense => "expense",
-            CategoryTypes::Equity => "equity",
         }
     }
 
@@ -89,13 +71,7 @@ impl CategoryTypes {
     ///
     /// Useful for validation, UI dropdowns, or iteration.
     pub fn all() -> &'static [CategoryTypes] {
-        &[
-            CategoryTypes::Asset,
-            CategoryTypes::Liability,
-            CategoryTypes::Income,
-            CategoryTypes::Expense,
-            CategoryTypes::Equity,
-        ]
+        &[CategoryTypes::Income, CategoryTypes::Expense]
     }
 
     /// Create a random CategoryTypes variant for testing.
@@ -111,16 +87,6 @@ impl CategoryTypes {
         all_types[random_index].clone()
     }
 
-    /// Returns true if this category type represents an asset.
-    pub fn is_asset(&self) -> bool {
-        matches!(self, CategoryTypes::Asset)
-    }
-
-    /// Returns true if this category type represents a liability.
-    pub fn is_liability(&self) -> bool {
-        matches!(self, CategoryTypes::Liability)
-    }
-
     /// Returns true if this category type represents income.
     pub fn is_income(&self) -> bool {
         matches!(self, CategoryTypes::Income)
@@ -131,11 +97,6 @@ impl CategoryTypes {
         matches!(self, CategoryTypes::Expense)
     }
 
-    /// Returns true if this category type represents equity.
-    pub fn is_equity(&self) -> bool {
-        matches!(self, CategoryTypes::Equity)
-    }
-
     /// Converts an i32 value from the RPC layer into a CategoryTypes enum.
     ///
     /// This method maps the integer values used in the gRPC protobuf definitions
@@ -143,22 +104,16 @@ impl CategoryTypes {
     /// value does not correspond to a valid category type.
     ///
     /// The mapping is based on the protobuf enum order:
-    /// - 1: Asset
-    /// - 2: Equity
     /// - 3: Expense
     /// - 4: Income
-    /// - 5: Liability
     ///
     /// # Errors
     ///
     /// Returns a `String` error message if the provided i32 value is not valid.
     pub fn from_rpc_i32(value: i32) -> Result<Self, String> {
         match value {
-            1 => Ok(CategoryTypes::Asset),
-            2 => Ok(CategoryTypes::Equity),
             3 => Ok(CategoryTypes::Expense),
             4 => Ok(CategoryTypes::Income),
-            5 => Ok(CategoryTypes::Liability),
             _ => Err(format!("Invalid category type value: {}", value)),
         }
     }
@@ -271,45 +226,30 @@ mod tests {
 
     #[test]
     fn test_as_str() {
-        assert_eq!(CategoryTypes::Asset.as_str(), "asset");
-        assert_eq!(CategoryTypes::Liability.as_str(), "liability");
         assert_eq!(CategoryTypes::Income.as_str(), "income");
         assert_eq!(CategoryTypes::Expense.as_str(), "expense");
-        assert_eq!(CategoryTypes::Equity.as_str(), "equity");
     }
 
     #[test]
     fn test_from_str_valid() {
         use std::str::FromStr;
 
-        assert_eq!(CategoryTypes::from_str("asset"), Ok(CategoryTypes::Asset));
-        assert_eq!(
-            CategoryTypes::from_str("liability"),
-            Ok(CategoryTypes::Liability)
-        );
         assert_eq!(CategoryTypes::from_str("income"), Ok(CategoryTypes::Income));
         assert_eq!(
             CategoryTypes::from_str("expense"),
             Ok(CategoryTypes::Expense)
         );
-        assert_eq!(CategoryTypes::from_str("equity"), Ok(CategoryTypes::Equity));
     }
 
     #[test]
     fn test_from_str_case_insensitive() {
         use std::str::FromStr;
 
-        assert_eq!(CategoryTypes::from_str("ASSET"), Ok(CategoryTypes::Asset));
-        assert_eq!(
-            CategoryTypes::from_str("LiAbIlItY"),
-            Ok(CategoryTypes::Liability)
-        );
         assert_eq!(CategoryTypes::from_str("InCoMe"), Ok(CategoryTypes::Income));
         assert_eq!(
             CategoryTypes::from_str("EXPENSE"),
             Ok(CategoryTypes::Expense)
         );
-        assert_eq!(CategoryTypes::from_str("equity"), Ok(CategoryTypes::Equity));
     }
 
     #[test]
@@ -325,12 +265,9 @@ mod tests {
     #[test]
     fn test_all() {
         let all_types = CategoryTypes::all();
-        assert_eq!(all_types.len(), 5);
-        assert!(all_types.contains(&CategoryTypes::Asset));
-        assert!(all_types.contains(&CategoryTypes::Liability));
+        assert_eq!(all_types.len(), 2);
         assert!(all_types.contains(&CategoryTypes::Income));
         assert!(all_types.contains(&CategoryTypes::Expense));
-        assert!(all_types.contains(&CategoryTypes::Equity));
     }
 
     #[test]
@@ -342,11 +279,8 @@ mod tests {
     fn test_serialization() {
         // Test all variants for consistent serialization
         let test_cases = [
-            (CategoryTypes::Asset, "\"Asset\""),
-            (CategoryTypes::Liability, "\"Liability\""),
             (CategoryTypes::Income, "\"Income\""),
             (CategoryTypes::Expense, "\"Expense\""),
-            (CategoryTypes::Equity, "\"Equity\""),
         ];
 
         for (category_type, expected_json) in test_cases {
@@ -392,16 +326,16 @@ mod tests {
 
     #[test]
     fn test_from_rpc_i32_valid() {
-        assert_eq!(CategoryTypes::from_rpc_i32(1), Ok(CategoryTypes::Asset));
-        assert_eq!(CategoryTypes::from_rpc_i32(2), Ok(CategoryTypes::Equity));
         assert_eq!(CategoryTypes::from_rpc_i32(3), Ok(CategoryTypes::Expense));
         assert_eq!(CategoryTypes::from_rpc_i32(4), Ok(CategoryTypes::Income));
-        assert_eq!(CategoryTypes::from_rpc_i32(5), Ok(CategoryTypes::Liability));
     }
 
     #[test]
     fn test_from_rpc_i32_invalid() {
         assert!(CategoryTypes::from_rpc_i32(0).is_err()); // UNSPECIFIED
+        assert!(CategoryTypes::from_rpc_i32(1).is_err()); // old Asset
+        assert!(CategoryTypes::from_rpc_i32(2).is_err()); // old Equity
+        assert!(CategoryTypes::from_rpc_i32(5).is_err()); // old Liability
         assert!(CategoryTypes::from_rpc_i32(6).is_err());
         assert!(CategoryTypes::from_rpc_i32(999).is_err());
     }
@@ -409,14 +343,8 @@ mod tests {
     #[test]
     fn test_predicates_match_only_their_own_variant() {
         for category in CategoryTypes::all() {
-            assert_eq!(category.is_asset(), *category == CategoryTypes::Asset);
-            assert_eq!(
-                category.is_liability(),
-                *category == CategoryTypes::Liability
-            );
             assert_eq!(category.is_income(), *category == CategoryTypes::Income);
             assert_eq!(category.is_expense(), *category == CategoryTypes::Expense);
-            assert_eq!(category.is_equity(), *category == CategoryTypes::Equity);
         }
     }
 }

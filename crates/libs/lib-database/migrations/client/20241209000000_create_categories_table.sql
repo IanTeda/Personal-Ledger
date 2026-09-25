@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS categories (
     name TEXT UNIQUE NOT NULL,
     description TEXT,
     url_slug TEXT UNIQUE,
-    category_type TEXT NOT NULL CHECK (category_type IN ('asset', 'equity', 'expense', 'income', 'liability')),
+    category_type TEXT NOT NULL CHECK (category_type IN ('expense', 'income')),
     color TEXT CHECK (color IS NULL OR (length(color) = 7 AND substr(color,1,1) = '#')),
     icon TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
