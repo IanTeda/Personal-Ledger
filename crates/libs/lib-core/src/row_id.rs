@@ -252,7 +252,7 @@ impl RowID {
         let ts = uuid::Timestamp::from_unix(
             uuid::NoContext,
             timestamp.timestamp() as u64,
-            timestamp.timestamp_nanos_opt().unwrap() as u32,
+            timestamp.timestamp_nanos_opt().expect("valid DateTime always has a nanosecond component") as u32,
         );
         let row_id = uuid::Uuid::new_v7(ts);
         Self(row_id)
@@ -528,6 +528,7 @@ impl RowID {
     /// let mock_id = RowID::mock();
     /// assert_eq!(mock_id.as_uuid().get_version_num(), 7);
     /// ```
+    #[cfg(test)]
     pub fn mock() -> Self {
         use chrono::{DateTime, Utc};
         use fake::faker::chrono::en::DateTimeAfter;
@@ -698,7 +699,7 @@ impl RowID {
     /// ```
     pub fn to_i64(&self) -> i64 {
         let uuid_bytes = self.0.as_bytes();
-        i64::from_be_bytes(uuid_bytes[8..16].try_into().unwrap())
+        i64::from_be_bytes(uuid_bytes[8..16].try_into().expect("UUID is always 16 bytes, slice [8..16] is always exactly 8 bytes"))
     }
 }
 

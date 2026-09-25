@@ -219,15 +219,25 @@ impl From<UrlSlug> for String {
 
 impl From<String> for UrlSlug {
     /// Convert a String into a UrlSlug by parsing it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the string cannot be parsed as a valid UrlSlug.
+    /// For fallible conversion, use `UrlSlug::parse()` or implement TryFrom.
     fn from(s: String) -> Self {
-        UrlSlug::parse(s).expect("Failed to parse string into UrlSlug")
+        UrlSlug::parse(s).expect("String must be parseable as a UrlSlug")
     }
 }
 
 impl From<&str> for UrlSlug {
     /// Convert a &str into a UrlSlug by parsing it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the string cannot be parsed as a valid UrlSlug.
+    /// For fallible conversion, use `UrlSlug::parse()` or implement TryFrom.
     fn from(s: &str) -> Self {
-        UrlSlug::parse(s).expect("Failed to parse string into UrlSlug")
+        UrlSlug::parse(s).expect("&str must be parseable as a UrlSlug")
     }
 }
 
