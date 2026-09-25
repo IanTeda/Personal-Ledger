@@ -57,7 +57,7 @@ impl CodeStore {
 
         self.codes
             .lock()
-            .expect("authorization code store mutex should not be poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .insert(code.clone(), entry);
 
         code
@@ -69,7 +69,7 @@ impl CodeStore {
         let entry = self
             .codes
             .lock()
-            .expect("authorization code store mutex should not be poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .remove(code)?;
 
         if entry.expires_at < chrono::Utc::now() {
