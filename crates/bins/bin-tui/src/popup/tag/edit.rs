@@ -248,10 +248,7 @@ fn render_clash_note(frame: &mut Frame, area: Rect, store: &dyn TagStore, popup:
         return;
     }
     frame.render_widget(
-        Paragraph::new(Span::styled(
-            msg::tui_tag_edit_note_unique(),
-            dim(),
-        )),
+        Paragraph::new(Span::styled(msg::tui_tag_edit_note_unique(), dim())),
         area,
     );
 }

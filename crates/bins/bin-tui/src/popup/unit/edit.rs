@@ -100,7 +100,12 @@ impl EditUnitPopup {
             "VDHG",
             Some(&msg::tui_unit_edit_note_code(412)),
         );
-        render_field(frame, rows[3], &msg::tui_unit_edit_field_name(), name_value());
+        render_field(
+            frame,
+            rows[3],
+            &msg::tui_unit_edit_field_name(),
+            name_value(),
+        );
         render_locked_field(
             frame,
             rows[4],
@@ -108,10 +113,31 @@ impl EditUnitPopup {
             "etf",
             Some(&msg::tui_unit_edit_note_type()),
         );
-        render_field(frame, rows[5], &msg::tui_unit_edit_field_symbol(), Line::from("VDHG.AX"));
-        render_locked_field(frame, rows[6], &msg::tui_unit_edit_field_priced_in(), "AUD", None);
-        render_field(frame, rows[7], &msg::tui_unit_edit_field_qty_precision(), qty_precision_value());
-        render_field(frame, rows[8], &msg::tui_unit_edit_field_active(), active_value());
+        render_field(
+            frame,
+            rows[5],
+            &msg::tui_unit_edit_field_symbol(),
+            Line::from("VDHG.AX"),
+        );
+        render_locked_field(
+            frame,
+            rows[6],
+            &msg::tui_unit_edit_field_priced_in(),
+            "AUD",
+            None,
+        );
+        render_field(
+            frame,
+            rows[7],
+            &msg::tui_unit_edit_field_qty_precision(),
+            qty_precision_value(),
+        );
+        render_field(
+            frame,
+            rows[8],
+            &msg::tui_unit_edit_field_active(),
+            active_value(),
+        );
         // rows[9] is left blank — breathing space above the precision warning.
         render_precision_warning(frame, rows[10]);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[11]);
@@ -210,10 +236,7 @@ fn active_value() -> Line<'static> {
 fn render_precision_warning(frame: &mut Frame, area: Rect) {
     let accent = Style::default().fg(ACCENT);
     frame.render_widget(
-        Paragraph::new(Span::styled(
-            msg::tui_unit_edit_precision_warning(),
-            accent,
-        )),
+        Paragraph::new(Span::styled(msg::tui_unit_edit_precision_warning(), accent)),
         area,
     );
 }

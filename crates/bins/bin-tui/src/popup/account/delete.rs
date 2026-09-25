@@ -32,7 +32,11 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::{account::{Account, AccountStore}, msg, popup::REFERENCE_TERMINAL_WIDTH};
+use crate::{
+    account::{Account, AccountStore},
+    msg,
+    popup::REFERENCE_TERMINAL_WIDTH,
+};
 
 const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
@@ -278,8 +282,13 @@ impl DeleteAccountPopup {
                     let target_balance = store.balance(target.id);
                     let new_balance =
                         Money(target_balance.0.clone() + account.transactions_sum.0.clone());
-                    rows.push(plain_row(Line::from(msg::tui_account_delete_heading_after())));
-                    rows.push(field_row(msg::tui_account_delete_field_into(), Line::from(target.name.clone())));
+                    rows.push(plain_row(Line::from(
+                        msg::tui_account_delete_heading_after(),
+                    )));
+                    rows.push(field_row(
+                        msg::tui_account_delete_field_into(),
+                        Line::from(target.name.clone()),
+                    ));
                     rows.push(field_row(
                         msg::tui_account_delete_field_balance(),
                         Line::from(format!(
@@ -396,7 +405,10 @@ fn render_title(frame: &mut Frame, area: Rect, name: &str) {
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new(format!("{} {name}", msg::tui_account_delete_title())), columns[0]);
+    frame.render_widget(
+        Paragraph::new(format!("{} {name}", msg::tui_account_delete_title())),
+        columns[0],
+    );
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
         columns[1],

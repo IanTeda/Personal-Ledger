@@ -278,12 +278,7 @@ fn render_completion_row(frame: &mut Frame, area: Rect, store: &dyn CategoryStor
         format!("{}  · tab", candidates.join(" · "))
     };
     let label = format!("\u{2514} {}", msg::tui_category_move_note_completion());
-    render_field(
-        frame,
-        area,
-        &label,
-        Line::from(Span::styled(text, dim)),
-    );
+    render_field(frame, area, &label, Line::from(Span::styled(text, dim)));
 }
 
 /// The "lands as" heading: the label, and — once the input resolves to an existing category —

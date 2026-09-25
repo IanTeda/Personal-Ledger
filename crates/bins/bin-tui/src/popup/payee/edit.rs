@@ -34,8 +34,11 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
-use crate::{msg, payee::{PayeeStore, known_category_paths}};
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
+use crate::{
+    msg,
+    payee::{PayeeStore, known_category_paths},
+};
 
 const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;

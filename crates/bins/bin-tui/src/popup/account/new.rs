@@ -365,7 +365,12 @@ fn render_type_field(frame: &mut Frame, area: Rect, selected: AccountType, focus
     spans.push(Span::raw(" "));
     spans.push(Span::styled("· h/l", dim()));
 
-    render_field(frame, area, &msg::tui_account_new_field_type(), Line::from(spans));
+    render_field(
+        frame,
+        area,
+        &msg::tui_account_new_field_type(),
+        Line::from(spans),
+    );
 }
 
 /// The `active` checkbox row: the glyph in the accent when focused, the "offered when

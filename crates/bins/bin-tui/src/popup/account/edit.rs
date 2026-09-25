@@ -228,7 +228,12 @@ impl EditAccountPopup {
         render_active_field(frame, rows[4], self.active, self.focus == Field::Active);
         // rows[5] is left blank — breathing space above the read-only section.
 
-        render_section_heading(frame, rows[6], &msg::tui_account_edit_note_unit_fixed(), Some("FR.13"));
+        render_section_heading(
+            frame,
+            rows[6],
+            &msg::tui_account_edit_note_unit_fixed(),
+            Some("FR.13"),
+        );
         render_field(
             frame,
             rows[7],
@@ -246,7 +251,12 @@ impl EditAccountPopup {
         );
         // rows[9] is left blank — breathing space above the computed section.
 
-        render_section_heading(frame, rows[10], &msg::tui_account_edit_heading_computed(), None);
+        render_section_heading(
+            frame,
+            rows[10],
+            &msg::tui_account_edit_heading_computed(),
+            None,
+        );
         let balance = store.balance(account.id);
         render_field(
             frame,
@@ -393,7 +403,12 @@ fn render_type_field(frame: &mut Frame, area: Rect, selected: AccountType, focus
         }
     }
 
-    render_field(frame, area, &msg::tui_account_edit_field_type(), Line::from(spans));
+    render_field(
+        frame,
+        area,
+        &msg::tui_account_edit_field_type(),
+        Line::from(spans),
+    );
 }
 
 fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: bool) {

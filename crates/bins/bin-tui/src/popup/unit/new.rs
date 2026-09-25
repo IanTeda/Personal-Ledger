@@ -90,21 +90,36 @@ impl NewUnitPopup {
 
         render_title(frame, rows[0]);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
-        render_field(frame, rows[2], &msg::tui_unit_new_field_code(), code_value());
+        render_field(
+            frame,
+            rows[2],
+            &msg::tui_unit_new_field_code(),
+            code_value(),
+        );
         render_field(
             frame,
             rows[3],
             &msg::tui_unit_new_field_name(),
             Line::from("VGS Intl Shares Index ETF"),
         );
-        render_field(frame, rows[4], &msg::tui_unit_new_field_type(), type_value());
+        render_field(
+            frame,
+            rows[4],
+            &msg::tui_unit_new_field_type(),
+            type_value(),
+        );
         render_field(
             frame,
             rows[5],
             &msg::tui_unit_new_field_symbol(),
             hinted("VGS.AX", &msg::tui_unit_new_hint_symbol()),
         );
-        render_field(frame, rows[6], &msg::tui_unit_new_field_source(), source_value());
+        render_field(
+            frame,
+            rows[6],
+            &msg::tui_unit_new_field_source(),
+            source_value(),
+        );
         render_field(
             frame,
             rows[7],
@@ -117,8 +132,18 @@ impl NewUnitPopup {
             &msg::tui_unit_new_field_qty_precision(),
             hinted("3", &msg::tui_unit_new_hint_qty_precision()),
         );
-        render_field(frame, rows[9], &msg::tui_unit_new_field_price_precision(), hinted("4", &msg::tui_unit_new_hint_price_precision()));
-        render_field(frame, rows[10], &msg::tui_unit_new_field_active(), Line::from("[×]"));
+        render_field(
+            frame,
+            rows[9],
+            &msg::tui_unit_new_field_price_precision(),
+            hinted("4", &msg::tui_unit_new_hint_price_precision()),
+        );
+        render_field(
+            frame,
+            rows[10],
+            &msg::tui_unit_new_field_active(),
+            Line::from("[×]"),
+        );
         // rows[11] is left blank — breathing space above the permanence warning.
         render_warning(frame, rows[12], &msg::tui_unit_new_warning());
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[13]);
