@@ -6,7 +6,7 @@ How Personal Ledger presents its interface in a Locale: which Messages the deskt
 
 ## Status
 
-Planned, not yet built. The shared crate, `lib-locale`, does not exist yet, and both bins still use hardcoded literals (about 1,700 candidate Message literals across `bin-desktop` and `bin-tui`). All the design decisions are made and the build is specced as `ready-for-agent` tickets listed on the map. Until the migration tickets land, don't add hardcoded UI strings expecting `lib-locale` to exist, and leave literals as they are.
+Built. The shared crate, `lib-locale`, is in the workspace and both bins are migrated. The crate landed ticket by ticket — the Locale set, Catalogues, loader and generated `msg::` accessors ([#231](https://github.com/IanTeda/Personal-Ledger/issues/231)), formatting ([#232](https://github.com/IanTeda/Personal-Ledger/issues/232)), typed date input ([#233](https://github.com/IanTeda/Personal-Ledger/issues/233)), the `Label` trait ([#234](https://github.com/IanTeda/Personal-Ledger/issues/234)) and rich Messages ([#235](https://github.com/IanTeda/Personal-Ledger/issues/235)) — followed by the surface-text migration of `bin-desktop` (shell chrome, Accounts, Transactions, Settings, Dashboard and Explorer) and `bin-tui` (Accounts, Categories, Payees, Tags, Units and Settings, [#247](https://github.com/IanTeda/Personal-Ledger/issues/247)–[#252](https://github.com/IanTeda/Personal-Ledger/issues/252)). New UI text goes in the `en-US` Catalogue and is read through a generated `msg::` accessor — don't add a hardcoded literal. The items still outstanding are listed under [Open items](#open-items).
 
 ## Locales
 
@@ -27,7 +27,7 @@ The Locale is Configuration, not a Preference. It is per-Client, never synced, n
 
 The layers are read into `locale: Option<String>` (absent means unset) and resolved in a step after the build: the config value if present (source `Config`), else the detected system locale (source `System`), else `DEFAULT_LOCALE` (source `Default`). There is no `system` keyword: an absent key means the detected system locale stands. The value is validated as a BCP-47 tag with `unic-langid` internally and stored as a plain canonical-cased string, and the `LocaleSource` lets the Settings page show the effective Locale read-only with where it came from. A malformed value from a file, environment variable or flag is a startup error (`InvalidLocale`). A valid but unsupported tag passes through, because `lib-config` does not know the supported set. An unreadable system value (`C`, `POSIX`) is ignored quietly. The Sync Server skips detection and never reads the field.
 
-Note that the documented double-underscore environment overrides do not currently work (`Environment::with_prefix` is missing `.separator("__")`), so a small bug ticket fixes them before the `locale` key is added.
+The double-underscore environment overrides work as documented: `lib-config` sets `prefix_separator("_")` and `separator("__")` explicitly on the `config` crate's `Environment` source, because `config` otherwise reuses one separator for both and nested keys never resolve.
 
 `lib-locale` then negotiates that string against the supported set: an exact match wins, anything else (`en-NZ`, `fr-FR`, `C`, `POSIX`) becomes `en-US`, and `en-XA` is chosen only by an exact request. Each bin's `main` calls `Config::parse` and then `lib_locale::init`, which sets the process-wide loader once. Settings has no control to change the Locale.
 
@@ -102,7 +102,7 @@ crates/libs/lib-locale/
 - The generator is a small separate crate, `lib-locale-build`, depending only on `fluent-syntax` and used by `lib-locale`'s and each bin's `build.rs`, because a `build.rs` cannot use its own crate's dependencies and a build-dependency on `lib-locale` would compile Fluent and ICU4X for the host. The spike ([research note](research/localisation-message-generator.md)) chose our own generator over `fluent-typed`, so the crate is created.
 - No `fluent-bundle`, `icu` or `unic-langid` type appears in any public signature, so a dependency can change without touching the bins.
 - **Public surface:** `init(&str) -> Locale`, `Locale`, the generated `msg::…` accessors, the rich segment types, `format_money(&Money, &Unit)`, `format_date(NaiveDate, DateStyle)`, `format_number`, `parse_date(&str, today)`, a Locale-aware `upper`, the `Label` trait, and a `with_locale(...)` test helper.
-- **Dependencies to add:** `fluent-bundle`, `fluent-langneg`, `fluent-pseudo` (and `fluent-syntax`, in `lib-locale-build` only), `unic-langid`, `icu` (`icu_decimal`, `icu_datetime`, `icu_casemap`, and a pinned `icu_experimental` for currency), and `sys-locale` in `lib-config`.
+- **Dependencies:** `fluent-bundle`, `fluent-langneg`, `fluent-pseudo` (and `fluent-syntax`, in `lib-locale-build` only), `unic-langid`, `icu` (`icu_decimal`, `icu_datetime`, `icu_casemap`, and a pinned `icu_experimental` for currency), and `sys-locale` in `lib-config`.
 
 ## The name
 
@@ -122,8 +122,9 @@ The crate is `lib-locale` (crate `lib_locale`), chosen over `lib-localisation` a
   - `en-XA` uses `fluent_pseudo::transform_dom` with markers off, because plain `transform` mangles `<tag>` names and its markers bracket each text fragment; the generated outer `[ … ]` is added around the whole Message. The private-use sentinels survive the transform.
   - The chain `en-AU -> en-GB -> en-US` works with sparse Locales.
 - Measured on a `ratatui` stand-in, for a stripped release binary: Fluent adds about 2.1 MB (1.4 MB with a size-tuned profile) and 11 s of clean build, and ICU4X with its default data adds about 1.3 MB and 24 s. An `icu4x-datagen` trim to `en-US`, `en-GB` and `en-AU` cuts the ICU4X share to about 0.3 MB and saves about 12 s. The trim is a separate, later ticket, and must be regenerated when a new ICU4X marker is used.
-- Not yet scheduled: the per-screen string migration, the Preference migration (the number-separator column goes and `date_format` becomes the nullable date style), the TUI palette's move from dispatch-on-display-text to dispatch-on-id, the seeded-row keys, translation workflow, per-Locale command aliases, user-supplied Catalogues, and mapping Commonwealth variants (`en-NZ`, `en-IN`) to `en-GB`.
-- The cost figures come from a stand-in binary, not a real `bin-tui` or `bin-desktop` build, so re-measure once `lib-locale` exists.
+- Since landed: the per-screen string migration, the Preference migration (the number-separator column is gone and `date_format` is now the nullable `date_style`), and the TUI palette's move from dispatch-on-display-text to dispatch-on-id.
+- Still outstanding: the `icu4x-datagen` trim above; the seeded-row keys (the `institution-none` Message exists, but there is no Institutions table yet and `bin-desktop` still holds a `NO_INSTITUTION` literal); translation workflow; per-Locale command aliases; user-supplied Catalogues; and mapping Commonwealth variants (`en-NZ`, `en-IN`) to `en-GB`.
+- The cost figures come from a stand-in binary, not a real `bin-tui` or `bin-desktop` build. Both bins now carry `lib-locale`, so the figures can be re-measured for real.
 
 ## Research
 
