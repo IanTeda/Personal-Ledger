@@ -92,6 +92,45 @@ pub fn is_over_budget(spent: &Money, budget: &Money) -> bool {
     spent.0 < budget.0.clone() * -1 // spent is negative; over-budget when |spent| > budget
 }
 
+/// Create a new budget for a category and unit. Returns the new budget ID.
+pub fn create_budget(
+    budgets: &mut Vec<Budget>,
+    category_id: u32,
+    unit_id: u32,
+    monthly_amount: Money,
+) -> u32 {
+    let next_id = budgets.iter().map(|b| b.id).max().unwrap_or(0) + 1;
+    budgets.push(Budget {
+        id: next_id,
+        category_id,
+        unit_id,
+        monthly_amount,
+    });
+    next_id
+}
+
+/// Update an existing budget's monthly amount. Creates if not found.
+pub fn upsert_budget(
+    budgets: &mut Vec<Budget>,
+    category_id: u32,
+    unit_id: u32,
+    monthly_amount: Money,
+) {
+    if let Some(budget) = budgets
+        .iter_mut()
+        .find(|b| b.category_id == category_id && b.unit_id == unit_id)
+    {
+        budget.monthly_amount = monthly_amount;
+    } else {
+        create_budget(budgets, category_id, unit_id, monthly_amount);
+    }
+}
+
+/// Delete the budget for a specific category and unit, if it exists.
+pub fn delete_budget(budgets: &mut Vec<Budget>, category_id: u32, unit_id: u32) {
+    budgets.retain(|b| !(b.category_id == category_id && b.unit_id == unit_id));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

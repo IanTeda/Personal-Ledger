@@ -35,6 +35,7 @@ use crate::{
         self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
         DeleteAccountForm, NameLookup, SelectKey,
     },
+    budgets,
     categories::{self, Category},
     command::{self, AccountsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
@@ -1360,11 +1361,14 @@ impl Shell {
     /// Opens the Edit categories dialog on `id`, pre-filled.
     fn open_edit_categories_dialog(&mut self, category_id: u32) {
         if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
+            let budget_str = budgets::find_by_category_and_unit(&self.budgets, category_id, 1)
+                .map(|b| b.monthly_amount.0.to_string())
+                .unwrap_or_default();
             let form = categories::CategoryForm {
                 name: category.name.clone(),
                 parent_id: category.parent,
                 category_type: Some(category.category_type.clone()),
-                budget: String::new(),
+                budget: budget_str,
                 focused: categories::CategoryField::Name,
             };
             self.categories_dialog = Some(categories::CategoriesDialog::Edit(category_id, form));
@@ -1526,12 +1530,19 @@ impl Shell {
                                     .category_type
                                     .clone()
                                     .unwrap_or(CategoryTypes::Expense);
-                                let _ = categories::insert_category(
+                                if let Ok(category_id) = categories::insert_category(
                                     &mut self.categories,
                                     form.name.trim().to_string(),
                                     form.parent_id,
                                     category_type,
-                                );
+                                ) {
+                                    // Handle budget creation if budget is not empty
+                                    if !form.budget.trim().is_empty() {
+                                        if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
+                                            budgets::create_budget(&mut self.budgets, category_id, 1, amount);
+                                        }
+                                    }
+                                }
                                 self.nav.exit_mode();
                             }
                             categories::CategoriesDialog::Edit(id, form) => {
@@ -1542,6 +1553,12 @@ impl Shell {
                                 );
                                 if let Some(new_parent) = form.parent_id {
                                     let _ = categories::move_category(&mut self.categories, id, Some(new_parent));
+                                }
+                                // Handle budget changes
+                                if form.budget.trim().is_empty() {
+                                    budgets::delete_budget(&mut self.budgets, id, 1);
+                                } else if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
+                                    budgets::upsert_budget(&mut self.budgets, id, 1, amount);
                                 }
                                 self.nav.exit_mode();
                             }
@@ -1841,7 +1858,11 @@ impl Shell {
 
             if can_change_type {
                 if let Some(form) = dialog.form_mut() {
-                    form.category_type = Some(category_type);
+                    form.category_type = Some(category_type.clone());
+                    // For Edit dialogs, cascade the type change to descendants
+                    if let categories::CategoriesDialog::Edit(id, _) = dialog {
+                        let _ = categories::change_category_type(&mut self.categories, *id, category_type);
+                    }
                     cx.notify();
                 }
             }
@@ -1869,9 +1890,13 @@ impl Shell {
                             form.parent_id,
                             category_type,
                         ) {
-                            Ok(_) => {
-                                // Successfully added category
-                                // TODO: Handle budget creation if budget is not empty
+                            Ok(category_id) => {
+                                // Handle budget creation if budget is not empty
+                                if !form.budget.trim().is_empty() {
+                                    if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
+                                        budgets::create_budget(&mut self.budgets, category_id, 1, amount);
+                                    }
+                                }
                                 self.nav.exit_mode();
                                 cx.notify();
                             }
@@ -1896,7 +1921,12 @@ impl Shell {
                             // If parent was cleared, move to top-level
                             let _ = categories::move_category(&mut self.categories, id, None);
                         }
-                        // TODO: Handle budget changes
+                        // Handle budget changes
+                        if form.budget.trim().is_empty() {
+                            budgets::delete_budget(&mut self.budgets, id, 1);
+                        } else if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
+                            budgets::upsert_budget(&mut self.budgets, id, 1, amount);
+                        }
                         self.nav.exit_mode();
                         cx.notify();
                     }

@@ -464,6 +464,26 @@ pub fn move_category(
     Ok(())
 }
 
+/// Change a category's type and cascade to all descendants.
+pub fn change_category_type(
+    categories: &mut Vec<Category>,
+    id: u32,
+    new_type: CategoryTypes,
+) -> Result<(), CategoryError> {
+    let _category = categories
+        .iter()
+        .find(|c| c.id == id)
+        .ok_or(CategoryError::NotFound)?;
+
+    let descendants = descendants_inclusive(categories, id);
+    for category in categories.iter_mut() {
+        if descendants.contains(&category.id) {
+            category.category_type = new_type.clone();
+        }
+    }
+    Ok(())
+}
+
 /// Delete a category (leaf only). Re-points its splits to Uncategorised.
 pub fn delete_category(categories: &mut Vec<Category>, id: u32) -> Result<(), CategoryError> {
     let category = get(categories, id).ok_or(CategoryError::NotFound)?;
