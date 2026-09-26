@@ -1,0 +1,9 @@
+# The TUI draws Colour Themes in RGB, with terminal colours as an opt-in Configuration switch
+
+Today the TUI maps its colours to ANSI roles so the user's terminal theme wins (the TUI README's Style table). The Colour Themes map gave both Clients one synced Colour Theme and Colour Appearance (ADR-0023), which forced a choice: does the TUI keep drawing in terminal colours, or draw the Colour Theme?
+
+We're making the TUI draw the resolved Colour Theme's RGB values, like the Desktop, and falling back to Modernist on both Clients when the `colour_theme` Preference is null, so the two Clients look the same by default. Drawing in the terminal's colours becomes a TUI-only Configuration switch, `terminal_colours` in `[Personal-Ledger]`: when on, the TUI ignores the Colour Theme and `[theme]` and uses the ANSI fallback per Colour Role from `docs/colour-themes-design.md`. It never syncs, and the Desktop ignores it. On terminals without truecolor the TUI picks the nearest of the 256 colours; on a 16-colour terminal it uses the ANSI fallbacks and logs a `warn`. For Colour Appearance System the TUI asks the terminal for its background (OSC 11, then `COLORFGBG`), defaulting to dark, and follows live changes only where the terminal sends colour-scheme notifications (DEC mode 2031).
+
+## Considered Options
+
+Keeping ANSI only was rejected because the Colour Theme Preference would then mean nothing in the TUI. A built-in "Terminal" Colour Theme as the TUI's default was rejected: a synced `colour_theme = terminal` would reach the Desktop, which cannot draw it, and making null mean a different default per Client breaks consistency between them. Whether to use the terminal's colours is a per-device choice, so it belongs in Configuration, not in a synced Preference. Following the OS light/dark setting in the TUI was rejected because it is wrong over SSH; polling the terminal for live changes was rejected as too costly for the benefit.

@@ -190,6 +190,21 @@ personal_ledger --locale 'en-GB'
 
 The Sync Server ignores this setting.
 
+__terminal_colours:__
+
+TUI only. When true, the TUI ignores the Colour Theme and any `[theme]` overrides and draws in the terminal's own ANSI colours, so your terminal theme wins. Per Client and never synced; changing it needs a restart. The Desktop ignores it.
+
+* Type: Boolean
+* Default: false
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__TERMINAL_COLOURS
+
+Example:
+
+```ini
+[Personal-Ledger]
+terminal_colours = true
+```
+
 __log_file_path:__
 
 Optional path to a file that log output should also be written to, in addition to the console. Parent directories are created if they don’t already exist.

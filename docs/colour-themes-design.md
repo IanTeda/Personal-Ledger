@@ -4,7 +4,7 @@ The developer-facing design for Colour Themes in the Desktop and TUI Clients. Th
 
 ## Status
 
-In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), as are the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)). Still open on the map: the TUI's terminal-theme vs Colour-Theme approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299)), the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)), the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
+In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) and the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)). Still open on the map: the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)), the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
 
 ## Colour Roles
 
@@ -75,7 +75,7 @@ Enforcement:
 
 ### TUI fallback to terminal colours
 
-Every role the TUI uses has a documented fallback to terminal colours, whichever way [#299](https://github.com/IanTeda/Personal-Ledger/issues/299) decides. The 16 ANSI colours are not Colour Roles themselves; they belong to the terminal side of that decision.
+Every role the TUI uses has a fallback to terminal colours, used when `terminal_colours` is on or the terminal has only 16 colours (see [TUI terminal colours](#tui-terminal-colours)). The 16 ANSI colours are not Colour Roles themselves.
 
 | role or calculated colour | fallback |
 | --- | --- |
@@ -92,6 +92,16 @@ Every role the TUI uses has a documented fallback to terminal colours, whichever
 | Drop shadows, hover | none |
 
 `accent` and `negative` both fall back to red, as today. The TUI keeps its "never rely on colour alone" rule: negatives also carry `−`, over-budget also overshoots its track, flagged rows also carry `⚑`.
+
+## TUI terminal colours
+
+Decided on [#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md).
+
+- **RGB by default.** The TUI draws the resolved Colour Theme's RGB values, like the Desktop. With a null `colour_theme` both Clients draw Modernist.
+- **Opt-in terminal colours.** `terminal_colours = true` in the TUI's `[Personal-Ledger]` Configuration makes it ignore the Colour Theme (and `[theme]`) and draw with the [fallback table](#tui-fallback-to-terminal-colours), so the terminal's own theme wins. It is Configuration, not a Preference: it never syncs and the Desktop ignores it. There is no "Terminal" Colour Theme.
+- **Colour depth.** Truecolor when `COLORTERM` is `truecolor`/`24bit`; otherwise the nearest of the 256 colours; on a 16-colour terminal the fallback table is used automatically, with a `warn`.
+- **System in a terminal.** At start the TUI queries the terminal background (OSC 11) and reads `COLORFGBG`; a light background picks the light Colour Variant, and no answer picks dark.
+- **Live changes.** Terminals that support colour-scheme notifications (DEC mode 2031) switch Colour Variant live; elsewhere the setting is read once at start. No polling.
 
 ## Preferences and Configuration
 
@@ -125,7 +135,7 @@ As environment variables: `PERSONAL_LEDGER_THEME__ACCENT`, `PERSONAL_LEDGER_THEM
 ### Resolution
 
 1. Colour Theme from the `colour_theme` Preference (or the default).
-2. Colour Variant from the `colour_appearance` Preference; System follows the OS (or terminal) light/dark setting.
+2. Colour Variant from the `colour_appearance` Preference; System follows the OS light/dark setting (the TUI asks the terminal, see [TUI terminal colours](#tui-terminal-colours)).
 3. `[theme.<variant>]` keys, then bare `[theme]` keys for any role still unset, laid over that Colour Variant's roles.
 4. Calculated colours from the result.
 
@@ -138,4 +148,4 @@ The Colour Theme and Colour Appearance pickers are always enabled. While any rol
 ## Open items
 
 - Everything on the tickets listed under [Status](#status).
-- Rewriting the Modernist handoffs' "introduce no values outside this set" rule and the TUI README's Style table to speak in Colour Roles.
+- Rewriting the Modernist handoffs' "introduce no values outside this set" rule to speak in Colour Roles.

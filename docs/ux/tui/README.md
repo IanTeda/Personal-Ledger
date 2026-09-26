@@ -194,15 +194,7 @@ help
 Shell: focused view id · view stack for `q` · mode. Palette: input buffer · filtered candidates + selection · history ring (`^r`) · resolved argument preview. Help: search buffer · filtered registry + selection + scroll offset · collapsed-group list. Dashboard: the derived aggregates (net position, 30-day delta, 18-month series, 6-month income/expense, 30-day category split, active budgets with elapsed ratio, attention items) — query them, do not cache in view state. Plus last sync time and result for the status line.
 
 ## Style
-The wireframe uses ink `#201e1d` on ground `#f3f2f2`, a single accent `#ec3013`, greys `#605d5d` / `#9b9797` / `#d7d3d3` for dim text, and a dark variant on `#161413`. In the terminal map these to **theme roles, not literal RGB**, so the user's own terminal theme wins:
-
-| role | use | ANSI |
-| --- | --- | --- |
-| ink / ground | body text | default fg / bg |
-| accent | negatives, over-budget, variance, cursor, matched substring, focused border | red |
-| dim | labels, column heads, the greyed footer and command line | dark grey / `DIM` |
-| selection | current row | reversed |
-| header bar | status line | reversed |
+The wireframe uses ink `#201e1d` on ground `#f3f2f2`, a single accent `#ec3013`, greys `#605d5d` / `#9b9797` / `#d7d3d3` for dim text, and a dark variant on `#161413`. The TUI draws these through Colour Roles, never literal RGB: see `docs/colour-themes-design.md` for the roles, and its "TUI fallback to terminal colours" table for the ANSI mapping used when `terminal_colours` is on (ADR-0024).
 
 One accent only. Never rely on color alone: negatives also carry `−`, over-budget also overshoots its track, flagged rows also carry `⚑`.
 
@@ -214,4 +206,4 @@ One accent only. Never rely on color alone: negatives also carry `−`, over-bud
 - `support.js` — runtime for the HTML file, not part of the deliverable.
 
 ## Suggested Claude Code prompt
-> Read `docs/ux/tui/README.md` and open `docs/ux/tui/Ledger TUI Shell.dc.html` in a browser for reference. Build, in this order: (1) the action registry described in the README, since the palette, help window, keymap and footer hints all generate from it; (2) the shell — status line, single full-bleed view region, command line, keybind hint bar, mode handling; (3) the floating command palette with its fuzzy matcher and argument-preview row; (4) the `:help` window over the same registry; (5) the chart-led dashboard view. Follow the existing crate layout and SQLite layer, put the shell, each window and each view in their own modules with their own state structs, and use the theme roles from the README rather than the hex values. The budget bar is a custom track with a period-progress marker cell, not a `Gauge`.
+> Read `docs/ux/tui/README.md` and open `docs/ux/tui/Ledger TUI Shell.dc.html` in a browser for reference. Build, in this order: (1) the action registry described in the README, since the palette, help window, keymap and footer hints all generate from it; (2) the shell — status line, single full-bleed view region, command line, keybind hint bar, mode handling; (3) the floating command palette with its fuzzy matcher and argument-preview row; (4) the `:help` window over the same registry; (5) the chart-led dashboard view. Follow the existing crate layout and SQLite layer, put the shell, each window and each view in their own modules with their own state structs, and use Colour Roles (`docs/colour-themes-design.md`) rather than the hex values. The budget bar is a custom track with a period-progress marker cell, not a `Gauge`.
