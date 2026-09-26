@@ -116,6 +116,14 @@ impl TransactionFilters {
         }
     }
 
+    /// The defaults narrowed to one category: what "open transactions" on the Categories page hands over.
+    pub fn for_category(today: NaiveDate, category: u32) -> Self {
+        Self {
+            category: Some(category),
+            ..Self::defaults(today)
+        }
+    }
+
     /// Whether these are exactly the defaults (so no chip is an "active" accent chip).
     pub fn is_default(&self, today: NaiveDate) -> bool {
         *self == Self::defaults(today)
@@ -912,5 +920,27 @@ mod tests {
         let before = world.transactions.clone();
         let _ = world.run(&TransactionFilters::defaults(today()), "shop");
         assert_eq!(world.transactions, before);
+    }
+
+    #[test]
+    fn for_account_sets_the_account_and_keeps_other_defaults() {
+        let filters = TransactionFilters::for_account(today(), 42);
+        assert_eq!(filters.account, Some(42));
+        assert_eq!(filters.category, None);
+        assert_eq!(filters.from, NaiveDate::from_ymd_opt(2026, 1, 1));
+        assert_eq!(filters.to, Some(today()));
+        assert!(filters.payee.is_empty() && filters.tag.is_empty());
+        assert_eq!(filters.status, StatusFilter::All);
+    }
+
+    #[test]
+    fn for_category_sets_the_category_and_keeps_other_defaults() {
+        let filters = TransactionFilters::for_category(today(), 99);
+        assert_eq!(filters.category, Some(99));
+        assert_eq!(filters.account, None);
+        assert_eq!(filters.from, NaiveDate::from_ymd_opt(2026, 1, 1));
+        assert_eq!(filters.to, Some(today()));
+        assert!(filters.payee.is_empty() && filters.tag.is_empty());
+        assert_eq!(filters.status, StatusFilter::All);
     }
 }

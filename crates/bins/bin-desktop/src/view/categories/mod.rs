@@ -31,6 +31,7 @@ pub type OnAddSubClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
 pub type OnEditClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
 pub type OnDeleteClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
 pub type OnDisclosureClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+pub type OnRowClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
 
 pub struct CategoriesPageProps<'a> {
     pub categories: &'a [categories::Category],
@@ -45,6 +46,7 @@ pub struct CategoriesPageProps<'a> {
     pub on_edit_click: OnEditClick,
     pub on_delete_click: OnDeleteClick,
     pub on_disclosure_click: OnDisclosureClick,
+    pub on_row_click: OnRowClick,
 }
 
 pub fn render(
@@ -102,6 +104,7 @@ pub fn render(
                     &props.on_edit_click,
                     &props.on_delete_click,
                     &props.on_disclosure_click,
+                    &props.on_row_click,
                 )
             }),
         )
@@ -197,6 +200,7 @@ fn section_block(
     on_edit_click: &OnEditClick,
     on_delete_click: &OnDeleteClick,
     on_disclosure_click: &OnDisclosureClick,
+    on_row_click: &OnRowClick,
 ) -> impl IntoElement {
     let filtered_rows: Vec<_> = tree_rows
         .iter()
@@ -236,6 +240,7 @@ fn section_block(
                                     on_edit_click,
                                     on_delete_click,
                                     on_disclosure_click,
+                                    on_row_click,
                                 )
                             }),
                         ),
@@ -318,6 +323,7 @@ fn table_row(
     on_edit_click: &OnEditClick,
     on_delete_click: &OnDeleteClick,
     on_disclosure_click: &OnDisclosureClick,
+    on_row_click: &OnRowClick,
 ) -> impl IntoElement {
     let category = categories.iter().find(|c| c.id == row.id).unwrap();
     let spent = categories::month_to_date_spent(categories, transactions, &[], row.id, today);
@@ -330,11 +336,13 @@ fn table_row(
 
     let indent_px = (row.depth as f32) * 16.0;
     let disclosure_on_click = on_disclosure_click.clone();
+    let row_click = on_row_click.clone();
     let row_id = row.id;
 
     div()
         .w_full()
         .flex()
+        .cursor_pointer()
         .border_b(px(1.0))
         .border_color(color::HAIRLINE)
         .when(selected, |this| {
@@ -344,6 +352,7 @@ fn table_row(
         .px(px(12.0))
         .py(px(10.0))
         .gap(px(12.0))
+        .on_click(move |_event, window, cx| row_click(row_id, window, cx))
         .child(
             div()
                 .flex_1()

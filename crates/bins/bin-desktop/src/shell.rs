@@ -1303,7 +1303,8 @@ impl Shell {
     }
 
     /// Keyboard input while on the Categories page: `n` adds a top-level category, `N` (shift+n)
-    /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it.
+    /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it,
+    /// `enter` opens Transactions filtered to the selected category.
     fn handle_categories_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Categories || self.nav.focus() != FocusZone::View {
             return false;
@@ -1350,6 +1351,12 @@ impl Shell {
                 }
                 true
             }
+            "enter" => {
+                if let Some(category) = selected_category {
+                    self.open_category_transactions(category.id);
+                }
+                true
+            }
             _ => false,
         }
     }
@@ -1393,6 +1400,15 @@ impl Shell {
     /// returning to Accounts finds the same row selected.
     fn open_account_ledger(&mut self, id: u32) {
         self.transactions_filters = TransactionFilters::for_account(self.today, id);
+        self.transactions_search.clear();
+        self.transactions_filter_form = None;
+        self.reset_transactions_selection();
+        self.nav.set_noun(Noun::Transactions);
+        self.reset_view_scroll();
+    }
+
+    fn open_category_transactions(&mut self, id: u32) {
+        self.transactions_filters = TransactionFilters::for_category(self.today, id);
         self.transactions_search.clear();
         self.transactions_filter_form = None;
         self.reset_transactions_selection();
@@ -2045,6 +2061,13 @@ impl Shell {
 
     fn handle_categories_disclosure_click(&mut self, id: u32, cx: &mut Context<Self>) {
         categories::toggle_expanded(&mut self.categories_expanded, id, false);
+        cx.notify();
+    }
+
+    /// A click on a category row: selects it and opens Transactions filtered to that category.
+    fn handle_categories_row_click(&mut self, id: u32, cx: &mut Context<Self>) {
+        self.categories_selected_id = Some(id);
+        self.open_category_transactions(id);
         cx.notify();
     }
 
@@ -2991,6 +3014,12 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_categories_disclosure_click(id, cx));
             })
         };
+        let on_categories_row_click: categories_view::OnRowClick = {
+            let entity = entity.clone();
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_categories_row_click(id, cx));
+            })
+        };
         let categories_page = categories_view::CategoriesPageProps {
             categories: &self.categories,
             budgets: &self.budgets,
@@ -3004,6 +3033,7 @@ impl Render for Shell {
             on_edit_click: on_categories_edit_click,
             on_delete_click: on_categories_delete_click,
             on_disclosure_click: on_categories_disclosure_click,
+            on_row_click: on_categories_row_click,
         };
 
         // Categories dialog closures
