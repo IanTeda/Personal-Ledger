@@ -1,10 +1,10 @@
-name: Lint
+name: Lint on Main Push or Pull
 
 on:
   push:
-    branches: [main, concept]
+    branches: [main]
   pull_request:
-    branches: [main, concept]
+    branches: [main]
 
 jobs:
   lint:
