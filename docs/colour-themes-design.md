@@ -4,7 +4,7 @@ The developer-facing design for Colour Themes in the Desktop and TUI Clients. Th
 
 ## Status
 
-In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)). Still open on the map: the TUI's terminal-theme vs Colour-Theme approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299)), Preference storage and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300)), the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)), the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
+In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), as are the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)). Still open on the map: the TUI's terminal-theme vs Colour-Theme approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299)), the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)), the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
 
 ## Colour Roles
 
@@ -38,7 +38,7 @@ accent = "#00cc00"
 muted = "492943"
 ```
 
-How `[theme]` layers against the synced Preference, and whether an override applies to one Colour Variant or both, is settled on [#300](https://github.com/IanTeda/Personal-Ledger/issues/300).
+How `[theme]` layers against the synced Preferences is under [Preferences and Configuration](#preferences-and-configuration).
 
 ### Calculated colours
 
@@ -92,6 +92,48 @@ Every role the TUI uses has a documented fallback to terminal colours, whichever
 | Drop shadows, hover | none |
 
 `accent` and `negative` both fall back to red, as today. The TUI keeps its "never rely on colour alone" rule: negatives also carry `−`, over-budget also overshoots its track, flagged rows also carry `⚑`.
+
+## Preferences and Configuration
+
+Decided on [#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md).
+
+### Preferences
+
+Two nullable Ledger-scoped Preferences replace today's `preferences.colour_theme` `HexColor` accent column (edit the table's create file; the schema is still in concept):
+
+| column | values | null means |
+| --- | --- | --- |
+| `colour_theme` | a built-in Colour Theme id, such as `modernist` | the default Colour Theme (Modernist) |
+| `colour_appearance` | `light`, `dark`, `system` | System |
+
+Only an explicit choice is stored and synced. There is no SQL `CHECK` on the id: a Client that does not know a synced id (one added in a later release) draws the default Colour Theme and logs a `warn`, and never writes the default back.
+
+### `[theme]` role overrides
+
+`[theme]` holds only the seven Colour Role keys; it cannot name a Colour Theme or a Colour Appearance. A bare key applies to both Colour Variants; a `[theme.light]` or `[theme.dark]` subsection overrides one, and the more specific key wins:
+
+```ini
+[theme]
+accent = "#cc0000"
+
+[theme.dark]
+accent = "#ff6666"
+```
+
+As environment variables: `PERSONAL_LEDGER_THEME__ACCENT`, `PERSONAL_LEDGER_THEME__DARK__ACCENT`. A value that is not a colour, or an unknown key, is ignored with a `warn` naming the key and value; the Client still starts.
+
+### Resolution
+
+1. Colour Theme from the `colour_theme` Preference (or the default).
+2. Colour Variant from the `colour_appearance` Preference; System follows the OS (or terminal) light/dark setting.
+3. `[theme.<variant>]` keys, then bare `[theme]` keys for any role still unset, laid over that Colour Variant's roles.
+4. Calculated colours from the result.
+
+Preference changes and OS light/dark changes apply live. `[theme]` is read once at start, so changing it needs a restart.
+
+### Settings
+
+The Colour Theme and Colour Appearance pickers are always enabled. While any role is overridden, a note under the picker says how many colours are overridden by Configuration.
 
 ## Open items
 

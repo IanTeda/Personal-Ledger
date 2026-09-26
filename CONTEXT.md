@@ -41,9 +41,7 @@ Client-scoped (stored locally, never synced); which kind a given Preference is g
 decided as it's defined, in CC-TUI-001/CC-DESKTOP-001 (`docs/product-requirements.md`).
 As of [ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md) and
 [ADR-0021](docs/adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md),
-the Preferences are the default Unit for new Accounts, colour theme, and date style — all
-three Ledger-scoped, so they sync across a user's own Clients rather than being set
-separately on each one. The date style is nullable: no value means "use the Locale's
+the Preferences are the default Unit for new Accounts, Colour Theme, Colour Appearance and date style — all four Ledger-scoped, so they sync across a user's own Clients rather than being set separately on each one. The Colour Theme and Colour Appearance are nullable like the date style ([ADR-0023](docs/adr/0023-colour-theme-preferences-and-theme-role-overrides.md)). The date style is nullable: no value means "use the Locale's
 default", and only an explicit choice is stored and synced. The Locale is not a Preference
 (see Locale, below). No Client-scoped Preference exists
 yet; that half of the split stays available for whenever a genuinely per-device setting
@@ -88,7 +86,7 @@ The severity a Toast carries, one of Info, Success, Warning or Error. Each Toast
 _Avoid_: level, type, severity (alone).
 
 **Colour Theme**:
-A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides them on that one Client.
+A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides individual Colour Roles on that one Client (it cannot choose the Colour Theme or Colour Appearance itself).
 _Avoid_: theme (alone), palette — "palette" already names the command palette; "theme" alone is ambiguous with typography and spacing.
 
 **Colour Role**:
