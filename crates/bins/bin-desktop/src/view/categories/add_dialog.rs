@@ -8,6 +8,7 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_core::CategoryTypes;
 
+use super::DialogHandlers;
 use crate::{
     categories::{self, CategoryField, CategoryForm},
     dialog,
@@ -33,12 +34,15 @@ pub fn render(
     form: &CategoryForm,
     parent_options: &[ParentOption],
     all_categories: &[categories::Category],
-    on_field_click: OnFieldClick,
-    on_parent_change: OnParentChange,
-    on_type_change: OnTypeChange,
-    on_cancel: OnCancel,
-    on_confirm: OnConfirm,
+    handlers: DialogHandlers,
 ) -> AnyElement {
+    let DialogHandlers {
+        on_field_click,
+        on_parent_change,
+        on_type_change,
+        on_cancel,
+        on_confirm,
+    } = handlers;
     let type_locked = form.parent_id.is_some();
     let parent_category = form
         .parent_id

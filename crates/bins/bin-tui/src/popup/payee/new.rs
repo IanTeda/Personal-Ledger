@@ -177,7 +177,10 @@ impl NewPayeePopup {
     /// The `(name, website, icon_url, icon_derived, default_category_path, active)` `^s`/`^a`
     /// would create, or `None` while the draft doesn't validate — an empty `name`, or one that
     /// collides with an existing Payee.
-    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::type_complexity,
+        reason = "a one-off tuple of the draft's validated fields, destructured at its single call site"
+    )]
     pub fn create_fields(
         &self,
         store: &dyn PayeeStore,
@@ -231,7 +234,7 @@ impl NewPayeePopup {
     }
 
     /// Renders the floating overlay, centred within `area`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -327,7 +330,7 @@ fn dim() -> Style {
 }
 
 /// The title row: "new payee" flush left, the `:payee new` command dim and right-aligned.
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = ":payee new";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -344,7 +347,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 }
 
 /// One `label   value` row.
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -355,7 +358,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
 
 /// One editable text field: the typed value, with a trailing accent cursor only when it has
 /// focus.
-fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
         spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
@@ -365,7 +368,7 @@ fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, fo
 
 /// The accent warning beneath `name` when it collides with an existing Payee — blank
 /// otherwise, so the row's height never changes.
-fn render_name_status(frame: &mut Frame, area: Rect, conflict: Option<&Payee>) {
+fn render_name_status(frame: &mut Frame<'_>, area: Rect, conflict: Option<&Payee>) {
     if let Some(existing) = conflict {
         frame.render_widget(
             Paragraph::new(Span::styled(
@@ -379,7 +382,7 @@ fn render_name_status(frame: &mut Frame, area: Rect, conflict: Option<&Payee>) {
 
 /// The `icon url` checkbox row: `[×]`/`[ ]` in the accent when focused, the consequence stated
 /// alongside it either way.
-fn render_icon_derive_field(frame: &mut Frame, area: Rect, checked: bool, focused: bool) {
+fn render_icon_derive_field(frame: &mut Frame<'_>, area: Rect, checked: bool, focused: bool) {
     let glyph_style = if focused {
         Style::default().fg(ACCENT)
     } else {
@@ -401,7 +404,7 @@ fn render_icon_derive_field(frame: &mut Frame, area: Rect, checked: bool, focuse
 /// `website` is blank), when checked; an editable free-text field, with its own cursor, when
 /// unchecked — the handoff's own "unchecking exposes a free-text URL field".
 fn render_icon_value(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     area: Rect,
     icon_derive: bool,
     derived: Option<String>,
@@ -418,7 +421,7 @@ fn render_icon_value(
 
 /// The `active` checkbox row: the glyph in the accent when focused, the consequence stated
 /// alongside it either way — mirrors `popup::account::new::render_active_field`.
-fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: bool) {
+fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
     let glyph_style = if focused {
         Style::default().fg(ACCENT)
     } else {
@@ -437,11 +440,11 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
     );
 }
 
-fn render_note(frame: &mut Frame, area: Rect, text: &'static str) {
+fn render_note(frame: &mut Frame<'_>, area: Rect, text: &'static str) {
     frame.render_widget(Paragraph::new(Span::styled(text, dim())), area);
 }
 
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     const HINTS: &[(&str, &str)] = &[
         ("tab", "next field"),
         ("^s", "create"),

@@ -110,7 +110,7 @@ impl MovePopup {
     /// as" fragment's height varies with how many children the landing parent has), within
     /// `area` — the full terminal area, per §3a's "centred floating overlay" every form in
     /// this design reuses.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn CategoryStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn CategoryStore) {
         let Some(moving) = store.find(self.moving_id) else {
             return;
         };
@@ -223,7 +223,7 @@ impl MovePopup {
 
 /// The title row: "move" flush left, the `:category move` command dim and right-aligned — echoing
 /// `popup::unit::new`'s own title-row convention.
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = ":category move";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -241,7 +241,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 }
 
 /// One `label   value` row — mirrors `popup::unit::new`'s own `render_field`.
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -253,7 +253,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
 
 /// The `new parent` field: the focused input box glyph (`┌`) per the handoff's drawn example,
 /// the typed text, and a trailing accent cursor.
-fn render_new_parent_field(frame: &mut Frame, area: Rect, input: &str) {
+fn render_new_parent_field(frame: &mut Frame<'_>, area: Rect, input: &str) {
     let cursor = Style::default().fg(ACCENT);
     let label = format!("\u{250c} {}", msg::tui_category_move_field_target());
     render_field(
@@ -269,7 +269,12 @@ fn render_new_parent_field(frame: &mut Frame, area: Rect, input: &str) {
 
 /// The `completion` row beneath it: up to a few candidate names sharing the input's last
 /// segment as a prefix, dim, with a trailing `· tab` hint.
-fn render_completion_row(frame: &mut Frame, area: Rect, store: &dyn CategoryStore, input: &str) {
+fn render_completion_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    store: &dyn CategoryStore,
+    input: &str,
+) {
     let candidates = completions(store, input);
     let dim = Style::default().add_modifier(Modifier::DIM);
     let text = if candidates.is_empty() {
@@ -283,7 +288,7 @@ fn render_completion_row(frame: &mut Frame, area: Rect, store: &dyn CategoryStor
 
 /// The "lands as" heading: the label, and — once the input resolves to an existing category —
 /// the depth the moving node would land at.
-fn render_lands_as_heading(frame: &mut Frame, area: Rect, depth_tag: &str) {
+fn render_lands_as_heading(frame: &mut Frame<'_>, area: Rect, depth_tag: &str) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -395,7 +400,7 @@ fn recomputes_text(store: &dyn CategoryStore, moving_id: RowID, resolution: &Res
 }
 
 /// The window footer hint row — matches the handoff's own `tab` / `^n` / `^s` / `esc` key set.
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     let hints = [
         ("tab", msg::tui_category_move_help_tab()),
         ("^n", msg::tui_category_move_help_new()),

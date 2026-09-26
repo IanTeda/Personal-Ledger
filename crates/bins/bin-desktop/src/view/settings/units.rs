@@ -37,7 +37,10 @@ pub type OnAddClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// row index has already been curried in.
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a stateless GPUI render fn takes each value and handler it wires; a props struct would only rename the list"
+)]
 pub fn render(
     units: &[UnitRow],
     on_edit_click: OnRowIndexClick,

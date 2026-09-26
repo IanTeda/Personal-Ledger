@@ -264,7 +264,7 @@ impl AccountsView {
             let count = accounts.len();
             let right_text = match shared_unit(&accounts) {
                 Some(unit) => {
-                    let subtotal: bigdecimal::BigDecimal = accounts
+                    let subtotal: BigDecimal = accounts
                         .iter()
                         .map(|account| self.store.balance(account.id).0)
                         .sum();
@@ -402,18 +402,15 @@ impl View for AccountsView {
                 let account_type = AccountType::from_str(account_type).unwrap_or_default();
                 let _ = self.store.update(*id, name.clone(), account_type, *active);
             }
-            // `#[allow]`: clippy's own `collapsible_match` fix would move the `delete` call
-            // into a match guard, which makes this read as a pure predicate when it's actually
-            // the mutation — kept as a plain nested `if` for that reason.
-            #[allow(clippy::collapsible_match)]
             Action::DeleteAccount { id, target } => {
                 if self.store.delete(*id, *target).is_ok() {
                     self.recover_selection();
                 }
             }
-            // `#[allow]`: see the `DeleteAccount` arm above for why this stays a plain nested
-            // `if` rather than clippy's own guard-with-a-side-effect suggestion.
-            #[allow(clippy::collapsible_match)]
+            #[expect(
+                clippy::collapsible_match,
+                reason = "clippy's fix moves set_active into a match guard, disguising the mutation as a predicate"
+            )]
             Action::SetAccountActive { id, active } => {
                 if self.store.set_active(*id, *active).is_ok() {
                     self.recover_selection();
@@ -423,7 +420,7 @@ impl View for AccountsView {
         }
     }
 
-    fn view(&self, frame: &mut Frame, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -460,7 +457,7 @@ impl View for AccountsView {
 }
 
 impl AccountsView {
-    fn render_left_pane(&self, frame: &mut Frame, area: Rect) {
+    fn render_left_pane(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -473,7 +470,7 @@ impl AccountsView {
         self.render_summary(frame, rows[1]);
     }
 
-    fn render_list(&self, frame: &mut Frame, area: Rect) {
+    fn render_list(&self, frame: &mut Frame<'_>, area: Rect) {
         let split = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -507,7 +504,7 @@ impl AccountsView {
 
     /// The summary box beneath the list, for whichever account is selected — see the
     /// handoff's own worked example (`docs/ux/tui/accounts/README.md` "Summary box").
-    fn render_summary(&self, frame: &mut Frame, area: Rect) {
+    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect) {
         let block = Block::bordered().padding(Padding::horizontal(1));
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -585,7 +582,7 @@ impl AccountsView {
         frame.render_widget(summary_field_line("active", active_text), rows[5]);
     }
 
-    fn render_right_pane(&self, frame: &mut Frame, area: Rect) {
+    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -610,7 +607,7 @@ impl AccountsView {
     /// The month-end balance line, a trailing [`CHART_MONTHS`]-month window ending at
     /// [`FIXTURE_NOW`], per the handoff's "Balance line" — `oct 24 – sep 26` against this
     /// fixture's own fixed "now".
-    fn render_balance_chart(&self, frame: &mut Frame, area: Rect, account: &Account) {
+    fn render_balance_chart(&self, frame: &mut Frame<'_>, area: Rect, account: &Account) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -664,7 +661,7 @@ impl AccountsView {
 
     /// The ledger list: status glyph / `DATE` / `PAYEE` / `AMOUNT` / `BALANCE`, newest first,
     /// capped to [`LEDGER_VISIBLE_ROWS`] — per the handoff's "Ledger list".
-    fn render_ledger(&self, frame: &mut Frame, area: Rect, account: &Account) {
+    fn render_ledger(&self, frame: &mut Frame<'_>, area: Rect, account: &Account) {
         let rows_with_balance = self.ledger_rows_with_running_balance(account);
         let total = rows_with_balance.len();
         let visible: Vec<(&AccountTransaction, &Money)> = rows_with_balance
@@ -759,7 +756,7 @@ fn list_row_columns(area: Rect) -> (Rect, Rect, Rect) {
     (columns[0], columns[1], columns[2])
 }
 
-fn render_list_line(frame: &mut Frame, area: Rect, line: &ListLine<'_>, selected: RowID) {
+fn render_list_line(frame: &mut Frame<'_>, area: Rect, line: &ListLine<'_>, selected: RowID) {
     match line {
         ListLine::Header {
             account_type,
@@ -861,7 +858,7 @@ fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
     ]))
 }
 
-fn format_date(date: chrono::NaiveDate) -> String {
+fn format_date(date: NaiveDate) -> String {
     crate::format::day_month(date)
 }
 
@@ -877,7 +874,7 @@ fn running_balance_is_meaningful(filtered: bool, sorted_by_date_descending: bool
 /// The `BALANCE` heading over the chart, with the trailing window as its dim tag — mirrors
 /// `view::categories`'s own `render_chart_heading`, without the direct/subtree label swap
 /// Categories needs (an Account's balance line has only one series).
-fn render_chart_heading(frame: &mut Frame, area: Rect) {
+fn render_chart_heading(frame: &mut Frame<'_>, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let tag = format!(
         "{} – {}",
@@ -905,7 +902,7 @@ fn render_chart_heading(frame: &mut Frame, area: Rect) {
 /// month, last month + its value — per the handoff's "Labels beneath: first point, low with
 /// its month, last point" (Categories' sibling chart instead labels an average here; Accounts'
 /// own handoff asks for the low point specifically).
-fn render_chart_labels(frame: &mut Frame, area: Rect, series: &[f64], decimal_places: i64) {
+fn render_chart_labels(frame: &mut Frame<'_>, area: Rect, series: &[f64], decimal_places: i64) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Min(0), Constraint::Min(0)])
@@ -982,7 +979,7 @@ fn ledger_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect, Rect) {
 }
 
 /// The `LEDGER  N of M · newest first` heading.
-fn render_ledger_heading(frame: &mut Frame, area: Rect, shown: usize, total: usize) {
+fn render_ledger_heading(frame: &mut Frame<'_>, area: Rect, shown: usize, total: usize) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let tag = format!("{shown} of {total} · newest first");
     let columns = Layout::default()
@@ -1002,7 +999,7 @@ fn render_ledger_heading(frame: &mut Frame, area: Rect, shown: usize, total: usi
     );
 }
 
-fn render_ledger_column_header(frame: &mut Frame, area: Rect) {
+fn render_ledger_column_header(frame: &mut Frame<'_>, area: Rect) {
     let (_, date, payee, amount, balance) = ledger_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
@@ -1026,7 +1023,7 @@ fn render_ledger_column_header(frame: &mut Frame, area: Rect) {
 }
 
 fn render_ledger_rows(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     area: Rect,
     rows: &[(&AccountTransaction, &Money)],
     decimal_places: i64,
@@ -1082,7 +1079,7 @@ fn render_ledger_rows(
 
 /// `○ open · ✓ reconciled · N open` — the handoff's "legend in the footer row alongside the
 /// open count".
-fn render_ledger_legend(frame: &mut Frame, area: Rect, open_count: u32) {
+fn render_ledger_legend(frame: &mut Frame<'_>, area: Rect, open_count: u32) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let text = format!("○ open · ✓ reconciled · {open_count} open");
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
@@ -1091,7 +1088,7 @@ fn render_ledger_legend(frame: &mut Frame, area: Rect, open_count: u32) {
 /// `net AUD 84 210.15 · USD, VDHG, BTC held separately` — sums every *currently visible*
 /// account in [`BASE_UNIT_CODE`] and names every other Unit among them, never silently
 /// omitting one, per the handoff's "Footer rows".
-fn render_net_line(frame: &mut Frame, area: Rect, visible_accounts: Vec<&Account>) {
+fn render_net_line(frame: &mut Frame<'_>, area: Rect, visible_accounts: Vec<&Account>) {
     let net: BigDecimal = visible_accounts
         .iter()
         .filter(|account| account.unit.code == BASE_UNIT_CODE)
@@ -1333,17 +1330,11 @@ mod tests {
     #[test]
     fn amounts_render_at_each_units_own_precision() {
         assert_eq!(
-            crate::format::money(
-                &Money(bigdecimal::BigDecimal::from_str("412.48").unwrap()),
-                4
-            ),
+            crate::format::money(&Money(BigDecimal::from_str("412.48").unwrap()), 4),
             "412.4800"
         );
         assert_eq!(
-            crate::format::money(
-                &Money(bigdecimal::BigDecimal::from_str("0.184").unwrap()),
-                8
-            ),
+            crate::format::money(&Money(BigDecimal::from_str("0.184").unwrap()), 8),
             "0.18400000"
         );
     }
@@ -1403,7 +1394,7 @@ mod tests {
         let view = AccountsView::new();
         let account = find_by_name(&view, "Everyday Spending");
         let rows = view.ledger_rows_with_running_balance(account);
-        let sum: bigdecimal::BigDecimal = rows.iter().map(|(row, _)| row.amount.0.clone()).sum();
+        let sum: BigDecimal = rows.iter().map(|(row, _)| row.amount.0.clone()).sum();
         assert_eq!(Money(sum), account.transactions_sum);
     }
 

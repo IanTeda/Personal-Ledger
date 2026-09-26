@@ -46,7 +46,7 @@ const LABEL_WIDTH: u16 = "transactions".len() as u16 + 1;
 /// One body row's rendering logic, closed over whatever it needs to draw itself — see
 /// [`DeleteAccountPopup::body_rows`]'s own doc for why this is a list of closures rather than
 /// a fixed `Layout` + match.
-type RowRenderer<'a> = Box<dyn Fn(&mut Frame, Rect) + 'a>;
+type RowRenderer<'a> = Box<dyn Fn(&mut Frame<'_>, Rect) + 'a>;
 
 /// Which field currently has focus. `move_to` only ever exists (and gains focus) when the
 /// account being deleted is non-empty — see [`DeleteAccountPopup::needs_transfer`].
@@ -179,7 +179,7 @@ impl DeleteAccountPopup {
 
     /// Renders the floating overlay, centred and sized to its own dynamic content (whether a
     /// transfer is needed, and whether its target has resolved yet), within `area`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn AccountStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore) {
         let Some(account) = store.find(self.deleting_id) else {
             return;
         };
@@ -396,7 +396,7 @@ fn blank_row<'a>() -> RowRenderer<'a> {
     Box::new(|_frame, _area| {})
 }
 
-fn render_title(frame: &mut Frame, area: Rect, name: &str) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, name: &str) {
     let tag = ":acct delete";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -415,7 +415,7 @@ fn render_title(frame: &mut Frame, area: Rect, name: &str) {
     );
 }
 
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     let hints = [
         ("tab", msg::tui_account_delete_help_tab()),
         ("^s", msg::tui_account_delete_help_delete()),

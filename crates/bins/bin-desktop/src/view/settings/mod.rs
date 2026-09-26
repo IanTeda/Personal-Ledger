@@ -76,7 +76,7 @@ pub fn render(
     focused: bool,
     scroll_handle: &ScrollHandle,
     props: SettingsBodyProps<'_>,
-) -> gpui::AnyElement {
+) -> AnyElement {
     div()
         .id("settings-body")
         .flex_1()

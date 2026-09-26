@@ -64,7 +64,7 @@ impl EditUnitPopup {
     /// Renders the floating overlay, centred and sized to its fixed field list, within `area`
     /// (the full terminal area — the popup floats over the shell's status line and footer too,
     /// per §3a's "centred floating overlay", which §4c's own forms reuse verbatim).
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -147,7 +147,7 @@ impl EditUnitPopup {
 
 /// The title row: "edit unit" flush left, the reference counts dim and right-aligned — §4c's
 /// own "the title row carries the reference counts (`1 account · 412 txns · 52 prices`)".
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = msg::tui_unit_edit_title_tag(1, 412, 52); // TODO: wire up real data
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -167,7 +167,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 
 /// One `label   value` row: the label dim and fixed-width, per the shell's "dim for labels"
 /// style role, the value/control filling the rest.
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'_>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -182,7 +182,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line) {
 /// own "locked fields are shown, not hidden — with the reason attached" — `reason` is `None`
 /// for a field the mockup locks without stating why (`priced in`).
 fn render_locked_field(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     area: Rect,
     label: &str,
     value: &'static str,
@@ -233,7 +233,7 @@ fn active_value() -> Line<'static> {
 /// own "lowering `qty precision` warns before it saves, in a focused box", distinct from
 /// `popup::unit::new`'s own plain (unboxed) permanence warning since this one only shows up
 /// conditionally, tied to the specific field change above it.
-fn render_precision_warning(frame: &mut Frame, area: Rect) {
+fn render_precision_warning(frame: &mut Frame<'_>, area: Rect) {
     let accent = Style::default().fg(ACCENT);
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_unit_edit_precision_warning(), accent)),
@@ -244,7 +244,7 @@ fn render_precision_warning(frame: &mut Frame, area: Rect) {
 /// The window footer hint row: each key bold, its label dim — matching `popup::unit::new`'s
 /// own `render_footer_hints` convention, minus the source-testing/pull-prices hints that only
 /// apply at creation.
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     let hints = [
         ("tab", msg::tui_unit_edit_help_tab()),
         ("^s", msg::tui_unit_edit_help_save()),

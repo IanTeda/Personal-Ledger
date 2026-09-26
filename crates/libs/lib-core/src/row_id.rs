@@ -155,7 +155,10 @@ impl RowID {
     ///
     /// * `timestamp` - The UTC timestamp to embed in the UUID
     pub fn from_timestamp(timestamp: chrono::DateTime<chrono::Utc>) -> Self {
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "timestamp_nanos_opt is only None outside ~1677-2262, which a UTC DateTime used as a RowID never reaches"
+        )]
         let nanos = timestamp
             .timestamp_nanos_opt()
             .expect("valid DateTime always has a nanosecond component") as u32;
@@ -290,10 +293,13 @@ impl RowID {
         use fake::faker::chrono::en::DateTimeAfter;
 
         // Generate random DateTime after UNIX time epoch (00:00:00 UTC on 1 January 1970)
-        let random_datetime: DateTime<Utc> = DateTimeAfter(chrono::DateTime::UNIX_EPOCH).fake();
+        let random_datetime: DateTime<Utc> = DateTimeAfter(DateTime::UNIX_EPOCH).fake();
 
         // Convert datetime to a UUID timestamp
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "the faker generates dates within timestamp_nanos_opt's representable range"
+        )]
         let nanos = random_datetime
             .timestamp_nanos_opt()
             .expect("faker-generated DateTime always has nanosecond component")
@@ -394,7 +400,10 @@ impl RowID {
     /// other methods will return meaningless values.
     pub fn to_i64(&self) -> i64 {
         let uuid_bytes = self.0.as_bytes();
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "an 8..16 slice of a 16-byte UUID is always exactly 8 bytes"
+        )]
         i64::from_be_bytes(
             uuid_bytes[8..16]
                 .try_into()
@@ -732,7 +741,10 @@ mod tests {
     #[test]
     fn test_clone() {
         let id1 = RowID::new();
-        #[allow(clippy::clone_on_copy)]
+        #[expect(
+            clippy::clone_on_copy,
+            reason = "the test exercises the Clone impl explicitly"
+        )]
         let id2 = id1.clone();
         assert_eq!(id1, id2);
     }

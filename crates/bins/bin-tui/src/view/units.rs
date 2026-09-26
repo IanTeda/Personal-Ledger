@@ -139,7 +139,7 @@ impl View for UnitsView {
 
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -162,14 +162,14 @@ impl View for UnitsView {
     }
 
     fn title(&self) -> String {
-        crate::msg::tui_view_units_title()
+        msg::tui_view_units_title()
     }
 }
 
 /// The left column: the unit list above its summary, per §4a ("Left column ~36 cols holds
 /// the list above the summary"). The summary section is sized tightly to its content, so the
 /// unit list box takes whatever height is left over.
-fn render_left_column(frame: &mut Frame, area: Rect) {
+fn render_left_column(frame: &mut Frame<'_>, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -247,7 +247,7 @@ fn fake_units() -> Vec<UnitListRow> {
 /// table, a scrollbar riding the right edge of the row area so it reads as scrollable even
 /// though every fake row here fits on screen. No border, echoing the design reference's
 /// borderless `.pane` — only the summary box beneath it gets one.
-fn render_unit_list(frame: &mut Frame, area: Rect, units: &[UnitListRow]) {
+fn render_unit_list(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow]) {
     let split = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -287,7 +287,7 @@ fn render_unit_list(frame: &mut Frame, area: Rect, units: &[UnitListRow]) {
 
 /// The "UNITS · N OF total" heading, echoing the summary heading's dim label / dim tag
 /// pattern.
-fn render_unit_list_heading(frame: &mut Frame, area: Rect, visible: usize) {
+fn render_unit_list_heading(frame: &mut Frame<'_>, area: Rect, visible: usize) {
     let tag = msg::tui_units_list_heading_tag(&visible.to_string(), &FAKE_UNIT_TOTAL.to_string());
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -309,7 +309,7 @@ fn render_unit_list_heading(frame: &mut Frame, area: Rect, visible: usize) {
 }
 
 /// The `CODE`/`TYPE`/`LAST` column header row, dim, per §4a's column set.
-fn render_unit_list_column_header(frame: &mut Frame, area: Rect) {
+fn render_unit_list_column_header(frame: &mut Frame<'_>, area: Rect) {
     let columns = unit_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
@@ -328,7 +328,7 @@ fn render_unit_list_column_header(frame: &mut Frame, area: Rect) {
 }
 
 /// One row per unit, top to bottom.
-fn render_unit_rows(frame: &mut Frame, area: Rect, units: &[UnitListRow]) {
+fn render_unit_rows(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow]) {
     // Capped to however many rows actually fit `area` — asking `Layout::split` for more
     // `Length(1)` rows than available height makes it visibly skip/overlap rows rather than
     // truncate cleanly.
@@ -349,7 +349,7 @@ fn render_unit_rows(frame: &mut Frame, area: Rect, units: &[UnitListRow]) {
 /// row is selected; the code is dim only when the unit is inactive ("inactive units render
 /// dim throughout"). The selected row reverses instead, per the shell's "reversed for the
 /// selected row" style role.
-fn render_unit_row(frame: &mut Frame, area: Rect, unit: &UnitListRow) {
+fn render_unit_row(frame: &mut Frame<'_>, area: Rect, unit: &UnitListRow) {
     if unit.selected {
         frame.render_widget(
             Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
@@ -447,7 +447,7 @@ fn fake_summary() -> UnitSummary {
 /// The summary section (bottom left): a "SUMMARY" heading over a bordered `Block`, echoing
 /// the `.hd` + `.box` pair in §4a's design reference — the box carries no title of its own,
 /// since the heading above it already names the section.
-fn render_summary(frame: &mut Frame, area: Rect, summary: &UnitSummary) {
+fn render_summary(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -463,7 +463,7 @@ fn render_summary(frame: &mut Frame, area: Rect, summary: &UnitSummary) {
 }
 
 /// The heading above the summary box: "SUMMARY", dim.
-fn render_summary_heading(frame: &mut Frame, area: Rect) {
+fn render_summary_heading(frame: &mut Frame<'_>, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_units_summary_heading(), dim)),
@@ -475,7 +475,7 @@ fn render_summary_heading(frame: &mut Frame, area: Rect) {
 /// unit's name on the second, a rule, the three highlighted figures, another rule, then the
 /// secondary label/value fields. Labels render dim, per the shell's "dim for labels" style
 /// role.
-fn render_summary_box(frame: &mut Frame, area: Rect, summary: &UnitSummary) {
+fn render_summary_box(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary) {
     let block = Block::bordered().padding(Padding::horizontal(1));
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -525,7 +525,7 @@ fn render_summary_box(frame: &mut Frame, area: Rect, summary: &UnitSummary) {
 
 /// One highlighted figure row: a dim label on the left, a bold value — with an optional dim
 /// suffix, e.g. the currency code — right-aligned.
-fn render_summary_figure(frame: &mut Frame, area: Rect, figure: &SummaryFigure) {
+fn render_summary_figure(frame: &mut Frame<'_>, area: Rect, figure: &SummaryFigure) {
     let value_width =
         figure.value.chars().count() + figure.suffix.map_or(0, |suffix| suffix.chars().count() + 1);
     let columns = Layout::default()
@@ -550,7 +550,7 @@ fn render_summary_figure(frame: &mut Frame, area: Rect, figure: &SummaryFigure) 
 
 /// One highlighted figure row with localized label.
 fn render_summary_figure_with_label(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     area: Rect,
     label: &str,
     figure: &SummaryFigure,
@@ -587,7 +587,7 @@ fn summary_field_line<'a>(label: &'a str, value: &'a str, label_style: Style) ->
 
 /// The code/type row: the unit code left, its type tag (`"etf"`, `"currency"`, ...)
 /// right-aligned and dimmed.
-fn render_code_and_kind(frame: &mut Frame, area: Rect, code: &str, kind: &str) {
+fn render_code_and_kind(frame: &mut Frame<'_>, area: Rect, code: &str, kind: &str) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -608,7 +608,7 @@ fn render_code_and_kind(frame: &mut Frame, area: Rect, code: &str, kind: &str) {
 
 /// The right column: the weekly close candlestick above the weekly prices table, pagination
 /// row and command hints, per §4a ("the rest is price history").
-fn render_price_history(frame: &mut Frame, area: Rect) {
+fn render_price_history(frame: &mut Frame<'_>, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -705,7 +705,7 @@ fn format_market_value(amount: f64) -> String {
 /// over a `W/C`/`CLOSE`/`Δ%`/`MARKET VALUE` table, newest week first, with a scrollbar on the
 /// right edge since more weeks exist than fit on screen (`FAKE_WEEK_COUNT`). No border,
 /// echoing the unit list's borderless pane convention.
-fn render_weekly_prices(frame: &mut Frame, area: Rect, rows: &[WeeklyPriceRow]) {
+fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, rows: &[WeeklyPriceRow]) {
     let split = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -745,7 +745,7 @@ fn render_weekly_prices(frame: &mut Frame, area: Rect, rows: &[WeeklyPriceRow]) 
 
 /// The "WEEKLY PRICES · W/C MONDAY · N UNITS" heading, echoing the unit list and summary
 /// headings' dim label / dim tag pattern.
-fn render_weekly_prices_heading(frame: &mut Frame, area: Rect) {
+fn render_weekly_prices_heading(frame: &mut Frame<'_>, area: Rect) {
     let tag = msg::tui_units_weekly_prices_tag(FAKE_UNITS_HELD);
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -767,7 +767,7 @@ fn render_weekly_prices_heading(frame: &mut Frame, area: Rect) {
 }
 
 /// The `W/C`/`CLOSE`/`Δ%`/`MARKET VALUE` column header row, dim.
-fn render_weekly_prices_column_header(frame: &mut Frame, area: Rect) {
+fn render_weekly_prices_column_header(frame: &mut Frame<'_>, area: Rect) {
     let columns = weekly_price_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
@@ -804,7 +804,7 @@ fn render_weekly_prices_column_header(frame: &mut Frame, area: Rect) {
 /// fit `area` — asking `Layout::split` for more `Length(1)` rows than available height makes
 /// it visibly skip/overlap rows rather than truncate cleanly, and the scrollbar already
 /// signals that more weeks exist than fit on screen.
-fn render_weekly_price_rows(frame: &mut Frame, area: Rect, rows: &[WeeklyPriceRow]) {
+fn render_weekly_price_rows(frame: &mut Frame<'_>, area: Rect, rows: &[WeeklyPriceRow]) {
     let visible = rows.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
         std::iter::repeat_n(Constraint::Length(1), visible).collect();
@@ -820,7 +820,12 @@ fn render_weekly_price_rows(frame: &mut Frame, area: Rect, rows: &[WeeklyPriceRo
 
 /// One weekly price row: `W/C`/`CLOSE`/`Δ%`/`MARKET VALUE` per the pasted design reference. A
 /// negative `Δ%` renders in the accent colour; the selected (most recent) row reverses.
-fn render_weekly_price_row(frame: &mut Frame, area: Rect, row: &WeeklyPriceRow, selected: bool) {
+fn render_weekly_price_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    row: &WeeklyPriceRow,
+    selected: bool,
+) {
     if selected {
         frame.render_widget(
             Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
@@ -866,7 +871,7 @@ fn weekly_price_columns(area: Rect) -> [Rect; 4] {
 /// The command/keybind hints box (bottom right): the single-key hints for navigating and
 /// acting on the highlighted unit, then the `:` commands that do the same from the command
 /// line — how to use the units screen at a glance.
-fn render_keybind_hints(frame: &mut Frame, area: Rect) {
+fn render_keybind_hints(frame: &mut Frame<'_>, area: Rect) {
     let command_hints = [
         msg::tui_units_command_new(),
         msg::tui_units_command_edit(),
@@ -894,7 +899,7 @@ fn render_keybind_hints(frame: &mut Frame, area: Rect) {
 }
 
 /// `KEY_HINTS` as one line: each key bold, its label dim, separated by a dim `·`.
-fn render_key_hints(frame: &mut Frame, area: Rect) {
+fn render_key_hints(frame: &mut Frame<'_>, area: Rect) {
     let bold = Style::default().add_modifier(Modifier::BOLD);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
@@ -924,7 +929,7 @@ fn render_key_hints(frame: &mut Frame, area: Rect) {
 /// The weekly close candlestick chart (top right): `chandelier`'s `CandlestickChart`
 /// (ADR-0002, `crates/bins/bin-tui/src/screen/candlestick_chart.rs`) over deterministic fake
 /// weekly OHLC data — real price history isn't wired up yet.
-fn render_weekly_close(frame: &mut Frame, area: Rect, candles: &[Candle]) {
+fn render_weekly_close(frame: &mut Frame<'_>, area: Rect, candles: &[Candle]) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -942,7 +947,7 @@ fn render_weekly_close(frame: &mut Frame, area: Rect, candles: &[Candle]) {
 }
 
 /// The "WEEKLY CLOSE · VDHG" heading, echoing the other boxes' dim label / dim tag pattern.
-fn render_weekly_close_heading(frame: &mut Frame, area: Rect) {
+fn render_weekly_close_heading(frame: &mut Frame<'_>, area: Rect) {
     let tag = msg::tui_units_weekly_close_tag();
     let columns = Layout::default()
         .direction(Direction::Horizontal)

@@ -171,7 +171,7 @@ impl EditPopup {
 
     /// Renders the floating overlay, centred and fixed-height (no dynamic preview, unlike
     /// Move/New), within `area`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn CategoryStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn CategoryStore) {
         let Some(node) = store.find(self.editing_id) else {
             return;
         };
@@ -293,7 +293,7 @@ fn dim() -> Style {
 
 /// The title row: "edit" flush left, the `:category edit` command tag dim and right-aligned —
 /// replaced by the "not yet built" fallback while `X` was just pressed.
-fn render_title(frame: &mut Frame, area: Rect, show_not_yet_built: bool) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, show_not_yet_built: bool) {
     let tag = if show_not_yet_built {
         ":category merge — not yet built".to_string()
     } else {
@@ -313,7 +313,7 @@ fn render_title(frame: &mut Frame, area: Rect, show_not_yet_built: bool) {
     );
 }
 
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -322,7 +322,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
-fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
         spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
@@ -330,7 +330,7 @@ fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, fo
     render_field(frame, area, label, Line::from(spans));
 }
 
-fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: bool) {
+fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
     let glyph_style = if focused {
         Style::default().fg(ACCENT)
     } else {
@@ -349,7 +349,7 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
     );
 }
 
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     let hints = [
         ("tab", msg::tui_category_edit_help_tab()),
         ("^s", msg::tui_category_edit_help_save()),

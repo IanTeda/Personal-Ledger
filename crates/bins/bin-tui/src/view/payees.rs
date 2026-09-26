@@ -419,10 +419,10 @@ impl View for PayeesView {
             Action::SetPayeeActive { id, active } => {
                 let _ = self.store.set_active(*id, *active);
             }
-            // `#[allow]`: mirrors `view::accounts::AccountsView::update`'s own identical
-            // rationale for `Action::DeleteAccount` — kept as a plain nested `if` since this
-            // is the mutation, not a pure predicate clippy's own guard suggestion would imply.
-            #[allow(clippy::collapsible_match)]
+            #[expect(
+                clippy::collapsible_match,
+                reason = "clippy's fix moves the delete into a match guard, disguising the mutation as a predicate; see AccountsView::update"
+            )]
             Action::DeletePayee(id) => {
                 if self.store.delete(*id).is_ok() {
                     self.recover_selection();
@@ -432,7 +432,7 @@ impl View for PayeesView {
         }
     }
 
-    fn view(&self, frame: &mut Frame, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -468,7 +468,7 @@ impl View for PayeesView {
 }
 
 impl PayeesView {
-    fn render_left_pane(&self, frame: &mut Frame, area: Rect) {
+    fn render_left_pane(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -485,7 +485,7 @@ impl PayeesView {
         self.render_record(frame, rows[3]);
     }
 
-    fn render_list(&self, frame: &mut Frame, area: Rect) {
+    fn render_list(&self, frame: &mut Frame<'_>, area: Rect) {
         let split = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -517,7 +517,7 @@ impl PayeesView {
         frame.render_stateful_widget(scrollbar, scrollbar_column, &mut scrollbar_state);
     }
 
-    fn render_list_row(&self, frame: &mut Frame, area: Rect, payee: &Payee) {
+    fn render_list_row(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee) {
         let is_selected = payee.id == self.selected;
         if is_selected {
             frame.render_widget(
@@ -580,7 +580,7 @@ impl PayeesView {
     /// The record box beneath the list, for whichever Payee is selected — see the handoff's
     /// own worked Woolworths example (`docs/ux/tui/payees/README.md` "the selected payee's
     /// record").
-    fn render_record(&self, frame: &mut Frame, area: Rect) {
+    fn render_record(&self, frame: &mut Frame<'_>, area: Rect) {
         let block = Block::bordered().padding(Padding::horizontal(1));
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -661,7 +661,7 @@ impl PayeesView {
 
     /// The right pane: category mix, then transactions — nothing renders when no Payee is
     /// selected (an all-filtered-out list), mirroring `view::tags`'s own identical fallback.
-    fn render_right_pane(&self, frame: &mut Frame, area: Rect) {
+    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect) {
         let Some(payee) = self.selected_payee() else {
             return;
         };
@@ -682,7 +682,7 @@ impl PayeesView {
     /// The category mix, biggest first, as proportional block-glyph bars — this is the
     /// justification for the default category, per the handoff's own "it is why `c` sits next
     /// to it".
-    fn render_category_mix(&self, frame: &mut Frame, area: Rect, payee: &Payee) {
+    fn render_category_mix(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -744,7 +744,7 @@ impl PayeesView {
 
     /// The Payee's transaction rows, newest first, capped to [`TRANSACTIONS_VISIBLE_ROWS`] —
     /// mirrors `view::accounts::render_ledger`'s own column/heading/footer shape.
-    fn render_transactions(&self, frame: &mut Frame, area: Rect, payee: &Payee) {
+    fn render_transactions(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee) {
         let all_rows = self.store.transactions(payee.id);
         let total = all_rows.len();
         let visible_count = all_rows.len().min(TRANSACTIONS_VISIBLE_ROWS);
@@ -799,7 +799,7 @@ impl PayeesView {
     /// "exactly one of the possibilities" shape.
     fn render_transactions_footer(
         &self,
-        frame: &mut Frame,
+        frame: &mut Frame<'_>,
         area: Rect,
         payee: &Payee,
         rows: &[PayeeTransaction],
@@ -844,7 +844,7 @@ fn list_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect) {
     (columns[0], columns[1], columns[2], columns[3])
 }
 
-fn render_list_column_header(frame: &mut Frame, area: Rect) {
+fn render_list_column_header(frame: &mut Frame<'_>, area: Rect) {
     let (_, name, matches, total) = list_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(Paragraph::new(Span::styled("NAME", dim)), name);
@@ -860,7 +860,7 @@ fn render_list_column_header(frame: &mut Frame, area: Rect) {
 
 /// `· no default category   ! conflicting match` — the flag column's legend, per the
 /// handoff's own "A legend row sits under the list; without it the glyphs are noise."
-fn render_legend(frame: &mut Frame, area: Rect) {
+fn render_legend(frame: &mut Frame<'_>, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let text = "· no default category   ! conflicting match";
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
@@ -882,7 +882,7 @@ fn format_month(date: chrono::NaiveDate) -> String {
 
 /// A section heading row shared by both right-pane widgets: the label flush left (dim), a
 /// short dim tag right-aligned — mirrors `view::tags::render_section_heading`.
-fn render_section_heading(frame: &mut Frame, area: Rect, label: &str, tag: &str) {
+fn render_section_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -902,7 +902,7 @@ fn render_section_heading(frame: &mut Frame, area: Rect, label: &str, tag: &str)
 /// cells, `▌` a half-cell remainder — the handoff's own two glyphs, giving the bar half-cell
 /// resolution rather than just rounding to the nearest whole cell) plus its percentage, and the
 /// right-aligned signed amount.
-fn render_mix_bar(frame: &mut Frame, area: Rect, label: &str, share: f64, amount: &Money) {
+fn render_mix_bar(frame: &mut Frame<'_>, area: Rect, label: &str, share: f64, amount: &Money) {
     let pct = (share * 100.0).round() as i64;
     let scaled = share * BAR_MAX_CELLS as f64;
     let full_cells = scaled.floor() as usize;
@@ -944,7 +944,7 @@ fn render_mix_bar(frame: &mut Frame, area: Rect, label: &str, share: f64, amount
 /// with no default and a mix spread across several categories is the handoff's own "should have
 /// no default at all" case, stated plainly rather than flagged as wrong.
 fn render_default_agreement_line(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     area: Rect,
     payee: &Payee,
     mix: &[PayeeCategoryShare],
@@ -992,7 +992,7 @@ fn txn_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect) {
     (columns[0], columns[1], columns[2], columns[3])
 }
 
-fn render_txn_column_header(frame: &mut Frame, area: Rect) {
+fn render_txn_column_header(frame: &mut Frame<'_>, area: Rect) {
     let (_, date, category, amount) = txn_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
@@ -1010,7 +1010,7 @@ fn render_txn_column_header(frame: &mut Frame, area: Rect) {
     );
 }
 
-fn render_txn_row(frame: &mut Frame, area: Rect, row: &PayeeTransaction) {
+fn render_txn_row(frame: &mut Frame<'_>, area: Rect, row: &PayeeTransaction) {
     let (glyph_area, date_area, category_area, amount_area) = txn_row_columns(area);
 
     frame.render_widget(Paragraph::new(row.status.glyph().to_string()), glyph_area);

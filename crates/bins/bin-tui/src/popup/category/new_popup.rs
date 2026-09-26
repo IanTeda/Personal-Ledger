@@ -161,7 +161,7 @@ impl NewPopup {
 
     /// Renders the floating overlay, centred and sized to its own dynamic content (the "lands
     /// as" preview's height varies with the resolved parent's child count), within `area`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn CategoryStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn CategoryStore) {
         let parent = self.resolved_parent(store);
         let preview_lines = preview_lines(store, parent, &self.name);
         let content_rows = 11 + preview_lines.len() as u16 + 5;
@@ -279,7 +279,7 @@ fn dim() -> Style {
 }
 
 /// The title row: "new" flush left, the `:category new` command dim and right-aligned.
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = ":category new";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -296,7 +296,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 }
 
 /// One `label   value` row.
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -307,7 +307,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
 
 /// One editable text field: the typed value, with a trailing accent cursor only when it has
 /// focus — the visual cue for which field `Tab`/typing currently reaches.
-fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
         spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
@@ -318,7 +318,7 @@ fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, fo
 /// The `active` checkbox row: the glyph in the accent when focused (this field has no cursor
 /// of its own to show focus with), the "offered when categorising" consequence stated
 /// alongside it either way, per the handoff's own "states the consequence".
-fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: bool) {
+fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
     let glyph_style = if focused {
         Style::default().fg(ACCENT)
     } else {
@@ -338,7 +338,12 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
 }
 
 /// The `completion` row beneath `parent` — mirrors the Move popup's own row verbatim.
-fn render_completion_row(frame: &mut Frame, area: Rect, store: &dyn CategoryStore, input: &str) {
+fn render_completion_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    store: &dyn CategoryStore,
+    input: &str,
+) {
     let candidates = completions(store, input);
     let text = if candidates.is_empty() {
         msg::tui_category_new_note_no_matches()
@@ -412,7 +417,7 @@ fn preview_lines<'a>(
     lines
 }
 
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     let hints = [
         ("tab", msg::tui_category_new_help_tab()),
         ("^s", msg::tui_category_new_help_create()),

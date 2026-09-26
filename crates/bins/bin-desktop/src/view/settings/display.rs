@@ -42,7 +42,10 @@ const PREVIEW_GLYPH_WIDTH: gpui::Pixels = px(18.0);
 const PREVIEW_DATE_WIDTH: gpui::Pixels = px(92.0);
 const PREVIEW_AMOUNT_WIDTH: gpui::Pixels = px(96.0);
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a stateless GPUI render fn takes each value and handler it wires; a props struct would only rename the list"
+)]
 pub fn render(
     date_style: Option<DateStyle>,
     row_density: RowDensity,
@@ -70,7 +73,10 @@ pub fn render(
         .into_any_element()
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a stateless GPUI render fn takes each value and handler it wires; a props struct would only rename the list"
+)]
 fn field_column(
     date_style: Option<DateStyle>,
     row_density: RowDensity,

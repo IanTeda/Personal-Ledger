@@ -160,7 +160,7 @@ impl DeletePayeePopup {
     }
 
     /// Renders the floating overlay, centred and fixed-height, within `area`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
         let Some(payee) = store.find(self.deleting_id) else {
             return;
         };
@@ -336,7 +336,7 @@ fn dim() -> Style {
     Style::default().add_modifier(Modifier::DIM)
 }
 
-fn render_title(frame: &mut Frame, area: Rect, name: &str) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, name: &str) {
     let tag = ":payee delete";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -352,7 +352,7 @@ fn render_title(frame: &mut Frame, area: Rect, name: &str) {
     );
 }
 
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -363,7 +363,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
 
 /// A continuation line indented to align under the value column, with no label of its own —
 /// mirrors `popup::account::delete::plain_row_indented`.
-fn render_indented(frame: &mut Frame, area: Rect, value: Line<'static>) {
+fn render_indented(frame: &mut Frame<'_>, area: Rect, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -371,7 +371,7 @@ fn render_indented(frame: &mut Frame, area: Rect, value: Line<'static>) {
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
-fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
         spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
@@ -379,7 +379,7 @@ fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, fo
     render_field(frame, area, label, Line::from(spans));
 }
 
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     const HINTS: &[(&str, &str)] = &[
         ("tab", "next field"),
         ("^s", "confirm"),

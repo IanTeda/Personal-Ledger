@@ -114,7 +114,7 @@ impl View for SettingsView {
 
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -147,7 +147,7 @@ impl View for SettingsView {
 /// reset block — pinning "where values live" and reset to the bottom of the pane, the same
 /// "extra height grows the element above, not a fixed-height one" technique `view::units` uses
 /// for its own summary box.
-fn render_left_pane(frame: &mut Frame, area: Rect) {
+fn render_left_pane(frame: &mut Frame<'_>, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -214,7 +214,7 @@ const GROUPS: &[GroupRow] = &[
 
 /// The groups list: a "GROUPS" heading over the seven group rows, the selected row a
 /// full-width reversed block per §4a.
-fn render_groups(frame: &mut Frame, area: Rect) {
+fn render_groups(frame: &mut Frame<'_>, area: Rect) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -245,7 +245,7 @@ fn render_groups(frame: &mut Frame, area: Rect) {
 
 /// One group row: label flush left, count right-aligned. The selected group (`general`)
 /// reverses full width, per the shell's "reversed for the selected row" style role.
-fn render_group_row(frame: &mut Frame, area: Rect, group: &GroupRow) {
+fn render_group_row(frame: &mut Frame<'_>, area: Rect, group: &GroupRow) {
     if group.selected {
         frame.render_widget(
             Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
@@ -281,7 +281,7 @@ struct WhereValuesFact {
 /// worked example verbatim — the model stated on screen, because a user cannot otherwise tell
 /// where a value came from. The border echoes `view::units`'s summary box, so both left-column
 /// boxes read as the same kind of element.
-fn render_where_values_live(frame: &mut Frame, area: Rect) {
+fn render_where_values_live(frame: &mut Frame<'_>, area: Rect) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -321,7 +321,7 @@ fn render_where_values_live(frame: &mut Frame, area: Rect) {
             accent: false,
         },
     ];
-    let mut lines: Vec<Line> = vec![
+    let mut lines: Vec<Line<'_>> = vec![
         Line::from(Span::styled("ledger.db · table", dim)),
         Line::from("settings"),
     ];
@@ -358,7 +358,7 @@ fn where_values_fact_line(fact: &WhereValuesFact) -> Line<'_> {
 /// The reset block: a "RESET" heading carrying the "deletes the row" note — the important
 /// word, since it tells the user reset is a deletion, not a write — then the `r`/`R` key
 /// hints, bold key / dim label matching the shell footer's own convention.
-fn render_reset(frame: &mut Frame, area: Rect) {
+fn render_reset(frame: &mut Frame<'_>, area: Rect) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -394,7 +394,7 @@ fn key_hint_line(key: &'static str, label: &'static str) -> Paragraph<'static> {
 }
 
 /// Render a hint row with key and dynamic label text.
-fn render_hint_row(frame: &mut Frame, area: Rect, key: &str, label: &str) {
+fn render_hint_row(frame: &mut Frame<'_>, area: Rect, key: &str, label: &str) {
     let bold = Style::default().add_modifier(Modifier::BOLD);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
@@ -410,7 +410,7 @@ fn render_hint_row(frame: &mut Frame, area: Rect, key: &str, label: &str) {
 /// A dim label / dim tag heading row, matching `view::units`'s own heading convention —
 /// shared by every box in this view. `tag` need not be `'static` — the settings table
 /// heading's own tag is computed fresh each render from `TABLE_ROWS.len()`.
-fn render_heading(frame: &mut Frame, area: Rect, label: &str, tag: &str) {
+fn render_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -450,7 +450,7 @@ fn rule(width: u16) -> Line<'static> {
 /// that 16, not for their own sake; touching `SELECTED_SECTION_HEIGHT`, `SETTINGS_TABLE_HEIGHT`
 /// or `WHERE_VALUES_SECTION_HEIGHT` will throw the alignment off and need a matching change
 /// here (or in `render_left_pane`) to restore it.
-fn render_right_pane(frame: &mut Frame, area: Rect) {
+fn render_right_pane(frame: &mut Frame<'_>, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -571,7 +571,7 @@ fn settings() -> Vec<SettingRow> {
 
 /// The settings list: a "SETTINGS" heading tagged with the focused group and its count, over
 /// the gutter/`SETTING`/`VALUE`/`NOTE` column set, per §4a.
-fn render_settings_list(frame: &mut Frame, area: Rect) {
+fn render_settings_list(frame: &mut Frame<'_>, area: Rect) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -594,7 +594,7 @@ fn render_settings_list(frame: &mut Frame, area: Rect) {
 }
 
 /// The gutter/`SETTING`/`VALUE`/`NOTE` column header row, dim — the gutter carries no label.
-fn render_settings_column_header(frame: &mut Frame, area: Rect) {
+fn render_settings_column_header(frame: &mut Frame<'_>, area: Rect) {
     let columns = setting_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
 
@@ -611,7 +611,7 @@ fn render_settings_column_header(frame: &mut Frame, area: Rect) {
 
 /// One row per `general` setting, capped to however many rows actually fit `area` — the same
 /// defensive cap `view::units`'s own row renderers use.
-fn render_setting_rows(frame: &mut Frame, area: Rect) {
+fn render_setting_rows(frame: &mut Frame<'_>, area: Rect) {
     let settings = settings();
     let visible = settings.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
@@ -628,7 +628,7 @@ fn render_setting_rows(frame: &mut Frame, area: Rect) {
 
 /// One setting row: the override gutter, `SETTING`, `VALUE` (dim unless selected) and `NOTE`
 /// (always dim). The selected row (`base unit`) reverses full width.
-fn render_setting_row(frame: &mut Frame, area: Rect, setting: &SettingRow) {
+fn render_setting_row(frame: &mut Frame<'_>, area: Rect, setting: &SettingRow) {
     if setting.selected {
         frame.render_widget(
             Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
@@ -715,7 +715,7 @@ const SELECTED_FACTS: &[SelectedFact] = &[
 
 /// The "selected" box: a heading tagged with the highlighted setting, the `explain` prose,
 /// then the ruled facts block — `default` / `accepts` / `changing it`, per §4a.
-fn render_selected(frame: &mut Frame, area: Rect) {
+fn render_selected(frame: &mut Frame<'_>, area: Rect) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -793,7 +793,7 @@ const TABLE_ROWS: &[TableRow] = &[
 /// ledger show" now that there is no config file to diff. A scrollbar rides the right edge
 /// since more rows exist than `SETTINGS_TABLE_SHOWN` — signalling the truncation the heading's
 /// tag already states in words.
-fn render_settings_table(frame: &mut Frame, area: Rect) {
+fn render_settings_table(frame: &mut Frame<'_>, area: Rect) {
     let split = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -871,7 +871,7 @@ fn table_row_columns(area: Rect) -> [Rect; 3] {
 /// matches `view::units`'s wider `LEFT_COLUMN_WIDTH`.
 const COMMAND_HINT: &str = ":set base <unit> · :settings log";
 
-fn render_command_hint(frame: &mut Frame, area: Rect) {
+fn render_command_hint(frame: &mut Frame<'_>, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(Paragraph::new(Span::styled(COMMAND_HINT, dim)), area);
 }

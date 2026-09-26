@@ -33,7 +33,10 @@
 //! Bulk operations (e.g., [`insert_many`](insert::Categories::insert_many), [`update_many`](update::Categories::update_many)) use transactions for atomicity.
 //! Avoid creating categories in hot paths; use builders for test data only.
 
-#![allow(unused)] // For development only
+#![allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 
 mod builder;
 mod delete;
@@ -57,5 +60,8 @@ pub use model::Categories;
 /// Useful for tests, fixtures, and data seeding.
 ///
 /// See the builder module for implementation details.
-#[allow(unused)]
+#[allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 pub use builder::CategoriesBuilder;

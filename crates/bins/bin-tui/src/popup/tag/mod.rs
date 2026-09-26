@@ -24,7 +24,7 @@ impl TagPopup {
     /// Renders whichever form is open, against the live Tag list `store` — `new`'s and
     /// `edit`'s uniqueness validation both need read access to it, mirroring
     /// `AccountPopup::render`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn TagStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn TagStore) {
         match self {
             TagPopup::New(popup) => popup.render(frame, area, store),
             TagPopup::Edit(popup) => popup.render(frame, area, store),

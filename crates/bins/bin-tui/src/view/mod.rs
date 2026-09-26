@@ -571,7 +571,7 @@ pub trait View {
 
     /// Renders the view into the given area of the frame — the full-bleed view region below
     /// the status line and above the command line.
-    fn view(&self, frame: &mut Frame, area: Rect);
+    fn view(&self, frame: &mut Frame<'_>, area: Rect);
 
     /// This view's stable id, which `Shell` navigates on.
     fn id(&self) -> ViewId;

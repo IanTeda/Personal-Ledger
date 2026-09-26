@@ -59,7 +59,7 @@ impl BaseUnitGuardPopup {
     /// Renders the floating overlay, anchored in the top third of `area` (the full terminal
     /// area) per §4c's own "anchored in the top third" — distinct from `popup::unit`'s forms,
     /// which centre vertically too but via the same `popup_rect` shape.
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -98,7 +98,7 @@ impl BaseUnitGuardPopup {
 
 /// The title row: `base unit  AUD → USD` flush left, `:set base` dim and right-aligned — §4c's
 /// own "Header: `base unit AUD → USD` with `:set base` right-aligned".
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = ":set base";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -118,7 +118,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 
 /// The body's three prose lines, stating the cost before the facts do — §4c's own "prose
 /// first ... then the facts".
-fn render_prose(frame: &mut Frame, area: Rect) {
+fn render_prose(frame: &mut Frame<'_>, area: Rect) {
     // One Message for the whole paragraph, wrapped across the three rows -- a sentence is never
     // split into a Message per rendered line, so the widget does the wrapping.
     frame.render_widget(
@@ -129,7 +129,7 @@ fn render_prose(frame: &mut Frame, area: Rect) {
 
 /// One `label   value` fact row, the label dim and fixed-width; `accent` styles the value for
 /// the one fact §4c marks (`missing rates`).
-fn render_fact(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>, accent: bool) {
+fn render_fact(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, accent: bool) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -147,7 +147,7 @@ fn render_fact(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>,
 
 /// The six resolved impact figures — §4c's own worked example verbatim, each "resolved by
 /// query" against real data in the eventual build.
-fn render_impact_facts(frame: &mut Frame, area: Rect) {
+fn render_impact_facts(frame: &mut Frame<'_>, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -211,7 +211,7 @@ fn render_impact_facts(frame: &mut Frame, area: Rect) {
 /// The missing-rates box — a plain bordered `Block` naming the gap this dialog exists to
 /// prevent and offering the fix as a first-class option, per §4c's own "name the count and the
 /// range, then offer the fix as a first-class option rather than an error".
-fn render_missing_rates_box(frame: &mut Frame, area: Rect) {
+fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect) {
     let block = Block::bordered();
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -240,7 +240,7 @@ fn render_missing_rates_box(frame: &mut Frame, area: Rect) {
 /// The typed-confirmation box — an accent-bordered focused input, matching the delete
 /// confirmation convention on the unit forms per §4c's own "matching the delete-confirmation
 /// convention on the unit forms".
-fn render_confirmation_box(frame: &mut Frame, area: Rect) {
+fn render_confirmation_box(frame: &mut Frame<'_>, area: Rect) {
     let accent = Style::default().fg(ACCENT);
     let block = Block::bordered().border_style(accent);
     let inner = block.inner(area);
@@ -258,7 +258,7 @@ fn render_confirmation_box(frame: &mut Frame, area: Rect) {
 
 /// The window footer hint row: each key bold, its label dim — §4c's own "Keys: `enter` commit
 /// and re-convert · `i` import first · `esc` cancel".
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     const HINTS: &[(&str, &str)] = &[
         ("enter", "commit and re-convert"),
         ("i", "import first"),

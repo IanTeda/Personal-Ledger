@@ -16,7 +16,6 @@
 mod commands;
 
 pub use commands::CommandId;
-#[cfg(test)]
 pub use commands::DOMAINS;
 
 use ratatui::{
@@ -321,8 +320,8 @@ impl CommandPopup {
     /// once you're typing you already know what you want, so ranking beats grouping.
     fn rows(&self) -> Vec<Row> {
         if self.input.is_empty() {
-            let mut rows = Vec::with_capacity(commands::total_commands() + commands::DOMAINS.len());
-            for domain in commands::DOMAINS {
+            let mut rows = Vec::with_capacity(commands::total_commands() + DOMAINS.len());
+            for domain in DOMAINS {
                 let name = (domain.name)();
                 rows.push(Row::Header(name.clone()));
                 for command in domain.commands {
@@ -378,7 +377,7 @@ impl CommandPopup {
     /// just the view region, per §3a's "centred floating overlay"). The info row (`info_row`)
     /// adds exactly one row when present — a zero-arg command with no "not yet built" message
     /// showing renders no info row at all, and the popup is correspondingly one row shorter.
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = self.rows();
         let info_row = self.info_row();
         let extra_row: u16 = if info_row.is_some() { 1 } else { 0 };
@@ -431,7 +430,7 @@ impl CommandPopup {
     /// The info row itself: the "not yet built" message renders plainly, the argument preview
     /// dim (matching the footer hint labels' own dim treatment) so it reads as secondary to
     /// the candidate list above it.
-    fn render_info_row(&self, frame: &mut Frame, area: Rect, text: &str, is_message: bool) {
+    fn render_info_row(&self, frame: &mut Frame<'_>, area: Rect, text: &str, is_message: bool) {
         let style = if is_message {
             Style::default()
         } else {
@@ -453,7 +452,7 @@ impl CommandPopup {
 
     /// The scrollable body: domain headers (resting state only) and `:command  <binding>
     /// description` rows, the selected row a full-width reversed block per §3a.
-    fn render_body(&self, frame: &mut Frame, area: Rect, rows: &[Row], scroll_offset: usize) {
+    fn render_body(&self, frame: &mut Frame<'_>, area: Rect, rows: &[Row], scroll_offset: usize) {
         let body_height = area.height as usize;
         if body_height == 0 || rows.is_empty() {
             return;
@@ -651,7 +650,7 @@ fn popup_rect(area: Rect, height: u16) -> Rect {
 /// bigger than the floating window. Hidden when everything already fits, so a short filtered
 /// list doesn't grow a scrollbar it doesn't need.
 fn render_scrollbar(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     popup: Rect,
     body: Rect,
     total_rows: usize,
@@ -748,7 +747,7 @@ mod tests {
             .iter()
             .filter(|row| matches!(row, Row::Header(_)))
             .count();
-        assert_eq!(header_count, commands::DOMAINS.len());
+        assert_eq!(header_count, DOMAINS.len());
     }
 
     #[test]

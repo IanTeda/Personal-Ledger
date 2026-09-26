@@ -197,7 +197,10 @@ impl EditPayeePopup {
     /// The `(id, name, website, icon_url, icon_derived, default_category_path, active)` `^s`
     /// would save, or `None` while the draft doesn't validate — an empty `name`, or one that
     /// collides with another Payee.
-    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::type_complexity,
+        reason = "a one-off tuple of the draft's validated fields, destructured at its single call site"
+    )]
     fn fields(
         &self,
         store: &dyn PayeeStore,
@@ -238,7 +241,10 @@ impl EditPayeePopup {
     }
 
     /// The fields `^s` would save, as typed.
-    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::type_complexity,
+        reason = "a one-off tuple of the draft's validated fields, destructured at its single call site"
+    )]
     pub fn save_fields(
         &self,
         store: &dyn PayeeStore,
@@ -257,7 +263,10 @@ impl EditPayeePopup {
     /// The fields `^a` would save — the draft as typed, but with `active` forced `false`
     /// regardless of the checkbox's own current value, mirroring
     /// `popup::account::edit::EditAccountPopup::deactivate_fields`.
-    #[allow(clippy::type_complexity)]
+    #[expect(
+        clippy::type_complexity,
+        reason = "a one-off tuple of the draft's validated fields, destructured at its single call site"
+    )]
     pub fn deactivate_fields(
         &self,
         store: &dyn PayeeStore,
@@ -274,7 +283,7 @@ impl EditPayeePopup {
     }
 
     /// Renders the floating overlay, centred and fixed-height, within `area`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
         let Some(payee) = store.find(self.editing_id) else {
             return;
         };
@@ -358,7 +367,7 @@ fn dim() -> Style {
     Style::default().add_modifier(Modifier::DIM)
 }
 
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = ":payee edit";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -374,7 +383,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
     );
 }
 
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -383,7 +392,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
-fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
         spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
@@ -394,7 +403,7 @@ fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, fo
 /// `name`, boxed and captioned — the handoff's own "the form must never let this be a
 /// surprise". A real bordered `Block`, not just an accented label: the visual weight is the
 /// point.
-fn render_name_box(frame: &mut Frame, area: Rect, name: &str, focused: bool) {
+fn render_name_box(frame: &mut Frame<'_>, area: Rect, name: &str, focused: bool) {
     let border_style = if focused {
         Style::default().fg(ACCENT)
     } else {
@@ -418,7 +427,7 @@ fn render_name_box(frame: &mut Frame, area: Rect, name: &str, focused: bool) {
 /// The three-line `on save` block beneath the name box — exactly one of "empty"/"no rename
 /// pending"/a named collision/the real rename consequence, per [`RenameStatus`].
 fn render_rename_preview(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     rows: [Rect; 3],
     status: &RenameStatus,
     current_name: &str,
@@ -470,7 +479,7 @@ fn render_rename_preview(
     }
 }
 
-fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: bool) {
+fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
     let glyph_style = if focused {
         Style::default().fg(ACCENT)
     } else {
@@ -489,7 +498,7 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
     );
 }
 
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     const HINTS: &[(&str, &str)] = &[
         ("tab", "next field"),
         ("^s", "save"),

@@ -171,7 +171,7 @@ fn words() -> Vec<(String, i64)> {
 
 /// Reads typed input with the default options: the Locale's short form, ISO and words, with a
 /// required year.
-pub fn parse_date(text: &str, today: NaiveDate) -> std::result::Result<NaiveDate, DateInputError> {
+pub fn parse_date(text: &str, today: NaiveDate) -> Result<NaiveDate, DateInputError> {
     parse_date_with(text, today, &DateInputOptions::default())
 }
 
@@ -181,7 +181,7 @@ pub fn parse_date_with(
     text: &str,
     today: NaiveDate,
     options: &DateInputOptions,
-) -> std::result::Result<NaiveDate, DateInputError> {
+) -> Result<NaiveDate, DateInputError> {
     let shape = if options.style == Some(DateStyle::Iso) {
         None
     } else {
@@ -196,7 +196,7 @@ fn parse_with(
     allow_yearless: bool,
     shape: Option<Shape>,
     words: &[(String, i64)],
-) -> std::result::Result<NaiveDate, DateInputError> {
+) -> Result<NaiveDate, DateInputError> {
     let text = text.trim().to_lowercase();
     if text.is_empty() {
         return Err(DateInputError::Empty);
@@ -289,7 +289,7 @@ fn number(part: &str) -> i64 {
 
 /// Years must be four digits: a two-digit year is ambiguous about the century, and a ledger
 /// should reject it rather than guess.
-fn expand_year(part: &str) -> std::result::Result<i64, DateInputError> {
+fn expand_year(part: &str) -> Result<i64, DateInputError> {
     if part.len() == 4 {
         Ok(number(part))
     } else {
@@ -297,7 +297,7 @@ fn expand_year(part: &str) -> std::result::Result<i64, DateInputError> {
     }
 }
 
-fn build(year: i64, month: i64, day: i64) -> std::result::Result<NaiveDate, DateInputError> {
+fn build(year: i64, month: i64, day: i64) -> Result<NaiveDate, DateInputError> {
     let year = i32::try_from(year).map_err(|_| DateInputError::OutOfRange(DateField::Year))?;
     let month = u32::try_from(month).ok().filter(|m| (1..=12).contains(m));
     let Some(month) = month else {

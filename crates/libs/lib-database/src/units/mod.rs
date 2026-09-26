@@ -14,7 +14,10 @@
 //! | [`update`](update) | Update a Unit's details, or its active flag |
 //! | [`delete`](delete) | Delete a Unit individually or in batch |
 
-#![allow(unused)] // For development only
+#![allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 
 mod builder;
 mod delete;
@@ -27,5 +30,8 @@ mod update;
 pub use model::Units;
 
 /// Fluent builder for constructing [`Units`] instances.
-#[allow(unused)]
+#[allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 pub use builder::UnitsBuilder;

@@ -209,7 +209,6 @@ pub trait PayeeStore {
 
     /// Creates a new Payee, or `Err(PayeeError::DuplicateName)` on a case-insensitive name
     /// clash (active or not).
-    #[allow(clippy::too_many_arguments)]
     fn create(
         &mut self,
         name: String,

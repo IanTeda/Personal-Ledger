@@ -79,7 +79,7 @@ pub fn rollup_budget(
         let mut total = BigDecimal::from(0);
         for child_id in children {
             if let Some(Money(amount)) = rollup_budget(budgets, categories, child_id, unit_id) {
-                total = total + amount;
+                total += amount;
             }
         }
         Some(Money(total))

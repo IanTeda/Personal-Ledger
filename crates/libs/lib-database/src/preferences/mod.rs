@@ -18,7 +18,10 @@
 //! `updated_on` trigger) but not wired into any sync mechanism yet -- no entity currently
 //! emits a Change Set on write, not even `units`/`accounts`.
 
-#![allow(unused)] // For development only
+#![allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 
 mod builder;
 mod find;
@@ -29,5 +32,8 @@ mod update;
 pub use model::Preferences;
 
 /// Fluent builder for constructing [`Preferences`] instances.
-#[allow(unused)]
+#[allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 pub use builder::PreferencesBuilder;

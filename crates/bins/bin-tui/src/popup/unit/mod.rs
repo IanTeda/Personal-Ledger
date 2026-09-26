@@ -21,7 +21,7 @@ pub enum UnitPopup {
 
 impl UnitPopup {
     /// Renders whichever form is open — see each variant's own `render` for its layout.
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         match self {
             UnitPopup::New(popup) => popup.render(frame, area),
             UnitPopup::Edit(popup) => popup.render(frame, area),

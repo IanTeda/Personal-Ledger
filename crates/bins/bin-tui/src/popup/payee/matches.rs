@@ -241,7 +241,7 @@ impl PayeeMatchesPopup {
     }
 
     /// Renders the floating overlay, centred and fixed-height, within `area`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
         let Some(payee) = store.find(self.payee_id) else {
             return;
         };
@@ -314,7 +314,7 @@ impl PayeeMatchesPopup {
         render_footer_hints(frame, rows[19], self.compose.as_ref().map(|c| c.kind));
     }
 
-    fn render_list(&self, frame: &mut Frame, area: Rect, store: &dyn PayeeStore) {
+    fn render_list(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
         let aliases = store.aliases(self.payee_id);
         let shown = aliases.len().min(MAX_LIST_ROWS);
         let row_areas = Layout::default()
@@ -363,7 +363,7 @@ impl PayeeMatchesPopup {
         }
     }
 
-    fn render_compose(&self, frame: &mut Frame, rows: [Rect; 4], store: &dyn PayeeStore) {
+    fn render_compose(&self, frame: &mut Frame<'_>, rows: [Rect; 4], store: &dyn PayeeStore) {
         let Some(compose) = &self.compose else {
             render_compose_hint(frame, rows[0]);
             return;
@@ -417,7 +417,7 @@ impl PayeeMatchesPopup {
 
 /// Shown in the compose block's first row while nothing is being composed — the footer hints
 /// already state `a`/`e`/`t`, so this just points at the block itself being where they land.
-fn render_compose_hint(frame: &mut Frame, area: Rect) {
+fn render_compose_hint(frame: &mut Frame<'_>, area: Rect) {
     frame.render_widget(
         Paragraph::new(Span::styled("(a/e/t opens this box)", dim())),
         area,
@@ -428,7 +428,7 @@ fn dim() -> Style {
     Style::default().add_modifier(Modifier::DIM)
 }
 
-fn render_title(frame: &mut Frame, area: Rect, payee_name: &str) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, payee_name: &str) {
     let tag = ":payee match";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -444,7 +444,7 @@ fn render_title(frame: &mut Frame, area: Rect, payee_name: &str) {
     );
 }
 
-fn render_column_header(frame: &mut Frame, area: Rect) {
+fn render_column_header(frame: &mut Frame<'_>, area: Rect) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -464,7 +464,7 @@ fn render_column_header(frame: &mut Frame, area: Rect) {
 }
 
 /// One `label   value` compose row — mirrors `popup::account::new::render_field`.
-fn render_compose_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_compose_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(8), Constraint::Min(0)])
@@ -476,7 +476,7 @@ fn render_compose_field(frame: &mut Frame, area: Rect, label: &str, value: Line<
 /// The two-line conflict block — blank when `payee_id` has no [`PayeeStore::conflict_partners`]
 /// right now.
 fn render_conflict_block(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     rows: [Rect; 2],
     payee_id: RowID,
     store: &dyn PayeeStore,
@@ -506,7 +506,7 @@ fn render_conflict_block(
     );
 }
 
-fn render_footer_hints(frame: &mut Frame, area: Rect, composing: Option<ComposeKind>) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, composing: Option<ComposeKind>) {
     let hints: &[(&str, &str)] = match composing {
         None => &[
             ("j/k", "match"),

@@ -1,4 +1,7 @@
-#![allow(unused)] // Allow unused code during development
+#![allow(
+    unused,
+    reason = "error variants are defined ahead of the call sites that will return them"
+)]
 
 /// Telemetry-specific error types for logging and tracing operations.
 ///

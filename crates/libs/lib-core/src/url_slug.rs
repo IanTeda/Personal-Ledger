@@ -115,7 +115,6 @@ impl UrlSlug {
     }
 
     /// Validate that a string is a valid slug.
-    #[allow(dead_code)]
     fn validate_slug(s: &str) -> Result<(), UrlSlugError> {
         if s.is_empty() {
             return Err(UrlSlugError::EmptySlug);
@@ -180,7 +179,10 @@ impl From<String> for UrlSlug {
     /// Panics if the string cannot be parsed as a valid UrlSlug.
     /// For fallible conversion, use `UrlSlug::parse()` or implement TryFrom.
     fn from(s: String) -> Self {
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "From<String> is the infallible convenience; callers with untrusted input use UrlSlug::parse"
+        )]
         let slug = UrlSlug::parse(s).expect("String must be parseable as a UrlSlug");
         slug
     }
@@ -194,7 +196,10 @@ impl From<&str> for UrlSlug {
     /// Panics if the string cannot be parsed as a valid UrlSlug.
     /// For fallible conversion, use `UrlSlug::parse()` or implement TryFrom.
     fn from(s: &str) -> Self {
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "From<&str> is the infallible convenience; callers with untrusted input use UrlSlug::parse"
+        )]
         let slug = UrlSlug::parse(s).expect("&str must be parseable as a UrlSlug");
         slug
     }

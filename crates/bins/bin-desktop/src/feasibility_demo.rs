@@ -38,7 +38,10 @@
 //! executor over a `tokio::sync::oneshot` channel (a plain future, needing no Tokio runtime
 //! context itself to await).
 
-#![allow(dead_code)] // Disconnected feasibility demo -- see the module doc and ADR-0016.
+#![allow(
+    dead_code,
+    reason = "disconnected feasibility demo -- see the module doc and ADR-0016"
+)]
 
 use clap::Parser;
 use gpui::{
@@ -329,7 +332,7 @@ impl TableDelegate for TransactionTableDelegate {
         row_ix: usize,
         col_ix: usize,
         _window: &mut Window,
-        cx: &mut Context<TableState<Self>>,
+        cx: &mut Context<'_, TableState<Self>>,
     ) -> impl IntoElement {
         let transaction = &self.transactions[row_ix];
         match col_ix {
@@ -419,7 +422,10 @@ async fn load_live_categories_from(url: String) -> Result<Vec<lib_database::Cate
 /// Tokio runtime handle for the actual `sqlx`/`lib-database` work (see the module doc for
 /// why), then reports the result back onto `DesktopApp`'s own entity state via `GPUI`'s
 /// executor once the `oneshot` channel resolves.
-fn spawn_live_categories_load(cx: &mut Context<DesktopApp>, tokio_handle: tokio::runtime::Handle) {
+fn spawn_live_categories_load(
+    cx: &mut Context<'_, DesktopApp>,
+    tokio_handle: tokio::runtime::Handle,
+) {
     cx.spawn(async move |this, cx| {
         let (tx, rx) = tokio::sync::oneshot::channel();
         tokio_handle.spawn(async move {
@@ -495,7 +501,7 @@ struct DesktopApp {
 }
 
 impl Render for DesktopApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
         let screen = self.screen;
         let selected_index = screen.index();

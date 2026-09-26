@@ -25,7 +25,7 @@ pub enum SettingsPopup {
 
 impl SettingsPopup {
     /// Renders whichever popup is open — see each variant's own `render` for its layout.
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         match self {
             SettingsPopup::Edit(popup) => popup.render(frame, area),
             SettingsPopup::BaseUnitGuard(popup) => popup.render(frame, area),

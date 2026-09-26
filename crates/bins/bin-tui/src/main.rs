@@ -36,7 +36,7 @@ pub use error::Error;
 /// Crate Result type alias used across the TUI binary.
 ///
 /// Use `TuiResult<T>` for functions that return `T` or a `TuiError`.
-pub type Result<T> = std::result::Result<T, crate::Error>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Personal Ledger TUI.
 #[derive(Parser)]

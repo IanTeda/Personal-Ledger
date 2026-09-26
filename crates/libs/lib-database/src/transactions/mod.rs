@@ -12,7 +12,10 @@
 //! | [`update`](update) | Update a Transaction's other fields (Reconciled-locked), or its Status/Flagged marker (always allowed) |
 //! | [`delete`](delete) | Delete a Transaction |
 
-#![allow(unused)] // For development only
+#![allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 
 mod builder;
 mod delete;
@@ -26,7 +29,10 @@ mod update;
 pub use model::Transactions;
 
 /// Fluent builder for constructing [`Transactions`] instances.
-#[allow(unused)]
+#[allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 pub use builder::TransactionsBuilder;
 
 /// What a per-entity totals report (Category-total, Payee-total, ...) scopes its

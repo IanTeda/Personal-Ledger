@@ -141,7 +141,8 @@ pub fn month_to_date_spent(
     today: chrono::NaiveDate,
 ) -> Money {
     let category_ids = descendants_inclusive(categories, category_id);
-    let month_start = today.with_day(1).expect("always valid");
+    // Stepping back `day0` days lands on the 1st without `with_day`'s Option.
+    let month_start = today - chrono::Duration::days(i64::from(today.day0()));
 
     let mut total = BigDecimal::from(0);
     for transaction in transactions {
@@ -153,7 +154,7 @@ pub fn month_to_date_spent(
         }
         for split in &transaction.splits {
             if category_ids.contains(&split.category_id) {
-                total = total + split.amount.0.clone();
+                total += split.amount.0.clone();
             }
         }
     }
@@ -181,7 +182,7 @@ pub fn rollup_month_to_date(
         for child_id in children {
             let Money(amount) =
                 month_to_date_spent(categories, transactions, accounts, child_id, today);
-            total = total + amount;
+            total += amount;
         }
         Money(total)
     }
@@ -287,17 +288,9 @@ impl CategoryForm {
 }
 
 /// A form for deleting a category: confirmation name.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct DeleteCategoryForm {
     pub confirmation_name: String,
-}
-
-impl Default for DeleteCategoryForm {
-    fn default() -> Self {
-        DeleteCategoryForm {
-            confirmation_name: String::new(),
-        }
-    }
 }
 
 impl DeleteCategoryForm {
@@ -430,7 +423,7 @@ pub fn insert_category(
 
 /// Edit a category's name (parent changes use `move_category`).
 pub fn edit_category(
-    categories: &mut Vec<Category>,
+    categories: &mut [Category],
     id: u32,
     name: String,
 ) -> Result<(), CategoryError> {
@@ -448,7 +441,7 @@ pub fn edit_category(
 /// - Depth must not exceed 3 levels
 /// - No cycles allowed
 pub fn move_category(
-    categories: &mut Vec<Category>,
+    categories: &mut [Category],
     id: u32,
     new_parent_id: Option<u32>,
 ) -> Result<(), CategoryError> {
@@ -482,7 +475,7 @@ pub fn move_category(
 
 /// Change a category's type and cascade to all descendants.
 pub fn change_category_type(
-    categories: &mut Vec<Category>,
+    categories: &mut [Category],
     id: u32,
     new_type: CategoryTypes,
 ) -> Result<(), CategoryError> {

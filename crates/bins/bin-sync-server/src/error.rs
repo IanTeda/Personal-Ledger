@@ -37,4 +37,4 @@ pub enum SyncServerError {
 /// Crate Result type alias used across the Sync Server binary.
 ///
 /// Use `SyncServerResult<T>` for functions that return `T` or a `SyncServerError`.
-pub type SyncServerResult<T> = std::result::Result<T, SyncServerError>;
+pub type SyncServerResult<T> = Result<T, SyncServerError>;

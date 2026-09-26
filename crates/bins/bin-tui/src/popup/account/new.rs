@@ -225,7 +225,7 @@ impl NewAccountPopup {
     }
 
     /// Renders the floating overlay, centred within `area`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn AccountStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -304,7 +304,7 @@ fn dim() -> Style {
 }
 
 /// The title row: "new account" flush left, the `:acct new` command dim and right-aligned.
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = ":acct new";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -321,7 +321,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 }
 
 /// One `label   value` row.
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -332,7 +332,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
 
 /// One editable text field: the typed value, with a trailing accent cursor only when it has
 /// focus.
-fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
         spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
@@ -343,7 +343,7 @@ fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, fo
 /// The `type` field's value: a segmented five-way control with the selected option rendered
 /// as a reversed pill (accented when focused, so `h`/`l` has a visible target), then the dim
 /// `· h/l` hint.
-fn render_type_field(frame: &mut Frame, area: Rect, selected: AccountType, focused: bool) {
+fn render_type_field(frame: &mut Frame<'_>, area: Rect, selected: AccountType, focused: bool) {
     let selected_style = if focused {
         Style::default().fg(ACCENT).add_modifier(Modifier::REVERSED)
     } else {
@@ -375,7 +375,7 @@ fn render_type_field(frame: &mut Frame, area: Rect, selected: AccountType, focus
 
 /// The `active` checkbox row: the glyph in the accent when focused, the "offered when
 /// posting" consequence stated alongside it either way.
-fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: bool) {
+fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
     let glyph_style = if focused {
         Style::default().fg(ACCENT)
     } else {
@@ -395,7 +395,7 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
 }
 
 /// The `completion` row beneath `unit` — mirrors `popup::category::new_popup`'s own row.
-fn render_completion_row(frame: &mut Frame, area: Rect, store: &dyn AccountStore, input: &str) {
+fn render_completion_row(frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore, input: &str) {
     let needle = input.to_lowercase();
     let candidates: Vec<String> = known_units(store.accounts())
         .into_iter()
@@ -415,11 +415,11 @@ fn render_completion_row(frame: &mut Frame, area: Rect, store: &dyn AccountStore
     );
 }
 
-fn render_note(frame: &mut Frame, area: Rect, text: String) {
+fn render_note(frame: &mut Frame<'_>, area: Rect, text: String) {
     frame.render_widget(Paragraph::new(Span::styled(text, dim())), area);
 }
 
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     let hints = [
         ("tab", msg::tui_account_new_help_tab()),
         ("^s", msg::tui_account_new_help_create()),

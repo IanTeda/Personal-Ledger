@@ -29,7 +29,7 @@ pub enum CategoryPopup {
 impl CategoryPopup {
     /// Renders whichever form is open, against the live Category tree `store` — see
     /// `move_popup::MovePopup::render` for why this needs read access to it.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn CategoryStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn CategoryStore) {
         match self {
             CategoryPopup::Move(popup) => popup.render(frame, area, store),
             CategoryPopup::New(popup) => popup.render(frame, area, store),

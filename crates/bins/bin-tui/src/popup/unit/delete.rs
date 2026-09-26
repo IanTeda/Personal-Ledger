@@ -78,7 +78,7 @@ impl DeleteUnitPopup {
 
     /// Renders whichever variant this is — see [`render_refused`]/[`render_allowed`] for each
     /// one's own layout.
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         match self {
             DeleteUnitPopup::Refused => render_refused(frame, area),
             DeleteUnitPopup::Allowed => render_allowed(frame, area),
@@ -88,7 +88,7 @@ impl DeleteUnitPopup {
 
 /// §4d's own worked example: `cannot delete VDHG`, blocked by 412 transactions and 1 account,
 /// with `budgets` and the non-blocking `prices` count shown alongside for completeness.
-fn render_refused(frame: &mut Frame, area: Rect) {
+fn render_refused(frame: &mut Frame<'_>, area: Rect) {
     let popup = popup_rect(area, REFUSED_CONTENT_ROWS);
 
     frame.render_widget(Clear, popup);
@@ -143,7 +143,7 @@ fn render_refused(frame: &mut Frame, area: Rect) {
 
 /// §4e's own worked example: `delete AAPL`, nothing references it, confirmed by typing the
 /// code.
-fn render_allowed(frame: &mut Frame, area: Rect) {
+fn render_allowed(frame: &mut Frame<'_>, area: Rect) {
     let popup = popup_rect(area, ALLOWED_CONTENT_ROWS);
 
     frame.render_widget(Clear, popup);
@@ -191,7 +191,7 @@ fn render_allowed(frame: &mut Frame, area: Rect) {
 
 /// The refused title row: `cannot delete VDHG` in the accent, flush left, the `:unit delete`
 /// command dim and right-aligned.
-fn render_refused_title(frame: &mut Frame, area: Rect) {
+fn render_refused_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = ":unit delete";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -215,7 +215,7 @@ fn render_refused_title(frame: &mut Frame, area: Rect) {
 
 /// The allowed title row: "delete AAPL" flush left, the `:unit delete` command dim and
 /// right-aligned — echoing the refused title's own layout.
-fn render_allowed_title(frame: &mut Frame, area: Rect) {
+fn render_allowed_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = ":unit delete";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -234,7 +234,7 @@ fn render_allowed_title(frame: &mut Frame, area: Rect) {
 }
 
 /// The rule the whole refused dialog exists to state plainly, full ink weight (not dim).
-fn render_blocking_rule(frame: &mut Frame, area: Rect) {
+fn render_blocking_rule(frame: &mut Frame<'_>, area: Rect) {
     frame.render_widget(
         Paragraph::new("a unit can only be deleted when nothing references it."),
         area,
@@ -244,7 +244,7 @@ fn render_blocking_rule(frame: &mut Frame, area: Rect) {
 /// One `label   value` reference-count row shared by both variants — the label dim and
 /// fixed-width, per the shell's "dim for labels" style role, `value` carrying whatever
 /// emphasis that particular count needs.
-fn render_count(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_count(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -286,7 +286,7 @@ fn accent_count(count: &'static str, hint: &'static str) -> Line<'static> {
 /// in the accent rather than dim, per §4e's own "the one consequence spelled out". The inverse
 /// emphasis of [`accent_count`] (value dim, hint accent, rather than the other way around),
 /// since here the count itself isn't what's alarming.
-fn render_price_count(frame: &mut Frame, area: Rect) {
+fn render_price_count(frame: &mut Frame<'_>, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let accent = Style::default().fg(ACCENT);
 
@@ -307,7 +307,7 @@ fn render_price_count(frame: &mut Frame, area: Rect) {
 
 /// The allowed variant's one-line consequence statement, full ink weight (not dim) — the
 /// sentence the whole dialog exists to state plainly before the user commits.
-fn render_consequence(frame: &mut Frame, area: Rect) {
+fn render_consequence(frame: &mut Frame<'_>, area: Rect) {
     frame.render_widget(
         Paragraph::new("this removes the unit and its price history."),
         area,
@@ -318,7 +318,7 @@ fn render_consequence(frame: &mut Frame, area: Rect) {
 /// code` prompt — §4e's own "confirm by typing the code, not by pressing `y`". The code typed
 /// so far renders bold with a trailing accent cursor, the same treatment `popup::unit::new`'s
 /// own `code` field uses for text still being entered.
-fn render_confirm_box(frame: &mut Frame, area: Rect) {
+fn render_confirm_box(frame: &mut Frame<'_>, area: Rect) {
     let accent = Style::default().fg(ACCENT);
     let block = Block::bordered().border_style(accent);
     let inner = block.inner(area);
@@ -339,7 +339,7 @@ fn render_confirm_box(frame: &mut Frame, area: Rect) {
 /// The allowed variant's soft-alternative hint below the confirm box: dim text with the `x`
 /// key rendered as a reversed pill, matching the footer's own key/label convention — §4e keeps
 /// offering deactivate even though deletion is allowed here.
-fn render_deactivate_hint(frame: &mut Frame, area: Rect) {
+fn render_deactivate_hint(frame: &mut Frame<'_>, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let key = Style::default().add_modifier(Modifier::REVERSED);
     frame.render_widget(
@@ -355,7 +355,7 @@ fn render_deactivate_hint(frame: &mut Frame, area: Rect) {
 /// The refused variant's "way out": a plain (not accent) bordered box — unlike the blocking
 /// counts above it, this is the positive path, not a warning — offering deactivate and naming
 /// what deleting for real would require. §4d's own "the way out, in a box".
-fn render_deactivate_instead_box(frame: &mut Frame, area: Rect) {
+fn render_deactivate_instead_box(frame: &mut Frame<'_>, area: Rect) {
     let block = Block::bordered();
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -390,7 +390,7 @@ fn render_deactivate_instead_box(frame: &mut Frame, area: Rect) {
 /// The window footer hint row: each key bold, its label dim — matching `popup::unit::new`'s
 /// own `render_footer_hints` convention, shared here since the refused/allowed variants only
 /// differ in which hints they list.
-fn render_footer_hints(frame: &mut Frame, area: Rect, hints: &[(&'static str, &'static str)]) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, hints: &[(&'static str, &'static str)]) {
     let key_style = Style::default().add_modifier(Modifier::BOLD);
     let label_style = Style::default().add_modifier(Modifier::DIM);
 

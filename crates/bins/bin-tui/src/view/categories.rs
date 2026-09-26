@@ -528,7 +528,7 @@ impl View for CategoriesView {
         }
     }
 
-    fn view(&self, frame: &mut Frame, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -565,7 +565,7 @@ impl View for CategoriesView {
 }
 
 impl CategoriesView {
-    fn render_left_pane(&self, frame: &mut Frame, area: Rect) {
+    fn render_left_pane(&self, frame: &mut Frame<'_>, area: Rect) {
         let Some(node) = self.store.find(self.selected) else {
             return;
         };
@@ -586,7 +586,7 @@ impl CategoriesView {
 
     /// The tree list: its `tree N of M · depth D · K folded` header, a rule, the `N`/`12M`
     /// column header, then the rows themselves with a scrollbar riding the right edge.
-    fn render_tree(&self, frame: &mut Frame, area: Rect) {
+    fn render_tree(&self, frame: &mut Frame<'_>, area: Rect) {
         let split = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -638,7 +638,7 @@ impl CategoriesView {
 
     fn render_tree_header(
         &self,
-        frame: &mut Frame,
+        frame: &mut Frame<'_>,
         area: Rect,
         visible_count: usize,
         folded_count: usize,
@@ -667,7 +667,7 @@ impl CategoriesView {
     /// own worked example (`docs/ux/tui/categories/README.md` "Summary box").
     fn render_summary(
         &self,
-        frame: &mut Frame,
+        frame: &mut Frame<'_>,
         area: Rect,
         node: &CategoryNode,
         rollup: &Money,
@@ -786,7 +786,7 @@ impl CategoriesView {
         frame.render_widget(summary_field_line("active", &active_text), rows[row]);
     }
 
-    fn render_right_pane(&self, frame: &mut Frame, area: Rect) {
+    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect) {
         let Some(node) = self.store.find(self.selected) else {
             return;
         };
@@ -810,7 +810,7 @@ impl CategoriesView {
     /// even when it isn't, a lone direct line would hide its children's spend entirely — plots
     /// the whole subtree's combined series instead (`rollup_series`), so selecting a branch
     /// always shows something. The heading names which one is showing.
-    fn render_spend_chart(&self, frame: &mut Frame, area: Rect, node: &CategoryNode) {
+    fn render_spend_chart(&self, frame: &mut Frame<'_>, area: Rect, node: &CategoryNode) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -873,7 +873,7 @@ impl CategoriesView {
     /// The transactions list: `DATE`/`ACCOUNT`/`PAYEE`/`AMOUNT` in direct mode, gaining a
     /// `CATEGORY` column (at `PAYEE`'s expense) in subtree mode — `PAYEE` is the flexible
     /// `Min(0)` column, so it's the one that gives up width, per the handoff.
-    fn render_transactions(&self, frame: &mut Frame, area: Rect, node: &CategoryNode) {
+    fn render_transactions(&self, frame: &mut Frame<'_>, area: Rect, node: &CategoryNode) {
         let show_subtree = self.effective_show_subtree(node.id);
         let rows = self.transaction_rows(node, show_subtree);
         let direct_count = node.transaction_count;
@@ -985,7 +985,7 @@ impl CategoriesView {
 }
 
 /// The `N`/`12M` column header row, dim, per the handoff's "Column heads dim and uppercase".
-fn render_tree_column_header(frame: &mut Frame, area: Rect) {
+fn render_tree_column_header(frame: &mut Frame<'_>, area: Rect) {
     let columns = tree_row_columns(area);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
@@ -1000,7 +1000,7 @@ fn render_tree_column_header(frame: &mut Frame, area: Rect) {
     );
 }
 
-fn render_tree_rows(frame: &mut Frame, area: Rect, lines: &[TreeLine], selected: RowID) {
+fn render_tree_rows(frame: &mut Frame<'_>, area: Rect, lines: &[TreeLine], selected: RowID) {
     let visible = lines.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
         std::iter::repeat_n(Constraint::Length(1), visible).collect();
@@ -1016,7 +1016,7 @@ fn render_tree_rows(frame: &mut Frame, area: Rect, lines: &[TreeLine], selected:
     }
 }
 
-fn render_tree_row(frame: &mut Frame, area: Rect, row: &TreeRow, selected: bool) {
+fn render_tree_row(frame: &mut Frame<'_>, area: Rect, row: &TreeRow, selected: bool) {
     if selected {
         frame.render_widget(
             Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
@@ -1113,7 +1113,7 @@ fn summary_section_height(merged: bool) -> u16 {
     content_rows + 2 // top/bottom border
 }
 
-fn format_date(date: chrono::NaiveDate) -> String {
+fn format_date(date: NaiveDate) -> String {
     crate::format::day_month(date)
 }
 
@@ -1121,7 +1121,7 @@ fn format_date(date: chrono::NaiveDate) -> String {
 /// dim tag — names which series is plotted, per the handoff's own "the header says so" call-out
 /// (originally about never silently plotting rollup; `render_spend_chart`'s own doc covers why
 /// a parent's rollup is shown here instead, and why that's not "silent").
-fn render_chart_heading(frame: &mut Frame, area: Rect, is_subtree: bool) {
+fn render_chart_heading(frame: &mut Frame<'_>, area: Rect, is_subtree: bool) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let label = if is_subtree {
         msg::tui_categories_chart_subtree()
@@ -1148,7 +1148,7 @@ fn render_chart_heading(frame: &mut Frame, area: Rect, is_subtree: bool) {
 
 /// The row beneath the chart: first month + its value, the average, last month + its value —
 /// per the handoff's `oct 24  712 / avg 1 040 / sep 26  904`.
-fn render_chart_labels(frame: &mut Frame, area: Rect, series: &[f64; CHART_MONTHS], avg: f64) {
+fn render_chart_labels(frame: &mut Frame<'_>, area: Rect, series: &[f64; CHART_MONTHS], avg: f64) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Min(0), Constraint::Min(0)])
@@ -1193,7 +1193,7 @@ fn format_month(date: NaiveDate) -> String {
 }
 
 /// The "TRANSACTIONS N of M · newest first" heading.
-fn render_transactions_heading(frame: &mut Frame, area: Rect, shown: usize, total: u32) {
+fn render_transactions_heading(frame: &mut Frame<'_>, area: Rect, shown: usize, total: u32) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let tag = msg::tui_categories_transactions_heading(shown as i64, &total.to_string());
     let columns = Layout::default()
@@ -1250,7 +1250,7 @@ fn transaction_columns(area: Rect, show_category: bool) -> (Rect, Rect, Option<R
     }
 }
 
-fn render_transactions_column_header(frame: &mut Frame, area: Rect, show_category: bool) {
+fn render_transactions_column_header(frame: &mut Frame<'_>, area: Rect, show_category: bool) {
     let (date, account, category, payee, amount) = transaction_columns(area, show_category);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
@@ -1294,7 +1294,7 @@ fn render_transactions_column_header(frame: &mut Frame, area: Rect, show_categor
 }
 
 fn render_transaction_rows(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     area: Rect,
     rows: &[TransactionRow],
     show_category: bool,
@@ -1326,7 +1326,7 @@ fn render_transaction_rows(
 /// The `N direct · M in subtree  ·  enter open txn` footer row — `enter` isn't wired to
 /// anything yet (the transactions list has no navigable focus of its own here, see the module
 /// doc), the hint is shown as-is regardless.
-fn render_transactions_footer(frame: &mut Frame, area: Rect, direct: u32, subtree: u32) {
+fn render_transactions_footer(frame: &mut Frame<'_>, area: Rect, direct: u32, subtree: u32) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let text = msg::tui_categories_transactions_footer(direct as i64, subtree as i64);
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);

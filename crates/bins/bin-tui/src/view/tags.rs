@@ -332,7 +332,7 @@ impl View for TagsView {
         }
     }
 
-    fn view(&self, frame: &mut Frame, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
         // The heading/delete-confirm row spans the *full* width, not just `PANE_WIDTH` — a
         // narrow list pane has no room for "delete \"...\" ... y confirms, any other key
         // cancels" even wrapped, so it rides across the whole view region instead (the only
@@ -388,7 +388,7 @@ impl View for TagsView {
 }
 
 impl TagsView {
-    fn render_list(&self, frame: &mut Frame, area: Rect) {
+    fn render_list(&self, frame: &mut Frame<'_>, area: Rect) {
         let split = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -423,7 +423,7 @@ impl TagsView {
     /// The heading row: `tags N of M` normally, replaced by the delete confirm line while
     /// `pending_delete` is armed — see this module's own doc on why that's a render swap, not
     /// a popup, and [`TagsView::view`]'s own doc on why this row alone spans the full width.
-    fn render_heading(&self, frame: &mut Frame, area: Rect, visible_count: usize) {
+    fn render_heading(&self, frame: &mut Frame<'_>, area: Rect, visible_count: usize) {
         if self.pending_delete
             && let Some(tag) = self.selected_tag()
         {
@@ -452,7 +452,7 @@ impl TagsView {
         );
     }
 
-    fn render_summary(&self, frame: &mut Frame, area: Rect) {
+    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect) {
         let block = Block::bordered().padding(Padding::horizontal(1));
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -515,7 +515,7 @@ impl TagsView {
     /// The right pane: "Tagged spend", "Where it lands", "Transactions" — nothing renders when
     /// no Tag is selected (an all-filtered-out list), mirroring the left pane's own summary box
     /// falling back to a plain message in that case, just with nothing at all here instead.
-    fn render_right_pane(&self, frame: &mut Frame, area: Rect) {
+    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect) {
         let Some(tag) = self.selected_tag() else {
             return;
         };
@@ -540,7 +540,7 @@ impl TagsView {
     /// `view::accounts::render_balance_chart`'s own `Chart`/`Dataset`/Braille-marker/
     /// accent-latest-point treatment — the series is a spend total per month, not a running
     /// balance, so there's no "start" value to anchor against, only the series itself.
-    fn render_tagged_spend(&self, frame: &mut Frame, area: Rect, tag: &Tag) {
+    fn render_tagged_spend(&self, frame: &mut Frame<'_>, area: Rect, tag: &Tag) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -572,7 +572,7 @@ impl TagsView {
 
     /// The category breakdown, biggest first, as proportional block-glyph bars — top
     /// [`CATEGORY_ROWS_SHOWN`] plus an `N more` roll-up, per the design doc's own shape.
-    fn render_where_it_lands(&self, frame: &mut Frame, area: Rect, tag: &Tag) {
+    fn render_where_it_lands(&self, frame: &mut Frame<'_>, area: Rect, tag: &Tag) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -646,7 +646,7 @@ impl TagsView {
     /// `view::accounts::render_ledger`'s own column/heading/footer shape. `enter` here can only
     /// show [`TagsView::transactions_not_yet_built`]'s message, not actually jump anywhere —
     /// see this module's own doc.
-    fn render_tag_transactions(&self, frame: &mut Frame, area: Rect, tag: &Tag) {
+    fn render_tag_transactions(&self, frame: &mut Frame<'_>, area: Rect, tag: &Tag) {
         let all_rows = self.store.transactions(tag.id);
         let total = all_rows.len();
         let visible_count = all_rows.len().min(TAG_TRANSACTIONS_VISIBLE_ROWS);
@@ -690,7 +690,12 @@ impl TagsView {
     /// message while [`TagsView::transactions_not_yet_built`] is set, or a plain empty-state
     /// line for a Tag with no transactions — exactly one of the three, per this module's own
     /// doc on why `enter` can't do more than state its own limits yet.
-    fn render_transactions_footer(&self, frame: &mut Frame, area: Rect, rows: &[TagTransaction]) {
+    fn render_transactions_footer(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        rows: &[TagTransaction],
+    ) {
         if self.transactions_not_yet_built {
             frame.render_widget(
                 Paragraph::new(msg::tui_tag_right_pane_txn_not_yet_built()),
@@ -721,7 +726,7 @@ impl TagsView {
     }
 }
 
-fn render_tag_row(frame: &mut Frame, area: Rect, tag: &Tag, selected: bool) {
+fn render_tag_row(frame: &mut Frame<'_>, area: Rect, tag: &Tag, selected: bool) {
     if selected {
         frame.render_widget(
             Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
@@ -751,14 +756,14 @@ fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
     ]))
 }
 
-fn format_date_full_year(date: chrono::NaiveDate) -> String {
+fn format_date_full_year(date: NaiveDate) -> String {
     crate::format::date(date)
 }
 
 /// A section heading row shared by every right-pane widget: the label flush left (dim), a
 /// short dim tag right-aligned — mirrors `view::accounts::render_chart_heading`'s own shape,
 /// generalised since every widget here needs a slightly different tag.
-fn render_section_heading(frame: &mut Frame, area: Rect, label: &str, tag: &str) {
+fn render_section_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -774,7 +779,7 @@ fn render_section_heading(frame: &mut Frame, area: Rect, label: &str, tag: &str)
     );
 }
 
-fn format_date(date: chrono::NaiveDate) -> String {
+fn format_date(date: NaiveDate) -> String {
     crate::format::day_month(date)
 }
 
@@ -809,7 +814,7 @@ fn tagged_spend_window_tag() -> String {
 /// treatment exactly: one accent-coloured `Dataset` (not a plain line plus a separate
 /// last-point marker), and x-axis labels at the first/middle/last month so the chart reads as
 /// a graph on its own, without needing the footer line beneath it for orientation.
-fn render_spend_chart(frame: &mut Frame, area: Rect, series: &[f64]) {
+fn render_spend_chart(frame: &mut Frame<'_>, area: Rect, series: &[f64]) {
     let points: Vec<(f64, f64)> = series
         .iter()
         .enumerate()
@@ -846,7 +851,7 @@ fn render_spend_chart(frame: &mut Frame, area: Rect, series: &[f64]) {
 
 /// `first used <month> · peak <month> <amount> · <latest month> <amount>` — the design doc's
 /// own three-figure footer, or a plain empty-state line for a Tag with no transactions.
-fn render_spend_footer(frame: &mut Frame, area: Rect, tag: &Tag, series: &[f64]) {
+fn render_spend_footer(frame: &mut Frame<'_>, area: Rect, tag: &Tag, series: &[f64]) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     if tag.tagged_transaction_count == 0 {
         frame.render_widget(
@@ -881,7 +886,7 @@ fn render_spend_footer(frame: &mut Frame, area: Rect, tag: &Tag, series: &[f64])
 /// One "Where it lands" row: a category-path label, a proportional block-glyph bar plus its
 /// percentage, and the right-aligned amount — `total <= 0.0` (a Tag with no spend) renders an
 /// empty bar and `0%` rather than dividing by zero.
-fn render_category_bar(frame: &mut Frame, area: Rect, label: &str, amount: f64, total: f64) {
+fn render_category_bar(frame: &mut Frame<'_>, area: Rect, label: &str, amount: f64, total: f64) {
     let fraction = if total > 0.0 { amount / total } else { 0.0 };
     let pct = (fraction * 100.0).round() as i64;
     let bar_len = (fraction * BAR_MAX_CELLS as f64).round() as usize;
@@ -922,7 +927,7 @@ fn txn_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect, Rect) {
     (columns[0], columns[1], columns[2], columns[3], columns[4])
 }
 
-fn render_txn_column_header(frame: &mut Frame, area: Rect) {
+fn render_txn_column_header(frame: &mut Frame<'_>, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let (date, payee, category, other_tags, amount) = txn_row_columns(area);
     frame.render_widget(
@@ -949,7 +954,7 @@ fn render_txn_column_header(frame: &mut Frame, area: Rect) {
     );
 }
 
-fn render_txn_row(frame: &mut Frame, area: Rect, row: &TagTransaction) {
+fn render_txn_row(frame: &mut Frame<'_>, area: Rect, row: &TagTransaction) {
     let (date_area, payee_area, category_area, other_tags_area, amount_area) =
         txn_row_columns(area);
     frame.render_widget(Paragraph::new(format_date(row.date)), date_area);

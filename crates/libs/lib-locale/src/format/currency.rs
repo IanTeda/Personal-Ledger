@@ -66,13 +66,13 @@ fn formatter(
     })
 }
 
-fn try_format_fiat(amount: &Money, unit: Unit) -> Result<String> {
+fn try_format_fiat(amount: &Money, unit: Unit<'_>) -> Result<String> {
     let decimal = to_decimal(amount, unit.decimal_places)?;
     let formatter = formatter(crate::locale(), unit.code)?;
     Ok(formatter.format_fixed_decimal(&decimal).to_string())
 }
 
-fn format_quantity(amount: &Money, unit: Unit) -> String {
+fn format_quantity(amount: &Money, unit: Unit<'_>) -> String {
     let quantity = super::number::format_number(amount, unit.decimal_places);
     crate::msg::unit_quantity(&quantity, unit.code)
 }
@@ -84,7 +84,7 @@ fn format_quantity(amount: &Money, unit: Unit) -> String {
 /// For fiat, ICU4X applies the currency's own CLDR fraction digits after the Unit's
 /// `decimal_places` rounding, so those digits win when they differ. A non-fiat Unit's
 /// `decimal_places` is used as configured.
-pub fn format_money(amount: &Money, unit: &Unit) -> String {
+pub fn format_money(amount: &Money, unit: &Unit<'_>) -> String {
     if *unit.kind == UnitKind::Fiat {
         match try_format_fiat(amount, *unit) {
             Ok(text) => return text,

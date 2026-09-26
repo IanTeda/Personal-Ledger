@@ -88,7 +88,10 @@ impl BalanceChecksBuilder {
             // clippy's unwrap_or_default suggestion is WRONG here: RowID::default()
             // is a nil (version 0) UUID, not a usable row id -- RowID's Decode requires
             // version 7. RowID::new() must run whenever no id was explicitly provided.
-            #[allow(clippy::unwrap_or_default)]
+            #[expect(
+                clippy::unwrap_or_default,
+                reason = "RowID::default() is a nil UUID, not a usable row id"
+            )]
             id: self.id.unwrap_or_else(lib_core::RowID::new),
             account_id,
             date,

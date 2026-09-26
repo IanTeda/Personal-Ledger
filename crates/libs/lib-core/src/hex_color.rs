@@ -55,8 +55,8 @@ impl HexColor {
             return Err(HexColorError::InvalidCharacters(input.to_string()));
         }
 
-        #[allow(clippy::expect_used)]
-        let value = u32::from_str_radix(digits, 16).expect("validated hex digits");
+        let value = u32::from_str_radix(digits, 16)
+            .map_err(|_| HexColorError::InvalidCharacters(input.to_string()))?;
         let canonical = format!("#{:06X}", value);
         let red = ((value >> 16) & 0xFF) as u8;
         let green = ((value >> 8) & 0xFF) as u8;
@@ -123,7 +123,10 @@ impl HexColor {
         use fake::faker::color::en::HexColor as FakeHex;
 
         let value: String = FakeHex().fake();
-        #[allow(clippy::expect_used)]
+        #[expect(
+            clippy::expect_used,
+            reason = "fake's HexColor faker always yields a valid #RRGGBB string"
+        )]
         let color = HexColor::parse(value).expect("fake hex colour should be valid");
         color
     }

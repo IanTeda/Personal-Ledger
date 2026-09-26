@@ -60,7 +60,7 @@ impl EditSettingPopup {
 
     /// Renders the floating overlay, centred and sized to its fixed field list, within `area`
     /// (the full terminal area, per `popup::unit::edit`'s own convention).
-    pub fn render(&self, frame: &mut Frame, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -110,7 +110,7 @@ impl EditSettingPopup {
 
 /// The title row: `negatives` flush left, `general.negatives` dim and right-aligned — matches
 /// `popup::unit::edit`'s own "title left, context right" convention.
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = msg::tui_setting_edit_command();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -130,7 +130,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
 
 /// One `label   value` row, the label dim and fixed-width — mirrors `popup::unit::edit`'s own
 /// `render_field`. `label` is `""` for the explain line, which has no label of its own.
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -144,7 +144,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
 /// The `value` field's focused box — an accent-bordered `Block` around the enum's segmented
 /// row (the selected variant reversed, per §4b's "the selection is a reversed block") and its
 /// `←→` hint, mirroring `popup::unit::edit`'s own accent-bordered precision warning box.
-fn render_value_box(frame: &mut Frame, area: Rect) {
+fn render_value_box(frame: &mut Frame<'_>, area: Rect) {
     let accent = Style::default().fg(ACCENT);
     let block = Block::bordered().border_style(accent);
     let inner = block.inner(area);
@@ -177,7 +177,7 @@ fn render_value_box(frame: &mut Frame, area: Rect) {
 /// The `preview` row: a real figure in the candidate format, per §4b's own "a real figure from
 /// the user's data ... not lorem" — styled `ACCENT`, matching the design's own `← accent`
 /// marker on this row.
-fn render_preview(frame: &mut Frame, area: Rect) {
+fn render_preview(frame: &mut Frame<'_>, area: Rect) {
     let accent = Style::default().fg(ACCENT);
     render_field(
         frame,
@@ -190,7 +190,7 @@ fn render_preview(frame: &mut Frame, area: Rect) {
 /// The `current` row: the value the row would fall back to if there were no override, and
 /// whether it is the default — §4b's own "names the current value *and* whether it is the
 /// default, in one line".
-fn render_current(frame: &mut Frame, area: Rect) {
+fn render_current(frame: &mut Frame<'_>, area: Rect) {
     let dim = Style::default().add_modifier(Modifier::DIM);
     render_field(
         frame,
@@ -205,7 +205,7 @@ fn render_current(frame: &mut Frame, area: Rect) {
 
 /// The "applies to" heading, tagged with §4b's own "everywhere an amount prints" — same dim
 /// label / dim tag pattern as `view::settings`'s own `render_heading`.
-fn render_applies_to_heading(frame: &mut Frame, area: Rect) {
+fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect) {
     let tag = "EVERYWHERE AN AMOUNT PRINTS";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -226,7 +226,7 @@ fn render_applies_to_heading(frame: &mut Frame, area: Rect) {
 /// The "applies to" box's three lines — net position, one ledger row and the csv-export note,
 /// §4b's own "the same candidate shown in the three places it lands, so scope is legible
 /// before committing".
-fn render_applies_to_lines(frame: &mut Frame, area: Rect) {
+fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -255,7 +255,7 @@ fn render_applies_to_lines(frame: &mut Frame, area: Rect) {
 /// two-line hint ("drop the override and fall back to the" / "shipped default instead of
 /// storing a row") is folded onto one line here to keep the box within this popup's trimmed
 /// height budget (`CONTENT_ROWS`'s own doc comment).
-fn render_on_accept_box(frame: &mut Frame, area: Rect) {
+fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect) {
     let block = Block::bordered();
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -290,7 +290,7 @@ fn render_on_accept_box(frame: &mut Frame, area: Rect) {
 
 /// The typed-command echo — §4b's own "the command line echoes the equivalent command", with
 /// an accent cursor after the value and the dim "same edit, typed" note.
-fn render_typed_command(frame: &mut Frame, area: Rect) {
+fn render_typed_command(frame: &mut Frame<'_>, area: Rect) {
     let cursor = Style::default().fg(ACCENT);
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
@@ -308,7 +308,7 @@ fn render_typed_command(frame: &mut Frame, area: Rect) {
 /// choose · `enter` commit · `esc` revert · `r` drop override", `enter` folded into `commit`
 /// per `popup::unit::edit`'s own bold-key convention (`^s` there since a unit form has other
 /// text fields `enter` would otherwise submit early).
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     const HINTS: &[(&str, &str)] = &[
         ("←→", "choose"),
         ("^s", "commit"),

@@ -1590,7 +1590,7 @@ impl Shell {
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
     /// keybind hint bar — around the active view, per `docs/ux/tui/README.md`.
-    fn draw(&self, frame: &mut Frame) {
+    fn draw(&self, frame: &mut Frame<'_>) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -2272,13 +2272,13 @@ mod tests {
 
     #[test]
     fn remapped_open_command_popup_binding_changes_the_key_the_shell_responds_to() {
-        let keybindings = lib_config::KeyBindingConfig {
+        let keybindings = KeyBindingConfig {
             bindings: {
-                let mut bindings = lib_config::KeyBindingConfig::default().bindings;
+                let mut bindings = KeyBindingConfig::default().bindings;
                 bindings.insert("open_command_popup".to_string(), "ctrl+p".to_string());
                 bindings
             },
-            ..lib_config::KeyBindingConfig::default()
+            ..KeyBindingConfig::default()
         };
         let mut shell = Shell::with_keybindings(keybindings);
 

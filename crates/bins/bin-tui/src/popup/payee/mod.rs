@@ -25,7 +25,7 @@ impl PayeePopup {
     /// Renders whichever form is open, against the live Payee list `store` — `new`'s
     /// name-collision check, `edit`'s rename preview, `matches`'s conflict/resolution
     /// previews, and `delete`'s reference counts all need read access to it.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
         match self {
             PayeePopup::New(popup) => popup.render(frame, area, store),
             PayeePopup::Edit(popup) => popup.render(frame, area, store),

@@ -13,7 +13,10 @@
 //! | [`find`](find) | Look up by username, or fetch the single bootstrap sync user |
 //! | [`update`](update) | Rotate/clear the current refresh-token hash |
 
-#![allow(unused)] // For development only
+#![allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 
 mod builder;
 mod find;
@@ -25,5 +28,8 @@ mod update;
 pub use model::SyncUser;
 
 /// Fluent builder for constructing [`SyncUser`] instances.
-#[allow(unused)]
+#[allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 pub use builder::SyncUserBuilder;

@@ -13,7 +13,10 @@
 //! | [`insert`](insert) | Insert a Change Set into the log |
 //! | [`find`](find) | Query Change Sets since a given cursor (the Sync Server's pull) |
 
-#![allow(unused)] // For development only
+#![allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 
 mod builder;
 mod find;
@@ -28,5 +31,8 @@ pub use model::ChangeSet;
 /// Fluent builder for constructing [`ChangeSet`] instances in tests and Client-side code.
 ///
 /// See the builder module for implementation details.
-#[allow(unused)]
+#[allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 pub use builder::ChangeSetBuilder;

@@ -27,6 +27,18 @@ pub type OnEditClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
 pub type OnDeleteClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
 pub type OnDisclosureClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
 pub type OnRowClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+/// Any per-row handler above, as an [`action_button`] takes it.
+type OnCategoryIdClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+
+/// The handlers the Add and Edit dialogs both wire, grouped so each `render` stays a short list
+/// of what differs between them.
+pub struct DialogHandlers {
+    pub on_field_click: add_dialog::OnFieldClick,
+    pub on_parent_change: add_dialog::OnParentChange,
+    pub on_type_change: add_dialog::OnTypeChange,
+    pub on_cancel: add_dialog::OnCancel,
+    pub on_confirm: add_dialog::OnConfirm,
+}
 
 pub struct CategoriesPageProps<'a> {
     pub categories: &'a [categories::Category],
@@ -85,25 +97,9 @@ pub fn render(
                 .mb(px(24.0)),
         )
         .children(
-            vec![CategoryTypes::Expense, CategoryTypes::Income]
+            [CategoryTypes::Expense, CategoryTypes::Income]
                 .iter()
-                .map(|cat_type| {
-                    section_block(
-                        cat_type,
-                        &tree_rows,
-                        props.categories,
-                        props.budgets,
-                        props.transactions,
-                        props.base_unit_id,
-                        props.today,
-                        props.selected_index,
-                        &props.on_add_sub_click,
-                        &props.on_edit_click,
-                        &props.on_delete_click,
-                        &props.on_disclosure_click,
-                        &props.on_row_click,
-                    )
-                }),
+                .map(|cat_type| section_block(cat_type, &tree_rows, &props)),
         )
         .into_any_element()
 }
@@ -188,26 +184,17 @@ fn add_button(on_add_click: OnAddClick) -> impl IntoElement {
 fn section_block(
     category_type: &CategoryTypes,
     tree_rows: &[TreeNode],
-    categories: &[categories::Category],
-    budgets: &[budgets::Budget],
-    transactions: &[Transaction],
-    base_unit_id: u32,
-    today: chrono::NaiveDate,
-    selected_index: Option<usize>,
-    on_add_sub_click: &OnAddSubClick,
-    on_edit_click: &OnEditClick,
-    on_delete_click: &OnDeleteClick,
-    on_disclosure_click: &OnDisclosureClick,
-    on_row_click: &OnRowClick,
+    props: &CategoriesPageProps<'_>,
 ) -> impl IntoElement {
+    // Pair each row with its Category here, so `table_row` never has to look it up again.
     let filtered_rows: Vec<_> = tree_rows
         .iter()
-        .filter(|row| {
-            categories
+        .filter_map(|row| {
+            props
+                .categories
                 .iter()
-                .find(|c| c.id == row.id)
-                .map(|c| &c.category_type == category_type)
-                .unwrap_or(false)
+                .find(|c| c.id == row.id && &c.category_type == category_type)
+                .map(|category| (row, category))
         })
         .collect();
 
@@ -225,21 +212,8 @@ fn section_block(
                         .flex_col()
                         .child(table_header(category_type))
                         .children(
-                            filtered_rows.iter().enumerate().map(|(idx, row)| {
-                                table_row(
-                                    row,
-                                    categories,
-                                    budgets,
-                                    transactions,
-                                    base_unit_id,
-                                    today,
-                                    Some(idx) == selected_index,
-                                    on_add_sub_click,
-                                    on_edit_click,
-                                    on_delete_click,
-                                    on_disclosure_click,
-                                    on_row_click,
-                                )
+                            filtered_rows.iter().enumerate().map(|(idx, (row, category))| {
+                                table_row(row, category, Some(idx) == props.selected_index, props)
                             }),
                         ),
                 )
@@ -307,21 +281,18 @@ fn table_header(category_type: &CategoryTypes) -> impl IntoElement {
 
 fn table_row(
     row: &TreeNode,
-    categories: &[categories::Category],
-    budgets: &[budgets::Budget],
-    transactions: &[Transaction],
-    base_unit_id: u32,
-    today: chrono::NaiveDate,
+    category: &categories::Category,
     selected: bool,
-    on_add_sub_click: &OnAddSubClick,
-    on_edit_click: &OnEditClick,
-    on_delete_click: &OnDeleteClick,
-    on_disclosure_click: &OnDisclosureClick,
-    on_row_click: &OnRowClick,
+    props: &CategoriesPageProps<'_>,
 ) -> impl IntoElement {
-    let category = categories.iter().find(|c| c.id == row.id).unwrap();
-    let spent = categories::month_to_date_spent(categories, transactions, &[], row.id, today);
-    let budget = budgets::find_by_category_and_unit(budgets, row.id, base_unit_id)
+    let spent = categories::month_to_date_spent(
+        props.categories,
+        props.transactions,
+        &[],
+        row.id,
+        props.today,
+    );
+    let budget = budgets::find_by_category_and_unit(props.budgets, row.id, props.base_unit_id)
         .map(|b| b.monthly_amount.clone());
     let is_over = budget
         .as_ref()
@@ -329,8 +300,7 @@ fn table_row(
         .unwrap_or(false);
 
     let indent_px = (row.depth as f32) * 16.0;
-    let disclosure_on_click = on_disclosure_click.clone();
-    let row_click = on_row_click.clone();
+    let disclosure_on_click = props.on_disclosure_click.clone();
     let row_id = row.id;
 
     div()
@@ -430,18 +400,18 @@ fn table_row(
                 .flex()
                 .justify_center()
                 .gap(px(4.0))
-                .child(when_can_add_sub(row, on_add_sub_click.clone()))
+                .child(when_can_add_sub(row, props.on_add_sub_click.clone()))
                 .child(action_button(
                     SharedString::from(format!("category-edit-{}", row.id)),
                     "✎",
                     row.id,
-                    on_edit_click.clone(),
+                    props.on_edit_click.clone(),
                 ))
                 .child(action_button(
                     SharedString::from(format!("category-delete-{}", row.id)),
                     "✕",
                     row.id,
-                    on_delete_click.clone(),
+                    props.on_delete_click.clone(),
                 )),
         )
 }
@@ -480,7 +450,7 @@ fn action_button(
     id: SharedString,
     symbol: &'static str,
     category_id: u32,
-    on_click: Rc<dyn Fn(u32, &mut Window, &mut App)>,
+    on_click: OnCategoryIdClick,
 ) -> impl IntoElement {
     div()
         .id(id)
@@ -510,10 +480,11 @@ fn progress_bar(
         0.0
     };
 
+    // ACCENT is reserved for over-budget state (theme.rs), matching the Dashboard's bars.
     let bar_color = if is_over && category_type == CategoryTypes::Expense {
         color::ACCENT
     } else {
-        color::ACCENT
+        color::INK_SECONDARY
     };
 
     div()

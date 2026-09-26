@@ -19,7 +19,7 @@ impl BudgetsView {
 impl View for BudgetsView {
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
         frame.render_widget(Block::bordered().title(format!(" {} ", self.title())), area);
     }
 

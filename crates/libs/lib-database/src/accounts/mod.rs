@@ -14,7 +14,10 @@
 //! | [`delete`](delete) | Delete an Account |
 //! | [`balance`](balance) | Compute an Account's current Balance (FR.34) |
 
-#![allow(unused)] // For development only
+#![allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 
 mod balance;
 mod builder;
@@ -28,5 +31,8 @@ mod update;
 pub use model::Accounts;
 
 /// Fluent builder for constructing [`Accounts`] instances.
-#[allow(unused)]
+#[allow(
+    unused,
+    reason = "persistence is written ahead of the Clients that will call it (UI-first); remove once wired"
+)]
 pub use builder::AccountsBuilder;

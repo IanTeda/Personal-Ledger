@@ -61,7 +61,7 @@ impl Loader {
         locale: Locale,
         id: &str,
         attribute: Option<&str>,
-        args: &[(&str, Arg)],
+        args: &[(&str, Arg<'_>)],
     ) -> String {
         let Some(bundle) = self.bundles.get(&locale) else {
             return miss(id, attribute);
@@ -106,7 +106,7 @@ impl Loader {
         locale: Locale,
         id: &str,
         attribute: Option<&str>,
-        args: &[(&str, Arg)],
+        args: &[(&str, Arg<'_>)],
     ) -> Vec<Segment> {
         let tokens: Vec<&str> = args
             .iter()
@@ -118,7 +118,7 @@ impl Loader {
         let sentinels: Vec<String> = (0..tokens.len()).map(rich::sentinel).collect();
 
         let mut next = 0;
-        let swapped: Vec<(&str, Arg)> = args
+        let swapped: Vec<(&str, Arg<'_>)> = args
             .iter()
             .map(|(name, arg)| match arg {
                 Arg::Int(_) => (*name, *arg),
@@ -190,14 +190,14 @@ fn current() -> Arc<Loader> {
 
 /// Looks a Message up by id (and optional attribute). The generated accessors call this; use
 /// them rather than calling it directly. A miss never panics.
-pub fn format(id: &str, attribute: Option<&str>, args: &[(&str, Arg)]) -> String {
+pub fn format(id: &str, attribute: Option<&str>, args: &[(&str, Arg<'_>)]) -> String {
     current().format(locale(), id, attribute, args)
 }
 
 /// As [`format`], for a rich Message: every text argument travels as a sentinel and the result
 /// is split into [`Segment`]s (see the `rich` module). Counts stay plain. The generated
 /// accessors for a Message with tags, or marked `# @rich`, call this.
-pub fn format_rich(id: &str, attribute: Option<&str>, args: &[(&str, Arg)]) -> Vec<Segment> {
+pub fn format_rich(id: &str, attribute: Option<&str>, args: &[(&str, Arg<'_>)]) -> Vec<Segment> {
     current().format_rich(locale(), id, attribute, args)
 }
 

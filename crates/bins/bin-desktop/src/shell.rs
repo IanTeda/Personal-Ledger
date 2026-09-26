@@ -261,7 +261,7 @@ pub struct Shell {
     categories: Vec<Category>,
     /// The shared stub Budgets, seeded from `budgets::default_budgets()`. A real, mutable `Vec`
     /// that survives leaving and re-entering the Categories view.
-    budgets: Vec<crate::budgets::Budget>,
+    budgets: Vec<budgets::Budget>,
     /// The selected category row in the tree view (the position in a depth-first enumeration).
     categories_selected: usize,
     /// The selected category ID for keyboard navigation, if any.
@@ -270,7 +270,7 @@ pub struct Shell {
     categories_expanded: Vec<u32>,
     /// The currently open Categories dialog, if any -- `NavState::mode` is `InputMode::Dialog`
     /// for exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
-    categories_dialog: Option<crate::categories::CategoriesDialog>,
+    categories_dialog: Option<categories::CategoriesDialog>,
     payees: Vec<Payee>,
     tags: Vec<Tag>,
     /// The Transactions view's stub dataset, newest first (`transactions::default_transactions`).
@@ -339,7 +339,7 @@ impl Shell {
             accounts_dialog: None,
             today,
             categories,
-            budgets: crate::budgets::default_budgets(),
+            budgets: budgets::default_budgets(),
             categories_selected: 0,
             categories_selected_id: None,
             categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
@@ -550,7 +550,7 @@ impl Shell {
 
     /// A click on the status line's hint strip: the same action as the matching `Normal`-mode key,
     /// and ignored in any other mode (where those keys aren't live either).
-    fn handle_hint_click(&mut self, action: HintAction, cx: &mut Context<Self>) {
+    fn handle_hint_click(&mut self, action: HintAction, cx: &mut Context<'_, Self>) {
         if self.nav.mode() != InputMode::Normal {
             return;
         }
@@ -1029,7 +1029,7 @@ impl Shell {
     }
 
     /// A click on a filter chip (or its `▾`): opens the popover on that chip's field.
-    fn handle_transactions_chip_click(&mut self, field: FilterField, cx: &mut Context<Self>) {
+    fn handle_transactions_chip_click(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
         self.open_filter_popover(Some(field));
         cx.notify();
     }
@@ -1130,7 +1130,7 @@ impl Shell {
 
     /// A click on a popover field: a text field takes focus; a select takes focus and toggles its
     /// list.
-    fn handle_filter_field_click(&mut self, field: FormField, cx: &mut Context<Self>) {
+    fn handle_filter_field_click(&mut self, field: FormField, cx: &mut Context<'_, Self>) {
         let options = self.filter_form_options();
         if let Some(form) = self.transactions_filter_form.as_mut() {
             if field.is_select() {
@@ -1146,7 +1146,7 @@ impl Shell {
         &mut self,
         field: FormField,
         index: usize,
-        cx: &mut Context<Self>,
+        cx: &mut Context<'_, Self>,
     ) {
         let options = self.filter_form_options();
         if let Some(form) = self.transactions_filter_form.as_mut() {
@@ -1158,7 +1158,7 @@ impl Shell {
     fn handle_filter_status_click(
         &mut self,
         status: transaction_query::StatusFilter,
-        cx: &mut Context<Self>,
+        cx: &mut Context<'_, Self>,
     ) {
         if let Some(form) = self.transactions_filter_form.as_mut() {
             form.focus(FormField::Status);
@@ -1168,7 +1168,7 @@ impl Shell {
     }
 
     /// `reset`: the draft back to the defaults; the applied filters are untouched.
-    fn handle_filter_reset(&mut self, cx: &mut Context<Self>) {
+    fn handle_filter_reset(&mut self, cx: &mut Context<'_, Self>) {
         let options = self.filter_form_options();
         let (today, date_style) = (self.today, self.settings_date_style);
         if let Some(form) = self.transactions_filter_form.as_mut() {
@@ -1177,20 +1177,20 @@ impl Shell {
         cx.notify();
     }
 
-    fn handle_filter_apply(&mut self, cx: &mut Context<Self>) {
+    fn handle_filter_apply(&mut self, cx: &mut Context<'_, Self>) {
         self.apply_filter_form();
         cx.notify();
     }
 
     /// A click outside the card: discards the draft, like `Esc`.
-    fn handle_filter_cancel(&mut self, cx: &mut Context<Self>) {
+    fn handle_filter_cancel(&mut self, cx: &mut Context<'_, Self>) {
         self.transactions_filter_form = None;
         self.nav.exit_mode();
         cx.notify();
     }
 
     /// The `✕` on an accent chip: resets just that filter.
-    fn handle_transactions_chip_clear(&mut self, field: FilterField, cx: &mut Context<Self>) {
+    fn handle_transactions_chip_clear(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
         transaction_chips::clear_field(&mut self.transactions_filters, field, self.today);
         self.reset_transactions_selection();
         cx.notify();
@@ -1198,26 +1198,26 @@ impl Shell {
 
     /// `clear filters`: every filter back to its default. The search text is separate state and is
     /// left alone.
-    fn handle_transactions_clear_all(&mut self, cx: &mut Context<Self>) {
+    fn handle_transactions_clear_all(&mut self, cx: &mut Context<'_, Self>) {
         self.transactions_filters = TransactionFilters::defaults(self.today);
         self.reset_transactions_selection();
         cx.notify();
     }
 
     /// The header's **add transaction** button: the same message `n` gives.
-    fn handle_transactions_add_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_transactions_add_click(&mut self, cx: &mut Context<'_, Self>) {
         self.status_message = Some("add transaction -- not yet built".to_string());
         cx.notify();
     }
 
     /// A click on the search box: the same as pressing `/`.
-    fn handle_transactions_search_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_transactions_search_click(&mut self, cx: &mut Context<'_, Self>) {
         self.nav.enter_mode(InputMode::Search);
         cx.notify();
     }
 
     /// A click on a table row selects it.
-    fn handle_transactions_row_click(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn handle_transactions_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         self.transactions_selected = index;
         cx.notify();
     }
@@ -1430,14 +1430,14 @@ impl Shell {
     }
 
     /// A click on an account row: selects it and, as `enter` does, tries to open its ledger.
-    fn handle_accounts_row_click(&mut self, id: u32, cx: &mut Context<Self>) {
+    fn handle_accounts_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_account(id);
         self.open_account_ledger(id);
         cx.notify();
     }
 
     /// The page's **+ Add account** button: the same handler `n` reaches.
-    fn handle_accounts_add_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_accounts_add_click(&mut self, cx: &mut Context<'_, Self>) {
         self.open_add_account_dialog("");
         cx.notify();
     }
@@ -1557,56 +1557,56 @@ impl Shell {
                 true
             }
             "enter" => {
-                if !form.name.trim().is_empty() {
-                    if let Some(dialog) = self.categories_dialog.take() {
-                        match dialog {
-                            categories::CategoriesDialog::Add { form, .. } => {
-                                let category_type =
-                                    form.category_type.clone().unwrap_or(CategoryTypes::Expense);
-                                if let Ok(category_id) = categories::insert_category(
-                                    &mut self.categories,
-                                    form.name.trim().to_string(),
-                                    form.parent_id,
-                                    category_type,
-                                ) {
-                                    // Handle budget creation if budget is not empty
-                                    if !form.budget.trim().is_empty() {
-                                        if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
-                                            budgets::create_budget(
-                                                &mut self.budgets,
-                                                category_id,
-                                                1,
-                                                amount,
-                                            );
-                                        }
-                                    }
-                                }
-                                self.nav.exit_mode();
-                            }
-                            categories::CategoriesDialog::Edit(id, form) => {
-                                let _ = categories::edit_category(
-                                    &mut self.categories,
-                                    id,
-                                    form.name.trim().to_string(),
-                                );
-                                if let Some(new_parent) = form.parent_id {
-                                    let _ = categories::move_category(
-                                        &mut self.categories,
-                                        id,
-                                        Some(new_parent),
+                if !form.name.trim().is_empty()
+                    && let Some(dialog) = self.categories_dialog.take()
+                {
+                    match dialog {
+                        categories::CategoriesDialog::Add { form, .. } => {
+                            let category_type =
+                                form.category_type.clone().unwrap_or(CategoryTypes::Expense);
+                            if let Ok(category_id) = categories::insert_category(
+                                &mut self.categories,
+                                form.name.trim().to_string(),
+                                form.parent_id,
+                                category_type,
+                            ) {
+                                // Handle budget creation if budget is not empty
+                                if !form.budget.trim().is_empty()
+                                    && let Ok(amount) = form.budget.parse::<lib_core::Money>()
+                                {
+                                    budgets::create_budget(
+                                        &mut self.budgets,
+                                        category_id,
+                                        1,
+                                        amount,
                                     );
                                 }
-                                // Handle budget changes
-                                if form.budget.trim().is_empty() {
-                                    budgets::delete_budget(&mut self.budgets, id, 1);
-                                } else if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
-                                    budgets::upsert_budget(&mut self.budgets, id, 1, amount);
-                                }
-                                self.nav.exit_mode();
                             }
-                            _ => {
-                                self.nav.exit_mode();
+                            self.nav.exit_mode();
+                        }
+                        categories::CategoriesDialog::Edit(id, form) => {
+                            let _ = categories::edit_category(
+                                &mut self.categories,
+                                id,
+                                form.name.trim().to_string(),
+                            );
+                            if let Some(new_parent) = form.parent_id {
+                                let _ = categories::move_category(
+                                    &mut self.categories,
+                                    id,
+                                    Some(new_parent),
+                                );
                             }
+                            // Handle budget changes
+                            if form.budget.trim().is_empty() {
+                                budgets::delete_budget(&mut self.budgets, id, 1);
+                            } else if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
+                                budgets::upsert_budget(&mut self.budgets, id, 1, amount);
+                            }
+                            self.nav.exit_mode();
+                        }
+                        _ => {
+                            self.nav.exit_mode();
                         }
                     }
                 }
@@ -1734,7 +1734,7 @@ impl Shell {
                         self.categories
                             .iter()
                             .find(|c| c.id == row.id)
-                            .map(|c| &c.category_type == &CategoryTypes::Expense)
+                            .map(|c| c.category_type == CategoryTypes::Expense)
                             .unwrap_or(false)
                     })
                     .collect();
@@ -1748,7 +1748,11 @@ impl Shell {
 
     /// A click on a field of the Add account dialog: focuses a text field, or focuses a select
     /// and toggles its list.
-    fn handle_accounts_dialog_field_click(&mut self, field: AccountField, cx: &mut Context<Self>) {
+    fn handle_accounts_dialog_field_click(
+        &mut self,
+        field: AccountField,
+        cx: &mut Context<'_, Self>,
+    ) {
         let options = self.account_dialog_options();
         if let Some(form) = self
             .accounts_dialog
@@ -1769,7 +1773,7 @@ impl Shell {
         &mut self,
         field: AccountField,
         index: usize,
-        cx: &mut Context<Self>,
+        cx: &mut Context<'_, Self>,
     ) {
         let options = self.account_dialog_options();
         if let Some(form) = self
@@ -1782,13 +1786,13 @@ impl Shell {
         cx.notify();
     }
 
-    fn handle_accounts_dialog_cancel(&mut self, cx: &mut Context<Self>) {
+    fn handle_accounts_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
         self.accounts_dialog = None;
         self.nav.exit_mode();
         cx.notify();
     }
 
-    fn handle_accounts_dialog_confirm(&mut self, cx: &mut Context<Self>) {
+    fn handle_accounts_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
         self.confirm_accounts_dialog();
         cx.notify();
     }
@@ -1874,19 +1878,19 @@ impl Shell {
         self.nav.enter_mode(InputMode::Dialog);
     }
 
-    fn handle_accounts_edit_click(&mut self, id: u32, cx: &mut Context<Self>) {
+    fn handle_accounts_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_account(id);
         self.open_edit_account_dialog(id);
         cx.notify();
     }
 
-    fn handle_accounts_delete_click(&mut self, id: u32, cx: &mut Context<Self>) {
+    fn handle_accounts_delete_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_account(id);
         self.open_delete_account_dialog(id);
         cx.notify();
     }
 
-    fn handle_categories_add_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_categories_add_click(&mut self, cx: &mut Context<'_, Self>) {
         let form = categories::CategoryForm {
             name: String::new(),
             parent_id: None,
@@ -1902,7 +1906,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn handle_categories_add_sub_click(&mut self, parent_id: u32, cx: &mut Context<Self>) {
+    fn handle_categories_add_sub_click(&mut self, parent_id: u32, cx: &mut Context<'_, Self>) {
         self.categories_selected_id = Some(parent_id);
         // Get the parent's category type to lock it in the form
         let category_type = self
@@ -1926,7 +1930,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn handle_categories_edit_click(&mut self, category_id: u32, cx: &mut Context<Self>) {
+    fn handle_categories_edit_click(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
         if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
             self.categories_selected_id = Some(category_id);
             let form = categories::CategoryForm {
@@ -1942,7 +1946,7 @@ impl Shell {
         }
     }
 
-    fn handle_categories_delete_click(&mut self, category_id: u32, cx: &mut Context<Self>) {
+    fn handle_categories_delete_click(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
         if !categories::is_leaf(&self.categories, category_id) {
             self.status_message = Some("delete or move its children first".to_string());
             cx.notify();
@@ -1957,79 +1961,71 @@ impl Shell {
     fn handle_categories_dialog_field_click(
         &mut self,
         field: categories::CategoryField,
-        cx: &mut Context<Self>,
+        cx: &mut Context<'_, Self>,
     ) {
-        if let Some(dialog) = self.categories_dialog.as_mut() {
-            if let Some(form) = dialog.form_mut() {
-                form.focus_field(field);
-                cx.notify();
-            }
+        if let Some(dialog) = self.categories_dialog.as_mut()
+            && let Some(form) = dialog.form_mut()
+        {
+            form.focus_field(field);
+            cx.notify();
         }
     }
 
     fn handle_categories_dialog_parent_change(
         &mut self,
         parent_id: Option<u32>,
-        cx: &mut Context<Self>,
+        cx: &mut Context<'_, Self>,
     ) {
-        if let Some(dialog) = self.categories_dialog.as_mut() {
-            if let Some(form) = dialog.form_mut() {
-                form.parent_id = parent_id;
-                // Update the category type if a parent is selected
-                if let Some(parent_id) = parent_id {
-                    if let Some(parent) = self.categories.iter().find(|c| c.id == parent_id) {
-                        form.category_type = Some(parent.category_type.clone());
-                    }
-                }
-                cx.notify();
+        if let Some(dialog) = self.categories_dialog.as_mut()
+            && let Some(form) = dialog.form_mut()
+        {
+            form.parent_id = parent_id;
+            // Update the category type if a parent is selected
+            if let Some(parent_id) = parent_id
+                && let Some(parent) = self.categories.iter().find(|c| c.id == parent_id)
+            {
+                form.category_type = Some(parent.category_type.clone());
             }
+            cx.notify();
         }
     }
 
     fn handle_categories_dialog_type_change(
         &mut self,
         category_type: CategoryTypes,
-        cx: &mut Context<Self>,
+        cx: &mut Context<'_, Self>,
     ) {
         if let Some(dialog) = self.categories_dialog.as_mut() {
             let can_change_type = match dialog {
                 categories::CategoriesDialog::Add { form, .. } => form.parent_id.is_none(),
-                categories::CategoriesDialog::Edit(id, _form) => {
-                    let is_top_level = self
-                        .categories
-                        .iter()
-                        .find(|c| c.id == *id)
-                        .map(|c| c.parent.is_none())
-                        .unwrap_or(false);
-                    is_top_level
-                }
+                categories::CategoriesDialog::Edit(id, _form) => self
+                    .categories
+                    .iter()
+                    .find(|c| c.id == *id)
+                    .map(|c| c.parent.is_none())
+                    .unwrap_or(false),
                 _ => false,
             };
 
-            if can_change_type {
-                if let Some(form) = dialog.form_mut() {
-                    form.category_type = Some(category_type.clone());
-                    // For Edit dialogs, cascade the type change to descendants
-                    if let categories::CategoriesDialog::Edit(id, _) = dialog {
-                        let _ = categories::change_category_type(
-                            &mut self.categories,
-                            *id,
-                            category_type,
-                        );
-                    }
-                    cx.notify();
+            if can_change_type && let Some(form) = dialog.form_mut() {
+                form.category_type = Some(category_type.clone());
+                // For Edit dialogs, cascade the type change to descendants
+                if let categories::CategoriesDialog::Edit(id, _) = dialog {
+                    let _ =
+                        categories::change_category_type(&mut self.categories, *id, category_type);
                 }
+                cx.notify();
             }
         }
     }
 
-    fn handle_categories_dialog_cancel(&mut self, cx: &mut Context<Self>) {
+    fn handle_categories_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
         self.categories_dialog = None;
         self.nav.exit_mode();
         cx.notify();
     }
 
-    fn handle_categories_dialog_confirm(&mut self, cx: &mut Context<Self>) {
+    fn handle_categories_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
         if let Some(dialog) = self.categories_dialog.take() {
             match dialog {
                 categories::CategoriesDialog::Add { form, .. } => {
@@ -2044,15 +2040,15 @@ impl Shell {
                         ) {
                             Ok(category_id) => {
                                 // Handle budget creation if budget is not empty
-                                if !form.budget.trim().is_empty() {
-                                    if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
-                                        budgets::create_budget(
-                                            &mut self.budgets,
-                                            category_id,
-                                            1,
-                                            amount,
-                                        );
-                                    }
+                                if !form.budget.trim().is_empty()
+                                    && let Ok(amount) = form.budget.parse::<lib_core::Money>()
+                                {
+                                    budgets::create_budget(
+                                        &mut self.budgets,
+                                        category_id,
+                                        1,
+                                        amount,
+                                    );
                                 }
                                 self.nav.exit_mode();
                                 cx.notify();
@@ -2103,13 +2099,13 @@ impl Shell {
         }
     }
 
-    fn handle_categories_disclosure_click(&mut self, id: u32, cx: &mut Context<Self>) {
+    fn handle_categories_disclosure_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         categories::toggle_expanded(&mut self.categories_expanded, id, false);
         cx.notify();
     }
 
     /// A click on a category row: selects it and opens Transactions filtered to that category.
-    fn handle_categories_row_click(&mut self, id: u32, cx: &mut Context<Self>) {
+    fn handle_categories_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.categories_selected_id = Some(id);
         self.open_category_transactions(id);
         cx.notify();
@@ -2117,7 +2113,7 @@ impl Shell {
 
     /// The Units section's own "+ Add unit" button (issue #184, replacing the stub #177 left
     /// behind): opens the Add unit dialog rather than flashing a status message.
-    fn handle_add_unit_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_add_unit_click(&mut self, cx: &mut Context<'_, Self>) {
         self.settings_dialog = Some(SettingsDialog::AddUnit(UnitForm::default()));
         self.nav.enter_mode(InputMode::Dialog);
         cx.notify();
@@ -2128,7 +2124,7 @@ impl Shell {
     /// (`UnitForm::from_row`) rather than flashing a status message. A no-op if `index` is
     /// somehow out of bounds (defensive only -- every caller is a row's own click handler, so
     /// this should never actually happen).
-    fn handle_unit_edit_click(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn handle_unit_edit_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let Some(row) = self.settings_units.get(index) else {
             return;
         };
@@ -2139,7 +2135,7 @@ impl Shell {
 
     /// Shared by the Add/Edit unit dialogs' own field-focus clicks (issues #184/#185) -- which
     /// field a click targets doesn't depend on which dialog variant is open.
-    fn handle_unit_dialog_field_click(&mut self, field: AddUnitField, cx: &mut Context<Self>) {
+    fn handle_unit_dialog_field_click(&mut self, field: AddUnitField, cx: &mut Context<'_, Self>) {
         if let Some(dialog) = self.settings_dialog.as_mut() {
             match dialog {
                 SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
@@ -2154,7 +2150,7 @@ impl Shell {
     }
 
     /// Shared by the Add/Edit unit dialogs' own Type segmented control (issues #184/#185).
-    fn handle_unit_dialog_kind_click(&mut self, kind: UnitKind, cx: &mut Context<Self>) {
+    fn handle_unit_dialog_kind_click(&mut self, kind: UnitKind, cx: &mut Context<'_, Self>) {
         if let Some(dialog) = self.settings_dialog.as_mut() {
             match dialog {
                 SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
@@ -2169,7 +2165,7 @@ impl Shell {
 
     /// Shared by the Add/Edit unit dialogs' own Cancel button -- discards whatever was typed,
     /// same as `Esc` (`Self::handle_key_down`'s `ClosePopupsAndExitMode` arm).
-    fn handle_settings_dialog_cancel(&mut self, cx: &mut Context<Self>) {
+    fn handle_settings_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
         self.settings_dialog = None;
         self.nav.exit_mode();
         cx.notify();
@@ -2254,7 +2250,7 @@ impl Shell {
         self.nav.exit_mode();
     }
 
-    fn handle_settings_dialog_confirm(&mut self, cx: &mut Context<Self>) {
+    fn handle_settings_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
         self.confirm_settings_dialog();
         cx.notify();
     }
@@ -2374,7 +2370,7 @@ impl Shell {
 
     /// The TopBar's own rail-toggle button (`Shell::render`'s `on_rail_toggle` closure) --
     /// same action as the `b` key, see [`Self::handle_key_down`].
-    fn handle_toggle_rail(&mut self, cx: &mut Context<Self>) {
+    fn handle_toggle_rail(&mut self, cx: &mut Context<'_, Self>) {
         self.nav.toggle_primary_rail();
         self.collapsed_rail_tooltip = None;
         cx.notify();
@@ -2385,7 +2381,7 @@ impl Shell {
     /// only reveals its tooltip after [`TOOLTIP_REVEAL_DELAY`], and only if hover hasn't since
     /// moved elsewhere -- `hover_generation` is the guard: a stale timer whose captured
     /// generation no longer matches the current one simply does nothing.
-    fn handle_rail_hover(&mut self, noun: Noun, hovered: bool, cx: &mut Context<Self>) {
+    fn handle_rail_hover(&mut self, noun: Noun, hovered: bool, cx: &mut Context<'_, Self>) {
         self.hover_generation += 1;
         if !hovered {
             self.collapsed_rail_tooltip = None;
@@ -2412,7 +2408,7 @@ impl Shell {
     /// call `g`-jump (`Self::handle_key_down`'s pending-`g` arm) and the palette
     /// (`Self::run_command`'s own `CommandEffect::Navigate` arm) both make, so rail click,
     /// `g`-jump and the palette land in the same state per acceptance criterion 1.
-    fn handle_rail_click(&mut self, noun: Noun, cx: &mut Context<Self>) {
+    fn handle_rail_click(&mut self, noun: Noun, cx: &mut Context<'_, Self>) {
         let noun_before = self.nav.noun();
         self.nav.set_noun(noun);
         if self.nav.noun() != noun_before {
@@ -2428,7 +2424,11 @@ impl Shell {
     /// dark treatment"). `scroll_to_top_of_item` addresses the body's *direct* children, so this
     /// goes through `SettingsSection::body_child_index`, not `SettingsSection::index`, to
     /// account for the page heading occupying child `0` (see `view::settings::render`).
-    fn handle_settings_index_click(&mut self, section: SettingsSection, cx: &mut Context<Self>) {
+    fn handle_settings_index_click(
+        &mut self,
+        section: SettingsSection,
+        cx: &mut Context<'_, Self>,
+    ) {
         self.settings_selected_section = section;
         self.view_scroll_handle
             .scroll_to_top_of_item(section.body_child_index());
@@ -2439,25 +2439,25 @@ impl Shell {
     /// source" button (issue #189): no dialog exists for any of these anywhere on this map (same
     /// reasoning as Institutions' own row edit/delete, `Self::handle_institution_edit_click`'s
     /// own doc), so each flashes a plain "not yet built" status message naming no issue.
-    fn handle_price_source_test_click(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn handle_price_source_test_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index;
         self.status_message = Some("test price source -- not yet built".to_string());
         cx.notify();
     }
 
-    fn handle_price_source_edit_click(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn handle_price_source_edit_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index;
         self.status_message = Some("edit price source -- not yet built".to_string());
         cx.notify();
     }
 
-    fn handle_price_source_delete_click(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn handle_price_source_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index;
         self.status_message = Some("delete price source -- not yet built".to_string());
         cx.notify();
     }
 
-    fn handle_add_price_source_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_add_price_source_click(&mut self, cx: &mut Context<'_, Self>) {
         self.status_message = Some("add price source -- not yet built".to_string());
         cx.notify();
     }
@@ -2466,7 +2466,7 @@ impl Shell {
     /// behind): opens the destructive Delete unit confirm dialog rather than flashing a status
     /// message. A no-op if `index` is somehow out of bounds (defensive only, same reasoning as
     /// [`Self::handle_unit_edit_click`]).
-    fn handle_unit_delete_click(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn handle_unit_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         if index >= self.settings_units.len() {
             return;
         }
@@ -2480,13 +2480,13 @@ impl Shell {
     /// issue: no `EditInstitution`/`DeleteInstitution` dialog is specified anywhere on this map
     /// (the README's own "Dialog lifecycle" table and `State` block only ever mention
     /// `AddInstitution`), so there is no ticket to point at.
-    fn handle_institution_edit_click(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn handle_institution_edit_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index; // no row-scoped state until a future ticket specifies this dialog
         self.status_message = Some("edit institution -- not yet built".to_string());
         cx.notify();
     }
 
-    fn handle_institution_delete_click(&mut self, index: usize, cx: &mut Context<Self>) {
+    fn handle_institution_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index; // no row-scoped state until a future ticket specifies this dialog
         self.status_message = Some("delete institution -- not yet built".to_string());
         cx.notify();
@@ -2497,7 +2497,7 @@ impl Shell {
     /// message. `AddInstitutionForm::new` seeds Default unit from `self.settings_units`' own
     /// first entry, so this dialog reads Units' live state even though the two sections are
     /// otherwise independent.
-    fn handle_add_institution_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_add_institution_click(&mut self, cx: &mut Context<'_, Self>) {
         self.settings_dialog = Some(SettingsDialog::AddInstitution(AddInstitutionForm::new(
             &self.settings_units,
         )));
@@ -2508,7 +2508,7 @@ impl Shell {
     fn handle_add_institution_account_type_click(
         &mut self,
         account_type: AccountType,
-        cx: &mut Context<Self>,
+        cx: &mut Context<'_, Self>,
     ) {
         if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog.as_mut() {
             form.toggle_account_type(account_type);
@@ -2516,7 +2516,7 @@ impl Shell {
         }
     }
 
-    fn handle_add_institution_unit_click(&mut self, code: String, cx: &mut Context<Self>) {
+    fn handle_add_institution_unit_click(&mut self, code: String, cx: &mut Context<'_, Self>) {
         if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog.as_mut() {
             form.default_unit_code = Some(code);
             cx.notify();
@@ -2526,19 +2526,19 @@ impl Shell {
     /// The Sync server section's own "Sync now" button (issue #180): unlike the "+ Add"
     /// buttons above, this has no future ticket that will give it real behaviour -- the map's
     /// own Out-of-scope names it a permanent stand-in -- so the stub message names no issue.
-    fn handle_sync_now_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_sync_now_click(&mut self, cx: &mut Context<'_, Self>) {
         self.status_message = Some("sync now -- not implemented".to_string());
         cx.notify();
     }
 
     /// The Data & backup section's own "Backup now"/"Export ledger (CSV)" buttons (issue #181)
     /// -- same permanently-out-of-scope reasoning as [`Self::handle_sync_now_click`].
-    fn handle_backup_now_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_backup_now_click(&mut self, cx: &mut Context<'_, Self>) {
         self.status_message = Some("backup now -- not implemented".to_string());
         cx.notify();
     }
 
-    fn handle_export_ledger_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_export_ledger_click(&mut self, cx: &mut Context<'_, Self>) {
         self.status_message = Some("export ledger -- not implemented".to_string());
         cx.notify();
     }
@@ -2546,14 +2546,14 @@ impl Shell {
     /// The Tracing (Logs) section's own level radios (issue #182): a stored preference, same
     /// shape as [`Self::handle_row_density_click`] -- there are no real log lines to filter by
     /// level yet.
-    fn handle_tracing_level_click(&mut self, level: TracingLevel, cx: &mut Context<Self>) {
+    fn handle_tracing_level_click(&mut self, level: TracingLevel, cx: &mut Context<'_, Self>) {
         self.settings_tracing_level = level;
         cx.notify();
     }
 
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored
     /// preference that also re-renders the PREVIEW table's own DATE column.
-    fn handle_date_style_click(&mut self, style: Option<DateStyle>, cx: &mut Context<Self>) {
+    fn handle_date_style_click(&mut self, style: Option<DateStyle>, cx: &mut Context<'_, Self>) {
         self.settings_date_style = style;
         cx.notify();
     }
@@ -2561,7 +2561,7 @@ impl Shell {
     /// The same section's "Row density" segmented control -- also re-renders the PREVIEW table's
     /// own row padding (`view::settings::display`'s own doc: the one field this map gives a real
     /// visual effect to, not just a stored preference).
-    fn handle_row_density_click(&mut self, density: RowDensity, cx: &mut Context<Self>) {
+    fn handle_row_density_click(&mut self, density: RowDensity, cx: &mut Context<'_, Self>) {
         self.settings_row_density = density;
         // The Transactions table's scroll offset is in pixels, so a new row height would leave it
         // pointing at a different row: re-anchor on the selected one for its next paint.
@@ -2572,14 +2572,14 @@ impl Shell {
 
     /// The same section's "Status glyphs" radio group -- also re-renders the PREVIEW table's own
     /// leftmost glyph column.
-    fn handle_status_glyphs_click(&mut self, glyphs: StatusGlyphs, cx: &mut Context<Self>) {
+    fn handle_status_glyphs_click(&mut self, glyphs: StatusGlyphs, cx: &mut Context<'_, Self>) {
         self.settings_status_glyphs = glyphs;
         cx.notify();
     }
 
     /// The same section's "Start Sidebar minimised" toggle -- takes effect at the next launch, so
     /// the current rail state is left alone.
-    fn handle_start_sidebar_minimised_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_start_sidebar_minimised_click(&mut self, cx: &mut Context<'_, Self>) {
         self.settings_start_sidebar_minimised = !self.settings_start_sidebar_minimised;
         cx.notify();
     }
@@ -2587,7 +2587,7 @@ impl Shell {
     /// The same section's "Clear logs" button: unlike every other button this map has built,
     /// this one has a real effect -- the ticket's own body asks for the viewport's in-memory
     /// contents to actually empty, not a stubbed status-line message.
-    fn handle_clear_logs_click(&mut self, cx: &mut Context<Self>) {
+    fn handle_clear_logs_click(&mut self, cx: &mut Context<'_, Self>) {
         self.settings_log_lines.clear();
         cx.notify();
     }
@@ -2602,7 +2602,7 @@ impl Shell {
         &mut self,
         path: PathBuf,
         click_count: usize,
-        cx: &mut Context<Self>,
+        cx: &mut Context<'_, Self>,
     ) {
         let Some(explorer) = self.file_explorer.as_mut() else {
             return;
@@ -2616,7 +2616,7 @@ impl Shell {
     }
 
     /// A breadcrumb segment click (`explorer::OnBreadcrumbClick`).
-    fn handle_explorer_breadcrumb_click(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+    fn handle_explorer_breadcrumb_click(&mut self, path: PathBuf, cx: &mut Context<'_, Self>) {
         if let Some(explorer) = self.file_explorer.as_mut() {
             explorer.navigate_to(path);
             cx.notify();
@@ -2625,20 +2625,20 @@ impl Shell {
 
     /// The explorer dialog's own Cancel button: closes without opening anything, leaving
     /// Command mode the same way the palette's own `esc` does.
-    fn handle_explorer_cancel(&mut self, cx: &mut Context<Self>) {
+    fn handle_explorer_cancel(&mut self, cx: &mut Context<'_, Self>) {
         self.file_explorer = None;
         self.nav.exit_mode();
         cx.notify();
     }
 
     /// The help overlay's own Close button.
-    fn handle_help_close(&mut self, cx: &mut Context<Self>) {
+    fn handle_help_close(&mut self, cx: &mut Context<'_, Self>) {
         self.nav.exit_mode();
         cx.notify();
     }
 
     /// The explorer dialog's own Open button.
-    fn handle_explorer_open(&mut self, cx: &mut Context<Self>) {
+    fn handle_explorer_open(&mut self, cx: &mut Context<'_, Self>) {
         self.confirm_explorer_open(cx);
     }
 
@@ -2651,7 +2651,7 @@ impl Shell {
     /// is selected (Open/New is only clickable once `FileExplorer::can_open` is true, but a
     /// double-click can also reach here -- see [`Self::handle_explorer_entry_click`] -- so this
     /// re-checks rather than trusting the caller).
-    fn confirm_explorer_open(&mut self, cx: &mut Context<Self>) {
+    fn confirm_explorer_open(&mut self, cx: &mut Context<'_, Self>) {
         let Some(explorer) = self.file_explorer.as_ref() else {
             return;
         };
@@ -2674,7 +2674,7 @@ impl Shell {
     fn handle_empty_state_command_click(
         &mut self,
         command_name: &'static str,
-        cx: &mut Context<Self>,
+        cx: &mut Context<'_, Self>,
     ) {
         let Some(command) = command::all().find(|command| command.name == command_name) else {
             return;
@@ -2692,7 +2692,7 @@ impl Focusable for Shell {
 }
 
 impl Render for Shell {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let focus = self.nav.focus();
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
         // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
@@ -3171,7 +3171,7 @@ impl Render for Shell {
             })
         };
         let filter_popover = self.transactions_filter_form.as_ref().map(|form| {
-            let entity_for = |shell_call: fn(&mut Shell, &mut Context<Shell>)| {
+            let entity_for = |shell_call: fn(&mut Shell, &mut Context<'_, Shell>)| {
                 let entity = entity.clone();
                 Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
                     entity.update(cx, shell_call);
@@ -3468,11 +3468,13 @@ impl Render for Shell {
                         form,
                         &parent_options,
                         &self.categories,
-                        on_categories_dialog_field_click,
-                        on_categories_dialog_parent_change,
-                        on_categories_dialog_type_change,
-                        on_categories_dialog_cancel,
-                        on_categories_dialog_confirm,
+                        categories_view::DialogHandlers {
+                            on_field_click: on_categories_dialog_field_click,
+                            on_parent_change: on_categories_dialog_parent_change,
+                            on_type_change: on_categories_dialog_type_change,
+                            on_cancel: on_categories_dialog_cancel,
+                            on_confirm: on_categories_dialog_confirm,
+                        },
                     )
                 }
                 categories::CategoriesDialog::Edit(category_id, form) => {
@@ -3525,11 +3527,13 @@ impl Render for Shell {
                         &self.categories,
                         split_count,
                         is_parent,
-                        on_categories_dialog_field_click,
-                        on_categories_dialog_parent_change,
-                        on_categories_dialog_type_change,
-                        on_categories_dialog_cancel,
-                        on_categories_dialog_confirm,
+                        categories_view::DialogHandlers {
+                            on_field_click: on_categories_dialog_field_click,
+                            on_parent_change: on_categories_dialog_parent_change,
+                            on_type_change: on_categories_dialog_type_change,
+                            on_cancel: on_categories_dialog_cancel,
+                            on_confirm: on_categories_dialog_confirm,
+                        },
                     )
                 }
                 categories::CategoriesDialog::Delete(category_id, form) => {

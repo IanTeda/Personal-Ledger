@@ -75,7 +75,7 @@ impl DashboardView {
 impl View for DashboardView {
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -110,7 +110,7 @@ impl View for DashboardView {
 /// liabilities label-over-value trio, bottom-aligned to match, on the right. A terminal has
 /// no literal font size, so the box-text figure stands in for the handoff's "double-height
 /// or bold" net position treatment from `docs/ux/tui/README.md`.
-fn render_headline(frame: &mut Frame, area: Rect) {
+fn render_headline(frame: &mut Frame<'_>, area: Rect) {
     let box_text_width = NET_POSITION.chars().count() as u16 * BOX_CHAR_WIDTH;
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -124,7 +124,7 @@ fn render_headline(frame: &mut Frame, area: Rect) {
 
 /// The left headline area: "NET POSITION" over the box-text net position figure. No border
 /// or title — just the two stacked rows.
-fn render_net_position(frame: &mut Frame, area: Rect) {
+fn render_net_position(frame: &mut Frame<'_>, area: Rect) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -144,7 +144,7 @@ fn render_net_position(frame: &mut Frame, area: Rect) {
 /// The right headline area: the 30-day delta / assets / liabilities label-over-value trio,
 /// bottom-aligned so its two rows line up with the net position area's last two box-text
 /// lines. No border or title.
-fn render_headline_stats_area(frame: &mut Frame, area: Rect) {
+fn render_headline_stats_area(frame: &mut Frame<'_>, area: Rect) {
     let label_row = Rect {
         y: area.y + area.height.saturating_sub(2),
         height: 1,
@@ -160,7 +160,7 @@ fn render_headline_stats_area(frame: &mut Frame, area: Rect) {
 
 /// The 30-day delta / assets / liabilities trio, right of the net position figure: a label
 /// row and a value row, each split into three columns. Liabilities render in the accent.
-fn render_headline_stats(frame: &mut Frame, label_area: Rect, value_area: Rect) {
+fn render_headline_stats(frame: &mut Frame<'_>, label_area: Rect, value_area: Rect) {
     let column_widths = [
         Constraint::Length(16),
         Constraint::Length(16),
@@ -215,7 +215,7 @@ fn tag_column(tag: &str) -> Constraint {
 /// laying out one `BoxChar` per column slot ourselves. Bolded afterwards: `BoxChar` has no
 /// styling API of its own (it only ever sets a cell's symbol, never its style), so the only
 /// way to bold it is to patch the modifier onto the buffer once the glyphs are drawn.
-fn render_box_text(frame: &mut Frame, area: Rect, text: &str) {
+fn render_box_text(frame: &mut Frame<'_>, area: Rect, text: &str) {
     let constraints: Vec<Constraint> = text
         .chars()
         .map(|_| Constraint::Length(BOX_CHAR_WIDTH))
@@ -236,7 +236,7 @@ fn render_box_text(frame: &mut Frame, area: Rect, text: &str) {
 
 /// Items 2-3 — the net-worth line chart and the income-vs-expense divergent bars share one
 /// 18-row band: the line chart takes roughly 60% of the width, the bars the rest.
-fn render_trend_band(frame: &mut Frame, area: Rect) {
+fn render_trend_band(frame: &mut Frame<'_>, area: Rect) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(60), Constraint::Min(0)])
@@ -260,7 +260,7 @@ struct NetWorthPoint {
 /// the "NET POSITION" label pattern in the headline), underlined with a full-width rule
 /// rather than boxed. X-axis labelled at the first/middle/last month; no y-axis labels,
 /// since a real headline net-position figure will carry the magnitude once one exists.
-fn render_net_worth_chart(frame: &mut Frame, area: Rect, net_worth: &[NetWorthPoint]) {
+fn render_net_worth_chart(frame: &mut Frame<'_>, area: Rect, net_worth: &[NetWorthPoint]) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -356,7 +356,7 @@ struct MonthFlow {
 /// right-aligned "8M DIVERGENT" tag (matching the "WHERE IT WENT · PIE CHART" pattern),
 /// underlined with a full-width rule, matching the Net Worth box, then the month rows (with
 /// a blank row between each), then an "expense · income" caption.
-fn render_income_vs_expense(frame: &mut Frame, area: Rect, flows: &[MonthFlow]) {
+fn render_income_vs_expense(frame: &mut Frame<'_>, area: Rect, flows: &[MonthFlow]) {
     // `flows.len()` rows plus a 1-row gap between each.
     let month_rows_height = (flows.len() as u16) * 2 - 1;
 
@@ -442,7 +442,7 @@ fn render_income_vs_expense(frame: &mut Frame, area: Rect, flows: &[MonthFlow]) 
 /// remaining track — expense (accent) growing left, income (default) growing right — both
 /// scaled against `max_flow`, a scale shared across every month rather than a per-row
 /// proportion, so a bigger number always draws a longer bar.
-fn render_divergent_bar_row(frame: &mut Frame, area: Rect, flow: &MonthFlow, max_flow: f64) {
+fn render_divergent_bar_row(frame: &mut Frame<'_>, area: Rect, flow: &MonthFlow, max_flow: f64) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(MONTH_LABEL_WIDTH), Constraint::Min(0)])
@@ -541,7 +541,7 @@ fn fake_income_vs_expense() -> Vec<MonthFlow> {
 /// Items 4-6 — the pie chart, the budget gauges, and needs-attention share the remaining
 /// band: the pie chart takes 2/5 of the screen width; budgets and needs-attention split the
 /// rest vertically, needs-attention pinned to the bottom.
-fn render_lower_band(frame: &mut Frame, area: Rect) {
+fn render_lower_band(frame: &mut Frame<'_>, area: Rect) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(40), Constraint::Min(0)])
@@ -578,7 +578,7 @@ struct SpendingSlice {
 /// Item 4 — the "Where it went" pie chart: a heading with a "PIE CHART" tag on the right,
 /// underlined with a full-width rule (matching Net Worth and Income vs Expense), then the
 /// pie itself beside its 5-slice legend (swatch, category, percentage).
-fn render_where_it_went(frame: &mut Frame, area: Rect, slices: &[SpendingSlice]) {
+fn render_where_it_went(frame: &mut Frame<'_>, area: Rect, slices: &[SpendingSlice]) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -628,8 +628,8 @@ fn render_where_it_went(frame: &mut Frame, area: Rect, slices: &[SpendingSlice])
 /// `render_spending_legend` already matches `docs/ux/tui/README.md`'s exact
 /// `swatch category NN%` format (whole-number percentages), which the crate's built-in
 /// legend doesn't (it renders one decimal place).
-fn render_pie_chart(frame: &mut Frame, area: Rect, slices: &[SpendingSlice]) {
-    let pie_slices: Vec<PieSlice> = slices
+fn render_pie_chart(frame: &mut Frame<'_>, area: Rect, slices: &[SpendingSlice]) {
+    let pie_slices: Vec<PieSlice<'_>> = slices
         .iter()
         .map(|slice| PieSlice::new(slice.category, slice.percent, slice.color))
         .collect();
@@ -644,7 +644,7 @@ fn render_pie_chart(frame: &mut Frame, area: Rect, slices: &[SpendingSlice]) {
 
 /// The pie chart's legend: one row per slice, a coloured swatch, the category, and its
 /// percentage — largest first, "other" always last.
-fn render_spending_legend(frame: &mut Frame, area: Rect, slices: &[SpendingSlice]) {
+fn render_spending_legend(frame: &mut Frame<'_>, area: Rect, slices: &[SpendingSlice]) {
     let constraints: Vec<Constraint> = slices.iter().map(|_| Constraint::Length(1)).collect();
     let rows = Layout::default()
         .direction(Direction::Vertical)
@@ -725,7 +725,7 @@ fn capped_budgets(budgets: &[BudgetCategory]) -> &[BudgetCategory] {
 /// renders however many `budgets` it's handed, which the isolated-rendering unit tests below
 /// rely on to exercise the full 7-item `fake_budgets()` set directly.
 fn render_budgets_this_period(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     area: Rect,
     budgets: &[BudgetCategory],
     period: &BudgetPeriod,
@@ -789,7 +789,12 @@ fn render_budgets_this_period(
 
 /// One category's row: its label, a ratio bar, and the `actual / limit` figures right-aligned
 /// — both the bar's fill and the figures flip to the accent when over budget.
-fn render_budget_row(frame: &mut Frame, area: Rect, budget: &BudgetCategory, period_progress: f64) {
+fn render_budget_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    budget: &BudgetCategory,
+    period_progress: f64,
+) {
     let is_over = budget.actual > budget.limit;
     let figure_style = if is_over {
         Style::default().fg(ACCENT)
@@ -831,7 +836,7 @@ fn render_budget_row(frame: &mut Frame, area: Rect, budget: &BudgetCategory, per
 /// remainder in a pale shade. A `│` overlays the bar at `period_progress`'s position
 /// regardless of the row's own fill, so every row's tick lines up on the same column.
 fn render_budget_bar(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     area: Rect,
     budget: &BudgetCategory,
     period_progress: f64,
@@ -847,7 +852,7 @@ fn render_budget_bar(
     let tick_pos = ((period_progress * bar_width as f64).round() as usize).min(bar_width - 1);
 
     let fill_color = if is_over { ACCENT } else { Color::Gray };
-    let spans: Vec<Span> = (0..bar_width)
+    let spans: Vec<Span<'_>> = (0..bar_width)
         .map(|column| {
             if column == tick_pos {
                 Span::raw("│")
@@ -941,7 +946,7 @@ struct AttentionItem {
 /// Item 6 — "Needs attention": 2-3 lines only, each naming the command (or context) that
 /// resolves it, right-aligned — deliberately not a table (`docs/ux/tui/README.md`). A
 /// trailing "...more" row hints at a fuller to-do list beyond what fits here.
-fn render_needs_attention(frame: &mut Frame, area: Rect, items: &[AttentionItem]) {
+fn render_needs_attention(frame: &mut Frame<'_>, area: Rect, items: &[AttentionItem]) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -1007,7 +1012,7 @@ fn render_needs_attention(frame: &mut Frame, area: Rect, items: &[AttentionItem]
 /// naming the command (or context) that resolves it, muted — the description is the row's
 /// content, the action a quiet hint of how to resolve it.
 fn render_attention_row(
-    frame: &mut Frame,
+    frame: &mut Frame<'_>,
     area: Rect,
     description: &str,
     description_style: Style,
@@ -1070,7 +1075,7 @@ fn variance_description() -> String {
 }
 
 /// A bordered, titled box standing in for a region's real widget content.
-fn placeholder(frame: &mut Frame, area: Rect, title: &'static str) {
+fn placeholder(frame: &mut Frame<'_>, area: Rect, title: &'static str) {
     frame.render_widget(
         Paragraph::new("placeholder").block(Block::bordered().title(title)),
         area,

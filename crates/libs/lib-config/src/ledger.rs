@@ -487,7 +487,7 @@ mod tests {
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(
             config.personal_ledger.file(),
-            std::path::Path::new("/tmp/test-ledger.pldb")
+            Path::new("/tmp/test-ledger.pldb")
         );
         assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::DEBUG);
     }

@@ -130,7 +130,7 @@ impl EditTagPopup {
     }
 
     /// Renders the floating overlay, centred within `area`.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn TagStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn TagStore) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -176,7 +176,7 @@ fn dim() -> Style {
 }
 
 /// The title row: "edit tag" flush left, the `:tag edit` command dim and right-aligned.
-fn render_title(frame: &mut Frame, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect) {
     let tag = msg::tui_tag_edit_command();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -192,7 +192,7 @@ fn render_title(frame: &mut Frame, area: Rect) {
     );
 }
 
-fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -201,7 +201,7 @@ fn render_field(frame: &mut Frame, area: Rect, label: &str, value: Line<'static>
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
-fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
         spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
@@ -212,7 +212,7 @@ fn render_text_field(frame: &mut Frame, area: Rect, label: &str, value: &str, fo
 /// The `active` checkbox row: the glyph in the accent when focused, "clear to deactivate" as
 /// the consequence — mirrors `popup::account::edit`'s own wording (distinct from `popup::tag::
 /// new`'s "offered when tagging", since this is an edit, not a fresh creation).
-fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: bool) {
+fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
     let glyph_style = if focused {
         Style::default().fg(ACCENT)
     } else {
@@ -235,7 +235,12 @@ fn render_active_field(frame: &mut Frame, area: Rect, active: bool, focused: boo
 /// States that renaming is always safe (nothing derives from a Tag's name), and flags a live
 /// clash the moment the typed name matches another Tag — mirrors `popup::tag::new`'s own
 /// `render_clash_note`, excluding the Tag being edited.
-fn render_clash_note(frame: &mut Frame, area: Rect, store: &dyn TagStore, popup: &EditTagPopup) {
+fn render_clash_note(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    store: &dyn TagStore,
+    popup: &EditTagPopup,
+) {
     let trimmed = popup.name.trim();
     if !trimmed.is_empty() && popup.name_taken(store, trimmed) {
         frame.render_widget(
@@ -253,7 +258,7 @@ fn render_clash_note(frame: &mut Frame, area: Rect, store: &dyn TagStore, popup:
     );
 }
 
-fn render_footer_hints(frame: &mut Frame, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     let hints = [
         ("tab", msg::tui_tag_edit_help_tab()),
         ("^s", msg::tui_tag_edit_help_save()),

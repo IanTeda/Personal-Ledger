@@ -24,7 +24,7 @@ impl AccountPopup {
     /// Renders whichever form is open, against the live Account list `store` — `new`'s `unit`
     /// field completion, `edit`'s computed section, and `delete`'s transfer-candidate/preview
     /// all need read access to it.
-    pub fn render(&self, frame: &mut Frame, area: Rect, store: &dyn AccountStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore) {
         match self {
             AccountPopup::New(popup) => popup.render(frame, area, store),
             AccountPopup::Edit(popup) => popup.render(frame, area, store),

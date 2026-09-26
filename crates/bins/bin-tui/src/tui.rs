@@ -87,7 +87,7 @@ impl Tui {
     /// Draws one frame via the given closure.
     pub fn draw(
         &mut self,
-        render: impl FnOnce(&mut ratatui::Frame),
+        render: impl FnOnce(&mut ratatui::Frame<'_>),
     ) -> crate::Result<ratatui::CompletedFrame<'_>> {
         self.terminal.draw(render).map_err(Into::into)
     }

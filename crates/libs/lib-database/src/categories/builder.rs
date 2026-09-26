@@ -195,7 +195,10 @@ impl CategoriesBuilder {
 
         // clippy's unwrap_or_default suggestion is WRONG here: RowID::default() is a nil
         // (version 0) UUID, not a usable row id -- RowID's Decode requires version 7.
-        #[allow(clippy::unwrap_or_default)]
+        #[expect(
+            clippy::unwrap_or_default,
+            reason = "RowID::default() is a nil UUID, not a usable row id"
+        )]
         let id = self.id.unwrap_or_else(lib_core::RowID::new);
         let url_slug = self.url_slug;
         let now = chrono::Utc::now();
@@ -230,7 +233,10 @@ impl CategoriesBuilder {
 
         // clippy's unwrap_or_default suggestion is WRONG here: RowID::default() is a nil
         // (version 0) UUID, not a usable row id -- RowID's Decode requires version 7.
-        #[allow(clippy::unwrap_or_default)]
+        #[expect(
+            clippy::unwrap_or_default,
+            reason = "RowID::default() is a nil UUID, not a usable row id"
+        )]
         let id = self.id.unwrap_or_else(lib_core::RowID::new);
         let url_slug = self.url_slug;
         let now = chrono::Utc::now();

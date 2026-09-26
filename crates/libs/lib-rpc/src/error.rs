@@ -22,7 +22,7 @@
 //! - `500 Internal Server Error`: Server-side failures
 //! - `502 Bad Gateway`: Connection issues
 
-pub type RpcResult<T> = std::result::Result<T, RpcError>;
+pub type RpcResult<T> = Result<T, RpcError>;
 
 /// Errors that can occur when using the RPC layer.
 ///
