@@ -1,9 +1,6 @@
 <!-- markdownlint-disable MD033 -->
 # Personal Ledger
 
-<!-- Improved compatibility of back to top link -->
-<a name="readme-top"></a>
-
 <!-- The extra return after center is needed for it to render the markdown links center -->
 <div align="center">
 
@@ -24,46 +21,17 @@
     </a>
     <h3 align="center">Personal Ledger</h3>
     <p align="center">
-        Track your personal expense, investments and assets to help you understand what you have and to make informed decisions..
+        Keep track of your spending, investments and assets, so you know where you stand and can make better decisions.
     <br />
-    <a href="https://ianteda.github.io/personal-ledger/">Explore the Docs</a>
+    <a href="https://ianteda.github.io/personal-ledger/">Read the Docs</a>
     ·
-    <a href="https://ianteda.github.io/personal-ledger/issues">Report a Bug</a>
+    <a href="https://github.com/IanTeda/Personal-Ledger/issues">Report a Bug</a>
     ·
-    <a href="https://ianteda.github.io/personal-ledger/issues">Request a Feature</a>
+    <a href="https://github.com/IanTeda/Personal-Ledger/issues">Request a Feature</a>
   </p>
 </div>
 
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li><a href="#about-the-project">About The Project</a></li>
-    <li><a href="#includes">Project Includes</a></li>
-    <li><a href="#getting-started">Getting Started</a></li>
-    <li>
-      <a href="#developing-with-this-repo">Developing With This Repo</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#available-tasks-mise">Available Tasks (mise)</a></li>
-        <li><a href="#building-and-running">Building and Running</a></li>
-        <li><a href="#testing-linting-and-formatting">Testing, Linting and Formatting</a></li>
-        <li><a href="#documentation">Documentation</a></li>
-        <li><a href="#agent-assisted-development">Agent-Assisted Development</a></li>
-      </ul>
-    </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#references">References</a></li>
-    <li><a href="#similar-applications">Similar Applications</a></li>
-  </ol>
-</details>
-
-<!-- ABOUT THE PROJECT -->
-## About The Project
+## About
 
 ![Personal Ledger Desktop Client screenshot][screenshot-desktop]
 
@@ -73,53 +41,40 @@ _The Desktop Client_
 
 _The TUI Client_
 
-**Personal Ledger** aims to provide its users with an intuitive and user-friendly interface that offers insights into their spending habits and investment position. By presenting information clearly and concisely, users can effectively monitor their overall financial health, make informed decisions, and ultimately achieve their personal financial goals.
+Personal Ledger is a personal finance app. The goal is simple: show you clearly where your money goes and what you own, so you can keep an eye on your finances and plan ahead.
 
-Motivation for Personal Ledger:
+Why build another one?
 
-* Applications in general are opinionated, and finance applications are no different. Looking at the finance applications available, none ticked my boxes or were monthly subscription models with high fees.
-* I niavely thought I could do it better.
-* Funsy project to hone my programming skills.
+- Every finance app has opinions, and none of the ones I tried matched mine. The rest wanted a hefty monthly subscription.
+- I (perhaps naively) thought I could do better.
+- It's a fun way to sharpen my programming skills.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## What's in the box
 
-<!-- PROJECT INCLUDES -->
-## Includes
+Personal Ledger is made of a few pieces you can mix and match:
 
-The Personal Ledger has a number of standalone applications and services that can be combined to suit your preference. They include the following:
+- **Desktop app (in development):** a native desktop app.
+- **TUI app (in development):** the same ledger in your terminal.
+- **Sync Server (in development):** an optional server that keeps your ledger in sync across devices. Runs as a standalone binary or in Docker.
 
-* **Backend (Underdevement) :** A backend server that can be accessed by front ends through an rpc interface. The backend can be a standalone binary service or Docker deployable.
-* **Web (Under Development) :** A web frontend app that uses the backend for data quering. The web frontend can be a standalone binary service or Docker deployable
-* **Desktop (Planned) :** A desktop app that wraps the web front end that can access the bakend or be standalone.
-* **TUI (Planned) :** A text interface frontend that can access the backend or be standalone.
+Right now the apps are built UI-first, so most screens show sample data. Saving your own data comes next.
 
-<!-- PROJECT IS BUILT WITH -->
-## Built With
+## Built with
 
-I have tried to keep the tech stack with Rust, because that is what I would like to learn and improve with. The Rust stack being used includes the following:
+It's Rust all the way down, because that's the language I want to get better at:
 
-* Sqlite:
-* Tonic:
-* Tuari:
-* Ratui:
+- [SQLite](https://sqlite.org/) with [SQLx](https://github.com/launchbadge/sqlx) for storage
+- [GPUI](https://www.gpui.rs/) and [gpui-component](https://github.com/longbridge/gpui-component) for the desktop app
+- [Ratatui](https://ratatui.rs/) for the terminal app
+- [Tonic](https://github.com/hyperium/tonic) (gRPC) and [Axum](https://github.com/tokio-rs/axum) for the Sync Server
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## Getting started
 
-<!-- GETTING STARTED -->
-## Getting Started
+There's nothing to install yet. If you'd like to build it yourself or help out, read on.
 
-At the moment Personal Ledger is under development, so there is no end-user installation yet — the backend server only wires up a `Ping` utility RPC. If you want to build, run or contribute to the code, see [Developing With This Repo](#developing-with-this-repo) below.
+### Set up your tools
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- DEVELOPING WITH THIS REPO -->
-## Developing With This Repo
-
-Personal Ledger is a Rust Cargo workspace. This section covers what you need to build, test and run it locally.
-
-### Prerequisites
-
-Toolchain and dev-tool versions (Rust, protoc, mdBook, sqlx-cli, cargo-watch, cargo-audit) are pinned in `mise.toml` at the workspace root and managed by [mise](https://mise.jdx.dev/), which also defines the project's dev tasks (`mise tasks` to list them). Install mise, then install the pinned tools for this repo:
+Tool versions (Rust, protoc, mdBook, sqlx-cli and friends) are pinned in `mise.toml` and managed by [mise](https://mise.jdx.dev/). Install mise, then let it install everything else:
 
 ```sh
 curl https://mise.run | sh
@@ -128,173 +83,80 @@ mise trust
 mise install
 ```
 
-`mise`'s shell/dir activation will also install the pinned tools automatically when you `cd` into the repo. Without this step, tools like `protoc` or `sqlx-cli` won't be on your `PATH`.
+### Set up the dev database
 
-### Available Tasks (mise)
-
-Beyond pinning tool versions, `mise.toml` also defines this project's dev tasks — a replacement for the `cargo-make`/`Makefile.toml` setup this repo used previously. Run `mise tasks` at any time to list them with their descriptions straight from the config, or `mise run <task>` to run one:
-
-| Task                     | What it does                                                     |
-| ------------------------ | ----------------------------------------------------------------- |
-| `watch-tui`              | Rebuild and rerun the TUI on file changes                         |
-| `docs-rustdoc`           | Build Rust docs (rustdoc)                                         |
-| `docs-mdbook`            | Build mdBook documentation                                        |
-| `docs-build`             | Build all documentation (`docs-rustdoc` + `docs-mdbook`)           |
-| `docs-serve`             | Serve mdBook documentation on port 8001                           |
-| `db-drop`                | Drop the dev database                                             |
-| `db-create`              | Create the dev database                                           |
-| `db-migrate-client`      | Apply the Client-Ledger migrations                                |
-| `db-migrate-sync-server` | Apply the Sync Server migrations                                  |
-| `db-migrate`             | Apply both the Client-Ledger and Sync-Server migration sets        |
-| `db-prepare-generate`    | Regenerate the `sqlx` query cache for `lib-database`               |
-| `db-prepare-check`       | Check the `sqlx` query cache is up to date                        |
-| `db`                     | Reset the dev database from scratch: drop, create, migrate, then refresh the query cache |
+The database crate checks its SQL queries at compile time, so it needs a database to check against. Create a `.env` file in the repo root:
 
 ```sh
-mise run watch-tui   # rebuild + rerun the TUI on every save
-mise run db          # drop, recreate, migrate and refresh the local dev database
+DATABASE_URL=sqlite:/absolute/path/to/Personal-Ledger/.personal-ledger-dev.db
 ```
 
-### Building and Running
-
-Most day-to-day work is plain `cargo` run against the workspace or a specific package:
+Then build the database:
 
 ```sh
-# Build the whole workspace
-cargo build
-
-# Build just the server binary
-cargo build --package server --bin server
-
-# Run the server (reads config, initialises telemetry — currently does nothing else)
-cargo run --package server
-
-# Run the TUI, rebuilding and rerunning it on every file change
-mise run watch-tui
+mise run db
 ```
 
-Building `lib-rpc` requires a system `protoc` (protobuf compiler), provided via `mise.toml`. `tonic_prost_build` regenerates `crates/libs/lib-rpc/src/generated/*.rs` from the `.proto` files on every build; the generated files are checked in but should be treated as build output, not hand-edited.
-
-> **Note:** `crates/libs/lib-database` exists on disk but is *not* currently a workspace member — it's mid-development and not yet wired into `server`. Build/test it directly with `cargo build --package lib_database`, or add it back to `[workspace].members` if you're integrating it.
-
-### Testing, Linting and Formatting
+### Build and run
 
 ```sh
-# Test the whole workspace
-cargo test
-
-# Test a single crate
-cargo test --package lib_config
-
-# Lint and format
-cargo clippy
-cargo fmt
+cargo build                          # build everything
+mise run watch-desktop               # run the desktop app, reloading on save
+mise run watch-tui                   # run the terminal app, reloading on save
+cargo run --package bin_sync_server  # run the Sync Server
 ```
 
-### Documentation
-
-Docs are built with mdBook and rustdoc via `mise` tasks:
+### Test and lint
 
 ```sh
-mise run docs-build     # docs-rustdoc + docs-mdbook
-mise run docs-serve     # serves mdBook on :8001
+cargo test       # run all the tests
+mise run lint    # the same checks CI runs (rustfmt + clippy)
+mise run lint-fix
 ```
 
-### Agent-Assisted Development
+Run `mise run install-hooks` once and a pre-push hook will run the lint checks for you.
 
-This repo is set up to work with AI coding agents (like [Claude Code](https://claude.com/claude-code)). Repository conventions for agents live in [`CLAUDE.md`](CLAUDE.md), and project-specific skills live under [`.claude/skills/`](.claude/skills/) (rustdoc conventions, tracing/log-level conventions, and unit-test patterns).
+Run `mise tasks` to see every available task, including docs (`docs-serve`) and database helpers (`db-*`).
 
-The agent development workflow (grilling out an idea, writing a spec, splitting it into tickets, implementing with TDD and code review) follows [Matt Pocock's Claude Code skills](https://github.com/mattpocock/skills) — worth a read as a reference for how contributions here are expected to move from idea to shipped code.
+### Working with AI agents
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+The repo is set up for AI coding agents like [Claude Code](https://claude.com/claude-code). Agent conventions live in [`CLAUDE.md`](CLAUDE.md) and project skills in [`.claude/skills/`](.claude/skills/). The workflow (idea → spec → tickets → TDD → review) follows [Matt Pocock's skills](https://github.com/mattpocock/skills).
 
-<!-- USAGE -->
-## Usage
-
-This space will be used to show useful examples of how a project can be used. Additional screenshots, code examples and demos work.
-
-Include any links to more resources.
-
-_For more examples, please refer to the [Documentation](https://example.com)_
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- ROADMAP -->
 ## Roadmap
 
-* [ ] Map out the development workflow
-* [ ] Develop REST API server (backend) minimum viable product
-* [ ] Develop web server (frontend) minimum viable product
-* [ ] Develop deployment integration
-* [ ] Work through feature set:
-  * [ ] Feature 1
-  * [ ] Feature 2
+- [ ] Finish the desktop and TUI screens
+- [ ] Save real data to the local ledger
+- [ ] Sync between devices through the Sync Server
+- [ ] Packaging and releases
 
-See the [Personal Ledger - Roadmap](https://github.com/users/IanTeda/projects/1) for a full list of proposed features.
+See the [project board](https://github.com/users/IanTeda/projects/1) for the full list.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- CONTRIBUTING -->
 ## Contributing
 
-Contributions are what make the open source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
+Contributions are welcome. Fork the repo, make your change on a branch and open a pull request. Got an idea but no code? [Open an issue](https://github.com/IanTeda/Personal-Ledger/issues).
 
-If you have a suggestion that would make this better, please fork the repo and create a pull request. You can also simply open an issue with the tag "enhancement".
-Don't forget to give the project a star! Thanks again!
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- LICENSE -->
 ## License
 
-Distributed under the GPL3.0 License. See `LICENSE.txt` for more information.
+GPL-3.0. See [`LICENSE`](LICENSE) for details.
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- CONTACT -->
 ## Contact
 
-* Ian Teda - [ian@teda.id.au](mailto:ian@teda.id.au)
-* Project Link: [https://github.com/IanTeda/personal-ledger](https://github.com/IanTeda/personal-ledger)
+Ian Teda — [ian@teda.id.au](mailto:ian@teda.id.au)
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+## Similar apps
 
-<!-- REFERENCES -->
-## References
+Not quite what you're after? These might suit you better:
 
-The following is a list of resources you find helpful and would like to give credit to:
-
-* [Choose an Open Source License](https://choosealicense.com)
-* [Img Shields](https://shields.io)
-* [GitHub Pages](https://pages.github.com)
-* [Best README Template](https://github.com/othneildrew/Best-README-Template/tree/master)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-<!-- SIMILAR PROJECTS -->
-## Similar Applications
-
-Below is a list of similar applications that you might prefer to use:
-
-* [GNU Cash](https://gnucash.org/)
-* [KmyMoney](https://kmymoney.org/)
-* [Money Manager EX](https://moneymanagerex.org/)
-* [Firefly III](https://www.firefly-iii.org/)
-* [You Need A Budget (YNAB)](https://www.ynab.com/)
-* [Mint](https://mint.intuit.com/)
-* [Beancount](https://github.com/beancount/beancount?tab=readme-ov-file)
-* [Plain Text Accounting](https://plaintextaccounting.org/)
-* [BudgE](https://github.com/linuxserver/budge)
-* [Budget Zero](https://budgetzero.io/)
-* [Buckets](https://www.budgetwithbuckets.com/)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
+- [GnuCash](https://gnucash.org/)
+- [KMyMoney](https://kmymoney.org/)
+- [Money Manager EX](https://moneymanagerex.org/)
+- [Firefly III](https://www.firefly-iii.org/)
+- [You Need A Budget (YNAB)](https://www.ynab.com/)
+- [Beancount](https://github.com/beancount/beancount)
+- [Plain Text Accounting](https://plaintextaccounting.org/)
+- [BudgE](https://github.com/linuxserver/budge)
+- [Budget Zero](https://budgetzero.io/)
+- [Buckets](https://www.budgetwithbuckets.com/)
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
@@ -307,7 +169,7 @@ Below is a list of similar applications that you might prefer to use:
 [issues-shield]: https://img.shields.io/github/issues/IanTeda/personal-ledger.svg?style=for-the-badge
 [issues-url]: https://github.com/IanTeda/personal-ledger/issues
 [license-shield]: https://img.shields.io/github/license/IanTeda/personal-ledger.svg?style=for-the-badge
-[license-url]: https://github.com/IanTeda/personal-ledger/blob/master/LICENSE.txt
+[license-url]: https://github.com/IanTeda/personal-ledger/blob/main/LICENSE
 <!-- Absolute URLs for the same reason as the logo: the README is rendered by both GitHub and mdBook -->
 [screenshot-desktop]: https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/images/screenshot-desktop.png
 [screenshot-tui]: https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/images/screenshot-tui.png
