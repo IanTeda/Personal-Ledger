@@ -3087,7 +3087,7 @@ impl Render for Shell {
                 }
             }))
             .children(self.categories_dialog.as_ref().map(|dialog| match dialog {
-                categories::CategoriesDialog::Add { form, parent_id: _ } => {
+                categories::CategoriesDialog::Add { form, .. } => {
                     let parent_options: Vec<_> = self
                         .categories
                         .iter()
