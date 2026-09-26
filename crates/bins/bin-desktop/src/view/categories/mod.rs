@@ -305,12 +305,12 @@ fn table_row(
     let row_id = row.id;
 
     div()
-        .cursor_pointer()
-        .on_click(move |_event, window, cx| row_click(row_id, window, cx))
         .w_full()
         .flex()
+        .cursor_pointer()
         .border_b(px(1.0))
         .border_color(color::HAIRLINE)
+        .on_mouse_down(gpui::MouseButton::Left, move |_event, window, cx| row_click(row_id, window, cx))
         .when(selected, |this| this.bg(color::CHROME))
         .hover(|this| this.bg(color::HOVER_TINT))
         .px(px(12.0))
