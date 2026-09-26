@@ -79,6 +79,14 @@ _Avoid_: string, label, copy, translation (a translation is one Locale's renderi
 The complete set of Messages translated into one Locale. A Locale whose Catalogue lacks a Message falls back to a wider Locale's Catalogue, ultimately the source Locale's.
 _Avoid_: bundle, dictionary, resource.
 
+**Toast**:
+A short, non-blocking notice a Client shows to report the outcome of an action or event (an Account saved, an import finished, a sync failed). It is the same concept in both Clients; only how it is drawn differs. Distinct from the status-line message, which answers the key or command just typed (an unbound `g`-jump, "not yet built") and clears on the next keypress. The user can turn Toasts off, and the status line can keep the latest Toast's text.
+_Avoid_: notification (reserved for anything operating-system level), snackbar, alert, flash.
+
+**Toast Kind**:
+The severity a Toast carries, one of Info, Success, Warning or Error. Each Toast Kind is drawn in its own calculated colours.
+_Avoid_: level, type, severity (alone).
+
 **Colour Theme**:
 A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides them on that one Client.
 _Avoid_: theme (alone), palette — "palette" already names the command palette; "theme" alone is ambiguous with typography and spacing.
