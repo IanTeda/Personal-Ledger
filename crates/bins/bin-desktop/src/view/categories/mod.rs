@@ -11,6 +11,7 @@
 
 pub mod add_dialog;
 pub mod edit_dialog;
+pub mod delete_dialog;
 
 use std::rc::Rc;
 

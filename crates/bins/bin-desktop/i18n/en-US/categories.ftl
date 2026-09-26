@@ -26,3 +26,18 @@ desktop-categories-notice-default = Picking a parent will lock the type control 
 desktop-categories-parent-budget-rollup = Shows rollup of children's budgets
 desktop-categories-edit-parent-notice = This is a parent category — its budget shows the sum of its children's budgets.
 desktop-categories-edit-notice = Changes apply when you save.
+
+## Delete dialog messages.
+
+desktop-categories-delete-warning = This category has <strong>{ $count ->
+    [one] { $count } transaction
+   *[other] { $count } transactions
+}.</strong> Deleting it cannot be undone.
+
+desktop-categories-delete-reference = Splits will be moved to Uncategorised · { $budgets ->
+    [0] no budget attached
+    [one] 1 budget attached
+   *[other] { $budgets } budgets attached
+}
+
+desktop-categories-delete-confirm-label = Type { $name } to confirm

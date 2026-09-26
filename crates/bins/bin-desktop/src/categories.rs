@@ -300,6 +300,22 @@ impl Default for DeleteCategoryForm {
     }
 }
 
+impl DeleteCategoryForm {
+    pub fn push_char(&mut self, ch: char) {
+        if !ch.is_control() {
+            self.confirmation_name.push(ch);
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        self.confirmation_name.pop();
+    }
+
+    pub fn matches(&self, name: &str) -> bool {
+        self.confirmation_name == name
+    }
+}
+
 /// Errors for category operations.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CategoryError {

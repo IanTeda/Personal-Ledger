@@ -1303,7 +1303,7 @@ impl Shell {
     }
 
     /// Keyboard input while on the Categories page: `n` adds a top-level category, `N` (shift+n)
-    /// adds a sub-category to the selected one, `e` edits the selected category.
+    /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it.
     fn handle_categories_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Categories || self.nav.focus() != FocusZone::View {
             return false;
@@ -1335,6 +1335,18 @@ impl Shell {
             "e" => {
                 if let Some(category) = selected_category {
                     self.open_edit_categories_dialog(category.id);
+                }
+                true
+            }
+            "d" => {
+                if let Some(category) = selected_category {
+                    if !categories::is_leaf(&self.categories, category.id) {
+                        self.status_message = Some("delete or move its children first".to_string());
+                    } else {
+                        let form = categories::DeleteCategoryForm::default();
+                        self.categories_dialog = Some(categories::CategoriesDialog::Delete(category.id, form));
+                        self.nav.enter_mode(InputMode::Dialog);
+                    }
                 }
                 true
             }
@@ -1499,6 +1511,10 @@ impl Shell {
     /// `Enter` deletes once it matches, and `Tab` is swallowed since the confirmation is the only
     /// field. `Esc` never reaches here (it cancels ahead of the mode gates).
     fn handle_categories_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        if matches!(self.categories_dialog, Some(categories::CategoriesDialog::Delete(..))) {
+            return self.handle_delete_categories_key(keystroke);
+        }
+
         let Some(dialog) = self.categories_dialog.as_mut() else {
             return false;
         };
@@ -1619,6 +1635,84 @@ impl Shell {
             }
         }
         true
+    }
+
+    /// Keys in the Delete category dialog: type the category's name back (`Backspace` edits it),
+    /// `Enter` deletes once it matches, and `Tab` is swallowed since the confirmation is the only
+    /// field. `Esc` never reaches here (it cancels ahead of the mode gates).
+    fn handle_delete_categories_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(categories::CategoriesDialog::Delete(id, form)) = self.categories_dialog.as_mut() else {
+            return false;
+        };
+        match keystroke.key.as_str() {
+            "backspace" => form.backspace(),
+            "tab" => {}
+            "enter" => {
+                let matches = self
+                    .categories
+                    .iter()
+                    .find(|category| category.id == *id)
+                    .is_some_and(|category| form.matches(&category.name));
+                if matches {
+                    self.confirm_categories_dialog();
+                }
+            }
+            _ => {
+                let modifiers = &keystroke.modifiers;
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(text) = keystroke.key_char.as_deref()
+                    && text.chars().count() == 1
+                    && let Some(ch) = text.chars().next()
+                {
+                    form.push_char(ch);
+                }
+            }
+        }
+        true
+    }
+
+    fn confirm_categories_dialog(&mut self) {
+        if let Some(categories::CategoriesDialog::Delete(category_id, form)) = self.categories_dialog.as_ref() {
+            let category = self.categories.iter().find(|c| c.id == *category_id);
+            let matches = category.is_some_and(|c| form.matches(&c.name));
+            if matches {
+                if let Some(category) = category {
+                    let category_type = category.category_type.clone();
+                    // Re-point splits to Uncategorised
+                    let uncategorised_id = categories::get_or_create_uncategorised(
+                        &mut self.categories,
+                        category_type,
+                    );
+                    for transaction in &mut self.transactions {
+                        for split in &mut transaction.splits {
+                            if split.category_id == *category_id {
+                                split.category_id = uncategorised_id;
+                            }
+                        }
+                    }
+                    // Remove the budget
+                    budgets::delete_budget(&mut self.budgets, *category_id, 1);
+                }
+                // Delete the category
+                let _ = categories::delete_category(&mut self.categories, *category_id);
+                // Keep the selection in range
+                let tree_rows = categories::tree_rows(&self.categories, &self.categories_expanded);
+                let filtered_rows: Vec<_> = tree_rows
+                    .iter()
+                    .filter(|row| {
+                        self.categories
+                            .iter()
+                            .find(|c| c.id == row.id)
+                            .map(|c| &c.category_type == &CategoryTypes::Expense)
+                            .unwrap_or(false)
+                    })
+                    .collect();
+                self.categories_selected = self.categories_selected.min(filtered_rows.len().saturating_sub(1));
+            }
+            self.categories_dialog = None;
+        }
     }
 
     /// A click on a field of the Add account dialog: focuses a text field, or focuses a select
@@ -1817,8 +1911,16 @@ impl Shell {
         }
     }
 
-    fn handle_categories_delete_click(&mut self, _cx: &mut Context<Self>) {
-        // Not yet built (issue #275)
+    fn handle_categories_delete_click(&mut self, category_id: u32, cx: &mut Context<Self>) {
+        if !categories::is_leaf(&self.categories, category_id) {
+            self.status_message = Some("delete or move its children first".to_string());
+            cx.notify();
+            return;
+        }
+
+        let form = categories::DeleteCategoryForm::default();
+        self.categories_dialog = Some(categories::CategoriesDialog::Delete(category_id, form));
+        self.nav.enter_mode(InputMode::Dialog);
     }
 
     fn handle_categories_dialog_field_click(&mut self, field: categories::CategoryField, cx: &mut Context<Self>) {
@@ -1931,8 +2033,11 @@ impl Shell {
                         cx.notify();
                     }
                 }
-                _ => {
+                categories::CategoriesDialog::Delete(category_id, form) => {
+                    self.categories_dialog = Some(categories::CategoriesDialog::Delete(category_id, form));
+                    self.confirm_categories_dialog();
                     self.nav.exit_mode();
+                    cx.notify();
                 }
             }
         }
@@ -2876,8 +2981,8 @@ impl Render for Shell {
         };
         let on_categories_delete_click: categories_view::OnDeleteClick = {
             let entity = entity.clone();
-            Rc::new(move |_id, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_categories_delete_click(cx));
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_categories_delete_click(id, cx));
             })
         };
         let on_categories_disclosure_click: categories_view::OnDisclosureClick = {
@@ -3350,9 +3455,42 @@ impl Render for Shell {
                         on_categories_dialog_confirm,
                     )
                 }
-                categories::CategoriesDialog::Delete(_, _) => {
-                    // Not yet built (issue #275)
-                    div().into_any_element()
+                categories::CategoriesDialog::Delete(category_id, form) => {
+                    let category = self
+                        .categories
+                        .iter()
+                        .find(|c| c.id == *category_id)
+                        .cloned();
+
+                    if let Some(category) = category {
+                        // Count splits in this category (and descendants if parent)
+                        let split_count = categories::descendants_inclusive(&self.categories, *category_id)
+                            .iter()
+                            .flat_map(|cat_id| {
+                                self.transactions.iter().flat_map(move |t| {
+                                    t.splits.iter().filter(move |s| s.category_id == *cat_id)
+                                })
+                            })
+                            .count();
+
+                        // Count budgets attached to this category
+                        let budget_count = self
+                            .budgets
+                            .iter()
+                            .filter(|b| b.category_id == *category_id)
+                            .count();
+
+                        categories_view::delete_dialog::render(
+                            &category,
+                            form,
+                            split_count,
+                            budget_count,
+                            on_categories_dialog_cancel.clone(),
+                            on_categories_dialog_confirm.clone(),
+                        )
+                    } else {
+                        div().into_any_element()
+                    }
                 }
             }))
             .children(self.settings_dialog.as_ref().map(|dialog| match dialog {
