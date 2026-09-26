@@ -301,6 +301,7 @@ fn table_row(
 
     let indent_px = (row.depth as f32) * 16.0;
     let disclosure_on_click = props.on_disclosure_click.clone();
+    let row_click = props.on_row_click.clone();
     let row_id = row.id;
 
     div()
@@ -309,6 +310,7 @@ fn table_row(
         .cursor_pointer()
         .border_b(px(1.0))
         .border_color(color::HAIRLINE)
+        .on_click(move |_event, window, cx| row_click(row_id, window, cx))
         .when(selected, |this| this.bg(color::CHROME))
         .hover(|this| this.bg(color::HOVER_TINT))
         .px(px(12.0))
