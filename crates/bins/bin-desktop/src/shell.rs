@@ -264,6 +264,8 @@ pub struct Shell {
     budgets: Vec<crate::budgets::Budget>,
     /// The selected category row in the tree view (the position in a depth-first enumeration).
     categories_selected: usize,
+    /// The selected category ID for keyboard navigation, if any.
+    categories_selected_id: Option<u32>,
     /// Which category nodes are expanded in the tree view.
     categories_expanded: Vec<u32>,
     /// The currently open Categories dialog, if any -- `NavState::mode` is `InputMode::Dialog`
@@ -339,6 +341,7 @@ impl Shell {
             categories,
             budgets: crate::budgets::default_budgets(),
             categories_selected: 0,
+            categories_selected_id: None,
             categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
             categories_dialog: None,
             payees,
@@ -528,6 +531,7 @@ impl Shell {
             }
             KeyOutcome::NoOp => {
                 self.handle_accounts_key(keystroke)
+                    || self.handle_categories_key(keystroke)
                     || self.handle_transactions_key(keystroke)
                     || had_status_message
             }
@@ -1297,6 +1301,77 @@ impl Shell {
         true
     }
 
+    /// Keyboard input while on the Categories page: `n` adds a top-level category, `N` (shift+n)
+    /// adds a sub-category to the selected one, `e` edits the selected category.
+    fn handle_categories_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.noun() != Noun::Categories || self.nav.focus() != FocusZone::View {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        let shift = modifiers.shift;
+        let has_mod = modifiers.control || modifiers.alt || modifiers.platform;
+        if has_mod {
+            return false;
+        }
+
+        let selected_category = self
+            .categories_selected_id
+            .and_then(|id| self.categories.iter().find(|c| c.id == id));
+
+        match keystroke.key.as_str() {
+            "n" => {
+                if shift {
+                    // N (shift+n): add sub-category to selected
+                    if let Some(category) = selected_category {
+                        self.open_add_categories_dialog(Some(category.id));
+                    }
+                } else {
+                    // n: add top-level category
+                    self.open_add_categories_dialog(None);
+                }
+                true
+            }
+            "e" => {
+                if let Some(category) = selected_category {
+                    self.open_edit_categories_dialog(category.id);
+                }
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// Opens the Add categories dialog pre-scoped to parent_id (None for top-level).
+    fn open_add_categories_dialog(&mut self, parent_id: Option<u32>) {
+        let parent_type = parent_id
+            .and_then(|id| self.categories.iter().find(|c| c.id == id))
+            .map(|c| c.category_type.clone());
+        let form = categories::CategoryForm {
+            name: String::new(),
+            parent_id,
+            category_type: parent_type,
+            budget: String::new(),
+            focused: categories::CategoryField::Name,
+        };
+        self.categories_dialog = Some(categories::CategoriesDialog::Add { parent_id, form });
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Opens the Edit categories dialog on `id`, pre-filled.
+    fn open_edit_categories_dialog(&mut self, category_id: u32) {
+        if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
+            let form = categories::CategoryForm {
+                name: category.name.clone(),
+                parent_id: category.parent,
+                category_type: Some(category.category_type.clone()),
+                budget: String::new(),
+                focused: categories::CategoryField::Name,
+            };
+            self.categories_dialog = Some(categories::CategoriesDialog::Edit(category_id, form));
+            self.nav.enter_mode(InputMode::Dialog);
+        }
+    }
+
     /// Opens Transactions pre-filtered to the account `id`: fresh defaults plus that account, the
     /// search cleared and the table back on its first row. The Accounts selection is untouched, so
     /// returning to Accounts finds the same row selected.
@@ -1686,6 +1761,7 @@ impl Shell {
     }
 
     fn handle_categories_add_sub_click(&mut self, parent_id: u32, cx: &mut Context<Self>) {
+        self.categories_selected_id = Some(parent_id);
         // Get the parent's category type to lock it in the form
         let category_type = self
             .categories
@@ -1710,6 +1786,7 @@ impl Shell {
 
     fn handle_categories_edit_click(&mut self, category_id: u32, cx: &mut Context<Self>) {
         if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
+            self.categories_selected_id = Some(category_id);
             let form = categories::CategoryForm {
                 name: category.name.clone(),
                 parent_id: category.parent,
@@ -2783,7 +2860,7 @@ impl Render for Shell {
             categories: &self.categories,
             budgets: &self.budgets,
             transactions: &self.transactions,
-            selected_index: None,
+            selected_index: Some(self.categories_selected),
             expanded: &self.categories_expanded,
             base_unit_id: 1,
             today: self.today,
