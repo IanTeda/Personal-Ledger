@@ -310,7 +310,9 @@ fn table_row(
         .cursor_pointer()
         .border_b(px(1.0))
         .border_color(color::HAIRLINE)
-        .on_mouse_down(gpui::MouseButton::Left, move |_event, window, cx| row_click(row_id, window, cx))
+        .on_mouse_down(gpui::MouseButton::Left, move |_event, window, cx| {
+            row_click(row_id, window, cx)
+        })
         .when(selected, |this| this.bg(color::CHROME))
         .hover(|this| this.bg(color::HOVER_TINT))
         .px(px(12.0))
