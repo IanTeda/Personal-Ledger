@@ -18,8 +18,9 @@
 <!-- PROJECT HEADER -->
 <br />
 <div align="center">
-    <a href="https://github.com/IanTeda/personal-ledger">
-        <img src="https://github.com/IanTeda/personal-ledger/raw/develop/docs/images/logo.png" alt="Logo" width="80" height="80">
+    <!-- Absolute URL: the README renders both on GitHub (repo root) and in the mdBook build (outside `src = "docs"`), so no relative path resolves in both -->
+    <a href="https://github.com/IanTeda/Personal-Ledger">
+        <img src="https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/images/personal-ledger-logo01.png" alt="Personal Ledger logo" width="120" height="120">
     </a>
     <h3 align="center">Personal Ledger</h3>
     <p align="center">
@@ -64,7 +65,13 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-[![Personal Ledger Screenshot][product-screenshot]](https://github.com/IanTeda/personal-ledger)
+![Personal Ledger Desktop Client screenshot][screenshot-desktop]
+
+_The Desktop Client_
+
+![Personal Ledger TUI Client screenshot][screenshot-tui]
+
+_The TUI Client_
 
 **Personal Ledger** aims to provide its users with an intuitive and user-friendly interface that offers insights into their spending habits and investment position. By presenting information clearly and concisely, users can effectively monitor their overall financial health, make informed decisions, and ultimately achieve their personal financial goals.
 
@@ -301,4 +308,6 @@ Below is a list of similar applications that you might prefer to use:
 [issues-url]: https://github.com/IanTeda/personal-ledger/issues
 [license-shield]: https://img.shields.io/github/license/IanTeda/personal-ledger.svg?style=for-the-badge
 [license-url]: https://github.com/IanTeda/personal-ledger/blob/master/LICENSE.txt
-[product-screenshot]: https://github.com/IanTeda/personal-ledger/raw/develop/docs/images/screenshot.png
+<!-- Absolute URLs for the same reason as the logo: the README is rendered by both GitHub and mdBook -->
+[screenshot-desktop]: https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/images/screenshot-desktop.png
+[screenshot-tui]: https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/images/screenshot-tui.png
