@@ -1,0 +1,9 @@
+# `lib-colour-theme` resolves shared colours from built-in Colour Themes compiled from INI files
+
+Both Clients need the same Colour Themes, the same resolution order (ADR-0023) and the same calculated colours and contrast correction (ADR-0022), but draw with different colour types: `gpui` RGBA on the Desktop, ratatui `Style`s in the TUI.
+
+We're adding a pure library crate, `lib-colour-theme`, that owns the Colour Theme types, the built-in Colour Themes, a pure `resolve` function and every calculated-colour rule. `resolve` returns a `ResolvedColours` holding the seven roles plus every calculated colour as neutral RGBA, together with any contrast failures as data. Clients only convert that RGBA into their own types. The Desktop replaces the `theme::color` consts with a `gpui` Global that also feeds `gpui_component::Theme`. The TUI builds a `Colours` set of `Style`s on `Shell`, adding its own 256-colour and ANSI fallback. Each built-in Colour Theme is an INI file, one per Colour Theme with `[light]`/`[dark]` sections, which `build.rs` compiles into `const`s, so a bad file fails the build. Each Client detects changes itself and calls `resolve` again. `lib-config` parses `[theme]` into a plain override map and warns about bad values there.
+
+## Considered Options
+
+Putting the code in `lib-core` was rejected because the contrast maths and resolution are a sizeable module with their own tests, not a domain type. Putting it in `lib-config` was rejected because config parsing should not own colour maths. Handing Clients only the seven roles was rejected because each Client would then calculate its shades separately and drift apart. Rust `const` literals for the built-ins were rejected as harder to edit than INI files. Parsing the INI files at start was rejected because a bad file would then be caught by a test at best, not the compiler. Change detection inside the crate was rejected because watching the OS or terminal differs per Client.

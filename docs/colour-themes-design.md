@@ -4,7 +4,7 @@ The developer-facing design for Colour Themes in the Desktop and TUI Clients. Th
 
 ## Status
 
-In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) and the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)). Still open on the map: the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)), the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
+In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) and the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md)). Still open on the map: the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
 
 ## Colour Roles
 
@@ -144,6 +144,56 @@ Preference changes and OS light/dark changes apply live. `[theme]` is read once 
 ### Settings
 
 The Colour Theme and Colour Appearance pickers are always enabled. While any role is overridden, a note under the picker says how many colours are overridden by Configuration.
+
+## Architecture
+
+Decided on [#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md).
+
+### `lib-colour-theme`
+
+A new pure library crate, `crates/libs/lib-colour-theme` (package `lib_colour_theme`), shared by both bins. It owns the Colour Theme, Colour Variant and Colour Role types, the built-in Colour Themes, resolution, the calculated-colour rules and the contrast maths. It does no I/O, does no logging and does not depend on `lib-config`.
+
+### Built-in Colour Theme files
+
+Each built-in Colour Theme is one INI file, `lib-colour-theme/themes/<id>.ini`, whose filename is the Colour Theme id. A `[light]` and a `[dark]` section each set all seven Colour Roles, using the same keys and hex values as `[theme]`:
+
+```ini
+; modernist.ini
+[light]
+foreground = "#201e1d"
+background = "#f3f2f2"
+accent = "#ec3013"
+; ...
+
+[dark]
+; ...
+```
+
+The crate's `build.rs` parses the files and generates Rust `const`s, following the `lib-locale-build` pattern. A missing role, a missing Colour Variant or a bad hex value fails the build. The parser is a plain function, so a later runtime loader for user-defined Colour Themes can reuse it. The display name is not in the file: it is the Message `colour-theme-<id>` in `lib-locale`.
+
+### Resolution
+
+`resolve(inputs) -> (ResolvedColours, Vec<ContrastFailure>)` is a pure function. Its inputs are the `colour_theme` and `colour_appearance` Preferences, the `[theme]` override map and the system light/dark setting. `ResolvedColours` holds the seven resolved roles plus every [calculated colour](#calculated-colours) as neutral RGBA (borders, hover, chrome, faint text, the selection pair, text shades, accent tint, shadows, chart series). Clients only convert that RGBA into their own colour types, and each ignores fields it cannot draw.
+
+`lib-config` parses `[theme]`/`[theme.light]`/`[theme.dark]` into a plain role-to-`HexColor` map and logs the `warn` for unparseable values and unknown keys itself. The resolver returns contrast failures as data, and the bin logs each one at `warn`.
+
+The resolver does not detect changes. Each Client watches its own inputs (a Preference change, the gpui window appearance on the Desktop, OSC 11/mode 2031 in the TUI) and calls `resolve` again.
+
+### Desktop
+
+A `gpui` Global `Colours(ResolvedColours)`, read through an extension trait as `cx.colours().border`, replaces the `theme::color` consts. `theme.rs` keeps `type_scale` and `spacing`. When the Colour Theme changes, the Desktop replaces the Global and calls `cx.refresh_windows()`. The same step's `apply_to_component_theme()` writes the resolved colours into `gpui_component::Theme`, so charts and tables follow the Colour Theme and its Colour Variant.
+
+### TUI
+
+A `Colours` struct of ratatui `Style`s is built from `ResolvedColours`, the terminal's colour depth and the `terminal_colours` switch. It maps truecolor RGB to the nearest of the 256 colours, and uses the [fallback table](#tui-fallback-to-terminal-colours) when terminal colours are on or only 16 colours are available. This ANSI logic lives in the TUI bin, not the shared crate. `Colours` lives on `Shell` and is passed into each view's `render`, not held in a global. Views ask for named styles (`c.muted()`, `c.selection()`) instead of `Color::`.
+
+### Preferences before persistence
+
+Until the Clients' Settings read `preferences` from the database, each Client keeps `colour_theme` and `colour_appearance` in memory, starting null (Modernist, System), and its Settings pickers change them live. Wiring them to the database is a slice of the implementation sweep.
+
+### Tests and guards
+
+`lib-colour-theme`'s unit tests cover INI parsing, resolution precedence, the calculated-colour rules and the contrast matrix for every built-in Colour Theme. `clippy.toml` bans `gpui::rgb`/`gpui::rgba` through `disallowed-methods`, with an `#[expect]` in the Desktop's one mapping module. The TUI's `Color` type is not banned; a review note keeps new `Color::` literals out of views.
 
 ## Open items
 
