@@ -1420,39 +1420,60 @@ impl Shell {
     /// `Enter` deletes once it matches, and `Tab` is swallowed since the confirmation is the only
     /// field. `Esc` never reaches here (it cancels ahead of the mode gates).
     fn handle_categories_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(categories::CategoriesDialog::Add { form, .. }) = self.categories_dialog.as_mut() else {
+            return false;
+        };
+
         match keystroke.key.as_str() {
             "escape" => {
                 self.categories_dialog = None;
                 self.nav.exit_mode();
-                return true;
+                true
+            }
+            "backspace" => {
+                form.backspace();
+                true
+            }
+            "tab" => {
+                form.cycle_field();
+                true
             }
             "enter" => {
-                if let Some(categories::CategoriesDialog::Add { form, .. }) =
-                    self.categories_dialog.as_ref()
-                {
-                    if !form.name.trim().is_empty() {
-                        if let Some(categories::CategoriesDialog::Add { form, .. }) =
-                            self.categories_dialog.take()
-                        {
-                            let category_type = form
-                                .category_type
-                                .clone()
-                                .unwrap_or(CategoryTypes::Expense);
-                            let _ = categories::insert_category(
-                                &mut self.categories,
-                                form.name.trim().to_string(),
-                                form.parent_id,
-                                category_type,
-                            );
-                            self.nav.exit_mode();
-                        }
-                        return true;
+                if !form.name.trim().is_empty() {
+                    if let Some(categories::CategoriesDialog::Add { form, .. }) =
+                        self.categories_dialog.take()
+                    {
+                        let category_type = form
+                            .category_type
+                            .clone()
+                            .unwrap_or(CategoryTypes::Expense);
+                        let _ = categories::insert_category(
+                            &mut self.categories,
+                            form.name.trim().to_string(),
+                            form.parent_id,
+                            category_type,
+                        );
+                        self.nav.exit_mode();
                     }
                 }
+                true
             }
-            _ => {}
+            _ => {
+                let modifiers = &keystroke.modifiers;
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(text) = keystroke.key_char.as_deref()
+                    && text.chars().count() == 1
+                    && let Some(ch) = text.chars().next()
+                {
+                    form.push_char(ch);
+                    true
+                } else {
+                    false
+                }
+            }
         }
-        false
     }
 
     fn handle_delete_account_key(&mut self, keystroke: &Keystroke) -> bool {
@@ -1634,6 +1655,7 @@ impl Shell {
             parent_id: None,
             category_type: Some(CategoryTypes::Expense),
             budget: String::new(),
+            focused: categories::CategoryField::Name,
         };
         self.categories_dialog = Some(categories::CategoriesDialog::Add {
             parent_id: None,
@@ -1656,6 +1678,7 @@ impl Shell {
             parent_id: Some(parent_id),
             category_type,
             budget: String::new(),
+            focused: categories::CategoryField::Name,
         };
         self.categories_dialog = Some(categories::CategoriesDialog::Add {
             parent_id: Some(parent_id),
@@ -1673,9 +1696,9 @@ impl Shell {
         // Not yet built (issue #275)
     }
 
-    fn handle_categories_dialog_name_change(&mut self, value: String, cx: &mut Context<Self>) {
+    fn handle_categories_dialog_field_click(&mut self, field: categories::CategoryField, cx: &mut Context<Self>) {
         if let Some(categories::CategoriesDialog::Add { form, .. }) = self.categories_dialog.as_mut() {
-            form.name = value;
+            form.focus_field(field);
             cx.notify();
         }
     }
@@ -1700,13 +1723,6 @@ impl Shell {
                 form.category_type = Some(category_type);
                 cx.notify();
             }
-        }
-    }
-
-    fn handle_categories_dialog_budget_change(&mut self, value: String, cx: &mut Context<Self>) {
-        if let Some(categories::CategoriesDialog::Add { form, .. }) = self.categories_dialog.as_mut() {
-            form.budget = value;
-            cx.notify();
         }
     }
 
@@ -2708,11 +2724,11 @@ impl Render for Shell {
         };
 
         // Categories dialog closures
-        let on_categories_dialog_name_change: categories_view::add_dialog::OnFieldChange = {
+        let on_categories_dialog_field_click: categories_view::add_dialog::OnFieldClick = {
             let entity = entity.clone();
-            Rc::new(move |value, _window, cx| {
+            Rc::new(move |field, _window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.handle_categories_dialog_name_change(value, cx);
+                    shell.handle_categories_dialog_field_click(field, cx);
                 });
             })
         };
@@ -2729,14 +2745,6 @@ impl Render for Shell {
             Rc::new(move |category_type, _window, cx| {
                 entity.update(cx, |shell, cx| {
                     shell.handle_categories_dialog_type_change(category_type, cx);
-                });
-            })
-        };
-        let on_categories_dialog_budget_change: categories_view::add_dialog::OnBudgetChange = {
-            let entity = entity.clone();
-            Rc::new(move |value, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_categories_dialog_budget_change(value, cx);
                 });
             })
         };
@@ -3099,10 +3107,9 @@ impl Render for Shell {
                         form,
                         &parent_options,
                         &self.categories,
-                        on_categories_dialog_name_change,
+                        on_categories_dialog_field_click,
                         on_categories_dialog_parent_change,
                         on_categories_dialog_type_change,
-                        on_categories_dialog_budget_change,
                         on_categories_dialog_cancel,
                         on_categories_dialog_confirm,
                     )

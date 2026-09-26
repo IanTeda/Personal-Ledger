@@ -209,6 +209,27 @@ pub fn get_or_create_uncategorised(
     next_id
 }
 
+/// The Add/Edit category dialog's fields, in `Tab` order: Name, Parent, Type, Budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CategoryField {
+    #[default]
+    Name,
+    Parent,
+    Type,
+    Budget,
+}
+
+impl CategoryField {
+    pub fn next(self) -> Self {
+        match self {
+            Self::Name => Self::Parent,
+            Self::Parent => Self::Type,
+            Self::Type => Self::Budget,
+            Self::Budget => Self::Name,
+        }
+    }
+}
+
 /// A form for adding or editing a category: name, parent, type, and monthly budget.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CategoryForm {
@@ -216,6 +237,7 @@ pub struct CategoryForm {
     pub parent_id: Option<u32>,
     pub category_type: Option<CategoryTypes>,
     pub budget: String,
+    pub focused: CategoryField,
 }
 
 impl Default for CategoryForm {
@@ -225,7 +247,42 @@ impl Default for CategoryForm {
             parent_id: None,
             category_type: Some(CategoryTypes::Expense),
             budget: String::new(),
+            focused: CategoryField::Name,
         }
+    }
+}
+
+impl CategoryForm {
+    pub fn push_char(&mut self, ch: char) {
+        match self.focused {
+            CategoryField::Name => self.name.push(ch),
+            CategoryField::Budget => {
+                if ch.is_numeric() || ch == '.' {
+                    self.budget.push(ch);
+                }
+            }
+            CategoryField::Parent | CategoryField::Type => {}
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        match self.focused {
+            CategoryField::Name => {
+                self.name.pop();
+            }
+            CategoryField::Budget => {
+                self.budget.pop();
+            }
+            CategoryField::Parent | CategoryField::Type => {}
+        }
+    }
+
+    pub fn cycle_field(&mut self) {
+        self.focused = self.focused.next();
+    }
+
+    pub fn focus_field(&mut self, field: CategoryField) {
+        self.focused = field;
     }
 }
 

@@ -9,17 +9,16 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_core::CategoryTypes;
 
 use crate::{
-    categories::{self, CategoryForm},
+    categories::{self, CategoryField, CategoryForm},
     dialog,
     theme::color,
 };
 
 pub const WIDTH: gpui::Pixels = px(440.0);
 
-pub type OnFieldChange = Rc<dyn Fn(String, &mut Window, &mut App)>;
+pub type OnFieldClick = Rc<dyn Fn(CategoryField, &mut Window, &mut App)>;
 pub type OnParentChange = Rc<dyn Fn(Option<u32>, &mut Window, &mut App)>;
 pub type OnTypeChange = Rc<dyn Fn(CategoryTypes, &mut Window, &mut App)>;
-pub type OnBudgetChange = Rc<dyn Fn(String, &mut Window, &mut App)>;
 pub type OnCancel = dialog::OnClick;
 pub type OnConfirm = dialog::OnClick;
 
@@ -34,10 +33,9 @@ pub fn render(
     form: &CategoryForm,
     parent_options: &[ParentOption],
     all_categories: &[categories::Category],
-    on_name_change: OnFieldChange,
+    on_field_click: OnFieldClick,
     on_parent_change: OnParentChange,
     on_type_change: OnTypeChange,
-    on_budget_change: OnBudgetChange,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
 ) -> AnyElement {
@@ -56,7 +54,8 @@ pub fn render(
         .child(dialog::body([
             name_field(
                 &form.name,
-                on_name_change,
+                form.focused == CategoryField::Name,
+                on_field_click.clone(),
             ),
             type_field(
                 form.category_type.as_ref().unwrap_or(&CategoryTypes::Expense),
@@ -66,11 +65,14 @@ pub fn render(
             parent_field(
                 form.parent_id,
                 parent_options,
+                form.focused == CategoryField::Parent,
+                on_field_click.clone(),
                 on_parent_change,
             ),
             budget_field(
                 &form.budget,
-                on_budget_change,
+                form.focused == CategoryField::Budget,
+                on_field_click.clone(),
             ),
             lock_notice(
                 type_locked,
@@ -82,7 +84,7 @@ pub fn render(
             dialog::confirm_button(
                 "add-category-confirm",
                 crate::msg::desktop_categories_add_submit(),
-                is_valid(form),
+                is_valid(form, all_categories),
                 false,
                 on_confirm,
             )
@@ -92,8 +94,7 @@ pub fn render(
     dialog::overlay(WIDTH, false, card)
 }
 
-fn name_field(value: &str, on_change: OnFieldChange) -> AnyElement {
-    let value_cloned = value.to_string();
+fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyElement {
     div()
         .child(label(lib_locale::msg::column_name()))
         .child(
@@ -104,7 +105,11 @@ fn name_field(value: &str, on_change: OnFieldChange) -> AnyElement {
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(color::BORDER)
+                .border_color(if focused {
+                    color::INK
+                } else {
+                    color::BORDER
+                })
                 .text_size(px(13.0))
                 .text_color(if value.is_empty() {
                     color::INK_TERTIARY
@@ -112,7 +117,7 @@ fn name_field(value: &str, on_change: OnFieldChange) -> AnyElement {
                     color::INK
                 })
                 .on_click(move |_event, window, cx| {
-                    on_change(value_cloned.clone(), window, cx)
+                    on_field_click(CategoryField::Name, window, cx)
                 })
                 .child(
                     if value.is_empty() {
@@ -215,9 +220,12 @@ fn type_field(
 fn parent_field(
     selected_parent: Option<u32>,
     options: &[ParentOption],
+    focused: bool,
+    on_field_click: OnFieldClick,
     on_change: OnParentChange,
 ) -> AnyElement {
     let options_vec: Vec<_> = options.iter().cloned().collect();
+    let on_change_clone = on_change.clone();
     div()
         .child(suffixed_label(
             crate::msg::desktop_categories_field_parent(),
@@ -231,23 +239,16 @@ fn parent_field(
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(color::BORDER)
+                .border_color(if focused {
+                    color::INK
+                } else {
+                    color::BORDER
+                })
                 .bg(color::CHROME)
                 .text_size(px(13.0))
                 .text_color(color::INK)
                 .on_click(move |_event, window, cx| {
-                    let selected = options_vec
-                        .iter()
-                        .find(|opt| {
-                            if let Some(id) = selected_parent {
-                                opt.id == Some(id)
-                            } else {
-                                opt.id.is_none()
-                            }
-                        })
-                        .map(|opt| opt.id)
-                        .flatten();
-                    on_change(selected, window, cx)
+                    on_field_click(CategoryField::Parent, window, cx)
                 })
                 .child({
                     if let Some(opt) = options
@@ -263,8 +264,7 @@ fn parent_field(
         .into_any_element()
 }
 
-fn budget_field(value: &str, on_change: OnBudgetChange) -> AnyElement {
-    let value_cloned = value.to_string();
+fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyElement {
     div()
         .child(suffixed_label(
             crate::msg::desktop_categories_field_monthly_budget(),
@@ -278,7 +278,11 @@ fn budget_field(value: &str, on_change: OnBudgetChange) -> AnyElement {
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(color::BORDER)
+                .border_color(if focused {
+                    color::INK
+                } else {
+                    color::BORDER
+                })
                 .text_size(px(13.0))
                 .text_color(if value.is_empty() {
                     color::INK_TERTIARY
@@ -286,7 +290,7 @@ fn budget_field(value: &str, on_change: OnBudgetChange) -> AnyElement {
                     color::INK
                 })
                 .on_click(move |_event, window, cx| {
-                    on_change(value_cloned.clone(), window, cx)
+                    on_field_click(CategoryField::Budget, window, cx)
                 })
                 .child(
                     if value.is_empty() {
@@ -370,6 +374,16 @@ fn suffixed_label(
         .into_any_element()
 }
 
-fn is_valid(form: &CategoryForm) -> bool {
-    !form.name.trim().is_empty()
+fn is_valid(form: &CategoryForm, all_categories: &[categories::Category]) -> bool {
+    // Name must not be empty
+    if form.name.trim().is_empty() {
+        return false;
+    }
+
+    // Check for sibling name clash (same parent and same name)
+    let has_sibling_with_same_name = all_categories.iter().any(|c| {
+        c.parent == form.parent_id && c.name.eq_ignore_ascii_case(form.name.trim())
+    });
+
+    !has_sibling_with_same_name
 }
