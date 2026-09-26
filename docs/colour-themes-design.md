@@ -4,7 +4,7 @@ The developer-facing design for Colour Themes in the Desktop and TUI Clients. Th
 
 ## Status
 
-In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) and the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md)). Still open on the map: the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
+In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md)) and the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)). Still open on the map: the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
 
 ## Colour Roles
 
@@ -50,11 +50,11 @@ Every other colour is calculated from the seven stored roles by fixed rules in c
 | Drop shadows | `foreground` at fixed transparency | `PALETTE_SHADOW`, `DIALOG_SHADOW` |
 | Chrome (panel bands, status line, disabled fields, inset track) | `background` mixed a small step toward `foreground` | `CHROME`, `INSET_TRACK` |
 | Faint text tier (placeholders, jump keys, meta) | halfway between `muted` and `background` | `INK_TERTIARY` |
-| Selection (current/selected row) | swap: background is `foreground`, text is `background`; muted text on it calculated the same way | `INK` as a fill, `INK_ON_DARK*`, and the Desktop's other two selection styles |
+| Selection (current/selected row) | swap: background is `foreground`, text is `background`; muted text on it is a mix of `background` toward `foreground`, starting at 35% and backed off until it reaches the text contrast rule on `foreground` | `INK` as a fill, `INK_ON_DARK*`, and the Desktop's other two selection styles |
 | Text shades of `accent`, `positive`, `negative` | the role, darkened or lightened until it reaches 4.5:1 against the surface it sits on (`background`, or `foreground` on a selected row) | `ACCENT_TEXT`, `ACCENT_ON_DARK` |
 | Accent tint background (the "base" flag pill) | `accent` at low opacity over `background`, text as an accent text shade | `TAG_ACCENT_BG`, `TAG_ACCENT_TEXT` |
 | Info toast | chrome background, `foreground` text, `muted` border, a thin `foreground` bar on the leading edge | — (new) |
-| Chart series | series 1 is `accent`; series 2–5 step from `foreground` toward `background` (e.g. 100%, 70%, 45%, 25%); a 6th or later repeats the pattern | the Desktop donut's hand-picked constants, the TUI pie's `Color::Rgb` slices |
+| Chart series | series 1 is `accent`; series 2–5 step evenly from `foreground` to the palest `foreground`-over-`background` mix that still reaches 3:1 against `background`; a 6th or later repeats the pattern. Fixed proportions (the earlier 100/70/45/25%) left series 5 at 1.4–2.1:1 in every candidate Colour Theme | the Desktop donut's hand-picked constants, the TUI pie's `Color::Rgb` slices |
 | Diverging charts | `positive` / `negative` | — |
 
 Today's overloads are resolved by these roles: negative amounts move from `ACCENT_TEXT`/`Color::Red` to `negative`; the Desktop's three selection styles become the one swap; the TUI's lone `Color::Yellow` match highlight becomes `accent`.
@@ -144,6 +144,37 @@ Preference changes and OS light/dark changes apply live. `[theme]` is read once 
 ### Settings
 
 The Colour Theme and Colour Appearance pickers are always enabled. While any role is overridden, a note under the picker says how many colours are overridden by Configuration.
+
+## Built-in Colour Themes
+
+Decided on [#301](https://github.com/IanTeda/Personal-Ledger/issues/301), from a swatch and contrast prototype kept on the [`prototype/301-built-in-colour-themes`](https://github.com/IanTeda/Personal-Ledger/tree/prototype/301-built-in-colour-themes/prototypes) branch.
+
+Five built-in Colour Themes ship, each with both Colour Variants. Modernist is the default. Every value below passes the [contrast rules](#contrast) in both Colour Variants with the calculated-colour rules above; the ports are adjusted only where their published colours fail.
+
+| id | Colour Theme | source and licence | adjustments |
+| --- | --- | --- | --- |
+| `modernist` | Modernist | ours | light: `positive` darkened from `#2ecc71` (fails 3:1 on the ground), new `negative`; dark Colour Variant new, on the handoff's `#161413` ground |
+| `high_contrast` | High Contrast | ours | meets 7:1 for text |
+| `catppuccin` | Catppuccin (Latte / Mocha) | [catppuccin](https://github.com/catppuccin/catppuccin), MIT | Latte: `muted` is Subtext 1 not Subtext 0, `positive` darkened, `cursor` is Red not Rosewater |
+| `gruvbox` | Gruvbox | [morhetz/gruvbox](https://github.com/morhetz/gruvbox), MIT/X11 | light: `muted` is `fg3` not `fg4` |
+| `nord` | Nord | [nordtheme/nord](https://github.com/nordtheme/nord), MIT | Nord has no light Colour Variant; ours inverts Polar Night on Snow Storm. Dark `muted` lightened |
+
+Rejected: Tokyo Night (Day fails muted text, 3.6:1), Solarized (light `foreground` itself fails, 4.1:1) and Everforest (light `muted`, `accent` and `positive` fail) — each would need changes deep enough that it stops being that Colour Theme.
+
+| id | variant | foreground | background | accent | cursor | muted | positive | negative |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `modernist` | light | `#201e1d` | `#f3f2f2` | `#ec3013` | `#ec3013` | `#605d5d` | `#1e8e4e` | `#b3261e` |
+| `modernist` | dark | `#f3f2f2` | `#161413` | `#ff4a2b` | `#ff4a2b` | `#a19d9c` | `#3ddc84` | `#ff7a66` |
+| `high_contrast` | light | `#000000` | `#ffffff` | `#b30000` | `#b30000` | `#3a3a3a` | `#005c1f` | `#9a0000` |
+| `high_contrast` | dark | `#ffffff` | `#000000` | `#ffd400` | `#ffd400` | `#d0d0d0` | `#5cff8a` | `#ff9a8a` |
+| `catppuccin` | light | `#4c4f69` | `#eff1f5` | `#8839ef` | `#d20f39` | `#5c5f77` | `#388c26` | `#d20f39` |
+| `catppuccin` | dark | `#cdd6f4` | `#1e1e2e` | `#cba6f7` | `#f5e0dc` | `#a6adc8` | `#a6e3a1` | `#f38ba8` |
+| `gruvbox` | light | `#3c3836` | `#fbf1c7` | `#af3a03` | `#3c3836` | `#665c54` | `#79740e` | `#9d0006` |
+| `gruvbox` | dark | `#ebdbb2` | `#282828` | `#fe8019` | `#ebdbb2` | `#a89984` | `#b8bb26` | `#fb4934` |
+| `nord` | light | `#2e3440` | `#eceff4` | `#5e81ac` | `#2e3440` | `#4c566a` | `#4f7a3a` | `#bf616a` |
+| `nord` | dark | `#d8dee9` | `#2e3440` | `#88c0d0` | `#d8dee9` | `#9aa5b8` | `#a3be8c` | `#bf616a` |
+
+These values are the content of the `themes/<id>.ini` files. Display names are the Messages `colour-theme-<id>` (en-US as in the Colour Theme column; a port keeps its proper name). A port's licence notice ships with the crate alongside its INI file.
 
 ## Architecture
 
