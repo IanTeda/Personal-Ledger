@@ -58,7 +58,9 @@ pub fn render(
                 on_field_click.clone(),
             ),
             type_field(
-                form.category_type.as_ref().unwrap_or(&CategoryTypes::Expense),
+                form.category_type
+                    .as_ref()
+                    .unwrap_or(&CategoryTypes::Expense),
                 type_locked,
                 on_type_change,
             ),
@@ -74,10 +76,7 @@ pub fn render(
                 form.focused == CategoryField::Budget,
                 on_field_click.clone(),
             ),
-            lock_notice(
-                type_locked,
-                parent_category,
-            ),
+            lock_notice(type_locked, parent_category),
         ]))
         .child(dialog::action_row([
             dialog::cancel_button("add-category-cancel", on_cancel).into_any_element(),
@@ -105,36 +104,24 @@ fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyEl
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(if focused {
-                    color::INK
-                } else {
-                    color::BORDER
-                })
+                .border_color(if focused { color::INK } else { color::BORDER })
                 .text_size(px(13.0))
                 .text_color(if value.is_empty() {
                     color::INK_TERTIARY
                 } else {
                     color::INK
                 })
-                .on_click(move |_event, window, cx| {
-                    on_field_click(CategoryField::Name, window, cx)
-                })
-                .child(
-                    if value.is_empty() {
-                        SharedString::from(crate::msg::desktop_categories_name_placeholder())
-                    } else {
-                        SharedString::from(value.to_string())
-                    }
-                ),
+                .on_click(move |_event, window, cx| on_field_click(CategoryField::Name, window, cx))
+                .child(if value.is_empty() {
+                    SharedString::from(crate::msg::desktop_categories_name_placeholder())
+                } else {
+                    SharedString::from(value.to_string())
+                }),
         )
         .into_any_element()
 }
 
-fn type_field(
-    category_type: &CategoryTypes,
-    locked: bool,
-    on_change: OnTypeChange,
-) -> AnyElement {
+fn type_field(category_type: &CategoryTypes, locked: bool, on_change: OnTypeChange) -> AnyElement {
     div()
         .child(label(lib_locale::msg::column_type()))
         .child(
@@ -172,9 +159,7 @@ fn type_field(
                                 on_change(CategoryTypes::Expense, window, cx)
                             })
                         })
-                        .when(locked, |this| {
-                            this.opacity(0.6)
-                        })
+                        .when(locked, |this| this.opacity(0.6))
                         .child("expense")
                 })
                 .child({
@@ -208,11 +193,9 @@ fn type_field(
                                 on_change(CategoryTypes::Income, window, cx)
                             })
                         })
-                        .when(locked, |this| {
-                            this.opacity(0.6)
-                        })
+                        .when(locked, |this| this.opacity(0.6))
                         .child("income")
-                })
+                }),
         )
         .into_any_element()
 }
@@ -238,11 +221,7 @@ fn parent_field(
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(if focused {
-                    color::INK
-                } else {
-                    color::BORDER
-                })
+                .border_color(if focused { color::INK } else { color::BORDER })
                 .bg(color::CHROME)
                 .text_size(px(13.0))
                 .text_color(color::INK)
@@ -250,10 +229,7 @@ fn parent_field(
                     on_field_click(CategoryField::Parent, window, cx)
                 })
                 .child({
-                    if let Some(opt) = options
-                        .iter()
-                        .find(|opt| opt.id == selected_parent)
-                    {
+                    if let Some(opt) = options.iter().find(|opt| opt.id == selected_parent) {
                         SharedString::from(opt.label.clone())
                     } else {
                         SharedString::from(crate::msg::desktop_categories_parent_none())
@@ -277,11 +253,7 @@ fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> Any
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(if focused {
-                    color::INK
-                } else {
-                    color::BORDER
-                })
+                .border_color(if focused { color::INK } else { color::BORDER })
                 .text_size(px(13.0))
                 .text_color(if value.is_empty() {
                     color::INK_TERTIARY
@@ -291,13 +263,11 @@ fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> Any
                 .on_click(move |_event, window, cx| {
                     on_field_click(CategoryField::Budget, window, cx)
                 })
-                .child(
-                    if value.is_empty() {
-                        SharedString::from(crate::msg::desktop_categories_budget_placeholder())
-                    } else {
-                        SharedString::from(value.to_string())
-                    }
-                ),
+                .child(if value.is_empty() {
+                    SharedString::from(crate::msg::desktop_categories_budget_placeholder())
+                } else {
+                    SharedString::from(value.to_string())
+                }),
         )
         .into_any_element()
 }
@@ -353,10 +323,7 @@ fn label(text: impl Into<SharedString>) -> AnyElement {
         .into_any_element()
 }
 
-fn suffixed_label(
-    text: impl Into<SharedString>,
-    suffix: impl Into<SharedString>,
-) -> AnyElement {
+fn suffixed_label(text: impl Into<SharedString>, suffix: impl Into<SharedString>) -> AnyElement {
     div()
         .flex()
         .gap(px(4.0))
@@ -380,9 +347,9 @@ fn is_valid(form: &CategoryForm, all_categories: &[categories::Category]) -> boo
     }
 
     // Check for sibling name clash (same parent and same name)
-    let has_sibling_with_same_name = all_categories.iter().any(|c| {
-        c.parent == form.parent_id && c.name.eq_ignore_ascii_case(form.name.trim())
-    });
+    let has_sibling_with_same_name = all_categories
+        .iter()
+        .any(|c| c.parent == form.parent_id && c.name.eq_ignore_ascii_case(form.name.trim()));
 
     !has_sibling_with_same_name
 }

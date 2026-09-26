@@ -34,10 +34,7 @@ pub fn render(
         .child(dialog::body([
             warning_copy(split_count),
             dialog::info_panel(reference_notice(budget_count)).into_any_element(),
-            confirm_input_field(
-                &category.name,
-                &form.confirmation_name,
-            ),
+            confirm_input_field(&category.name, &form.confirmation_name),
         ]))
         .child(dialog::action_row([
             dialog::cancel_button("delete-category-cancel", on_cancel).into_any_element(),

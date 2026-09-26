@@ -10,8 +10,8 @@
 //! `Shell` scrolls a section into view with `ScrollHandle::scroll_to_item`. Context rail is hidden.
 
 pub mod add_dialog;
-pub mod edit_dialog;
 pub mod delete_dialog;
+pub mod edit_dialog;
 
 use std::rc::Rc;
 
@@ -19,12 +19,7 @@ use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*,
 use lib_core::{CategoryTypes, Money};
 use lib_locale::format::upper;
 
-use crate::{
-    budgets, categories,
-    categories::TreeNode,
-    theme::color,
-    transactions::Transaction,
-};
+use crate::{budgets, categories, categories::TreeNode, theme::color, transactions::Transaction};
 
 pub type OnAddClick = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type OnAddSubClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
@@ -90,23 +85,25 @@ pub fn render(
                 .mb(px(24.0)),
         )
         .children(
-            vec![CategoryTypes::Expense, CategoryTypes::Income].iter().map(|cat_type| {
-                section_block(
-                    cat_type,
-                    &tree_rows,
-                    props.categories,
-                    props.budgets,
-                    props.transactions,
-                    props.base_unit_id,
-                    props.today,
-                    props.selected_index,
-                    &props.on_add_sub_click,
-                    &props.on_edit_click,
-                    &props.on_delete_click,
-                    &props.on_disclosure_click,
-                    &props.on_row_click,
-                )
-            }),
+            vec![CategoryTypes::Expense, CategoryTypes::Income]
+                .iter()
+                .map(|cat_type| {
+                    section_block(
+                        cat_type,
+                        &tree_rows,
+                        props.categories,
+                        props.budgets,
+                        props.transactions,
+                        props.base_unit_id,
+                        props.today,
+                        props.selected_index,
+                        &props.on_add_sub_click,
+                        &props.on_edit_click,
+                        &props.on_delete_click,
+                        &props.on_disclosure_click,
+                        &props.on_row_click,
+                    )
+                }),
         )
         .into_any_element()
 }
@@ -144,7 +141,11 @@ fn page_header(
         .child(add_button(on_add_click.clone()))
 }
 
-fn summary_line(category_count: usize, max_depth: u32, over_budget_count: usize) -> impl IntoElement {
+fn summary_line(
+    category_count: usize,
+    max_depth: u32,
+    over_budget_count: usize,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_wrap()
@@ -165,10 +166,7 @@ fn summary_line(category_count: usize, max_depth: u32, over_budget_count: usize)
             "deep"
         ))
         .child("·")
-        .child(format!(
-            "{} over budget this month",
-            over_budget_count
-        ))
+        .child(format!("{} over budget this month", over_budget_count))
 }
 
 fn add_button(on_add_click: OnAddClick) -> impl IntoElement {
@@ -281,26 +279,22 @@ fn table_header(category_type: &CategoryTypes) -> impl IntoElement {
                 .flex_none()
                 .w(px(100.0))
                 .text_align(gpui::TextAlign::Right)
-                .child(
-                    if *category_type == CategoryTypes::Expense {
-                        "BUDGET"
-                    } else {
-                        "TARGET"
-                    }
-                )
+                .child(if *category_type == CategoryTypes::Expense {
+                    "BUDGET"
+                } else {
+                    "TARGET"
+                }),
         )
         .child(
             div()
                 .flex_none()
                 .w(px(120.0))
                 .text_align(gpui::TextAlign::Right)
-                .child(
-                    if *category_type == CategoryTypes::Expense {
-                        "SPENT THIS MONTH"
-                    } else {
-                        "RECEIVED THIS MONTH"
-                    }
-                )
+                .child(if *category_type == CategoryTypes::Expense {
+                    "SPENT THIS MONTH"
+                } else {
+                    "RECEIVED THIS MONTH"
+                }),
         )
         .child(
             div()
@@ -345,14 +339,11 @@ fn table_row(
         .cursor_pointer()
         .border_b(px(1.0))
         .border_color(color::HAIRLINE)
-        .when(selected, |this| {
-            this.bg(color::CHROME)
-        })
+        .when(selected, |this| this.bg(color::CHROME))
         .hover(|this| this.bg(color::HOVER_TINT))
         .px(px(12.0))
         .py(px(10.0))
         .gap(px(12.0))
-        .on_click(move |_event, window, cx| row_click(row_id, window, cx))
         .child(
             div()
                 .flex_1()
@@ -360,13 +351,10 @@ fn table_row(
                 .flex()
                 .items_center()
                 .gap(px(8.0))
-                .child(
-                    div()
-                        .w(px(indent_px))
-                        .flex_none(),
-                )
+                .child(div().w(px(indent_px)).flex_none())
                 .child(if !row.is_leaf {
-                    disclosure_toggle(row_id, row.is_expanded, disclosure_on_click.clone()).into_any_element()
+                    disclosure_toggle(row_id, row.is_expanded, disclosure_on_click.clone())
+                        .into_any_element()
                 } else {
                     div().w(px(12.0)).into_any_element()
                 })
@@ -404,14 +392,12 @@ fn table_row(
                 .text_align(gpui::TextAlign::Right)
                 .text_color(color::INK)
                 .text_size(px(12.0))
-                .child(
-                    if let Some(ref b) = budget {
-                        let (_, formatted) = crate::format::amount(b);
-                        formatted
-                    } else {
-                        "no budget".to_string()
-                    }
-                ),
+                .child(if let Some(ref b) = budget {
+                    let (_, formatted) = crate::format::amount(b);
+                    formatted
+                } else {
+                    "no budget".to_string()
+                }),
         )
         .child(
             div()
@@ -430,14 +416,12 @@ fn table_row(
                             formatted
                         }),
                 )
-                .child(
-                    progress_bar(
-                        &spent,
-                        budget.as_ref(),
-                        category.category_type.clone(),
-                        is_over,
-                    ),
-                ),
+                .child(progress_bar(
+                    &spent,
+                    budget.as_ref(),
+                    category.category_type.clone(),
+                    is_over,
+                )),
         )
         .child(
             div()
@@ -446,33 +430,23 @@ fn table_row(
                 .flex()
                 .justify_center()
                 .gap(px(4.0))
-                .child(
-                    when_can_add_sub(row, on_add_sub_click.clone()),
-                )
-                .child(
-                    action_button(
-                        SharedString::from(format!("category-edit-{}", row.id)),
-                        "✎",
-                        row.id,
-                        on_edit_click.clone(),
-                    ),
-                )
-                .child(
-                    action_button(
-                        SharedString::from(format!("category-delete-{}", row.id)),
-                        "✕",
-                        row.id,
-                        on_delete_click.clone(),
-                    ),
-                ),
+                .child(when_can_add_sub(row, on_add_sub_click.clone()))
+                .child(action_button(
+                    SharedString::from(format!("category-edit-{}", row.id)),
+                    "✎",
+                    row.id,
+                    on_edit_click.clone(),
+                ))
+                .child(action_button(
+                    SharedString::from(format!("category-delete-{}", row.id)),
+                    "✕",
+                    row.id,
+                    on_delete_click.clone(),
+                )),
         )
 }
 
-fn disclosure_toggle(
-    id: u32,
-    is_expanded: bool,
-    on_click: OnDisclosureClick,
-) -> impl IntoElement {
+fn disclosure_toggle(id: u32, is_expanded: bool, on_click: OnDisclosureClick) -> impl IntoElement {
     div()
         .id("disclosure-toggle")
         .cursor_pointer()
