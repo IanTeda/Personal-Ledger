@@ -49,7 +49,7 @@ dbg_macro = "deny"
 allow_attributes_without_reason = "warn"
 
 # `unwrap`/`expect` inside a function that already returns `Result` should be `?` instead.
-unwrap_in_result = "warn"
+unwrap_in_result = "deny"
 
 # Workspace configuration for managing multiple crates in the personal-ledger project
 [workspace]
