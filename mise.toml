@@ -11,7 +11,7 @@ protoc = "36.0"
 mdbook = "0.5.4"
 "cargo:sqlx-cli" = "0.9.0"
 "cargo:cargo-watch" = "8.5.3"
-"cargo:cargo-audit" = "0.22.2"
+cargo-deny = "0.20.2"
 
 [env]
 RUST_BACKTRACE = "1"
@@ -31,6 +31,39 @@ run = "cargo watch -c -x 'run --package bin_tui --bin tui'"
 description = "Rebuild and rerun the desktop GUI on file changes"
 run = "cargo watch -c -x 'run --package bin_desktop --bin desktop'"
 
+
+# -------------------------------[LINT]-----------------------------------------
+
+# `lint` runs exactly what `.github/workflows/lint.yaml` runs, so a clean `mise run lint` means a
+# green Lint workflow. SQLX_OFFLINE forces lib-database's query macros onto the checked-in `.sqlx`
+# cache, as in CI, instead of the live dev DB that `.env` points a local build at.
+[tasks.lint]
+description = "Run the CI lint checks locally: rustfmt check and clippy with warnings denied"
+env = { SQLX_OFFLINE = "true" }
+run = [
+  "cargo fmt --check",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+]
+
+# Applies the fixes rustfmt and clippy can make mechanically; whatever `lint` still reports
+# afterwards needs a hand fix.
+[tasks.lint-fix]
+description = "Apply rustfmt and clippy's machine-applicable fixes"
+env = { SQLX_OFFLINE = "true" }
+run = [
+  "cargo fmt",
+  "cargo clippy --fix --allow-dirty --allow-staged --workspace --all-targets",
+  "cargo fmt",
+]
+
+[tasks.deny]
+description = "Check dependencies for advisories, licences, bans and sources (deny.toml)"
+run = "cargo deny check"
+
+# Opt this checkout into the repo's git hooks (`.githooks/pre-push` runs `mise run lint`).
+[tasks.install-hooks]
+description = "Point git at the repo's .githooks directory"
+run = "git config core.hooksPath .githooks"
 
 # -------------------------------[MD BOOK]--------------------------------------
 
@@ -87,13 +120,13 @@ run = "mise run db-migrate-sync-server && mise run db-migrate-client"
 description = "Regenerate the .sqlx query cache for lib-database"
 dir = "crates/libs/lib-database"
 env = { DATABASE_URL = "sqlite:{{config_root}}/.personal-ledger-dev.db" }
-run = "cargo sqlx prepare"
+run = "cargo sqlx prepare -- --all-targets"
 
 [tasks.db-prepare-check]
 description = "Check the .sqlx query cache is up to date (run after db-prepare-generate)"
 dir = "crates/libs/lib-database"
 env = { DATABASE_URL = "sqlite:{{config_root}}/.personal-ledger-dev.db" }
-run = "cargo sqlx prepare --check"
+run = "cargo sqlx prepare --check -- --all-targets"
 
 [tasks.db]
 description = "Reset the dev database: drop, create, migrate, then refresh the sqlx query cache"

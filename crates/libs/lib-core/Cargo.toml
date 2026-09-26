@@ -2,6 +2,8 @@
 name = "lib_core"
 version = "0.1.0"
 edition = "2024"
+# Never published to crates.io; also lets cargo-deny skip licence checks on workspace crates.
+publish = false
 
 
 [lib]

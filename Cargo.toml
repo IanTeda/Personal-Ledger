@@ -19,6 +19,14 @@ unsafe_code = "forbid"
 # unused until a call site reads it) plus UI-first code whose wiring is a later phase.
 dead_code = { level = "allow", priority = -1 }
 
+# Flag pre-2018 idioms (elided lifetimes in paths, `extern crate`, bare trait objects). A lint
+# group, so it sits at low priority to let individual lints inside it be overridden.
+rust_2018_idioms = { level = "warn", priority = -2 }
+
+# Flag paths qualified more than the imports in scope need (e.g. `std::fmt::Display` after a
+# `use std::fmt::Display`).
+unused_qualifications = "warn"
+
 # Allow unused code/variables during development, with low priority to allow overrides
 # For exploratory dev, comment out for commits
 # unused = { level = "allow", priority = -1 }
@@ -29,6 +37,19 @@ dead_code = { level = "allow", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
 panic = "deny"
+
+# Placeholder and debugging macros that must never reach a commit: `todo!`/`unimplemented!` are
+# panics by another name, and `dbg!` is leftover debugging (allowed in tests via clippy.toml).
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+
+# A bare `#[allow(...)]` hides why a lint is off. Prefer `#[expect(lint, reason = "...")]`, which
+# also warns once the silenced lint stops firing, so stale suppressions don't pile up.
+allow_attributes_without_reason = "warn"
+
+# `unwrap`/`expect` inside a function that already returns `Result` should be `?` instead.
+unwrap_in_result = "warn"
 
 # Workspace configuration for managing multiple crates in the personal-ledger project
 [workspace]

@@ -8,7 +8,7 @@ Personal Ledger is a Rust Cargo workspace for a personal finance/accounting appl
 
 ## Commands
 
-Toolchain and dev-tool versions (Rust, protoc, mdBook, sqlx-cli, cargo-watch, cargo-audit) are pinned in `mise.toml` at the workspace root and managed by [mise](https://mise.jdx.dev/). Run `mise install` once per checkout (or let mise's shell/dir activation do it) before using `cargo` — without it, tools like `protoc` or `sqlx-cli` won't be on `PATH`.
+Toolchain and dev-tool versions (Rust, protoc, mdBook, sqlx-cli, cargo-watch, cargo-deny) are pinned in `mise.toml` at the workspace root and managed by [mise](https://mise.jdx.dev/). Run `mise install` once per checkout (or let mise's shell/dir activation do it) before using `cargo` — without it, tools like `protoc` or `sqlx-cli` won't be on `PATH`.
 
 Build tooling uses `mise` tasks (defined in `mise.toml`; run `mise tasks` to list them) for a few tasks, but most day-to-day work is plain `cargo` run against the workspace or a specific package.
 
@@ -30,8 +30,10 @@ cargo test --package lib_config                # single crate
 cargo test --package lib_config parse_with_explicit_config_file  # single test
 
 # Lint / format
-cargo clippy
-cargo fmt
+mise run lint           # exactly what the Lint workflow runs: fmt --check + clippy -D warnings
+mise run lint-fix       # cargo fmt + clippy's machine-applicable fixes
+mise run deny           # cargo-deny: advisories, licences, bans, sources (deny.toml)
+mise run install-hooks  # once per checkout: .githooks/pre-push runs `mise run lint`
 
 # Docs (mdBook + rustdoc), via mise tasks
 mise run docs-build     # docs-rustdoc + docs-mdbook
@@ -62,7 +64,9 @@ Planned-but-not-yet-present crates/binaries mentioned in `docs/directories-files
 
 ## Conventions
 
-**Rust code style and safety:** See `/rust-style` skill for error handling (error.rs shapes, promoting variants, #[from] for external errors), database persistence (CRUD file split), secrets (secrecy::SecretString), dependencies, comments (Australian English, WHY not WHAT), and validated invariants in expect messages. Workspace lints in `Cargo.toml` [workspace.lints] enforce `unsafe_code = "forbid"` (Rust), `clippy::{unwrap_used, expect_used, panic} = "deny"` (clippy, allowed in tests via clippy.toml). CI runs `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check`.
+**Rust code style and safety:** See `/rust-style` skill for error handling (error.rs shapes, promoting variants, #[from] for external errors), database persistence (CRUD file split), secrets (secrecy::SecretString), dependencies, comments (Australian English, WHY not WHAT), and validated invariants in expect messages. Workspace lints in `Cargo.toml` [workspace.lints] enforce `unsafe_code = "forbid"`, `rust_2018_idioms` and `unused_qualifications` (Rust), `clippy::{unwrap_used, expect_used, panic, todo, unimplemented, dbg_macro} = "deny"` (allowed in tests via clippy.toml) and `clippy::{allow_attributes_without_reason, unwrap_in_result}` (clippy). Every crate opts in with `[lints] workspace = true`; tonic's generated code in `lib-rpc` is exempted at its `mod` declarations. CI runs `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --check`.
+
+**Resolve lints before pushing:** the `Lint` workflow (`.github/workflows/lint.yaml`) fails the push on any rustfmt diff or clippy warning, so run `mise run lint` (exactly what it runs: `cargo fmt --check` then `SQLX_OFFLINE=true cargo clippy --workspace --all-targets -- -D warnings`) and get it clean before every `git push`. The `.githooks/pre-push` hook enforces this once `mise run install-hooks` has been run. `SQLX_OFFLINE=true` matters: CI has no `DATABASE_URL`, so it checks `lib-database`'s query macros against the checked-in `.sqlx` cache, while a local build silently uses the live dev DB from `.env` and hides a stale cache. If clippy reports "no cached data for this query", regenerate the cache with `mise run db-prepare-generate` and commit the `.sqlx` changes. Fix lints at the source (`mise run lint-fix` for the mechanical ones, then by hand); where a lint is deliberately left, silence it locally with `#[expect(clippy::<lint>, reason = "...")]`, never by relaxing the workspace config or dropping `-D warnings`.
 
 - Commit style: `<area>: <short description>` (e.g. `email-verification: add updated_at to model and migration`).
 - Tests: unit tests live alongside the code (`#[cfg(test)] mod tests`); integration/DB tests use `sqlx::test`; use the `fake` crate with deterministic seeds for generated test data. No doctests: usage is specified by unit tests, doc comments explain why rather than carrying `# Examples`, and every library crate sets `[lib] doctest = false`.

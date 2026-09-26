@@ -1,0 +1,7 @@
+#!/bin/sh
+# Runs the same checks as the Lint workflow before anything leaves the machine, so a push never
+# turns CI red on a rustfmt diff or clippy warning. Enable per checkout with `mise run install-hooks`;
+# bypass a single push with `git push --no-verify`.
+set -e
+echo "pre-push: running mise run lint"
+mise run lint

@@ -1,0 +1,3 @@
+# Pin the style edition so standalone `rustfmt` (editors, rust-analyzer) formats the same way as
+# `cargo fmt`, which would otherwise take it from each crate's `edition`.
+style_edition = "2024"
