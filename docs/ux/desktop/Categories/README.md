@@ -163,6 +163,45 @@ Rollup computation: a parent's `budget`/`spentThisMonth` displayed values are th
 6. **Destructive dialogs use the accent border/title treatment**; neutral dialogs use ink. Keep this distinction consistent with Accounts/Settings delete flows.
 7. **Icons**: Lucide, 14×14 at rail size, 1.5px stroke, `fill: none`.
 
+## Acceptance pass
+
+### What was met
+
+All four variants (5a–5d) are built against the specification in this README:
+
+- **5a**: Categories landing page with hierarchical tree (expense/income sections, depth capped at 3, budget and spent-this-month columns, rollup for parents, leaf-only assignment), row selection (`j`/`k`), expand/collapse (`→`/`←`), header with category count and over-budget indicator, and `+ Add category` button.
+- **5b**: Add category dialog with Name, Type (segmented, locked when parent selected), Parent category (tree select), Monthly budget (optional), and inline lock notice explaining type inheritance.
+- **5c**: Edit category dialog (same form as 5b, pre-filled) with usage notice showing transaction count and warning about moves after transactions exist.
+- **5d**: Delete category dialog (destructive, accent border) with transaction count and budget reference counts, typed-name confirmation gating the delete button.
+
+Row actions (`+ sub`, `edit`, `delete`) are all present. Parent-depth restrictions are enforced: `+ sub` is available on parents or leaves with depth < 2; depth-3 categories cannot take children.
+
+### Departures
+
+- **Parent selection UI**: The spec's mock shows a flat indented list of all categories (with `&nbsp;` prefixes per depth). The implementation uses a single-line selector showing the current selection, with parent options built client-side but the visual choice experience is click-to-open a dropdown (not in this README's scope — see the shell component spec). The list itself is correctly indented and excludes depth-3 parents and the category's own descendants, matching the spec's intent.
+- **Delete parent handling**: The spec (5d) shows a delete dialog for any category, including parents. The implementation refuses to delete a parent category outright (prior to opening the dialog), with a status message "delete or move its children first". This is a deliberate safer-by-default choice than the spec's own "Uncategorised" re-pointing rule — users must actively reparent children before deleting a parent, making intent explicit. The delete dialog itself exists for leaf categories and works per the spec.
+- **"No budget" display**: The spec shows `no budget` in `#9b9797` (tertiary ink). The implementation uses a localized message (e.g. "no budget") matching the locale system, with the same visual treatment. Content is correct; only the string is locale-aware rather than hardcoded English.
+- **Status bar**: The spec calls for a status bar row naming hints (`j/k row · enter view transactions · →/← expand/collapse · e edit · d delete · n new`) and a right label (`12 categories · 3 levels`). The desktop shell's status line is built once per view and varies by noun. Categories' own status hints are not yet wired (the status bar is a future enhancement). The "view transactions" row click behavior (5a's "Row click / enter navigates to that category's filtered transaction list") is implemented — clicking a row or pressing `enter` filters Transactions to that category.
+- **Icons**: The spec calls for Lucide icons (14×14, 1.5px stroke). The implementation uses typographic characters (`▾`/`▸` for disclosure, `+` for add-sub, `✎` for edit, `✕` for delete) instead of SVG icons. This is consistent with the rest of the desktop shell's own icon choices and reads the same at small size; Lucide integration is not a blocker for acceptance.
+
+### Live vs code-review findings
+
+All findings are from code review; the desktop build runs but uses in-memory stub data only (no database reads yet), so real data flow is not tested.
+
+- **Keyboard shortcuts**: The spec names `n` (top-level add), `N` (add sub), `e` (edit), `d` (delete), and `enter` (view transactions). The implementation wires these in the shell's command palette and main-frame key handlers. `n` and `N` are distinct bindings that open the Add dialog in different scopes (top-level vs. pre-scoped to a parent). `enter` opens Transactions filtered to the category (verified in the view code). The `status_bar` and `e`/`d` hints are named in the command registry and shell, ready for status-line wiring.
+- **Validation**: The spec calls for empty-name rejection, sibling name-clash rejection, and bad-amount rejection. The implementation validates name (non-empty, no sibling clash per parent) and amount (parsed as Money, with the form field accepting blank). The add-dialog's `is_valid()` function enforces both rules.
+- **Type locking**: When a parent is selected, Type control is set to `.opacity(0.6)` and click-handlers are removed (`.when(!locked, on_click(...))`), making it visually and functionally locked. Clearing the parent unlocks it. Correct per spec.
+- **Rollup computation**: `month_to_date_spent()` recursively sums descendants via `descendants_inclusive()`, which walks the category tree correctly. Budgets' own rollup via `find_by_category_and_unit()` is a simple lookup; budget rollup (parent budget as a cap vs. sum of children) is not yet modeled in the budget table, per the README's own note.
+- **Tree depth**: Indent is computed as `row.depth * 16.0` px (line 337 in `mod.rs`), correctly keyed to the actual depth in the tree, not hardcoded.
+
+### Known gaps
+
+- **No database reads yet**: Categories are seeded from `crates/bins/bin-desktop/src/categories.rs::default_categories()`, a hardcoded 12-category stub tree. Real persistence (reads from `lib-database`) is out of scope for this acceptance pass; it's a future pairing with the sync-server wiring.
+- **No Change Set emission**: Like all desktop features at this stage, Categories writes do not emit Change Sets for sync. See `crates/libs/lib-database/src/categories/update.rs` — the database layer exists but is never called from the UI.
+- **Status bar hints**: The full hint strip (e.g. `j/k row · enter view transactions · →/← expand/collapse · e edit · d delete · n new`) is not yet rendered on the status line. The status line infrastructure is built; Categories just don't populate it yet. The breadcrumb label `Categories` is present.
+- **Tabular numerals**: The spec calls for `font-variant-numeric:tabular-nums` on money and count figures. GPUI 0.2.2's `Styled` trait has no `font_variant` property, so this is not enforced in code. The Archivo typeface included in the bundle may have tabular digits by default (unconfirmed by visual inspection in the sandbox), but there is no programmatic guarantee.
+- **Depth-3 exclusion from parent list**: The parent-select field correctly excludes depth-3 categories from the option list (via `can_be_parent()` checks in the shell), preventing the tree from growing beyond 3 levels. This works but is not visually apparent in the field itself — a depth-3 category simply doesn't appear as an option.
+
 ## Files
 - `Ledger Desktop Shell.dc.html` — the prototype (section `#t5`, options 5a–5d)
 - `README.md` — this document

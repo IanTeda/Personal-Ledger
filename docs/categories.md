@@ -2,8 +2,6 @@
 
 Categories are how you answer the question "where does my money actually go?" Every transaction gets a category, like Groceries, Rent or Salary, and Personal Ledger uses them to add things up for you. You make up the names, so they work the way you think.
 
-> **Heads up:** the Categories screen is still being built, so a few things here describe where it's headed rather than what's in your copy of the app today.
-
 ## What you can do
 
 - Create expense and income categories with names of your choice

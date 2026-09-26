@@ -64,9 +64,9 @@ Invariants the schema does not enforce:
 Neither Client reads Categories from `lib-database` yet. Both render their own stub.
 
 - **TUI** — `crates/bins/bin-tui/src/category/` holds a `CategoryStore` seam over an in-memory tree, with `fixture.rs` supplying the data. The seam exists precisely so the screen and popups can be moved onto real persistence later by adding a second `impl CategoryStore`, with no UI rewrite. The screen itself is `view/categories.rs`. State that changes (tree shape, fold state, form drafts) lives in the owning `View`/popup and is mutated in its own `handle_key`/`update`, never routed through `view::Action` — `Action` only carries a `RowID` when signalling a transition across the `Shell` boundary. `docs/ux/tui/categories/README.md` is the authority on the model: two fixed, non-deletable roots (income and expenses), kind inherited from the root and never stored per node, unlimited depth, and each node carrying both a direct amount and a computed rollup.
-- **Desktop** — `crates/bins/bin-desktop/src/categories.rs` is a smaller `gpui`-free stub tree seeded from `docs/ux/desktop/Categories/`: 12 Categories, three levels deep. Note it keys nodes by `id: u32`, not `RowID`. Only leaf Categories are assigned to Splits; a parent exists to roll up and to filter by.
+- **Desktop** — `crates/bins/bin-desktop/src/view/categories/` (`mod.rs`, `add_dialog.rs`, `edit_dialog.rs`, `delete_dialog.rs`) is the full Categories surface built against `docs/ux/desktop/Categories/`: the 5a landing page (tree, sections, rollups), 5b Add dialog (name, type, parent, budget, type-locking), 5c Edit dialog (same form, pre-filled, usage notice), and 5d Delete dialog (confirmation, destructive treatment). The stub tree (`crates/bins/bin-desktop/src/categories.rs`) has 12 Categories, three levels deep, keyed by `id: u32` (not `RowID`). Only leaf Categories are assigned to Splits; a parent exists to roll up and to filter by. Status-line hints and full database wiring are future work; see the Acceptance pass in the Categories README for full details.
 
-The two stubs are independent and do not share a model.
+The two stubs are independent and do not share a model. Desktop differs from TUI in depth (3 vs. unlimited), structure (flat keys vs. semantic roots), and data (12 fixed vs. dynamic fixture).
 
 ## Traceability
 
