@@ -79,6 +79,22 @@ _Avoid_: string, label, copy, translation (a translation is one Locale's renderi
 The complete set of Messages translated into one Locale. A Locale whose Catalogue lacks a Message falls back to a wider Locale's Catalogue, ultimately the source Locale's.
 _Avoid_: bundle, dictionary, resource.
 
+**Colour Theme**:
+A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides them on that one Client.
+_Avoid_: theme (alone), palette — "palette" already names the command palette; "theme" alone is ambiguous with typography and spacing.
+
+**Colour Role**:
+One named slot in a Colour Theme (for example accent, foreground, background, selection foreground) that interface code asks for by its purpose, never by a literal colour. Also the key a `[theme]` Configuration override is written against.
+_Avoid_: token, swatch, colour variable.
+
+**Colour Variant**:
+The light or the dark half of a Colour Theme: a complete value for every Colour Role, chosen by the Colour Appearance.
+_Avoid_: Variant (alone), mode, flavour.
+
+**Colour Appearance**:
+The user's choice of Light, Dark or System, deciding which Colour Variant of the Colour Theme is shown; System follows the operating system's (or terminal's) own light/dark setting.
+_Avoid_: Appearance (alone), mode, dark mode.
+
 **Sync Server**:
 A separate deployable component — a headless service, not a Client — that syncs each
 Client's local Ledger copy with the others by pushing and pulling Change Sets, not
