@@ -1,7 +1,7 @@
-//! Renders the **Add category** dialog (`docs/ux/desktop/Categories/README.md`'s 5b) on the shared
-//! `crate::dialog` chrome. Form fields: Name, Type (segmented, locked when parent is selected),
-//! Parent category (tree select, excluding depth-3), Monthly budget (optional).
-//! Inline notice explains type locking behavior.
+//! Renders the **Edit category** dialog (`docs/ux/desktop/Categories/README.md`'s 5c) on the shared
+//! `crate::dialog` chrome. Form fields: Name, Type (editable only on top-level, locked for children),
+//! Parent category (tree select, excluding depth-3, the category itself and its descendants),
+//! Monthly budget (optional, disabled on parents showing rollup). Warning notice with Split count.
 
 use std::rc::Rc;
 
@@ -30,9 +30,12 @@ pub struct ParentOption {
 }
 
 pub fn render(
+    category_id: u32,
     form: &CategoryForm,
     parent_options: &[ParentOption],
     all_categories: &[categories::Category],
+    split_count: usize,
+    is_parent: bool,
     on_field_click: OnFieldClick,
     on_parent_change: OnParentChange,
     on_type_change: OnTypeChange,
@@ -44,11 +47,14 @@ pub fn render(
         .parent_id
         .and_then(|id| all_categories.iter().find(|c| c.id == id));
 
+    let category = all_categories.iter().find(|c| c.id == category_id);
+    let is_top_level = category.map(|c| c.parent.is_none()).unwrap_or(false);
+
     let card = div()
         .flex()
         .flex_col()
         .child(dialog::header(
-            crate::msg::desktop_categories_add_title(),
+            crate::msg::desktop_categories_edit_title(),
             false,
         ))
         .child(dialog::body([
@@ -59,7 +65,7 @@ pub fn render(
             ),
             type_field(
                 form.category_type.as_ref().unwrap_or(&CategoryTypes::Expense),
-                type_locked,
+                type_locked || !is_top_level,
                 on_type_change,
             ),
             parent_field(
@@ -72,19 +78,22 @@ pub fn render(
             budget_field(
                 &form.budget,
                 form.focused == CategoryField::Budget,
+                is_parent,
                 on_field_click.clone(),
             ),
-            lock_notice(
+            edit_notice(
+                split_count,
+                is_parent,
                 type_locked,
                 parent_category,
             ),
         ]))
         .child(dialog::action_row([
-            dialog::cancel_button("add-category-cancel", on_cancel).into_any_element(),
+            dialog::cancel_button("edit-category-cancel", on_cancel).into_any_element(),
             dialog::confirm_button(
-                "add-category-confirm",
-                crate::msg::desktop_categories_add_submit(),
-                is_valid(form, all_categories),
+                "edit-category-confirm",
+                crate::msg::desktop_categories_edit_submit(),
+                is_valid(form, all_categories, category_id),
                 false,
                 on_confirm,
             )
@@ -99,7 +108,7 @@ fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyEl
         .child(label(lib_locale::msg::column_name()))
         .child(
             div()
-                .id("add-category-name")
+                .id("edit-category-name")
                 .cursor_pointer()
                 .w_full()
                 .py(px(8.0))
@@ -145,7 +154,7 @@ fn type_field(
                     let cat_type = category_type.clone();
                     let on_change = on_change.clone();
                     div()
-                        .id("type-expense")
+                        .id("edit-type-expense")
                         .cursor_pointer()
                         .px(px(12.0))
                         .py(px(6.0))
@@ -181,7 +190,7 @@ fn type_field(
                     let cat_type = category_type.clone();
                     let on_change = on_change.clone();
                     div()
-                        .id("type-income")
+                        .id("edit-type-income")
                         .cursor_pointer()
                         .px(px(12.0))
                         .py(px(6.0))
@@ -232,7 +241,7 @@ fn parent_field(
         ))
         .child(
             div()
-                .id("add-category-parent")
+                .id("edit-category-parent")
                 .cursor_pointer()
                 .w_full()
                 .py(px(8.0))
@@ -263,7 +272,12 @@ fn parent_field(
         .into_any_element()
 }
 
-fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyElement {
+fn budget_field(
+    value: &str,
+    focused: bool,
+    is_parent: bool,
+    on_field_click: OnFieldClick,
+) -> AnyElement {
     div()
         .child(suffixed_label(
             crate::msg::desktop_categories_field_monthly_budget(),
@@ -271,39 +285,82 @@ fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> Any
         ))
         .child(
             div()
-                .id("add-category-budget")
+                .id("edit-category-budget")
                 .cursor_pointer()
-                .w_full()
-                .py(px(8.0))
-                .px(px(10.0))
-                .border_1()
-                .border_color(if focused {
-                    color::INK
-                } else {
-                    color::BORDER
+                .when(!is_parent, |this| {
+                    this
+                        .w_full()
+                        .py(px(8.0))
+                        .px(px(10.0))
+                        .border_1()
+                        .border_color(if focused {
+                            color::INK
+                        } else {
+                            color::BORDER
+                        })
+                        .text_size(px(13.0))
+                        .text_color(if value.is_empty() {
+                            color::INK_TERTIARY
+                        } else {
+                            color::INK
+                        })
+                        .on_click(move |_event, window, cx| {
+                            on_field_click(CategoryField::Budget, window, cx)
+                        })
+                        .child(
+                            if value.is_empty() {
+                                SharedString::from(crate::msg::desktop_categories_budget_placeholder())
+                            } else {
+                                SharedString::from(value.to_string())
+                            }
+                        )
                 })
-                .text_size(px(13.0))
-                .text_color(if value.is_empty() {
-                    color::INK_TERTIARY
-                } else {
-                    color::INK
-                })
-                .on_click(move |_event, window, cx| {
-                    on_field_click(CategoryField::Budget, window, cx)
-                })
-                .child(
-                    if value.is_empty() {
-                        SharedString::from(crate::msg::desktop_categories_budget_placeholder())
-                    } else {
-                        SharedString::from(value.to_string())
-                    }
-                ),
+                .when(is_parent, |this| {
+                    this
+                        .w_full()
+                        .py(px(8.0))
+                        .px(px(10.0))
+                        .border_1()
+                        .border_color(color::BORDER)
+                        .bg(color::CHROME)
+                        .text_size(px(13.0))
+                        .text_color(color::INK_SECONDARY)
+                        .opacity(0.6)
+                        .child(crate::msg::desktop_categories_parent_budget_rollup())
+                }),
         )
         .into_any_element()
 }
 
-fn lock_notice(type_locked: bool, parent_category: Option<&categories::Category>) -> AnyElement {
-    if type_locked {
+fn edit_notice(
+    split_count: usize,
+    is_parent: bool,
+    type_locked: bool,
+    parent_category: Option<&categories::Category>,
+) -> AnyElement {
+    if split_count > 0 {
+        // Warning notice: accent border with split count
+        let split_text = if split_count == 1 {
+            "1 transaction".to_string()
+        } else {
+            format!("{} transactions", split_count)
+        };
+
+        div()
+            .border_l(px(2.0))
+            .border_color(color::INK)
+            .bg(color::CHROME)
+            .px(px(10.0))
+            .py(px(10.0))
+            .text_size(px(11.5))
+            .text_color(color::INK_SECONDARY)
+            .child(format!(
+                "This category has {}. Changing its type will affect these transactions.",
+                split_text
+            ))
+            .into_any_element()
+    } else if type_locked {
+        // Type is locked due to parent
         let parent_name = parent_category
             .map(|c| c.name.as_str())
             .unwrap_or("Unknown");
@@ -330,7 +387,8 @@ fn lock_notice(type_locked: bool, parent_category: Option<&categories::Category>
                 parent_name, category_type
             ))
             .into_any_element()
-    } else {
+    } else if is_parent {
+        // Neutral notice for parent
         div()
             .border_l(px(2.0))
             .border_color(color::INK)
@@ -339,7 +397,19 @@ fn lock_notice(type_locked: bool, parent_category: Option<&categories::Category>
             .py(px(10.0))
             .text_size(px(11.5))
             .text_color(color::INK_SECONDARY)
-            .child(crate::msg::desktop_categories_notice_default())
+            .child(crate::msg::desktop_categories_edit_parent_notice())
+            .into_any_element()
+    } else {
+        // Default notice
+        div()
+            .border_l(px(2.0))
+            .border_color(color::INK)
+            .bg(color::CHROME)
+            .px(px(10.0))
+            .py(px(10.0))
+            .text_size(px(11.5))
+            .text_color(color::INK_SECONDARY)
+            .child(crate::msg::desktop_categories_edit_notice())
             .into_any_element()
     }
 }
@@ -373,15 +443,15 @@ fn suffixed_label(
         .into_any_element()
 }
 
-fn is_valid(form: &CategoryForm, all_categories: &[categories::Category]) -> bool {
+fn is_valid(form: &CategoryForm, all_categories: &[categories::Category], category_id: u32) -> bool {
     // Name must not be empty
     if form.name.trim().is_empty() {
         return false;
     }
 
-    // Check for sibling name clash (same parent and same name)
+    // Check for sibling name clash (same parent and same name, excluding this category)
     let has_sibling_with_same_name = all_categories.iter().any(|c| {
-        c.parent == form.parent_id && c.name.eq_ignore_ascii_case(form.name.trim())
+        c.id != category_id && c.parent == form.parent_id && c.name.eq_ignore_ascii_case(form.name.trim())
     });
 
     !has_sibling_with_same_name

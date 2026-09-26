@@ -1420,7 +1420,11 @@ impl Shell {
     /// `Enter` deletes once it matches, and `Tab` is swallowed since the confirmation is the only
     /// field. `Esc` never reaches here (it cancels ahead of the mode gates).
     fn handle_categories_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        let Some(categories::CategoriesDialog::Add { form, .. }) = self.categories_dialog.as_mut() else {
+        let Some(dialog) = self.categories_dialog.as_mut() else {
+            return false;
+        };
+
+        let Some(form) = dialog.form_mut() else {
             return false;
         };
 
@@ -1440,20 +1444,36 @@ impl Shell {
             }
             "enter" => {
                 if !form.name.trim().is_empty() {
-                    if let Some(categories::CategoriesDialog::Add { form, .. }) =
-                        self.categories_dialog.take()
-                    {
-                        let category_type = form
-                            .category_type
-                            .clone()
-                            .unwrap_or(CategoryTypes::Expense);
-                        let _ = categories::insert_category(
-                            &mut self.categories,
-                            form.name.trim().to_string(),
-                            form.parent_id,
-                            category_type,
-                        );
-                        self.nav.exit_mode();
+                    if let Some(dialog) = self.categories_dialog.take() {
+                        match dialog {
+                            categories::CategoriesDialog::Add { form, .. } => {
+                                let category_type = form
+                                    .category_type
+                                    .clone()
+                                    .unwrap_or(CategoryTypes::Expense);
+                                let _ = categories::insert_category(
+                                    &mut self.categories,
+                                    form.name.trim().to_string(),
+                                    form.parent_id,
+                                    category_type,
+                                );
+                                self.nav.exit_mode();
+                            }
+                            categories::CategoriesDialog::Edit(id, form) => {
+                                let _ = categories::edit_category(
+                                    &mut self.categories,
+                                    id,
+                                    form.name.trim().to_string(),
+                                );
+                                if let Some(new_parent) = form.parent_id {
+                                    let _ = categories::move_category(&mut self.categories, id, Some(new_parent));
+                                }
+                                self.nav.exit_mode();
+                            }
+                            _ => {
+                                self.nav.exit_mode();
+                            }
+                        }
                     }
                 }
                 true
@@ -1688,8 +1708,19 @@ impl Shell {
         cx.notify();
     }
 
-    fn handle_categories_edit_click(&mut self, _cx: &mut Context<Self>) {
-        // Not yet built (issue #274)
+    fn handle_categories_edit_click(&mut self, category_id: u32, cx: &mut Context<Self>) {
+        if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
+            let form = categories::CategoryForm {
+                name: category.name.clone(),
+                parent_id: category.parent,
+                category_type: Some(category.category_type.clone()),
+                budget: String::new(), // TODO: Load from budget if exists
+                focused: categories::CategoryField::Name,
+            };
+            self.categories_dialog = Some(categories::CategoriesDialog::Edit(category_id, form));
+            self.nav.enter_mode(InputMode::Dialog);
+            cx.notify();
+        }
     }
 
     fn handle_categories_delete_click(&mut self, _cx: &mut Context<Self>) {
@@ -1697,31 +1728,45 @@ impl Shell {
     }
 
     fn handle_categories_dialog_field_click(&mut self, field: categories::CategoryField, cx: &mut Context<Self>) {
-        if let Some(categories::CategoriesDialog::Add { form, .. }) = self.categories_dialog.as_mut() {
-            form.focus_field(field);
-            cx.notify();
+        if let Some(dialog) = self.categories_dialog.as_mut() {
+            if let Some(form) = dialog.form_mut() {
+                form.focus_field(field);
+                cx.notify();
+            }
         }
     }
 
     fn handle_categories_dialog_parent_change(&mut self, parent_id: Option<u32>, cx: &mut Context<Self>) {
-        if let Some(categories::CategoriesDialog::Add { form, .. }) = self.categories_dialog.as_mut() {
-            form.parent_id = parent_id;
-            // Update the category type if a parent is selected
-            if let Some(parent_id) = parent_id {
-                if let Some(parent) = self.categories.iter().find(|c| c.id == parent_id) {
-                    form.category_type = Some(parent.category_type.clone());
+        if let Some(dialog) = self.categories_dialog.as_mut() {
+            if let Some(form) = dialog.form_mut() {
+                form.parent_id = parent_id;
+                // Update the category type if a parent is selected
+                if let Some(parent_id) = parent_id {
+                    if let Some(parent) = self.categories.iter().find(|c| c.id == parent_id) {
+                        form.category_type = Some(parent.category_type.clone());
+                    }
                 }
+                cx.notify();
             }
-            cx.notify();
         }
     }
 
     fn handle_categories_dialog_type_change(&mut self, category_type: CategoryTypes, cx: &mut Context<Self>) {
-        // Only allow type changes if there's no parent (type is unlocked)
-        if let Some(categories::CategoriesDialog::Add { form, .. }) = self.categories_dialog.as_mut() {
-            if form.parent_id.is_none() {
-                form.category_type = Some(category_type);
-                cx.notify();
+        if let Some(dialog) = self.categories_dialog.as_mut() {
+            let can_change_type = match dialog {
+                categories::CategoriesDialog::Add { form, .. } => form.parent_id.is_none(),
+                categories::CategoriesDialog::Edit(id, _form) => {
+                    let is_top_level = self.categories.iter().find(|c| c.id == *id).map(|c| c.parent.is_none()).unwrap_or(false);
+                    is_top_level
+                }
+                _ => false,
+            };
+
+            if can_change_type {
+                if let Some(form) = dialog.form_mut() {
+                    form.category_type = Some(category_type);
+                    cx.notify();
+                }
             }
         }
     }
@@ -1733,28 +1778,54 @@ impl Shell {
     }
 
     fn handle_categories_dialog_confirm(&mut self, cx: &mut Context<Self>) {
-        if let Some(categories::CategoriesDialog::Add { form, .. }) = self.categories_dialog.take() {
-            if !form.name.trim().is_empty() {
-                let category_type = form
-                    .category_type
-                    .clone()
-                    .unwrap_or(CategoryTypes::Expense);
-                match categories::insert_category(
-                    &mut self.categories,
-                    form.name.trim().to_string(),
-                    form.parent_id,
-                    category_type,
-                ) {
-                    Ok(_) => {
-                        // Successfully added category
-                        // TODO: Handle budget creation if budget is not empty
+        if let Some(dialog) = self.categories_dialog.take() {
+            match dialog {
+                categories::CategoriesDialog::Add { form, .. } => {
+                    if !form.name.trim().is_empty() {
+                        let category_type = form
+                            .category_type
+                            .clone()
+                            .unwrap_or(CategoryTypes::Expense);
+                        match categories::insert_category(
+                            &mut self.categories,
+                            form.name.trim().to_string(),
+                            form.parent_id,
+                            category_type,
+                        ) {
+                            Ok(_) => {
+                                // Successfully added category
+                                // TODO: Handle budget creation if budget is not empty
+                                self.nav.exit_mode();
+                                cx.notify();
+                            }
+                            Err(_) => {
+                                // TODO: Show error message
+                                self.nav.exit_mode();
+                            }
+                        }
+                    }
+                }
+                categories::CategoriesDialog::Edit(id, form) => {
+                    if !form.name.trim().is_empty() {
+                        let _ = categories::edit_category(
+                            &mut self.categories,
+                            id,
+                            form.name.trim().to_string(),
+                        );
+                        // Handle parent change if necessary
+                        if let Some(new_parent) = form.parent_id {
+                            let _ = categories::move_category(&mut self.categories, id, Some(new_parent));
+                        } else if form.parent_id.is_none() {
+                            // If parent was cleared, move to top-level
+                            let _ = categories::move_category(&mut self.categories, id, None);
+                        }
+                        // TODO: Handle budget changes
                         self.nav.exit_mode();
                         cx.notify();
                     }
-                    Err(_) => {
-                        // TODO: Show error message
-                        self.nav.exit_mode();
-                    }
+                }
+                _ => {
+                    self.nav.exit_mode();
                 }
             }
         }
@@ -2692,8 +2763,8 @@ impl Render for Shell {
         };
         let on_categories_edit_click: categories_view::OnEditClick = {
             let entity = entity.clone();
-            Rc::new(move |_id, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_categories_edit_click(cx));
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_categories_edit_click(id, cx));
             })
         };
         let on_categories_delete_click: categories_view::OnDeleteClick = {
@@ -3114,9 +3185,63 @@ impl Render for Shell {
                         on_categories_dialog_confirm,
                     )
                 }
-                categories::CategoriesDialog::Edit(_, _) => {
-                    // Not yet built (issue #274)
-                    div().into_any_element()
+                categories::CategoriesDialog::Edit(category_id, form) => {
+                    let category = self.categories.iter().find(|c| c.id == *category_id);
+                    let descendants = category
+                        .map(|_| categories::descendants_inclusive(&self.categories, *category_id))
+                        .unwrap_or_default();
+
+                    let parent_options: Vec<_> = self
+                        .categories
+                        .iter()
+                        .filter(|c| {
+                            // Exclude the category itself
+                            if c.id == *category_id {
+                                return false;
+                            }
+                            // Exclude descendants (to prevent cycles)
+                            if descendants.contains(&c.id) {
+                                return false;
+                            }
+                            // Check depth: can't be at depth 2 or deeper
+                            let depth = categories::depth(&self.categories, c.id);
+                            depth < 2
+                        })
+                        .map(|c| {
+                            categories_view::edit_dialog::ParentOption {
+                                id: Some(c.id),
+                                label: categories::path(&self.categories, c.id)
+                                    .unwrap_or_else(|| c.name.clone()),
+                                is_available: true,
+                            }
+                        })
+                        .collect();
+
+                    // Count splits in this category (and descendants if parent)
+                    let split_count = categories::descendants_inclusive(&self.categories, *category_id)
+                        .iter()
+                        .flat_map(|cat_id| {
+                            self.transactions.iter().flat_map(move |t| {
+                                t.splits.iter().filter(move |s| s.category_id == *cat_id)
+                            })
+                        })
+                        .count();
+
+                    let is_parent = !categories::is_leaf(&self.categories, *category_id);
+
+                    categories_view::edit_dialog::render(
+                        *category_id,
+                        form,
+                        &parent_options,
+                        &self.categories,
+                        split_count,
+                        is_parent,
+                        on_categories_dialog_field_click,
+                        on_categories_dialog_parent_change,
+                        on_categories_dialog_type_change,
+                        on_categories_dialog_cancel,
+                        on_categories_dialog_confirm,
+                    )
                 }
                 categories::CategoriesDialog::Delete(_, _) => {
                     // Not yet built (issue #275)

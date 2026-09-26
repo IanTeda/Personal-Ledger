@@ -10,6 +10,7 @@
 //! `Shell` scrolls a section into view with `ScrollHandle::scroll_to_item`. Context rail is hidden.
 
 pub mod add_dialog;
+pub mod edit_dialog;
 
 use std::rc::Rc;
 
