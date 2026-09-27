@@ -334,10 +334,7 @@ impl PayeeMatchesPopup {
             let is_selected = index == self.selected;
             let row_area = row_areas[index];
             if is_selected {
-                frame.render_widget(
-                    Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-                    row_area,
-                );
+                frame.render_widget(Block::new().style(c.selection()), row_area);
             }
 
             let columns = Layout::default()
@@ -386,7 +383,7 @@ impl PayeeMatchesPopup {
             label,
             Line::from(vec![
                 Span::raw(compose.input.clone()),
-                Span::styled("\u{258c}", c.accent()),
+                Span::styled("\u{258c}", c.cursor()),
             ]),
             c,
         );

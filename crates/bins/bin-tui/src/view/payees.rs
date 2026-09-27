@@ -44,7 +44,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
     widgets::{
         Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
@@ -476,10 +476,10 @@ impl PayeesView {
             ])
             .split(area);
 
-        render_list_column_header(frame, rows[0]);
+        render_list_column_header(frame, rows[0], c);
         self.render_list(frame, rows[1], c);
-        render_legend(frame, rows[2]);
-        self.render_record(frame, rows[3]);
+        render_legend(frame, rows[2], c);
+        self.render_record(frame, rows[3], c);
     }
 
     fn render_list(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
@@ -517,14 +517,11 @@ impl PayeesView {
     fn render_list_row(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee, c: &Colours) {
         let is_selected = payee.id == self.selected;
         if is_selected {
-            frame.render_widget(
-                Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-                area,
-            );
+            frame.render_widget(Block::new().style(c.selection()), area);
         }
 
         let (flag_area, name_area, match_area, total_area) = list_row_columns(area);
-        let dim = Style::default().add_modifier(Modifier::DIM);
+        let dim = c.muted();
         let accent = c.accent();
 
         if let Some(flag) = self.flag_for(payee) {
@@ -562,8 +559,10 @@ impl PayeesView {
 
         let total = self.store.total(payee.id);
         let is_negative = total.0 < 0;
-        let total_style = if is_negative {
-            accent
+        let total_style = if is_negative && is_selected {
+            c.negative_on_selection()
+        } else if is_negative {
+            c.negative()
         } else {
             Style::default()
         };
@@ -577,7 +576,7 @@ impl PayeesView {
     /// The record box beneath the list, for whichever Payee is selected — see the handoff's
     /// own worked Woolworths example (`docs/ux/tui/payees/README.md` "the selected payee's
     /// record").
-    fn render_record(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_record(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let block = Block::bordered().padding(Padding::horizontal(1));
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -624,12 +623,13 @@ impl PayeesView {
             record_field_line(
                 "total",
                 &format!("{} {BASE_UNIT_CODE}", crate::format::money(&total, 2)),
+                c,
             ),
             rows[2],
         );
 
         let website_text = payee.website.as_deref().unwrap_or("not set");
-        frame.render_widget(record_field_line("website", website_text), rows[3]);
+        frame.render_widget(record_field_line("website", website_text, c), rows[3]);
 
         // A derived icon shows only the path past the website (e.g. "/favicon.ico"), not the
         // full URL — the `website` line right above already names the domain, and repeating it
@@ -647,13 +647,13 @@ impl PayeesView {
             (Some(icon_url), _) => icon_url.clone(),
             (None, _) => "not set".to_string(),
         };
-        frame.render_widget(record_field_line("icon", &icon_text), rows[4]);
+        frame.render_widget(record_field_line("icon", &icon_text, c), rows[4]);
 
         let default_text = payee.default_category_path.as_deref().unwrap_or("not set");
-        frame.render_widget(record_field_line("default", default_text), rows[5]);
+        frame.render_widget(record_field_line("default", default_text, c), rows[5]);
 
         let matches_text = format!("{} · m manage", self.store.aliases(payee.id).len());
-        frame.render_widget(record_field_line("matches", &matches_text), rows[6]);
+        frame.render_widget(record_field_line("matches", &matches_text, c), rows[6]);
     }
 
     /// The right pane: category mix, then transactions — nothing renders when no Payee is
@@ -696,11 +696,11 @@ impl PayeesView {
         } else {
             format!("{} categories", mix.len())
         };
-        render_section_heading(frame, rows[0], "CATEGORY MIX", &heading_tag);
+        render_section_heading(frame, rows[0], "CATEGORY MIX", &heading_tag, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         if mix.is_empty() {
-            let dim = Style::default().add_modifier(Modifier::DIM);
+            let dim = c.muted();
             frame.render_widget(
                 Paragraph::new(Span::styled("no transactions yet", dim)),
                 rows[2],
@@ -738,7 +738,7 @@ impl PayeesView {
             }
         }
 
-        render_default_agreement_line(frame, rows[3], payee, &mix);
+        render_default_agreement_line(frame, rows[3], payee, &mix, c);
     }
 
     /// The Payee's transaction rows, newest first, capped to [`TRANSACTIONS_VISIBLE_ROWS`] —
@@ -764,9 +764,9 @@ impl PayeesView {
             .split(area);
 
         let heading_tag = format!("{visible_count} of {total} · newest first");
-        render_section_heading(frame, sections[0], "TRANSACTIONS", &heading_tag);
+        render_section_heading(frame, sections[0], "TRANSACTIONS", &heading_tag, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-        render_txn_column_header(frame, sections[2]);
+        render_txn_column_header(frame, sections[2], c);
 
         let row_count = visible.len().min(sections[3].height as usize);
         let row_areas = Layout::default()
@@ -777,13 +777,13 @@ impl PayeesView {
             render_txn_row(frame, *row_area, row, c);
         }
 
-        let dim = Style::default().add_modifier(Modifier::DIM);
+        let dim = c.muted();
         frame.render_widget(
             Paragraph::new(Span::styled("○ open · ✓ reconciled", dim)),
             sections[4],
         );
 
-        self.render_transactions_footer(frame, sections[6], payee, &all_rows);
+        self.render_transactions_footer(frame, sections[6], payee, &all_rows, c);
         frame.render_widget(
             Paragraph::new(Span::styled(
                 "payees are created by typing them on a transaction",
@@ -802,6 +802,7 @@ impl PayeesView {
         area: Rect,
         payee: &Payee,
         rows: &[PayeeTransaction],
+        c: &Colours,
     ) {
         if self.transactions_not_yet_built {
             frame.render_widget(
@@ -811,7 +812,7 @@ impl PayeesView {
             return;
         }
 
-        let dim = Style::default().add_modifier(Modifier::DIM);
+        let dim = c.muted();
         let text = match (payee.first_posted, payee.last_posted) {
             (Some(first), Some(last)) => {
                 format!(
@@ -843,9 +844,9 @@ fn list_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect) {
     (columns[0], columns[1], columns[2], columns[3])
 }
 
-fn render_list_column_header(frame: &mut Frame<'_>, area: Rect) {
+fn render_list_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let (_, name, matches, total) = list_row_columns(area);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled("NAME", dim)), name);
     frame.render_widget(
         Paragraph::new(Span::styled("M", dim)).alignment(Alignment::Right),
@@ -859,16 +860,16 @@ fn render_list_column_header(frame: &mut Frame<'_>, area: Rect) {
 
 /// `· no default category   ! conflicting match` — the flag column's legend, per the
 /// handoff's own "A legend row sits under the list; without it the glyphs are noise."
-fn render_legend(frame: &mut Frame<'_>, area: Rect) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_legend(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let dim = c.muted();
     let text = "· no default category   ! conflicting match";
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
 }
 
 /// One `label   value` record row, the label padded to [`RECORD_LABEL_WIDTH`] and dimmed —
 /// mirrors `view::accounts`'s own `summary_field_line`.
-fn record_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn record_field_line<'a>(label: &'a str, value: &'a str, c: &Colours) -> Paragraph<'a> {
+    let dim = c.muted();
     Paragraph::new(Line::from(vec![
         Span::styled(format!("{label:<RECORD_LABEL_WIDTH$}"), dim),
         Span::raw(value),
@@ -881,8 +882,8 @@ fn format_month(date: chrono::NaiveDate) -> String {
 
 /// A section heading row shared by both right-pane widgets: the label flush left (dim), a
 /// short dim tag right-aligned — mirrors `view::tags::render_section_heading`.
-fn render_section_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_section_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str, c: &Colours) {
+    let dim = c.muted();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -933,7 +934,7 @@ fn render_mix_bar(
     frame.render_widget(Paragraph::new(format!("{bar} {pct}%")), columns[1]);
     let is_negative = amount.0 < 0;
     let amount_style = if is_negative {
-        c.accent()
+        c.negative()
     } else {
         Style::default()
     };
@@ -954,8 +955,9 @@ fn render_default_agreement_line(
     area: Rect,
     payee: &Payee,
     mix: &[PayeeCategoryShare],
+    c: &Colours,
 ) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let top = mix.first();
     let text = match (&payee.default_category_path, top) {
         (Some(default), Some(top)) if *default == top.category_path => {
@@ -998,9 +1000,9 @@ fn txn_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect) {
     (columns[0], columns[1], columns[2], columns[3])
 }
 
-fn render_txn_column_header(frame: &mut Frame<'_>, area: Rect) {
+fn render_txn_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let (_, date, category, amount) = txn_row_columns(area);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_payees_column_date(), dim)),
         date,
@@ -1025,7 +1027,7 @@ fn render_txn_row(frame: &mut Frame<'_>, area: Rect, row: &PayeeTransaction, c: 
 
     let is_negative = row.amount.0 < 0;
     let amount_style = if is_negative {
-        c.accent()
+        c.negative()
     } else {
         Style::default()
     };

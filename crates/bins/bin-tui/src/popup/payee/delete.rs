@@ -222,7 +222,7 @@ impl DeletePayeePopup {
         let refusal_style = if self.can_delete {
             c.muted()
         } else {
-            c.accent()
+            c.negative()
         };
         frame.render_widget(
             Paragraph::new(Span::styled(refusal_text, refusal_style)),
@@ -242,7 +242,7 @@ impl DeletePayeePopup {
         let delete_condition_style = if self.can_delete {
             c.muted()
         } else {
-            c.accent()
+            c.negative()
         };
         render_indented(
             frame,
@@ -384,7 +384,7 @@ fn render_text_field(
 ) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", c.accent()));
+        spans.push(Span::styled("\u{258c}", c.cursor()));
     }
     render_field(frame, area, label, Line::from(spans), c);
 }
