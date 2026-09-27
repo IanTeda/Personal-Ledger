@@ -3,11 +3,6 @@
 //! Parent category (tree select, excluding depth-3, the category itself and its descendants),
 //! Monthly budget (optional, disabled on parents showing rollup). Warning notice with Split count.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -76,6 +71,7 @@ pub fn render(
                 &form.name,
                 form.focused == CategoryField::Name,
                 on_field_click.clone(),
+                cx,
             ),
             type_field(
                 form.category_type
@@ -83,6 +79,7 @@ pub fn render(
                     .unwrap_or(&CategoryTypes::Expense),
                 type_locked || !is_top_level,
                 on_type_change,
+                cx,
             ),
             parent_field(
                 form.parent_id,
@@ -90,14 +87,16 @@ pub fn render(
                 form.focused == CategoryField::Parent,
                 on_field_click.clone(),
                 on_parent_change,
+                cx,
             ),
             budget_field(
                 &form.budget,
                 form.focused == CategoryField::Budget,
                 is_parent,
                 on_field_click.clone(),
+                cx,
             ),
-            edit_notice(split_count, is_parent, type_locked, parent_category),
+            edit_notice(split_count, is_parent, type_locked, parent_category, cx),
         ]))
         .child(dialog::action_row([
             dialog::cancel_button("edit-category-cancel", on_cancel).into_any_element(),
@@ -114,7 +113,7 @@ pub fn render(
     dialog::overlay(WIDTH, false, card, cx)
 }
 
-fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyElement {
+fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick, cx: &App) -> AnyElement {
     div()
         .child(label(lib_locale::msg::column_name()))
         .child(
@@ -125,12 +124,16 @@ fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyEl
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(if focused { color::INK } else { color::BORDER })
+                .border_color(if focused {
+                    color::foreground(cx)
+                } else {
+                    color::border(cx)
+                })
                 .text_size(px(13.0))
                 .text_color(if value.is_empty() {
-                    color::INK_TERTIARY
+                    color::faint_text(cx)
                 } else {
-                    color::INK
+                    color::foreground(cx)
                 })
                 .on_click(move |_event, window, cx| on_field_click(CategoryField::Name, window, cx))
                 .child(if value.is_empty() {
@@ -142,7 +145,12 @@ fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyEl
         .into_any_element()
 }
 
-fn type_field(category_type: &CategoryTypes, locked: bool, on_change: OnTypeChange) -> AnyElement {
+fn type_field(
+    category_type: &CategoryTypes,
+    locked: bool,
+    on_change: OnTypeChange,
+    cx: &App,
+) -> AnyElement {
     div()
         .child(label(lib_locale::msg::column_type()))
         .child(
@@ -159,19 +167,19 @@ fn type_field(category_type: &CategoryTypes, locked: bool, on_change: OnTypeChan
                         .py(px(6.0))
                         .border_1()
                         .border_color(if cat_type == CategoryTypes::Expense {
-                            color::INK
+                            color::selection_background(cx)
                         } else {
-                            color::BORDER
+                            color::border(cx)
                         })
                         .bg(if cat_type == CategoryTypes::Expense {
-                            color::INK
+                            color::selection_background(cx)
                         } else {
-                            color::GROUND
+                            color::background(cx)
                         })
                         .text_color(if cat_type == CategoryTypes::Expense {
-                            color::GROUND
+                            color::selection_text(cx)
                         } else {
-                            color::INK
+                            color::foreground(cx)
                         })
                         .text_size(px(12.0))
                         .font_weight(gpui::FontWeight::BOLD)
@@ -193,19 +201,19 @@ fn type_field(category_type: &CategoryTypes, locked: bool, on_change: OnTypeChan
                         .py(px(6.0))
                         .border_1()
                         .border_color(if cat_type == CategoryTypes::Income {
-                            color::INK
+                            color::selection_background(cx)
                         } else {
-                            color::BORDER
+                            color::border(cx)
                         })
                         .bg(if cat_type == CategoryTypes::Income {
-                            color::INK
+                            color::selection_background(cx)
                         } else {
-                            color::GROUND
+                            color::background(cx)
                         })
                         .text_color(if cat_type == CategoryTypes::Income {
-                            color::GROUND
+                            color::selection_text(cx)
                         } else {
-                            color::INK
+                            color::foreground(cx)
                         })
                         .text_size(px(12.0))
                         .font_weight(gpui::FontWeight::BOLD)
@@ -227,12 +235,14 @@ fn parent_field(
     focused: bool,
     on_field_click: OnFieldClick,
     on_change: OnParentChange,
+    cx: &App,
 ) -> AnyElement {
     let _on_change = on_change.clone();
     div()
         .child(suffixed_label(
             crate::msg::desktop_categories_field_parent(),
             crate::msg::desktop_field_optional(),
+            cx,
         ))
         .child(
             div()
@@ -242,10 +252,14 @@ fn parent_field(
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(if focused { color::INK } else { color::BORDER })
-                .bg(color::CHROME)
+                .border_color(if focused {
+                    color::foreground(cx)
+                } else {
+                    color::border(cx)
+                })
+                .bg(color::chrome(cx))
                 .text_size(px(13.0))
-                .text_color(color::INK)
+                .text_color(color::foreground(cx))
                 .on_click(move |_event, window, cx| {
                     on_field_click(CategoryField::Parent, window, cx)
                 })
@@ -265,11 +279,13 @@ fn budget_field(
     focused: bool,
     is_parent: bool,
     on_field_click: OnFieldClick,
+    cx: &App,
 ) -> AnyElement {
     div()
         .child(suffixed_label(
             crate::msg::desktop_categories_field_monthly_budget(),
             crate::msg::desktop_field_optional(),
+            cx,
         ))
         .child(
             div()
@@ -280,12 +296,16 @@ fn budget_field(
                         .py(px(8.0))
                         .px(px(10.0))
                         .border_1()
-                        .border_color(if focused { color::INK } else { color::BORDER })
+                        .border_color(if focused {
+                            color::foreground(cx)
+                        } else {
+                            color::border(cx)
+                        })
                         .text_size(px(13.0))
                         .text_color(if value.is_empty() {
-                            color::INK_TERTIARY
+                            color::faint_text(cx)
                         } else {
-                            color::INK
+                            color::foreground(cx)
                         })
                         .on_click(move |_event, window, cx| {
                             on_field_click(CategoryField::Budget, window, cx)
@@ -301,10 +321,10 @@ fn budget_field(
                         .py(px(8.0))
                         .px(px(10.0))
                         .border_1()
-                        .border_color(color::BORDER)
-                        .bg(color::CHROME)
+                        .border_color(color::border(cx))
+                        .bg(color::chrome(cx))
                         .text_size(px(13.0))
-                        .text_color(color::INK_SECONDARY)
+                        .text_color(color::muted(cx))
                         .opacity(0.6)
                         .child(crate::msg::desktop_categories_parent_budget_rollup())
                 }),
@@ -317,6 +337,7 @@ fn edit_notice(
     is_parent: bool,
     type_locked: bool,
     parent_category: Option<&categories::Category>,
+    cx: &App,
 ) -> AnyElement {
     if split_count > 0 {
         // Warning notice: accent border with split count
@@ -328,12 +349,12 @@ fn edit_notice(
 
         div()
             .border_l(px(2.0))
-            .border_color(color::INK)
-            .bg(color::CHROME)
+            .border_color(color::foreground(cx))
+            .bg(color::chrome(cx))
             .px(px(10.0))
             .py(px(10.0))
             .text_size(px(11.5))
-            .text_color(color::INK_SECONDARY)
+            .text_color(color::muted(cx))
             .child(format!(
                 "This category has {}. Changing its type will affect these transactions.",
                 split_text
@@ -356,12 +377,12 @@ fn edit_notice(
 
         div()
             .border_l(px(2.0))
-            .border_color(color::INK)
-            .bg(color::CHROME)
+            .border_color(color::foreground(cx))
+            .bg(color::chrome(cx))
             .px(px(10.0))
             .py(px(10.0))
             .text_size(px(11.5))
-            .text_color(color::INK_SECONDARY)
+            .text_color(color::muted(cx))
             .child(format!(
                 "Nesting under {} inherits its type ({}) — the type control locks once a parent is picked.",
                 parent_name, category_type
@@ -371,24 +392,24 @@ fn edit_notice(
         // Neutral notice for parent
         div()
             .border_l(px(2.0))
-            .border_color(color::INK)
-            .bg(color::CHROME)
+            .border_color(color::foreground(cx))
+            .bg(color::chrome(cx))
             .px(px(10.0))
             .py(px(10.0))
             .text_size(px(11.5))
-            .text_color(color::INK_SECONDARY)
+            .text_color(color::muted(cx))
             .child(crate::msg::desktop_categories_edit_parent_notice())
             .into_any_element()
     } else {
         // Default notice
         div()
             .border_l(px(2.0))
-            .border_color(color::INK)
-            .bg(color::CHROME)
+            .border_color(color::foreground(cx))
+            .bg(color::chrome(cx))
             .px(px(10.0))
             .py(px(10.0))
             .text_size(px(11.5))
-            .text_color(color::INK_SECONDARY)
+            .text_color(color::muted(cx))
             .child(crate::msg::desktop_categories_edit_notice())
             .into_any_element()
     }
@@ -403,7 +424,11 @@ fn label(text: impl Into<SharedString>) -> AnyElement {
         .into_any_element()
 }
 
-fn suffixed_label(text: impl Into<SharedString>, suffix: impl Into<SharedString>) -> AnyElement {
+fn suffixed_label(
+    text: impl Into<SharedString>,
+    suffix: impl Into<SharedString>,
+    cx: &App,
+) -> AnyElement {
     div()
         .flex()
         .gap(px(4.0))
@@ -414,7 +439,7 @@ fn suffixed_label(text: impl Into<SharedString>, suffix: impl Into<SharedString>
         .child(
             div()
                 .font_weight(gpui::FontWeight::NORMAL)
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(suffix.into()),
         )
         .into_any_element()

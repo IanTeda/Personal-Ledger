@@ -3,11 +3,6 @@
 //! Parent category (tree select, excluding depth-3), Monthly budget (optional).
 //! Inline notice explains type locking behavior.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -66,6 +61,7 @@ pub fn render(
                 &form.name,
                 form.focused == CategoryField::Name,
                 on_field_click.clone(),
+                cx,
             ),
             type_field(
                 form.category_type
@@ -73,6 +69,7 @@ pub fn render(
                     .unwrap_or(&CategoryTypes::Expense),
                 type_locked,
                 on_type_change,
+                cx,
             ),
             parent_field(
                 form.parent_id,
@@ -80,13 +77,15 @@ pub fn render(
                 form.focused == CategoryField::Parent,
                 on_field_click.clone(),
                 on_parent_change,
+                cx,
             ),
             budget_field(
                 &form.budget,
                 form.focused == CategoryField::Budget,
                 on_field_click.clone(),
+                cx,
             ),
-            lock_notice(type_locked, parent_category),
+            lock_notice(type_locked, parent_category, cx),
         ]))
         .child(dialog::action_row([
             dialog::cancel_button("add-category-cancel", on_cancel).into_any_element(),
@@ -103,7 +102,7 @@ pub fn render(
     dialog::overlay(WIDTH, false, card, cx)
 }
 
-fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyElement {
+fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick, cx: &App) -> AnyElement {
     div()
         .child(label(lib_locale::msg::column_name()))
         .child(
@@ -114,12 +113,16 @@ fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyEl
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(if focused { color::INK } else { color::BORDER })
+                .border_color(if focused {
+                    color::foreground(cx)
+                } else {
+                    color::border(cx)
+                })
                 .text_size(px(13.0))
                 .text_color(if value.is_empty() {
-                    color::INK_TERTIARY
+                    color::faint_text(cx)
                 } else {
-                    color::INK
+                    color::foreground(cx)
                 })
                 .on_click(move |_event, window, cx| on_field_click(CategoryField::Name, window, cx))
                 .child(if value.is_empty() {
@@ -131,7 +134,12 @@ fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyEl
         .into_any_element()
 }
 
-fn type_field(category_type: &CategoryTypes, locked: bool, on_change: OnTypeChange) -> AnyElement {
+fn type_field(
+    category_type: &CategoryTypes,
+    locked: bool,
+    on_change: OnTypeChange,
+    cx: &App,
+) -> AnyElement {
     div()
         .child(label(lib_locale::msg::column_type()))
         .child(
@@ -148,19 +156,19 @@ fn type_field(category_type: &CategoryTypes, locked: bool, on_change: OnTypeChan
                         .py(px(6.0))
                         .border_1()
                         .border_color(if cat_type == CategoryTypes::Expense {
-                            color::INK
+                            color::selection_background(cx)
                         } else {
-                            color::BORDER
+                            color::border(cx)
                         })
                         .bg(if cat_type == CategoryTypes::Expense {
-                            color::INK
+                            color::selection_background(cx)
                         } else {
-                            color::GROUND
+                            color::background(cx)
                         })
                         .text_color(if cat_type == CategoryTypes::Expense {
-                            color::GROUND
+                            color::selection_text(cx)
                         } else {
-                            color::INK
+                            color::foreground(cx)
                         })
                         .text_size(px(12.0))
                         .font_weight(gpui::FontWeight::BOLD)
@@ -182,19 +190,19 @@ fn type_field(category_type: &CategoryTypes, locked: bool, on_change: OnTypeChan
                         .py(px(6.0))
                         .border_1()
                         .border_color(if cat_type == CategoryTypes::Income {
-                            color::INK
+                            color::selection_background(cx)
                         } else {
-                            color::BORDER
+                            color::border(cx)
                         })
                         .bg(if cat_type == CategoryTypes::Income {
-                            color::INK
+                            color::selection_background(cx)
                         } else {
-                            color::GROUND
+                            color::background(cx)
                         })
                         .text_color(if cat_type == CategoryTypes::Income {
-                            color::GROUND
+                            color::selection_text(cx)
                         } else {
-                            color::INK
+                            color::foreground(cx)
                         })
                         .text_size(px(12.0))
                         .font_weight(gpui::FontWeight::BOLD)
@@ -216,12 +224,14 @@ fn parent_field(
     focused: bool,
     on_field_click: OnFieldClick,
     on_change: OnParentChange,
+    cx: &App,
 ) -> AnyElement {
     let _on_change = on_change.clone();
     div()
         .child(suffixed_label(
             crate::msg::desktop_categories_field_parent(),
             crate::msg::desktop_field_optional(),
+            cx,
         ))
         .child(
             div()
@@ -231,10 +241,14 @@ fn parent_field(
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(if focused { color::INK } else { color::BORDER })
-                .bg(color::CHROME)
+                .border_color(if focused {
+                    color::foreground(cx)
+                } else {
+                    color::border(cx)
+                })
+                .bg(color::chrome(cx))
                 .text_size(px(13.0))
-                .text_color(color::INK)
+                .text_color(color::foreground(cx))
                 .on_click(move |_event, window, cx| {
                     on_field_click(CategoryField::Parent, window, cx)
                 })
@@ -249,11 +263,12 @@ fn parent_field(
         .into_any_element()
 }
 
-fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyElement {
+fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick, cx: &App) -> AnyElement {
     div()
         .child(suffixed_label(
             crate::msg::desktop_categories_field_monthly_budget(),
             crate::msg::desktop_field_optional(),
+            cx,
         ))
         .child(
             div()
@@ -263,12 +278,16 @@ fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> Any
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(if focused { color::INK } else { color::BORDER })
+                .border_color(if focused {
+                    color::foreground(cx)
+                } else {
+                    color::border(cx)
+                })
                 .text_size(px(13.0))
                 .text_color(if value.is_empty() {
-                    color::INK_TERTIARY
+                    color::faint_text(cx)
                 } else {
-                    color::INK
+                    color::foreground(cx)
                 })
                 .on_click(move |_event, window, cx| {
                     on_field_click(CategoryField::Budget, window, cx)
@@ -282,7 +301,11 @@ fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> Any
         .into_any_element()
 }
 
-fn lock_notice(type_locked: bool, parent_category: Option<&categories::Category>) -> AnyElement {
+fn lock_notice(
+    type_locked: bool,
+    parent_category: Option<&categories::Category>,
+    cx: &App,
+) -> AnyElement {
     if type_locked {
         let parent_name = parent_category
             .map(|c| c.name.as_str())
@@ -299,12 +322,12 @@ fn lock_notice(type_locked: bool, parent_category: Option<&categories::Category>
 
         div()
             .border_l(px(2.0))
-            .border_color(color::INK)
-            .bg(color::CHROME)
+            .border_color(color::foreground(cx))
+            .bg(color::chrome(cx))
             .px(px(10.0))
             .py(px(10.0))
             .text_size(px(11.5))
-            .text_color(color::INK_SECONDARY)
+            .text_color(color::muted(cx))
             .child(format!(
                 "Nesting under {} inherits its type ({}) — the type control locks once a parent is picked.",
                 parent_name, category_type
@@ -313,12 +336,12 @@ fn lock_notice(type_locked: bool, parent_category: Option<&categories::Category>
     } else {
         div()
             .border_l(px(2.0))
-            .border_color(color::INK)
-            .bg(color::CHROME)
+            .border_color(color::foreground(cx))
+            .bg(color::chrome(cx))
             .px(px(10.0))
             .py(px(10.0))
             .text_size(px(11.5))
-            .text_color(color::INK_SECONDARY)
+            .text_color(color::muted(cx))
             .child(crate::msg::desktop_categories_notice_default())
             .into_any_element()
     }
@@ -333,7 +356,11 @@ fn label(text: impl Into<SharedString>) -> AnyElement {
         .into_any_element()
 }
 
-fn suffixed_label(text: impl Into<SharedString>, suffix: impl Into<SharedString>) -> AnyElement {
+fn suffixed_label(
+    text: impl Into<SharedString>,
+    suffix: impl Into<SharedString>,
+    cx: &App,
+) -> AnyElement {
     div()
         .flex()
         .gap(px(4.0))
@@ -344,7 +371,7 @@ fn suffixed_label(text: impl Into<SharedString>, suffix: impl Into<SharedString>
         .child(
             div()
                 .font_weight(gpui::FontWeight::NORMAL)
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(suffix.into()),
         )
         .into_any_element()

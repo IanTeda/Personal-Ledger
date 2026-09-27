@@ -3716,7 +3716,7 @@ fn render_view(
         return accounts_view::render(focused, scroll_handle, pages.accounts, cx);
     }
     if noun == Noun::Categories {
-        return categories_view::render(focused, scroll_handle, pages.categories);
+        return categories_view::render(focused, scroll_handle, pages.categories, cx);
     }
     if noun == Noun::Transactions
         && let Some(transactions) = pages.transactions

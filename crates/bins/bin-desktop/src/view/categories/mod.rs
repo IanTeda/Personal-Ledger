@@ -9,11 +9,6 @@
 //! Like `view::settings` and `view::accounts`, the page owns its scroll container directly:
 //! `Shell` scrolls a section into view with `ScrollHandle::scroll_to_item`. Context rail is hidden.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 pub mod add_dialog;
 pub mod delete_dialog;
 pub mod edit_dialog;
@@ -65,6 +60,7 @@ pub fn render(
     focused: bool,
     scroll_handle: &ScrollHandle,
     props: CategoriesPageProps<'_>,
+    cx: &App,
 ) -> AnyElement {
     let tree_rows = categories::tree_rows(props.categories, props.expanded);
 
@@ -84,7 +80,7 @@ pub fn render(
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
         .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::INK)
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .px(px(28.0))
         .py(px(22.0))
@@ -92,19 +88,20 @@ pub fn render(
             props.categories,
             over_budget_count,
             &props.on_add_click,
+            cx,
         ))
         .child(
             div()
                 .h(px(2.0))
                 .flex_none()
-                .bg(color::STRUCTURAL_RULE)
+                .bg(color::structural_rule(cx))
                 .mt(px(14.0))
                 .mb(px(24.0)),
         )
         .children(
             [CategoryTypes::Expense, CategoryTypes::Income]
                 .iter()
-                .map(|cat_type| section_block(cat_type, &tree_rows, &props)),
+                .map(|cat_type| section_block(cat_type, &tree_rows, &props, cx)),
         )
         .into_any_element()
 }
@@ -113,6 +110,7 @@ fn page_header(
     categories: &[categories::Category],
     over_budget_count: usize,
     on_add_click: &OnAddClick,
+    cx: &App,
 ) -> impl IntoElement {
     let max_depth = categories
         .iter()
@@ -134,18 +132,24 @@ fn page_header(
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(28.0))
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(crate::nav::Noun::Categories.label()),
                 )
-                .child(summary_line(categories.len(), max_depth, over_budget_count)),
+                .child(summary_line(
+                    categories.len(),
+                    max_depth,
+                    over_budget_count,
+                    cx,
+                )),
         )
-        .child(add_button(on_add_click.clone()))
+        .child(add_button(on_add_click.clone(), cx))
 }
 
 fn summary_line(
     category_count: usize,
     max_depth: u32,
     over_budget_count: usize,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -153,7 +157,7 @@ fn summary_line(
         .items_baseline()
         .gap(px(4.0))
         .text_size(px(11.5))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .child(format!(
             "{} {}, {} {} {}",
             category_count,
@@ -170,18 +174,18 @@ fn summary_line(
         .child(format!("{} over budget this month", over_budget_count))
 }
 
-fn add_button(on_add_click: OnAddClick) -> impl IntoElement {
+fn add_button(on_add_click: OnAddClick, cx: &App) -> impl IntoElement {
     div()
         .id("categories-add")
         .cursor_pointer()
         .flex_none()
         .py(px(10.0))
         .px(px(16.0))
-        .bg(color::INK)
-        .text_color(color::INK_ON_DARK)
+        .bg(color::foreground(cx))
+        .text_color(color::selection_text(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
-        .hover(|this| this.bg(color::INK_SECONDARY))
+        .hover(|this| this.bg(color::muted(cx)))
         .on_click(move |_event, window, cx| on_add_click(window, cx))
         .child("+ Add category")
 }
@@ -190,6 +194,7 @@ fn section_block(
     category_type: &CategoryTypes,
     tree_rows: &[TreeNode],
     props: &CategoriesPageProps<'_>,
+    cx: &App,
 ) -> impl IntoElement {
     // Pair each row with its Category here, so `table_row` never has to look it up again.
     let filtered_rows: Vec<_> = tree_rows
@@ -208,17 +213,17 @@ fn section_block(
         .child(
             div()
                 .border(px(1.0))
-                .border_color(color::BORDER)
+                .border_color(color::border(cx))
                 .overflow_hidden()
                 .child(
                     div()
                         .w_full()
                         .flex()
                         .flex_col()
-                        .child(table_header(category_type))
+                        .child(table_header(category_type, cx))
                         .children(
                             filtered_rows.iter().enumerate().map(|(idx, (row, category))| {
-                                table_row(row, category, Some(idx) == props.selected_index, props)
+                                table_row(row, category, Some(idx) == props.selected_index, props, cx)
                             }),
                         ),
                 )
@@ -227,25 +232,25 @@ fn section_block(
             this.child(
                 div()
                     .text_size(px(11.0))
-                    .text_color(color::INK_TERTIARY)
+                    .text_color(color::faint_text(cx))
                     .mt(px(6.0))
                     .child("Budget figures are monthly targets. Progress bars show spending in the current month."),
             )
         })
 }
 
-fn table_header(category_type: &CategoryTypes) -> impl IntoElement {
+fn table_header(category_type: &CategoryTypes, cx: &App) -> impl IntoElement {
     div()
         .w_full()
         .flex()
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_b(px(1.0))
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .px(px(12.0))
         .py(px(8.0))
         .gap(px(12.0))
         .text_size(px(10.0))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .font_weight(gpui::FontWeight::BOLD)
         .child(
             div()
@@ -289,6 +294,7 @@ fn table_row(
     category: &categories::Category,
     selected: bool,
     props: &CategoriesPageProps<'_>,
+    cx: &App,
 ) -> impl IntoElement {
     let spent = categories::month_to_date_spent(
         props.categories,
@@ -314,12 +320,12 @@ fn table_row(
         .flex()
         .cursor_pointer()
         .border_b(px(1.0))
-        .border_color(color::HAIRLINE)
+        .border_color(color::hairline(cx))
         .on_mouse_down(gpui::MouseButton::Left, move |_event, window, cx| {
             row_click(row_id, window, cx)
         })
-        .when(selected, |this| this.bg(color::CHROME))
-        .hover(|this| this.bg(color::HOVER_TINT))
+        .when(selected, |this| this.bg(color::chrome(cx)))
+        .hover(|this| this.bg(color::hover(cx)))
         .px(px(12.0))
         .py(px(10.0))
         .gap(px(12.0))
@@ -332,7 +338,7 @@ fn table_row(
                 .gap(px(8.0))
                 .child(div().w(px(indent_px)).flex_none())
                 .child(if !row.is_leaf {
-                    disclosure_toggle(row_id, row.is_expanded, disclosure_on_click.clone())
+                    disclosure_toggle(row_id, row.is_expanded, disclosure_on_click.clone(), cx)
                         .into_any_element()
                 } else {
                     div().w(px(12.0)).into_any_element()
@@ -348,17 +354,17 @@ fn table_row(
                                 .when(!row.is_leaf, |this| {
                                     this.font_weight(gpui::FontWeight::BOLD)
                                 })
-                                .text_color(color::INK)
+                                .text_color(color::foreground(cx))
                                 .child(row.name.clone()),
                         )
                         .when(!row.is_leaf, |this| {
                             this.child(
                                 div()
                                     .text_size(px(9.0))
-                                    .text_color(color::INK_TERTIARY)
+                                    .text_color(color::faint_text(cx))
                                     .px(px(6.0))
                                     .py(px(2.0))
-                                    .bg(color::CHROME)
+                                    .bg(color::chrome(cx))
                                     .child("rollup"),
                             )
                         }),
@@ -369,7 +375,7 @@ fn table_row(
                 .flex_none()
                 .w(px(100.0))
                 .text_align(gpui::TextAlign::Right)
-                .text_color(color::INK)
+                .text_color(color::foreground(cx))
                 .text_size(px(12.0))
                 .child(if let Some(ref b) = budget {
                     let (_, formatted) = crate::format::amount(b);
@@ -388,7 +394,7 @@ fn table_row(
                 .child(
                     div()
                         .text_align(gpui::TextAlign::Right)
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .text_size(px(12.0))
                         .child({
                             let (_, formatted) = crate::format::amount(&spent);
@@ -400,6 +406,7 @@ fn table_row(
                     budget.as_ref(),
                     category.category_type.clone(),
                     is_over,
+                    cx,
                 )),
         )
         .child(
@@ -409,32 +416,39 @@ fn table_row(
                 .flex()
                 .justify_center()
                 .gap(px(4.0))
-                .child(when_can_add_sub(row, props.on_add_sub_click.clone()))
+                .child(when_can_add_sub(row, props.on_add_sub_click.clone(), cx))
                 .child(action_button(
                     SharedString::from(format!("category-edit-{}", row.id)),
                     "✎",
                     row.id,
                     props.on_edit_click.clone(),
+                    cx,
                 ))
                 .child(action_button(
                     SharedString::from(format!("category-delete-{}", row.id)),
                     "✕",
                     row.id,
                     props.on_delete_click.clone(),
+                    cx,
                 )),
         )
 }
 
-fn disclosure_toggle(id: u32, is_expanded: bool, on_click: OnDisclosureClick) -> impl IntoElement {
+fn disclosure_toggle(
+    id: u32,
+    is_expanded: bool,
+    on_click: OnDisclosureClick,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .id("disclosure-toggle")
         .cursor_pointer()
-        .text_color(color::INK)
+        .text_color(color::foreground(cx))
         .on_click(move |_event, window, cx| on_click(id, window, cx))
         .child(if is_expanded { "▾" } else { "▸" })
 }
 
-fn when_can_add_sub(row: &TreeNode, on_add_sub_click: OnAddSubClick) -> AnyElement {
+fn when_can_add_sub(row: &TreeNode, on_add_sub_click: OnAddSubClick, cx: &App) -> AnyElement {
     let can_add = (row.is_leaf && row.depth < 2) || !row.is_leaf;
 
     if can_add {
@@ -444,8 +458,8 @@ fn when_can_add_sub(row: &TreeNode, on_add_sub_click: OnAddSubClick) -> AnyEleme
             .cursor_pointer()
             .px(px(4.0))
             .py(px(2.0))
-            .text_color(color::INK_SECONDARY)
-            .hover(|this| this.text_color(color::INK))
+            .text_color(color::muted(cx))
+            .hover(|this| this.text_color(color::foreground(cx)))
             .text_size(px(10.0))
             .on_click(move |_event, window, cx| on_add_sub_click(row_id, window, cx))
             .child("+")
@@ -460,14 +474,15 @@ fn action_button(
     symbol: &'static str,
     category_id: u32,
     on_click: OnCategoryIdClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .id(id)
         .cursor_pointer()
         .px(px(4.0))
         .py(px(2.0))
-        .text_color(color::INK_SECONDARY)
-        .hover(|this| this.text_color(color::INK))
+        .text_color(color::muted(cx))
+        .hover(|this| this.text_color(color::foreground(cx)))
         .text_size(px(10.0))
         .on_click(move |_event, window, cx| on_click(category_id, window, cx))
         .child(symbol)
@@ -478,6 +493,7 @@ fn progress_bar(
     budget: Option<&Money>,
     category_type: CategoryTypes,
     is_over: bool,
+    cx: &App,
 ) -> impl IntoElement {
     let percent = if let Some(Money(budget_amount)) = budget {
         let spent_abs = spent.0.abs();
@@ -489,17 +505,17 @@ fn progress_bar(
         0.0
     };
 
-    // ACCENT is reserved for over-budget state (theme.rs), matching the Dashboard's bars.
+    // Over budget is a negative outcome, not emphasis, matching the Dashboard's bars.
     let bar_color = if is_over && category_type == CategoryTypes::Expense {
-        color::ACCENT
+        color::negative(cx)
     } else {
-        color::INK_SECONDARY
+        color::muted(cx)
     };
 
     div()
         .h(px(4.0))
         .w_full()
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .overflow_hidden()
         .child(
             div()
