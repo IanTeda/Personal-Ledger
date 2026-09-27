@@ -45,6 +45,7 @@ pub fn render(
                 &crate::msg::desktop_settings_units_code_placeholder(),
                 form.focused_field == AddUnitField::Code,
                 field_click(AddUnitField::Code, on_field_click.clone()),
+                cx,
             )
             .into_any_element(),
             text_field(
@@ -54,9 +55,10 @@ pub fn render(
                 &crate::msg::desktop_settings_units_name_placeholder(),
                 form.focused_field == AddUnitField::Name,
                 field_click(AddUnitField::Name, on_field_click),
+                cx,
             )
             .into_any_element(),
-            type_field("edit-unit-type", form.kind, on_kind_click).into_any_element(),
+            type_field("edit-unit-type", form.kind, on_kind_click, cx).into_any_element(),
             dialog::info_panel(crate::msg::desktop_settings_units_usage_notice(4, 604))
                 .into_any_element(),
         ]))

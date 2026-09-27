@@ -116,25 +116,33 @@ fn render_refused(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         frame,
         rows[3],
         "transactions",
-        accent_count("412", "Index Fund", c),
+        negative_count("412", "Index Fund", c),
+        c,
     );
     render_count(
         frame,
         rows[4],
         "accounts",
-        accent_count("1", "Index Fund (unit fixed at creation)", c),
+        negative_count("1", "Index Fund (unit fixed at creation)", c),
+        c,
     );
-    render_count(frame, rows[5], "prices", dim_plain("52 weekly closes"));
-    render_count(frame, rows[6], "budgets", dim_plain("none"));
+    render_count(
+        frame,
+        rows[5],
+        "prices",
+        dim_plain("52 weekly closes", c),
+        c,
+    );
+    render_count(frame, rows[6], "budgets", dim_plain("none", c), c);
     // rows[7] is left blank — breathing space above the deactivate-instead box.
-    render_deactivate_instead_box(frame, rows[8]);
+    render_deactivate_instead_box(frame, rows[8], c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[9]);
     const HINTS: &[(&str, &str)] = &[
         ("x", "deactivate"),
         ("enter", "show the 412 txns"),
         ("esc", "close"),
     ];
-    render_footer_hints(frame, rows[10], HINTS);
+    render_footer_hints(frame, rows[10], HINTS, c);
 }
 
 /// §4e's own worked example: `delete AAPL`, nothing references it, confirmed by typing the
@@ -165,27 +173,28 @@ fn render_allowed(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         ])
         .split(inner);
 
-    render_allowed_title(frame, rows[0]);
+    render_allowed_title(frame, rows[0], c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
     render_count(
         frame,
         rows[2],
         "transactions",
-        dim_hinted("0", "safe to delete"),
+        dim_hinted("0", "safe to delete", c),
+        c,
     );
-    render_count(frame, rows[3], "accounts", dim_plain("0"));
+    render_count(frame, rows[3], "accounts", dim_plain("0", c), c);
     render_price_count(frame, rows[4], c);
     // rows[5] is left blank — breathing space above the consequence statement.
     render_consequence(frame, rows[6]);
     // rows[7] is left blank — breathing space above the type-to-confirm box.
     render_confirm_box(frame, rows[8], c);
-    render_deactivate_hint(frame, rows[9]);
+    render_deactivate_hint(frame, rows[9], c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[10]);
     const HINTS: &[(&str, &str)] = &[("^s", "delete"), ("x", "deactivate"), ("esc", "cancel")];
-    render_footer_hints(frame, rows[11], HINTS);
+    render_footer_hints(frame, rows[11], HINTS, c);
 }
 
-/// The refused title row: `cannot delete VDHG` in the accent, flush left, the `:unit delete`
+/// The refused title row: `cannot delete VDHG` in `negative`, flush left, the `:unit delete`
 /// command dim and right-aligned.
 fn render_refused_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":unit delete";
@@ -197,12 +206,12 @@ fn render_refused_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         ])
         .split(area);
 
-    let accent_bold = c.accent().add_modifier(Modifier::BOLD);
+    let negative_bold = c.negative().add_modifier(Modifier::BOLD);
     frame.render_widget(
-        Paragraph::new(Span::styled("cannot delete VDHG", accent_bold)),
+        Paragraph::new(Span::styled("cannot delete VDHG", negative_bold)),
         columns[0],
     );
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -211,7 +220,7 @@ fn render_refused_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 
 /// The allowed title row: "delete AAPL" flush left, the `:unit delete` command dim and
 /// right-aligned — echoing the refused title's own layout.
-fn render_allowed_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_allowed_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":unit delete";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -222,7 +231,7 @@ fn render_allowed_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     frame.render_widget(Paragraph::new("delete AAPL"), columns[0]);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -240,8 +249,8 @@ fn render_blocking_rule(frame: &mut Frame<'_>, area: Rect) {
 /// One `label   value` reference-count row shared by both variants — the label dim and
 /// fixed-width, per the shell's "dim for labels" style role, `value` carrying whatever
 /// emphasis that particular count needs.
-fn render_count(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_count(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
+    let dim = c.muted();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
@@ -252,26 +261,23 @@ fn render_count(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'sta
 
 /// A count rendered dim throughout, with a dim `· hint` — the non-blocking rows on either
 /// variant (`accounts` with no hint, `prices`/`budgets` on the refused variant).
-fn dim_hinted(value: &'static str, hint: &'static str) -> Line<'static> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn dim_hinted(value: &'static str, hint: &'static str, c: &Colours) -> Line<'static> {
+    let dim = c.muted();
     Line::from(Span::styled(format!("{value} · {hint}"), dim))
 }
 
 /// A single dim value with no hint at all.
-fn dim_plain(value: &'static str) -> Line<'static> {
-    Line::from(Span::styled(
-        value,
-        Style::default().add_modifier(Modifier::DIM),
-    ))
+fn dim_plain(value: &'static str, c: &Colours) -> Line<'static> {
+    Line::from(Span::styled(value, c.muted()))
 }
 
-/// A blocking count: the figure itself in the accent, its dim `· hint` after — the refused
+/// A blocking count: the figure itself in `negative`, its dim `· hint` after — the refused
 /// variant's own `transactions`/`accounts` rows, the counts that actually gate deletion.
-fn accent_count(count: &'static str, hint: &'static str, c: &Colours) -> Line<'static> {
-    let accent = c.accent();
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn negative_count(count: &'static str, hint: &'static str, c: &Colours) -> Line<'static> {
+    let negative = c.negative();
+    let dim = c.muted();
     Line::from(vec![
-        Span::styled(count, accent),
+        Span::styled(count, negative),
         Span::raw(" "),
         Span::styled(format!("· {hint}"), dim),
     ])
@@ -279,12 +285,12 @@ fn accent_count(count: &'static str, hint: &'static str, c: &Colours) -> Line<'s
 
 /// The allowed variant's `prices` row: the one reference count that isn't blocking — price
 /// history cascades with the unit rather than gating its deletion — so its consequence renders
-/// in the accent rather than dim, per §4e's own "the one consequence spelled out". The inverse
-/// emphasis of [`accent_count`] (value dim, hint accent, rather than the other way around),
+/// in `negative` rather than dim, per §4e's own "the one consequence spelled out". The inverse
+/// emphasis of [`negative_count`] (value dim, hint negative, rather than the other way around),
 /// since here the count itself isn't what's alarming.
 fn render_price_count(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
-    let accent = c.accent();
+    let dim = c.muted();
+    let negative = c.negative();
 
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -295,7 +301,7 @@ fn render_price_count(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         Paragraph::new(Line::from(vec![
             Span::styled("18 weekly closes", dim),
             Span::raw(" "),
-            Span::styled("· deleted with the unit", accent),
+            Span::styled("· deleted with the unit", negative),
         ])),
         columns[1],
     );
@@ -310,23 +316,22 @@ fn render_consequence(frame: &mut Frame<'_>, area: Rect) {
     );
 }
 
-/// The allowed variant's type-to-confirm box: an accent-bordered `Block` around the `type the
+/// The allowed variant's type-to-confirm box: a `negative`-bordered `Block` around the `type the
 /// code` prompt — §4e's own "confirm by typing the code, not by pressing `y`". The code typed
-/// so far renders bold with a trailing accent cursor, the same treatment `popup::unit::new`'s
+/// so far renders bold with a trailing `cursor` caret, the same treatment `popup::unit::new`'s
 /// own `code` field uses for text still being entered.
 fn render_confirm_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let accent = c.accent();
-    let block = Block::bordered().border_style(accent);
+    let block = Block::bordered().border_style(c.negative());
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let bold = Style::default().add_modifier(Modifier::BOLD);
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("type the code ", dim),
             Span::styled("AAPL", bold),
-            Span::styled("▏", accent),
+            Span::styled("▏", c.cursor()),
         ])),
         inner,
     );
@@ -335,9 +340,9 @@ fn render_confirm_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 /// The allowed variant's soft-alternative hint below the confirm box: dim text with the `x`
 /// key rendered as a reversed pill, matching the footer's own key/label convention — §4e keeps
 /// offering deactivate even though deletion is allowed here.
-fn render_deactivate_hint(frame: &mut Frame<'_>, area: Rect) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
-    let key = Style::default().add_modifier(Modifier::REVERSED);
+fn render_deactivate_hint(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let dim = c.muted();
+    let key = c.selection();
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("keeping the history instead? ", dim),
@@ -351,7 +356,7 @@ fn render_deactivate_hint(frame: &mut Frame<'_>, area: Rect) {
 /// The refused variant's "way out": a plain (not accent) bordered box — unlike the blocking
 /// counts above it, this is the positive path, not a warning — offering deactivate and naming
 /// what deleting for real would require. §4d's own "the way out, in a box".
-fn render_deactivate_instead_box(frame: &mut Frame<'_>, area: Rect) {
+fn render_deactivate_instead_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let block = Block::bordered();
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -361,7 +366,7 @@ fn render_deactivate_instead_box(frame: &mut Frame<'_>, area: Rect) {
         .constraints([Constraint::Length(1), Constraint::Length(1)])
         .split(inner);
 
-    let key = Style::default().add_modifier(Modifier::REVERSED);
+    let key = c.selection();
     let bold = Style::default().add_modifier(Modifier::BOLD);
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -373,7 +378,7 @@ fn render_deactivate_instead_box(frame: &mut Frame<'_>, area: Rect) {
         lines[0],
     );
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(
             "to delete: reassign or remove the 412 transactions first",
@@ -386,9 +391,14 @@ fn render_deactivate_instead_box(frame: &mut Frame<'_>, area: Rect) {
 /// The window footer hint row: each key bold, its label dim — matching `popup::unit::new`'s
 /// own `render_footer_hints` convention, shared here since the refused/allowed variants only
 /// differ in which hints they list.
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, hints: &[(&'static str, &'static str)]) {
+fn render_footer_hints(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    hints: &[(&'static str, &'static str)],
+    c: &Colours,
+) {
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = Style::default().add_modifier(Modifier::DIM);
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (idx, (key, label)) in hints.iter().enumerate() {

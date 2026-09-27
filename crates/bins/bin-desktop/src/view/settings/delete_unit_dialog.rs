@@ -48,7 +48,7 @@ pub fn render(
                 &row.name, "0.4120 u",
             ))
             .into_any_element(),
-            confirm_field(code, &form.confirm_input).into_any_element(),
+            confirm_field(code, &form.confirm_input, cx).into_any_element(),
         ]))
         .child(dialog::action_row([
             dialog::cancel_button("delete-unit-cancel", on_cancel).into_any_element(),
@@ -71,7 +71,7 @@ fn warning_copy() -> impl IntoElement {
         .child(crate::msg::desktop_settings_units_delete_warning(1, 9))
 }
 
-fn confirm_field(code: &str, value: &str) -> impl IntoElement {
+fn confirm_field(code: &str, value: &str, cx: &App) -> impl IntoElement {
     text_field(
         "delete-unit-confirm-input",
         crate::msg::desktop_settings_units_delete_confirm_label(code),
@@ -79,5 +79,6 @@ fn confirm_field(code: &str, value: &str) -> impl IntoElement {
         code,
         true,
         Rc::new(|_window: &mut Window, _cx: &mut App| {}),
+        cx,
     )
 }

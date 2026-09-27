@@ -60,7 +60,7 @@ pub fn render(
             false,
         ))
         .child(dialog::body([
-            name_field(&form.name).into_any_element(),
+            name_field(&form.name, cx).into_any_element(),
             account_types_field(&form.account_types, on_account_type_click).into_any_element(),
             default_unit_field(units, form.default_unit_code.as_deref(), on_unit_click)
                 .into_any_element(),
@@ -80,7 +80,7 @@ pub fn render(
     dialog::overlay(WIDTH, false, card, cx)
 }
 
-fn name_field(value: &str) -> AnyElement {
+fn name_field(value: &str, cx: &App) -> AnyElement {
     let placeholder = crate::msg::desktop_settings_institutions_name_placeholder();
     text_field(
         "add-institution-name",
@@ -89,6 +89,7 @@ fn name_field(value: &str) -> AnyElement {
         &placeholder,
         true,
         Rc::new(|_window: &mut Window, _cx: &mut App| {}),
+        cx,
     )
     .into_any_element()
 }

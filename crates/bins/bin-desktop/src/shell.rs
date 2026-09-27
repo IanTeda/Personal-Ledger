@@ -3769,6 +3769,7 @@ fn render_view(
                     on_tracing_level_click: settings.on_tracing_level_click,
                     on_clear_logs_click: settings.on_clear_logs_click,
                 },
+                cx,
             ))
             .into_any_element();
     }

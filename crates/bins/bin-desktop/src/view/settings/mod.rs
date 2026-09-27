@@ -29,7 +29,7 @@ pub mod sync_server;
 pub mod tracing;
 pub mod units;
 
-use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, ScrollHandle, SharedString, div, prelude::*, px};
 
 use lib_core::DateStyle;
 
@@ -81,6 +81,7 @@ pub fn render(
     focused: bool,
     scroll_handle: &ScrollHandle,
     props: SettingsBodyProps<'_>,
+    cx: &App,
 ) -> AnyElement {
     div()
         .id("settings-body")
@@ -100,7 +101,7 @@ pub fn render(
         .children(
             SettingsSection::ALL
                 .into_iter()
-                .map(|section| section_block(section, &props)),
+                .map(|section| section_block(section, &props, cx)),
         )
         .into_any_element()
 }
@@ -141,7 +142,11 @@ fn page_heading() -> impl IntoElement {
 /// then a **48px** bottom gap -- every section, no exceptions (README's implementation note 4:
 /// mixed top/bottom margin ownership is how this gap goes missing, so it's carried on a single
 /// edge, here).
-fn section_block(section: SettingsSection, props: &SettingsBodyProps<'_>) -> impl IntoElement {
+fn section_block(
+    section: SettingsSection,
+    props: &SettingsBodyProps<'_>,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -172,7 +177,7 @@ fn section_block(section: SettingsSection, props: &SettingsBodyProps<'_>) -> imp
                 .mt(px(14.0))
                 .mb(px(18.0)),
         )
-        .child(section_content(section, props))
+        .child(section_content(section, props, cx))
 }
 
 /// A row count as the number a plural selector takes.
@@ -199,7 +204,11 @@ fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String
 /// Each section's real content -- issue #179 (Display) was the last section still on the
 /// placeholder `section_block` originally rendered for all nine; every `SettingsSection` variant
 /// now has a real arm here, so there is no longer a catch-all fallback.
-fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> AnyElement {
+fn section_content(
+    section: SettingsSection,
+    props: &SettingsBodyProps<'_>,
+    cx: &App,
+) -> AnyElement {
     match section {
         SettingsSection::General => general::render(),
         SettingsSection::Display => display::render(
@@ -211,6 +220,7 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
             props.on_date_style_click.clone(),
             props.on_row_density_click.clone(),
             props.on_status_glyphs_click.clone(),
+            cx,
         ),
         SettingsSection::Units => units::render(
             props.units,
@@ -222,6 +232,7 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
             props.on_price_source_edit_click.clone(),
             props.on_price_source_delete_click.clone(),
             props.on_add_price_source_click.clone(),
+            cx,
         ),
         SettingsSection::Institutions => institutions::render(
             props.institutions,

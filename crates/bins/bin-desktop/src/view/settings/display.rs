@@ -60,6 +60,7 @@ pub fn render(
     on_date_style_click: OnDateStyleClick,
     on_row_density_click: OnRowDensityClick,
     on_status_glyphs_click: OnStatusGlyphsClick,
+    cx: &App,
 ) -> AnyElement {
     div()
         .flex()
@@ -73,6 +74,7 @@ pub fn render(
             on_date_style_click,
             on_row_density_click,
             on_status_glyphs_click,
+            cx,
         ))
         .child(preview_column(date_style, row_density, status_glyphs))
         .into_any_element()
@@ -91,6 +93,7 @@ fn field_column(
     on_date_style_click: OnDateStyleClick,
     on_row_density_click: OnRowDensityClick,
     on_status_glyphs_click: OnStatusGlyphsClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .w(FIELD_COLUMN_WIDTH)
@@ -108,6 +111,7 @@ fn field_column(
                     date_style,
                     date_style_label,
                     on_date_style_click,
+                    cx,
                 )),
         )
         .child(
@@ -121,6 +125,7 @@ fn field_column(
                     row_density,
                     RowDensity::label,
                     on_row_density_click,
+                    cx,
                 )),
         )
         .child(status_glyphs_field(status_glyphs, on_status_glyphs_click))

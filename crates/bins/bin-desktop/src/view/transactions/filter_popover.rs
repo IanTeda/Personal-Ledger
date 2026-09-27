@@ -189,14 +189,19 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                         click(FormField::To),
                     ),
                 ]))
-                .child(status_field(form.status, focused(FormField::Status), {
-                    let on_status_click = on_status_click.clone();
-                    Rc::new(
-                        move |status: StatusFilter, window: &mut Window, cx: &mut App| {
-                            on_status_click(status, window, cx)
-                        },
-                    )
-                })),
+                .child(status_field(
+                    form.status,
+                    focused(FormField::Status),
+                    {
+                        let on_status_click = on_status_click.clone();
+                        Rc::new(
+                            move |status: StatusFilter, window: &mut Window, cx: &mut App| {
+                                on_status_click(status, window, cx)
+                            },
+                        )
+                    },
+                    cx,
+                )),
         )
         .child(
             div()
@@ -276,7 +281,12 @@ fn date_field(
 
 /// The Status field: the label over the shared segmented control, ringed in accent while focused
 /// (`Left` / `Right` step it).
-fn status_field(current: StatusFilter, focused: bool, on_click: OnStatusClick) -> AnyElement {
+fn status_field(
+    current: StatusFilter,
+    focused: bool,
+    on_click: OnStatusClick,
+    cx: &App,
+) -> AnyElement {
     div()
         .child(label(lib_locale::msg::column_status()))
         .child(
@@ -294,6 +304,7 @@ fn status_field(current: StatusFilter, focused: bool, on_click: OnStatusClick) -
                     current,
                     StatusFilter::label,
                     on_click,
+                    cx,
                 )),
         )
         .into_any_element()
