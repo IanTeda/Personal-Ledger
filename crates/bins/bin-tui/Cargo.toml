@@ -40,6 +40,10 @@ ratatui = { version = "0.30.2" }
 tui-box-text = { version = "0.3.4" }
 tui-piechart = { version = "1.0.2" }
 
+# Polls stdin with a timeout for the start-up terminal colour probe (`detect.rs`), safely.
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1.1.4", features = ["event"] }
+
 [build-dependencies]
 lib_locale_build = { path = "../../libs/lib-locale-build" }
 

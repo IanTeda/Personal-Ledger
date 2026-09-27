@@ -18,8 +18,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
 };
 
-/// How many colours the terminal can draw. Detection lands with #329; until then the TUI
-/// assumes truecolor.
+/// How many colours the terminal can draw, detected from the environment in `detect.rs`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ColourDepth {
     #[default]
@@ -49,7 +48,8 @@ impl Default for Colours {
 }
 
 impl Colours {
-    /// Resolves with null Preferences. System is undetected until #329, so it draws Dark.
+    /// Resolves with null Preferences and System undetected, so it draws Dark until
+    /// [`with_system`](Self::with_system) says otherwise.
     pub fn new(overrides: ThemeOverrides, terminal_colours: bool, depth: ColourDepth) -> Self {
         Self {
             resolved: resolve_logged(ResolveInputs {
@@ -65,6 +65,13 @@ impl Colours {
             terminal_colours,
             depth,
         }
+    }
+
+    /// Sets the terminal's detected light/dark background, which System follows.
+    pub fn with_system(mut self, system: Option<ColourVariant>) -> Self {
+        self.system = system;
+        self.resolve();
+        self
     }
 
     fn resolve(&mut self) {
@@ -298,6 +305,12 @@ mod tests {
         let colours = Colours::default();
         assert_eq!(colours.resolved().theme_id, "modernist");
         assert_eq!(colours.resolved().variant, ColourVariant::Dark);
+    }
+
+    #[test]
+    fn system_follows_the_detected_terminal_background() {
+        let colours = Colours::default().with_system(Some(ColourVariant::Light));
+        assert_eq!(colours.resolved().variant, ColourVariant::Light);
     }
 
     #[test]
