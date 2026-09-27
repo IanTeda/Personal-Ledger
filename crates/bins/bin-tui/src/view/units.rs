@@ -10,19 +10,16 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
         Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
     },
 };
 
+use crate::colours::Colours;
 use crate::msg;
 use crate::view::{Action, View, ViewId};
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// a negative weekly `Δ%`.
-const ACCENT: Color = Color::Red;
 
 /// Width of the left column — the unit list and its summary. Widened past §4a's own "~36
 /// cols" for less cramped `TYPE`/summary-value columns and the summary box's own horizontal
@@ -139,7 +136,7 @@ impl View for UnitsView {
 
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -153,8 +150,8 @@ impl View for UnitsView {
             .spacing(2)
             .split(rows[1]);
 
-        render_left_column(frame, columns[0]);
-        render_price_history(frame, columns[1]);
+        render_left_column(frame, columns[0], c);
+        render_price_history(frame, columns[1], c);
     }
 
     fn id(&self) -> ViewId {
@@ -169,7 +166,7 @@ impl View for UnitsView {
 /// The left column: the unit list above its summary, per §4a ("Left column ~36 cols holds
 /// the list above the summary"). The summary section is sized tightly to its content, so the
 /// unit list box takes whatever height is left over.
-fn render_left_column(frame: &mut Frame<'_>, area: Rect) {
+fn render_left_column(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -178,8 +175,8 @@ fn render_left_column(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    render_unit_list(frame, rows[0], &fake_units());
-    render_summary(frame, rows[1], &fake_summary());
+    render_unit_list(frame, rows[0], &fake_units(), c);
+    render_summary(frame, rows[1], &fake_summary(), c);
 }
 
 /// One row in the unit list — matches §4a's own example rows
@@ -247,7 +244,7 @@ fn fake_units() -> Vec<UnitListRow> {
 /// table, a scrollbar riding the right edge of the row area so it reads as scrollable even
 /// though every fake row here fits on screen. No border, echoing the design reference's
 /// borderless `.pane` — only the summary box beneath it gets one.
-fn render_unit_list(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow]) {
+fn render_unit_list(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow], c: &Colours) {
     let split = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -266,10 +263,10 @@ fn render_unit_list(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow]) {
         ])
         .split(content_area);
 
-    render_unit_list_heading(frame, sections[0], units.len());
+    render_unit_list_heading(frame, sections[0], units.len(), c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-    render_unit_list_column_header(frame, sections[2]);
-    render_unit_rows(frame, sections[3], units);
+    render_unit_list_column_header(frame, sections[2], c);
+    render_unit_rows(frame, sections[3], units, c);
 
     let rows_scrollbar_area = Rect {
         y: sections[3].y,
@@ -287,7 +284,7 @@ fn render_unit_list(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow]) {
 
 /// The "UNITS · N OF total" heading, echoing the summary heading's dim label / dim tag
 /// pattern.
-fn render_unit_list_heading(frame: &mut Frame<'_>, area: Rect, visible: usize) {
+fn render_unit_list_heading(frame: &mut Frame<'_>, area: Rect, visible: usize, c: &Colours) {
     let tag = msg::tui_units_list_heading_tag(&visible.to_string(), &FAKE_UNIT_TOTAL.to_string());
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -297,7 +294,7 @@ fn render_unit_list_heading(frame: &mut Frame<'_>, area: Rect, visible: usize) {
         ])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_units_list_heading(), dim)),
         columns[0],
@@ -309,9 +306,9 @@ fn render_unit_list_heading(frame: &mut Frame<'_>, area: Rect, visible: usize) {
 }
 
 /// The `CODE`/`TYPE`/`LAST` column header row, dim, per §4a's column set.
-fn render_unit_list_column_header(frame: &mut Frame<'_>, area: Rect) {
+fn render_unit_list_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let columns = unit_row_columns(area);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
 
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_units_column_code(), dim)),
@@ -328,7 +325,7 @@ fn render_unit_list_column_header(frame: &mut Frame<'_>, area: Rect) {
 }
 
 /// One row per unit, top to bottom.
-fn render_unit_rows(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow]) {
+fn render_unit_rows(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow], c: &Colours) {
     // Capped to however many rows actually fit `area` — asking `Layout::split` for more
     // `Length(1)` rows than available height makes it visibly skip/overlap rows rather than
     // truncate cleanly.
@@ -341,7 +338,7 @@ fn render_unit_rows(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow]) {
         .split(area);
 
     for (unit, row) in units.iter().zip(rows.iter()) {
-        render_unit_row(frame, *row, unit);
+        render_unit_row(frame, *row, unit, c);
     }
 }
 
@@ -349,15 +346,12 @@ fn render_unit_rows(frame: &mut Frame<'_>, area: Rect, units: &[UnitListRow]) {
 /// row is selected; the code is dim only when the unit is inactive ("inactive units render
 /// dim throughout"). The selected row reverses instead, per the shell's "reversed for the
 /// selected row" style role.
-fn render_unit_row(frame: &mut Frame<'_>, area: Rect, unit: &UnitListRow) {
+fn render_unit_row(frame: &mut Frame<'_>, area: Rect, unit: &UnitListRow, c: &Colours) {
     if unit.selected {
-        frame.render_widget(
-            Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-            area,
-        );
+        frame.render_widget(Block::new().style(c.selection()), area);
     }
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let muted = if unit.selected { Style::default() } else { dim };
     let code_style = if unit.inactive { dim } else { Style::default() };
 
@@ -447,7 +441,7 @@ fn fake_summary() -> UnitSummary {
 /// The summary section (bottom left): a "SUMMARY" heading over a bordered `Block`, echoing
 /// the `.hd` + `.box` pair in §4a's design reference — the box carries no title of its own,
 /// since the heading above it already names the section.
-fn render_summary(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary) {
+fn render_summary(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary, c: &Colours) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -457,14 +451,14 @@ fn render_summary(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary) {
         ])
         .split(area);
 
-    render_summary_heading(frame, sections[0]);
+    render_summary_heading(frame, sections[0], c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-    render_summary_box(frame, sections[2], summary);
+    render_summary_box(frame, sections[2], summary, c);
 }
 
 /// The heading above the summary box: "SUMMARY", dim.
-fn render_summary_heading(frame: &mut Frame<'_>, area: Rect) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_summary_heading(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_units_summary_heading(), dim)),
         area,
@@ -475,7 +469,7 @@ fn render_summary_heading(frame: &mut Frame<'_>, area: Rect) {
 /// unit's name on the second, a rule, the three highlighted figures, another rule, then the
 /// secondary label/value fields. Labels render dim, per the shell's "dim for labels" style
 /// role.
-fn render_summary_box(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary) {
+fn render_summary_box(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary, c: &Colours) {
     let block = Block::bordered().padding(Padding::horizontal(1));
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -487,7 +481,7 @@ fn render_summary_box(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary) 
         .constraints(row_constraints)
         .split(inner);
 
-    render_code_and_kind(frame, rows[0], summary.code, summary.kind);
+    render_code_and_kind(frame, rows[0], summary.code, summary.kind, c);
     frame.render_widget(Paragraph::new(summary.name), rows[1]);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[2]);
 
@@ -498,14 +492,14 @@ fn render_summary_box(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary) 
         msg::tui_units_summary_last_market_value(),
     ];
     for (index, figure) in summary.figures.iter().enumerate() {
-        render_summary_figure_with_label(frame, rows[3 + index], &labels[index], figure);
+        render_summary_figure_with_label(frame, rows[3 + index], &labels[index], figure, c);
     }
     frame.render_widget(
         Block::new().borders(Borders::BOTTOM),
         rows[3 + summary.figures.len()],
     );
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let fields_start = 3 + summary.figures.len() + 1;
     let localized_labels = [
         msg::tui_units_summary_priced(),
@@ -525,7 +519,7 @@ fn render_summary_box(frame: &mut Frame<'_>, area: Rect, summary: &UnitSummary) 
 
 /// One highlighted figure row: a dim label on the left, a bold value — with an optional dim
 /// suffix, e.g. the currency code — right-aligned.
-fn render_summary_figure(frame: &mut Frame<'_>, area: Rect, figure: &SummaryFigure) {
+fn render_summary_figure(frame: &mut Frame<'_>, area: Rect, figure: &SummaryFigure, c: &Colours) {
     let value_width =
         figure.value.chars().count() + figure.suffix.map_or(0, |suffix| suffix.chars().count() + 1);
     let columns = Layout::default()
@@ -533,7 +527,7 @@ fn render_summary_figure(frame: &mut Frame<'_>, area: Rect, figure: &SummaryFigu
         .constraints([Constraint::Min(0), Constraint::Length(value_width as u16)])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(figure.label, dim)), columns[0]);
 
     let bold = Style::default().add_modifier(Modifier::BOLD);
@@ -554,6 +548,7 @@ fn render_summary_figure_with_label(
     area: Rect,
     label: &str,
     figure: &SummaryFigure,
+    c: &Colours,
 ) {
     let value_width =
         figure.value.chars().count() + figure.suffix.map_or(0, |suffix| suffix.chars().count() + 1);
@@ -562,7 +557,7 @@ fn render_summary_figure_with_label(
         .constraints([Constraint::Min(0), Constraint::Length(value_width as u16)])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
 
     let bold = Style::default().add_modifier(Modifier::BOLD);
@@ -587,7 +582,7 @@ fn summary_field_line<'a>(label: &'a str, value: &'a str, label_style: Style) ->
 
 /// The code/type row: the unit code left, its type tag (`"etf"`, `"currency"`, ...)
 /// right-aligned and dimmed.
-fn render_code_and_kind(frame: &mut Frame<'_>, area: Rect, code: &str, kind: &str) {
+fn render_code_and_kind(frame: &mut Frame<'_>, area: Rect, code: &str, kind: &str, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -599,7 +594,7 @@ fn render_code_and_kind(frame: &mut Frame<'_>, area: Rect, code: &str, kind: &st
     let bold = Style::default().add_modifier(Modifier::BOLD);
     frame.render_widget(Paragraph::new(Span::styled(code, bold)), columns[0]);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(kind, dim)).alignment(Alignment::Right),
         columns[1],
@@ -608,7 +603,7 @@ fn render_code_and_kind(frame: &mut Frame<'_>, area: Rect, code: &str, kind: &st
 
 /// The right column: the weekly close candlestick above the weekly prices table, pagination
 /// row and command hints, per §4a ("the rest is price history").
-fn render_price_history(frame: &mut Frame<'_>, area: Rect) {
+fn render_price_history(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -621,11 +616,11 @@ fn render_price_history(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    render_weekly_close(frame, rows[0], &fake_weekly_candles());
+    render_weekly_close(frame, rows[0], &fake_weekly_candles(), c);
     // rows[1] is left blank — breathing space between weekly close and weekly prices.
-    render_weekly_prices(frame, rows[2], &fake_weekly_prices());
+    render_weekly_prices(frame, rows[2], &fake_weekly_prices(), c);
     // rows[3] is left blank — breathing space between weekly prices and the hints box.
-    render_keybind_hints(frame, rows[4]);
+    render_keybind_hints(frame, rows[4], c);
     // rows[5] is left blank — breathing space between the hints box and the shell footer.
 }
 
@@ -705,7 +700,7 @@ fn format_market_value(amount: f64) -> String {
 /// over a `W/C`/`CLOSE`/`Δ%`/`MARKET VALUE` table, newest week first, with a scrollbar on the
 /// right edge since more weeks exist than fit on screen (`FAKE_WEEK_COUNT`). No border,
 /// echoing the unit list's borderless pane convention.
-fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, rows: &[WeeklyPriceRow]) {
+fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, rows: &[WeeklyPriceRow], c: &Colours) {
     let split = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -724,10 +719,10 @@ fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, rows: &[WeeklyPriceRo
         ])
         .split(content_area);
 
-    render_weekly_prices_heading(frame, sections[0]);
+    render_weekly_prices_heading(frame, sections[0], c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-    render_weekly_prices_column_header(frame, sections[2]);
-    render_weekly_price_rows(frame, sections[3], rows);
+    render_weekly_prices_column_header(frame, sections[2], c);
+    render_weekly_price_rows(frame, sections[3], rows, c);
 
     let rows_scrollbar_area = Rect {
         y: sections[3].y,
@@ -745,7 +740,7 @@ fn render_weekly_prices(frame: &mut Frame<'_>, area: Rect, rows: &[WeeklyPriceRo
 
 /// The "WEEKLY PRICES · W/C MONDAY · N UNITS" heading, echoing the unit list and summary
 /// headings' dim label / dim tag pattern.
-fn render_weekly_prices_heading(frame: &mut Frame<'_>, area: Rect) {
+fn render_weekly_prices_heading(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = msg::tui_units_weekly_prices_tag(FAKE_UNITS_HELD);
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -755,7 +750,7 @@ fn render_weekly_prices_heading(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_units_weekly_prices_heading(), dim)),
         columns[0],
@@ -767,9 +762,9 @@ fn render_weekly_prices_heading(frame: &mut Frame<'_>, area: Rect) {
 }
 
 /// The `W/C`/`CLOSE`/`Δ%`/`MARKET VALUE` column header row, dim.
-fn render_weekly_prices_column_header(frame: &mut Frame<'_>, area: Rect) {
+fn render_weekly_prices_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let columns = weekly_price_columns(area);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
 
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_units_weekly_prices_column_wc(), dim)),
@@ -804,7 +799,12 @@ fn render_weekly_prices_column_header(frame: &mut Frame<'_>, area: Rect) {
 /// fit `area` — asking `Layout::split` for more `Length(1)` rows than available height makes
 /// it visibly skip/overlap rows rather than truncate cleanly, and the scrollbar already
 /// signals that more weeks exist than fit on screen.
-fn render_weekly_price_rows(frame: &mut Frame<'_>, area: Rect, rows: &[WeeklyPriceRow]) {
+fn render_weekly_price_rows(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    rows: &[WeeklyPriceRow],
+    c: &Colours,
+) {
     let visible = rows.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
         std::iter::repeat_n(Constraint::Length(1), visible).collect();
@@ -814,27 +814,27 @@ fn render_weekly_price_rows(frame: &mut Frame<'_>, area: Rect, rows: &[WeeklyPri
         .split(area);
 
     for (index, (row, row_area)) in rows.iter().zip(row_areas.iter()).enumerate() {
-        render_weekly_price_row(frame, *row_area, row, index == 0);
+        render_weekly_price_row(frame, *row_area, row, index == 0, c);
     }
 }
 
 /// One weekly price row: `W/C`/`CLOSE`/`Δ%`/`MARKET VALUE` per the pasted design reference. A
-/// negative `Δ%` renders in the accent colour; the selected (most recent) row reverses.
+/// negative `Δ%` renders in `negative`; the selected (most recent) row reverses.
 fn render_weekly_price_row(
     frame: &mut Frame<'_>,
     area: Rect,
     row: &WeeklyPriceRow,
     selected: bool,
+    c: &Colours,
 ) {
     if selected {
-        frame.render_widget(
-            Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-            area,
-        );
+        frame.render_widget(Block::new().style(c.selection()), area);
     }
 
-    let change_style = if row.is_negative {
-        Style::default().fg(ACCENT)
+    let change_style = if row.is_negative && selected {
+        c.negative_on_selection()
+    } else if row.is_negative {
+        c.negative()
     } else {
         Style::default()
     };
@@ -871,7 +871,7 @@ fn weekly_price_columns(area: Rect) -> [Rect; 4] {
 /// The command/keybind hints box (bottom right): the single-key hints for navigating and
 /// acting on the highlighted unit, then the `:` commands that do the same from the command
 /// line — how to use the units screen at a glance.
-fn render_keybind_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_keybind_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let command_hints = [
         msg::tui_units_command_new(),
         msg::tui_units_command_edit(),
@@ -884,14 +884,14 @@ fn render_keybind_hints(frame: &mut Frame<'_>, area: Rect) {
         .constraints(row_constraints)
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_units_hints_heading(), dim)),
         rows[0],
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
-    render_key_hints(frame, rows[2]);
+    render_key_hints(frame, rows[2], c);
 
     for (index, line) in command_hints.iter().enumerate() {
         frame.render_widget(Paragraph::new(Span::styled(line, dim)), rows[3 + index]);
@@ -899,9 +899,9 @@ fn render_keybind_hints(frame: &mut Frame<'_>, area: Rect) {
 }
 
 /// `KEY_HINTS` as one line: each key bold, its label dim, separated by a dim `·`.
-fn render_key_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_key_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let bold = Style::default().add_modifier(Modifier::BOLD);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
 
     let key_hints = [
         ("j/k", msg::tui_units_hint_j_k()),
@@ -929,7 +929,7 @@ fn render_key_hints(frame: &mut Frame<'_>, area: Rect) {
 /// The weekly close candlestick chart (top right): `chandelier`'s `CandlestickChart`
 /// (ADR-0002, `crates/bins/bin-tui/src/screen/candlestick_chart.rs`) over deterministic fake
 /// weekly OHLC data — real price history isn't wired up yet.
-fn render_weekly_close(frame: &mut Frame<'_>, area: Rect, candles: &[Candle]) {
+fn render_weekly_close(frame: &mut Frame<'_>, area: Rect, candles: &[Candle], c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -939,7 +939,7 @@ fn render_weekly_close(frame: &mut Frame<'_>, area: Rect, candles: &[Candle]) {
         ])
         .split(area);
 
-    render_weekly_close_heading(frame, rows[0]);
+    render_weekly_close_heading(frame, rows[0], c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
     let chart = CandlestickChart::new(CandleSeries::new(candles));
@@ -947,7 +947,7 @@ fn render_weekly_close(frame: &mut Frame<'_>, area: Rect, candles: &[Candle]) {
 }
 
 /// The "WEEKLY CLOSE · VDHG" heading, echoing the other boxes' dim label / dim tag pattern.
-fn render_weekly_close_heading(frame: &mut Frame<'_>, area: Rect) {
+fn render_weekly_close_heading(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = msg::tui_units_weekly_close_tag();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -957,7 +957,7 @@ fn render_weekly_close_heading(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_units_weekly_close_heading(), dim)),
         columns[0],
@@ -1026,11 +1026,11 @@ mod tests {
         assert_eq!(action, None);
     }
 
-    fn render(view: &UnitsView) -> String {
+    fn render(view: &UnitsView, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("drawing the units view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1046,12 +1046,14 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&UnitsView::new());
+        let c = &Colours::default();
+        render(&UnitsView::new(), c);
     }
 
     #[test]
     fn shows_all_four_region_boxes() {
-        let text = render(&UnitsView::new());
+        let c = &Colours::default();
+        let text = render(&UnitsView::new(), c);
 
         assert!(text.contains("UNITS"), "unit list heading missing");
         assert!(text.contains("SUMMARY"), "summary heading missing");
@@ -1067,7 +1069,8 @@ mod tests {
 
     #[test]
     fn weekly_close_box_shows_a_candlestick_chart() {
-        let text = render(&UnitsView::new());
+        let c = &Colours::default();
+        let text = render(&UnitsView::new(), c);
 
         assert!(text.contains("WEEKLY CLOSE · VDHG"), "heading missing");
         // Candle body / wick glyphs `chandelier` draws with — confirms an actual chart
@@ -1080,13 +1083,14 @@ mod tests {
 
     #[test]
     fn weekly_prices_shows_the_heading_tag_column_header_and_the_worked_example_rows() {
+        let c = &Colours::default();
         // Taller than the 96x30 minimum: the worked example's first ten weeks need more
         // height than the minimum leaves for the weekly prices table (the scrollbar covers
         // that case at minimum size — see `weekly_prices_shows_a_scrollbar`).
         let backend = TestBackend::new(96, 45);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| UnitsView::new().view(frame, frame.area()))
+            .draw(|frame| UnitsView::new().view(frame, frame.area(), c))
             .expect("drawing the units view should not error");
         let buffer = terminal.backend().buffer();
         let mut text = String::new();
@@ -1137,13 +1141,14 @@ mod tests {
 
     #[test]
     fn weekly_prices_table_fills_the_available_height_with_no_trailing_blank_rows() {
+        let c = &Colours::default();
         // Tall enough that the ten worked-example rows alone wouldn't fill it — confirms
         // `fake_weekly_prices`'s generated rows (past the first ten) actually reach the
         // bottom of the table's own space rather than leaving it short.
         let backend = TestBackend::new(96, 60);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| UnitsView::new().view(frame, frame.area()))
+            .draw(|frame| UnitsView::new().view(frame, frame.area(), c))
             .expect("drawing the units view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1190,7 +1195,8 @@ mod tests {
     }
 
     #[test]
-    fn weekly_prices_reverses_the_first_row_and_accents_negative_change() {
+    fn weekly_prices_selects_the_first_row_and_marks_negative_change() {
+        let c = &Colours::default();
         // Taller than the 96x30 minimum: at minimum size the weekly prices table now only has
         // room for one row (the candlestick chart and the spacer above the shell footer both
         // grew), too few to check a non-selected row and a negative one against a selected,
@@ -1198,7 +1204,7 @@ mod tests {
         let backend = TestBackend::new(96, 45);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| UnitsView::new().view(frame, frame.area()))
+            .draw(|frame| UnitsView::new().view(frame, frame.area(), c))
             .expect("drawing the units view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1213,33 +1219,39 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
-        let row_is_reversed = |y: u16| -> bool {
-            (0..buffer.area.width).any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
+        let selection = c.selection().bg.unwrap_or_default();
+        let row_is_selected =
+            |y: u16| -> bool { (0..buffer.area.width).any(|x| buffer[(x, y)].bg == selection) };
+        let negatives = [
+            c.negative().fg.unwrap_or_default(),
+            c.negative_on_selection().fg.unwrap_or_default(),
+        ];
+        let row_has_negative = |y: u16| -> bool {
+            (0..buffer.area.width).any(|x| negatives.contains(&buffer[(x, y)].fg))
         };
-        let row_has_accent =
-            |y: u16| -> bool { (0..buffer.area.width).any(|x| buffer[(x, y)].fg == ACCENT) };
 
         assert!(
-            row_is_reversed(row_containing("31 aug")),
-            "most recent week's row should render reversed"
+            row_is_selected(row_containing("31 aug")),
+            "most recent week's row should render selected"
         );
         assert!(
-            !row_is_reversed(row_containing("24 aug")),
-            "non-selected row should not render reversed"
+            !row_is_selected(row_containing("24 aug")),
+            "non-selected row should not render selected"
         );
         assert!(
-            row_has_accent(row_containing("-0.61")),
-            "negative change should render in the accent colour"
+            row_has_negative(row_containing("-0.61")),
+            "negative change should render in the negative colour"
         );
         assert!(
-            !row_has_accent(row_containing("+0.42")),
-            "positive change should not render in the accent colour"
+            !row_has_negative(row_containing("+0.42")),
+            "positive change should not render in the negative colour"
         );
     }
 
     #[test]
     fn weekly_prices_shows_a_scrollbar() {
-        let text = render(&UnitsView::new());
+        let c = &Colours::default();
+        let text = render(&UnitsView::new(), c);
 
         assert!(
             text.contains(['║', '█']),
@@ -1249,13 +1261,14 @@ mod tests {
 
     #[test]
     fn keybind_hints_box_shows_keys_and_commands() {
+        let c = &Colours::default();
         // Wider than the 96-col minimum's right column: the key hints no longer wrap onto a
         // second row (removed along with the border, to close the gap it left underneath), so
         // the full line needs more width to avoid truncating the last hint.
         let backend = TestBackend::new(160, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| UnitsView::new().view(frame, frame.area()))
+            .draw(|frame| UnitsView::new().view(frame, frame.area(), c))
             .expect("drawing the units view should not error");
         let buffer = terminal.backend().buffer();
         let mut text = String::new();
@@ -1285,7 +1298,8 @@ mod tests {
 
     #[test]
     fn unit_list_shows_the_heading_tag_and_column_header() {
-        let text = render(&UnitsView::new());
+        let c = &Colours::default();
+        let text = render(&UnitsView::new(), c);
 
         assert!(text.contains("6 OF 20"), "unit count tag missing");
         assert!(text.contains("CODE"), "code column header missing");
@@ -1295,7 +1309,8 @@ mod tests {
 
     #[test]
     fn unit_list_shows_every_fake_row() {
-        let text = render(&UnitsView::new());
+        let c = &Colours::default();
+        let text = render(&UnitsView::new(), c);
 
         for unit in fake_units() {
             assert!(text.contains(unit.code), "{}'s code missing", unit.code);
@@ -1309,11 +1324,12 @@ mod tests {
     }
 
     #[test]
-    fn unit_list_reverses_the_selected_row_and_dims_the_inactive_one() {
+    fn unit_list_selects_the_selected_row_and_mutes_the_inactive_one() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| UnitsView::new().view(frame, frame.area()))
+            .draw(|frame| UnitsView::new().view(frame, frame.area(), c))
             .expect("drawing the units view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1332,30 +1348,31 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
-        let row_is_reversed = |y: u16| -> bool {
-            (0..LEFT_COLUMN_WIDTH).any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
-        };
-        let row_is_dim = |y: u16| -> bool {
-            (0..LEFT_COLUMN_WIDTH).any(|x| buffer[(x, y)].modifier.contains(Modifier::DIM))
-        };
+        let selection = c.selection().bg.unwrap_or_default();
+        let muted = c.muted().fg.unwrap_or_default();
+        let row_is_selected =
+            |y: u16| -> bool { (0..LEFT_COLUMN_WIDTH).any(|x| buffer[(x, y)].bg == selection) };
+        let row_is_muted =
+            |y: u16| -> bool { (0..LEFT_COLUMN_WIDTH).any(|x| buffer[(x, y)].fg == muted) };
 
         assert!(
-            row_is_reversed(row_containing("VDHG")),
-            "selected row should render reversed"
+            row_is_selected(row_containing("VDHG")),
+            "selected row should render selected"
         );
         assert!(
-            !row_is_reversed(row_containing("AUD")),
-            "non-selected row should not render reversed"
+            !row_is_selected(row_containing("AUD")),
+            "non-selected row should not render selected"
         );
         assert!(
-            row_is_dim(row_containing("AAPL")),
-            "inactive row should render dim throughout"
+            row_is_muted(row_containing("AAPL")),
+            "inactive row should render muted throughout"
         );
     }
 
     #[test]
     fn unit_list_shows_a_scrollbar() {
-        let text = render(&UnitsView::new());
+        let c = &Colours::default();
+        let text = render(&UnitsView::new(), c);
 
         // The double-vertical symbol set's track/thumb glyphs — confirms the `Scrollbar`
         // widget actually rendered rather than leaving the column blank.
@@ -1367,6 +1384,7 @@ mod tests {
 
     #[test]
     fn extra_terminal_height_grows_the_unit_list_not_the_summary_box() {
+        let c = &Colours::default();
         // Taller than the 96x30 minimum: the summary section should stay pinned to its exact
         // content height at the bottom of the left column, with the unit list box above it
         // absorbing all of the extra height instead.
@@ -1374,7 +1392,7 @@ mod tests {
         let backend = TestBackend::new(96, height);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| UnitsView::new().view(frame, frame.area()))
+            .draw(|frame| UnitsView::new().view(frame, frame.area(), c))
             .expect("drawing the units view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1412,7 +1430,8 @@ mod tests {
 
     #[test]
     fn summary_shows_code_kind_name_and_all_fields() {
-        let text = render(&UnitsView::new());
+        let c = &Colours::default();
+        let text = render(&UnitsView::new(), c);
 
         assert!(text.contains("VDHG"), "unit code missing");
         assert!(text.contains("etf"), "type tag missing");
@@ -1443,10 +1462,11 @@ mod tests {
 
     #[test]
     fn summary_box_has_a_rule_around_the_highlighted_figures() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| UnitsView::new().view(frame, frame.area()))
+            .draw(|frame| UnitsView::new().view(frame, frame.area(), c))
             .expect("drawing the units view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1497,10 +1517,11 @@ mod tests {
 
     #[test]
     fn summary_figures_render_bold() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| UnitsView::new().view(frame, frame.area()))
+            .draw(|frame| UnitsView::new().view(frame, frame.area(), c))
             .expect("drawing the units view should not error");
 
         let buffer = terminal.backend().buffer();

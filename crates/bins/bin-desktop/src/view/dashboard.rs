@@ -25,7 +25,7 @@ impl Default for Dashboard {
 }
 
 impl RenderOnce for Dashboard {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
             .flex_1()
             .min_w(px(0.0))
@@ -33,27 +33,27 @@ impl RenderOnce for Dashboard {
             .flex_col()
             .pt(px(20.0))
             .px(px(24.0))
-            .child(header())
-            .child(figure_row())
-            .child(div().h(px(2.0)).mt(px(16.0)).bg(color::STRUCTURAL_RULE))
-            .child(chart_band())
-            .child(div().h(px(1.0)).mt(px(16.0)).bg(color::HAIRLINE))
-            .child(lower_band())
-            .child(div().h(px(1.0)).mt(px(14.0)).bg(color::HAIRLINE))
-            .child(needs_attention())
+            .child(header(cx))
+            .child(figure_row(cx))
+            .child(div().h(px(2.0)).mt(px(16.0)).bg(color::structural_rule(cx)))
+            .child(chart_band(cx))
+            .child(div().h(px(1.0)).mt(px(16.0)).bg(color::hairline(cx)))
+            .child(lower_band(cx))
+            .child(div().h(px(1.0)).mt(px(14.0)).bg(color::hairline(cx)))
+            .child(needs_attention(cx))
     }
 }
 
-fn kicker(label: String) -> impl IntoElement {
+fn kicker(label: String, cx: &App) -> impl IntoElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .mb(px(5.0))
         .child(label)
 }
 
-fn header() -> impl IntoElement {
+fn header(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_baseline()
@@ -66,18 +66,18 @@ fn header() -> impl IntoElement {
         .child(
             div()
                 .text_size(px(11.5))
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child("13 september 2026 · all accounts · aud"),
         )
 }
 
-fn figure_row() -> impl IntoElement {
+fn figure_row(cx: &App) -> impl IntoElement {
     let secondary = |label: String, value: &'static str, negative: bool| {
-        div().child(kicker(label)).child(
+        div().child(kicker(label, cx)).child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(15.0))
-                .when(negative, |this| this.text_color(color::ACCENT_TEXT))
+                .when(negative, |this| this.text_color(color::negative_text(cx)))
                 .child(value),
         )
     };
@@ -89,7 +89,7 @@ fn figure_row() -> impl IntoElement {
         .mt(px(14.0))
         .child(
             div()
-                .child(kicker(msg::desktop_dashboard_net_position()))
+                .child(kicker(msg::desktop_dashboard_net_position(), cx))
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -207,16 +207,16 @@ const MONTH_FLOWS: &[MonthFlow] = &[
     },
 ];
 
-fn chart_band() -> impl IntoElement {
+fn chart_band(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .gap(px(24.0))
         .pt(px(14.0))
-        .child(net_worth_chart())
-        .child(in_vs_out())
+        .child(net_worth_chart(cx))
+        .child(in_vs_out(cx))
 }
 
-fn net_worth_chart() -> impl IntoElement {
+fn net_worth_chart(cx: &App) -> impl IntoElement {
     let series = net_worth_series();
     let first = series.first().map(|(m, _)| m.clone()).unwrap_or_default();
     let last = series.last().map(|(m, _)| m.clone()).unwrap_or_default();
@@ -245,7 +245,7 @@ fn net_worth_chart() -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .child(msg::desktop_dashboard_net_worth_close()),
                 ),
         )
@@ -254,7 +254,7 @@ fn net_worth_chart() -> impl IntoElement {
                 LineChart::new(series)
                     .x(|(month, _)| month.clone())
                     .y(|(_, value)| *value)
-                    .stroke(color::INK)
+                    .stroke(color::chart_series(0, cx))
                     .dot(),
             ),
         )
@@ -263,7 +263,7 @@ fn net_worth_chart() -> impl IntoElement {
                 .flex()
                 .justify_between()
                 .text_size(px(11.0))
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .mt(px(4.0))
                 .child(first)
                 .child(mid)
@@ -271,7 +271,7 @@ fn net_worth_chart() -> impl IntoElement {
         )
 }
 
-fn in_vs_out() -> impl IntoElement {
+fn in_vs_out(cx: &App) -> impl IntoElement {
     div()
         .w(px(266.0))
         .flex_none()
@@ -288,25 +288,25 @@ fn in_vs_out() -> impl IntoElement {
                 .flex()
                 .flex_col()
                 .gap(px(5.0))
-                .children(MONTH_FLOWS.iter().map(flow_row)),
+                .children(MONTH_FLOWS.iter().map(|flow| flow_row(flow, cx))),
         )
         .child(
             div()
                 .flex()
                 .justify_between()
                 .text_size(px(11.0))
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .mt(px(6.0))
                 .child(msg::desktop_dashboard_in_vs_out_expense())
                 .child(msg::desktop_dashboard_in_vs_out_income()),
         )
 }
 
-fn flow_row(flow: &MonthFlow) -> impl IntoElement {
+fn flow_row(flow: &MonthFlow, cx: &App) -> impl IntoElement {
     let expense_color = if flow.flagged {
-        color::ACCENT
+        color::negative(cx)
     } else {
-        color::INK_SECONDARY
+        color::muted(cx)
     };
 
     div()
@@ -326,7 +326,7 @@ fn flow_row(flow: &MonthFlow) -> impl IntoElement {
                 .w(px(34.0))
                 .text_align(gpui::TextAlign::Center)
                 .text_size(px(10.5))
-                .text_color(color::INK_SECONDARY)
+                .text_color(color::muted(cx))
                 .child(lib_locale::format::format_month(flow.month).to_lowercase()),
         )
         .child(
@@ -334,7 +334,7 @@ fn flow_row(flow: &MonthFlow) -> impl IntoElement {
                 div()
                     .h(px(11.0))
                     .w(relative(flow.income_pct / 100.0))
-                    .bg(color::INK),
+                    .bg(color::foreground(cx)),
             ),
         )
 }
@@ -342,47 +342,48 @@ fn flow_row(flow: &MonthFlow) -> impl IntoElement {
 struct Segment {
     label: &'static str,
     pct: u32,
-    color: gpui::Rgba,
 }
 
 const SEGMENTS: &[Segment] = &[
     Segment {
         label: "housing",
         pct: 34,
-        color: color::ACCENT,
     },
     Segment {
         label: "groceries",
         pct: 22,
-        color: color::INK,
     },
     Segment {
         label: "transport",
         pct: 16,
-        color: color::INK_SECONDARY,
     },
     Segment {
         label: "dining",
         pct: 12,
-        color: color::INK_TERTIARY,
     },
     Segment {
         label: "other",
         pct: 16,
-        color: color::HAIRLINE,
     },
 ];
 
-fn lower_band() -> impl IntoElement {
+fn lower_band(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .gap(px(24.0))
         .pt(px(14.0))
-        .child(donut())
-        .child(budget_list())
+        .child(donut(cx))
+        .child(budget_list(cx))
 }
 
-fn donut() -> impl IntoElement {
+fn donut(cx: &App) -> impl IntoElement {
+    // `PieChart`'s colour closure must be `'static`, so resolve each series colour up front.
+    let slices: Vec<(&'static Segment, gpui::Rgba)> = SEGMENTS
+        .iter()
+        .enumerate()
+        .map(|(index, segment)| (segment, color::chart_series(index, cx)))
+        .collect();
+
     div()
         .w(px(250.0))
         .flex_none()
@@ -400,9 +401,9 @@ fn donut() -> impl IntoElement {
                 .gap(px(16.0))
                 .child(
                     div().w(px(88.0)).h(px(88.0)).child(
-                        PieChart::new(SEGMENTS.iter())
-                            .value(|segment| segment.pct as f32)
-                            .color(|segment| segment.color)
+                        PieChart::new(slices.clone())
+                            .value(|(segment, _)| segment.pct as f32)
+                            .color(|(_, colour)| *colour)
                             .inner_radius(29.0)
                             .outer_radius(44.0),
                     ),
@@ -414,17 +415,21 @@ fn donut() -> impl IntoElement {
                         .flex_col()
                         .gap(px(4.0))
                         .text_size(px(11.5))
-                        .children(SEGMENTS.iter().map(legend_row)),
+                        .children(
+                            slices
+                                .iter()
+                                .map(|(segment, colour)| legend_row(segment, *colour)),
+                        ),
                 ),
         )
 }
 
-fn legend_row(segment: &Segment) -> impl IntoElement {
+fn legend_row(segment: &Segment, colour: gpui::Rgba) -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .gap(px(7.0))
-        .child(div().w(px(9.0)).h(px(9.0)).bg(segment.color))
+        .child(div().w(px(9.0)).h(px(9.0)).bg(colour))
         .child(div().flex_1().child(segment.label))
         .child(format!("{}%", segment.pct))
 }
@@ -462,7 +467,7 @@ const BUDGET_ROWS: &[BudgetRow] = &[
 /// position on every row, since it marks a point in time, not a per-category value.
 const PERIOD_ELAPSED: f32 = 0.70;
 
-fn budget_list() -> impl IntoElement {
+fn budget_list(cx: &App) -> impl IntoElement {
     div()
         .flex_1()
         .min_w(px(0.0))
@@ -481,7 +486,7 @@ fn budget_list() -> impl IntoElement {
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .child("sep · day 21/30 · 70% elapsed"),
                 ),
         )
@@ -491,24 +496,24 @@ fn budget_list() -> impl IntoElement {
                 .flex_col()
                 .gap(px(7.0))
                 .text_size(px(11.5))
-                .children(BUDGET_ROWS.iter().map(budget_row))
+                .children(BUDGET_ROWS.iter().map(|row| budget_row(row, cx)))
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .mt(px(2.0))
                         .child(msg::desktop_dashboard_budgets_legend()),
                 ),
         )
 }
 
-fn budget_row(row: &BudgetRow) -> impl IntoElement {
+fn budget_row(row: &BudgetRow, cx: &App) -> impl IntoElement {
     let over_budget = row.spent > row.limit;
     let fraction = (row.spent as f32 / row.limit as f32).min(1.0);
     let fill_color = if over_budget {
-        color::ACCENT
+        color::negative(cx)
     } else {
-        color::INK_SECONDARY
+        color::muted(cx)
     };
 
     div()
@@ -520,7 +525,7 @@ fn budget_row(row: &BudgetRow) -> impl IntoElement {
             div()
                 .flex_1()
                 .h(px(12.0))
-                .bg(color::INSET_TRACK)
+                .bg(color::inset_track(cx))
                 .relative()
                 .child(
                     div()
@@ -536,7 +541,7 @@ fn budget_row(row: &BudgetRow) -> impl IntoElement {
                         .bottom(px(-2.0))
                         .left(relative(PERIOD_ELAPSED))
                         .w(px(2.0))
-                        .bg(color::INK),
+                        .bg(color::foreground(cx)),
                 ),
         )
         .child(
@@ -544,14 +549,14 @@ fn budget_row(row: &BudgetRow) -> impl IntoElement {
                 .w(px(118.0))
                 .text_right()
                 .when(over_budget, |this| {
-                    this.text_color(color::ACCENT_TEXT)
+                    this.text_color(color::negative_text(cx))
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 })
                 .child(format!("{} / {}", row.spent, row.limit)),
         )
 }
 
-fn needs_attention() -> impl IntoElement {
+fn needs_attention(cx: &App) -> impl IntoElement {
     let bold = |text: String| div().font_weight(gpui::FontWeight::EXTRA_BOLD).child(text);
 
     div()
@@ -574,7 +579,7 @@ fn needs_attention() -> impl IntoElement {
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .text_color(color::ACCENT_TEXT)
+                        .text_color(color::accent_text(cx))
                         .child("14"),
                 )
                 .child(msg::desktop_dashboard_unreconciled("ANZ Everyday", 14i64))

@@ -5,6 +5,7 @@
 
 use ratatui::{Frame, layout::Rect, widgets::Block};
 
+use crate::colours::Colours;
 use crate::view::{Action, View, ViewId};
 
 /// A trivial placeholder Balance Checks `View`: one bordered box, no content yet.
@@ -20,7 +21,7 @@ impl BalanceChecksView {
 impl View for BalanceChecksView {
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, _c: &Colours) {
         frame.render_widget(Block::bordered().title(format!(" {} ", self.title())), area);
     }
 
@@ -41,12 +42,13 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let view = BalanceChecksView::new();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
 
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("rendering the placeholder Balance Checks view should not error");
     }
 

@@ -4,7 +4,7 @@
 //! typed-name confirm (exact, case-sensitive) gating **Delete category**. A parent is refused
 //! (status message, dialog not opened) with "delete or move its children first".
 
-use gpui::{AnyElement, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
 use super::add_dialog::WIDTH;
 use crate::{
@@ -23,6 +23,7 @@ pub fn render(
     budget_count: usize,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &App,
 ) -> AnyElement {
     let card = div()
         .flex()
@@ -30,25 +31,30 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_categories_delete_title(&category.name),
             true,
+            cx,
         ))
         .child(dialog::body([
             warning_copy(split_count),
-            dialog::info_panel(reference_notice(budget_count)).into_any_element(),
-            confirm_input_field(&category.name, &form.confirmation_name),
+            dialog::info_panel(reference_notice(budget_count), cx).into_any_element(),
+            confirm_input_field(&category.name, &form.confirmation_name, cx),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("delete-category-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "delete-category-confirm",
-                crate::msg::desktop_categories_delete_submit(),
-                form.matches(&category.name),
-                true,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("delete-category-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "delete-category-confirm",
+                    crate::msg::desktop_categories_delete_submit(),
+                    form.matches(&category.name),
+                    true,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
-    dialog::overlay(WIDTH, true, card)
+    dialog::overlay(WIDTH, true, card, cx)
 }
 
 fn reference_notice(budget_count: usize) -> String {
@@ -74,7 +80,7 @@ fn warning_copy(split_count: usize) -> AnyElement {
         .into_any_element()
 }
 
-fn confirm_input_field(name: &str, input_value: &str) -> AnyElement {
+fn confirm_input_field(name: &str, input_value: &str, cx: &App) -> AnyElement {
     div()
         .flex()
         .flex_col()
@@ -91,9 +97,9 @@ fn confirm_input_field(name: &str, input_value: &str) -> AnyElement {
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(color::BORDER)
+                .border_color(color::border(cx))
                 .text_size(px(13.0))
-                .text_color(color::INK)
+                .text_color(color::foreground(cx))
                 .child(SharedString::from(input_value.to_string())),
         )
         .into_any_element()

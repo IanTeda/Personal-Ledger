@@ -27,18 +27,18 @@ use lib_core::{AccountType, Money, RowID};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::{
     account::{Account, AccountStore},
     msg,
     popup::REFERENCE_TERMINAL_WIDTH,
 };
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "transactions".len() as u16 + 1;
@@ -179,12 +179,12 @@ impl DeleteAccountPopup {
 
     /// Renders the floating overlay, centred and sized to its own dynamic content (whether a
     /// transfer is needed, and whether its target has resolved yet), within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore, c: &Colours) {
         let Some(account) = store.find(self.deleting_id) else {
             return;
         };
 
-        let body = self.body_rows(store, account);
+        let body = self.body_rows(store, account, c);
         let content_rows = 1 + 1 + body.len() as u16 + 1 + 1; // title, rule, body, rule, footer
         let popup = popup_rect(area, content_rows);
 
@@ -201,7 +201,7 @@ impl DeleteAccountPopup {
             .constraints(constraints)
             .split(inner);
 
-        render_title(frame, rows[0], &account.name);
+        render_title(frame, rows[0], &account.name, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         for (render_row, area) in body.iter().zip(rows[2..2 + body.len()].iter()) {
             render_row(frame, *area);
@@ -211,7 +211,7 @@ impl DeleteAccountPopup {
             Block::new().borders(Borders::BOTTOM),
             rows[footer_rule_index],
         );
-        render_footer_hints(frame, rows[footer_rule_index + 1]);
+        render_footer_hints(frame, rows[footer_rule_index + 1], c);
     }
 
     /// Builds the popup's variable body as a list of row-rendering closures — the row *count*
@@ -222,6 +222,7 @@ impl DeleteAccountPopup {
         &'a self,
         store: &'a dyn AccountStore,
         account: &'a Account,
+        c: &Colours,
     ) -> Vec<RowRenderer<'a>> {
         let mut rows: Vec<RowRenderer<'a>> = Vec::new();
 
@@ -234,6 +235,7 @@ impl DeleteAccountPopup {
                 crate::format::money(&balance, account.unit.decimal_places),
                 account.unit.code
             )),
+            c,
         ));
         if account.open_count > 0 || !account.balance_checks.is_empty() {
             rows.push(plain_row_indented(Line::from(Span::styled(
@@ -242,7 +244,7 @@ impl DeleteAccountPopup {
                     account.open_count,
                     account.balance_checks.len()
                 ),
-                dim(),
+                c.muted(),
             ))));
         }
 
@@ -252,15 +254,17 @@ impl DeleteAccountPopup {
                 msg::tui_account_delete_field_transactions(),
                 Line::from(vec![
                     Span::raw("( ) delete them too · "),
-                    Span::styled("refused", Style::default().fg(ACCENT)),
+                    Span::styled("refused", c.negative()),
                 ]),
+                c,
             ));
             rows.push(plain_row_indented(Line::from(
                 "(•) move to another account",
             )));
             rows.push(field_row(
                 msg::tui_account_delete_field_move_to(),
-                text_field_value(&self.target_input, self.focus == Field::MoveTo),
+                text_field_value(&self.target_input, self.focus == Field::MoveTo, c),
+                c,
             ));
             let total = store.accounts().len();
             let candidates = store.transfer_candidates(self.deleting_id);
@@ -272,8 +276,9 @@ impl DeleteAccountPopup {
                         account.unit.code,
                         candidates.len()
                     ),
-                    dim(),
+                    c.muted(),
                 )),
+                c,
             ));
             rows.push(blank_row());
 
@@ -288,6 +293,7 @@ impl DeleteAccountPopup {
                     rows.push(field_row(
                         msg::tui_account_delete_field_into(),
                         Line::from(target.name.clone()),
+                        c,
                     ));
                     rows.push(field_row(
                         msg::tui_account_delete_field_balance(),
@@ -296,13 +302,15 @@ impl DeleteAccountPopup {
                             crate::format::money(&target_balance, target.unit.decimal_places),
                             crate::format::money(&new_balance, target.unit.decimal_places)
                         )),
+                        c,
                     ));
                     rows.push(field_row(
                         msg::tui_account_delete_field_moves(),
                         Line::from(Span::styled(
                             format!("{} txns · status kept", account.transaction_count),
-                            dim(),
+                            c.muted(),
                         )),
+                        c,
                     ));
                     if !account.balance_checks.is_empty() {
                         rows.push(field_row(
@@ -312,19 +320,20 @@ impl DeleteAccountPopup {
                                     "{} balance checks · they assert a",
                                     account.balance_checks.len()
                                 ),
-                                dim(),
+                                c.muted(),
                             )),
+                            c,
                         ));
                         rows.push(plain_row_indented(Line::from(Span::styled(
                             "balance this account no longer has",
-                            dim(),
+                            c.muted(),
                         ))));
                     }
                 }
                 None => {
                     rows.push(plain_row(Line::from(Span::styled(
                         "after — resolves once a same-unit account is typed above",
-                        dim(),
+                        c.muted(),
                     ))));
                 }
             }
@@ -335,11 +344,12 @@ impl DeleteAccountPopup {
 
         rows.push(field_row(
             msg::tui_account_delete_field_confirm(),
-            text_field_value(&self.confirm_input, self.focus == Field::Confirm),
+            text_field_value(&self.confirm_input, self.focus == Field::Confirm, c),
+            c,
         ));
         rows.push(plain_row(Line::from(Span::styled(
             "deletion is permanent and not synced back",
-            Style::default().fg(ACCENT),
+            c.negative(),
         ))));
         rows.push(plain_row(Line::from(
             "^a deactivate instead — keeps everything readable",
@@ -349,26 +359,23 @@ impl DeleteAccountPopup {
     }
 }
 
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
-}
-
-fn text_field_value(value: &str, focused: bool) -> Line<'static> {
+fn text_field_value(value: &str, focused: bool, c: &Colours) -> Line<'static> {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
+        spans.push(Span::styled("\u{258c}", c.cursor()));
     }
     Line::from(spans)
 }
 
-fn field_row<'a>(label: String, value: Line<'a>) -> RowRenderer<'a> {
+fn field_row<'a>(label: String, value: Line<'a>, c: &Colours) -> RowRenderer<'a> {
     let value = value.clone();
+    let muted = c.muted();
     Box::new(move |frame, area| {
         let columns = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
             .split(area);
-        frame.render_widget(Paragraph::new(Span::styled(&label, dim())), columns[0]);
+        frame.render_widget(Paragraph::new(Span::styled(&label, muted)), columns[0]);
         frame.render_widget(Paragraph::new(value.clone()), columns[1]);
     })
 }
@@ -396,7 +403,7 @@ fn blank_row<'a>() -> RowRenderer<'a> {
     Box::new(|_frame, _area| {})
 }
 
-fn render_title(frame: &mut Frame<'_>, area: Rect, name: &str) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, name: &str, c: &Colours) {
     let tag = ":acct delete";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -410,12 +417,12 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, name: &str) {
         columns[0],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let hints = [
         ("tab", msg::tui_account_delete_help_tab()),
         ("^s", msg::tui_account_delete_help_delete()),
@@ -423,7 +430,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", msg::tui_account_delete_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (index, (key, label)) in hints.iter().enumerate() {
@@ -469,11 +476,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &DeleteAccountPopup, store: &dyn AccountStore) -> String {
+    fn render(popup: &DeleteAccountPopup, store: &dyn AccountStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -507,14 +514,17 @@ mod tests {
 
     #[test]
     fn renders_without_panicking_for_both_empty_and_non_empty_accounts() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         render(
             &DeleteAccountPopup::new(&store, find_id(&store, "Wallet")),
             &store,
+            c,
         );
         render(
             &DeleteAccountPopup::new(&store, find_id(&store, "Everyday Spending")),
             &store,
+            c,
         );
     }
 
@@ -590,9 +600,10 @@ mod tests {
 
     #[test]
     fn shows_holds_figures_and_the_refused_delete_them_too_option() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let everyday = find_id(&store, "Everyday Spending");
-        let text = render(&DeleteAccountPopup::new(&store, everyday), &store);
+        let text = render(&DeleteAccountPopup::new(&store, everyday), &store, c);
 
         assert!(text.contains("1284 txns"));
         assert!(text.contains("4,210.65 AUD"));
@@ -604,12 +615,13 @@ mod tests {
 
     #[test]
     fn shows_the_after_preview_once_a_target_resolves() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let everyday = find_id(&store, "Everyday Spending");
         let mut popup = DeleteAccountPopup::new(&store, everyday);
         popup.target_input = "Mortgage Offset".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("after"));
         assert!(text.contains("into"));
         assert!(text.contains("Mortgage Offset"));
@@ -624,17 +636,19 @@ mod tests {
 
     #[test]
     fn shows_a_placeholder_instead_of_after_while_unresolved() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let everyday = find_id(&store, "Everyday Spending");
-        let text = render(&DeleteAccountPopup::new(&store, everyday), &store);
+        let text = render(&DeleteAccountPopup::new(&store, everyday), &store, c);
         assert!(text.contains("resolves once a same-unit account is typed above"));
     }
 
     #[test]
     fn empty_account_shows_no_transfer_section_at_all() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let wallet = find_id(&store, "Wallet");
-        let text = render(&DeleteAccountPopup::new(&store, wallet), &store);
+        let text = render(&DeleteAccountPopup::new(&store, wallet), &store, c);
 
         assert!(!text.contains("move to another account"));
         assert!(!text.contains("candidates"));
@@ -643,9 +657,10 @@ mod tests {
 
     #[test]
     fn shows_the_title_accent_warning_and_footer_with_ctrl_a_not_bare_a() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let everyday = find_id(&store, "Everyday Spending");
-        let text = render(&DeleteAccountPopup::new(&store, everyday), &store);
+        let text = render(&DeleteAccountPopup::new(&store, everyday), &store, c);
 
         assert!(text.contains("delete Everyday Spending"));
         assert!(text.contains(":acct delete"));

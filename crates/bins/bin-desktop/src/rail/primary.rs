@@ -146,16 +146,16 @@ impl PrimaryRail {
 }
 
 impl RenderOnce for PrimaryRail {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         match self.mode {
-            RailMode::Expanded => self.render_expanded().into_any_element(),
-            RailMode::Collapsed => self.render_collapsed().into_any_element(),
+            RailMode::Expanded => self.render_expanded(cx).into_any_element(),
+            RailMode::Collapsed => self.render_collapsed(cx).into_any_element(),
         }
     }
 }
 
 impl PrimaryRail {
-    fn render_expanded(&self) -> impl IntoElement {
+    fn render_expanded(&self, cx: &App) -> impl IntoElement {
         div()
             .w(WIDTH)
             .flex_none()
@@ -164,20 +164,28 @@ impl PrimaryRail {
             .flex_col()
             .pt(px(14.0))
             .pb(px(10.0))
-            .bg(color::CHROME)
+            .bg(color::chrome(cx))
             .border_r(px(2.0))
             .border_color(if self.focused {
-                color::INK
+                color::foreground(cx)
             } else {
-                color::STRUCTURAL_RULE
+                color::structural_rule(cx)
             })
-            .child(group_heading(crate::msg::desktop_rail_group_ledger(), true))
-            .children(LEDGER_GROUP.iter().map(|row| self.render_row(row)))
-            .child(group_heading(crate::msg::desktop_rail_group_plan(), false))
-            .children(PLAN_GROUP.iter().map(|row| self.render_row(row)))
+            .child(group_heading(
+                crate::msg::desktop_rail_group_ledger(),
+                true,
+                cx,
+            ))
+            .children(LEDGER_GROUP.iter().map(|row| self.render_row(row, cx)))
+            .child(group_heading(
+                crate::msg::desktop_rail_group_plan(),
+                false,
+                cx,
+            ))
+            .children(PLAN_GROUP.iter().map(|row| self.render_row(row, cx)))
             .child(div().flex_1())
-            .child(div().h(px(2.0)).my(px(8.0)).bg(color::RAIL_DIVIDER))
-            .child(self.render_row(&SETTINGS_ROW))
+            .child(div().h(px(2.0)).my(px(8.0)).bg(color::rail_divider(cx)))
+            .child(self.render_row(&SETTINGS_ROW, cx))
     }
 
     /// The "1c" collapsed rail: 52px, centred icon-only boxes, no group headings or jump-key
@@ -190,7 +198,7 @@ impl PrimaryRail {
     /// group from the next, so a thin rule (`collapsed_divider`) stands in their place between
     /// groups -- and, mirroring the expanded rail's own divider before `SETTINGS_ROW`, above
     /// Settings too, keeping the same vertical rhythm the headings established.
-    fn render_collapsed(&self) -> impl IntoElement {
+    fn render_collapsed(&self, cx: &App) -> impl IntoElement {
         div()
             .w(COLLAPSED_WIDTH)
             .flex_none()
@@ -200,31 +208,35 @@ impl PrimaryRail {
             .items_center()
             .py(px(12.0))
             .gap(px(2.0))
-            .bg(color::CHROME)
+            .bg(color::chrome(cx))
             .border_r(px(2.0))
             .border_color(if self.focused {
-                color::INK
+                color::foreground(cx)
             } else {
-                color::STRUCTURAL_RULE
+                color::structural_rule(cx)
             })
             .children(
                 LEDGER_GROUP
                     .iter()
-                    .map(|row| self.render_collapsed_row(row)),
+                    .map(|row| self.render_collapsed_row(row, cx)),
             )
-            .child(collapsed_divider())
-            .children(PLAN_GROUP.iter().map(|row| self.render_collapsed_row(row)))
+            .child(collapsed_divider(cx))
+            .children(
+                PLAN_GROUP
+                    .iter()
+                    .map(|row| self.render_collapsed_row(row, cx)),
+            )
             .child(div().flex_1())
-            .child(collapsed_divider())
-            .child(self.render_collapsed_row(&SETTINGS_ROW))
+            .child(collapsed_divider(cx))
+            .child(self.render_collapsed_row(&SETTINGS_ROW, cx))
     }
 
-    fn render_collapsed_row(&self, row: &Row) -> impl IntoElement {
+    fn render_collapsed_row(&self, row: &Row, cx: &App) -> impl IntoElement {
         let selected = row.noun == self.active;
         let icon_color = if selected {
-            color::INK_ON_DARK
+            color::selection_text(cx)
         } else {
-            color::INK
+            color::foreground(cx)
         };
 
         let badge = (row.noun == Noun::Accounts).then(|| {
@@ -234,7 +246,7 @@ impl PrimaryRail {
                 .right(px(1.0))
                 .w(px(6.0))
                 .h(px(6.0))
-                .bg(color::ACCENT)
+                .bg(color::accent(cx))
         });
 
         let noun = row.noun;
@@ -253,9 +265,9 @@ impl PrimaryRail {
             .items_center()
             .justify_center()
             .cursor_pointer()
-            .when(selected, |this| this.bg(color::INK))
+            .when(selected, |this| this.bg(color::selection_background(cx)))
             .when(!selected, |this| {
-                this.hover(|this| this.bg(color::HOVER_TINT))
+                this.hover(|this| this.bg(color::hover(cx)))
             })
             .on_hover(move |hovered, window, cx| on_hover(noun, *hovered, window, cx))
             .on_click(move |_event, window, cx| on_click(noun, window, cx))
@@ -274,32 +286,32 @@ impl PrimaryRail {
             // paint until after every ancestor's other children, guaranteeing it renders on
             // top regardless of where it sits in the tree.
             .when(show_tooltip, |this| {
-                this.child(gpui::deferred(collapsed_tooltip(row)))
+                this.child(gpui::deferred(collapsed_tooltip(row, cx)))
             })
     }
 
-    fn render_row(&self, row: &Row) -> impl IntoElement {
+    fn render_row(&self, row: &Row, cx: &App) -> impl IntoElement {
         let selected = row.noun == self.active;
         let (icon_color, label_color, label_weight, jump_color) = if selected {
             (
-                color::INK_ON_DARK,
-                color::INK_ON_DARK,
+                color::selection_text(cx),
+                color::selection_text(cx),
                 gpui::FontWeight::EXTRA_BOLD,
-                color::INK_ON_DARK_SECONDARY,
+                color::selection_muted(cx),
             )
         } else {
             (
-                color::INK,
-                color::INK,
+                color::foreground(cx),
+                color::foreground(cx),
                 gpui::FontWeight::NORMAL,
-                color::INK_TERTIARY,
+                color::faint_text(cx),
             )
         };
 
         let badge = (row.noun == Noun::Accounts).then(|| {
             div()
-                .bg(color::ACCENT)
-                .text_color(color::INK_ON_DARK)
+                .bg(color::accent(cx))
+                .text_color(color::background(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .py(px(1.0))
@@ -314,9 +326,9 @@ impl PrimaryRail {
         div()
             .id(gpui::SharedString::from(format!("primary-rail-{noun:?}")))
             .cursor_pointer()
-            .when(selected, |this| this.bg(color::INK))
+            .when(selected, |this| this.bg(color::selection_background(cx)))
             .when(!selected, |this| {
-                this.hover(|this| this.bg(color::HOVER_TINT))
+                this.hover(|this| this.bg(color::hover(cx)))
             })
             .on_click(move |_event, window, cx| on_click(noun, window, cx))
             .flex()
@@ -351,7 +363,7 @@ impl PrimaryRail {
 /// stretching this wrapper to the row's own full height (`top_0()`/`bottom_0()`) and letting
 /// flex `items_center` centre the pill inside it, rather than a fixed offset that would assume
 /// a tooltip content height we don't know in advance.
-fn collapsed_tooltip(row: &Row) -> impl IntoElement {
+fn collapsed_tooltip(row: &Row, cx: &App) -> impl IntoElement {
     div()
         .absolute()
         .left(ROW_BOX + TOOLTIP_GAP)
@@ -365,13 +377,13 @@ fn collapsed_tooltip(row: &Row) -> impl IntoElement {
                 .items_center()
                 .gap(px(8.0))
                 .whitespace_nowrap()
-                .bg(color::INK)
-                .text_color(color::INK_ON_DARK)
+                .bg(color::selection_background(cx))
+                .text_color(color::selection_text(cx))
                 .text_size(px(12.0))
                 .py(px(5.0))
                 .px(px(10.0))
                 .shadow(vec![BoxShadow {
-                    color: color::PALETTE_SHADOW.into(),
+                    color: color::palette_shadow(cx).into(),
                     offset: point(px(0.0), px(3.0)),
                     blur_radius: px(10.0),
                     spread_radius: px(0.0),
@@ -385,7 +397,7 @@ fn collapsed_tooltip(row: &Row) -> impl IntoElement {
                     this.child(
                         div()
                             .text_size(px(11.0))
-                            .text_color(color::INK_ON_DARK_SECONDARY)
+                            .text_color(color::selection_muted(cx))
                             .child(key),
                     )
                 }),
@@ -396,15 +408,15 @@ fn collapsed_tooltip(row: &Row) -> impl IntoElement {
 /// own icon box, so it lines up with the rows above and below it rather than spanning the
 /// full 52px column. The flex column's own `gap(px(2.0))` already gives it breathing room on
 /// both sides -- no extra margin needed.
-fn collapsed_divider() -> impl IntoElement {
-    div().w(ROW_BOX).h(px(2.0)).bg(color::RAIL_DIVIDER)
+fn collapsed_divider(cx: &App) -> impl IntoElement {
+    div().w(ROW_BOX).h(px(2.0)).bg(color::rail_divider(cx))
 }
 
-fn group_heading(label: String, first: bool) -> impl IntoElement {
+fn group_heading(label: String, first: bool, cx: &App) -> impl IntoElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .pl(px(14.0))
         .pr(px(14.0))
         .pb(px(8.0))

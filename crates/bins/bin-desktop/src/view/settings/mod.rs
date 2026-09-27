@@ -14,6 +14,7 @@
 mod about;
 pub mod add_institution_dialog;
 pub mod add_unit_dialog;
+pub mod colour_theme;
 pub mod data_backup;
 pub mod delete_unit_dialog;
 pub mod display;
@@ -24,7 +25,7 @@ pub mod sync_server;
 pub mod tracing;
 pub mod units;
 
-use gpui::{AnyElement, ScrollHandle, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, ScrollHandle, SharedString, div, prelude::*, px};
 
 use lib_core::DateStyle;
 
@@ -50,6 +51,9 @@ pub struct SettingsBodyProps<'a> {
     pub on_date_style_click: display::OnDateStyleClick,
     pub on_row_density_click: display::OnRowDensityClick,
     pub on_status_glyphs_click: display::OnStatusGlyphsClick,
+    /// The Colour Theme card the keyboard is on, when the grid has focus.
+    pub colour_theme_focus: Option<usize>,
+    pub on_colour_theme_click: colour_theme::OnColourThemeClick,
     pub units: &'a [UnitRow],
     pub on_unit_edit_click: units::OnRowIndexClick,
     pub on_unit_delete_click: units::OnRowIndexClick,
@@ -76,6 +80,7 @@ pub fn render(
     focused: bool,
     scroll_handle: &ScrollHandle,
     props: SettingsBodyProps<'_>,
+    cx: &App,
 ) -> AnyElement {
     div()
         .id("settings-body")
@@ -85,22 +90,22 @@ pub fn render(
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
         .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::INK)
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .py(px(22.0))
         .px(px(28.0))
         .flex()
         .flex_col()
-        .child(page_heading())
+        .child(page_heading(cx))
         .children(
             SettingsSection::ALL
                 .into_iter()
-                .map(|section| section_block(section, &props)),
+                .map(|section| section_block(section, &props, cx)),
         )
         .into_any_element()
 }
 
-fn page_heading() -> impl IntoElement {
+fn page_heading(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -113,20 +118,20 @@ fn page_heading() -> impl IntoElement {
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(28.0))
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(Noun::Settings.label()),
                 )
                 .child(
                     div()
                         .text_size(px(11.5))
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .child(crate::msg::desktop_settings_scope_preferences()),
                 ),
         )
         .child(
             div()
                 .h(px(2.0))
-                .bg(color::STRUCTURAL_RULE)
+                .bg(color::structural_rule(cx))
                 .mt(px(14.0))
                 .mb(px(18.0)),
         )
@@ -136,7 +141,11 @@ fn page_heading() -> impl IntoElement {
 /// then a **48px** bottom gap -- every section, no exceptions (README's implementation note 4:
 /// mixed top/bottom margin ownership is how this gap goes missing, so it's carried on a single
 /// edge, here).
-fn section_block(section: SettingsSection, props: &SettingsBodyProps<'_>) -> impl IntoElement {
+fn section_block(
+    section: SettingsSection,
+    props: &SettingsBodyProps<'_>,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -150,24 +159,24 @@ fn section_block(section: SettingsSection, props: &SettingsBodyProps<'_>) -> imp
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(20.0))
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(section.label()),
                 )
                 .child(
                     div()
                         .text_size(px(11.5))
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .child(scope_note(section, props)),
                 ),
         )
         .child(
             div()
                 .h(px(2.0))
-                .bg(color::STRUCTURAL_RULE)
+                .bg(color::structural_rule(cx))
                 .mt(px(14.0))
                 .mb(px(18.0)),
         )
-        .child(section_content(section, props))
+        .child(section_content(section, props, cx))
 }
 
 /// A row count as the number a plural selector takes.
@@ -194,9 +203,13 @@ fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String
 /// Each section's real content -- issue #179 (Display) was the last section still on the
 /// placeholder `section_block` originally rendered for all nine; every `SettingsSection` variant
 /// now has a real arm here, so there is no longer a catch-all fallback.
-fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> AnyElement {
+fn section_content(
+    section: SettingsSection,
+    props: &SettingsBodyProps<'_>,
+    cx: &App,
+) -> AnyElement {
     match section {
-        SettingsSection::General => general::render(),
+        SettingsSection::General => general::render(cx),
         SettingsSection::Display => display::render(
             props.date_style,
             props.row_density,
@@ -206,6 +219,9 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
             props.on_date_style_click.clone(),
             props.on_row_density_click.clone(),
             props.on_status_glyphs_click.clone(),
+            props.colour_theme_focus,
+            props.on_colour_theme_click.clone(),
+            cx,
         ),
         SettingsSection::Units => units::render(
             props.units,
@@ -217,25 +233,29 @@ fn section_content(section: SettingsSection, props: &SettingsBodyProps<'_>) -> A
             props.on_price_source_edit_click.clone(),
             props.on_price_source_delete_click.clone(),
             props.on_add_price_source_click.clone(),
+            cx,
         ),
         SettingsSection::Institutions => institutions::render(
             props.institutions,
             props.on_institution_edit_click.clone(),
             props.on_institution_delete_click.clone(),
             props.on_add_institution_click.clone(),
+            cx,
         ),
-        SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone()),
+        SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone(), cx),
         SettingsSection::DataBackup => data_backup::render(
             props.on_backup_now_click.clone(),
             props.on_export_ledger_click.clone(),
+            cx,
         ),
         SettingsSection::Tracing => tracing::render(
             props.tracing_level,
             props.log_lines,
             props.on_tracing_level_click.clone(),
             props.on_clear_logs_click.clone(),
+            cx,
         ),
-        SettingsSection::About => about::render(),
+        SettingsSection::About => about::render(cx),
     }
 }
 
@@ -260,14 +280,18 @@ pub(super) fn field_label(label: impl Into<SharedString>) -> impl IntoElement {
 /// (`gpui-component` ships an `Input` widget, but adopting it is a bigger, crate-wide styling
 /// decision than one section's ticket should make on its own -- left for whichever future
 /// ticket needs it first). "Save on change" therefore has nothing to save yet.
-pub(super) fn field_value(value: impl Into<SharedString>, select_style: bool) -> impl IntoElement {
+pub(super) fn field_value(
+    value: impl Into<SharedString>,
+    select_style: bool,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .w_full()
         .py(px(8.0))
         .px(px(10.0))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .text_size(px(13.0))
-        .when(select_style, |this| this.bg(color::GROUND))
+        .when(select_style, |this| this.bg(color::background(cx)))
         .child(value.into())
 }

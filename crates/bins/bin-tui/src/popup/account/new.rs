@@ -18,15 +18,15 @@ use lib_core::{AccountType, Money};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use crate::account::{AccountStore, AccountUnit, known_units};
+use crate::colours::Colours;
 use crate::{msg, popup::REFERENCE_TERMINAL_WIDTH};
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "starting bal".len() as u16 + 1;
@@ -225,7 +225,7 @@ impl NewAccountPopup {
     }
 
     /// Renders the floating overlay, centred within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore, c: &Colours) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -253,7 +253,7 @@ impl NewAccountPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_text_field(
             frame,
@@ -261,12 +261,14 @@ impl NewAccountPopup {
             &msg::tui_account_new_field_name(),
             &self.name,
             self.focus == Field::Name,
+            c,
         );
         render_type_field(
             frame,
             rows[3],
             self.account_type.clone(),
             self.focus == Field::Type,
+            c,
         );
         render_text_field(
             frame,
@@ -274,22 +276,24 @@ impl NewAccountPopup {
             &msg::tui_account_new_field_unit(),
             &self.unit_input,
             self.focus == Field::Unit,
+            c,
         );
-        render_completion_row(frame, rows[5], store, &self.unit_input);
+        render_completion_row(frame, rows[5], store, &self.unit_input, c);
         render_text_field(
             frame,
             rows[6],
             &msg::tui_account_new_field_starting_balance(),
             &self.starting_balance_input,
             self.focus == Field::StartingBalance,
+            c,
         );
-        render_active_field(frame, rows[7], self.active, self.focus == Field::Active);
+        render_active_field(frame, rows[7], self.active, self.focus == Field::Active, c);
         // rows[8] is left blank — breathing space above the note.
-        render_note(frame, rows[9], msg::tui_account_new_note_unit_1());
-        render_note(frame, rows[10], msg::tui_account_new_note_unit_2());
+        render_note(frame, rows[9], msg::tui_account_new_note_unit_1(), c);
+        render_note(frame, rows[10], msg::tui_account_new_note_unit_2(), c);
         // rows[11] is left blank — breathing space above the footer rule.
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[12]);
-        render_footer_hints(frame, rows[13]);
+        render_footer_hints(frame, rows[13], c);
     }
 }
 
@@ -299,12 +303,8 @@ impl Default for NewAccountPopup {
     }
 }
 
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
-}
-
 /// The title row: "new account" flush left, the `:acct new` command dim and right-aligned.
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":acct new";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -315,39 +315,52 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
     frame.render_widget(Paragraph::new(msg::tui_account_new_title()), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
 /// One `label   value` row.
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
 /// One editable text field: the typed value, with a trailing accent cursor only when it has
 /// focus.
-fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: &str,
+    focused: bool,
+    c: &Colours,
+) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
+        spans.push(Span::styled("\u{258c}", c.cursor()));
     }
-    render_field(frame, area, label, Line::from(spans));
+    render_field(frame, area, label, Line::from(spans), c);
 }
 
 /// The `type` field's value: a segmented five-way control with the selected option rendered
 /// as a reversed pill (accented when focused, so `h`/`l` has a visible target), then the dim
 /// `· h/l` hint.
-fn render_type_field(frame: &mut Frame<'_>, area: Rect, selected: AccountType, focused: bool) {
+fn render_type_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    selected: AccountType,
+    focused: bool,
+    c: &Colours,
+) {
     let selected_style = if focused {
-        Style::default().fg(ACCENT).add_modifier(Modifier::REVERSED)
+        c.accent_selection()
     } else {
-        Style::default().add_modifier(Modifier::REVERSED)
+        c.selection()
     };
 
     let mut spans = Vec::new();
@@ -363,21 +376,28 @@ fn render_type_field(frame: &mut Frame<'_>, area: Rect, selected: AccountType, f
         }
     }
     spans.push(Span::raw(" "));
-    spans.push(Span::styled("· h/l", dim()));
+    spans.push(Span::styled("· h/l", c.muted()));
 
     render_field(
         frame,
         area,
         &msg::tui_account_new_field_type(),
         Line::from(spans),
+        c,
     );
 }
 
 /// The `active` checkbox row: the glyph in the accent when focused, the "offered when
 /// posting" consequence stated alongside it either way.
-fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
+fn render_active_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    active: bool,
+    focused: bool,
+    c: &Colours,
+) {
     let glyph_style = if focused {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -389,13 +409,20 @@ fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused:
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
-            Span::styled("· offered when posting", dim()),
+            Span::styled("· offered when posting", c.muted()),
         ]),
+        c,
     );
 }
 
 /// The `completion` row beneath `unit` — mirrors `popup::category::new_popup`'s own row.
-fn render_completion_row(frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore, input: &str) {
+fn render_completion_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    store: &dyn AccountStore,
+    input: &str,
+    c: &Colours,
+) {
     let needle = input.to_lowercase();
     let candidates: Vec<String> = known_units(store.accounts())
         .into_iter()
@@ -411,15 +438,16 @@ fn render_completion_row(frame: &mut Frame<'_>, area: Rect, store: &dyn AccountS
         frame,
         area,
         &msg::tui_account_new_placeholder_completion(),
-        Line::from(Span::styled(text, dim())),
+        Line::from(Span::styled(text, c.muted())),
+        c,
     );
 }
 
-fn render_note(frame: &mut Frame<'_>, area: Rect, text: String) {
-    frame.render_widget(Paragraph::new(Span::styled(text, dim())), area);
+fn render_note(frame: &mut Frame<'_>, area: Rect, text: String, c: &Colours) {
+    frame.render_widget(Paragraph::new(Span::styled(text, c.muted())), area);
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let hints = [
         ("tab", msg::tui_account_new_help_tab()),
         ("^s", msg::tui_account_new_help_create()),
@@ -427,7 +455,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", msg::tui_account_new_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (index, (key, label)) in hints.iter().enumerate() {
@@ -467,11 +495,11 @@ mod tests {
     use super::*;
     use crate::account::AccountFixture;
 
-    fn render(popup: &NewAccountPopup, store: &dyn AccountStore) -> String {
+    fn render(popup: &NewAccountPopup, store: &dyn AccountStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -496,8 +524,9 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
-        render(&NewAccountPopup::new(), &store);
+        render(&NewAccountPopup::new(), &store, c);
     }
 
     #[test]
@@ -645,8 +674,9 @@ mod tests {
 
     #[test]
     fn shows_the_note_and_footer_hints() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
-        let text = render(&NewAccountPopup::new(), &store);
+        let text = render(&NewAccountPopup::new(), &store, c);
         assert!(text.contains("unit cannot change afterwards"));
         for key in ["tab", "^s", "^a", "esc"] {
             assert!(text.contains(key), "{key} hint missing");

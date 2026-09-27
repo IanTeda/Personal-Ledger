@@ -13,17 +13,14 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// the input cursor and the precision-lowering warning box.
-const ACCENT: Color = Color::Red;
 
 /// The lock glyph marking a field `docs/ux/tui/units/README.md` §4c locks against editing —
 /// shares the `docs/ux/tui/units/README.md` "Style" section's `🔒` with the summary box
@@ -64,7 +61,7 @@ impl EditUnitPopup {
     /// Renders the floating overlay, centred and sized to its fixed field list, within `area`
     /// (the full terminal area — the popup floats over the shell's status line and footer too,
     /// per §3a's "centred floating overlay", which §4c's own forms reuse verbatim).
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -91,7 +88,7 @@ impl EditUnitPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_locked_field(
             frame,
@@ -99,12 +96,14 @@ impl EditUnitPopup {
             &msg::tui_unit_edit_field_code(),
             "VDHG",
             Some(&msg::tui_unit_edit_note_code(412)),
+            c,
         );
         render_field(
             frame,
             rows[3],
             &msg::tui_unit_edit_field_name(),
-            name_value(),
+            name_value(c),
+            c,
         );
         render_locked_field(
             frame,
@@ -112,12 +111,14 @@ impl EditUnitPopup {
             &msg::tui_unit_edit_field_type(),
             "etf",
             Some(&msg::tui_unit_edit_note_type()),
+            c,
         );
         render_field(
             frame,
             rows[5],
             &msg::tui_unit_edit_field_symbol(),
             Line::from("VDHG.AX"),
+            c,
         );
         render_locked_field(
             frame,
@@ -125,29 +126,32 @@ impl EditUnitPopup {
             &msg::tui_unit_edit_field_priced_in(),
             "AUD",
             None,
+            c,
         );
         render_field(
             frame,
             rows[7],
             &msg::tui_unit_edit_field_qty_precision(),
-            qty_precision_value(),
+            qty_precision_value(c),
+            c,
         );
         render_field(
             frame,
             rows[8],
             &msg::tui_unit_edit_field_active(),
-            active_value(),
+            active_value(c),
+            c,
         );
         // rows[9] is left blank — breathing space above the precision warning.
-        render_precision_warning(frame, rows[10]);
+        render_precision_warning(frame, rows[10], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[11]);
-        render_footer_hints(frame, rows[12]);
+        render_footer_hints(frame, rows[12], c);
     }
 }
 
 /// The title row: "edit unit" flush left, the reference counts dim and right-aligned — §4c's
 /// own "the title row carries the reference counts (`1 account · 412 txns · 52 prices`)".
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = msg::tui_unit_edit_title_tag(1, 412, 52); // TODO: wire up real data
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -158,7 +162,7 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     frame.render_widget(Paragraph::new(msg::tui_unit_edit_title()), columns[0]);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -167,13 +171,13 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
 
 /// One `label   value` row: the label dim and fixed-width, per the shell's "dim for labels"
 /// style role, the value/control filling the rest.
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'_>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'_>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
@@ -187,20 +191,21 @@ fn render_locked_field(
     label: &str,
     value: &'static str,
     reason: Option<&str>,
+    c: &Colours,
 ) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let mut spans = vec![Span::raw(value), Span::raw(" "), Span::raw(LOCK)];
     if let Some(reason) = reason {
         spans.push(Span::raw(" "));
         spans.push(Span::styled(reason, dim));
     }
-    render_field(frame, area, label, Line::from(spans).style(dim));
+    render_field(frame, area, label, Line::from(spans).style(dim), c);
 }
 
 /// The `name` field's value: free text with a trailing accent cursor — the one field the
 /// mockup shows mid-typing (unlike the locked fields around it).
-fn name_value() -> Line<'static> {
-    let cursor = Style::default().fg(ACCENT);
+fn name_value(c: &Colours) -> Line<'static> {
+    let cursor = c.cursor();
     Line::from(vec![
         Span::raw("Vanguard Diversified High Growth"),
         Span::styled("▌", cursor),
@@ -209,8 +214,8 @@ fn name_value() -> Line<'static> {
 
 /// The `qty precision` field's value: the current value, an arrow to the lowered draft, then
 /// the dim `· was <original>` hint — the field driving the precision warning box below it.
-fn qty_precision_value() -> Line<'static> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn qty_precision_value(c: &Colours) -> Line<'static> {
+    let dim = c.muted();
     Line::from(vec![
         Span::raw("3 → 2"),
         Span::raw(" "),
@@ -220,8 +225,8 @@ fn qty_precision_value() -> Line<'static> {
 
 /// The `active` field's value: the checkbox, then the dim hint framing it as the soft
 /// alternative to deletion — §4c's own "the soft alternative to deletion".
-fn active_value() -> Line<'static> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn active_value(c: &Colours) -> Line<'static> {
+    let dim = c.muted();
     Line::from(vec![
         Span::raw("[×]"),
         Span::raw(" "),
@@ -233,8 +238,8 @@ fn active_value() -> Line<'static> {
 /// own "lowering `qty precision` warns before it saves, in a focused box", distinct from
 /// `popup::unit::new`'s own plain (unboxed) permanence warning since this one only shows up
 /// conditionally, tied to the specific field change above it.
-fn render_precision_warning(frame: &mut Frame<'_>, area: Rect) {
-    let accent = Style::default().fg(ACCENT);
+fn render_precision_warning(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let accent = c.accent();
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_unit_edit_precision_warning(), accent)),
         area,
@@ -244,7 +249,7 @@ fn render_precision_warning(frame: &mut Frame<'_>, area: Rect) {
 /// The window footer hint row: each key bold, its label dim — matching `popup::unit::new`'s
 /// own `render_footer_hints` convention, minus the source-testing/pull-prices hints that only
 /// apply at creation.
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let hints = [
         ("tab", msg::tui_unit_edit_help_tab()),
         ("^s", msg::tui_unit_edit_help_save()),
@@ -252,7 +257,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = Style::default().add_modifier(Modifier::DIM);
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (idx, (key, label)) in hints.iter().enumerate() {
@@ -291,11 +296,11 @@ mod tests {
 
     use super::*;
 
-    fn render(popup: &EditUnitPopup) -> String {
+    fn render(popup: &EditUnitPopup, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -311,12 +316,14 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&EditUnitPopup::new());
+        let c = &Colours::default();
+        render(&EditUnitPopup::new(), c);
     }
 
     #[test]
     fn shows_the_title_and_reference_counts() {
-        let text = render(&EditUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditUnitPopup::new(), c);
         assert!(text.contains("edit"), "title missing");
         assert!(text.contains("account"), "account reference missing");
         assert!(text.contains("txn"), "transaction reference missing");
@@ -325,7 +332,8 @@ mod tests {
 
     #[test]
     fn shows_every_field_label() {
-        let text = render(&EditUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditUnitPopup::new(), c);
         for label in [
             "code",
             "name",
@@ -341,7 +349,8 @@ mod tests {
 
     #[test]
     fn shows_the_lock_glyph_and_reasons_on_locked_fields() {
-        let text = render(&EditUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditUnitPopup::new(), c);
         assert_eq!(
             text.matches(LOCK).count(),
             3,
@@ -359,7 +368,8 @@ mod tests {
 
     #[test]
     fn shows_the_precision_warning_box() {
-        let text = render(&EditUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditUnitPopup::new(), c);
         assert!(
             text.contains("QTY PRECISION IS LOWER THAN THE LOWEST HOLDING"),
             "warning line missing"
@@ -368,7 +378,8 @@ mod tests {
 
     #[test]
     fn shows_the_footer_hints() {
-        let text = render(&EditUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditUnitPopup::new(), c);
         for key in ["tab", "^s", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }

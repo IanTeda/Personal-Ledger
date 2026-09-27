@@ -12,17 +12,14 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// the input cursor and the permanence warning.
-const ACCENT: Color = Color::Red;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per `docs/ux/tui/units/README.md`
 /// "The forms" ("~88% width on the drawing") — wider than `popup::command`'s 78%, since a form
@@ -59,7 +56,7 @@ impl NewUnitPopup {
     /// Renders the floating overlay, centred and sized to its fixed field list, within `area`
     /// (the full terminal area — the popup floats over the shell's status line and footer too,
     /// per §3a's "centred floating overlay", which §4b's own forms reuse verbatim).
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -88,72 +85,81 @@ impl NewUnitPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_field(
             frame,
             rows[2],
             &msg::tui_unit_new_field_code(),
-            code_value(),
+            code_value(c),
+            c,
         );
         render_field(
             frame,
             rows[3],
             &msg::tui_unit_new_field_name(),
             Line::from("VGS Intl Shares Index ETF"),
+            c,
         );
         render_field(
             frame,
             rows[4],
             &msg::tui_unit_new_field_type(),
-            type_value(),
+            type_value(c),
+            c,
         );
         render_field(
             frame,
             rows[5],
             &msg::tui_unit_new_field_symbol(),
-            hinted("VGS.AX", &msg::tui_unit_new_hint_symbol()),
+            hinted("VGS.AX", &msg::tui_unit_new_hint_symbol(), c),
+            c,
         );
         render_field(
             frame,
             rows[6],
             &msg::tui_unit_new_field_source(),
-            source_value(),
+            source_value(c),
+            c,
         );
         render_field(
             frame,
             rows[7],
             &msg::tui_unit_new_field_priced_in(),
-            hinted("AUD", &msg::tui_unit_new_hint_priced_in()),
+            hinted("AUD", &msg::tui_unit_new_hint_priced_in(), c),
+            c,
         );
         render_field(
             frame,
             rows[8],
             &msg::tui_unit_new_field_qty_precision(),
-            hinted("3", &msg::tui_unit_new_hint_qty_precision()),
+            hinted("3", &msg::tui_unit_new_hint_qty_precision(), c),
+            c,
         );
         render_field(
             frame,
             rows[9],
             &msg::tui_unit_new_field_price_precision(),
-            hinted("4", &msg::tui_unit_new_hint_price_precision()),
+            hinted("4", &msg::tui_unit_new_hint_price_precision(), c),
+            c,
         );
         render_field(
             frame,
             rows[10],
             &msg::tui_unit_new_field_active(),
             Line::from("[×]"),
+            c,
         );
         // rows[11] is left blank — breathing space above the permanence warning.
-        render_warning(frame, rows[12], &msg::tui_unit_new_warning());
+        render_warning(frame, rows[12], &msg::tui_unit_new_warning(), c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[13]);
-        render_footer_hints(frame, rows[14]);
+        render_footer_hints(frame, rows[14], c);
     }
 }
 
 /// The title row: "new unit" flush left, the `:unit new` command dim and right-aligned —
 /// echoing the command popup's own prompt row, per §4b's "title row left, context right".
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = msg::tui_unit_new_command();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -164,7 +170,7 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     frame.render_widget(Paragraph::new(msg::tui_unit_new_title()), columns[0]);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -173,21 +179,21 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
 
 /// One `label   value` row: the label dim and fixed-width, per the shell's "dim for labels"
 /// style role, the value/control filling the rest.
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'_>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'_>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
 /// A plain value followed by a dim `· hint` — the pattern most fields use (`symbol`, `priced
 /// in`, `qty precision`, `price precision`).
-fn hinted<'a>(value: &'static str, hint: &'a str) -> Line<'a> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn hinted<'a>(value: &'static str, hint: &'a str, c: &Colours) -> Line<'a> {
+    let dim = c.muted();
     Line::from(vec![
         Span::raw(value),
         Span::raw(" "),
@@ -197,9 +203,9 @@ fn hinted<'a>(value: &'static str, hint: &'a str) -> Line<'a> {
 
 /// The `code` field's value: the placeholder code, an accent block cursor, then its dim rule
 /// hint — the one field the mockup shows mid-typing.
-fn code_value() -> Line<'static> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
-    let cursor = Style::default().fg(ACCENT);
+fn code_value(c: &Colours) -> Line<'static> {
+    let dim = c.muted();
+    let cursor = c.cursor();
     Line::from(vec![
         Span::raw("VGS"),
         Span::styled("▌", cursor),
@@ -210,9 +216,9 @@ fn code_value() -> Line<'static> {
 
 /// The `type` field's value: a segmented `currency / etf / share / crypto` control with the
 /// selected option rendered as a reversed pill, then the dim `· ↔` toggle hint.
-fn type_value() -> Line<'static> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
-    let selected = Style::default().add_modifier(Modifier::REVERSED);
+fn type_value(c: &Colours) -> Line<'static> {
+    let dim = c.muted();
+    let selected = c.selection();
     Line::from(vec![
         Span::raw("currency "),
         Span::styled(" etf ", selected),
@@ -223,8 +229,8 @@ fn type_value() -> Line<'static> {
 
 /// The `source` field's value: the current price-feed source, then the dim list of
 /// alternatives and the `↔` toggle hint.
-fn source_value() -> Line<'static> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn source_value(c: &Colours) -> Line<'static> {
+    let dim = c.muted();
     Line::from(vec![
         Span::raw("yahoo"),
         Span::raw(" "),
@@ -234,16 +240,13 @@ fn source_value() -> Line<'static> {
 
 /// One line of the permanence warning, in the accent — the mockup's own emphasis for a
 /// constraint that can only be honoured at creation.
-fn render_warning(frame: &mut Frame<'_>, area: Rect, text: &str) {
-    frame.render_widget(
-        Paragraph::new(Span::styled(text, Style::default().fg(ACCENT))),
-        area,
-    );
+fn render_warning(frame: &mut Frame<'_>, area: Rect, text: &str, c: &Colours) {
+    frame.render_widget(Paragraph::new(Span::styled(text, c.accent())), area);
 }
 
 /// The window footer hint row: each key bold, its label dim — matching the command popup's own
 /// `footer_hint_line` convention.
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let hints = [
         ("tab", msg::tui_unit_new_help_tab()),
         ("^s", msg::tui_unit_new_help_create()),
@@ -251,7 +254,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = Style::default().add_modifier(Modifier::DIM);
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (idx, (key, label)) in hints.iter().enumerate() {
@@ -290,11 +293,11 @@ mod tests {
 
     use super::*;
 
-    fn render(popup: &NewUnitPopup) -> String {
+    fn render(popup: &NewUnitPopup, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -310,19 +313,22 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        render(&NewUnitPopup::new(), c);
     }
 
     #[test]
     fn shows_the_title_and_command_tag() {
-        let text = render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&NewUnitPopup::new(), c);
         assert!(text.contains("new unit"), "title missing");
         assert!(text.contains(":unit new"), "command tag missing");
     }
 
     #[test]
     fn shows_every_field_label() {
-        let text = render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&NewUnitPopup::new(), c);
         for label in [
             "code",
             "name",
@@ -340,7 +346,8 @@ mod tests {
 
     #[test]
     fn shows_the_permanence_warning() {
-        let text = render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&NewUnitPopup::new(), c);
         assert!(
             text.contains("CODE AND PRICE PRECISION CANNOT CHANGE ONCE"),
             "warning line 1 missing"
@@ -353,7 +360,8 @@ mod tests {
 
     #[test]
     fn shows_the_footer_hints() {
-        let text = render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&NewUnitPopup::new(), c);
         for key in ["tab", "^s", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }

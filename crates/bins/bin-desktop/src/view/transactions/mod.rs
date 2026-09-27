@@ -20,7 +20,7 @@ pub use table::OnRowClick;
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, Pixels, UniformListScrollHandle, div, prelude::*, px};
+use gpui::{AnyElement, App, Pixels, UniformListScrollHandle, div, prelude::*, px};
 
 use crate::{theme::color, transaction_chips::Footer, transaction_rows::RowView};
 
@@ -40,7 +40,7 @@ pub struct TransactionsPageProps {
 }
 
 /// The page: the fixed header block, the fixed column header, the one flexing list, the fixed footer.
-pub fn render(focused: bool, props: TransactionsPageProps) -> AnyElement {
+pub fn render(focused: bool, props: TransactionsPageProps, cx: &App) -> AnyElement {
     div()
         .id("transactions")
         .flex_1()
@@ -50,23 +50,24 @@ pub fn render(focused: bool, props: TransactionsPageProps) -> AnyElement {
         .flex_col()
         .overflow_hidden()
         .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::INK)
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .when(props.dimmed, |this| this.opacity(0.55))
-        .child(header::render(props.header))
-        .child(table::column_header())
+        .child(header::render(props.header, cx))
+        .child(table::column_header(cx))
         .child(table::rows(
             props.rows,
             props.selected,
             props.row_height,
             props.scroll,
             props.on_row_click,
+            cx,
         ))
-        .child(footer::render(&props.footer))
+        .child(footer::render(&props.footer, cx))
         .into_any_element()
 }
 
 /// Draws the filter popover over the window: see [`filter_popover`].
-pub fn render_popover(props: PopoverProps<'_>) -> AnyElement {
-    filter_popover::render(props)
+pub fn render_popover(props: PopoverProps<'_>, cx: &App) -> AnyElement {
+    filter_popover::render(props, cx)
 }

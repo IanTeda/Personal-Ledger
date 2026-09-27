@@ -24,7 +24,9 @@
 //! -- the same shape `bin-tui`'s own `Action` enum already uses (ADR-0013), just per-command
 //! rather than per-keypress.
 
-use crate::{explorer::ExplorerMode, nav::Noun};
+use lib_colour_theme::ColourAppearance;
+
+use crate::{colours::ColourChange, explorer::ExplorerMode, nav::Noun};
 
 /// What running a command does -- the palette's, and `Shell::run_command`'s, one source of
 /// truth. Every variant is a real effect: there's no `None`/`Option` case standing in for "not
@@ -42,6 +44,9 @@ pub enum CommandEffect {
     /// An `accounts <verb> [<account name>]` command: `Shell::run_command` jumps to the Accounts
     /// page and opens the matching dialog, resolving the typed name (see [`split_input`]).
     Accounts(AccountsVerb),
+    /// Sets the `colour_theme` or `colour_appearance` Preference, the same as picking it in
+    /// Settings' Colour Theme group.
+    Colour(ColourChange),
     /// No real behaviour behind this command yet (`docs/ux/tui/README.md`'s commitment: "a
     /// command that has no real behaviour yet says so explicitly when run") --
     /// `Shell::run_command` turns this into the status-line flash.
@@ -256,6 +261,30 @@ pub const COMMANDS: &[Command] = &[
         binding: Some("g s"),
         effect: CommandEffect::Navigate(Noun::Settings),
     },
+    colour_theme_command("theme modernist", "modernist", || {
+        colour_theme_description(lib_locale::msg::colour_theme_modernist())
+    }),
+    colour_theme_command("theme high-contrast", "high_contrast", || {
+        colour_theme_description(lib_locale::msg::colour_theme_high_contrast())
+    }),
+    colour_theme_command("theme catppuccin", "catppuccin", || {
+        colour_theme_description(lib_locale::msg::colour_theme_catppuccin())
+    }),
+    colour_theme_command("theme gruvbox", "gruvbox", || {
+        colour_theme_description(lib_locale::msg::colour_theme_gruvbox())
+    }),
+    colour_theme_command("theme nord", "nord", || {
+        colour_theme_description(lib_locale::msg::colour_theme_nord())
+    }),
+    colour_appearance_command("appearance light", ColourAppearance::Light, || {
+        colour_appearance_description(lib_locale::msg::colour_appearance_light())
+    }),
+    colour_appearance_command("appearance dark", ColourAppearance::Dark, || {
+        colour_appearance_description(lib_locale::msg::colour_appearance_dark())
+    }),
+    colour_appearance_command("appearance system", ColourAppearance::System, || {
+        colour_appearance_description(lib_locale::msg::colour_appearance_system())
+    }),
     Command {
         name: "tags",
         domain: Domain::Tags,
@@ -271,6 +300,42 @@ pub const COMMANDS: &[Command] = &[
         effect: CommandEffect::Navigate(Noun::Transactions),
     },
 ];
+
+const fn colour_theme_command(
+    name: &'static str,
+    id: &'static str,
+    description: fn() -> String,
+) -> Command {
+    Command {
+        name,
+        domain: Domain::Settings,
+        description,
+        binding: None,
+        effect: CommandEffect::Colour(ColourChange::Theme(id)),
+    }
+}
+
+const fn colour_appearance_command(
+    name: &'static str,
+    appearance: ColourAppearance,
+    description: fn() -> String,
+) -> Command {
+    Command {
+        name,
+        domain: Domain::Settings,
+        description,
+        binding: None,
+        effect: CommandEffect::Colour(ColourChange::Appearance(appearance)),
+    }
+}
+
+fn colour_theme_description(theme: String) -> String {
+    crate::msg::desktop_command_colour_theme_description(&theme)
+}
+
+fn colour_appearance_description(appearance: String) -> String {
+    crate::msg::desktop_command_colour_appearance_description(&appearance)
+}
 
 fn accounts_new_description() -> String {
     crate::msg::desktop_command_accounts_new_description("accounts new")
@@ -385,6 +450,31 @@ mod tests {
 
         let new = COMMANDS.iter().find(|c| c.name == "new").unwrap();
         assert_eq!(new.effect, CommandEffect::OpenDialog(ExplorerMode::New));
+    }
+
+    #[test]
+    fn every_built_in_colour_theme_and_appearance_has_a_command() {
+        for theme in lib_colour_theme::ColourTheme::built_in() {
+            assert!(
+                COMMANDS
+                    .iter()
+                    .any(|c| c.effect == CommandEffect::Colour(ColourChange::Theme(theme.id))),
+                "no command sets Colour Theme {}",
+                theme.id
+            );
+        }
+        for appearance in [
+            ColourAppearance::Light,
+            ColourAppearance::Dark,
+            ColourAppearance::System,
+        ] {
+            assert!(
+                COMMANDS.iter().any(
+                    |c| c.effect == CommandEffect::Colour(ColourChange::Appearance(appearance))
+                ),
+                "no command sets {appearance:?}"
+            );
+        }
     }
 
     #[test]

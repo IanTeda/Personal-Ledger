@@ -22,6 +22,7 @@ const COLUMN_WIDTH: gpui::Pixels = px(300.0);
 pub fn render(
     on_backup_now_click: OnBackupNowClick,
     on_export_ledger_click: OnExportLedgerClick,
+    cx: &App,
 ) -> AnyElement {
     div()
         .w(COLUMN_WIDTH)
@@ -33,34 +34,38 @@ pub fn render(
             crate::msg::desktop_settings_backup_location(),
             "~/.ledger/personal",
             px(11.0),
+            cx,
         ))
         .child(row(
             crate::msg::desktop_settings_backup_last(),
             "12 sep 2026 \u{b7} 23:10",
             px(12.0),
+            cx,
         ))
         .child(button(
             "settings-backup-now",
             crate::msg::desktop_settings_backup_now(),
             true,
             move |window, cx| on_backup_now_click(window, cx),
+            cx,
         ))
         .child(button(
             "settings-export-ledger",
             crate::msg::desktop_settings_backup_export(),
             false,
             move |window, cx| on_export_ledger_click(window, cx),
+            cx,
         ))
         .into_any_element()
 }
 
-fn row(label: String, value: &'static str, value_size: gpui::Pixels) -> impl IntoElement {
+fn row(label: String, value: &'static str, value_size: gpui::Pixels, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .justify_between()
         .items_center()
         .py(px(8.0))
-        .child(div().text_color(color::INK_SECONDARY).child(label))
+        .child(div().text_color(color::muted(cx)).child(label))
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -78,6 +83,7 @@ fn button(
     label: String,
     top_gap: bool,
     on_click: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> impl IntoElement {
     let mut button = div()
         .id(id)
@@ -85,9 +91,9 @@ fn button(
         .when(top_gap, |this| this.mt(px(8.0)))
         .py(px(8.0))
         .px(px(16.0))
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .on_click(move |_event, window, cx| on_click(window, cx))

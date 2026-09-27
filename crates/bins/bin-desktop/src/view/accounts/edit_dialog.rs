@@ -24,6 +24,10 @@ use crate::{
     theme::color,
 };
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the dialog's callbacks plus the App the Colour Theme is read from; a handlers struct is the sweep's call"
+)]
 pub fn render(
     form: &AccountForm,
     account: &Account,
@@ -32,6 +36,7 @@ pub fn render(
     on_option_click: OnOptionClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &gpui::App,
 ) -> AnyElement {
     let focused = |field: AccountField| form.focused == field;
     let click = |field: AccountField| -> dialog::OnClick {
@@ -55,6 +60,7 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_accounts_edit_title(),
             false,
+            cx,
         ))
         .child(dialog::body([
             text_field(
@@ -64,30 +70,37 @@ pub fn render(
                 &crate::msg::desktop_accounts_name_placeholder(),
                 focused(AccountField::Name),
                 click(AccountField::Name),
+                cx,
             ),
             two_up([
-                select_field::render(SelectFieldProps {
-                    id: "edit-account-institution",
-                    label: lib_locale::msg::column_institution().into(),
-                    options: &options.institutions,
-                    state: &form.institution,
-                    focused: focused(AccountField::Institution),
-                    read_only: form
-                        .is_cash()
-                        .then(|| accounts::institution_label(NO_INSTITUTION).into()),
-                    on_field_click: click(AccountField::Institution),
-                    on_option_click: option_click(AccountField::Institution),
-                }),
-                select_field::render(SelectFieldProps {
-                    id: "edit-account-type",
-                    label: lib_locale::msg::column_type().into(),
-                    options: &options.types,
-                    state: &form.account_type,
-                    focused: focused(AccountField::Type),
-                    read_only: None,
-                    on_field_click: click(AccountField::Type),
-                    on_option_click: option_click(AccountField::Type),
-                }),
+                select_field::render(
+                    SelectFieldProps {
+                        id: "edit-account-institution",
+                        label: lib_locale::msg::column_institution().into(),
+                        options: &options.institutions,
+                        state: &form.institution,
+                        focused: focused(AccountField::Institution),
+                        read_only: form
+                            .is_cash()
+                            .then(|| accounts::institution_label(NO_INSTITUTION).into()),
+                        on_field_click: click(AccountField::Institution),
+                        on_option_click: option_click(AccountField::Institution),
+                    },
+                    cx,
+                ),
+                select_field::render(
+                    SelectFieldProps {
+                        id: "edit-account-type",
+                        label: lib_locale::msg::column_type().into(),
+                        options: &options.types,
+                        state: &form.account_type,
+                        focused: focused(AccountField::Type),
+                        read_only: None,
+                        on_field_click: click(AccountField::Type),
+                        on_option_click: option_click(AccountField::Type),
+                    },
+                    cx,
+                ),
             ]),
             two_up([
                 read_only_field(
@@ -95,41 +108,50 @@ pub fn render(
                     suffixed_label(
                         lib_locale::msg::column_unit(),
                         crate::msg::desktop_field_fixed(),
+                        cx,
                     ),
                     account.unit.clone(),
+                    cx,
                 ),
                 read_only_field(
                     "edit-account-balance",
                     suffixed_label(
                         crate::msg::desktop_accounts_field_opening_balance(),
                         crate::msg::desktop_field_fixed(),
+                        cx,
                     ),
                     crate::format::amount(&account.balance).1,
+                    cx,
                 ),
             ]),
             text_field(
                 "edit-account-number",
-                add_dialog::optional_label(crate::msg::desktop_accounts_field_number()),
+                add_dialog::optional_label(crate::msg::desktop_accounts_field_number(), cx),
                 &form.account_number,
                 "\u{2022}\u{2022}\u{2022}\u{2022} \u{2022}\u{2022}\u{2022}\u{2022} 1234",
                 focused(AccountField::AccountNumber),
                 click(AccountField::AccountNumber),
+                cx,
             ),
-            dialog::info_panel(usage_notice(account)).into_any_element(),
+            dialog::info_panel(usage_notice(account), cx).into_any_element(),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("edit-account-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "edit-account-confirm",
-                crate::msg::desktop_accounts_edit_submit(),
-                form.is_valid(),
-                false,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("edit-account-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "edit-account-confirm",
+                    crate::msg::desktop_accounts_edit_submit(),
+                    form.is_valid(),
+                    false,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
-    dialog::overlay(add_dialog::WIDTH, false, card)
+    dialog::overlay(add_dialog::WIDTH, false, card, cx)
 }
 
 /// `Opened Mar 2019 · 312 transactions. Renaming is safe. ...` -- the usage notice, with the
@@ -143,7 +165,12 @@ fn usage_notice(account: &Account) -> String {
 
 /// A label above a non-interactive box in the chrome tint: the Unit and Opening balance an
 /// existing account can no longer change.
-fn read_only_field(id: &'static str, label: AnyElement, value: String) -> AnyElement {
+fn read_only_field(
+    id: &'static str,
+    label: AnyElement,
+    value: String,
+    cx: &gpui::App,
+) -> AnyElement {
     div()
         .flex_1()
         .min_w(px(0.0))
@@ -155,10 +182,10 @@ fn read_only_field(id: &'static str, label: AnyElement, value: String) -> AnyEle
                 .py(px(8.0))
                 .px(px(10.0))
                 .border_1()
-                .border_color(color::BORDER)
-                .bg(color::CHROME)
+                .border_color(color::border(cx))
+                .bg(color::chrome(cx))
                 .text_size(px(13.0))
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(SharedString::from(value)),
         )
         .into_any_element()

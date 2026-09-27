@@ -25,6 +25,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::account::AccountStore;
 use crate::category::CategoryStore;
+use crate::colours::Colours;
 use crate::payee::{AliasMode, PayeeStore};
 use crate::tag::TagStore;
 
@@ -128,6 +129,18 @@ pub enum Action {
     /// no real "currently selected setting" state yet to route a generic commit through —
     /// `view::settings::SettingsView`'s own module doc says more.
     OpenBaseUnitGuardPopup,
+    /// `Enter` on the Settings Display group's `colour theme` row — opens its list popup.
+    OpenColourThemePopup,
+    /// `Enter` on the Settings Display group's `appearance` row — opens its list popup.
+    OpenColourAppearancePopup,
+    /// `j`/`Down` in the colour list popup — moves down a row and previews it.
+    ColourPopupDown,
+    /// `k`/`Up` in the colour list popup — moves up a row and previews it.
+    ColourPopupUp,
+    /// `Enter` in the colour list popup — keeps the previewed Preference and closes.
+    ColourPopupKeep,
+    /// `Esc` in the colour list popup — restores the Preference it opened on and closes.
+    ColourPopupRevert,
     /// `Esc` while a settings popup (the §4b editor or the §4c guard) is open — closes it
     /// without committing anything.
     CloseSettingsPopup,
@@ -147,6 +160,11 @@ pub enum Action {
     /// from returning `None`, which `Shell::run`'s event loop treats as "nothing happened" and
     /// skips the next redraw for.
     NoOp,
+    /// Sets the in-memory `colour_theme` Preference (null draws the default); `Shell`
+    /// re-resolves its `Colours` and the next draw shows it.
+    SetColourTheme(Option<String>),
+    /// Sets the in-memory `colour_appearance` Preference (null follows System).
+    SetColourAppearance(Option<lib_colour_theme::ColourAppearance>),
     /// `m` on a Categories tree row — opens the move popup (`crate::popup::category::
     /// move_popup`, "Categories: 5b move popup") for the given category.
     OpenCategoryMovePopup(RowID),
@@ -571,7 +589,7 @@ pub trait View {
 
     /// Renders the view into the given area of the frame — the full-bleed view region below
     /// the status line and above the command line.
-    fn view(&self, frame: &mut Frame<'_>, area: Rect);
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours);
 
     /// This view's stable id, which `Shell` navigates on.
     fn id(&self) -> ViewId;

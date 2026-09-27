@@ -1,117 +1,91 @@
-//! Fixed design tokens for the desktop shell chrome, from the Modernist design system
-//! (`docs/ux/desktop/Shell & Navigation/README.md`'s "Design Tokens" table). These are
-//! literal constants, not a themeable palette -- the handoff has no dark-mode variant and
-//! states "introduce no values outside this set" as a system rule. `gpui-component`'s own
-//! `ActiveTheme` stays scoped to the chart/table widgets it already renders (see ADR-0016);
-//! shell code should reach for the constants here instead.
+//! Design tokens for the desktop shell chrome. Colours come from the resolved Colour Theme
+//! (`color`, ADR-0025); type scale and spacing stay fixed by the Modernist design system
+//! (`docs/ux/desktop/Shell & Navigation/README.md`'s "Design Tokens" table), as a Colour
+//! Theme doesn't carry them (`docs/colour-themes-design.md` "Not part of a Colour Theme").
 //!
 //! Radius is deliberately not a constant here: the handoff's rule is `0` everywhere, no
 //! exceptions, which is already `gpui`'s default for an unstyled `div` -- there's nothing to
 //! encode, and adding a `RADIUS` constant would invite someone to eventually pass it a
 //! non-zero value.
 
-use gpui::{FontWeight, Pixels, Rgba, px};
+use gpui::{FontWeight, Pixels, px};
 
-/// Same conversion `gpui::rgb`/`gpui::rgba` do, redeclared as `const fn` so the palette below
-/// can be real compile-time constants -- `gpui`'s own versions aren't `const fn`.
-const fn rgb(hex: u32) -> Rgba {
-    let bytes = hex.to_be_bytes();
-    Rgba {
-        r: bytes[1] as f32 / 255.0,
-        g: bytes[2] as f32 / 255.0,
-        b: bytes[3] as f32 / 255.0,
-        a: 1.0,
-    }
-}
-
-/// See [`rgb`]. `hex` is packed `0xRRGGBBAA`, matching `gpui::rgba`'s own convention.
-const fn rgba(hex: u32) -> Rgba {
-    let bytes = hex.to_be_bytes();
-    Rgba {
-        r: bytes[0] as f32 / 255.0,
-        g: bytes[1] as f32 / 255.0,
-        b: bytes[2] as f32 / 255.0,
-        a: bytes[3] as f32 / 255.0,
-    }
-}
-
-/// The Modernist palette. Every color the shell chrome may use, and nothing else.
+/// The resolved Colour Theme's colours, one accessor per Colour Role and calculated colour
+/// (`docs/colour-themes-design.md`), read from the `crate::colours::Colours` Global.
 pub mod color {
-    use super::*;
+    use gpui::{App, Rgba};
+    use lib_colour_theme::ResolvedColours;
 
-    pub const GROUND: Rgba = rgb(0xf3f2f2);
-    pub const CHROME: Rgba = rgb(0xeae9e9);
-    pub const INSET_TRACK: Rgba = rgb(0xe2e0df);
-    pub const INK: Rgba = rgb(0x201e1d);
-    pub const INK_SECONDARY: Rgba = rgb(0x605d5d);
-    pub const INK_TERTIARY: Rgba = rgb(0x9b9797);
-    /// Ink on dark (inverted rows, e.g. a selected rail row).
-    pub const INK_ON_DARK: Rgba = rgb(0xf3f2f2);
-    pub const INK_ON_DARK_SECONDARY: Rgba = rgb(0xbab6b6);
-    pub const INK_ON_DARK_TERTIARY: Rgba = rgb(0xd7d3d3);
-    /// Hairline between rows within a rail.
-    pub const HAIRLINE: Rgba = rgb(0xd7d3d3);
-    /// The lighter hairline used for table rules.
-    pub const HAIRLINE_LIGHT: Rgba = rgb(0xeae9e9);
-    /// The 2px structural rule between shell bands/columns: `rgba(32,30,29,.38)`.
-    pub const STRUCTURAL_RULE: Rgba = rgba(0x201e1d61);
-    /// `Border`: `rgba(32,30,29,.30)` -- an unfocused input/button border (the handoffs'
-    /// design-token tables list this role separately from [`Self::STRUCTURAL_RULE`]'s `.38`,
-    /// even though earlier code duplicated its value as an inline `gpui::rgba(0x201e1d4d)`
-    /// rather than a shared constant -- see `crate::explorer`'s own header/Cancel button).
-    pub const BORDER: Rgba = rgba(0x201e1d4d);
-    /// `Dimmer`: the same `rgba(32,30,29,.30)` value as [`Self::BORDER`], under its own name
-    /// for the Settings dialog component's full-viewport scrim
-    /// (`docs/ux/desktop/Settings/README.md`'s "Dimmer" row) -- today's other floating
-    /// overlays (`crate::palette::Palette`, `crate::explorer::FileExplorer`) dim the shell by
-    /// reducing its own opacity instead (`Shell::render`'s `content_opacity`), so this is the
-    /// first real use of an overlay scrim in this crate.
-    pub const DIMMER: Rgba = BORDER;
-    /// The in-rail group divider: `rgba(32,30,29,.20)`.
-    pub const RAIL_DIVIDER: Rgba = rgba(0x201e1d33);
-    /// Row/result hover tint: `rgba(32,30,29,.06)`.
-    pub const HOVER_TINT: Rgba = rgba(0x201e1d0f);
-    /// The shared design system's generic `--color-divider` (`styles.css`):
-    /// `color-mix(in srgb, #201e1d 40%, transparent)`, i.e. `rgba(32,30,29,.40)`. Used by the
-    /// `.seg`/`.seg-opt` segmented-control classes (`crate::view::settings::add_unit_dialog::segmented_control`,
-    /// reused by `display`) -- distinct from [`Self::BORDER`]'s `.30`, which is the value every inline-styled
-    /// `Input`/`select` border in the 2a mockup uses instead. Coincides numerically with
-    /// [`Self::DIALOG_SHADOW`]'s own `.40` alpha; named separately since the two mean
-    /// different things.
-    pub const DIVIDER: Rgba = rgba(0x201e1d66);
+    use crate::colours::{resolved, to_gpui};
 
-    /// Reserved for the primary action, the Reconcile badge, over-budget state, the block
-    /// caret, matched substrings, the focus ring, the COMMAND mode badge, and a segmented
-    /// control's selected option (`.seg-opt:has(input:checked)` in `styles.css`) -- never an
-    /// unconditional background field in the shell otherwise (the handoff's "Accent
-    /// discipline").
-    pub const ACCENT: Rgba = rgb(0xec3013);
-    /// Accent for a matched substring on a dark (selected) row.
-    pub const ACCENT_ON_DARK: Rgba = rgb(0xff9783);
-    /// `ACCENT` doesn't clear 4.5:1 contrast on `GROUND` at body size and below -- use this
-    /// instead for accent-colored *text* at 13px or smaller.
-    pub const ACCENT_TEXT: Rgba = rgb(0xae1800);
+    macro_rules! accessors {
+        ($($(#[$doc:meta])* $name:ident => |$c:ident| $value:expr;)*) => {
+            $(
+                $(#[$doc])*
+                pub fn $name(cx: &App) -> Rgba {
+                    let $c: &ResolvedColours = resolved(cx);
+                    to_gpui($value)
+                }
+            )*
+        };
+    }
 
-    /// The command palette's own drop shadow: `0 12px 32px rgba(45,43,43,.30)` -- the handoff's
-    /// "Shadows" section names this as the shell's one exception to "nothing else elevates," so
-    /// it earns its own token rather than reusing `STRUCTURAL_RULE`'s different ink/alpha.
-    pub const PALETTE_SHADOW: Rgba = rgba(0x2d2b2b4d);
-    /// The "1e" file explorer dialog's own drop shadow: `0 16px 48px rgba(32,30,29,.40)`, named
-    /// inline in the handoff's mockup markup rather than its "Shadows" table (that table
-    /// predates the file explorer) -- a second named exception alongside `PALETTE_SHADOW`.
-    pub const DIALOG_SHADOW: Rgba = rgba(0x201e1d66);
-    /// `Positive` (`docs/ux/desktop/Settings/README.md`'s Design Tokens table): the Sync
-    /// server section's own "connected" status dot and text -- the first use of this role.
-    pub const POSITIVE: Rgba = rgb(0x2ecc71);
-    /// `.tag-accent`'s own background (`docs/ux/desktop/Shell & Navigation/styles.css`'s
-    /// `--color-accent-100`) -- the Units section's own "base" flag pill (issue #189). `.tag`'s
-    /// own `border-radius` is deliberately not carried over here: this crate's "Radius 0
-    /// everywhere" rule (this module's own doc) has no other exception for a general rounded
-    /// pill shape, only the one already-justified circular status dot, so the flag renders
-    /// square rather than reproducing the shared library's own rounded corner.
-    pub const TAG_ACCENT_BG: Rgba = rgb(0xfff2ef);
-    /// `.tag-accent`'s own text colour (`--color-accent-800`).
-    pub const TAG_ACCENT_TEXT: Rgba = rgb(0x7c1405);
+    // Translucent `foreground` colours stay translucent, so they draw over any surface.
+    accessors! {
+        foreground => |c| c.roles.foreground;
+        background => |c| c.roles.background;
+        /// The primary action, focus ring, matched substrings and other emphasis; never an
+        /// unconditional background field ("Accent discipline").
+        accent => |c| c.roles.accent;
+        /// The text-entry caret only.
+        cursor => |c| c.roles.cursor;
+        /// Secondary text.
+        muted => |c| c.roles.muted;
+        positive => |c| c.roles.positive;
+        negative => |c| c.roles.negative;
+        hover => |c| c.hover;
+        /// Hairlines between rows and table rules.
+        hairline => |c| c.hairline;
+        rail_divider => |c| c.rail_divider;
+        /// An unfocused input or button border.
+        border => |c| c.border;
+        /// The 2px rule between shell bands and columns.
+        structural_rule => |c| c.structural_rule;
+        /// The segmented control's divider.
+        divider => |c| c.divider;
+        /// A dialog's full-viewport dimmer.
+        scrim => |c| c.scrim;
+        palette_shadow => |c| c.palette_shadow;
+        dialog_shadow => |c| c.dialog_shadow;
+        /// Panel bands, status line, disabled fields.
+        chrome => |c| c.chrome;
+        inset_track => |c| c.inset_track;
+        /// Placeholders, jump keys, meta.
+        faint_text => |c| c.faint_text;
+        /// `accent` as text on `background`, at the text contrast rule.
+        accent_text => |c| c.text_shades.accent;
+        positive_text => |c| c.text_shades.positive;
+        negative_text => |c| c.text_shades.negative;
+        /// The selected row's fill.
+        selection_background => |c| c.selection.background;
+        selection_text => |c| c.selection.text;
+        selection_muted => |c| c.selection.muted;
+        selection_accent_text => |c| c.selection.text_shades.accent;
+        selection_positive_text => |c| c.selection.text_shades.positive;
+        selection_negative_text => |c| c.selection.text_shades.negative;
+        /// The accent tint background (the Units "base" flag pill).
+        accent_tint => |c| c.accent_tint;
+        accent_tint_text => |c| c.accent_tint_text;
+        info_toast_background => |c| c.info_toast.background;
+        info_toast_text => |c| c.info_toast.text;
+        info_toast_border => |c| c.info_toast.border;
+        info_toast_bar => |c| c.info_toast.bar;
+    }
+
+    /// Chart series `index` (0-based), repeating after the fifth.
+    pub fn chart_series(index: usize, cx: &App) -> Rgba {
+        to_gpui(resolved(cx).chart_series_colour(index))
+    }
 }
 
 /// Type scale. Archivo throughout, bundled offline (see `crate::main`'s `add_fonts` call) --

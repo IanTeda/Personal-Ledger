@@ -32,6 +32,7 @@ pub fn render(
     form: &DeleteUnitForm,
     on_cancel: dialog::OnClick,
     on_confirm: dialog::OnClick,
+    cx: &App,
 ) -> AnyElement {
     let code = row.code.as_str();
     let card = div()
@@ -40,28 +41,34 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_settings_units_delete_title(code),
             true,
+            cx,
         ))
         .child(dialog::body([
             warning_copy().into_any_element(),
-            dialog::info_panel(crate::msg::desktop_settings_units_delete_held(
-                &row.name, "0.4120 u",
-            ))
-            .into_any_element(),
-            confirm_field(code, &form.confirm_input).into_any_element(),
-        ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("delete-unit-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "delete-unit-confirm",
-                crate::msg::desktop_settings_units_delete_submit(),
-                form.matches(code),
-                true,
-                on_confirm,
+            dialog::info_panel(
+                crate::msg::desktop_settings_units_delete_held(&row.name, "0.4120 u"),
+                cx,
             )
             .into_any_element(),
-        ]));
+            confirm_field(code, &form.confirm_input, cx).into_any_element(),
+        ]))
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("delete-unit-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "delete-unit-confirm",
+                    crate::msg::desktop_settings_units_delete_submit(),
+                    form.matches(code),
+                    true,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
-    dialog::overlay(dialog::WIDTH, true, card)
+    dialog::overlay(dialog::WIDTH, true, card, cx)
 }
 
 fn warning_copy() -> impl IntoElement {
@@ -70,7 +77,7 @@ fn warning_copy() -> impl IntoElement {
         .child(crate::msg::desktop_settings_units_delete_warning(1, 9))
 }
 
-fn confirm_field(code: &str, value: &str) -> impl IntoElement {
+fn confirm_field(code: &str, value: &str, cx: &App) -> impl IntoElement {
     text_field(
         "delete-unit-confirm-input",
         crate::msg::desktop_settings_units_delete_confirm_label(code),
@@ -78,5 +85,6 @@ fn confirm_field(code: &str, value: &str) -> impl IntoElement {
         code,
         true,
         Rc::new(|_window: &mut Window, _cx: &mut App| {}),
+        cx,
     )
 }

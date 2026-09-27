@@ -27,17 +27,17 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::{
     payee::{Payee, PayeeStore, known_category_paths},
     popup::REFERENCE_TERMINAL_WIDTH,
 };
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "icon url".len() as u16 + 1;
@@ -234,7 +234,7 @@ impl NewPayeePopup {
     }
 
     /// Renders the floating overlay, centred within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore, c: &Colours) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -263,7 +263,7 @@ impl NewPayeePopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_text_field(
             frame,
@@ -271,20 +271,23 @@ impl NewPayeePopup {
             "name",
             &self.name,
             self.focus == Field::Name,
+            c,
         );
-        render_name_status(frame, rows[3], self.name_conflict(store));
+        render_name_status(frame, rows[3], self.name_conflict(store), c);
         render_text_field(
             frame,
             rows[4],
             "website",
             &self.website,
             self.focus == Field::Website,
+            c,
         );
         render_icon_derive_field(
             frame,
             rows[5],
             self.icon_derive,
             self.focus == Field::IconDerive,
+            c,
         );
         render_icon_value(
             frame,
@@ -293,6 +296,7 @@ impl NewPayeePopup {
             self.derived_icon_url(),
             &self.icon_url_input,
             self.focus == Field::IconUrl,
+            c,
         );
         render_text_field(
             frame,
@@ -300,22 +304,25 @@ impl NewPayeePopup {
             "default",
             &self.default_input,
             self.focus == Field::Default,
+            c,
         );
-        render_active_field(frame, rows[8], self.active, self.focus == Field::Active);
+        render_active_field(frame, rows[8], self.active, self.focus == Field::Active, c);
         // rows[9] is left blank — breathing space above the note.
         render_note(
             frame,
             rows[10],
             "a payee is created automatically the first time its name is",
+            c,
         );
         render_note(
             frame,
             rows[11],
             "typed on a transaction — this form only pre-seeds one first",
+            c,
         );
         // rows[12] is left blank — breathing space above the footer rule.
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[13]);
-        render_footer_hints(frame, rows[14]);
+        render_footer_hints(frame, rows[14], c);
     }
 }
 
@@ -325,12 +332,8 @@ impl Default for NewPayeePopup {
     }
 }
 
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
-}
-
 /// The title row: "new payee" flush left, the `:payee new` command dim and right-aligned.
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":payee new";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -341,39 +344,46 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
     frame.render_widget(Paragraph::new("new payee"), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
 /// One `label   value` row.
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
 /// One editable text field: the typed value, with a trailing accent cursor only when it has
 /// focus.
-fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: &str,
+    focused: bool,
+    c: &Colours,
+) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
+        spans.push(Span::styled("\u{258c}", c.cursor()));
     }
-    render_field(frame, area, label, Line::from(spans));
+    render_field(frame, area, label, Line::from(spans), c);
 }
 
 /// The accent warning beneath `name` when it collides with an existing Payee — blank
 /// otherwise, so the row's height never changes.
-fn render_name_status(frame: &mut Frame<'_>, area: Rect, conflict: Option<&Payee>) {
+fn render_name_status(frame: &mut Frame<'_>, area: Rect, conflict: Option<&Payee>, c: &Colours) {
     if let Some(existing) = conflict {
         frame.render_widget(
             Paragraph::new(Span::styled(
                 format!("a payee named \"{}\" already exists", existing.name),
-                Style::default().fg(ACCENT),
+                c.accent(),
             )),
             area,
         );
@@ -382,9 +392,15 @@ fn render_name_status(frame: &mut Frame<'_>, area: Rect, conflict: Option<&Payee
 
 /// The `icon url` checkbox row: `[×]`/`[ ]` in the accent when focused, the consequence stated
 /// alongside it either way.
-fn render_icon_derive_field(frame: &mut Frame<'_>, area: Rect, checked: bool, focused: bool) {
+fn render_icon_derive_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    checked: bool,
+    focused: bool,
+    c: &Colours,
+) {
     let glyph_style = if focused {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -397,6 +413,7 @@ fn render_icon_derive_field(frame: &mut Frame<'_>, area: Rect, checked: bool, fo
             Span::styled(glyph, glyph_style),
             Span::raw(" derive from website"),
         ]),
+        c,
     );
 }
 
@@ -410,20 +427,33 @@ fn render_icon_value(
     derived: Option<String>,
     input: &str,
     focused: bool,
+    c: &Colours,
 ) {
     if icon_derive {
         let text = derived.unwrap_or_else(|| "not set — needs a website".to_string());
-        render_field(frame, area, "", Line::from(Span::styled(text, dim())));
+        render_field(
+            frame,
+            area,
+            "",
+            Line::from(Span::styled(text, c.muted())),
+            c,
+        );
     } else {
-        render_text_field(frame, area, "", input, focused);
+        render_text_field(frame, area, "", input, focused, c);
     }
 }
 
 /// The `active` checkbox row: the glyph in the accent when focused, the consequence stated
 /// alongside it either way — mirrors `popup::account::new::render_active_field`.
-fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
+fn render_active_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    active: bool,
+    focused: bool,
+    c: &Colours,
+) {
     let glyph_style = if focused {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -435,16 +465,17 @@ fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused:
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
-            Span::styled("· offered as a suggestion", dim()),
+            Span::styled("· offered as a suggestion", c.muted()),
         ]),
+        c,
     );
 }
 
-fn render_note(frame: &mut Frame<'_>, area: Rect, text: &'static str) {
-    frame.render_widget(Paragraph::new(Span::styled(text, dim())), area);
+fn render_note(frame: &mut Frame<'_>, area: Rect, text: &'static str, c: &Colours) {
+    frame.render_widget(Paragraph::new(Span::styled(text, c.muted())), area);
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     const HINTS: &[(&str, &str)] = &[
         ("tab", "next field"),
         ("^s", "create"),
@@ -452,7 +483,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", "cancel"),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(HINTS.len() * 3);
     for (index, (key, label)) in HINTS.iter().enumerate() {
@@ -491,11 +522,11 @@ mod tests {
     use super::*;
     use crate::payee::PayeeFixture;
 
-    fn render(popup: &NewPayeePopup, store: &dyn PayeeStore) -> String {
+    fn render(popup: &NewPayeePopup, store: &dyn PayeeStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -519,8 +550,9 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
-        render(&NewPayeePopup::new(), &store);
+        render(&NewPayeePopup::new(), &store, c);
     }
 
     #[test]
@@ -692,8 +724,9 @@ mod tests {
 
     #[test]
     fn shows_the_note_and_footer_hints() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
-        let text = render(&NewPayeePopup::new(), &store);
+        let text = render(&NewPayeePopup::new(), &store, c);
         assert!(text.contains("a payee is created automatically"));
         for key in ["tab", "^s", "^a", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
@@ -702,10 +735,11 @@ mod tests {
 
     #[test]
     fn shows_a_conflict_warning_when_the_typed_name_collides() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let mut popup = NewPayeePopup::new();
         popup.name = "Woolworths".to_string();
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("already exists"));
     }
 

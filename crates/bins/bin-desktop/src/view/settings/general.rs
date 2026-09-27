@@ -3,7 +3,7 @@
 //! throughout, matching the mockup's own -- no real `lib_database::Preferences` wiring in this
 //! map (see the Desktop Settings Surface map's Destination).
 
-use gpui::{AnyElement, div, prelude::*, px};
+use gpui::{AnyElement, App, div, prelude::*, px};
 
 use crate::theme::color;
 
@@ -27,18 +27,18 @@ fn ledger_summary() -> [(String, &'static str); 4] {
     ]
 }
 
-pub fn render() -> AnyElement {
+pub fn render(cx: &App) -> AnyElement {
     div()
         .flex()
         .gap(px(40.0))
-        .child(field_column())
-        .child(summary_panel())
+        .child(field_column(cx))
+        .child(summary_panel(cx))
         .into_any_element()
 }
 
 /// The 320px field column: Ledger name, Owner, Financial year starts, Base unit -- in the
 /// mockup's own order.
-fn field_column() -> impl IntoElement {
+fn field_column(cx: &App) -> impl IntoElement {
     div()
         .w(px(320.0))
         .flex_none()
@@ -49,34 +49,38 @@ fn field_column() -> impl IntoElement {
             crate::msg::desktop_settings_general_name(),
             "Personal Ledger",
             false,
+            cx,
         ))
         .child(field(
             crate::msg::desktop_settings_general_owner(),
             "alex@teda.id.au",
             false,
+            cx,
         ))
         .child(field(
             crate::msg::desktop_settings_general_financial_year(),
             "july",
             true,
+            cx,
         ))
         .child(field(
             crate::msg::desktop_settings_general_base_unit(),
             "aud \u{2014} Australian Dollar",
             true,
+            cx,
         ))
 }
 
-fn field(label: String, value: &'static str, select_style: bool) -> impl IntoElement {
+fn field(label: String, value: &'static str, select_style: bool, cx: &App) -> impl IntoElement {
     div()
         .child(field_label(label))
-        .child(field_value(value, select_style))
+        .child(field_value(value, select_style, cx))
 }
 
 /// The right-hand "THIS LEDGER" panel: a bordered figure table, then a note explaining General's
 /// own Preference-vs-Configuration scope (mirrors the section's own "ledger identity" scope
 /// note).
-fn summary_panel() -> impl IntoElement {
+fn summary_panel(cx: &App) -> impl IntoElement {
     div()
         .flex_1()
         .min_w(px(0.0))
@@ -85,7 +89,7 @@ fn summary_panel() -> impl IntoElement {
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .mb(px(10.0))
                 .child(lib_locale::format::upper(
                     &crate::msg::desktop_settings_general_summary_title(),
@@ -94,8 +98,8 @@ fn summary_panel() -> impl IntoElement {
         .child(
             div()
                 .border_1()
-                .border_color(color::BORDER)
-                .bg(color::CHROME)
+                .border_color(color::border(cx))
+                .bg(color::chrome(cx))
                 .flex()
                 .flex_col()
                 .children({
@@ -105,7 +109,7 @@ fn summary_panel() -> impl IntoElement {
                         .into_iter()
                         .enumerate()
                         .map(move |(index, (label, value))| {
-                            summary_row(label, value, index == last)
+                            summary_row(label, value, index == last, cx)
                         })
                 }),
         )
@@ -113,12 +117,12 @@ fn summary_panel() -> impl IntoElement {
             div()
                 .mt(px(14.0))
                 .text_size(px(12.0))
-                .text_color(color::INK_SECONDARY)
+                .text_color(color::muted(cx))
                 .child(crate::msg::desktop_settings_general_note()),
         )
 }
 
-fn summary_row(label: String, value: &'static str, last: bool) -> impl IntoElement {
+fn summary_row(label: String, value: &'static str, last: bool, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .justify_between()
@@ -126,8 +130,8 @@ fn summary_row(label: String, value: &'static str, last: bool) -> impl IntoEleme
         .py(px(10.0))
         .text_size(px(12.0))
         .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::HAIRLINE)
+            this.border_b(px(1.0)).border_color(color::hairline(cx))
         })
-        .child(div().text_color(color::INK_SECONDARY).child(label))
+        .child(div().text_color(color::muted(cx)).child(label))
         .child(div().font_weight(gpui::FontWeight::EXTRA_BOLD).child(value))
 }

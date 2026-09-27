@@ -12,13 +12,14 @@ use lib_locale::format::upper;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Paragraph},
 };
 use tokio::sync::mpsc;
 
 use crate::{
+    colours::Colours,
     event::{Event, EventHandler},
     payee::AliasSource,
     popup::{
@@ -34,7 +35,12 @@ use crate::{
             PayeePopup, delete::DeleteCommit, delete::DeletePayeePopup, edit::EditPayeePopup,
             matches::ComposeCommit, matches::PayeeMatchesPopup, new::NewPayeePopup,
         },
-        settings::{SettingsPopup, edit::EditSettingPopup, guard::BaseUnitGuardPopup},
+        settings::{
+            SettingsPopup,
+            colour::{ColourPopup, ColourPreference},
+            edit::EditSettingPopup,
+            guard::BaseUnitGuardPopup,
+        },
         tag::{TagPopup, edit::EditTagPopup, new::NewTagPopup},
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
     },
@@ -138,6 +144,9 @@ pub struct Shell {
     /// doc's own "Quit" section -- so it's the only one of the four still hardcoded).
     /// Per-view/per-domain keys stay hardcoded too, out of scope for this map (#155).
     keybindings: KeyBindingConfig,
+    /// The resolved Colour Theme every view and popup draws with, passed into each render
+    /// rather than held in a global (ADR-0025).
+    colours: Colours,
 }
 
 impl Shell {
@@ -174,7 +183,14 @@ impl Shell {
             view_stack: Vec::new(),
             jump_not_yet_built: None,
             keybindings,
+            colours: Colours::default(),
         }
+    }
+
+    /// Replaces the default `Colours` with ones built from Configuration.
+    pub fn with_colours(mut self, colours: Colours) -> Self {
+        self.colours = colours;
+        self
     }
 
     /// Runs the shell until the user quits.
@@ -263,6 +279,9 @@ impl Shell {
                 }
                 if self.category_popup.is_some() {
                     return self.map_category_popup_key(key);
+                }
+                if let Some(SettingsPopup::Colour(_)) = self.settings_popup {
+                    return map_colour_popup_key(key);
                 }
                 if self.settings_popup.is_some() {
                     return map_settings_popup_key(key);
@@ -1072,6 +1091,29 @@ impl Shell {
                 self.command_popup = None;
             }
             Action::CloseSettingsPopup => self.settings_popup = None,
+            Action::OpenColourThemePopup => {
+                self.settings_popup =
+                    Some(SettingsPopup::Colour(ColourPopup::theme(&self.colours)));
+                self.command_popup = None;
+            }
+            Action::OpenColourAppearancePopup => {
+                self.settings_popup = Some(SettingsPopup::Colour(ColourPopup::appearance(
+                    &self.colours,
+                )));
+                self.command_popup = None;
+            }
+            Action::ColourPopupDown | Action::ColourPopupUp => {
+                if let Some(SettingsPopup::Colour(popup)) = &mut self.settings_popup {
+                    let preview = popup.step(action == Action::ColourPopupDown);
+                    self.set_colour_preference(preview);
+                }
+            }
+            Action::ColourPopupKeep => self.settings_popup = None,
+            Action::ColourPopupRevert => {
+                if let Some(SettingsPopup::Colour(popup)) = self.settings_popup.take() {
+                    self.set_colour_preference(popup.original());
+                }
+            }
             Action::OpenUnits => self.open(UnitsView::new()),
             Action::OpenDashboard => self.open(DashboardView::new()),
             Action::OpenAccounts => self.open(AccountsView::new()),
@@ -1084,6 +1126,10 @@ impl Shell {
             Action::OpenSettings => self.open(SettingsView::new()),
             Action::OpenTransactions => self.open(TransactionsView::new()),
             Action::NoOp => {}
+            Action::SetColourTheme(colour_theme) => self.colours.set_colour_theme(colour_theme),
+            Action::SetColourAppearance(colour_appearance) => {
+                self.colours.set_colour_appearance(colour_appearance)
+            }
             Action::OpenCategoryMovePopup(id) => {
                 if let Some(store) = self.view.category_store() {
                     self.category_popup = Some(CategoryPopup::Move(MovePopup::new(store, id)));
@@ -1588,9 +1634,19 @@ impl Shell {
         self.payee_popup = None;
     }
 
+    fn set_colour_preference(&mut self, preference: ColourPreference) {
+        match preference {
+            ColourPreference::Theme(theme) => self.colours.set_colour_theme(theme),
+            ColourPreference::Appearance(appearance) => {
+                self.colours.set_colour_appearance(appearance)
+            }
+        }
+    }
+
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
     /// keybind hint bar — around the active view, per `docs/ux/tui/README.md`.
     fn draw(&self, frame: &mut Frame<'_>) {
+        let c = &self.colours;
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -1607,6 +1663,7 @@ impl Shell {
         let edit_setting_popup_open = matches!(self.settings_popup, Some(SettingsPopup::Edit(_)));
         let base_unit_guard_popup_open =
             matches!(self.settings_popup, Some(SettingsPopup::BaseUnitGuard(_)));
+        let colour_popup_open = matches!(self.settings_popup, Some(SettingsPopup::Colour(_)));
         let account_popup_open = self.account_popup.is_some();
         let tag_popup_open = self.tag_popup.is_some();
         let payee_popup_open = self.payee_popup.is_some();
@@ -1629,7 +1686,7 @@ impl Shell {
             || payee_popup_open
         {
             Some(crate::msg::tui_mode_insert())
-        } else if edit_setting_popup_open {
+        } else if edit_setting_popup_open || colour_popup_open {
             Some(crate::msg::tui_mode_edit())
         } else if base_unit_guard_popup_open {
             Some(crate::msg::tui_mode_confirm())
@@ -1645,13 +1702,12 @@ impl Shell {
             None => crate::msg::tui_status_line(LEDGER_GLYPH, &name, &title),
         };
         frame.render_widget(
-            Paragraph::new(Line::from(format!(" {status} ")))
-                .style(Style::default().add_modifier(Modifier::REVERSED)),
+            Paragraph::new(Line::from(format!(" {status} "))).style(c.status_bar()),
             rows[0],
         );
 
         // Screen Frame / View
-        self.view.view(frame, rows[1]);
+        self.view.view(frame, rows[1], c);
 
         // Rule Frame — separates the view from the footer, replacing the footer's old
         // background fill as the visual boundary between them.
@@ -1681,7 +1737,7 @@ impl Shell {
             None
         };
 
-        let dim = Style::default().fg(Color::DarkGray);
+        let dim = c.muted();
         let footer = if command_popup_open {
             let hints = hint_text(&self.footer_hints());
             let close = crate::msg::tui_footer_close_command_window(back_key);
@@ -1696,6 +1752,12 @@ impl Shell {
             Line::from(format!(
                 " {} ",
                 crate::msg::tui_footer_close_dialog(back_key)
+            ))
+            .style(dim)
+        } else if colour_popup_open {
+            Line::from(format!(
+                " {} ",
+                crate::msg::tui_footer_colour_popup(back_key)
             ))
             .style(dim)
         } else if let Some(command) = self.jump_not_yet_built {
@@ -1725,34 +1787,37 @@ impl Shell {
         // frame, per §3a. Mutually exclusive: only one is ever `Some` at a time.
         if let Some(popup) = &self.command_popup {
             frame.render_widget(Dim, rows[1]);
-            popup.render(frame, frame.area());
+            popup.render(frame, frame.area(), c);
         } else if let Some(popup) = &self.unit_popup {
             frame.render_widget(Dim, rows[1]);
-            popup.render(frame, frame.area());
+            popup.render(frame, frame.area(), c);
         } else if let Some(popup) = &self.category_popup {
             frame.render_widget(Dim, rows[1]);
             if let Some(store) = self.view.category_store() {
-                popup.render(frame, frame.area(), store);
+                popup.render(frame, frame.area(), store, c);
             }
         } else if let Some(popup) = &self.settings_popup {
             frame.render_widget(Dim, rows[1]);
-            popup.render(frame, frame.area());
+            popup.render(frame, frame.area(), c);
         } else if let Some(popup) = &self.account_popup {
             frame.render_widget(Dim, rows[1]);
             if let Some(store) = self.view.account_store() {
-                popup.render(frame, frame.area(), store);
+                popup.render(frame, frame.area(), store, c);
             }
         } else if let Some(popup) = &self.tag_popup {
             frame.render_widget(Dim, rows[1]);
             if let Some(store) = self.view.tag_store() {
-                popup.render(frame, frame.area(), store);
+                popup.render(frame, frame.area(), store, c);
             }
         } else if let Some(popup) = &self.payee_popup {
             frame.render_widget(Dim, rows[1]);
             if let Some(store) = self.view.payee_store() {
-                popup.render(frame, frame.area(), store);
+                popup.render(frame, frame.area(), store, c);
             }
         }
+
+        // Last, so cells a popup `Clear`ed also land on the Colour Theme.
+        c.paint_base(frame.buffer_mut());
     }
 }
 
@@ -1874,6 +1939,18 @@ fn map_unit_popup_key(key: KeyEvent) -> Option<Action> {
 fn map_settings_popup_key(key: KeyEvent) -> Option<Action> {
     match key.code {
         KeyCode::Esc => Some(Action::CloseSettingsPopup),
+        _ => None,
+    }
+}
+
+/// Routes a key while the colour list popup is open: `j`/`k` preview, `Enter` keeps, `Esc`
+/// reverts.
+fn map_colour_popup_key(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Char('j') | KeyCode::Down => Some(Action::ColourPopupDown),
+        KeyCode::Char('k') | KeyCode::Up => Some(Action::ColourPopupUp),
+        KeyCode::Enter => Some(Action::ColourPopupKeep),
+        KeyCode::Esc => Some(Action::ColourPopupRevert),
         _ => None,
     }
 }
@@ -2111,6 +2188,88 @@ mod tests {
     }
 
     #[test]
+    fn the_colour_popup_previews_on_j_and_esc_restores_the_prior_theme_exactly() {
+        let mut shell = Shell::new();
+        shell.update(Action::SetColourTheme(Some("gruvbox".to_string())));
+        shell.update(Action::OpenColourThemePopup);
+        shell.update(Action::ColourPopupDown);
+        assert_ne!(shell.colours.resolved().theme_id, "gruvbox", "j previews");
+        shell.update(Action::ColourPopupUp);
+        shell.update(Action::ColourPopupUp);
+        shell.update(Action::ColourPopupRevert);
+        assert!(shell.settings_popup.is_none());
+        assert_eq!(shell.colours.colour_theme(), Some("gruvbox"));
+    }
+
+    #[test]
+    fn esc_restores_a_null_colour_theme_as_null() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenColourThemePopup);
+        shell.update(Action::ColourPopupDown);
+        assert!(shell.colours.colour_theme().is_some());
+        shell.update(Action::ColourPopupRevert);
+        assert_eq!(shell.colours.colour_theme(), None);
+    }
+
+    #[test]
+    fn enter_keeps_the_previewed_colour_appearance() {
+        let mut shell = Shell::new();
+        shell.update(Action::OpenColourAppearancePopup);
+        shell.update(Action::ColourPopupUp);
+        shell.update(Action::ColourPopupKeep);
+        assert!(shell.settings_popup.is_none());
+        assert_eq!(
+            shell.colours.colour_appearance(),
+            Some(lib_colour_theme::ColourAppearance::Dark)
+        );
+    }
+
+    #[test]
+    fn colour_popup_keys_map_to_preview_keep_and_revert() {
+        let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        assert_eq!(
+            map_colour_popup_key(key(KeyCode::Char('j'))),
+            Some(Action::ColourPopupDown)
+        );
+        assert_eq!(
+            map_colour_popup_key(key(KeyCode::Char('k'))),
+            Some(Action::ColourPopupUp)
+        );
+        assert_eq!(
+            map_colour_popup_key(key(KeyCode::Enter)),
+            Some(Action::ColourPopupKeep)
+        );
+        assert_eq!(
+            map_colour_popup_key(key(KeyCode::Esc)),
+            Some(Action::ColourPopupRevert)
+        );
+    }
+
+    #[test]
+    fn changing_the_colour_preferences_re_resolves_and_redraws() {
+        let draw = |shell: &Shell| {
+            let mut terminal =
+                Terminal::new(TestBackend::new(96, 30)).expect("test backend should initialise");
+            terminal
+                .draw(|frame| shell.draw(frame))
+                .expect("drawing the shell should not error");
+            terminal.backend().buffer()[(0, 0)].bg
+        };
+        let mut shell = Shell::new();
+        let before = draw(&shell);
+        shell.update(Action::SetColourTheme(Some("nord".to_string())));
+        shell.update(Action::SetColourAppearance(Some(
+            lib_colour_theme::ColourAppearance::Light,
+        )));
+        assert_eq!(shell.colours.resolved().theme_id, "nord");
+        assert_ne!(
+            draw(&shell),
+            before,
+            "the status line should redraw in Nord light"
+        );
+    }
+
+    #[test]
     fn footer_has_no_background_and_a_rule_separates_it_from_the_view() {
         let shell = Shell::new();
         let backend = TestBackend::new(96, 30);
@@ -2123,9 +2282,10 @@ mod tests {
         let last = buffer.area.height - 1;
         let rule_row = last - 1;
 
+        let base = buffer[(0, rule_row)].bg;
         assert!(
-            (0..buffer.area.width).all(|x| buffer[(x, last)].bg == Color::Reset),
-            "footer row should carry no background fill"
+            (0..buffer.area.width).all(|x| buffer[(x, last)].bg == base),
+            "footer row should carry no background fill beyond the Colour Theme's own"
         );
         assert!(
             (0..buffer.area.width).all(|x| buffer[(x, rule_row)].symbol() == "─"),

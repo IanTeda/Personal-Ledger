@@ -18,7 +18,7 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Clear, Paragraph},
 };
@@ -26,11 +26,8 @@ use ratatui::{
 use lib_core::RowID;
 
 use super::path::{Resolution, ancestor_names, completions, resolve, tab_complete};
+use crate::colours::Colours;
 use crate::{category::CategoryStore, msg, popup::REFERENCE_TERMINAL_WIDTH};
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// the input cursor and the moving node's marked landing row.
-const ACCENT: Color = Color::Red;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per the handoff's "~88% width" —
 /// matches `popup::unit`'s own forms.
@@ -110,12 +107,18 @@ impl MovePopup {
     /// as" fragment's height varies with how many children the landing parent has), within
     /// `area` — the full terminal area, per §3a's "centred floating overlay" every form in
     /// this design reuses.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn CategoryStore) {
+    pub fn render(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        store: &dyn CategoryStore,
+        c: &Colours,
+    ) {
         let Some(moving) = store.find(self.moving_id) else {
             return;
         };
         let resolution = resolve(store, &self.input);
-        let landing_lines = landing_fragment_lines(store, &resolution, moving.id);
+        let landing_lines = landing_fragment_lines(store, &resolution, moving.id, c);
         let content_rows = 6 + landing_lines.len() as u16 + 1 + 3 + 2;
         let popup = popup_rect(area, content_rows);
 
@@ -151,7 +154,7 @@ impl MovePopup {
             .constraints(constraints)
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(
             Block::new().borders(ratatui::widgets::Borders::BOTTOM),
             rows[1],
@@ -170,22 +173,23 @@ impl MovePopup {
                 },
                 moving.transaction_count
             )),
+            c,
         );
         let from_text = moving
             .parent_id
             .map(|parent_id| ancestor_names(store, parent_id).join(" / "))
             .unwrap_or_else(|| "—".to_string());
-        render_field(frame, rows[3], "from", Line::from(from_text));
+        render_field(frame, rows[3], "from", Line::from(from_text), c);
 
-        render_new_parent_field(frame, rows[4], &self.input);
-        render_completion_row(frame, rows[5], store, &self.input);
+        render_new_parent_field(frame, rows[4], &self.input, c);
+        render_completion_row(frame, rows[5], store, &self.input, c);
         // rows[6] is left blank — breathing space above the "lands as" preview.
 
         let depth_tag = match &resolution {
             Resolution::Existing(id) => format!("depth {}", store.depth(*id) + 1),
             _ => String::new(),
         };
-        render_lands_as_heading(frame, rows[7], &depth_tag);
+        render_lands_as_heading(frame, rows[7], &depth_tag, c);
         for (index, line) in landing_lines.iter().enumerate() {
             frame.render_widget(line.clone(), rows[8 + index]);
         }
@@ -197,6 +201,7 @@ impl MovePopup {
             rows[after_landing + 1],
             "recomputes",
             Line::from(recomputes_text(store, self.moving_id, &resolution)),
+            c,
         );
         render_field(
             frame,
@@ -206,24 +211,26 @@ impl MovePopup {
                 "{} · unchanged, still this category",
                 moving.transaction_count
             )),
+            c,
         );
         render_field(
             frame,
             rows[after_landing + 3],
             "refuses",
             Line::from("its own descendants · the other root, while it has transactions"),
+            c,
         );
         frame.render_widget(
             Block::new().borders(ratatui::widgets::Borders::BOTTOM),
             rows[after_landing + 4],
         );
-        render_footer_hints(frame, rows[after_landing + 5]);
+        render_footer_hints(frame, rows[after_landing + 5], c);
     }
 }
 
 /// The title row: "move" flush left, the `:category move` command dim and right-aligned — echoing
 /// `popup::unit::new`'s own title-row convention.
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":category move";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -233,7 +240,7 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
     frame.render_widget(Paragraph::new(msg::tui_category_move_title()), columns[0]);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -241,20 +248,20 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
 }
 
 /// One `label   value` row — mirrors `popup::unit::new`'s own `render_field`.
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
 /// The `new parent` field: the focused input box glyph (`┌`) per the handoff's drawn example,
 /// the typed text, and a trailing accent cursor.
-fn render_new_parent_field(frame: &mut Frame<'_>, area: Rect, input: &str) {
-    let cursor = Style::default().fg(ACCENT);
+fn render_new_parent_field(frame: &mut Frame<'_>, area: Rect, input: &str, c: &Colours) {
+    let cursor = c.cursor();
     let label = format!("\u{250c} {}", msg::tui_category_move_field_target());
     render_field(
         frame,
@@ -264,6 +271,7 @@ fn render_new_parent_field(frame: &mut Frame<'_>, area: Rect, input: &str) {
             Span::raw(input.to_string()),
             Span::styled("\u{258c}", cursor),
         ]),
+        c,
     );
 }
 
@@ -274,22 +282,23 @@ fn render_completion_row(
     area: Rect,
     store: &dyn CategoryStore,
     input: &str,
+    c: &Colours,
 ) {
     let candidates = completions(store, input);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let text = if candidates.is_empty() {
         msg::tui_category_move_note_no_matches()
     } else {
         format!("{}  · tab", candidates.join(" · "))
     };
     let label = format!("\u{2514} {}", msg::tui_category_move_note_completion());
-    render_field(frame, area, &label, Line::from(Span::styled(text, dim)));
+    render_field(frame, area, &label, Line::from(Span::styled(text, dim)), c);
 }
 
 /// The "lands as" heading: the label, and — once the input resolves to an existing category —
 /// the depth the moving node would land at.
-fn render_lands_as_heading(frame: &mut Frame<'_>, area: Rect, depth_tag: &str) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_lands_as_heading(frame: &mut Frame<'_>, area: Rect, depth_tag: &str, c: &Colours) {
+    let dim = c.muted();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -313,14 +322,18 @@ fn landing_fragment_lines<'a>(
     store: &dyn CategoryStore,
     resolution: &Resolution,
     moving_id: RowID,
+    c: &Colours,
 ) -> Vec<Paragraph<'a>> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
-    let accent = Style::default().fg(ACCENT);
+    let dim = c.muted();
+    let accent = c.accent();
 
     match resolution {
         Resolution::Existing(parent_id) => {
             if let Some(refusal) = store.validate_move(moving_id, *parent_id).err() {
-                return vec![Paragraph::new(Span::styled(refusal.to_string(), accent))];
+                return vec![Paragraph::new(Span::styled(
+                    refusal.to_string(),
+                    c.negative(),
+                ))];
             }
 
             let moving_name = store
@@ -400,7 +413,7 @@ fn recomputes_text(store: &dyn CategoryStore, moving_id: RowID, resolution: &Res
 }
 
 /// The window footer hint row — matches the handoff's own `tab` / `^n` / `^s` / `esc` key set.
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let hints = [
         ("tab", msg::tui_category_move_help_tab()),
         ("^n", msg::tui_category_move_help_new()),
@@ -408,7 +421,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", msg::tui_category_move_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = Style::default().add_modifier(Modifier::DIM);
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (index, (key, label)) in hints.iter().enumerate() {
@@ -456,11 +469,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &MovePopup, store: &dyn CategoryStore) -> String {
+    fn render(popup: &MovePopup, store: &dyn CategoryStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -484,16 +497,18 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        render(&MovePopup::new(&store, groceries), &store);
+        render(&MovePopup::new(&store, groceries), &store, c);
     }
 
     #[test]
     fn shows_the_moving_and_from_fields() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        let text = render(&MovePopup::new(&store, groceries), &store);
+        let text = render(&MovePopup::new(&store, groceries), &store, c);
 
         assert!(
             text.contains("Groceries · leaf · 148 txns"),
@@ -549,12 +564,13 @@ mod tests {
 
     #[test]
     fn shows_the_lands_as_preview_with_the_moving_node_marked() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
         let mut popup = MovePopup::new(&store, groceries);
         popup.input = "expenses/transport".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("lands as"), "lands as heading missing");
         assert!(
             text.contains("Groceries · moves here"),
@@ -570,13 +586,14 @@ mod tests {
 
     #[test]
     fn shows_a_refusal_in_the_lands_as_preview_for_a_cycle() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let food = find_by_name(&store, "Food");
         let groceries = find_by_name(&store, "Groceries");
         let mut popup = MovePopup::new(&store, food);
         popup.input = "expenses/food/groceries".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(
             text.contains("can't move into its own descendant set"),
             "cycle refusal missing from lands-as preview, got: {text}"
@@ -586,9 +603,10 @@ mod tests {
 
     #[test]
     fn shows_the_footer_hints() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        let text = render(&MovePopup::new(&store, groceries), &store);
+        let text = render(&MovePopup::new(&store, groceries), &store, c);
         for key in ["tab", "^n", "^s", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }

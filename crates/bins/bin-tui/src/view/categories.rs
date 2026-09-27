@@ -35,7 +35,7 @@ use lib_core::{Money, RowID};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     symbols,
     text::{Line, Span},
     widgets::{
@@ -44,16 +44,13 @@ use ratatui::{
     },
 };
 
+use crate::colours::Colours;
 use crate::fixture::seed_from_id;
 use crate::{
     category::{CategoryFixture, CategoryNode, CategoryStore},
     msg,
     view::{Action, View, ViewId},
 };
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// the chart's marked last point.
-const ACCENT: Color = Color::Red;
 
 /// How many trailing months the direct-spend chart plots, per the handoff's "~24 points".
 const CHART_MONTHS: usize = 24;
@@ -528,7 +525,7 @@ impl View for CategoriesView {
         }
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -543,8 +540,8 @@ impl View for CategoriesView {
             .spacing(2)
             .split(rows[1]);
 
-        self.render_left_pane(frame, columns[0]);
-        self.render_right_pane(frame, columns[1]);
+        self.render_left_pane(frame, columns[0], c);
+        self.render_right_pane(frame, columns[1], c);
     }
 
     fn id(&self) -> ViewId {
@@ -565,7 +562,7 @@ impl View for CategoriesView {
 }
 
 impl CategoriesView {
-    fn render_left_pane(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_left_pane(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let Some(node) = self.store.find(self.selected) else {
             return;
         };
@@ -580,13 +577,13 @@ impl CategoriesView {
             ])
             .split(area);
 
-        self.render_tree(frame, rows[0]);
-        self.render_summary(frame, rows[1], node, &rollup, merged);
+        self.render_tree(frame, rows[0], c);
+        self.render_summary(frame, rows[1], node, &rollup, merged, c);
     }
 
     /// The tree list: its `tree N of M · depth D · K folded` header, a rule, the `N`/`12M`
     /// column header, then the rows themselves with a scrollbar riding the right edge.
-    fn render_tree(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_tree(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let split = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -616,10 +613,10 @@ impl CategoriesView {
             .filter(|id| self.has_children(**id))
             .count();
 
-        self.render_tree_header(frame, sections[0], visible_count, folded_with_children);
+        self.render_tree_header(frame, sections[0], visible_count, folded_with_children, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-        render_tree_column_header(frame, sections[2]);
-        render_tree_rows(frame, sections[3], &lines, self.selected);
+        render_tree_column_header(frame, sections[2], c);
+        render_tree_rows(frame, sections[3], &lines, self.selected, c);
 
         let rows_scrollbar_area = Rect {
             y: sections[3].y,
@@ -642,6 +639,7 @@ impl CategoriesView {
         area: Rect,
         visible_count: usize,
         folded_count: usize,
+        c: &Colours,
     ) {
         let text = match self.merge_hint {
             Some(hint) => hint.to_string(),
@@ -656,9 +654,9 @@ impl CategoriesView {
             }
         };
         let style = if self.merge_hint.is_some() {
-            Style::default().fg(ACCENT)
+            c.accent()
         } else {
-            Style::default().add_modifier(Modifier::DIM)
+            c.muted()
         };
         frame.render_widget(Paragraph::new(Span::styled(text, style)), area);
     }
@@ -672,6 +670,7 @@ impl CategoriesView {
         node: &CategoryNode,
         rollup: &Money,
         merged: bool,
+        c: &Colours,
     ) {
         let block = Block::bordered().padding(Padding::horizontal(1));
         let inner = block.inner(area);
@@ -696,6 +695,7 @@ impl CategoriesView {
         if merged {
             frame.render_widget(
                 summary_field_line(
+                    c,
                     &msg::tui_categories_summary_merged(),
                     &crate::format::money_natural(rollup),
                 ),
@@ -705,6 +705,7 @@ impl CategoriesView {
         } else {
             frame.render_widget(
                 summary_field_line(
+                    c,
                     &msg::tui_categories_summary_direct(),
                     &crate::format::money_natural(&node.direct),
                 ),
@@ -713,6 +714,7 @@ impl CategoriesView {
             row += 1;
             frame.render_widget(
                 summary_field_line(
+                    c,
                     &msg::tui_categories_summary_rollup(),
                     &crate::format::money_natural(rollup),
                 ),
@@ -730,6 +732,7 @@ impl CategoriesView {
             .unwrap_or("—");
         frame.render_widget(
             summary_field_line(
+                c,
                 &msg::tui_categories_summary_kind_depth(),
                 &format!("{kind} · {}", self.store.depth(node.id)),
             ),
@@ -743,7 +746,7 @@ impl CategoriesView {
         } else {
             msg::tui_categories_summary_children_parent(child_count as i64)
         };
-        frame.render_widget(summary_field_line("children", &children_text), rows[row]);
+        frame.render_widget(summary_field_line(c, "children", &children_text), rows[row]);
         row += 1;
 
         let transactions_text = if node.transaction_count == 0 {
@@ -753,7 +756,7 @@ impl CategoriesView {
         };
         // Use a temporary static string for the label "transactions" since there's no localized msg for it yet
         frame.render_widget(
-            summary_field_line("transactions", &transactions_text),
+            summary_field_line(c, "transactions", &transactions_text),
             rows[row],
         );
         row += 1;
@@ -765,11 +768,15 @@ impl CategoriesView {
             _ => msg::tui_categories_summary_first_last_none(),
         };
         // Use a temporary static string for the label "first · last" since there's no localized msg for it yet
-        frame.render_widget(summary_field_line("first · last", &first_last), rows[row]);
+        frame.render_widget(
+            summary_field_line(c, "first · last", &first_last),
+            rows[row],
+        );
         row += 1;
 
         frame.render_widget(
             summary_field_line(
+                c,
                 &msg::tui_categories_summary_note(),
                 node.note.as_deref().unwrap_or("—"),
             ),
@@ -783,10 +790,10 @@ impl CategoriesView {
             msg::tui_categories_summary_active_not_offered()
         };
         // Use a temporary static string for the label "active" since there's no localized msg for it yet
-        frame.render_widget(summary_field_line("active", &active_text), rows[row]);
+        frame.render_widget(summary_field_line(c, "active", &active_text), rows[row]);
     }
 
-    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let Some(node) = self.store.find(self.selected) else {
             return;
         };
@@ -800,8 +807,8 @@ impl CategoriesView {
             ])
             .split(area);
 
-        self.render_spend_chart(frame, rows[0], node);
-        self.render_transactions(frame, rows[2], node);
+        self.render_spend_chart(frame, rows[0], node, c);
+        self.render_transactions(frame, rows[2], node, c);
     }
 
     /// The direct-spend line chart: a trailing `CHART_MONTHS`-month window, per the handoff's
@@ -810,7 +817,13 @@ impl CategoriesView {
     /// even when it isn't, a lone direct line would hide its children's spend entirely — plots
     /// the whole subtree's combined series instead (`rollup_series`), so selecting a branch
     /// always shows something. The heading names which one is showing.
-    fn render_spend_chart(&self, frame: &mut Frame<'_>, area: Rect, node: &CategoryNode) {
+    fn render_spend_chart(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        node: &CategoryNode,
+        c: &Colours,
+    ) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -822,7 +835,7 @@ impl CategoriesView {
             .split(area);
 
         let is_subtree = self.has_children(node.id);
-        render_chart_heading(frame, rows[0], is_subtree);
+        render_chart_heading(frame, rows[0], is_subtree, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         let series = if is_subtree {
@@ -852,14 +865,14 @@ impl CategoriesView {
         let avg_line = Dataset::default()
             .marker(symbols::Marker::Braille)
             .graph_type(GraphType::Line)
-            .style(Style::default().add_modifier(Modifier::DIM))
+            .style(c.muted())
             .data(&avg_points);
 
         let last_point = [((CHART_MONTHS - 1) as f64, series[CHART_MONTHS - 1])];
         let last_point_marker = Dataset::default()
             .marker(symbols::Marker::Braille)
             .graph_type(GraphType::Scatter)
-            .style(Style::default().fg(ACCENT))
+            .style(c.accent())
             .data(&last_point);
 
         let chart = Chart::new(vec![line, avg_line, last_point_marker])
@@ -867,13 +880,19 @@ impl CategoriesView {
             .y_axis(Axis::default().bounds([0.0, max_amount * 1.1]));
         frame.render_widget(chart, rows[2]);
 
-        render_chart_labels(frame, rows[3], &series, avg);
+        render_chart_labels(frame, rows[3], &series, avg, c);
     }
 
     /// The transactions list: `DATE`/`ACCOUNT`/`PAYEE`/`AMOUNT` in direct mode, gaining a
     /// `CATEGORY` column (at `PAYEE`'s expense) in subtree mode — `PAYEE` is the flexible
     /// `Min(0)` column, so it's the one that gives up width, per the handoff.
-    fn render_transactions(&self, frame: &mut Frame<'_>, area: Rect, node: &CategoryNode) {
+    fn render_transactions(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        node: &CategoryNode,
+        c: &Colours,
+    ) {
         let show_subtree = self.effective_show_subtree(node.id);
         let rows = self.transaction_rows(node, show_subtree);
         let direct_count = node.transaction_count;
@@ -903,11 +922,11 @@ impl CategoriesView {
             ])
             .split(content_area);
 
-        render_transactions_heading(frame, sections[0], rows.len(), total);
+        render_transactions_heading(frame, sections[0], rows.len(), total, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-        render_transactions_column_header(frame, sections[2], show_subtree);
+        render_transactions_column_header(frame, sections[2], show_subtree, c);
         render_transaction_rows(frame, sections[3], &rows, show_subtree);
-        render_transactions_footer(frame, sections[4], direct_count, subtree_count);
+        render_transactions_footer(frame, sections[4], direct_count, subtree_count, c);
 
         let rows_scrollbar_area = Rect {
             y: sections[3].y,
@@ -985,9 +1004,9 @@ impl CategoriesView {
 }
 
 /// The `N`/`12M` column header row, dim, per the handoff's "Column heads dim and uppercase".
-fn render_tree_column_header(frame: &mut Frame<'_>, area: Rect) {
+fn render_tree_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let columns = tree_row_columns(area);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_categories_tree_column_n(), dim))
             .alignment(Alignment::Right),
@@ -1000,7 +1019,13 @@ fn render_tree_column_header(frame: &mut Frame<'_>, area: Rect) {
     );
 }
 
-fn render_tree_rows(frame: &mut Frame<'_>, area: Rect, lines: &[TreeLine], selected: RowID) {
+fn render_tree_rows(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    lines: &[TreeLine],
+    selected: RowID,
+    c: &Colours,
+) {
     let visible = lines.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
         std::iter::repeat_n(Constraint::Length(1), visible).collect();
@@ -1011,20 +1036,17 @@ fn render_tree_rows(frame: &mut Frame<'_>, area: Rect, lines: &[TreeLine], selec
 
     for (line, row_area) in lines.iter().zip(row_areas.iter()) {
         if let TreeLine::Node(row) = line {
-            render_tree_row(frame, *row_area, row, row.id == selected);
+            render_tree_row(frame, *row_area, row, row.id == selected, c);
         }
     }
 }
 
-fn render_tree_row(frame: &mut Frame<'_>, area: Rect, row: &TreeRow, selected: bool) {
+fn render_tree_row(frame: &mut Frame<'_>, area: Rect, row: &TreeRow, selected: bool, c: &Colours) {
     if selected {
-        frame.render_widget(
-            Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-            area,
-        );
+        frame.render_widget(Block::new().style(c.selection()), area);
     }
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let bold = Style::default().add_modifier(Modifier::BOLD);
     let prefix_style = if selected { Style::default() } else { dim };
     let name_style = if row.is_root {
@@ -1096,8 +1118,8 @@ fn tree_row_columns(area: Rect) -> [Rect; 3] {
 
 /// One `label   value` summary row, the label padded to [`SUMMARY_LABEL_WIDTH`] and dimmed —
 /// mirrors `view::units`'s own `summary_field_line`.
-fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn summary_field_line<'a>(c: &Colours, label: &'a str, value: &'a str) -> Paragraph<'a> {
+    let dim = c.muted();
     Paragraph::new(Line::from(vec![
         Span::styled(format!("{label:<SUMMARY_LABEL_WIDTH$}"), dim),
         Span::raw(value),
@@ -1121,8 +1143,8 @@ fn format_date(date: NaiveDate) -> String {
 /// dim tag — names which series is plotted, per the handoff's own "the header says so" call-out
 /// (originally about never silently plotting rollup; `render_spend_chart`'s own doc covers why
 /// a parent's rollup is shown here instead, and why that's not "silent").
-fn render_chart_heading(frame: &mut Frame<'_>, area: Rect, is_subtree: bool) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_chart_heading(frame: &mut Frame<'_>, area: Rect, is_subtree: bool, c: &Colours) {
+    let dim = c.muted();
     let label = if is_subtree {
         msg::tui_categories_chart_subtree()
     } else {
@@ -1148,13 +1170,19 @@ fn render_chart_heading(frame: &mut Frame<'_>, area: Rect, is_subtree: bool) {
 
 /// The row beneath the chart: first month + its value, the average, last month + its value —
 /// per the handoff's `oct 24  712 / avg 1 040 / sep 26  904`.
-fn render_chart_labels(frame: &mut Frame<'_>, area: Rect, series: &[f64; CHART_MONTHS], avg: f64) {
+fn render_chart_labels(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    series: &[f64; CHART_MONTHS],
+    avg: f64,
+    c: &Colours,
+) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Min(0), Constraint::Min(0)])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let first_text = format!(
         "{}  {}",
         format_month(chart_month(0)),
@@ -1193,8 +1221,14 @@ fn format_month(date: NaiveDate) -> String {
 }
 
 /// The "TRANSACTIONS N of M · newest first" heading.
-fn render_transactions_heading(frame: &mut Frame<'_>, area: Rect, shown: usize, total: u32) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_transactions_heading(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    shown: usize,
+    total: u32,
+    c: &Colours,
+) {
+    let dim = c.muted();
     let tag = msg::tui_categories_transactions_heading(shown as i64, &total.to_string());
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -1250,9 +1284,14 @@ fn transaction_columns(area: Rect, show_category: bool) -> (Rect, Rect, Option<R
     }
 }
 
-fn render_transactions_column_header(frame: &mut Frame<'_>, area: Rect, show_category: bool) {
+fn render_transactions_column_header(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    show_category: bool,
+    c: &Colours,
+) {
     let (date, account, category, payee, amount) = transaction_columns(area, show_category);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(
             msg::tui_categories_transactions_column_date(),
@@ -1326,8 +1365,14 @@ fn render_transaction_rows(
 /// The `N direct · M in subtree  ·  enter open txn` footer row — `enter` isn't wired to
 /// anything yet (the transactions list has no navigable focus of its own here, see the module
 /// doc), the hint is shown as-is regardless.
-fn render_transactions_footer(frame: &mut Frame<'_>, area: Rect, direct: u32, subtree: u32) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_transactions_footer(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    direct: u32,
+    subtree: u32,
+    c: &Colours,
+) {
+    let dim = c.muted();
     let text = msg::tui_categories_transactions_footer(direct as i64, subtree as i64);
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
 }
@@ -1439,11 +1484,11 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    fn render(view: &CategoriesView) -> String {
+    fn render(view: &CategoriesView, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("rendering the Categories view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1468,16 +1513,18 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&CategoriesView::new());
+        let c = &Colours::default();
+        render(&CategoriesView::new(), c);
     }
 
     #[test]
     fn leaves_a_blank_row_between_the_shells_title_bar_and_the_tree() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         let view = CategoriesView::new();
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("rendering should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1497,11 +1544,12 @@ mod tests {
 
     #[test]
     fn left_pane_is_46_wide_with_a_2_col_gap_before_the_right_pane() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         let view = CategoriesView::new();
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("rendering should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1568,16 +1616,18 @@ mod tests {
 
     #[test]
     fn shows_both_root_names_uppercase_and_bold() {
-        let text = render(&CategoriesView::new());
+        let c = &Colours::default();
+        let text = render(&CategoriesView::new(), c);
         assert!(text.contains("INCOME"), "INCOME root missing");
         assert!(text.contains("EXPENSES"), "EXPENSES root missing");
     }
 
     #[test]
     fn shows_the_tree_header_and_column_header() {
+        let c = &Colours::default();
         let view = CategoriesView::new();
         let total = view.store.nodes().len();
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(
             text.contains(&format!("tree 8 of {total}")),
             "tree header missing"
@@ -1730,6 +1780,7 @@ mod tests {
 
     #[test]
     fn archived_row_renders_dim_with_an_archived_suffix() {
+        let c = &Colours::default();
         // A short-named leaf (`Bonus`, not `Restaurants`) — the left pane's name column is
         // narrow enough at depth 3 that a longer name plus " · archived" would truncate before
         // the suffix, which would defeat the point of this assertion.
@@ -1742,7 +1793,7 @@ mod tests {
         view.folded.retain(|id| *id != salary); // unfold Salary so Bonus actually renders
         view.show_archived = true;
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("Bonus · archived"), "archived suffix missing");
     }
 
@@ -1761,11 +1812,12 @@ mod tests {
 
     #[test]
     fn summary_box_shows_the_selected_category_and_merges_direct_and_rollup_for_a_leaf() {
+        let c = &Colours::default();
         let mut view = CategoriesView::new();
         let groceries = find_by_name(&view, "Groceries");
         view.selected = groceries;
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("expenses / food / groceries"), "path missing");
         assert!(
             text.contains("direct · rollup 12m"),
@@ -1787,11 +1839,12 @@ mod tests {
 
     #[test]
     fn summary_box_splits_direct_and_rollup_when_they_differ() {
+        let c = &Colours::default();
         let mut view = CategoriesView::new();
         let food = find_by_name(&view, "Food");
         view.selected = food;
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("direct 12m"), "direct label missing");
         assert!(text.contains("rollup 12m"), "rollup label missing");
         assert!(text.contains("24,120.4"), "rollup value missing");
@@ -1803,11 +1856,12 @@ mod tests {
 
     #[test]
     fn summary_box_shows_none_for_a_parents_own_first_last_and_transactions() {
+        let c = &Colours::default();
         let mut view = CategoriesView::new();
         let food = find_by_name(&view, "Food");
         view.selected = food;
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(
             text.contains("none"),
             "expected a 'none' field for a node with no direct postings"
@@ -1815,17 +1869,18 @@ mod tests {
     }
 
     #[test]
-    fn selected_row_renders_reversed() {
+    fn selected_row_renders_the_selection_fill() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         let view = CategoriesView::new();
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("rendering should not error");
 
         let buffer = terminal.backend().buffer();
         let row_is_reversed = |y: u16| -> bool {
-            (0..LEFT_PANE_WIDTH).any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
+            (0..LEFT_PANE_WIDTH).any(|x| buffer[(x, y)].bg == c.selection().bg.unwrap_or_default())
         };
         let row_containing = |needle: &str| -> u16 {
             (0..buffer.area.height)
@@ -1892,20 +1947,22 @@ mod tests {
 
     #[test]
     fn capital_x_shows_a_not_yet_built_hint_until_another_key_clears_it() {
+        let c = &Colours::default();
         let mut view = CategoriesView::new();
         assert_eq!(view.handle_key(key(KeyCode::Char('X'))), Some(Action::NoOp));
-        assert!(render(&view).contains("not yet built"));
+        assert!(render(&view, c).contains("not yet built"));
 
         view.handle_key(key(KeyCode::Char('j')));
-        assert!(!render(&view).contains("not yet built"));
+        assert!(!render(&view, c).contains("not yet built"));
     }
 
     #[test]
     fn shows_the_direct_spend_chart_heading_and_labels() {
+        let c = &Colours::default();
         let mut view = CategoriesView::new();
         view.selected = find_by_name(&view, "Groceries");
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("DIRECT SPEND"), "chart heading missing");
         assert!(text.contains("avg"), "average label missing");
         // Braille marker cells the `Chart` line draws with — confirms an actual chart
@@ -1919,11 +1976,12 @@ mod tests {
 
     #[test]
     fn a_parent_shows_a_subtree_spend_chart_instead_of_a_flat_zero_line() {
+        let c = &Colours::default();
         let mut view = CategoriesView::new();
         let food = find_by_name(&view, "Food");
         view.selected = food;
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(
             text.contains("SUBTREE SPEND"),
             "chart heading should name subtree mode for a parent"
@@ -2055,17 +2113,18 @@ mod tests {
 
     #[test]
     fn a_leaf_only_gains_the_category_column_once_s_is_pressed() {
+        let c = &Colours::default();
         let mut view = CategoriesView::new();
         view.selected = find_by_name(&view, "Groceries");
 
-        let direct_text = render(&view);
+        let direct_text = render(&view, c);
         assert!(
             !direct_text.contains("CATEGORY"),
             "no category column in direct mode"
         );
 
         view.handle_key(key(KeyCode::Char('s')));
-        let subtree_text = render(&view);
+        let subtree_text = render(&view, c);
         assert!(
             subtree_text.contains("CATEGORY"),
             "category column missing once s is pressed"
@@ -2074,10 +2133,11 @@ mod tests {
 
     #[test]
     fn a_parent_always_shows_the_category_column_regardless_of_s() {
+        let c = &Colours::default();
         let mut view = CategoriesView::new();
         view.selected = find_by_name(&view, "Food");
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(
             text.contains("CATEGORY"),
             "a parent should show the subtree's category column without needing s"
@@ -2090,10 +2150,11 @@ mod tests {
 
     #[test]
     fn transactions_footer_shows_direct_and_subtree_counts() {
+        let c = &Colours::default();
         let mut view = CategoriesView::new();
         view.selected = find_by_name(&view, "Food");
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(
             text.contains("0 direct"),
             "direct count missing for a category with no direct postings"

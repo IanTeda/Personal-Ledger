@@ -9,18 +9,15 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 
+use crate::colours::Colours;
 use crate::msg;
 
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for the
-/// `missing rates` fact and the input cursor.
-const ACCENT: Color = Color::Red;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per §4c's own "~78% width" — matches
 /// the command popup's own width, distinct from a unit form's ~88%.
@@ -59,7 +56,7 @@ impl BaseUnitGuardPopup {
     /// Renders the floating overlay, anchored in the top third of `area` (the full terminal
     /// area) per §4c's own "anchored in the top third" — distinct from `popup::unit`'s forms,
     /// which centre vertically too but via the same `popup_rect` shape.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -83,22 +80,22 @@ impl BaseUnitGuardPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_prose(frame, rows[2]);
         // rows[3] is left blank — breathing space above the impact facts.
-        render_impact_facts(frame, rows[4]);
+        render_impact_facts(frame, rows[4], c);
         // rows[5] is left blank — breathing space above the missing-rates box.
-        render_missing_rates_box(frame, rows[6]);
-        render_confirmation_box(frame, rows[7]);
+        render_missing_rates_box(frame, rows[6], c);
+        render_confirmation_box(frame, rows[7], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[8]);
-        render_footer_hints(frame, rows[9]);
+        render_footer_hints(frame, rows[9], c);
     }
 }
 
 /// The title row: `base unit  AUD → USD` flush left, `:set base` dim and right-aligned — §4c's
 /// own "Header: `base unit AUD → USD` with `:set base` right-aligned".
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":set base";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -109,7 +106,7 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     frame.render_widget(Paragraph::new("base unit  AUD → USD"), columns[0]);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -129,16 +126,23 @@ fn render_prose(frame: &mut Frame<'_>, area: Rect) {
 
 /// One `label   value` fact row, the label dim and fixed-width; `accent` styles the value for
 /// the one fact §4c marks (`missing rates`).
-fn render_fact(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, accent: bool) {
+fn render_fact(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: Line<'static>,
+    accent: bool,
+    c: &Colours,
+) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
     let value = if accent {
-        value.style(Style::default().fg(ACCENT))
+        value.style(c.accent())
     } else {
         value
     };
@@ -147,7 +151,7 @@ fn render_fact(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'stat
 
 /// The six resolved impact figures — §4c's own worked example verbatim, each "resolved by
 /// query" against real data in the eventual build.
-fn render_impact_facts(frame: &mut Frame<'_>, area: Rect) {
+fn render_impact_facts(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -166,6 +170,7 @@ fn render_impact_facts(frame: &mut Frame<'_>, area: Rect) {
         "transactions",
         Line::from("412 · unchanged"),
         false,
+        c,
     );
     render_fact(
         frame,
@@ -173,6 +178,7 @@ fn render_impact_facts(frame: &mut Frame<'_>, area: Rect) {
         "accounts",
         Line::from("11 · 4 already in USD"),
         false,
+        c,
     );
     render_fact(
         frame,
@@ -180,6 +186,7 @@ fn render_impact_facts(frame: &mut Frame<'_>, area: Rect) {
         "re-converted",
         Line::from("18 months of totals"),
         false,
+        c,
     );
     render_fact(
         frame,
@@ -187,6 +194,7 @@ fn render_impact_facts(frame: &mut Frame<'_>, area: Rect) {
         "missing rates",
         Line::from("6 weeks · nov 25 – dec 25"),
         true,
+        c,
     );
     render_fact(
         frame,
@@ -194,8 +202,9 @@ fn render_impact_facts(frame: &mut Frame<'_>, area: Rect) {
         "one write",
         Line::from("general.base_unit = \"USD\""),
         false,
+        c,
     );
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     render_fact(
         frame,
         rows[5],
@@ -205,13 +214,14 @@ fn render_impact_facts(frame: &mut Frame<'_>, area: Rect) {
             Span::styled("· u undoes it", dim),
         ]),
         false,
+        c,
     );
 }
 
 /// The missing-rates box — a plain bordered `Block` naming the gap this dialog exists to
 /// prevent and offering the fix as a first-class option, per §4c's own "name the count and the
 /// range, then offer the fix as a first-class option rather than an error".
-fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect) {
+fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let block = Block::bordered();
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -226,7 +236,7 @@ fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect) {
         rows[0],
     );
     let bold = Style::default().add_modifier(Modifier::BOLD);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("i", bold),
@@ -237,12 +247,11 @@ fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect) {
     );
 }
 
-/// The typed-confirmation box — an accent-bordered focused input, matching the delete
-/// confirmation convention on the unit forms per §4c's own "matching the delete-confirmation
-/// convention on the unit forms".
-fn render_confirmation_box(frame: &mut Frame<'_>, area: Rect) {
-    let accent = Style::default().fg(ACCENT);
-    let block = Block::bordered().border_style(accent);
+/// The typed-confirmation box — a `negative`-bordered focused input, since re-converting
+/// every figure is destructive, matching the delete-confirmation convention on the unit forms
+/// per §4c's own "matching the delete-confirmation convention on the unit forms".
+fn render_confirmation_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let block = Block::bordered().border_style(c.negative());
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -250,7 +259,7 @@ fn render_confirmation_box(frame: &mut Frame<'_>, area: Rect) {
         Paragraph::new(Line::from(vec![
             Span::raw("type the unit  "),
             Span::raw("USD"),
-            Span::styled("▌", accent),
+            Span::styled("▌", c.cursor()),
         ])),
         inner,
     );
@@ -258,7 +267,7 @@ fn render_confirmation_box(frame: &mut Frame<'_>, area: Rect) {
 
 /// The window footer hint row: each key bold, its label dim — §4c's own "Keys: `enter` commit
 /// and re-convert · `i` import first · `esc` cancel".
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     const HINTS: &[(&str, &str)] = &[
         ("enter", "commit and re-convert"),
         ("i", "import first"),
@@ -266,7 +275,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = Style::default().add_modifier(Modifier::DIM);
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(HINTS.len() * 3);
     for (idx, (key, label)) in HINTS.iter().enumerate() {
@@ -308,11 +317,11 @@ mod tests {
 
     use super::*;
 
-    fn render(popup: &BaseUnitGuardPopup) -> String {
+    fn render(popup: &BaseUnitGuardPopup, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -328,12 +337,14 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&BaseUnitGuardPopup::new());
+        let c = &Colours::default();
+        render(&BaseUnitGuardPopup::new(), c);
     }
 
     #[test]
     fn shows_the_title_and_command_tag() {
-        let text = render(&BaseUnitGuardPopup::new());
+        let c = &Colours::default();
+        let text = render(&BaseUnitGuardPopup::new(), c);
         assert!(text.contains("base unit"), "title missing");
         assert!(text.contains("AUD → USD"), "conversion arrow missing");
         assert!(text.contains(":set base"), "command tag missing");
@@ -341,7 +352,8 @@ mod tests {
 
     #[test]
     fn shows_the_prose() {
-        let text = render(&BaseUnitGuardPopup::new());
+        let c = &Colours::default();
+        let text = render(&BaseUnitGuardPopup::new(), c);
         assert!(
             text.contains("transactions are stored in their own units and are"),
             "prose line 1 missing"
@@ -354,7 +366,8 @@ mod tests {
 
     #[test]
     fn shows_every_impact_fact() {
-        let text = render(&BaseUnitGuardPopup::new());
+        let c = &Colours::default();
+        let text = render(&BaseUnitGuardPopup::new(), c);
         for (label, value) in [
             ("transactions", "412 · unchanged"),
             ("accounts", "11 · 4 already in USD"),
@@ -375,10 +388,11 @@ mod tests {
 
     #[test]
     fn missing_rates_fact_renders_in_the_accent_colour() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| BaseUnitGuardPopup::new().render(frame, frame.area()))
+            .draw(|frame| BaseUnitGuardPopup::new().render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -393,8 +407,9 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
-        let row_has_accent =
-            |y: u16| -> bool { (0..buffer.area.width).any(|x| buffer[(x, y)].fg == ACCENT) };
+        let row_has_accent = |y: u16| -> bool {
+            (0..buffer.area.width).any(|x| buffer[(x, y)].fg == Colours::default().accent_colour())
+        };
 
         assert!(
             row_has_accent(row_containing("missing rates")),
@@ -404,7 +419,8 @@ mod tests {
 
     #[test]
     fn shows_the_missing_rates_box_and_import_hint() {
-        let text = render(&BaseUnitGuardPopup::new());
+        let c = &Colours::default();
+        let text = render(&BaseUnitGuardPopup::new(), c);
         assert!(
             text.contains("those 6 weeks report as gaps until priced."),
             "missing-rates box line missing"
@@ -417,14 +433,16 @@ mod tests {
 
     #[test]
     fn shows_the_typed_confirmation_input() {
-        let text = render(&BaseUnitGuardPopup::new());
+        let c = &Colours::default();
+        let text = render(&BaseUnitGuardPopup::new(), c);
         assert!(text.contains("type the unit"), "confirmation label missing");
         assert!(text.contains("USD"), "typed unit missing");
     }
 
     #[test]
     fn shows_the_footer_hints() {
-        let text = render(&BaseUnitGuardPopup::new());
+        let c = &Colours::default();
+        let text = render(&BaseUnitGuardPopup::new(), c);
         assert!(text.contains("enter"), "enter hint missing");
         assert!(
             text.contains("commit and re-convert"),

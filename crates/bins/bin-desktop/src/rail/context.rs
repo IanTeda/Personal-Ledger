@@ -114,19 +114,19 @@ impl ContextRail {
 }
 
 impl RenderOnce for ContextRail {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         let frame = div()
             .w(WIDTH)
             .flex_none()
             .h_full()
             .flex()
             .flex_col()
-            .bg(color::GROUND)
+            .bg(color::background(cx))
             .border_r(px(2.0))
             .border_color(if self.focused {
-                color::INK
+                color::foreground(cx)
             } else {
-                color::STRUCTURAL_RULE
+                color::structural_rule(cx)
             });
 
         match self.noun {
@@ -134,24 +134,26 @@ impl RenderOnce for ContextRail {
                 .child(header(
                     &lib_locale::format::upper(&Noun::Accounts.label()),
                     &crate::msg::desktop_context_active_count(&ACCOUNTS.len().to_string()),
+                    cx,
                 ))
                 .children(ACCOUNTS.iter().enumerate().map(|(index, account)| {
                     let current = self.focused && self.context == Some(index);
-                    account_row(account, index == ACCOUNTS.len() - 1, current)
+                    account_row(account, index == ACCOUNTS.len() - 1, current, cx)
                 }))
                 .child(div().flex_1())
                 .child(footer(
                     crate::msg::desktop_context_new_account("+"),
                     ":accounts new",
+                    cx,
                 )),
             noun => frame
-                .child(header(&noun_label(noun), "not yet built"))
+                .child(header(&noun_label(noun), "not yet built", cx))
                 .child(div().flex_1()),
         }
     }
 }
 
-fn header(label: &str, count: &str) -> impl IntoElement {
+fn header(label: &str, count: &str, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -168,60 +170,62 @@ fn header(label: &str, count: &str) -> impl IntoElement {
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(10.0))
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(label.to_string()),
                 )
                 .child(
                     div()
                         .text_size(px(11.0))
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .child(count.to_string()),
                 ),
         )
-        .child(div().h(px(2.0)).bg(color::STRUCTURAL_RULE))
+        .child(div().h(px(2.0)).bg(color::structural_rule(cx)))
 }
 
-fn account_row(account: &Account, last: bool, current: bool) -> impl IntoElement {
+fn account_row(account: &Account, last: bool, current: bool, cx: &App) -> impl IntoElement {
     div()
         .py(px(9.0))
         .px(px(14.0))
         .flex()
         .flex_col()
         .gap(px(2.0))
-        .when(current, |this| this.bg(color::HOVER_TINT))
+        .when(current, |this| this.bg(color::hover(cx)))
         .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::HAIRLINE)
+            this.border_b(px(1.0)).border_color(color::hairline(cx))
         })
         .child(
             div().flex().justify_between().child(account.name).child(
                 div()
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .when(account.negative, |this| this.text_color(color::ACCENT_TEXT))
+                    .when(account.negative, |this| {
+                        this.text_color(color::negative_text(cx))
+                    })
                     .child(account.balance),
             ),
         )
         .child(
             div()
                 .text_size(px(11.0))
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(account.meta),
         )
 }
 
-fn footer(affordance: String, command: &'static str) -> impl IntoElement {
+fn footer(affordance: String, command: &'static str, cx: &App) -> impl IntoElement {
     div()
         .py(px(10.0))
         .px(px(14.0))
         .border_t(px(1.0))
-        .border_color(color::HAIRLINE)
+        .border_color(color::hairline(cx))
         .text_size(px(11.5))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .flex()
         .child(format!("{affordance} · "))
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_color(color::INK)
+                .text_color(color::foreground(cx))
                 .child(command),
         )
 }

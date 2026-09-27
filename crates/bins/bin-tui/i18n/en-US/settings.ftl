@@ -151,3 +151,32 @@ tui-settings-date-style-short = short
 tui-settings-date-style-medium = medium
 tui-settings-date-style-long = long
 tui-settings-date-style-iso = iso
+
+## The Display group's Colour Theme rows and their list popup.
+
+tui-settings-setting-colour-theme = colour theme
+tui-settings-setting-colour-appearance = appearance
+tui-settings-colour-theme-note = enter picks
+tui-settings-colour-popup-theme-title = COLOUR THEME
+tui-settings-colour-popup-appearance-title = APPEARANCE
+
+## Why this Client ignores the Colour Theme: `$key` is the Configuration key.
+
+tui-settings-colour-terminal-note = { $key } is on: this terminal draws its own colours. Your choice still syncs to your other devices.
+
+## `$roles` is the overridden Colour Role keys, comma-separated.
+
+tui-settings-colour-overrides = { $roles } overridden by [theme] in your configuration file. Restart to change them.
+
+## A `[theme]` pair below its contrast rule. `$subject` and `$surface` are Colour Role or
+## calculated colour keys; `$ratio` and `$required` are contrast ratios.
+
+tui-settings-colour-contrast = { $subject } on { $surface } is { $ratio }:1, needs { $required }:1
+
+## The footer while the colour list popup is open. `$back` is the key that reverts.
+
+tui-footer-colour-popup = j/k preview · enter keep · { $back } revert
+
+## The rows' note while `$key` (the Configuration key) makes this terminal draw its own colours.
+
+tui-settings-colour-terminal-row-note = syncs; { $key } draws terminal colours here

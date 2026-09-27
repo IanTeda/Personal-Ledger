@@ -29,15 +29,15 @@ use lib_core::RowID;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::payee::{PayeeStore, known_category_paths};
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "icon url".len() as u16 + 1;
@@ -283,7 +283,7 @@ impl EditPayeePopup {
     }
 
     /// Renders the floating overlay, centred and fixed-height, within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore, c: &Colours) {
         let Some(payee) = store.find(self.editing_id) else {
             return;
         };
@@ -316,9 +316,9 @@ impl EditPayeePopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
-        render_name_box(frame, rows[2], &self.name, self.focus == Field::Name);
+        render_name_box(frame, rows[2], &self.name, self.focus == Field::Name, c);
         render_rename_preview(
             frame,
             [rows[3], rows[4], rows[5]],
@@ -326,6 +326,7 @@ impl EditPayeePopup {
             &self.original_name,
             self.name.trim(),
             payee.transaction_count,
+            c,
         );
         // rows[6] is left blank — breathing space above the rest of the form.
         render_text_field(
@@ -334,6 +335,7 @@ impl EditPayeePopup {
             "website",
             &self.website,
             self.focus == Field::Website,
+            c,
         );
         render_text_field(
             frame,
@@ -341,6 +343,7 @@ impl EditPayeePopup {
             "icon url",
             &self.icon_url_input,
             self.focus == Field::IconUrl,
+            c,
         );
         render_text_field(
             frame,
@@ -348,26 +351,24 @@ impl EditPayeePopup {
             "default",
             &self.default_input,
             self.focus == Field::Default,
+            c,
         );
-        render_active_field(frame, rows[10], self.active, self.focus == Field::Active);
+        render_active_field(frame, rows[10], self.active, self.focus == Field::Active, c);
         // rows[11] is left blank — breathing space above the read-only line.
         render_field(
             frame,
             rows[12],
             "created",
-            Line::from(Span::styled(format_date(payee.created_on), dim())),
+            Line::from(Span::styled(format_date(payee.created_on), c.muted())),
+            c,
         );
         // rows[13] is left blank — breathing space above the footer rule.
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[14]);
-        render_footer_hints(frame, rows[15]);
+        render_footer_hints(frame, rows[15], c);
     }
 }
 
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
-}
-
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":payee edit";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -378,34 +379,41 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
     frame.render_widget(Paragraph::new("edit payee"), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
-fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: &str,
+    focused: bool,
+    c: &Colours,
+) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
+        spans.push(Span::styled("\u{258c}", c.cursor()));
     }
-    render_field(frame, area, label, Line::from(spans));
+    render_field(frame, area, label, Line::from(spans), c);
 }
 
 /// `name`, boxed and captioned — the handoff's own "the form must never let this be a
 /// surprise". A real bordered `Block`, not just an accented label: the visual weight is the
 /// point.
-fn render_name_box(frame: &mut Frame<'_>, area: Rect, name: &str, focused: bool) {
+fn render_name_box(frame: &mut Frame<'_>, area: Rect, name: &str, focused: bool, c: &Colours) {
     let border_style = if focused {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -417,9 +425,9 @@ fn render_name_box(frame: &mut Frame<'_>, area: Rect, name: &str, focused: bool)
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Length(1)])
         .split(inner);
-    render_text_field(frame, rows[0], "name", name, focused);
+    render_text_field(frame, rows[0], "name", name, focused, c);
     frame.render_widget(
-        Paragraph::new(Span::styled("changing this is a rename", dim())),
+        Paragraph::new(Span::styled("changing this is a rename", c.muted())),
         rows[1],
     );
 }
@@ -433,8 +441,9 @@ fn render_rename_preview(
     current_name: &str,
     typed_name: &str,
     transaction_count: u32,
+    c: &Colours,
 ) {
-    let accent = Style::default().fg(ACCENT);
+    let accent = c.accent();
     match status {
         RenameStatus::Empty => {
             frame.render_widget(
@@ -444,7 +453,7 @@ fn render_rename_preview(
         }
         RenameStatus::NoChange => {
             frame.render_widget(
-                Paragraph::new(Span::styled("no rename pending", dim())),
+                Paragraph::new(Span::styled("no rename pending", c.muted())),
                 rows[0],
             );
         }
@@ -463,7 +472,10 @@ fn render_rename_preview(
                 rows[0],
             );
             frame.render_widget(
-                Paragraph::new(Span::styled(format!("match kept {pattern} · auto"), dim())),
+                Paragraph::new(Span::styled(
+                    format!("match kept {pattern} · auto"),
+                    c.muted(),
+                )),
                 rows[1],
             );
             frame.render_widget(
@@ -471,7 +483,7 @@ fn render_rename_preview(
                     format!(
                         "{transaction_count} txns show the new name at once — no rows rewritten, they join by id"
                     ),
-                    dim(),
+                    c.muted(),
                 )),
                 rows[2],
             );
@@ -479,9 +491,15 @@ fn render_rename_preview(
     }
 }
 
-fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
+fn render_active_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    active: bool,
+    focused: bool,
+    c: &Colours,
+) {
     let glyph_style = if focused {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -493,12 +511,13 @@ fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused:
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
-            Span::styled("· clear to deactivate", dim()),
+            Span::styled("· clear to deactivate", c.muted()),
         ]),
+        c,
     );
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     const HINTS: &[(&str, &str)] = &[
         ("tab", "next field"),
         ("^s", "save"),
@@ -508,7 +527,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", "cancel"),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(HINTS.len() * 3);
     for (index, (key, label)) in HINTS.iter().enumerate() {
@@ -558,11 +577,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &EditPayeePopup, store: &dyn PayeeStore) -> String {
+    fn render(popup: &EditPayeePopup, store: &dyn PayeeStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -592,9 +611,10 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
-        render(&EditPayeePopup::new(&store, woolworths), &store);
+        render(&EditPayeePopup::new(&store, woolworths), &store, c);
     }
 
     #[test]
@@ -656,12 +676,13 @@ mod tests {
 
     #[test]
     fn rename_preview_renders_the_exact_stored_pattern_format_with_no_backslash_for_a_space() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let coles_central = find_id(&store, "Coles Central");
         let mut popup = EditPayeePopup::new(&store, coles_central);
         popup.name = "WW Metro".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("rename Coles Central \u{2192} WW Metro"));
         assert!(text.contains("(?i)^Coles Central$"));
         assert!(text.contains("no rows rewritten"));
@@ -669,13 +690,14 @@ mod tests {
 
     #[test]
     fn same_name_different_case_shows_no_rename_pending_and_saves_without_writing_an_alias() {
+        let c = &Colours::default();
         let mut store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
         let aliases_before = store.aliases(woolworths).len();
         let mut popup = EditPayeePopup::new(&store, woolworths);
         popup.name = "WOOLWORTHS".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("no rename pending"));
 
         let (id, name, ..) = popup.save_fields(&store).expect("draft should validate");
@@ -685,12 +707,13 @@ mod tests {
 
     #[test]
     fn a_colliding_name_is_refused_and_the_holder_is_named() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let coles_central = find_id(&store, "Coles Central");
         let mut popup = EditPayeePopup::new(&store, coles_central);
         popup.name = "woolworths".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("a payee named \"Woolworths\" already exists"));
         assert_eq!(popup.save_fields(&store), None);
     }
@@ -744,9 +767,10 @@ mod tests {
 
     #[test]
     fn shows_the_created_date_and_footer_hints() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
-        let text = render(&EditPayeePopup::new(&store, woolworths), &store);
+        let text = render(&EditPayeePopup::new(&store, woolworths), &store, c);
 
         assert!(text.contains("created"));
         assert!(text.contains("2024"));

@@ -21,28 +21,13 @@ pub use commands::DOMAINS;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Clear, Scrollbar, ScrollbarOrientation, ScrollbarState},
 };
 
+use crate::colours::Colours;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-
-/// Dim colour for hint text and secondary detail, matching `ACCENT`'s siblings in
-/// `view/dashboard.rs`'s style table.
-const DIM: Color = Color::DarkGray;
-
-/// A darker grey than `DIM` for the footer hint row's labels (`select`, `complete`, …) — an
-/// explicit RGB value rather than a named/indexed colour, since `DIM`'s `Color::DarkGray`
-/// (like `Color::Black` before it) renders however the user's terminal theme happens to remap
-/// that palette slot, which isn't reliably "dark" on every theme.
-const FOOTER_LABEL: Color = Color::Rgb(90, 90, 90);
-
-/// The rendered highlight for the first literal occurrence of the typed query within a
-/// filtered row (`highlight_range`) — reversed on top of the selected row's own `REVERSED`
-/// modifier, so it reads as a highlighted chip either way, rather than a plain colour that
-/// `REVERSED` would otherwise swap out from under it.
-const MATCH_HIGHLIGHT: Color = Color::Yellow;
 
 /// Session-only cap on `Shell::command_history` — old enough to be useful for `Ctrl+r` recall,
 /// bounded so nothing unbounded accumulates over a long session.
@@ -377,7 +362,7 @@ impl CommandPopup {
     /// just the view region, per §3a's "centred floating overlay"). The info row (`info_row`)
     /// adds exactly one row when present — a zero-arg command with no "not yet built" message
     /// showing renders no info row at all, and the popup is correspondingly one row shorter.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = self.rows();
         let info_row = self.info_row();
         let extra_row: u16 = if info_row.is_some() { 1 } else { 0 };
@@ -414,27 +399,34 @@ impl CommandPopup {
         let rule = || Line::from("─".repeat(inner.width as usize));
         frame.render_widget(self.prompt_line(inner.width), layout[0]);
         frame.render_widget(rule(), layout[1]);
-        self.render_body(frame, layout[2], &rows, scroll_offset);
+        self.render_body(frame, layout[2], &rows, scroll_offset, c);
         render_scrollbar(frame, popup, layout[2], rows.len(), scroll_offset);
 
         let mut next = 3;
         if let Some((text, is_message)) = &info_row {
-            self.render_info_row(frame, layout[next], text, *is_message);
+            self.render_info_row(frame, layout[next], text, *is_message, c);
             next += 1;
         }
         frame.render_widget(rule(), layout[next]);
         next += 1;
-        frame.render_widget(footer_hint_line(), layout[next]);
+        frame.render_widget(footer_hint_line(c), layout[next]);
     }
 
     /// The info row itself: the "not yet built" message renders plainly, the argument preview
     /// dim (matching the footer hint labels' own dim treatment) so it reads as secondary to
     /// the candidate list above it.
-    fn render_info_row(&self, frame: &mut Frame<'_>, area: Rect, text: &str, is_message: bool) {
+    fn render_info_row(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        text: &str,
+        is_message: bool,
+        c: &Colours,
+    ) {
         let style = if is_message {
             Style::default()
         } else {
-            Style::default().fg(DIM)
+            c.muted()
         };
         frame.render_widget(Line::from(pad_line(text, area.width)).style(style), area);
     }
@@ -452,7 +444,14 @@ impl CommandPopup {
 
     /// The scrollable body: domain headers (resting state only) and `:command  <binding>
     /// description` rows, the selected row a full-width reversed block per §3a.
-    fn render_body(&self, frame: &mut Frame<'_>, area: Rect, rows: &[Row], scroll_offset: usize) {
+    fn render_body(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        rows: &[Row],
+        scroll_offset: usize,
+        c: &Colours,
+    ) {
         let body_height = area.height as usize;
         if body_height == 0 || rows.is_empty() {
             return;
@@ -473,8 +472,7 @@ impl CommandPopup {
                 Row::Header(name) => {
                     let text = pad_line(&name.to_uppercase(), line_rows[idx].width);
                     frame.render_widget(
-                        Line::from(text)
-                            .style(Style::default().add_modifier(Modifier::BOLD).fg(DIM)),
+                        Line::from(text).style(c.muted().add_modifier(Modifier::BOLD)),
                         line_rows[idx],
                     );
                 }
@@ -488,7 +486,7 @@ impl CommandPopup {
                     );
                     let text = pad_line(&text, line_rows[idx].width);
                     let base_style = if row_idx == selected_row {
-                        Style::default().add_modifier(Modifier::REVERSED)
+                        c.selection()
                     } else {
                         Style::default()
                     };
@@ -502,7 +500,7 @@ impl CommandPopup {
                                 Span::styled(prefix.to_string(), base_style),
                                 Span::styled(
                                     matched.to_string(),
-                                    base_style.fg(MATCH_HIGHLIGHT).add_modifier(Modifier::BOLD),
+                                    base_style.patch(c.accent()).add_modifier(Modifier::BOLD),
                                 ),
                                 Span::styled(suffix.to_string(), base_style),
                             ])
@@ -564,7 +562,7 @@ fn binding_column_width() -> usize {
 /// carried the right SGR codes — so the rule `render` draws above this row is what actually
 /// separates it from the candidate list; each key is bold instead, which doesn't depend on
 /// the palette.
-fn footer_hint_line() -> Line<'static> {
+fn footer_hint_line(c: &Colours) -> Line<'static> {
     // The key tokens stay here beside their label Messages, never inside them -- so each key is
     // rendered (and bolded) on its own, and no Catalogue ever carries a key.
     let hints: [(&str, String); 5] = [
@@ -576,7 +574,7 @@ fn footer_hint_line() -> Line<'static> {
     ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = Style::default().fg(FOOTER_LABEL);
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 4);
     for (idx, (key, label)) in hints.into_iter().enumerate() {
@@ -759,13 +757,13 @@ mod tests {
     }
 
     /// The whole rendered popup as one string, for asserting on what it actually shows.
-    fn drawn(popup: &CommandPopup) -> String {
+    fn drawn(popup: &CommandPopup, c: &Colours) -> String {
         use ratatui::{Terminal, backend::TestBackend};
 
         let backend = TestBackend::new(96, 40);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -781,6 +779,7 @@ mod tests {
 
     #[test]
     fn a_domain_header_is_the_shared_navigation_message_upper_cased() {
+        let c = &Colours::default();
         crate::locale::init_for_tests();
         let rows = CommandPopup::new().rows();
         let headers: Vec<String> = rows
@@ -793,24 +792,26 @@ mod tests {
         assert_eq!(headers[0], "Dashboard");
         assert!(headers.contains(&"Balance checks".to_string()));
         assert!(headers.contains(&"Units & prices".to_string()));
-        assert!(drawn(&CommandPopup::new()).contains("DASHBOARD"));
+        assert!(drawn(&CommandPopup::new(), c).contains("DASHBOARD"));
     }
 
     #[test]
     fn the_prompt_row_counts_the_matches_against_the_total() {
+        let c = &Colours::default();
         crate::locale::init_for_tests();
         let popup = CommandPopup::new();
         let total = commands::total_commands();
         assert!(
-            drawn(&popup).contains(&format!("{total} of {total}")),
+            drawn(&popup, c).contains(&format!("{total} of {total}")),
             "the resting count should be every command"
         );
     }
 
     #[test]
     fn the_footer_names_each_key_beside_its_label() {
+        let c = &Colours::default();
         crate::locale::init_for_tests();
-        let text = drawn(&CommandPopup::new());
+        let text = drawn(&CommandPopup::new(), c);
         for hint in [
             "select",
             "tab complete",
@@ -841,11 +842,12 @@ mod tests {
     /// `<...>` tokens are stable ids and deliberately do.
     #[test]
     fn the_popup_is_fully_pseudo_localised() {
+        let c = &Colours::default();
         crate::locale::init_for_tests();
         lib_locale::with_locale(lib_locale::Locale::EnXa, || {
             let mut popup = CommandPopup::new();
             popup.set_not_yet_built("quit");
-            let text = drawn(&popup);
+            let text = drawn(&popup, c);
 
             for word in [
                 "DASHBOARD",
@@ -910,18 +912,20 @@ mod tests {
 
     #[test]
     fn renders_without_panicking_at_rest() {
+        let c = &Colours::default();
         use ratatui::{Terminal, backend::TestBackend};
 
         let popup = CommandPopup::new();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
     }
 
     #[test]
     fn renders_without_panicking_while_filtering() {
+        let c = &Colours::default();
         use ratatui::{Terminal, backend::TestBackend};
 
         let mut popup = CommandPopup::new();
@@ -929,12 +933,13 @@ mod tests {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the filtered popup should not error");
     }
 
     #[test]
     fn renders_without_panicking_on_a_short_terminal() {
+        let c = &Colours::default();
         use ratatui::{Terminal, backend::TestBackend};
 
         // Shorter than the full resting-state list — exercises the scrolling path.
@@ -942,7 +947,7 @@ mod tests {
         let backend = TestBackend::new(96, 15);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering a scrolled popup should not error");
     }
 
@@ -1017,13 +1022,14 @@ mod tests {
 
     #[test]
     fn rendering_grows_the_popup_by_one_row_when_an_info_row_shows() {
+        let c = &Colours::default();
         use ratatui::{Terminal, backend::TestBackend};
 
         let render_height = |popup: &CommandPopup| -> u16 {
             let backend = TestBackend::new(96, 30);
             let mut terminal = Terminal::new(backend).expect("test backend should initialise");
             terminal
-                .draw(|frame| popup.render(frame, frame.area()))
+                .draw(|frame| popup.render(frame, frame.area(), c))
                 .expect("rendering the popup should not error");
             popup_rect(
                 Rect::new(0, 0, 96, 30),
@@ -1049,6 +1055,7 @@ mod tests {
 
     #[test]
     fn renders_without_panicking_with_an_argument_preview_row() {
+        let c = &Colours::default();
         use ratatui::{Terminal, backend::TestBackend};
 
         let mut popup = CommandPopup::new();
@@ -1056,12 +1063,13 @@ mod tests {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup with an argument preview should not error");
     }
 
     #[test]
     fn renders_without_panicking_with_a_not_yet_built_message() {
+        let c = &Colours::default();
         use ratatui::{Terminal, backend::TestBackend};
 
         let mut popup = CommandPopup::new();
@@ -1069,7 +1077,7 @@ mod tests {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup with a not-yet-built message should not error");
     }
 

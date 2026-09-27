@@ -15,16 +15,16 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
 use lib_core::RowID;
 
+use crate::colours::Colours;
 use crate::{category::CategoryStore, msg, popup::REFERENCE_TERMINAL_WIDTH};
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "transactions".len() as u16 + 1;
@@ -171,7 +171,13 @@ impl EditPopup {
 
     /// Renders the floating overlay, centred and fixed-height (no dynamic preview, unlike
     /// Move/New), within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn CategoryStore) {
+    pub fn render(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        store: &dyn CategoryStore,
+        c: &Colours,
+    ) {
         let Some(node) = store.find(self.editing_id) else {
             return;
         };
@@ -203,7 +209,7 @@ impl EditPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0], self.show_not_yet_built);
+        render_title(frame, rows[0], self.show_not_yet_built, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         render_text_field(
@@ -212,6 +218,7 @@ impl EditPopup {
             "name",
             &self.name,
             self.focus == Field::Name,
+            c,
         );
         render_text_field(
             frame,
@@ -219,8 +226,9 @@ impl EditPopup {
             "note",
             &self.note,
             self.focus == Field::Note,
+            c,
         );
-        render_active_field(frame, rows[4], self.active, self.focus == Field::Active);
+        render_active_field(frame, rows[4], self.active, self.focus == Field::Active, c);
 
         let parent_text = node
             .parent_id
@@ -231,7 +239,8 @@ impl EditPopup {
             frame,
             rows[5],
             "parent",
-            Line::from(Span::styled(parent_text, dim())),
+            Line::from(Span::styled(parent_text, c.muted())),
+            c,
         );
 
         let kind_text = store
@@ -242,7 +251,8 @@ impl EditPopup {
             frame,
             rows[6],
             "kind",
-            Line::from(Span::styled(kind_text, dim())),
+            Line::from(Span::styled(kind_text, c.muted())),
+            c,
         );
 
         let child_count = store.children(self.editing_id).len();
@@ -255,7 +265,8 @@ impl EditPopup {
             frame,
             rows[7],
             "children",
-            Line::from(Span::styled(children_text, dim())),
+            Line::from(Span::styled(children_text, c.muted())),
+            c,
         );
         // rows[8] is left blank — breathing space above the semantics block.
 
@@ -273,7 +284,7 @@ impl EditPopup {
         frame.render_widget(
             Paragraph::new(Span::styled(
                 "delete is refused while transactions exist",
-                Style::default().fg(ACCENT),
+                c.negative(),
             )),
             rows[11],
         );
@@ -283,17 +294,13 @@ impl EditPopup {
         );
 
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[13]);
-        render_footer_hints(frame, rows[14]);
+        render_footer_hints(frame, rows[14], c);
     }
-}
-
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
 }
 
 /// The title row: "edit" flush left, the `:category edit` command tag dim and right-aligned —
 /// replaced by the "not yet built" fallback while `X` was just pressed.
-fn render_title(frame: &mut Frame<'_>, area: Rect, show_not_yet_built: bool) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, show_not_yet_built: bool, c: &Colours) {
     let tag = if show_not_yet_built {
         ":category merge — not yet built".to_string()
     } else {
@@ -308,31 +315,44 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, show_not_yet_built: bool) {
         .split(area);
     frame.render_widget(Paragraph::new(msg::tui_category_edit_title()), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
-fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: &str,
+    focused: bool,
+    c: &Colours,
+) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
+        spans.push(Span::styled("\u{258c}", c.cursor()));
     }
-    render_field(frame, area, label, Line::from(spans));
+    render_field(frame, area, label, Line::from(spans), c);
 }
 
-fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
+fn render_active_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    active: bool,
+    focused: bool,
+    c: &Colours,
+) {
     let glyph_style = if focused {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -344,12 +364,13 @@ fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused:
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
-            Span::styled("· offered when categorising", dim()),
+            Span::styled("· offered when categorising", c.muted()),
         ]),
+        c,
     );
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let hints = [
         ("tab", msg::tui_category_edit_help_tab()),
         ("^s", msg::tui_category_edit_help_save()),
@@ -358,7 +379,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", msg::tui_category_edit_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (index, (key, label)) in hints.iter().enumerate() {
@@ -404,11 +425,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &EditPopup, store: &dyn CategoryStore) -> String {
+    fn render(popup: &EditPopup, store: &dyn CategoryStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -435,9 +456,10 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        render(&EditPopup::new(&store, groceries), &store);
+        render(&EditPopup::new(&store, groceries), &store, c);
     }
 
     #[test]
@@ -518,22 +540,24 @@ mod tests {
 
     #[test]
     fn x_shows_the_not_yet_built_fallback_until_another_key_clears_it() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
         let mut popup = EditPopup::new(&store, groceries);
 
         popup.trigger_not_yet_built();
-        assert!(render(&popup, &store).contains("not yet built"));
+        assert!(render(&popup, &store, c).contains("not yet built"));
 
         popup.push_char('x');
-        assert!(!render(&popup, &store).contains("not yet built"));
+        assert!(!render(&popup, &store, c).contains("not yet built"));
     }
 
     #[test]
     fn shows_read_only_fields_with_their_owning_key_hints() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        let text = render(&EditPopup::new(&store, groceries), &store);
+        let text = render(&EditPopup::new(&store, groceries), &store, c);
 
         assert!(text.contains("food · m move"), "parent hint missing");
         assert!(
@@ -548,9 +572,10 @@ mod tests {
 
     #[test]
     fn shows_the_semantics_block_with_the_real_transaction_count() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        let text = render(&EditPopup::new(&store, groceries), &store);
+        let text = render(&EditPopup::new(&store, groceries), &store, c);
 
         assert!(text.contains("archiving keeps all 148 transactions and totals;"));
         assert!(text.contains("it only stops the category being offered."));
@@ -560,9 +585,10 @@ mod tests {
 
     #[test]
     fn shows_the_footer_hints() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        let text = render(&EditPopup::new(&store, groceries), &store);
+        let text = render(&EditPopup::new(&store, groceries), &store, c);
         for key in ["tab", "^s", "^a", "X", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }

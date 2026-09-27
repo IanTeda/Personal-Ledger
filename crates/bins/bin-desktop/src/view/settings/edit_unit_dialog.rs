@@ -28,6 +28,7 @@ pub fn render(
     on_kind_click: OnKindClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &gpui::App,
 ) -> AnyElement {
     let card = div()
         .flex()
@@ -35,6 +36,7 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_settings_units_edit_title(&form.code),
             false,
+            cx,
         ))
         .child(dialog::body([
             text_field(
@@ -44,6 +46,7 @@ pub fn render(
                 &crate::msg::desktop_settings_units_code_placeholder(),
                 form.focused_field == AddUnitField::Code,
                 field_click(AddUnitField::Code, on_field_click.clone()),
+                cx,
             )
             .into_any_element(),
             text_field(
@@ -53,23 +56,28 @@ pub fn render(
                 &crate::msg::desktop_settings_units_name_placeholder(),
                 form.focused_field == AddUnitField::Name,
                 field_click(AddUnitField::Name, on_field_click),
+                cx,
             )
             .into_any_element(),
-            type_field("edit-unit-type", form.kind, on_kind_click).into_any_element(),
-            dialog::info_panel(crate::msg::desktop_settings_units_usage_notice(4, 604))
+            type_field("edit-unit-type", form.kind, on_kind_click, cx).into_any_element(),
+            dialog::info_panel(crate::msg::desktop_settings_units_usage_notice(4, 604), cx)
                 .into_any_element(),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("edit-unit-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "edit-unit-confirm",
-                crate::msg::desktop_settings_units_edit_submit(),
-                form.is_valid(),
-                false,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("edit-unit-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "edit-unit-confirm",
+                    crate::msg::desktop_settings_units_edit_submit(),
+                    form.is_valid(),
+                    false,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
-    dialog::overlay(dialog::WIDTH, false, card)
+    dialog::overlay(dialog::WIDTH, false, card, cx)
 }

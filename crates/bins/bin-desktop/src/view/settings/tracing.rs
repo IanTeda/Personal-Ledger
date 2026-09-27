@@ -38,6 +38,7 @@ pub fn render(
     log_lines: &[&'static str],
     on_level_click: OnLevelClick,
     on_clear_logs_click: OnClearLogsClick,
+    cx: &App,
 ) -> AnyElement {
     div()
         .w(COLUMN_WIDTH)
@@ -45,13 +46,13 @@ pub fn render(
         .flex()
         .flex_col()
         .gap(px(8.0))
-        .child(level_row(selected, on_level_click))
-        .child(log_viewport(log_lines))
-        .child(clear_logs_button(on_clear_logs_click))
+        .child(level_row(selected, on_level_click, cx))
+        .child(log_viewport(log_lines, cx))
+        .child(clear_logs_button(on_clear_logs_click, cx))
         .into_any_element()
 }
 
-fn level_row(selected: TracingLevel, on_click: OnLevelClick) -> impl IntoElement {
+fn level_row(selected: TracingLevel, on_click: OnLevelClick, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .gap(px(8.0))
@@ -62,11 +63,17 @@ fn level_row(selected: TracingLevel, on_click: OnLevelClick) -> impl IntoElement
                 level,
                 level == selected,
                 Rc::new(move |window: &mut Window, cx: &mut App| on_click(level, window, cx)),
+                cx,
             )
         }))
 }
 
-fn radio_option(level: TracingLevel, checked: bool, on_click: OnPlainClick) -> impl IntoElement {
+fn radio_option(
+    level: TracingLevel,
+    checked: bool,
+    on_click: OnPlainClick,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .id(SharedString::from(format!(
             "tracing-level-{}",
@@ -77,28 +84,28 @@ fn radio_option(level: TracingLevel, checked: bool, on_click: OnPlainClick) -> i
         .items_center()
         .gap(px(8.0))
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(radio_dot(checked))
+        .child(radio_dot(checked, cx))
         .child(div().text_size(px(12.0)).child(level.label()))
 }
 
-/// The `.dot` control: a 16px circle, `border:1.5px solid` (`DIVIDER`, `ACCENT` when checked),
+/// The `.dot` control: a 16px circle, `border:1.5px solid` (`divider`, `accent` when checked),
 /// with a centred 8px accent-filled inner circle standing in for the mockup's own `box-shadow:
 /// inset 0 0 0 4px var(--color-bg)` ring effect -- `gpui` has no inset-shadow primitive, so two
 /// concentric circles reproduce the same "accent ring around a punched-out centre" look.
 /// `pub(super)`: reused by `super::display`'s own "Status glyphs" radio group (issue #179) --
 /// its second consumer, promoted the same way `add_unit_dialog::segmented_control` was.
-pub(super) fn radio_dot(checked: bool) -> impl IntoElement {
+pub(super) fn radio_dot(checked: bool, cx: &App) -> impl IntoElement {
     div()
         .w(DOT_SIZE)
         .h(DOT_SIZE)
         .rounded_full()
         .border(DOT_BORDER)
         .border_color(if checked {
-            color::ACCENT
+            color::accent(cx)
         } else {
-            color::DIVIDER
+            color::divider(cx)
         })
-        .bg(color::GROUND)
+        .bg(color::background(cx))
         .flex()
         .items_center()
         .justify_center()
@@ -108,7 +115,7 @@ pub(super) fn radio_dot(checked: bool) -> impl IntoElement {
                     .w(DOT_INNER_SIZE)
                     .h(DOT_INNER_SIZE)
                     .rounded_full()
-                    .bg(color::ACCENT),
+                    .bg(color::accent(cx)),
             )
         })
 }
@@ -116,19 +123,19 @@ pub(super) fn radio_dot(checked: bool) -> impl IntoElement {
 /// The log viewport: `border:1px solid rgba(32,30,29,.30); background:#eae9e9; padding:10px;
 /// height:120px; overflow-y:auto; font-family:monospace; font-size:10px; line-height:1.5;
 /// color:#605d5d`.
-fn log_viewport(log_lines: &[&'static str]) -> impl IntoElement {
+fn log_viewport(log_lines: &[&'static str], cx: &App) -> impl IntoElement {
     div()
         .id("tracing-log-viewport")
         .h(VIEWPORT_HEIGHT)
         .border_1()
-        .border_color(color::BORDER)
-        .bg(color::CHROME)
+        .border_color(color::border(cx))
+        .bg(color::chrome(cx))
         .p(px(10.0))
         .overflow_y_scroll()
         .font_family("monospace")
         .text_size(px(10.0))
         .line_height(gpui::relative(1.5))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .flex()
         .flex_col()
         .children(
@@ -142,16 +149,16 @@ fn log_viewport(log_lines: &[&'static str]) -> impl IntoElement {
 /// The "Clear logs" button: `padding:8px 16px; border:1px solid rgba(32,30,29,.30);
 /// background:#eae9e9; font-weight:800; margin-top:8px` -- same shape as
 /// `sync_server::sync_now_button`, but with a real effect on click.
-fn clear_logs_button(on_click: OnClearLogsClick) -> impl IntoElement {
+fn clear_logs_button(on_click: OnClearLogsClick, cx: &App) -> impl IntoElement {
     let mut button = div()
         .id("settings-clear-logs")
         .cursor_pointer()
         .mt(px(8.0))
         .py(px(8.0))
         .px(px(16.0))
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .on_click(move |_event, window, cx| on_click(window, cx))

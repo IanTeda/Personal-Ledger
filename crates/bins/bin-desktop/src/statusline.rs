@@ -84,7 +84,7 @@ impl StatusLine {
 }
 
 impl RenderOnce for StatusLine {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
             .h(HEIGHT)
             .flex_none()
@@ -92,22 +92,22 @@ impl RenderOnce for StatusLine {
             .items_center()
             .gap(px(14.0))
             .px(px(12.0))
-            .bg(color::CHROME)
+            .bg(color::chrome(cx))
             .border_t(px(2.0))
-            .border_color(color::STRUCTURAL_RULE)
+            .border_color(color::structural_rule(cx))
             .text_size(px(11.5))
-            .text_color(color::INK_SECONDARY)
-            .child(mode_badge(self.mode))
+            .text_color(color::muted(cx))
+            .child(mode_badge(self.mode, cx))
             .child(match (&self.command_echo, self.status_message) {
-                (Some((query, _)), _) => command_query_echo(query).into_any_element(),
+                (Some((query, _)), _) => command_query_echo(query, cx).into_any_element(),
                 (None, Some(message)) => div()
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_color(color::ACCENT_TEXT)
+                    .text_color(color::accent_text(cx))
                     .child(message)
                     .into_any_element(),
                 (None, None) => match &self.page {
-                    Some(page) => page_hint_strip(&page.hints).into_any_element(),
-                    None => hint_strip(self.on_hint.clone()).into_any_element(),
+                    Some(page) => page_hint_strip(&page.hints, cx).into_any_element(),
+                    None => hint_strip(self.on_hint.clone(), cx).into_any_element(),
                 },
             })
             .child(div().flex_1())
@@ -119,23 +119,23 @@ impl RenderOnce for StatusLine {
     }
 }
 
-fn mode_badge(mode: InputMode) -> impl IntoElement {
+fn mode_badge(mode: InputMode, cx: &App) -> impl IntoElement {
     let (label, bg) = match mode {
-        InputMode::Normal => (crate::msg::desktop_mode_normal(), color::INK),
-        InputMode::Insert => (crate::msg::desktop_mode_insert(), color::INK),
-        InputMode::Search => (crate::msg::desktop_mode_search(), color::INK),
+        InputMode::Normal => (crate::msg::desktop_mode_normal(), color::foreground(cx)),
+        InputMode::Insert => (crate::msg::desktop_mode_insert(), color::foreground(cx)),
+        InputMode::Search => (crate::msg::desktop_mode_search(), color::foreground(cx)),
         // The handoff's own COMMAND-mode callout: the badge fill becomes the accent.
-        InputMode::Command => (crate::msg::desktop_mode_command(), color::ACCENT),
+        InputMode::Command => (crate::msg::desktop_mode_command(), color::accent(cx)),
         // Same accent callout as `Command` -- a modal dialog is exactly as attention-grabbing.
-        InputMode::Dialog => (crate::msg::desktop_mode_dialog(), color::ACCENT),
+        InputMode::Dialog => (crate::msg::desktop_mode_dialog(), color::accent(cx)),
         // The same accent callout as the other modal surfaces.
-        InputMode::Filter => (crate::msg::desktop_mode_filter(), color::ACCENT),
-        InputMode::Help => (crate::msg::desktop_mode_help(), color::ACCENT),
+        InputMode::Filter => (crate::msg::desktop_mode_filter(), color::accent(cx)),
+        InputMode::Help => (crate::msg::desktop_mode_help(), color::accent(cx)),
     };
 
     div()
         .bg(bg)
-        .text_color(color::INK_ON_DARK)
+        .text_color(color::background(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .py(px(2.0))
@@ -143,7 +143,7 @@ fn mode_badge(mode: InputMode) -> impl IntoElement {
         .child(lib_locale::format::upper(&label))
 }
 
-fn hint_strip(on_hint: Option<OnHint>) -> impl IntoElement {
+fn hint_strip(on_hint: Option<OnHint>, cx: &App) -> impl IntoElement {
     let entry = |id: &'static str, action: HintAction, key: &'static str, label: String| {
         let on_hint = on_hint.clone();
         div()
@@ -153,7 +153,7 @@ fn hint_strip(on_hint: Option<OnHint>) -> impl IntoElement {
             .gap(px(4.0))
             .when(on_hint.is_some(), |this| {
                 this.cursor_pointer()
-                    .hover(|style| style.bg(color::HOVER_TINT))
+                    .hover(|style| style.bg(color::hover(cx)))
             })
             .when_some(on_hint, |this, on_hint| {
                 this.on_click(move |_event, window, cx| on_hint(action, window, cx))
@@ -161,7 +161,7 @@ fn hint_strip(on_hint: Option<OnHint>) -> impl IntoElement {
             .child(
                 div()
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_color(color::INK)
+                    .text_color(color::foreground(cx))
                     .child(key),
             )
             .child(label)
@@ -203,7 +203,7 @@ fn hint_strip(on_hint: Option<OnHint>) -> impl IntoElement {
 
 /// A page's key legend: `j/k row · enter open ledger · ...`, each key at weight 800 like the
 /// shell-wide hint strip's own.
-fn page_hint_strip(hints: &[(&'static str, String)]) -> impl IntoElement {
+fn page_hint_strip(hints: &[(&'static str, String)], cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -213,7 +213,7 @@ fn page_hint_strip(hints: &[(&'static str, String)]) -> impl IntoElement {
             separator.into_iter().chain([
                 div()
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_color(color::INK)
+                    .text_color(color::foreground(cx))
                     .child(*key)
                     .into_any_element(),
                 div().child(action.clone()).into_any_element(),
@@ -221,18 +221,18 @@ fn page_hint_strip(hints: &[(&'static str, String)]) -> impl IntoElement {
         }))
 }
 
-/// The "1d" spec's COMMAND-mode echo: `:{query}` at weight 800, then the accent block caret --
+/// The "1d" spec's COMMAND-mode echo: `:{query}` at weight 800, then the block caret --
 /// the status line's own smaller echo of the palette's input row, kept in sync by `Shell`
 /// passing the same `Palette::input()` string to both.
-fn command_query_echo(query: &str) -> impl IntoElement {
+fn command_query_echo(query: &str, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .gap(px(4.0))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_color(color::INK)
+        .text_color(color::foreground(cx))
         .child(format!(":{query}"))
-        .child(div().w(px(2.0)).h(px(13.0)).bg(color::ACCENT))
+        .child(div().w(px(2.0)).h(px(13.0)).bg(color::cursor(cx)))
 }
 
 /// The open Ledger's own file path, moved here from the top bar's brand tile (`crate::topbar`)

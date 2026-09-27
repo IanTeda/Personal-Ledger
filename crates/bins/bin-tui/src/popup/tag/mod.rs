@@ -11,6 +11,7 @@ pub mod new;
 
 use ratatui::{Frame, layout::Rect};
 
+use crate::colours::Colours;
 use crate::tag::TagStore;
 
 /// The one Tag-domain popup `Shell` can have open at a time — mirrors
@@ -24,10 +25,10 @@ impl TagPopup {
     /// Renders whichever form is open, against the live Tag list `store` — `new`'s and
     /// `edit`'s uniqueness validation both need read access to it, mirroring
     /// `AccountPopup::render`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn TagStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn TagStore, c: &Colours) {
         match self {
-            TagPopup::New(popup) => popup.render(frame, area, store),
-            TagPopup::Edit(popup) => popup.render(frame, area, store),
+            TagPopup::New(popup) => popup.render(frame, area, store, c),
+            TagPopup::Edit(popup) => popup.render(frame, area, store, c),
         }
     }
 }

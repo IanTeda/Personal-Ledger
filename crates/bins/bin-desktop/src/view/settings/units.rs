@@ -51,18 +51,21 @@ pub fn render(
     on_price_source_edit_click: OnRowIndexClick,
     on_price_source_delete_click: OnRowIndexClick,
     on_add_price_source_click: OnAddClick,
+    cx: &App,
 ) -> AnyElement {
     div()
         .flex()
         .flex_col()
         .child(subsection_label(lib_locale::format::upper(
             &SettingsSection::Units.label(),
-        )))
-        .child(table(units, on_edit_click, on_delete_click))
+        ), cx))
+        .child(table(units, on_edit_click, on_delete_click, cx))
         .child(add_button(
             "settings-add-unit",
             crate::msg::desktop_settings_units_add_button("+"),
             on_add_click,
+
+            cx,
         ))
         .child(
             div()
@@ -71,17 +74,21 @@ pub fn render(
                 .flex_col()
                 .child(subsection_label(lib_locale::format::upper(
                     &crate::msg::desktop_settings_price_sources_heading(),
-                )))
+                ), cx))
                 .child(price_source_table(
                     price_sources,
                     on_price_source_test_click,
                     on_price_source_edit_click,
                     on_price_source_delete_click,
+
+                    cx,
                 ))
                 .child(add_button(
                     "settings-add-price-source",
                     crate::msg::desktop_settings_price_sources_add("+"),
                     on_add_price_source_click,
+
+                    cx,
                 )),
         )
         .into_any_element()
@@ -89,11 +96,11 @@ pub fn render(
 
 /// `font:800 10px/1 'Archivo'; letter-spacing:.11em; color:#9b9797; margin-bottom:10px` -- the
 /// same treatment "PRICE SOURCES" and General's own "THIS LEDGER" label use.
-fn subsection_label(text: String) -> impl IntoElement {
+fn subsection_label(text: String, cx: &App) -> impl IntoElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .mb(px(10.0))
         .child(text)
 }
@@ -108,6 +115,7 @@ fn table(
     units: &[UnitRow],
     on_edit_click: OnRowIndexClick,
     on_delete_click: OnRowIndexClick,
+    cx: &App,
 ) -> impl IntoElement {
     let last_index = units.len().saturating_sub(1);
     div()
@@ -115,8 +123,8 @@ fn table(
         .flex_col()
         .mb(px(16.0))
         .border_1()
-        .border_color(color::BORDER)
-        .child(table_header())
+        .border_color(color::border(cx))
+        .child(table_header(cx))
         .children(units.iter().enumerate().map(|(index, unit)| {
             row(
                 unit,
@@ -124,22 +132,23 @@ fn table(
                 index,
                 on_edit_click.clone(),
                 on_delete_click.clone(),
+                cx,
             )
         }))
 }
 
-fn table_header() -> impl IntoElement {
+fn table_header(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .px(px(16.0))
         .py(px(12.0))
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_b(px(1.0))
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .child(
             div()
                 .w(CODE_WIDTH)
@@ -175,6 +184,7 @@ fn row(
     index: usize,
     on_edit_click: OnRowIndexClick,
     on_delete_click: OnRowIndexClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -182,7 +192,7 @@ fn row(
         .px(px(16.0))
         .py(px(12.0))
         .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::HAIRLINE)
+            this.border_b(px(1.0)).border_color(color::hairline(cx))
         })
         .child(
             div()
@@ -191,17 +201,17 @@ fn row(
                 .child(unit.code.clone()),
         )
         .child(div().w(NAME_WIDTH).child(unit.name.clone()))
-        .child(flags_cell(unit))
+        .child(flags_cell(unit, cx))
         .child(
             div()
                 .w(SOURCE_WIDTH)
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(unit.source.clone()),
         )
         .child(
             div()
                 .w(TYPE_WIDTH)
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(unit.kind.clone()),
         )
         .child(
@@ -216,6 +226,7 @@ fn row(
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_edit_click(index, window, cx)
                     }),
+                    cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("unit-delete-{index}")),
@@ -223,6 +234,7 @@ fn row(
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_delete_click(index, window, cx)
                     }),
+                    cx,
                 )),
         )
 }
@@ -230,30 +242,34 @@ fn row(
 /// The FLAGS cell: `base`/`default` tag pills, left-aligned next to NAME (NAME is a fixed
 /// 180px column, not flex, so flags never drift into empty middle space) -- empty for every row
 /// but the ledger's own base/default unit.
-fn flags_cell(unit: &UnitRow) -> impl IntoElement {
+fn flags_cell(unit: &UnitRow, cx: &App) -> impl IntoElement {
     div()
         .flex_1()
         .flex()
         .gap(px(6.0))
         .justify_start()
         .when(unit.is_base, |this| {
-            this.child(tag_accent(crate::msg::desktop_settings_units_flag_base()))
+            this.child(tag_accent(
+                crate::msg::desktop_settings_units_flag_base(),
+                cx,
+            ))
         })
         .when(unit.is_default, |this| {
             this.child(tag_outline(
                 crate::msg::desktop_settings_units_flag_default(),
+                cx,
             ))
         })
 }
 
 /// `.tag.tag-accent`: `background: var(--color-accent-100); color: var(--color-accent-800)`.
 /// Square corners, not the shared design system's own rounded pill -- this crate's "Radius 0
-/// everywhere" rule (`theme::color::TAG_ACCENT_BG`'s own doc) has no exception for a general tag
+/// everywhere" rule (`theme::color::accent_tint`'s own doc) has no exception for a general tag
 /// shape.
-fn tag_accent(label: String) -> impl IntoElement {
+fn tag_accent(label: String, cx: &App) -> impl IntoElement {
     div()
-        .bg(color::TAG_ACCENT_BG)
-        .text_color(color::TAG_ACCENT_TEXT)
+        .bg(color::accent_tint(cx))
+        .text_color(color::accent_tint_text(cx))
         .text_size(px(11.0))
         .px(px(10.0))
         .py(px(3.0))
@@ -261,11 +277,11 @@ fn tag_accent(label: String) -> impl IntoElement {
 }
 
 /// `.tag.tag-outline`: `border: 1px solid var(--color-accent); color: var(--color-accent)`.
-fn tag_outline(label: String) -> impl IntoElement {
+fn tag_outline(label: String, cx: &App) -> impl IntoElement {
     div()
         .border_1()
-        .border_color(color::ACCENT)
-        .text_color(color::ACCENT)
+        .border_color(color::accent(cx))
+        .text_color(color::accent(cx))
         .text_size(px(11.0))
         .px(px(10.0))
         .py(px(3.0))
@@ -281,6 +297,7 @@ fn price_source_table(
     on_test_click: OnRowIndexClick,
     on_edit_click: OnRowIndexClick,
     on_delete_click: OnRowIndexClick,
+    cx: &App,
 ) -> impl IntoElement {
     let last_index = rows.len().saturating_sub(1);
     div()
@@ -288,8 +305,8 @@ fn price_source_table(
         .flex_col()
         .mb(px(16.0))
         .border_1()
-        .border_color(color::BORDER)
-        .child(price_source_table_header())
+        .border_color(color::border(cx))
+        .child(price_source_table_header(cx))
         .children(rows.iter().enumerate().map(|(index, source)| {
             price_source_row(
                 source,
@@ -298,22 +315,23 @@ fn price_source_table(
                 on_test_click.clone(),
                 on_edit_click.clone(),
                 on_delete_click.clone(),
+                cx,
             )
         }))
 }
 
-fn price_source_table_header() -> impl IntoElement {
+fn price_source_table_header(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .px(px(16.0))
         .py(px(12.0))
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_b(px(1.0))
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .child(
             div()
                 .w(PRICE_SOURCE_NAME_WIDTH)
@@ -347,6 +365,7 @@ fn price_source_row(
     on_test_click: OnRowIndexClick,
     on_edit_click: OnRowIndexClick,
     on_delete_click: OnRowIndexClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -354,7 +373,7 @@ fn price_source_row(
         .px(px(16.0))
         .py(px(12.0))
         .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::HAIRLINE)
+            this.border_b(px(1.0)).border_color(color::hairline(cx))
         })
         .child(
             div()
@@ -366,7 +385,7 @@ fn price_source_row(
         .child(
             div()
                 .w(PRICE_SOURCE_LAST_UPDATED_WIDTH)
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(source.last_updated.clone()),
         )
         .child(
@@ -381,6 +400,7 @@ fn price_source_row(
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_test_click(index, window, cx)
                     }),
+                    cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("price-source-edit-{index}")),
@@ -388,6 +408,7 @@ fn price_source_row(
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_edit_click(index, window, cx)
                     }),
+                    cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("price-source-delete-{index}")),
@@ -395,20 +416,26 @@ fn price_source_row(
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_delete_click(index, window, cx)
                     }),
+                    cx,
                 )),
         )
 }
 
 /// A row action button: `padding:4px 10px; border:1px solid rgba(32,30,29,.30);
 /// background:transparent; font-size:11px`.
-fn row_action_button(id: SharedString, label: String, on_click: OnPlainClick) -> impl IntoElement {
+fn row_action_button(
+    id: SharedString,
+    label: String,
+    on_click: OnPlainClick,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .id(id)
         .cursor_pointer()
         .py(px(4.0))
         .px(px(10.0))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .text_size(px(11.0))
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(label)
@@ -418,7 +445,7 @@ fn row_action_button(id: SharedString, label: String, on_click: OnPlainClick) ->
 /// background:#eae9e9; font-weight:800; width:fit-content` -- see the module doc for why this
 /// sits `mt(16px)` below its own table rather than replicating the table's own inline
 /// `margin-bottom:48px`.
-fn add_button(id: &'static str, label: String, on_click: OnAddClick) -> impl IntoElement {
+fn add_button(id: &'static str, label: String, on_click: OnAddClick, cx: &App) -> impl IntoElement {
     // `align_self: flex-start` (no direct `Styled` builder for it, unlike the container-level
     // `items_start`/etc.) -- without it, this button stretches to the full width of its column
     // parent instead of shrinking to its own content, unlike `width:fit-content` in the mockup.
@@ -428,9 +455,9 @@ fn add_button(id: &'static str, label: String, on_click: OnAddClick) -> impl Int
         .mt(px(16.0))
         .py(px(10.0))
         .px(px(16.0))
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .on_click(move |_event, window, cx| on_click(window, cx))

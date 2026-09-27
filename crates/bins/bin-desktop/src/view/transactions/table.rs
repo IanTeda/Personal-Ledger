@@ -8,8 +8,8 @@
 //! PAYEE column is the flexible one and has a floor, so a narrow window clips the fixed columns
 //! rather than squeezing the payee to nothing (the same lesson the Accounts page learned).
 //!
-//! The selected row is the dark treatment: ink fill, ground text, secondary text stepped down to
-//! `#d7d3d3`, payee at weight 800, negatives in the on-dark accent.
+//! The selected row is the selection treatment: the selection fill and text, secondary text in the
+//! selection's muted shade, payee at weight 800, negatives in the selection's negative text shade.
 
 use std::{ops::Range, rc::Rc};
 
@@ -40,7 +40,7 @@ const RUNNING_WIDTH: Pixels = px(104.0);
 const PAGE_PADDING_X: Pixels = px(28.0);
 
 /// `padding:8px 28px; 10px/800; #9b9797; border-bottom:1px solid #d7d3d3`.
-pub fn column_header() -> impl IntoElement {
+pub fn column_header(cx: &App) -> impl IntoElement {
     let head = |width: Pixels, label: String, right: bool| {
         let cell = div()
             .w(width)
@@ -61,10 +61,10 @@ pub fn column_header() -> impl IntoElement {
         .px(PAGE_PADDING_X)
         .py(px(8.0))
         .border_b(px(1.0))
-        .border_color(color::HAIRLINE)
+        .border_color(color::hairline(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .child(div().w(STATUS_WIDTH).flex_none())
         .child(div().w(FLAG_WIDTH).flex_none())
         .child(head(DATE_WIDTH, lib_locale::msg::column_date(), false))
@@ -106,6 +106,7 @@ pub fn rows(
     row_height: Pixels,
     scroll: UniformListScrollHandle,
     on_row_click: OnRowClick,
+    cx: &App,
 ) -> AnyElement {
     if rows.is_empty() {
         return div()
@@ -113,7 +114,7 @@ pub fn rows(
             .min_h(px(0.0))
             .px(PAGE_PADDING_X)
             .py(px(24.0))
-            .text_color(color::INK_SECONDARY)
+            .text_color(color::muted(cx))
             .child(crate::msg::desktop_transactions_empty())
             .into_any_element();
     }
@@ -124,7 +125,7 @@ pub fn rows(
         count,
         // Called for the visible range, and once for row 0 to measure: a pure function of the
         // index, with every cell already formatted (see `transaction_rows::build_rows`).
-        move |range: Range<usize>, _window: &mut Window, _cx: &mut App| {
+        move |range: Range<usize>, _window: &mut Window, cx: &mut App| {
             range
                 .map(|index| {
                     row(
@@ -133,6 +134,7 @@ pub fn rows(
                         index == selected,
                         row_height,
                         on_row_click.clone(),
+                        cx,
                     )
                 })
                 .collect::<Vec<_>>()
@@ -150,20 +152,25 @@ fn row(
     selected: bool,
     height: Pixels,
     on_click: OnRowClick,
+    cx: &App,
 ) -> AnyElement {
     let (primary, secondary, tertiary) = if selected {
         (
-            color::INK_ON_DARK,
-            color::INK_ON_DARK_TERTIARY,
-            color::INK_TERTIARY,
+            color::selection_text(cx),
+            color::selection_muted(cx),
+            color::selection_muted(cx),
         )
     } else {
-        (color::INK, color::INK_SECONDARY, color::INK_TERTIARY)
+        (
+            color::foreground(cx),
+            color::muted(cx),
+            color::faint_text(cx),
+        )
     };
     let negative = if selected {
-        color::ACCENT_ON_DARK
+        color::selection_negative_text(cx)
     } else {
-        color::ACCENT_TEXT
+        color::negative_text(cx)
     };
     let payee_weight = if selected {
         gpui::FontWeight::EXTRA_BOLD
@@ -182,13 +189,16 @@ fn row(
         .px(PAGE_PADDING_X)
         .border_b(px(1.0))
         .border_color(if selected {
-            color::INK
+            color::selection_background(cx)
         } else {
-            color::HAIRLINE_LIGHT
+            color::hairline(cx)
         })
-        .when(selected, |this| this.bg(color::INK).text_color(primary))
+        .when(selected, |this| {
+            this.bg(color::selection_background(cx)).text_color(primary)
+        })
         .when(!selected, |this| {
-            this.hover(|style| style.bg(color::HOVER_TINT))
+            let hover = color::hover(cx);
+            this.hover(move |style| style.bg(hover))
         })
         .on_click(move |_event, window, cx| on_click(index, window, cx))
         .child(
@@ -239,7 +249,7 @@ fn row(
                 .text_color(secondary)
                 .child(view.category.clone()),
         )
-        .child(tags_cell(&view.tags, selected, tertiary, secondary))
+        .child(tags_cell(&view.tags, selected, tertiary, secondary, cx))
         .child(
             div()
                 .w(AMOUNT_WIDTH)
@@ -281,6 +291,7 @@ fn tags_cell(
     selected: bool,
     tertiary: gpui::Rgba,
     secondary: gpui::Rgba,
+    cx: &App,
 ) -> impl IntoElement {
     let cell = div()
         .w(TAGS_WIDTH)
@@ -301,13 +312,13 @@ fn tags_cell(
                 .text_size(px(10.0))
                 .border_1()
                 .when(selected, |this| {
-                    this.border_color(color::INK_ON_DARK_SECONDARY)
-                        .text_color(color::INK_ON_DARK_TERTIARY)
+                    this.border_color(color::selection_muted(cx))
+                        .text_color(color::selection_muted(cx))
                 })
                 .when(!selected, |this| {
-                    this.bg(color::CHROME)
-                        .border_color(color::BORDER)
-                        .text_color(color::INK_SECONDARY)
+                    this.bg(color::chrome(cx))
+                        .border_color(color::border(cx))
+                        .text_color(color::muted(cx))
                 })
                 .child(first.clone());
             cell.child(chip).when(*more > 0, |this| {

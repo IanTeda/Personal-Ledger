@@ -50,6 +50,7 @@ pub fn render(
     on_kind_click: OnKindClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &App,
 ) -> AnyElement {
     let card = div()
         .flex()
@@ -57,6 +58,7 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_settings_units_add_title(),
             false,
+            cx,
         ))
         .child(dialog::body([
             text_field(
@@ -66,6 +68,7 @@ pub fn render(
                 &crate::msg::desktop_settings_units_code_placeholder(),
                 form.focused_field == AddUnitField::Code,
                 field_click(AddUnitField::Code, on_field_click.clone()),
+                cx,
             )
             .into_any_element(),
             text_field(
@@ -75,23 +78,28 @@ pub fn render(
                 &crate::msg::desktop_settings_units_name_placeholder(),
                 form.focused_field == AddUnitField::Name,
                 field_click(AddUnitField::Name, on_field_click),
+                cx,
             )
             .into_any_element(),
-            type_field("add-unit-type", form.kind, on_kind_click).into_any_element(),
+            type_field("add-unit-type", form.kind, on_kind_click, cx).into_any_element(),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("add-unit-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "add-unit-confirm",
-                crate::msg::desktop_settings_units_add_submit(),
-                form.is_valid(),
-                false,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("add-unit-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "add-unit-confirm",
+                    crate::msg::desktop_settings_units_add_submit(),
+                    form.is_valid(),
+                    false,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
-    dialog::overlay(dialog::WIDTH, false, card)
+    dialog::overlay(dialog::WIDTH, false, card, cx)
 }
 
 /// Curries `field` into a plain click handler -- what [`text_field`] binds its own `on_click` to.
@@ -112,15 +120,19 @@ pub(super) fn text_field(
     placeholder: &str,
     focused: bool,
     on_click: dialog::OnClick,
+    cx: &App,
 ) -> impl IntoElement {
     let caret = if focused { "\u{2502}" } else { "" };
     let (text, text_color) = if value.is_empty() {
         (
             SharedString::from(format!("{placeholder}{caret}")),
-            color::INK_TERTIARY,
+            color::faint_text(cx),
         )
     } else {
-        (SharedString::from(format!("{value}{caret}")), color::INK)
+        (
+            SharedString::from(format!("{value}{caret}")),
+            color::foreground(cx),
+        )
     };
 
     div().child(field_label(label)).child(
@@ -132,9 +144,9 @@ pub(super) fn text_field(
             .px(px(10.0))
             .border_1()
             .border_color(if focused {
-                color::ACCENT
+                color::accent(cx)
             } else {
-                color::BORDER
+                color::border(cx)
             })
             .text_size(px(13.0))
             .text_color(text_color)
@@ -150,6 +162,7 @@ pub(super) fn type_field(
     id_prefix: &'static str,
     selected: UnitKind,
     on_click: OnKindClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .child(field_label(lib_locale::msg::column_type()))
@@ -159,13 +172,14 @@ pub(super) fn type_field(
             selected,
             UnitKind::label,
             on_click,
+            cx,
         ))
 }
 
 /// `.seg`/`.seg-opt`: a bordered, radius-0 pill row, each option separated by a 1px rule, the
 /// selected option taking `background: var(--color-accent); color: var(--color-bg)` -- the
 /// segmented control's own named exception to the shell's "accent never a background" rule (see
-/// `theme::color::ACCENT`'s own doc). Only usable for `&'static [T]` option lists --
+/// `theme::color::accent`'s own doc). Only usable for `&'static [T]` option lists --
 /// `super::add_institution_dialog`'s own Default unit field needs a runtime `&[UnitRow]`
 /// instead, so it builds its own bespoke row rather than reusing this one (see that module's
 /// own doc).
@@ -175,11 +189,12 @@ pub(crate) fn segmented_control<T: Copy + PartialEq + 'static, L: Into<SharedStr
     current: T,
     label: fn(T) -> L,
     on_click: OnSegmentClick<T>,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .flex()
         .border_1()
-        .border_color(color::DIVIDER)
+        .border_color(color::divider(cx))
         .children(options.iter().enumerate().map(|(index, &option)| {
             let selected = option == current;
             let on_click = on_click.clone();
@@ -190,10 +205,10 @@ pub(crate) fn segmented_control<T: Copy + PartialEq + 'static, L: Into<SharedStr
                 .px(px(12.0))
                 .text_size(px(13.0))
                 .when(index > 0, |this| {
-                    this.border_l(px(1.0)).border_color(color::DIVIDER)
+                    this.border_l(px(1.0)).border_color(color::divider(cx))
                 })
                 .when(selected, |this| {
-                    this.bg(color::ACCENT).text_color(color::INK_ON_DARK)
+                    this.bg(color::accent(cx)).text_color(color::background(cx))
                 })
                 .on_click(move |_event, window, cx| on_click(option, window, cx))
                 .child(label(option).into())

@@ -11,9 +11,11 @@
 //! dimmed view" treatment, the same simplification the units screen's own forms already made
 //! against their design doc's more contextual language.
 
+pub mod colour;
 pub mod edit;
 pub mod guard;
 
+use crate::colours::Colours;
 use ratatui::{Frame, layout::Rect};
 
 /// The one settings-domain popup `Shell` can have open at a time — mirrors `popup::unit::
@@ -21,14 +23,16 @@ use ratatui::{Frame, layout::Rect};
 pub enum SettingsPopup {
     Edit(edit::EditSettingPopup),
     BaseUnitGuard(guard::BaseUnitGuardPopup),
+    Colour(colour::ColourPopup),
 }
 
 impl SettingsPopup {
     /// Renders whichever popup is open — see each variant's own `render` for its layout.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         match self {
-            SettingsPopup::Edit(popup) => popup.render(frame, area),
-            SettingsPopup::BaseUnitGuard(popup) => popup.render(frame, area),
+            SettingsPopup::Edit(popup) => popup.render(frame, area, c),
+            SettingsPopup::BaseUnitGuard(popup) => popup.render(frame, area, c),
+            SettingsPopup::Colour(popup) => popup.render(frame, area, c),
         }
     }
 }

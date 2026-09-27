@@ -194,7 +194,9 @@ help
 Shell: focused view id · view stack for `q` · mode. Palette: input buffer · filtered candidates + selection · history ring (`^r`) · resolved argument preview. Help: search buffer · filtered registry + selection + scroll offset · collapsed-group list. Dashboard: the derived aggregates (net position, 30-day delta, 18-month series, 6-month income/expense, 30-day category split, active budgets with elapsed ratio, attention items) — query them, do not cache in view state. Plus last sync time and result for the status line.
 
 ## Style
-The wireframe uses ink `#201e1d` on ground `#f3f2f2`, a single accent `#ec3013`, greys `#605d5d` / `#9b9797` / `#d7d3d3` for dim text, and a dark variant on `#161413`. The TUI draws these through Colour Roles, never literal RGB: see `docs/colour-themes-design.md` for the roles, and its "TUI fallback to terminal colours" table for the ANSI mapping used when `terminal_colours` is on (ADR-0024).
+The wireframe's colours (ink `#201e1d` on ground `#f3f2f2`, a single accent `#ec3013`, dim-text greys, a dark variant on `#161413`) are the Modernist Colour Theme, the default of five built-in Colour Themes. Code draws them through Colour Roles and calculated colours on the Shell's `Colours` (`src/colours.rs`), never literal RGB: see `docs/colour-themes-design.md`.
+
+The TUI draws the resolved Colour Theme in RGB by default, like the Desktop (ADR-0024): truecolor when `COLORTERM` is `truecolor`/`24bit`, otherwise the nearest of the 256 colours. On a 16-colour terminal, or with `terminal_colours = true` in `[Personal-Ledger]`, it draws the terminal's own colours through the design doc's "TUI fallback to terminal colours" table. System Colour Appearance asks the terminal (mode 2031, OSC 11, then `COLORFGBG`) once at start; no answer means dark.
 
 One accent only. Never rely on color alone: negatives also carry `−`, over-budget also overshoots its track, flagged rows also carry `⚑`.
 

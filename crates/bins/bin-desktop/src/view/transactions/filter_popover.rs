@@ -55,7 +55,7 @@ pub struct PopoverProps<'a> {
     pub on_cancel: dialog::OnClick,
 }
 
-pub fn render(props: PopoverProps<'_>) -> AnyElement {
+pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
     let PopoverProps {
         form,
         options,
@@ -92,11 +92,11 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
         .w(WIDTH)
         .flex()
         .flex_col()
-        .bg(color::GROUND)
+        .bg(color::background(cx))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .shadow(vec![BoxShadow {
-            color: color::DIALOG_SHADOW.into(),
+            color: color::dialog_shadow(cx).into(),
             offset: point(px(0.0), px(18.0)),
             blur_radius: px(44.0),
             spread_radius: px(0.0),
@@ -108,7 +108,7 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                 .px(px(18.0))
                 .py(px(14.0))
                 .border_b(px(2.0))
-                .border_color(color::STRUCTURAL_RULE)
+                .border_color(color::structural_rule(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(13.5))
                 .child(crate::msg::desktop_transactions_filter_title()),
@@ -120,26 +120,32 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                 .flex()
                 .flex_col()
                 .gap(px(14.0))
-                .child(select_field::render(SelectFieldProps {
-                    id: "filter-account",
-                    label: lib_locale::msg::column_account().into(),
-                    options: options.for_field(FormField::Account),
-                    state: &form.account,
-                    focused: focused(FormField::Account),
-                    read_only: None,
-                    on_field_click: click(FormField::Account),
-                    on_option_click: option_click(FormField::Account),
-                }))
-                .child(select_field::render(SelectFieldProps {
-                    id: "filter-category",
-                    label: lib_locale::msg::column_category().into(),
-                    options: options.for_field(FormField::Category),
-                    state: &form.category,
-                    focused: focused(FormField::Category),
-                    read_only: None,
-                    on_field_click: click(FormField::Category),
-                    on_option_click: option_click(FormField::Category),
-                }))
+                .child(select_field::render(
+                    SelectFieldProps {
+                        id: "filter-account",
+                        label: lib_locale::msg::column_account().into(),
+                        options: options.for_field(FormField::Account),
+                        state: &form.account,
+                        focused: focused(FormField::Account),
+                        read_only: None,
+                        on_field_click: click(FormField::Account),
+                        on_option_click: option_click(FormField::Account),
+                    },
+                    cx,
+                ))
+                .child(select_field::render(
+                    SelectFieldProps {
+                        id: "filter-category",
+                        label: lib_locale::msg::column_category().into(),
+                        options: options.for_field(FormField::Category),
+                        state: &form.category,
+                        focused: focused(FormField::Category),
+                        read_only: None,
+                        on_field_click: click(FormField::Category),
+                        on_option_click: option_click(FormField::Category),
+                    },
+                    cx,
+                ))
                 .child(text_field(
                     "filter-payee",
                     label(lib_locale::msg::column_payee()),
@@ -147,6 +153,7 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                     &crate::msg::desktop_transactions_filter_any_payee(),
                     focused(FormField::Payee),
                     click(FormField::Payee),
+                    cx,
                 ))
                 .child(text_field(
                     "filter-tag",
@@ -155,6 +162,7 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                     &crate::msg::desktop_transactions_filter_any_tag(),
                     focused(FormField::Tag),
                     click(FormField::Tag),
+                    cx,
                 ))
                 .child(two_up([
                     date_field(
@@ -165,6 +173,7 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                         focused(FormField::From),
                         start_hint,
                         click(FormField::From),
+                        cx,
                     ),
                     date_field(
                         "filter-to",
@@ -174,16 +183,22 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                         focused(FormField::To),
                         end_hint,
                         click(FormField::To),
+                        cx,
                     ),
                 ]))
-                .child(status_field(form.status, focused(FormField::Status), {
-                    let on_status_click = on_status_click.clone();
-                    Rc::new(
-                        move |status: StatusFilter, window: &mut Window, cx: &mut App| {
-                            on_status_click(status, window, cx)
-                        },
-                    )
-                })),
+                .child(status_field(
+                    form.status,
+                    focused(FormField::Status),
+                    {
+                        let on_status_click = on_status_click.clone();
+                        Rc::new(
+                            move |status: StatusFilter, window: &mut Window, cx: &mut App| {
+                                on_status_click(status, window, cx)
+                            },
+                        )
+                    },
+                    cx,
+                )),
         )
         .child(
             div()
@@ -193,9 +208,9 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                 .px(px(18.0))
                 .py(px(14.0))
                 .border_t(px(1.0))
-                .border_color(color::HAIRLINE)
-                .child(reset_button(on_reset))
-                .child(apply_button(can_apply, on_apply)),
+                .border_color(color::hairline(cx))
+                .child(reset_button(on_reset, cx))
+                .child(apply_button(can_apply, on_apply, cx)),
         );
 
     div()
@@ -207,8 +222,12 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
         .into_any_element()
 }
 
-/// A From / To field: the label over a text box, the box turning `ACCENT` with a hint beneath it
-/// while the text is not a date.
+/// A From / To field: the label over a text box, the box turning `negative` with a hint beneath it
+/// while the text is not a date, and `accent` while focused.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a stateless GPUI render fn takes each value and handler it wires, plus the App the Colour Theme is read from"
+)]
 fn date_field(
     id: &'static str,
     title: String,
@@ -217,20 +236,26 @@ fn date_field(
     focused: bool,
     error: Option<String>,
     on_click: dialog::OnClick,
+    cx: &App,
 ) -> AnyElement {
     let caret = if focused { "\u{2502}" } else { "" };
     let (text, text_color) = if value.is_empty() {
         (
             SharedString::from(format!("{placeholder}{caret}")),
-            color::INK_TERTIARY,
+            color::faint_text(cx),
         )
     } else {
-        (SharedString::from(format!("{value}{caret}")), color::INK)
+        (
+            SharedString::from(format!("{value}{caret}")),
+            color::foreground(cx),
+        )
     };
-    let border = if error.is_some() || focused {
-        color::ACCENT
+    let border = if error.is_some() {
+        color::negative(cx)
+    } else if focused {
+        color::accent(cx)
     } else {
-        color::BORDER
+        color::border(cx)
     };
     div()
         .flex_1()
@@ -255,7 +280,7 @@ fn date_field(
             div()
                 .mt(px(4.0))
                 .text_size(px(11.0))
-                .text_color(color::ACCENT_TEXT)
+                .text_color(color::negative_text(cx))
                 .child(message)
         }))
         .into_any_element()
@@ -263,7 +288,12 @@ fn date_field(
 
 /// The Status field: the label over the shared segmented control, ringed in accent while focused
 /// (`Left` / `Right` step it).
-fn status_field(current: StatusFilter, focused: bool, on_click: OnStatusClick) -> AnyElement {
+fn status_field(
+    current: StatusFilter,
+    focused: bool,
+    on_click: OnStatusClick,
+    cx: &App,
+) -> AnyElement {
     div()
         .child(label(lib_locale::msg::column_status()))
         .child(
@@ -271,9 +301,9 @@ fn status_field(current: StatusFilter, focused: bool, on_click: OnStatusClick) -
                 .p(px(2.0))
                 .border_1()
                 .border_color(if focused {
-                    color::ACCENT
+                    color::accent(cx)
                 } else {
-                    color::GROUND
+                    color::background(cx)
                 })
                 .child(segmented_control(
                     "filter-status",
@@ -281,29 +311,31 @@ fn status_field(current: StatusFilter, focused: bool, on_click: OnStatusClick) -
                     current,
                     StatusFilter::label,
                     on_click,
+                    cx,
                 )),
         )
         .into_any_element()
 }
 
 /// `reset`: the ghost button.
-fn reset_button(on_click: dialog::OnClick) -> impl IntoElement {
+fn reset_button(on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
+    let hover = color::hover(cx);
     div()
         .id("filter-reset")
         .cursor_pointer()
         .py(px(8.0))
         .px(px(16.0))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_color(color::INK)
-        .hover(|style| style.bg(color::HOVER_TINT))
+        .text_color(color::foreground(cx))
+        .hover(move |style| style.bg(hover))
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(crate::msg::desktop_hint_reset())
 }
 
 /// `apply`: the primary button with its `enter` hint, at 45% opacity and inert while a date is bad.
-fn apply_button(enabled: bool, on_click: dialog::OnClick) -> impl IntoElement {
+fn apply_button(enabled: bool, on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
     div()
         .id("filter-apply")
         .when(enabled, |this| this.cursor_pointer())
@@ -313,8 +345,8 @@ fn apply_button(enabled: bool, on_click: dialog::OnClick) -> impl IntoElement {
         .gap(px(8.0))
         .py(px(8.0))
         .px(px(16.0))
-        .bg(color::INK)
-        .text_color(color::INK_ON_DARK)
+        .bg(color::foreground(cx))
+        .text_color(color::selection_text(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .when(enabled, |this| {
             this.on_click(move |_event, window, cx| on_click(window, cx))

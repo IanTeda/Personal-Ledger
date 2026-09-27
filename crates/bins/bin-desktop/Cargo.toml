@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [dependencies]
 ## -- Internal Dependencies --
+lib_colour_theme = { path = "../../libs/lib-colour-theme" }
 lib_config = { path = "../../libs/lib-config" }
 lib_database = { path = "../../libs/lib-database" }
 lib_core = { path = "../../libs/lib-core" }

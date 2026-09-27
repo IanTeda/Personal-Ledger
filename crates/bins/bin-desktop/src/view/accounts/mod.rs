@@ -55,6 +55,7 @@ pub fn render(
     focused: bool,
     scroll_handle: &ScrollHandle,
     props: AccountsPageProps<'_>,
+    cx: &App,
 ) -> AnyElement {
     let groups = accounts::group_accounts(props.accounts);
 
@@ -66,35 +67,35 @@ pub fn render(
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
         .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::INK)
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .px(px(28.0))
         .py(px(22.0))
-        .child(page_header(&props))
+        .child(page_header(&props, cx))
         .child(
             div()
                 .h(px(2.0))
                 .flex_none()
-                .bg(color::STRUCTURAL_RULE)
+                .bg(color::structural_rule(cx))
                 .mt(px(14.0))
                 .mb(px(24.0)),
         )
         .children(
             groups
                 .iter()
-                .map(|group| group_block(group, focused, &props)),
+                .map(|group| group_block(group, focused, &props, cx)),
         )
         .when(props.accounts.is_empty(), |this| {
             this.child(
                 div()
-                    .text_color(color::INK_SECONDARY)
+                    .text_color(color::muted(cx))
                     .child(crate::msg::desktop_accounts_empty("n")),
             )
         })
         .into_any_element()
 }
 
-fn page_header(props: &AccountsPageProps<'_>) -> impl IntoElement {
+fn page_header(props: &AccountsPageProps<'_>, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_end()
@@ -109,25 +110,25 @@ fn page_header(props: &AccountsPageProps<'_>) -> impl IntoElement {
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(28.0))
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(Noun::Accounts.label()),
                 )
-                .child(summary_line(props)),
+                .child(summary_line(props, cx)),
         )
-        .child(add_button(props.on_add_click.clone()))
+        .child(add_button(props.on_add_click.clone(), cx))
 }
 
 /// `7 accounts · net worth 83,995.87 aud · vas, btc held separately`: one net figure in the base
 /// Unit only, then every other Unit held named rather than summed or dropped (the Desktop
 /// Accounts map's net worth decision).
-fn summary_line(props: &AccountsPageProps<'_>) -> impl IntoElement {
+fn summary_line(props: &AccountsPageProps<'_>, cx: &App) -> impl IntoElement {
     let line = div()
         .flex()
         .flex_wrap()
         .items_baseline()
         .gap(px(4.0))
         .text_size(px(11.5))
-        .text_color(color::INK_TERTIARY);
+        .text_color(color::faint_text(cx));
 
     if props.accounts.is_empty() {
         return line.child(crate::msg::desktop_accounts_summary_empty());
@@ -152,9 +153,9 @@ fn summary_line(props: &AccountsPageProps<'_>) -> impl IntoElement {
                 div()
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
                     .text_color(if negative {
-                        color::ACCENT_TEXT
+                        color::negative_text(cx)
                     } else {
-                        color::INK
+                        color::foreground(cx)
                     })
                     .child(format!("{figure} {base}")),
             );
@@ -166,20 +167,21 @@ fn summary_line(props: &AccountsPageProps<'_>) -> impl IntoElement {
 }
 
 /// `padding:10px 16px; background:#201e1d; color:#f3f2f2; font-weight:800`.
-fn add_button(on_click: OnAddClick) -> impl IntoElement {
+fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
+    let hover = color::muted(cx);
     div()
         .id("accounts-add")
         .cursor_pointer()
         .flex_none()
         .py(px(10.0))
         .px(px(16.0))
-        .bg(color::INK)
-        .text_color(color::INK_ON_DARK)
+        .bg(color::foreground(cx))
+        .text_color(color::selection_text(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         // README's "Hover: rows and buttons take a subtle ground tint or border shift": a dark
         // button lightens one step within the palette.
-        .hover(|style| style.bg(color::INK_SECONDARY))
+        .hover(move |style| style.bg(hover))
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(crate::msg::desktop_accounts_add_button("+"))
 }
@@ -196,6 +198,7 @@ fn group_block(
     group: &accounts::AccountGroup,
     focused: bool,
     props: &AccountsPageProps<'_>,
+    cx: &App,
 ) -> impl IntoElement {
     let last = group.indices.len().saturating_sub(1);
     div()
@@ -214,8 +217,8 @@ fn group_block(
                 .flex()
                 .flex_col()
                 .border_1()
-                .border_color(color::BORDER)
-                .child(table_header())
+                .border_color(color::border(cx))
+                .child(table_header(cx))
                 .children(
                     group
                         .indices
@@ -229,6 +232,7 @@ fn group_block(
                                 props.selected == Some(index),
                                 focused,
                                 props,
+                                cx,
                             ))
                         }),
                 ),
@@ -237,18 +241,18 @@ fn group_block(
 
 /// `padding:10px 16px; background:#eae9e9; font:800 10px; color:#605d5d`. The row's own 2px
 /// selection bar sits inside its 16px padding, so the header reserves the same 2px.
-fn table_header() -> impl IntoElement {
+fn table_header(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .px(px(16.0))
         .py(px(10.0))
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_b(px(1.0))
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .child(
             div()
                 .flex_1()
@@ -285,7 +289,9 @@ fn row(
     selected: bool,
     focused: bool,
     props: &AccountsPageProps<'_>,
+    cx: &App,
 ) -> impl IntoElement {
+    let hover = color::hover(cx);
     let id = account.id;
     let (negative, amount) = crate::format::amount(&account.balance);
     let is_currency = props
@@ -311,10 +317,10 @@ fn row(
         .pr(px(16.0))
         .py(px(10.0))
         .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::HAIRLINE)
+            this.border_b(px(1.0)).border_color(color::hairline(cx))
         })
-        .when(selected, |this| this.bg(color::CHROME))
-        .hover(|style| style.bg(color::HOVER_TINT))
+        .when(selected, |this| this.bg(color::chrome(cx)))
+        .hover(move |style| style.bg(hover))
         .on_click(move |_event, window, cx| on_row_click(id, window, cx))
         // The selection bar is drawn only while the page has focus (the same rule the view's own
         // left border follows) -- the tint alone still marks the row when focus is elsewhere.
@@ -323,7 +329,7 @@ fn row(
                 .w(px(2.0))
                 .h(px(20.0))
                 .flex_none()
-                .when(selected && focused, |this| this.bg(color::INK)),
+                .when(selected && focused, |this| this.bg(color::foreground(cx))),
         )
         .child(
             div()
@@ -338,13 +344,13 @@ fn row(
             div()
                 .w(INSTITUTION_WIDTH)
                 .truncate()
-                .text_color(color::INK_SECONDARY)
+                .text_color(color::muted(cx))
                 .child(accounts::institution_label(&account.institution)),
         )
         .child(
             div()
                 .w(UNIT_WIDTH)
-                .text_color(color::INK_SECONDARY)
+                .text_color(color::muted(cx))
                 .child(account.unit.clone()),
         )
         .child(
@@ -354,9 +360,9 @@ fn row(
                 .justify_end()
                 .whitespace_nowrap()
                 .text_color(if negative {
-                    color::ACCENT_TEXT
+                    color::negative_text(cx)
                 } else {
-                    color::INK
+                    color::foreground(cx)
                 })
                 .child(balance),
         )
@@ -370,6 +376,7 @@ fn row(
                     SharedString::from(format!("accounts-edit-{id}")),
                     crate::msg::desktop_accounts_row_edit(),
                     Rc::new(move |window: &mut Window, cx: &mut App| on_edit_click(id, window, cx)),
+                    cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("accounts-delete-{id}")),
@@ -377,6 +384,7 @@ fn row(
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_delete_click(id, window, cx)
                     }),
+                    cx,
                 )),
         )
 }
@@ -384,16 +392,22 @@ fn row(
 /// `padding:4px 10px; font-size:11px; border:1px solid rgba(32,30,29,.30); background:transparent`.
 /// Stops the click reaching the row's own handler, which would otherwise also flash the ledger
 /// stub.
-fn row_action_button(id: SharedString, label: String, on_click: OnPlainClick) -> impl IntoElement {
+fn row_action_button(
+    id: SharedString,
+    label: String,
+    on_click: OnPlainClick,
+    cx: &App,
+) -> impl IntoElement {
+    let hover = color::hover(cx);
     div()
         .id(id)
         .cursor_pointer()
         .py(px(4.0))
         .px(px(10.0))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .text_size(px(11.0))
-        .hover(|style| style.bg(color::HOVER_TINT))
+        .hover(move |style| style.bg(hover))
         .on_click(move |_event, window, cx| {
             cx.stop_propagation();
             on_click(window, cx)

@@ -73,6 +73,17 @@ desktop-settings-display-status-glyphs = Status glyphs
 desktop-settings-display-start-minimised = Start Sidebar minimised
 desktop-settings-display-preview = Preview
 desktop-settings-display-note = Display settings are Configuration, not Preferences — they are read from personal-ledger.conf at start-up and written back here. Ledger-scoped Preferences (like the default Unit for new entries) live under Units and sync as Change Sets.
+desktop-settings-display-colour-theme = Colour theme
+desktop-settings-display-colour-appearance = Appearance
+
+## `$roles` is the overridden Colour Role keys, comma-separated.
+
+desktop-settings-display-colour-overrides = { $roles } overridden by [theme] in your configuration file. Restart to change them.
+
+## A `[theme]` pair below its contrast rule. `$subject` and `$surface` are Colour Role or
+## calculated colour keys; `$ratio` and `$required` are contrast ratios.
+
+desktop-settings-display-colour-contrast = { $subject } on { $surface } is { $ratio }:1, needs { $required }:1
 desktop-settings-density-compact = compact
 desktop-settings-density-regular = regular
 desktop-settings-density-roomy = roomy

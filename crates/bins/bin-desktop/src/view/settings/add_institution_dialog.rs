@@ -45,6 +45,7 @@ pub fn render(
     on_unit_click: OnUnitClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &App,
 ) -> AnyElement {
     let card = div()
         .flex()
@@ -52,29 +53,34 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_settings_institutions_add_title(),
             false,
+            cx,
         ))
         .child(dialog::body([
-            name_field(&form.name).into_any_element(),
-            account_types_field(&form.account_types, on_account_type_click).into_any_element(),
-            default_unit_field(units, form.default_unit_code.as_deref(), on_unit_click)
+            name_field(&form.name, cx).into_any_element(),
+            account_types_field(&form.account_types, on_account_type_click, cx).into_any_element(),
+            default_unit_field(units, form.default_unit_code.as_deref(), on_unit_click, cx)
                 .into_any_element(),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("add-institution-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "add-institution-confirm",
-                crate::msg::desktop_settings_institutions_add_submit(),
-                form.is_valid(),
-                false,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("add-institution-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "add-institution-confirm",
+                    crate::msg::desktop_settings_institutions_add_submit(),
+                    form.is_valid(),
+                    false,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
-    dialog::overlay(WIDTH, false, card)
+    dialog::overlay(WIDTH, false, card, cx)
 }
 
-fn name_field(value: &str) -> AnyElement {
+fn name_field(value: &str, cx: &App) -> AnyElement {
     let placeholder = crate::msg::desktop_settings_institutions_name_placeholder();
     text_field(
         "add-institution-name",
@@ -83,6 +89,7 @@ fn name_field(value: &str) -> AnyElement {
         &placeholder,
         true,
         Rc::new(|_window: &mut Window, _cx: &mut App| {}),
+        cx,
     )
     .into_any_element()
 }
@@ -90,7 +97,11 @@ fn name_field(value: &str) -> AnyElement {
 /// The `.chip` multi-select row (`docs/ux/desktop/Settings/README.md`'s Dialog components:
 /// `display:flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid
 /// rgba(32,30,29,.30); font-size:12px; cursor:pointer`, selected takes the dark treatment).
-fn account_types_field(selected: &[AccountType], on_click: OnAccountTypeClick) -> impl IntoElement {
+fn account_types_field(
+    selected: &[AccountType],
+    on_click: OnAccountTypeClick,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .child(field_label(
             crate::msg::desktop_settings_institutions_account_types(),
@@ -99,7 +110,7 @@ fn account_types_field(selected: &[AccountType], on_click: OnAccountTypeClick) -
             AccountType::ALL.into_iter().map(|account_type| {
                 let checked = selected.contains(&account_type);
                 let on_click = on_click.clone();
-                chip(account_type, checked, on_click)
+                chip(account_type, checked, on_click, cx)
             }),
         ))
 }
@@ -108,6 +119,7 @@ fn chip(
     account_type: AccountType,
     checked: bool,
     on_click: OnAccountTypeClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .id(SharedString::from(format!(
@@ -121,10 +133,11 @@ fn chip(
         .py(px(6.0))
         .px(px(10.0))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .text_size(px(12.0))
         .when(checked, |this| {
-            this.bg(color::INK).text_color(color::INK_ON_DARK)
+            this.bg(color::selection_background(cx))
+                .text_color(color::selection_text(cx))
         })
         .on_click(move |_event, window, cx| on_click(account_type, window, cx))
         .child(account_type.label())
@@ -138,6 +151,7 @@ fn default_unit_field(
     units: &[UnitRow],
     selected_code: Option<&str>,
     on_click: OnUnitClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .child(field_label(
@@ -146,14 +160,14 @@ fn default_unit_field(
         .child(if units.is_empty() {
             div()
                 .text_size(px(13.0))
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(crate::msg::desktop_settings_institutions_no_units())
                 .into_any_element()
         } else {
             div()
                 .flex()
                 .border_1()
-                .border_color(color::DIVIDER)
+                .border_color(color::divider(cx))
                 .children(units.iter().enumerate().map(|(index, unit)| {
                     let selected = Some(unit.code.as_str()) == selected_code;
                     let on_click = on_click.clone();
@@ -165,10 +179,10 @@ fn default_unit_field(
                         .px(px(12.0))
                         .text_size(px(13.0))
                         .when(index > 0, |this| {
-                            this.border_l(px(1.0)).border_color(color::DIVIDER)
+                            this.border_l(px(1.0)).border_color(color::divider(cx))
                         })
                         .when(selected, |this| {
-                            this.bg(color::ACCENT).text_color(color::INK_ON_DARK)
+                            this.bg(color::accent(cx)).text_color(color::background(cx))
                         })
                         .on_click(move |_event, window, cx| on_click(code.clone(), window, cx))
                         .child(unit.code.clone())

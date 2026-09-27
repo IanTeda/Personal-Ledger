@@ -45,7 +45,7 @@ use lib_core::{AccountType, Money, RowID};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     symbols,
     text::{Line, Span},
     widgets::{
@@ -58,11 +58,8 @@ use crate::account::{
     Account, AccountFixture, AccountStore, AccountTransaction, AccountUnit, FIXTURE_NOW,
     shared_unit,
 };
+use crate::colours::Colours;
 use crate::view::{Action, View, ViewId};
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// negative balances.
-const ACCENT: Color = Color::Red;
 
 /// Width of the left pane (list + summary), per the handoff's own `Layout::horizontal([
 /// Constraint::Length(41), Constraint::Min(0)])`.
@@ -420,7 +417,7 @@ impl View for AccountsView {
         }
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -435,8 +432,8 @@ impl View for AccountsView {
             .spacing(2)
             .split(rows[1]);
 
-        self.render_left_pane(frame, columns[0]);
-        self.render_right_pane(frame, columns[1]);
+        self.render_left_pane(frame, columns[0], c);
+        self.render_right_pane(frame, columns[1], c);
     }
 
     fn id(&self) -> ViewId {
@@ -457,7 +454,7 @@ impl View for AccountsView {
 }
 
 impl AccountsView {
-    fn render_left_pane(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_left_pane(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -466,11 +463,11 @@ impl AccountsView {
             ])
             .split(area);
 
-        self.render_list(frame, rows[0]);
-        self.render_summary(frame, rows[1]);
+        self.render_list(frame, rows[0], c);
+        self.render_summary(frame, rows[1], c);
     }
 
-    fn render_list(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_list(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let split = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -489,7 +486,7 @@ impl AccountsView {
             .split(content_area);
 
         for (line, row_area) in lines.iter().zip(row_areas.iter()) {
-            render_list_line(frame, *row_area, line, self.selected);
+            render_list_line(frame, *row_area, line, self.selected, c);
         }
 
         let total = lines.len();
@@ -504,7 +501,7 @@ impl AccountsView {
 
     /// The summary box beneath the list, for whichever account is selected — see the
     /// handoff's own worked example (`docs/ux/tui/accounts/README.md` "Summary box").
-    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let block = Block::bordered().padding(Padding::horizontal(1));
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -541,6 +538,7 @@ impl AccountsView {
         let balance = self.store.balance(account.id);
         frame.render_widget(
             summary_field_line(
+                c,
                 "balance now · computed",
                 &crate::format::money(&balance, account.unit.decimal_places),
             ),
@@ -556,7 +554,7 @@ impl AccountsView {
             )
         };
         frame.render_widget(
-            summary_field_line("transactions", &transactions_text),
+            summary_field_line(c, "transactions", &transactions_text),
             rows[3],
         );
 
@@ -572,17 +570,20 @@ impl AccountsView {
             }
             None => "none".to_string(),
         };
-        frame.render_widget(summary_field_line("last check", &last_check_text), rows[4]);
+        frame.render_widget(
+            summary_field_line(c, "last check", &last_check_text),
+            rows[4],
+        );
 
         let active_text = if account.is_active {
             "[×] · offered when posting"
         } else {
             "[ ] · not offered"
         };
-        frame.render_widget(summary_field_line("active", active_text), rows[5]);
+        frame.render_widget(summary_field_line(c, "active", active_text), rows[5]);
     }
 
-    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -600,14 +601,20 @@ impl AccountsView {
             return;
         };
 
-        self.render_balance_chart(frame, rows[0], account);
-        self.render_ledger(frame, rows[2], account);
+        self.render_balance_chart(frame, rows[0], account, c);
+        self.render_ledger(frame, rows[2], account, c);
     }
 
     /// The month-end balance line, a trailing [`CHART_MONTHS`]-month window ending at
     /// [`FIXTURE_NOW`], per the handoff's "Balance line" — `oct 24 – sep 26` against this
     /// fixture's own fixed "now".
-    fn render_balance_chart(&self, frame: &mut Frame<'_>, area: Rect, account: &Account) {
+    fn render_balance_chart(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        account: &Account,
+        c: &Colours,
+    ) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -618,7 +625,7 @@ impl AccountsView {
             ])
             .split(area);
 
-        render_chart_heading(frame, rows[0]);
+        render_chart_heading(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         let series: Vec<f64> = self
@@ -648,7 +655,7 @@ impl AccountsView {
         let last_point_marker = Dataset::default()
             .marker(symbols::Marker::Braille)
             .graph_type(GraphType::Scatter)
-            .style(Style::default().fg(ACCENT))
+            .style(c.accent())
             .data(&last_point);
 
         let chart = Chart::new(vec![line, last_point_marker])
@@ -656,12 +663,12 @@ impl AccountsView {
             .y_axis(Axis::default().bounds([min - margin, max + margin]));
         frame.render_widget(chart, rows[2]);
 
-        render_chart_labels(frame, rows[3], &series, account.unit.decimal_places);
+        render_chart_labels(frame, rows[3], &series, account.unit.decimal_places, c);
     }
 
     /// The ledger list: status glyph / `DATE` / `PAYEE` / `AMOUNT` / `BALANCE`, newest first,
     /// capped to [`LEDGER_VISIBLE_ROWS`] — per the handoff's "Ledger list".
-    fn render_ledger(&self, frame: &mut Frame<'_>, area: Rect, account: &Account) {
+    fn render_ledger(&self, frame: &mut Frame<'_>, area: Rect, account: &Account, c: &Colours) {
         let rows_with_balance = self.ledger_rows_with_running_balance(account);
         let total = rows_with_balance.len();
         let visible: Vec<(&AccountTransaction, &Money)> = rows_with_balance
@@ -692,17 +699,18 @@ impl AccountsView {
             ])
             .split(content_area);
 
-        render_ledger_heading(frame, sections[0], visible.len(), total);
+        render_ledger_heading(frame, sections[0], visible.len(), total, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-        render_ledger_column_header(frame, sections[2]);
+        render_ledger_column_header(frame, sections[2], c);
         render_ledger_rows(
             frame,
             sections[3],
             &visible,
             account.unit.decimal_places,
             blank_balance,
+            c,
         );
-        render_ledger_legend(frame, sections[4], account.open_count);
+        render_ledger_legend(frame, sections[4], account.open_count, c);
         render_net_line(frame, sections[5], self.visible_accounts());
 
         let rows_scrollbar_area = Rect {
@@ -756,7 +764,13 @@ fn list_row_columns(area: Rect) -> (Rect, Rect, Rect) {
     (columns[0], columns[1], columns[2])
 }
 
-fn render_list_line(frame: &mut Frame<'_>, area: Rect, line: &ListLine<'_>, selected: RowID) {
+fn render_list_line(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    line: &ListLine<'_>,
+    selected: RowID,
+    c: &Colours,
+) {
     match line {
         ListLine::Header {
             account_type,
@@ -777,7 +791,7 @@ fn render_list_line(frame: &mut Frame<'_>, area: Rect, line: &ListLine<'_>, sele
                 width: unit_area.width + 1 + balance_area.width,
                 ..unit_area
             };
-            let dim = Style::default().add_modifier(Modifier::DIM);
+            let dim = c.muted();
             frame.render_widget(
                 Paragraph::new(Span::styled(format!("{count}    {right_text}"), dim))
                     .alignment(Alignment::Right),
@@ -790,13 +804,10 @@ fn render_list_line(frame: &mut Frame<'_>, area: Rect, line: &ListLine<'_>, sele
         } => {
             let is_selected = account.id == selected;
             if is_selected {
-                frame.render_widget(
-                    Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-                    area,
-                );
+                frame.render_widget(Block::new().style(c.selection()), area);
             }
 
-            let dim = Style::default().add_modifier(Modifier::DIM);
+            let dim = c.muted();
             let (name_area, unit_area, balance_area) = list_row_columns(area);
 
             let connector = if *is_last_in_group { "└ " } else { "├ " };
@@ -824,8 +835,10 @@ fn render_list_line(frame: &mut Frame<'_>, area: Rect, line: &ListLine<'_>, sele
 
             let balance = balance_for_display(account);
             let is_negative = balance.0 < 0;
-            let balance_style = if is_negative {
-                Style::default().fg(ACCENT)
+            let balance_style = if is_negative && is_selected {
+                c.negative_on_selection()
+            } else if is_negative {
+                c.negative()
             } else {
                 Style::default()
             };
@@ -850,8 +863,8 @@ fn balance_for_display(account: &Account) -> Money {
 
 /// One `label   value` summary row, the label padded to [`SUMMARY_LABEL_WIDTH`] and dimmed —
 /// mirrors `view::categories`'s own `summary_field_line`.
-fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn summary_field_line<'a>(c: &Colours, label: &'a str, value: &'a str) -> Paragraph<'a> {
+    let dim = c.muted();
     Paragraph::new(Line::from(vec![
         Span::styled(format!("{label:<SUMMARY_LABEL_WIDTH$}"), dim),
         Span::raw(value),
@@ -874,8 +887,8 @@ fn running_balance_is_meaningful(filtered: bool, sorted_by_date_descending: bool
 /// The `BALANCE` heading over the chart, with the trailing window as its dim tag — mirrors
 /// `view::categories`'s own `render_chart_heading`, without the direct/subtree label swap
 /// Categories needs (an Account's balance line has only one series).
-fn render_chart_heading(frame: &mut Frame<'_>, area: Rect) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_chart_heading(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let dim = c.muted();
     let tag = format!(
         "{} – {}",
         format_month(chart_month(0)),
@@ -902,7 +915,13 @@ fn render_chart_heading(frame: &mut Frame<'_>, area: Rect) {
 /// month, last month + its value — per the handoff's "Labels beneath: first point, low with
 /// its month, last point" (Categories' sibling chart instead labels an average here; Accounts'
 /// own handoff asks for the low point specifically).
-fn render_chart_labels(frame: &mut Frame<'_>, area: Rect, series: &[f64], decimal_places: i64) {
+fn render_chart_labels(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    series: &[f64],
+    decimal_places: i64,
+    c: &Colours,
+) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Min(0), Constraint::Min(0)])
@@ -916,7 +935,7 @@ fn render_chart_labels(frame: &mut Frame<'_>, area: Rect, series: &[f64], decima
         return;
     };
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let first_text = format!(
         "{}  {}",
         format_month(chart_month(0)),
@@ -979,8 +998,14 @@ fn ledger_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect, Rect) {
 }
 
 /// The `LEDGER  N of M · newest first` heading.
-fn render_ledger_heading(frame: &mut Frame<'_>, area: Rect, shown: usize, total: usize) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_ledger_heading(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    shown: usize,
+    total: usize,
+    c: &Colours,
+) {
+    let dim = c.muted();
     let tag = format!("{shown} of {total} · newest first");
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -999,9 +1024,9 @@ fn render_ledger_heading(frame: &mut Frame<'_>, area: Rect, shown: usize, total:
     );
 }
 
-fn render_ledger_column_header(frame: &mut Frame<'_>, area: Rect) {
+fn render_ledger_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let (_, date, payee, amount, balance) = ledger_row_columns(area);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(crate::msg::tui_accounts_column_date(), dim)),
         date,
@@ -1028,6 +1053,7 @@ fn render_ledger_rows(
     rows: &[(&AccountTransaction, &Money)],
     decimal_places: i64,
     blank_balance: bool,
+    c: &Colours,
 ) {
     let visible = rows.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
@@ -1047,7 +1073,7 @@ fn render_ledger_rows(
 
         let is_negative = row.amount.0 < 0;
         let amount_style = if is_negative {
-            Style::default().fg(ACCENT)
+            c.negative()
         } else {
             Style::default()
         };
@@ -1066,7 +1092,7 @@ fn render_ledger_rows(
             crate::format::money(balance, decimal_places)
         };
         let balance_style = if !blank_balance && balance.0 < 0 {
-            Style::default().fg(ACCENT)
+            c.negative()
         } else {
             Style::default()
         };
@@ -1079,8 +1105,8 @@ fn render_ledger_rows(
 
 /// `○ open · ✓ reconciled · N open` — the handoff's "legend in the footer row alongside the
 /// open count".
-fn render_ledger_legend(frame: &mut Frame<'_>, area: Rect, open_count: u32) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_ledger_legend(frame: &mut Frame<'_>, area: Rect, open_count: u32, c: &Colours) {
+    let dim = c.muted();
     let text = format!("○ open · ✓ reconciled · {open_count} open");
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
 }
@@ -1129,11 +1155,11 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    fn render(view: &AccountsView) -> String {
+    fn render(view: &AccountsView, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("rendering the Accounts view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1165,7 +1191,8 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&AccountsView::new());
+        let c = &Colours::default();
+        render(&AccountsView::new(), c);
     }
 
     #[test]
@@ -1282,31 +1309,35 @@ mod tests {
 
     #[test]
     fn investment_group_renders_mixed_units_not_a_summed_number() {
+        let c = &Colours::default();
         let view = AccountsView::new();
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("mixed units"));
     }
 
     #[test]
     fn bank_group_renders_a_real_subtotal() {
+        let c = &Colours::default();
         let view = AccountsView::new();
-        let text = render(&view);
+        let text = render(&view, c);
         // Everyday Spending 4 210.65 + Mortgage Offset 24 429.50.
         assert!(text.contains("28,640.15"));
     }
 
     #[test]
     fn negative_balances_render_with_a_minus_sign() {
+        let c = &Colours::default();
         let view = AccountsView::new();
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("\u{2212}1,284.3"));
     }
 
     #[test]
     fn summary_box_shows_the_selected_accounts_fact_line_and_computed_rows() {
+        let c = &Colours::default();
         let mut view = AccountsView::new();
         view.selected = find_id(&view, "Everyday Spending");
-        let text = render(&view);
+        let text = render(&view, c);
 
         assert!(text.contains("bank"));
         assert!(text.contains("start"));
@@ -1321,9 +1352,10 @@ mod tests {
 
     #[test]
     fn summary_box_shows_none_for_an_account_with_no_transactions() {
+        let c = &Colours::default();
         let mut view = AccountsView::new();
         view.selected = find_id(&view, "Wallet");
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("none"));
     }
 
@@ -1351,22 +1383,25 @@ mod tests {
 
     #[test]
     fn right_pane_renders_without_panicking_for_an_account_with_no_transactions() {
+        let c = &Colours::default();
         let mut view = AccountsView::new();
         view.selected = find_id(&view, "Wallet");
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("0 of 0 · newest first"));
     }
 
     #[test]
     fn ledger_heading_shows_capped_count_against_the_real_total() {
+        let c = &Colours::default();
         let mut view = AccountsView::new();
         view.selected = find_id(&view, "Everyday Spending");
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("10 of 1284 · newest first"));
     }
 
     #[test]
     fn ledger_rows_show_a_status_glyph_never_colour_alone() {
+        let c = &Colours::default();
         let mut view = AccountsView::new();
         view.selected = find_id(&view, "Everyday Spending");
         let account = view.selected_account().unwrap();
@@ -1376,7 +1411,7 @@ mod tests {
             assert!(row.status.glyph() == '○' || row.status.glyph() == '✓');
         }
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("○ open · ✓ reconciled · 12 open"));
     }
 
@@ -1400,9 +1435,10 @@ mod tests {
 
     #[test]
     fn balance_chart_heading_names_the_trailing_window() {
+        let c = &Colours::default();
         let mut view = AccountsView::new();
         view.selected = find_id(&view, "Everyday Spending");
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("BALANCE"));
         assert!(text.contains("oct 2024 – sep 2026"));
     }
@@ -1420,8 +1456,9 @@ mod tests {
 
     #[test]
     fn net_line_sums_base_unit_accounts_and_names_every_excluded_unit() {
+        let c = &Colours::default();
         let view = AccountsView::new();
-        let text = render(&view);
+        let text = render(&view, c);
         // Wallet 320.40 + Everyday Spending 4 210.65 + Mortgage Offset 24 429.50
         // + Amex Platinum -1 284.30 + Home Loan -612 400.00 = -584 723.75.
         assert!(text.contains("net AUD \u{2212}584,723.75"));
@@ -1430,6 +1467,7 @@ mod tests {
 
     #[test]
     fn net_line_excludes_units_that_are_currently_hidden() {
+        let c = &Colours::default();
         let mut view = AccountsView::new();
         // "home" isolates Home Loan alone — unlike "wallet", which would also match "Cold
         // wallet" and defeat the point of this test.
@@ -1439,7 +1477,7 @@ mod tests {
         }
         view.handle_key(key(KeyCode::Enter));
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("net AUD \u{2212}612,400.00"));
         assert!(!text.contains("held separately"));
     }

@@ -26,7 +26,7 @@ pub struct SelectFieldProps<'a> {
     pub on_option_click: OnOptionClick,
 }
 
-pub fn render(props: SelectFieldProps<'_>) -> AnyElement {
+pub fn render(props: SelectFieldProps<'_>, cx: &App) -> AnyElement {
     let SelectFieldProps {
         id,
         label,
@@ -56,9 +56,9 @@ pub fn render(props: SelectFieldProps<'_>) -> AnyElement {
         .px(px(10.0))
         .border_1()
         .border_color(if focused && read_only.is_none() {
-            color::ACCENT
+            color::accent(cx)
         } else {
-            color::BORDER
+            color::border(cx)
         })
         .text_size(px(13.0))
         .child(div().min_w(px(0.0)).truncate().child(text))
@@ -66,7 +66,7 @@ pub fn render(props: SelectFieldProps<'_>) -> AnyElement {
             div()
                 .flex_none()
                 .text_size(px(10.0))
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(if state.is_open() {
                     "\u{25b4}"
                 } else {
@@ -74,10 +74,12 @@ pub fn render(props: SelectFieldProps<'_>) -> AnyElement {
                 }),
         );
     field = if read_only.is_some() {
-        field.bg(color::CHROME).text_color(color::INK_TERTIARY)
+        field
+            .bg(color::chrome(cx))
+            .text_color(color::faint_text(cx))
     } else {
         field
-            .bg(color::GROUND)
+            .bg(color::background(cx))
             .cursor_pointer()
             .on_click(move |_event, window, cx| on_field_click(window, cx))
     };
@@ -94,7 +96,7 @@ pub fn render(props: SelectFieldProps<'_>) -> AnyElement {
         )
         .child(field)
         .when(state.is_open() && read_only.is_none(), |this| {
-            this.child(option_list(id, options, state, on_option_click))
+            this.child(option_list(id, options, state, on_option_click, cx))
         })
         .into_any_element()
 }
@@ -104,15 +106,16 @@ fn option_list(
     options: &[String],
     state: &SelectState,
     on_option_click: OnOptionClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .id(SharedString::from(format!("{id}-list")))
         .flex()
         .flex_col()
-        .bg(color::GROUND)
+        .bg(color::background(cx))
         .border_1()
         .border_t_0()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .children(state.visible_range(options.len()).map(|index| {
             let highlighted = index == state.highlight();
             let current = state.value() == Some(options[index].as_str());
@@ -125,7 +128,8 @@ fn option_list(
                 .text_size(px(13.0))
                 .truncate()
                 .when(highlighted, |this| {
-                    this.bg(color::INK).text_color(color::INK_ON_DARK)
+                    this.bg(color::selection_background(cx))
+                        .text_color(color::selection_text(cx))
                 })
                 .when(current && !highlighted, |this| {
                     this.font_weight(gpui::FontWeight::EXTRA_BOLD)

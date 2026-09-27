@@ -9,17 +9,14 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for the
-/// input cursor and the `preview` figure.
-const ACCENT: Color = Color::Red;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes. §4b itself calls for an in-place
 /// (non-floating) editor rather than a sized dialog, so this borrows `popup::unit`'s own ~88%
@@ -60,7 +57,7 @@ impl EditSettingPopup {
 
     /// Renders the floating overlay, centred and sized to its fixed field list, within `area`
     /// (the full terminal area, per `popup::unit::edit`'s own convention).
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -87,30 +84,31 @@ impl EditSettingPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_field(
             frame,
             rows[2],
             "",
             Line::from("how a negative amount prints everywhere"),
+            c,
         );
-        render_value_box(frame, rows[3]);
-        render_preview(frame, rows[4]);
-        render_current(frame, rows[5]);
-        render_applies_to_heading(frame, rows[6]);
-        render_applies_to_lines(frame, rows[7]);
+        render_value_box(frame, rows[3], c);
+        render_preview(frame, rows[4], c);
+        render_current(frame, rows[5], c);
+        render_applies_to_heading(frame, rows[6], c);
+        render_applies_to_lines(frame, rows[7], c);
         // rows[8] is left blank — breathing space above the on-accept box.
-        render_on_accept_box(frame, rows[9]);
-        render_typed_command(frame, rows[10]);
+        render_on_accept_box(frame, rows[9], c);
+        render_typed_command(frame, rows[10], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[11]);
-        render_footer_hints(frame, rows[12]);
+        render_footer_hints(frame, rows[12], c);
     }
 }
 
 /// The title row: `negatives` flush left, `general.negatives` dim and right-aligned — matches
 /// `popup::unit::edit`'s own "title left, context right" convention.
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = msg::tui_setting_edit_command();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -121,7 +119,7 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     frame.render_widget(Paragraph::new(msg::tui_setting_edit_title()), columns[0]);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -130,13 +128,13 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
 
 /// One `label   value` row, the label dim and fixed-width — mirrors `popup::unit::edit`'s own
 /// `render_field`. `label` is `""` for the explain line, which has no label of its own.
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
@@ -144,8 +142,8 @@ fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'sta
 /// The `value` field's focused box — an accent-bordered `Block` around the enum's segmented
 /// row (the selected variant reversed, per §4b's "the selection is a reversed block") and its
 /// `←→` hint, mirroring `popup::unit::edit`'s own accent-bordered precision warning box.
-fn render_value_box(frame: &mut Frame<'_>, area: Rect) {
-    let accent = Style::default().fg(ACCENT);
+fn render_value_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let accent = c.accent();
     let block = Block::bordered().border_style(accent);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -155,7 +153,7 @@ fn render_value_box(frame: &mut Frame<'_>, area: Rect) {
         .constraints([Constraint::Length(1), Constraint::Length(1)])
         .split(inner);
 
-    let reversed = Style::default().add_modifier(Modifier::REVERSED);
+    let reversed = c.selection();
     render_field(
         frame,
         lines[0],
@@ -164,34 +162,37 @@ fn render_value_box(frame: &mut Frame<'_>, area: Rect) {
             Span::styled("minus", reversed),
             Span::raw(" brackets trailing"),
         ]),
+        c,
     );
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     render_field(
         frame,
         lines[1],
         "",
         Line::from(Span::styled("↔ choose · 3 options", dim)),
+        c,
     );
 }
 
 /// The `preview` row: a real figure in the candidate format, per §4b's own "a real figure from
-/// the user's data ... not lorem" — styled `ACCENT`, matching the design's own `← accent`
+/// the user's data ... not lorem" — styled `accent`, matching the design's own `← accent`
 /// marker on this row.
-fn render_preview(frame: &mut Frame<'_>, area: Rect) {
-    let accent = Style::default().fg(ACCENT);
+fn render_preview(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let accent = c.accent();
     render_field(
         frame,
         area,
         "preview",
         Line::from(Span::styled("−320 334.10", accent)),
+        c,
     );
 }
 
 /// The `current` row: the value the row would fall back to if there were no override, and
 /// whether it is the default — §4b's own "names the current value *and* whether it is the
 /// default, in one line".
-fn render_current(frame: &mut Frame<'_>, area: Rect) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_current(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let dim = c.muted();
     render_field(
         frame,
         area,
@@ -200,12 +201,13 @@ fn render_current(frame: &mut Frame<'_>, area: Rect) {
             Span::raw("(320 334.10) "),
             Span::styled("· DEFAULT", dim),
         ]),
+        c,
     );
 }
 
 /// The "applies to" heading, tagged with §4b's own "everywhere an amount prints" — same dim
 /// label / dim tag pattern as `view::settings`'s own `render_heading`.
-fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect) {
+fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = "EVERYWHERE AN AMOUNT PRINTS";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -215,7 +217,7 @@ fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled("APPLIES TO", dim)), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
@@ -226,7 +228,7 @@ fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect) {
 /// The "applies to" box's three lines — net position, one ledger row and the csv-export note,
 /// §4b's own "the same candidate shown in the three places it lands, so scope is legible
 /// before committing".
-fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect) {
+fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -236,14 +238,15 @@ fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    render_field(frame, rows[0], "net", Line::from("−320 334.10"));
+    render_field(frame, rows[0], "net", Line::from("−320 334.10"), c);
     render_field(
         frame,
         rows[1],
         "ledger row",
         Line::from("Woolworths −184.20"),
+        c,
     );
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled("csv export unaffected · machine format", dim)),
         rows[2],
@@ -255,7 +258,7 @@ fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect) {
 /// two-line hint ("drop the override and fall back to the" / "shipped default instead of
 /// storing a row") is folded onto one line here to keep the box within this popup's trimmed
 /// height budget (`CONTENT_ROWS`'s own doc comment).
-fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect) {
+fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let block = Block::bordered();
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -274,10 +277,11 @@ fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect) {
         rows[0],
         "on accept",
         Line::from("upsert settings row"),
+        c,
     );
     frame.render_widget(Paragraph::new("general.negatives = \"minus\""), rows[1]);
     let bold = Style::default().add_modifier(Modifier::BOLD);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("r", bold),
@@ -289,10 +293,10 @@ fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect) {
 }
 
 /// The typed-command echo — §4b's own "the command line echoes the equivalent command", with
-/// an accent cursor after the value and the dim "same edit, typed" note.
-fn render_typed_command(frame: &mut Frame<'_>, area: Rect) {
-    let cursor = Style::default().fg(ACCENT);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+/// a `cursor` caret after the value and the dim "same edit, typed" note.
+fn render_typed_command(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let cursor = c.cursor();
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::raw(":set negatives minus"),
@@ -308,7 +312,7 @@ fn render_typed_command(frame: &mut Frame<'_>, area: Rect) {
 /// choose · `enter` commit · `esc` revert · `r` drop override", `enter` folded into `commit`
 /// per `popup::unit::edit`'s own bold-key convention (`^s` there since a unit form has other
 /// text fields `enter` would otherwise submit early).
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     const HINTS: &[(&str, &str)] = &[
         ("←→", "choose"),
         ("^s", "commit"),
@@ -317,7 +321,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = Style::default().add_modifier(Modifier::DIM);
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(HINTS.len() * 3);
     for (idx, (key, label)) in HINTS.iter().enumerate() {
@@ -358,11 +362,11 @@ mod tests {
 
     use super::*;
 
-    fn render(popup: &EditSettingPopup) -> String {
+    fn render(popup: &EditSettingPopup, c: &Colours) -> String {
         let backend = TestBackend::new(96, 34);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -378,19 +382,22 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        render(&EditSettingPopup::new(), c);
     }
 
     #[test]
     fn shows_the_title_and_key() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         assert!(text.contains("negatives"), "title missing");
         assert!(text.contains("general.negatives"), "dotted key missing");
     }
 
     #[test]
     fn shows_the_value_choices_and_the_choose_hint() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         for variant in ["minus", "brackets", "trailing"] {
             assert!(text.contains(variant), "{variant} option missing");
         }
@@ -399,10 +406,11 @@ mod tests {
 
     #[test]
     fn the_selected_variant_renders_reversed() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 34);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| EditSettingPopup::new().render(frame, frame.area()))
+            .draw(|frame| EditSettingPopup::new().render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -417,19 +425,21 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
-        let row_is_reversed = |y: u16| -> bool {
-            (0..buffer.area.width).any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
+        let row_is_selected = |y: u16| -> bool {
+            (0..buffer.area.width)
+                .any(|x| buffer[(x, y)].bg == c.selection().bg.unwrap_or_default())
         };
 
         assert!(
-            row_is_reversed(row_containing("brackets trailing")),
+            row_is_selected(row_containing("brackets trailing")),
             "the value row should carry a reversed span on the selected variant"
         );
     }
 
     #[test]
     fn shows_preview_current_and_applies_to() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         assert!(text.contains("preview"), "preview label missing");
         assert!(text.contains("−320 334.10"), "preview value missing");
         assert!(text.contains("current"), "current label missing");
@@ -446,7 +456,8 @@ mod tests {
 
     #[test]
     fn shows_the_on_accept_write_and_drop_override_hint() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         assert!(text.contains("on accept"), "on accept label missing");
         assert!(
             text.contains("upsert settings row"),
@@ -464,7 +475,8 @@ mod tests {
 
     #[test]
     fn shows_the_typed_command_echo() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         assert!(
             text.contains(":set negatives minus"),
             "typed command echo missing"
@@ -477,7 +489,8 @@ mod tests {
 
     #[test]
     fn shows_the_footer_hints() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         for key in ["←→", "^s", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }
