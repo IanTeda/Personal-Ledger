@@ -4,7 +4,7 @@ The developer-facing design for Colour Themes in the Desktop and TUI Clients. Th
 
 ## Status
 
-In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md)) and the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)). Still open on the map: the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
+In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md)) the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)) and what is not part of a Colour Theme ([#304](https://github.com/IanTeda/Personal-Ledger/issues/304)). Still open on the map: the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
 
 ## Colour Roles
 
@@ -226,7 +226,20 @@ Until the Clients' Settings read `preferences` from the database, each Client ke
 
 `lib-colour-theme`'s unit tests cover INI parsing, resolution precedence, the calculated-colour rules and the contrast matrix for every built-in Colour Theme. `clippy.toml` bans `gpui::rgb`/`gpui::rgba` through `disallowed-methods`, with an `#[expect]` in the Desktop's one mapping module. The TUI's `Color` type is not banned; a review note keeps new `Color::` literals out of views.
 
+## Not part of a Colour Theme
+
+A Colour Theme is colour only: its seven Colour Roles, and nothing else in a Colour Theme or in `[theme]` ([#304](https://github.com/IanTeda/Personal-Ledger/issues/304)). Typography, spacing and radius stay fixed by the Modernist design system, and none of them is a Preference or Configuration:
+
+- **Font family**: Archivo, bundled with the Desktop. The layout's widths, figure alignment and kicker tracking are tuned to its metrics. In the TUI the terminal's own font applies.
+- **Type scale and weights**: `theme::type_scale` stays fixed.
+- **Spacing**: `theme::spacing` stays fixed, with no compact or comfortable density modes, which would double the layouts to test.
+- **Radius**: 0 everywhere.
+- **TUI borders and glyphs**: the plain line set stays fixed, with no choice of border style.
+
+Two related questions sit outside this map. A single Desktop UI scale factor that multiplies the type scale and spacing together (never separate font sizes) is its own effort ([#313](https://github.com/IanTeda/Personal-Ledger/issues/313)). An ASCII fallback for terminals that can't draw box-drawing or Unicode glyphs is a question of what the terminal can do, not a styling Preference. It is deferred, and would follow the same pattern as the 16-colour auto-fallback: detect first, and add a switch only if detection proves unreliable.
+
 ## Open items
 
 - Everything on the tickets listed under [Status](#status).
 - Rewriting the Modernist handoffs' "introduce no values outside this set" rule to speak in Colour Roles.
+- A TUI ASCII glyph fallback (see [Not part of a Colour Theme](#not-part-of-a-colour-theme)).
