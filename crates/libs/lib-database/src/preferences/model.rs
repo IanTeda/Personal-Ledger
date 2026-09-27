@@ -2,7 +2,8 @@
 //!
 //! Defines the `Preferences` struct, the one row of the `preferences` table -- Ledger-scoped
 //! settings a user edits from inside a running Client (ADR-0014): the default Unit for new
-//! Accounts, colour theme, and a nullable date style (ADR-0021). Singleton by
+//! Accounts, a nullable date style (ADR-0021), and a nullable Colour Theme and Colour
+//! Appearance (ADR-0023). Singleton by
 //! convention (mirroring `sync_users` -- see [`crate::Preferences::find_only`] and
 //! [`crate::Preferences::get_or_create_default`]), not a database constraint.
 
@@ -17,9 +18,14 @@ pub struct Preferences {
     /// NULL`) if the referenced Unit is later hard-deleted.
     pub default_unit_id: Option<lib_core::RowID>,
 
-    /// The TUI/Desktop's one accent colour (reserved for negatives, over-budget, variance,
-    /// and Liabilities, per `docs/ux/tui/README.md`'s style table).
-    pub colour_theme: lib_core::HexColor,
+    /// The chosen Colour Theme's id, such as `modernist`. Nullable: `None` means the default
+    /// Colour Theme. Kept as the raw id rather than validated here, so an id from a newer
+    /// release survives a round trip through this Client (ADR-0023).
+    pub colour_theme: Option<String>,
+
+    /// The chosen Colour Appearance key (`light`, `dark` or `system`). Nullable: `None`
+    /// means System. Clients parse it with `lib_colour_theme::ColourAppearance::from_key`.
+    pub colour_appearance: Option<String>,
 
     /// How dates are displayed. Nullable: `None` means the Locale's default (ADR-0021).
     pub date_style: Option<lib_core::DateStyle>,
@@ -41,7 +47,8 @@ impl Preferences {
         PreferencesBuilder::new()
             .with_id(lib_core::RowID::mock())
             .with_default_unit_id(Some(lib_core::RowID::mock()))
-            .with_colour_theme(lib_core::HexColor::mock())
+            .with_colour_theme(Some("gruvbox".to_string()))
+            .with_colour_appearance(Some("dark".to_string()))
             .with_date_style(Some(lib_core::DateStyle::mock()))
             .with_created_on_opt(Some(now))
             .with_updated_on_opt(Some(now))

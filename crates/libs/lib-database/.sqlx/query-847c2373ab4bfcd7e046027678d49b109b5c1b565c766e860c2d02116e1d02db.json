@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                SELECT\n                    id               AS \"id!: domain::RowID\",\n                    default_unit_id  AS \"default_unit_id: domain::RowID\",\n                    colour_theme,\n                    colour_appearance,\n                    date_style       AS \"date_style: domain::DateStyle\",\n                    created_on       AS \"created_on!: chrono::DateTime<chrono::Utc>\",\n                    updated_on       AS \"updated_on!: chrono::DateTime<chrono::Utc>\"\n                FROM preferences\n                LIMIT 1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: domain::RowID",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "default_unit_id: domain::RowID",
+        "ordinal": 1,
+        "type_info": "Null"
+      },
+      {
+        "name": "colour_theme",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "colour_appearance",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "date_style: domain::DateStyle",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_on!: chrono::DateTime<chrono::Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "847c2373ab4bfcd7e046027678d49b109b5c1b565c766e860c2d02116e1d02db"
+}

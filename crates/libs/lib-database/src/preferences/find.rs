@@ -17,7 +17,8 @@ impl crate::Preferences {
                 SELECT
                     id               AS "id!: domain::RowID",
                     default_unit_id  AS "default_unit_id: domain::RowID",
-                    colour_theme     AS "colour_theme!: domain::HexColor",
+                    colour_theme,
+                    colour_appearance,
                     date_style       AS "date_style: domain::DateStyle",
                     created_on       AS "created_on!: chrono::DateTime<chrono::Utc>",
                     updated_on       AS "updated_on!: chrono::DateTime<chrono::Utc>"

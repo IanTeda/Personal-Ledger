@@ -12,7 +12,8 @@ use super::Preferences;
 pub struct PreferencesBuilder {
     id: Option<lib_core::RowID>,
     default_unit_id: Option<lib_core::RowID>,
-    colour_theme: Option<lib_core::HexColor>,
+    colour_theme: Option<String>,
+    colour_appearance: Option<String>,
     date_style: Option<lib_core::DateStyle>,
     created_on: Option<chrono::DateTime<chrono::Utc>>,
     updated_on: Option<chrono::DateTime<chrono::Utc>>,
@@ -39,10 +40,19 @@ impl PreferencesBuilder {
         self
     }
 
-    /// Set the accent colour.
+    /// Set the Colour Theme id, such as `modernist` (or clear it, with `None`, to use the
+    /// default Colour Theme).
     #[must_use]
-    pub fn with_colour_theme(mut self, colour_theme: lib_core::HexColor) -> Self {
-        self.colour_theme = Some(colour_theme);
+    pub fn with_colour_theme(mut self, colour_theme: Option<String>) -> Self {
+        self.colour_theme = colour_theme;
+        self
+    }
+
+    /// Set the Colour Appearance key, `light`, `dark` or `system` (or clear it, with `None`,
+    /// to follow the system).
+    #[must_use]
+    pub fn with_colour_appearance(mut self, colour_appearance: Option<String>) -> Self {
+        self.colour_appearance = colour_appearance;
         self
     }
 
@@ -87,9 +97,8 @@ impl PreferencesBuilder {
             )]
             id: self.id.unwrap_or_else(lib_core::RowID::new),
             default_unit_id: self.default_unit_id,
-            colour_theme: self
-                .colour_theme
-                .unwrap_or_else(|| lib_core::HexColor::from_rgb(255, 0, 0)),
+            colour_theme: self.colour_theme,
+            colour_appearance: self.colour_appearance,
             date_style: self.date_style,
             created_on: self.created_on.unwrap_or_else(chrono::Utc::now),
             updated_on: self.updated_on.unwrap_or_else(chrono::Utc::now),

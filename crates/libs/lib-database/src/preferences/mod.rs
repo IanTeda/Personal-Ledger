@@ -1,8 +1,8 @@
 //! # Preferences Database Module
 //!
 //! Data access for the `preferences` table -- Ledger-scoped settings a user edits from
-//! inside a running Client (ADR-0014): the default Unit for new Accounts, colour theme,
-//! date format, and decimal/thousands separator. Singleton by convention (mirroring
+//! inside a running Client (ADR-0014): the default Unit for new Accounts, date style,
+//! Colour Theme and Colour Appearance. Singleton by convention (mirroring
 //! `sync_users`), not a database constraint.
 //!
 //! | Submodule | Purpose |

@@ -1,6 +1,9 @@
 -- Migration: create preferences table -- Ledger-scoped settings a user edits from inside a
--- running Client (ADR-0014, reshaped by ADR-0021): default Unit for new Accounts, colour
--- theme, and a nullable date style (NULL means the Locale's default). Client-scoped
+-- running Client (ADR-0014, reshaped by ADR-0021 and ADR-0023): default Unit for new
+-- Accounts, a nullable date style (NULL means the Locale's default), and a nullable Colour
+-- Theme id and Colour Appearance (NULL means Modernist and System). Only an explicit choice
+-- is stored, so a changed default still reaches existing Ledgers. No CHECK on colour_theme:
+-- a Colour Theme added in a later release must survive a sync through an older Client. Client-scoped
 -- (local-only, unsynced) Preferences remain a valid category per CONTEXT.md, but nothing
 -- needs one yet, so no such table is built here.
 --
@@ -15,7 +18,8 @@
 CREATE TABLE IF NOT EXISTS preferences (
     id UUID PRIMARY KEY,
     default_unit_id UUID REFERENCES units(id) ON DELETE SET NULL,
-    colour_theme TEXT NOT NULL,
+    colour_theme TEXT,
+    colour_appearance TEXT,
     date_style TEXT,
     created_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_on TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))

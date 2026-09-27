@@ -52,12 +52,13 @@ impl crate::Preferences {
 
         let insert_result = sqlx::query!(
             r#"
-                INSERT INTO preferences (id, default_unit_id, colour_theme, date_style, created_on, updated_on)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO preferences (id, default_unit_id, colour_theme, colour_appearance, date_style, created_on, updated_on)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             "#,
             preferences.id,
             preferences.default_unit_id,
             preferences.colour_theme,
+            preferences.colour_appearance,
             preferences.date_style,
             preferences.created_on,
             preferences.updated_on
@@ -78,7 +79,7 @@ impl crate::Preferences {
     }
 
     /// Replace this Preferences row's editable fields (`default_unit_id`, `colour_theme`,
-    /// `date_style`) with its current values, then re-reads the row to
+    /// `colour_appearance`, `date_style`) with its current values, then re-reads the row to
     /// confirm. `id` and `created_on` never change; `updated_on` is refreshed by the
     /// `trg_preferences_set_updated_on` trigger.
     ///
@@ -96,11 +97,12 @@ impl crate::Preferences {
         let result = sqlx::query!(
             r#"
                 UPDATE preferences
-                SET default_unit_id = ?, colour_theme = ?, date_style = ?
+                SET default_unit_id = ?, colour_theme = ?, colour_appearance = ?, date_style = ?
                 WHERE id = ?
             "#,
             self.default_unit_id,
             self.colour_theme,
+            self.colour_appearance,
             self.date_style,
             self.id
         )
@@ -181,15 +183,14 @@ mod tests {
         let mut preferences = crate::Preferences::get_or_create_default(&pool)
             .await
             .unwrap();
-        preferences.colour_theme = lib_core::HexColor::from_rgb(0, 255, 0);
+        preferences.colour_theme = Some("nord".to_string());
+        preferences.colour_appearance = Some("light".to_string());
         preferences.date_style = Some(lib_core::DateStyle::Iso);
 
         let updated = preferences.update(&pool).await.unwrap();
 
-        assert_eq!(
-            updated.colour_theme,
-            lib_core::HexColor::from_rgb(0, 255, 0)
-        );
+        assert_eq!(updated.colour_theme.as_deref(), Some("nord"));
+        assert_eq!(updated.colour_appearance.as_deref(), Some("light"));
         assert_eq!(updated.date_style, Some(lib_core::DateStyle::Iso));
     }
 
@@ -208,6 +209,43 @@ mod tests {
         cleared.date_style = None;
         let cleared = cleared.update(&pool).await.unwrap();
         assert_eq!(cleared.date_style, None);
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn colour_theme_and_appearance_default_to_none_and_can_be_cleared(pool: SqlitePool) {
+        let mut preferences = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
+        assert_eq!(preferences.colour_theme, None);
+        assert_eq!(preferences.colour_appearance, None);
+
+        preferences.colour_theme = Some("high_contrast".to_string());
+        preferences.colour_appearance = Some("dark".to_string());
+        let set = preferences.update(&pool).await.unwrap();
+        assert_eq!(set.colour_theme.as_deref(), Some("high_contrast"));
+        assert_eq!(set.colour_appearance.as_deref(), Some("dark"));
+
+        let mut cleared = set;
+        cleared.colour_theme = None;
+        cleared.colour_appearance = None;
+        let cleared = cleared.update(&pool).await.unwrap();
+        assert_eq!(cleared.colour_theme, None);
+        assert_eq!(cleared.colour_appearance, None);
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn unknown_colour_theme_id_round_trips(pool: SqlitePool) {
+        let mut preferences = crate::Preferences::get_or_create_default(&pool)
+            .await
+            .unwrap();
+        preferences.colour_theme = Some("from_a_newer_release".to_string());
+
+        let updated = preferences.update(&pool).await.unwrap();
+
+        assert_eq!(
+            updated.colour_theme.as_deref(),
+            Some("from_a_newer_release")
+        );
     }
 
     #[sqlx::test(migrations = "migrations/client")]
