@@ -24,9 +24,9 @@ Every Colour Theme stores exactly seven Colour Roles in each of its two Colour V
 | `cursor` | the text-entry caret only (the Desktop's block caret and the TUI's drawn `▌`); the focus ring comes from `accent` |
 | `muted` | secondary text: labels, column heads, hints |
 | `positive` | money in or above zero, connected/healthy status, candlestick up |
-| `negative` | money out or below zero, candlestick down — amounts only, never errors |
+| `negative` | money out or below zero, candlestick down, and an Error Toast's bar and glyph ([ADR-0026](adr/0026-toast-kinds-colour-their-marks-from-colour-roles.md)) — never text |
 
-Warnings and validation errors use `accent`, following the "one accent" rule; `negative` means only an amount. There is no stored `warning`, `error`, `info`, `selection` or chart role.
+Warnings and validation errors use `accent`, following the "one accent" rule; `negative` means only an amount, except for an Error Toast's non-text marks. There is no stored `warning`, `error`, `info`, `selection` or chart role.
 
 ### Configuration overrides
 
@@ -54,6 +54,10 @@ Every other colour is calculated from the seven stored roles by fixed rules in c
 | Text shades of `accent`, `positive`, `negative` | the role, darkened or lightened until it reaches 4.5:1 against the surface it sits on (`background`, or `foreground` on a selected row) | `ACCENT_TEXT`, `ACCENT_ON_DARK` |
 | Accent tint background (the "base" flag pill) | `accent` at low opacity over `background`, text as an accent text shade | `TAG_ACCENT_BG`, `TAG_ACCENT_TEXT` |
 | Info toast | chrome background, `foreground` text, `muted` border, a thin `foreground` bar on the leading edge | — (new) |
+| Toast mark shades | `foreground`, `positive`, `accent` and `negative`, each darkened or lightened until it reaches 3:1 against chrome | — (new) |
+| Success toast | as Info toast, with the bar and the `✓` glyph in the `positive` mark shade | — (new) |
+| Warning toast | as Info toast, with the bar and the `!` glyph in the `accent` mark shade | — (new) |
+| Error toast | as Info toast, with the bar and the `✗` glyph in the `negative` mark shade | — (new) |
 | Chart series | series 1 is `accent`; series 2–5 step evenly from `foreground` to the palest `foreground`-over-`background` mix that still reaches 3:1 against `background`; a 6th or later repeats the pattern. Fixed proportions (the earlier 100/70/45/25%) left series 5 at 1.4–2.1:1 in every candidate Colour Theme | the Desktop donut's hand-picked constants, the TUI pie's `Color::Rgb` slices |
 | Diverging charts | `positive` / `negative` | — |
 
@@ -64,7 +68,7 @@ Today's overloads are resolved by these roles: negative amounts move from `ACCEN
 Contrast is measured as a WCAG 2.x ratio. The rules:
 
 - **4.5:1** for normal text against the surface it sits on: `foreground`, `muted`, and the text shades of `accent`, `positive` and `negative` on `background`, and their selected-row equivalents on `foreground`.
-- **3:1** for non-text marks: borders, the focus ring, chart series and `positive`/`negative` bars against `background`.
+- **3:1** for non-text marks: borders, the focus ring, chart series and `positive`/`negative` bars against `background`; Toast bars and glyphs against chrome.
 - **7:1** for text in the high-contrast built-in Colour Theme.
 
 Enforcement:
@@ -88,10 +92,13 @@ Every role the TUI uses has a fallback to terminal colours, used when `terminal_
 | Selection | `REVERSED` |
 | Status line / header bar | `REVERSED` |
 | Info toast | default-colour bordered box with a `BOLD` title |
+| Success toast | as Info toast, with the bar and glyph green |
+| Warning toast | as Info toast, with the bar and glyph red |
+| Error toast | as Info toast, with the bar and glyph red |
 | Chart series | the same series rule, through this table |
 | Drop shadows, hover | none |
 
-`accent` and `negative` both fall back to red, as today. The TUI keeps its "never rely on colour alone" rule: negatives also carry `−`, over-budget also overshoots its track, flagged rows also carry `⚑`.
+`accent` and `negative` both fall back to red, as today. The TUI keeps its "never rely on colour alone" rule: negatives also carry `−`, over-budget also overshoots its track, flagged rows also carry `⚑`, and each Toast Kind carries its glyph (`i` `✓` `!` `✗`).
 
 ## TUI terminal colours
 
