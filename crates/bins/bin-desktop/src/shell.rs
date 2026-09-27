@@ -1188,7 +1188,8 @@ impl Shell {
             Movement::HalfPageDown => ((selected + half).min(last), ScrollStrategy::Center),
             Movement::HalfPageUp => (selected.saturating_sub(half), ScrollStrategy::Center),
             Movement::Enter => {
-                self.status_message = Some("open transaction -- not yet built".to_string());
+                self.status_message =
+                    Some(crate::msg::desktop_status_open_transaction_not_yet_built());
                 return;
             }
         };
@@ -1211,11 +1212,11 @@ impl Shell {
             return true;
         }
         let message = match keystroke.key.as_str() {
-            "n" => "add transaction -- not yet built",
-            "e" => "edit transaction -- not yet built",
+            "n" => crate::msg::desktop_status_add_transaction_not_yet_built(),
+            "e" => crate::msg::desktop_status_edit_transaction_not_yet_built(),
             _ => return false,
         };
-        self.status_message = Some(message.to_string());
+        self.status_message = Some(message);
         true
     }
 
@@ -1439,7 +1440,7 @@ impl Shell {
 
     /// The header's **add transaction** button: the same message `n` gives.
     fn handle_transactions_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some("add transaction -- not yet built".to_string());
+        self.status_message = Some(crate::msg::desktop_status_add_transaction_not_yet_built());
         cx.notify();
     }
 
@@ -1574,7 +1575,8 @@ impl Shell {
             "d" => {
                 if let Some(category) = selected_category {
                     if !categories::is_leaf(&self.categories, category.id) {
-                        self.status_message = Some("delete or move its children first".to_string());
+                        self.status_message =
+                            Some(crate::msg::desktop_status_delete_children_first());
                     } else {
                         let form = categories::DeleteCategoryForm::default();
                         self.categories_dialog =
@@ -2168,7 +2170,7 @@ impl Shell {
 
     fn handle_categories_delete_click(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
         if !categories::is_leaf(&self.categories, category_id) {
-            self.status_message = Some("delete or move its children first".to_string());
+            self.status_message = Some(crate::msg::desktop_status_delete_children_first());
             cx.notify();
             return;
         }
@@ -2552,7 +2554,9 @@ impl Shell {
             }
             CommandEffect::NotYetBuilt => {
                 self.nav.exit_mode();
-                self.status_message = Some(format!(":{} — not yet built", command.name));
+                self.status_message = Some(crate::msg::desktop_status_command_not_yet_built(
+                    command.name,
+                ));
             }
         }
     }
@@ -2685,24 +2689,24 @@ impl Shell {
     /// own doc), so each flashes a plain "not yet built" status message naming no issue.
     fn handle_price_source_test_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index;
-        self.status_message = Some("test price source -- not yet built".to_string());
+        self.status_message = Some(crate::msg::desktop_status_test_price_source_not_yet_built());
         cx.notify();
     }
 
     fn handle_price_source_edit_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index;
-        self.status_message = Some("edit price source -- not yet built".to_string());
+        self.status_message = Some(crate::msg::desktop_status_edit_price_source_not_yet_built());
         cx.notify();
     }
 
     fn handle_price_source_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index;
-        self.status_message = Some("delete price source -- not yet built".to_string());
+        self.status_message = Some(crate::msg::desktop_status_delete_price_source_not_yet_built());
         cx.notify();
     }
 
     fn handle_add_price_source_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some("add price source -- not yet built".to_string());
+        self.status_message = Some(crate::msg::desktop_status_add_price_source_not_yet_built());
         cx.notify();
     }
 
@@ -2726,13 +2730,13 @@ impl Shell {
     /// `AddInstitution`), so there is no ticket to point at.
     fn handle_institution_edit_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index; // no row-scoped state until a future ticket specifies this dialog
-        self.status_message = Some("edit institution -- not yet built".to_string());
+        self.status_message = Some(crate::msg::desktop_status_edit_institution_not_yet_built());
         cx.notify();
     }
 
     fn handle_institution_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index; // no row-scoped state until a future ticket specifies this dialog
-        self.status_message = Some("delete institution -- not yet built".to_string());
+        self.status_message = Some(crate::msg::desktop_status_delete_institution_not_yet_built());
         cx.notify();
     }
 
@@ -2771,19 +2775,19 @@ impl Shell {
     /// buttons above, this has no future ticket that will give it real behaviour -- the map's
     /// own Out-of-scope names it a permanent stand-in -- so the stub message names no issue.
     fn handle_sync_now_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some("sync now -- not implemented".to_string());
+        self.status_message = Some(crate::msg::desktop_status_sync_now_not_implemented());
         cx.notify();
     }
 
     /// The Data & backup section's own "Backup now"/"Export ledger (CSV)" buttons (issue #181)
     /// -- same permanently-out-of-scope reasoning as [`Self::handle_sync_now_click`].
     fn handle_backup_now_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some("backup now -- not implemented".to_string());
+        self.status_message = Some(crate::msg::desktop_status_backup_now_not_implemented());
         cx.notify();
     }
 
     fn handle_export_ledger_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some("export ledger -- not implemented".to_string());
+        self.status_message = Some(crate::msg::desktop_status_export_ledger_not_implemented());
         cx.notify();
     }
 

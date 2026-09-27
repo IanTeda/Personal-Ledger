@@ -45,6 +45,23 @@ desktop-status-not-a-jump = { $keys } is not a jump
 desktop-status-no-accounts = { $command } — no accounts
 desktop-status-no-account-named = { $command } — no account named "{ $name }"
 desktop-status-account-ambiguous = { $command } — "{ $name }" matches { $matches }
+desktop-status-command-not-yet-built = :{ $command } — not yet built
+desktop-status-delete-children-first = delete or move its children first
+
+## Status-line flashes for actions whose flow is not designed or wired yet.
+
+desktop-status-open-transaction-not-yet-built = open transaction — not yet built
+desktop-status-add-transaction-not-yet-built = add transaction — not yet built
+desktop-status-edit-transaction-not-yet-built = edit transaction — not yet built
+desktop-status-test-price-source-not-yet-built = test price source — not yet built
+desktop-status-edit-price-source-not-yet-built = edit price source — not yet built
+desktop-status-delete-price-source-not-yet-built = delete price source — not yet built
+desktop-status-add-price-source-not-yet-built = add price source — not yet built
+desktop-status-edit-institution-not-yet-built = edit institution — not yet built
+desktop-status-delete-institution-not-yet-built = delete institution — not yet built
+desktop-status-sync-now-not-implemented = sync now — not implemented
+desktop-status-backup-now-not-implemented = backup now — not implemented
+desktop-status-export-ledger-not-implemented = export ledger — not implemented
 
 ## The top bar. `$time` is the time of the last sync.
 
