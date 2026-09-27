@@ -11,6 +11,7 @@ pub mod new;
 use ratatui::{Frame, layout::Rect};
 
 use crate::account::AccountStore;
+use crate::colours::Colours;
 
 /// The one Account-domain popup `Shell` can have open at a time — mirrors
 /// `crate::popup::category::CategoryPopup`'s own single-`Option`-of-an-enum shape.
@@ -24,11 +25,11 @@ impl AccountPopup {
     /// Renders whichever form is open, against the live Account list `store` — `new`'s `unit`
     /// field completion, `edit`'s computed section, and `delete`'s transfer-candidate/preview
     /// all need read access to it.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore, c: &Colours) {
         match self {
-            AccountPopup::New(popup) => popup.render(frame, area, store),
-            AccountPopup::Edit(popup) => popup.render(frame, area, store),
-            AccountPopup::Delete(popup) => popup.render(frame, area, store),
+            AccountPopup::New(popup) => popup.render(frame, area, store, c),
+            AccountPopup::Edit(popup) => popup.render(frame, area, store, c),
+            AccountPopup::Delete(popup) => popup.render(frame, area, store, c),
         }
     }
 }

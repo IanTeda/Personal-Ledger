@@ -25,6 +25,7 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::account::AccountStore;
 use crate::category::CategoryStore;
+use crate::colours::Colours;
 use crate::payee::{AliasMode, PayeeStore};
 use crate::tag::TagStore;
 
@@ -147,6 +148,11 @@ pub enum Action {
     /// from returning `None`, which `Shell::run`'s event loop treats as "nothing happened" and
     /// skips the next redraw for.
     NoOp,
+    /// Sets the in-memory `colour_theme` Preference (null draws the default); `Shell`
+    /// re-resolves its `Colours` and the next draw shows it.
+    SetColourTheme(Option<String>),
+    /// Sets the in-memory `colour_appearance` Preference (null follows System).
+    SetColourAppearance(Option<lib_colour_theme::ColourAppearance>),
     /// `m` on a Categories tree row — opens the move popup (`crate::popup::category::
     /// move_popup`, "Categories: 5b move popup") for the given category.
     OpenCategoryMovePopup(RowID),
@@ -571,7 +577,7 @@ pub trait View {
 
     /// Renders the view into the given area of the frame — the full-bleed view region below
     /// the status line and above the command line.
-    fn view(&self, frame: &mut Frame<'_>, area: Rect);
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours);
 
     /// This view's stable id, which `Shell` navigates on.
     fn id(&self) -> ViewId;

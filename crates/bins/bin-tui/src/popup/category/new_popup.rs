@@ -13,7 +13,7 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
@@ -21,9 +21,9 @@ use ratatui::{
 use lib_core::RowID;
 
 use super::path::{Resolution, ancestor_names, completions, resolve, tab_complete};
+use crate::colours::Colours;
 use crate::{category::CategoryStore, msg, popup::REFERENCE_TERMINAL_WIDTH};
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "transactions".len() as u16 + 1;
@@ -161,9 +161,15 @@ impl NewPopup {
 
     /// Renders the floating overlay, centred and sized to its own dynamic content (the "lands
     /// as" preview's height varies with the resolved parent's child count), within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn CategoryStore) {
+    pub fn render(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        store: &dyn CategoryStore,
+        c: &Colours,
+    ) {
         let parent = self.resolved_parent(store);
-        let preview_lines = preview_lines(store, parent, &self.name);
+        let preview_lines = preview_lines(store, parent, &self.name, c);
         let content_rows = 11 + preview_lines.len() as u16 + 5;
         let popup = popup_rect(area, content_rows);
 
@@ -201,7 +207,7 @@ impl NewPopup {
             .constraints(constraints)
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_text_field(
             frame,
@@ -209,6 +215,7 @@ impl NewPopup {
             &msg::tui_category_new_field_name(),
             &self.name,
             self.focus == Field::Name,
+            c,
         );
         render_text_field(
             frame,
@@ -216,8 +223,9 @@ impl NewPopup {
             &msg::tui_category_new_field_parent(),
             &self.parent_input,
             self.focus == Field::Parent,
+            c,
         );
-        render_completion_row(frame, rows[4], store, &self.parent_input);
+        render_completion_row(frame, rows[4], store, &self.parent_input, c);
 
         let kind_text = match parent.and_then(|id| store.kind(id)) {
             Some(kind) => format!("{} · inherited from root", kind.as_str()),
@@ -227,7 +235,8 @@ impl NewPopup {
             frame,
             rows[5],
             &msg::tui_category_new_field_kind(),
-            Line::from(Span::styled(kind_text, dim())),
+            Line::from(Span::styled(kind_text, c.muted())),
+            c,
         );
 
         let depth_text = match parent {
@@ -238,7 +247,8 @@ impl NewPopup {
             frame,
             rows[6],
             &msg::tui_category_new_field_depth(),
-            Line::from(Span::styled(depth_text, dim())),
+            Line::from(Span::styled(depth_text, c.muted())),
+            c,
         );
 
         render_text_field(
@@ -247,11 +257,15 @@ impl NewPopup {
             &msg::tui_category_new_field_note(),
             &self.note,
             self.focus == Field::Note,
+            c,
         );
-        render_active_field(frame, rows[8], self.active, self.focus == Field::Active);
+        render_active_field(frame, rows[8], self.active, self.focus == Field::Active, c);
         // rows[9] is left blank — breathing space above the "lands as" preview.
 
-        frame.render_widget(Paragraph::new(Span::styled("lands as", dim())), rows[10]);
+        frame.render_widget(
+            Paragraph::new(Span::styled("lands as", c.muted())),
+            rows[10],
+        );
         for (index, line) in preview_lines.iter().enumerate() {
             frame.render_widget(line.clone(), rows[11 + index]);
         }
@@ -261,7 +275,7 @@ impl NewPopup {
         frame.render_widget(
             Paragraph::new(Span::styled(
                 "siblings sort by name · kind cannot be set here — move it to change kind",
-                dim(),
+                c.muted(),
             )),
             rows[after_preview + 1],
         );
@@ -270,16 +284,12 @@ impl NewPopup {
             Block::new().borders(Borders::BOTTOM),
             rows[after_preview + 3],
         );
-        render_footer_hints(frame, rows[after_preview + 4]);
+        render_footer_hints(frame, rows[after_preview + 4], c);
     }
 }
 
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
-}
-
 /// The title row: "new" flush left, the `:category new` command dim and right-aligned.
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":category new";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -290,37 +300,50 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
     frame.render_widget(Paragraph::new(msg::tui_category_new_title()), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
 /// One `label   value` row.
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
 /// One editable text field: the typed value, with a trailing accent cursor only when it has
 /// focus — the visual cue for which field `Tab`/typing currently reaches.
-fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: &str,
+    focused: bool,
+    c: &Colours,
+) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
+        spans.push(Span::styled("\u{258c}", c.accent()));
     }
-    render_field(frame, area, label, Line::from(spans));
+    render_field(frame, area, label, Line::from(spans), c);
 }
 
 /// The `active` checkbox row: the glyph in the accent when focused (this field has no cursor
 /// of its own to show focus with), the "offered when categorising" consequence stated
 /// alongside it either way, per the handoff's own "states the consequence".
-fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
+fn render_active_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    active: bool,
+    focused: bool,
+    c: &Colours,
+) {
     let glyph_style = if focused {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -332,8 +355,9 @@ fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused:
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
-            Span::styled("· offered when categorising", dim()),
+            Span::styled("· offered when categorising", c.muted()),
         ]),
+        c,
     );
 }
 
@@ -343,6 +367,7 @@ fn render_completion_row(
     area: Rect,
     store: &dyn CategoryStore,
     input: &str,
+    c: &Colours,
 ) {
     let candidates = completions(store, input);
     let text = if candidates.is_empty() {
@@ -354,7 +379,8 @@ fn render_completion_row(
         frame,
         area,
         &msg::tui_category_new_note_completion(),
-        Line::from(Span::styled(text, dim())),
+        Line::from(Span::styled(text, c.muted())),
+        c,
     );
 }
 
@@ -367,11 +393,12 @@ fn preview_lines<'a>(
     store: &dyn CategoryStore,
     parent: Option<RowID>,
     name: &str,
+    c: &Colours,
 ) -> Vec<Paragraph<'a>> {
     let Some(parent_id) = parent else {
         return vec![Paragraph::new(Span::styled(
             "type an existing parent path",
-            dim(),
+            c.muted(),
         ))];
     };
 
@@ -399,25 +426,25 @@ fn preview_lines<'a>(
         if *n == display_name {
             lines.push(Paragraph::new(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(format!("{n} · new, empty"), Style::default().fg(ACCENT)),
+                Span::styled(format!("{n} · new, empty"), c.accent()),
             ])));
         } else {
             lines.push(Paragraph::new(Line::from(vec![
                 Span::raw("  "),
-                Span::styled(n.clone(), dim()),
+                Span::styled(n.clone(), c.muted()),
             ])));
         }
     }
     if names.len() > shown {
         lines.push(Paragraph::new(Span::styled(
             format!("  … {} more", names.len() - shown),
-            dim(),
+            c.muted(),
         )));
     }
     lines
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let hints = [
         ("tab", msg::tui_category_new_help_tab()),
         ("^s", msg::tui_category_new_help_create()),
@@ -425,7 +452,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", msg::tui_category_new_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (index, (key, label)) in hints.iter().enumerate() {
@@ -473,11 +500,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &NewPopup, store: &dyn CategoryStore) -> String {
+    fn render(popup: &NewPopup, store: &dyn CategoryStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -501,9 +528,10 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let food = find_by_name(&store, "Food");
-        render(&NewPopup::new(&store, food), &store);
+        render(&NewPopup::new(&store, food), &store, c);
     }
 
     #[test]
@@ -627,9 +655,10 @@ mod tests {
 
     #[test]
     fn shows_kind_inherited_from_root_and_depth() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let food = find_by_name(&store, "Food");
-        let text = render(&NewPopup::new(&store, food), &store);
+        let text = render(&NewPopup::new(&store, food), &store, c);
 
         assert!(
             text.contains("expense · inherited from root"),
@@ -643,12 +672,13 @@ mod tests {
 
     #[test]
     fn shows_the_lands_as_preview_with_the_new_node_marked() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let food = find_by_name(&store, "Food");
         let mut popup = NewPopup::new(&store, food);
         popup.name = "Snacks".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("lands as"), "lands as heading missing");
         assert!(
             text.contains("Snacks · new, empty"),
@@ -662,9 +692,10 @@ mod tests {
 
     #[test]
     fn shows_the_footnote_and_footer_hints() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let food = find_by_name(&store, "Food");
-        let text = render(&NewPopup::new(&store, food), &store);
+        let text = render(&NewPopup::new(&store, food), &store, c);
 
         assert!(text.contains("kind cannot be set here"), "footnote missing");
         for key in ["tab", "^s", "^a", "esc"] {

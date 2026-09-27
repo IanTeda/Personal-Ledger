@@ -18,17 +18,13 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// the blocking reference counts, the cascading-price consequence, and the type-to-confirm
-/// box and its cursor.
-const ACCENT: Color = Color::Red;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per `docs/ux/tui/units/README.md`
 /// "The forms" ("~88% width on the drawing") — matches `popup::unit::new`/`edit`'s own width.
@@ -78,17 +74,17 @@ impl DeleteUnitPopup {
 
     /// Renders whichever variant this is — see [`render_refused`]/[`render_allowed`] for each
     /// one's own layout.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         match self {
-            DeleteUnitPopup::Refused => render_refused(frame, area),
-            DeleteUnitPopup::Allowed => render_allowed(frame, area),
+            DeleteUnitPopup::Refused => render_refused(frame, area, c),
+            DeleteUnitPopup::Allowed => render_allowed(frame, area, c),
         }
     }
 }
 
 /// §4d's own worked example: `cannot delete VDHG`, blocked by 412 transactions and 1 account,
 /// with `budgets` and the non-blocking `prices` count shown alongside for completeness.
-fn render_refused(frame: &mut Frame<'_>, area: Rect) {
+fn render_refused(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let popup = popup_rect(area, REFUSED_CONTENT_ROWS);
 
     frame.render_widget(Clear, popup);
@@ -113,20 +109,20 @@ fn render_refused(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(inner);
 
-    render_refused_title(frame, rows[0]);
+    render_refused_title(frame, rows[0], c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
     render_blocking_rule(frame, rows[2]);
     render_count(
         frame,
         rows[3],
         "transactions",
-        accent_count("412", "Index Fund"),
+        accent_count("412", "Index Fund", c),
     );
     render_count(
         frame,
         rows[4],
         "accounts",
-        accent_count("1", "Index Fund (unit fixed at creation)"),
+        accent_count("1", "Index Fund (unit fixed at creation)", c),
     );
     render_count(frame, rows[5], "prices", dim_plain("52 weekly closes"));
     render_count(frame, rows[6], "budgets", dim_plain("none"));
@@ -143,7 +139,7 @@ fn render_refused(frame: &mut Frame<'_>, area: Rect) {
 
 /// §4e's own worked example: `delete AAPL`, nothing references it, confirmed by typing the
 /// code.
-fn render_allowed(frame: &mut Frame<'_>, area: Rect) {
+fn render_allowed(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let popup = popup_rect(area, ALLOWED_CONTENT_ROWS);
 
     frame.render_widget(Clear, popup);
@@ -178,11 +174,11 @@ fn render_allowed(frame: &mut Frame<'_>, area: Rect) {
         dim_hinted("0", "safe to delete"),
     );
     render_count(frame, rows[3], "accounts", dim_plain("0"));
-    render_price_count(frame, rows[4]);
+    render_price_count(frame, rows[4], c);
     // rows[5] is left blank — breathing space above the consequence statement.
     render_consequence(frame, rows[6]);
     // rows[7] is left blank — breathing space above the type-to-confirm box.
-    render_confirm_box(frame, rows[8]);
+    render_confirm_box(frame, rows[8], c);
     render_deactivate_hint(frame, rows[9]);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[10]);
     const HINTS: &[(&str, &str)] = &[("^s", "delete"), ("x", "deactivate"), ("esc", "cancel")];
@@ -191,7 +187,7 @@ fn render_allowed(frame: &mut Frame<'_>, area: Rect) {
 
 /// The refused title row: `cannot delete VDHG` in the accent, flush left, the `:unit delete`
 /// command dim and right-aligned.
-fn render_refused_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_refused_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":unit delete";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -201,7 +197,7 @@ fn render_refused_title(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    let accent_bold = Style::default().fg(ACCENT).add_modifier(Modifier::BOLD);
+    let accent_bold = c.accent().add_modifier(Modifier::BOLD);
     frame.render_widget(
         Paragraph::new(Span::styled("cannot delete VDHG", accent_bold)),
         columns[0],
@@ -271,8 +267,8 @@ fn dim_plain(value: &'static str) -> Line<'static> {
 
 /// A blocking count: the figure itself in the accent, its dim `· hint` after — the refused
 /// variant's own `transactions`/`accounts` rows, the counts that actually gate deletion.
-fn accent_count(count: &'static str, hint: &'static str) -> Line<'static> {
-    let accent = Style::default().fg(ACCENT);
+fn accent_count(count: &'static str, hint: &'static str, c: &Colours) -> Line<'static> {
+    let accent = c.accent();
     let dim = Style::default().add_modifier(Modifier::DIM);
     Line::from(vec![
         Span::styled(count, accent),
@@ -286,9 +282,9 @@ fn accent_count(count: &'static str, hint: &'static str) -> Line<'static> {
 /// in the accent rather than dim, per §4e's own "the one consequence spelled out". The inverse
 /// emphasis of [`accent_count`] (value dim, hint accent, rather than the other way around),
 /// since here the count itself isn't what's alarming.
-fn render_price_count(frame: &mut Frame<'_>, area: Rect) {
+fn render_price_count(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let dim = Style::default().add_modifier(Modifier::DIM);
-    let accent = Style::default().fg(ACCENT);
+    let accent = c.accent();
 
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -318,8 +314,8 @@ fn render_consequence(frame: &mut Frame<'_>, area: Rect) {
 /// code` prompt — §4e's own "confirm by typing the code, not by pressing `y`". The code typed
 /// so far renders bold with a trailing accent cursor, the same treatment `popup::unit::new`'s
 /// own `code` field uses for text still being entered.
-fn render_confirm_box(frame: &mut Frame<'_>, area: Rect) {
-    let accent = Style::default().fg(ACCENT);
+fn render_confirm_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let accent = c.accent();
     let block = Block::bordered().border_style(accent);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -432,11 +428,11 @@ mod tests {
 
     use super::*;
 
-    fn render(popup: &DeleteUnitPopup) -> String {
+    fn render(popup: &DeleteUnitPopup, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -452,24 +448,28 @@ mod tests {
 
     #[test]
     fn refused_renders_without_panicking() {
-        render(&DeleteUnitPopup::refused());
+        let c = &Colours::default();
+        render(&DeleteUnitPopup::refused(), c);
     }
 
     #[test]
     fn allowed_renders_without_panicking() {
-        render(&DeleteUnitPopup::allowed());
+        let c = &Colours::default();
+        render(&DeleteUnitPopup::allowed(), c);
     }
 
     #[test]
     fn refused_shows_the_title_and_command_tag() {
-        let text = render(&DeleteUnitPopup::refused());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::refused(), c);
         assert!(text.contains("cannot delete VDHG"), "title missing");
         assert!(text.contains(":unit delete"), "command tag missing");
     }
 
     #[test]
     fn refused_shows_the_blocking_rule() {
-        let text = render(&DeleteUnitPopup::refused());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::refused(), c);
         assert!(
             text.contains("a unit can only be deleted when nothing references it."),
             "blocking rule missing"
@@ -478,7 +478,8 @@ mod tests {
 
     #[test]
     fn refused_shows_every_reference_count() {
-        let text = render(&DeleteUnitPopup::refused());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::refused(), c);
         for label in ["transactions", "accounts", "prices", "budgets"] {
             assert!(text.contains(label), "{label} label missing");
         }
@@ -490,7 +491,8 @@ mod tests {
 
     #[test]
     fn refused_shows_the_deactivate_instead_box() {
-        let text = render(&DeleteUnitPopup::refused());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::refused(), c);
         assert!(
             text.contains("deactivate instead"),
             "deactivate offer missing"
@@ -503,7 +505,8 @@ mod tests {
 
     #[test]
     fn refused_shows_the_footer_hints() {
-        let text = render(&DeleteUnitPopup::refused());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::refused(), c);
         for key in ["x", "enter", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }
@@ -512,14 +515,16 @@ mod tests {
 
     #[test]
     fn allowed_shows_the_title_and_command_tag() {
-        let text = render(&DeleteUnitPopup::allowed());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::allowed(), c);
         assert!(text.contains("delete AAPL"), "title missing");
         assert!(text.contains(":unit delete"), "command tag missing");
     }
 
     #[test]
     fn allowed_shows_the_reference_counts() {
-        let text = render(&DeleteUnitPopup::allowed());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::allowed(), c);
         assert!(text.contains("transactions"), "transactions label missing");
         assert!(
             text.contains("safe to delete"),
@@ -535,7 +540,8 @@ mod tests {
 
     #[test]
     fn allowed_shows_the_consequence_statement() {
-        let text = render(&DeleteUnitPopup::allowed());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::allowed(), c);
         assert!(
             text.contains("this removes the unit and its price history."),
             "consequence statement missing"
@@ -544,14 +550,16 @@ mod tests {
 
     #[test]
     fn allowed_shows_the_type_to_confirm_box() {
-        let text = render(&DeleteUnitPopup::allowed());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::allowed(), c);
         assert!(text.contains("type the code"), "confirm prompt missing");
         assert!(text.contains("AAPL"), "typed code missing");
     }
 
     #[test]
     fn allowed_shows_the_deactivate_hint_and_footer() {
-        let text = render(&DeleteUnitPopup::allowed());
+        let c = &Colours::default();
+        let text = render(&DeleteUnitPopup::allowed(), c);
         assert!(
             text.contains("keeping the history instead?"),
             "deactivate hint missing"

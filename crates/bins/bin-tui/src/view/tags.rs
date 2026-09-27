@@ -47,7 +47,7 @@ use lib_core::RowID;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     symbols,
     text::{Line, Span},
     widgets::{
@@ -56,13 +56,10 @@ use ratatui::{
     },
 };
 
+use crate::colours::Colours;
 use crate::msg;
 use crate::tag::{Tag, TagFixture, TagStore, TagTransaction};
 use crate::view::{Action, View, ViewId};
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// the delete confirm line.
-const ACCENT: Color = Color::Red;
 
 /// Width of the list + summary column — matches `view::accounts`'s own `LEFT_PANE_WIDTH`; the
 /// remaining terminal width is deliberately left blank, since there's no right-pane content
@@ -332,7 +329,7 @@ impl View for TagsView {
         }
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         // The heading/delete-confirm row spans the *full* width, not just `PANE_WIDTH` — a
         // narrow list pane has no room for "delete \"...\" ... y confirms, any other key
         // cancels" even wrapped, so it rides across the whole view region instead (the only
@@ -349,7 +346,7 @@ impl View for TagsView {
             .split(area);
 
         let visible_count = self.visible_tags().len();
-        self.render_heading(frame, rows[1], visible_count);
+        self.render_heading(frame, rows[1], visible_count, c);
 
         let columns = Layout::default()
             .direction(Direction::Horizontal)
@@ -367,7 +364,7 @@ impl View for TagsView {
 
         self.render_list(frame, pane_rows[0]);
         self.render_summary(frame, pane_rows[1]);
-        self.render_right_pane(frame, columns[1]);
+        self.render_right_pane(frame, columns[1], c);
     }
 
     fn id(&self) -> ViewId {
@@ -423,7 +420,7 @@ impl TagsView {
     /// The heading row: `tags N of M` normally, replaced by the delete confirm line while
     /// `pending_delete` is armed — see this module's own doc on why that's a render swap, not
     /// a popup, and [`TagsView::view`]'s own doc on why this row alone spans the full width.
-    fn render_heading(&self, frame: &mut Frame<'_>, area: Rect, visible_count: usize) {
+    fn render_heading(&self, frame: &mut Frame<'_>, area: Rect, visible_count: usize, c: &Colours) {
         if self.pending_delete
             && let Some(tag) = self.selected_tag()
         {
@@ -434,8 +431,7 @@ impl TagsView {
             };
             let text = msg::tui_tag_delete_confirm(&tag.name, &notice);
             frame.render_widget(
-                Paragraph::new(Span::styled(text, Style::default().fg(ACCENT)))
-                    .wrap(Wrap { trim: true }),
+                Paragraph::new(Span::styled(text, c.accent())).wrap(Wrap { trim: true }),
                 area,
             );
             return;
@@ -515,7 +511,7 @@ impl TagsView {
     /// The right pane: "Tagged spend", "Where it lands", "Transactions" — nothing renders when
     /// no Tag is selected (an all-filtered-out list), mirroring the left pane's own summary box
     /// falling back to a plain message in that case, just with nothing at all here instead.
-    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let Some(tag) = self.selected_tag() else {
             return;
         };
@@ -531,16 +527,16 @@ impl TagsView {
             ])
             .split(area);
 
-        self.render_tagged_spend(frame, rows[0], tag);
+        self.render_tagged_spend(frame, rows[0], tag, c);
         self.render_where_it_lands(frame, rows[2], tag);
-        self.render_tag_transactions(frame, rows[4], tag);
+        self.render_tag_transactions(frame, rows[4], tag, c);
     }
 
     /// A monthly sparkline over the trailing [`SPEND_MONTHS`]-month window, mirroring
     /// `view::accounts::render_balance_chart`'s own `Chart`/`Dataset`/Braille-marker/
     /// accent-latest-point treatment — the series is a spend total per month, not a running
     /// balance, so there's no "start" value to anchor against, only the series itself.
-    fn render_tagged_spend(&self, frame: &mut Frame<'_>, area: Rect, tag: &Tag) {
+    fn render_tagged_spend(&self, frame: &mut Frame<'_>, area: Rect, tag: &Tag, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -566,7 +562,7 @@ impl TagsView {
             .map(crate::format::money_to_f64)
             .collect();
 
-        render_spend_chart(frame, rows[2], &series);
+        render_spend_chart(frame, rows[2], &series, c);
         render_spend_footer(frame, rows[3], tag, &series);
     }
 
@@ -646,7 +642,7 @@ impl TagsView {
     /// `view::accounts::render_ledger`'s own column/heading/footer shape. `enter` here can only
     /// show [`TagsView::transactions_not_yet_built`]'s message, not actually jump anywhere —
     /// see this module's own doc.
-    fn render_tag_transactions(&self, frame: &mut Frame<'_>, area: Rect, tag: &Tag) {
+    fn render_tag_transactions(&self, frame: &mut Frame<'_>, area: Rect, tag: &Tag, c: &Colours) {
         let all_rows = self.store.transactions(tag.id);
         let total = all_rows.len();
         let visible_count = all_rows.len().min(TAG_TRANSACTIONS_VISIBLE_ROWS);
@@ -683,7 +679,7 @@ impl TagsView {
             render_txn_row(frame, *row_area, row);
         }
 
-        self.render_transactions_footer(frame, sections[4], &all_rows);
+        self.render_transactions_footer(frame, sections[4], &all_rows, c);
     }
 
     /// The overlap statement ("N of M carry another tag — rows overlap"), the not-yet-built
@@ -695,6 +691,7 @@ impl TagsView {
         frame: &mut Frame<'_>,
         area: Rect,
         rows: &[TagTransaction],
+        c: &Colours,
     ) {
         if self.transactions_not_yet_built {
             frame.render_widget(
@@ -719,10 +716,7 @@ impl TagsView {
         let overlap = rows.iter().filter(|row| row.other_tags > 0).count();
         let text =
             msg::tui_tag_right_pane_txn_footer_overlap(overlap as i64, &rows.len().to_string());
-        frame.render_widget(
-            Paragraph::new(Span::styled(text, Style::default().fg(ACCENT))),
-            area,
-        );
+        frame.render_widget(Paragraph::new(Span::styled(text, c.accent())), area);
     }
 }
 
@@ -814,7 +808,7 @@ fn tagged_spend_window_tag() -> String {
 /// treatment exactly: one accent-coloured `Dataset` (not a plain line plus a separate
 /// last-point marker), and x-axis labels at the first/middle/last month so the chart reads as
 /// a graph on its own, without needing the footer line beneath it for orientation.
-fn render_spend_chart(frame: &mut Frame<'_>, area: Rect, series: &[f64]) {
+fn render_spend_chart(frame: &mut Frame<'_>, area: Rect, series: &[f64], c: &Colours) {
     let points: Vec<(f64, f64)> = series
         .iter()
         .enumerate()
@@ -828,7 +822,7 @@ fn render_spend_chart(frame: &mut Frame<'_>, area: Rect, series: &[f64]) {
     let dataset = Dataset::default()
         .marker(symbols::Marker::Braille)
         .graph_type(GraphType::Line)
-        .style(Style::default().fg(ACCENT))
+        .style(c.accent())
         .data(&points);
 
     let last_index = series.len() - 1;
@@ -985,11 +979,11 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    fn render(view: &TagsView) -> String {
+    fn render(view: &TagsView, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("rendering the Tags view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1021,7 +1015,8 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&TagsView::new());
+        let c = &Colours::default();
+        render(&TagsView::new(), c);
     }
 
     #[test]
@@ -1222,11 +1217,12 @@ mod tests {
 
     #[test]
     fn delete_confirm_line_states_the_reference_count_when_non_zero() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Japan Trip 2026");
         view.handle_key(key(KeyCode::Char('d')));
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("delete \"Japan Trip 2026\""));
         assert!(text.contains("7 transactions will lose this tag"));
         assert!(text.contains("y confirms, any other key cancels"));
@@ -1234,11 +1230,12 @@ mod tests {
 
     #[test]
     fn delete_confirm_line_omits_the_notice_when_the_count_is_zero() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Home Renovation");
         view.handle_key(key(KeyCode::Char('d')));
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("delete \"Home Renovation\""));
         assert!(!text.contains("will lose this tag"));
     }
@@ -1256,9 +1253,10 @@ mod tests {
 
     #[test]
     fn summary_box_shows_active_tagged_count_and_dates() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Tax Deductible");
-        let text = render(&view);
+        let text = render(&view, c);
 
         assert!(text.contains("Tax Deductible"));
         assert!(text.contains("[×]"));
@@ -1269,9 +1267,10 @@ mod tests {
 
     #[test]
     fn summary_box_shows_none_for_a_zero_reference_tag() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Home Renovation");
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("none"));
     }
 
@@ -1279,9 +1278,10 @@ mod tests {
 
     #[test]
     fn right_pane_shows_empty_states_for_a_zero_reference_tag() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Home Renovation");
-        let text = render(&view);
+        let text = render(&view, c);
 
         assert!(text.contains("TAGGED SPEND"));
         assert!(text.contains("no transactions yet"));
@@ -1293,14 +1293,15 @@ mod tests {
 
     #[test]
     fn switching_selection_between_zero_and_real_tags_re_renders_every_widget() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Home Renovation");
-        let empty_text = render(&view);
+        let empty_text = render(&view, c);
         assert!(empty_text.contains("no transactions yet"));
         assert!(empty_text.contains("no categories yet"));
 
         view.selected = find_id(&view, "Tax Deductible");
-        let real_text = render(&view);
+        let real_text = render(&view, c);
         assert!(!real_text.contains("no transactions yet"));
         assert!(!real_text.contains("no categories yet"));
         assert!(real_text.contains("another tag — rows overlap"));
@@ -1308,9 +1309,10 @@ mod tests {
 
     #[test]
     fn tagged_spend_footer_shows_first_used_peak_and_latest() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Tax Deductible");
-        let text = render(&view);
+        let text = render(&view, c);
 
         assert!(text.contains("monthly ·"));
         assert!(text.contains("first used"));
@@ -1319,9 +1321,10 @@ mod tests {
 
     #[test]
     fn tagged_spend_chart_shows_x_axis_month_labels_like_the_dashboards_own_chart() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Tax Deductible");
-        let text = render(&view);
+        let text = render(&view, c);
 
         // Mirrors `view::dashboard::render_net_worth_chart`'s own first/middle/last x-axis
         // labels — the chart should read as a graph on its own, not just a footer statement.
@@ -1331,6 +1334,7 @@ mod tests {
 
     #[test]
     fn where_it_lands_rolls_up_past_four_categories() {
+        let c = &Colours::default();
         let view = TagsView::new();
         let tag = find_id(&view, "Tax Deductible");
         let breakdown = view.store.category_breakdown(tag);
@@ -1341,7 +1345,7 @@ mod tests {
 
         let mut view = view;
         view.selected = tag;
-        let text = render(&view);
+        let text = render(&view, c);
         let rolled_up = breakdown.len() - CATEGORY_ROWS_SHOWN;
         assert!(text.contains(&format!("{rolled_up} more")));
     }
@@ -1369,13 +1373,14 @@ mod tests {
 
     #[test]
     fn overlap_footer_count_matches_the_fixtures_own_rows() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         let tag = find_id(&view, "Tax Deductible");
         let rows = view.store.transactions(tag);
         let expected_overlap = rows.iter().filter(|row| row.other_tags > 0).count();
 
         view.selected = tag;
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains(&msg::tui_tag_right_pane_txn_footer_overlap(
             expected_overlap as i64,
             &rows.len().to_string(),
@@ -1384,17 +1389,19 @@ mod tests {
 
     #[test]
     fn enter_shows_the_not_yet_built_message_for_transactions() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Tax Deductible");
         assert_eq!(view.handle_key(key(KeyCode::Enter)), Some(Action::NoOp));
         assert!(view.transactions_not_yet_built);
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("opening filtered Transactions — not yet built"));
     }
 
     #[test]
     fn any_other_key_clears_the_not_yet_built_message() {
+        let c = &Colours::default();
         let mut view = TagsView::new();
         view.selected = find_id(&view, "Tax Deductible");
         view.handle_key(key(KeyCode::Enter));
@@ -1402,7 +1409,7 @@ mod tests {
 
         view.handle_key(key(KeyCode::Char('j')));
         assert!(!view.transactions_not_yet_built);
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(!text.contains("not yet built"));
     }
 

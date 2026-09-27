@@ -19,16 +19,16 @@ use lib_core::RowID;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 use crate::tag::TagStore;
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 60;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "active".len() as u16 + 1;
@@ -130,7 +130,7 @@ impl EditTagPopup {
     }
 
     /// Renders the floating overlay, centred within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn TagStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn TagStore, c: &Colours) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -153,7 +153,7 @@ impl EditTagPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_text_field(
             frame,
@@ -161,22 +161,19 @@ impl EditTagPopup {
             &msg::tui_tag_edit_field_name(),
             &self.name,
             self.focus == Field::Name,
+            c,
         );
-        render_active_field(frame, rows[3], self.active, self.focus == Field::Active);
+        render_active_field(frame, rows[3], self.active, self.focus == Field::Active, c);
         // rows[4] is left blank — breathing space above the note.
-        render_clash_note(frame, rows[5], store, self);
+        render_clash_note(frame, rows[5], store, self, c);
         // rows[6] is left blank — breathing space above the footer rule.
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[7]);
-        render_footer_hints(frame, rows[8]);
+        render_footer_hints(frame, rows[8], c);
     }
 }
 
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
-}
-
 /// The title row: "edit tag" flush left, the `:tag edit` command dim and right-aligned.
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = msg::tui_tag_edit_command();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -187,34 +184,47 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
     frame.render_widget(Paragraph::new(msg::tui_tag_edit_title()), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
-fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: &str,
+    focused: bool,
+    c: &Colours,
+) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
+        spans.push(Span::styled("\u{258c}", c.accent()));
     }
-    render_field(frame, area, label, Line::from(spans));
+    render_field(frame, area, label, Line::from(spans), c);
 }
 
 /// The `active` checkbox row: the glyph in the accent when focused, "clear to deactivate" as
 /// the consequence — mirrors `popup::account::edit`'s own wording (distinct from `popup::tag::
 /// new`'s "offered when tagging", since this is an edit, not a fresh creation).
-fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
+fn render_active_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    active: bool,
+    focused: bool,
+    c: &Colours,
+) {
     let glyph_style = if focused {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -227,8 +237,9 @@ fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused:
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
-            Span::styled(note, dim()),
+            Span::styled(note, c.muted()),
         ]),
+        c,
     );
 }
 
@@ -240,25 +251,26 @@ fn render_clash_note(
     area: Rect,
     store: &dyn TagStore,
     popup: &EditTagPopup,
+    c: &Colours,
 ) {
     let trimmed = popup.name.trim();
     if !trimmed.is_empty() && popup.name_taken(store, trimmed) {
         frame.render_widget(
             Paragraph::new(Span::styled(
                 msg::tui_tag_edit_note_clash(trimmed),
-                Style::default().fg(ACCENT),
+                c.accent(),
             )),
             area,
         );
         return;
     }
     frame.render_widget(
-        Paragraph::new(Span::styled(msg::tui_tag_edit_note_unique(), dim())),
+        Paragraph::new(Span::styled(msg::tui_tag_edit_note_unique(), c.muted())),
         area,
     );
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let hints = [
         ("tab", msg::tui_tag_edit_help_tab()),
         ("^s", msg::tui_tag_edit_help_save()),
@@ -266,7 +278,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", msg::tui_tag_edit_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (index, (key, label)) in hints.iter().enumerate() {
@@ -314,11 +326,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &EditTagPopup, store: &dyn TagStore) -> String {
+    fn render(popup: &EditTagPopup, store: &dyn TagStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -353,9 +365,10 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = TagFixture::new();
         let japan_trip = find_id(&store, "Japan Trip 2026");
-        render(&EditTagPopup::new(&store, japan_trip), &store);
+        render(&EditTagPopup::new(&store, japan_trip), &store, c);
     }
 
     #[test]
@@ -465,28 +478,31 @@ mod tests {
 
     #[test]
     fn shows_the_rename_note_by_default() {
+        let c = &Colours::default();
         let store = TagFixture::new();
         let japan_trip = find_id(&store, "Japan Trip 2026");
-        let text = render(&EditTagPopup::new(&store, japan_trip), &store);
+        let text = render(&EditTagPopup::new(&store, japan_trip), &store, c);
         assert!(text.contains("renaming is always safe"));
     }
 
     #[test]
     fn shows_a_clash_warning_once_the_typed_name_matches_another_tag() {
+        let c = &Colours::default();
         let store = TagFixture::new();
         let japan_trip = find_id(&store, "Japan Trip 2026");
         let mut popup = EditTagPopup::new(&store, japan_trip);
         popup.name = "Tax Deductible".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("a tag named \"Tax Deductible\" already exists"));
     }
 
     #[test]
     fn shows_the_footer_hints_without_ctrl_d() {
+        let c = &Colours::default();
         let store = TagFixture::new();
         let japan_trip = find_id(&store, "Japan Trip 2026");
-        let text = render(&EditTagPopup::new(&store, japan_trip), &store);
+        let text = render(&EditTagPopup::new(&store, japan_trip), &store, c);
 
         for key in ["tab", "^s", "^a", "esc"] {
             assert!(text.contains(key), "{key} hint missing");

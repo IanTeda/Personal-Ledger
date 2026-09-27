@@ -10,6 +10,7 @@ pub mod new;
 
 use ratatui::{Frame, layout::Rect};
 
+use crate::colours::Colours;
 use crate::payee::PayeeStore;
 
 /// The one Payee-domain popup `Shell` can have open at a time — mirrors
@@ -25,12 +26,12 @@ impl PayeePopup {
     /// Renders whichever form is open, against the live Payee list `store` — `new`'s
     /// name-collision check, `edit`'s rename preview, `matches`'s conflict/resolution
     /// previews, and `delete`'s reference counts all need read access to it.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore, c: &Colours) {
         match self {
-            PayeePopup::New(popup) => popup.render(frame, area, store),
-            PayeePopup::Edit(popup) => popup.render(frame, area, store),
-            PayeePopup::Matches(popup) => popup.render(frame, area, store),
-            PayeePopup::Delete(popup) => popup.render(frame, area, store),
+            PayeePopup::New(popup) => popup.render(frame, area, store, c),
+            PayeePopup::Edit(popup) => popup.render(frame, area, store, c),
+            PayeePopup::Matches(popup) => popup.render(frame, area, store, c),
+            PayeePopup::Delete(popup) => popup.render(frame, area, store, c),
         }
     }
 }

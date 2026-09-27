@@ -28,15 +28,15 @@ use lib_core::RowID;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::payee::PayeeStore;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "suggestions".len() as u16 + 1;
@@ -160,7 +160,7 @@ impl DeletePayeePopup {
     }
 
     /// Renders the floating overlay, centred and fixed-height, within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore, c: &Colours) {
         let Some(payee) = store.find(self.deleting_id) else {
             return;
         };
@@ -201,7 +201,7 @@ impl DeletePayeePopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0], &payee.name);
+        render_title(frame, rows[0], &payee.name, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         render_field(
@@ -212,6 +212,7 @@ impl DeletePayeePopup {
                 "{} txns · {} matches",
                 self.transaction_count, self.alias_count
             )),
+            c,
         );
         let refusal_text = if self.can_delete {
             "no references — this payee can be deleted".to_string()
@@ -219,9 +220,9 @@ impl DeletePayeePopup {
             "the database refuses this delete".to_string()
         };
         let refusal_style = if self.can_delete {
-            dim()
+            c.muted()
         } else {
-            Style::default().fg(ACCENT)
+            c.accent()
         };
         frame.render_widget(
             Paragraph::new(Span::styled(refusal_text, refusal_style)),
@@ -235,12 +236,13 @@ impl DeletePayeePopup {
             rows[5],
             "action",
             Line::from(format!("{deactivate_glyph} deactivate")),
+            c,
         );
         let delete_glyph = radio_glyph(self.action == DeleteAction::Delete);
         let delete_condition_style = if self.can_delete {
-            dim()
+            c.muted()
         } else {
-            Style::default().fg(ACCENT)
+            c.accent()
         };
         render_indented(
             frame,
@@ -274,7 +276,8 @@ impl DeletePayeePopup {
             frame,
             rows[13],
             "suggestions",
-            Line::from(Span::styled("not offered when posting", dim())),
+            Line::from(Span::styled("not offered when posting", c.muted())),
+            c,
         );
         render_field(
             frame,
@@ -285,8 +288,9 @@ impl DeletePayeePopup {
                     "{} txns · keep this payee and its name",
                     self.transaction_count
                 ),
-                dim(),
+                c.muted(),
             )),
+            c,
         );
         render_field(
             frame,
@@ -297,14 +301,16 @@ impl DeletePayeePopup {
                     "{} matches · keep resolving · nothing rewritten",
                     self.alias_count
                 ),
-                dim(),
+                c.muted(),
             )),
+            c,
         );
         render_field(
             frame,
             rows[16],
             "reversible",
-            Line::from(Span::styled("a on the row turns it back on", dim())),
+            Line::from(Span::styled("a on the row turns it back on", c.muted())),
+            c,
         );
         // rows[17] is left blank — breathing space above confirm.
 
@@ -314,6 +320,7 @@ impl DeletePayeePopup {
             "confirm",
             &self.confirm_input,
             self.focus == Field::Confirm,
+            c,
         );
         // rows[19] is left blank — breathing space above the redirect.
 
@@ -324,7 +331,7 @@ impl DeletePayeePopup {
         frame.render_widget(Paragraph::new("as a match instead — m matches"), rows[21]);
 
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[22]);
-        render_footer_hints(frame, rows[23]);
+        render_footer_hints(frame, rows[23], c);
     }
 }
 
@@ -332,11 +339,7 @@ fn radio_glyph(selected: bool) -> &'static str {
     if selected { "(\u{2022})" } else { "( )" }
 }
 
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
-}
-
-fn render_title(frame: &mut Frame<'_>, area: Rect, name: &str) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, name: &str, c: &Colours) {
     let tag = ":payee delete";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -347,17 +350,17 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, name: &str) {
         .split(area);
     frame.render_widget(Paragraph::new(format!("delete {name}")), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
@@ -371,15 +374,22 @@ fn render_indented(frame: &mut Frame<'_>, area: Rect, value: Line<'static>) {
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
-fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: &str,
+    focused: bool,
+    c: &Colours,
+) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
+        spans.push(Span::styled("\u{258c}", c.accent()));
     }
-    render_field(frame, area, label, Line::from(spans));
+    render_field(frame, area, label, Line::from(spans), c);
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     const HINTS: &[(&str, &str)] = &[
         ("tab", "next field"),
         ("^s", "confirm"),
@@ -387,7 +397,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", "cancel"),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(HINTS.len() * 3);
     for (index, (key, label)) in HINTS.iter().enumerate() {
@@ -433,11 +443,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &DeletePayeePopup, store: &dyn PayeeStore) -> String {
+    fn render(popup: &DeletePayeePopup, store: &dyn PayeeStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -537,9 +547,10 @@ mod tests {
 
     #[test]
     fn renders_the_refusal_worded_as_the_databases_own_rule() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
-        let text = render(&DeletePayeePopup::new(&store, woolworths), &store);
+        let text = render(&DeletePayeePopup::new(&store, woolworths), &store, c);
 
         assert!(text.contains("184 txns · 2 matches"));
         assert!(text.contains("the database refuses this delete"));
@@ -550,18 +561,20 @@ mod tests {
 
     #[test]
     fn renders_delete_as_allowed_for_an_unreferenced_payee() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let old_vendor = find_id(&store, "Old Vendor");
-        let text = render(&DeletePayeePopup::new(&store, old_vendor), &store);
+        let text = render(&DeletePayeePopup::new(&store, old_vendor), &store, c);
         assert!(text.contains("0 txns · 0 matches"));
         assert!(text.contains("this payee can be deleted"));
     }
 
     #[test]
     fn shows_the_after_deactivate_block_and_the_merge_redirect() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
-        let text = render(&DeletePayeePopup::new(&store, woolworths), &store);
+        let text = render(&DeletePayeePopup::new(&store, woolworths), &store, c);
 
         assert!(text.contains("not offered when posting"));
         assert!(text.contains("184 txns · keep this payee and its name"));
@@ -574,9 +587,10 @@ mod tests {
 
     #[test]
     fn shows_the_title_and_footer_hints() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
-        let text = render(&DeletePayeePopup::new(&store, woolworths), &store);
+        let text = render(&DeletePayeePopup::new(&store, woolworths), &store, c);
 
         assert!(text.contains("delete Woolworths"));
         assert!(text.contains(":payee delete"));

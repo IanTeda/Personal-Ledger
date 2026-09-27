@@ -19,14 +19,14 @@ use lib_core::{AccountType, RowID};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::{account::AccountStore, msg, popup::REFERENCE_TERMINAL_WIDTH};
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "starting bal".len() as u16 + 1;
@@ -172,7 +172,7 @@ impl EditAccountPopup {
     }
 
     /// Renders the floating overlay, centred and fixed-height, within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn AccountStore, c: &Colours) {
         let Some(account) = store.find(self.editing_id) else {
             return;
         };
@@ -210,7 +210,7 @@ impl EditAccountPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_text_field(
             frame,
@@ -218,14 +218,16 @@ impl EditAccountPopup {
             &msg::tui_account_edit_field_name(),
             &self.name,
             self.focus == Field::Name,
+            c,
         );
         render_type_field(
             frame,
             rows[3],
             self.account_type.clone(),
             self.focus == Field::Type,
+            c,
         );
-        render_active_field(frame, rows[4], self.active, self.focus == Field::Active);
+        render_active_field(frame, rows[4], self.active, self.focus == Field::Active, c);
         // rows[5] is left blank — breathing space above the read-only section.
 
         render_section_heading(
@@ -233,12 +235,14 @@ impl EditAccountPopup {
             rows[6],
             &msg::tui_account_edit_note_unit_fixed(),
             Some("FR.13"),
+            c,
         );
         render_field(
             frame,
             rows[7],
             &msg::tui_account_edit_field_unit(),
             Line::from(account.unit.code.clone()),
+            c,
         );
         render_field(
             frame,
@@ -248,6 +252,7 @@ impl EditAccountPopup {
                 &account.starting_balance,
                 account.unit.decimal_places,
             )),
+            c,
         );
         // rows[9] is left blank — breathing space above the computed section.
 
@@ -256,6 +261,7 @@ impl EditAccountPopup {
             rows[10],
             &msg::tui_account_edit_heading_computed(),
             None,
+            c,
         );
         let balance = store.balance(account.id);
         render_field(
@@ -267,8 +273,9 @@ impl EditAccountPopup {
                     "{} · not stored",
                     crate::format::money(&balance, account.unit.decimal_places)
                 ),
-                dim(),
+                c.muted(),
             )),
+            c,
         );
         let transactions_text = if account.transaction_count == 0 {
             "none".to_string()
@@ -279,7 +286,8 @@ impl EditAccountPopup {
             frame,
             rows[12],
             &msg::tui_account_edit_field_transactions(),
-            Line::from(Span::styled(transactions_text, dim())),
+            Line::from(Span::styled(transactions_text, c.muted())),
+            c,
         );
         render_field(
             frame,
@@ -291,8 +299,9 @@ impl EditAccountPopup {
                     format_date_full_year(account.created_on),
                     format_date_short_year(account.updated_on)
                 ),
-                dim(),
+                c.muted(),
             )),
+            c,
         );
         // rows[14] is left blank — breathing space above the closing note.
 
@@ -307,28 +316,24 @@ impl EditAccountPopup {
         frame.render_widget(
             Paragraph::new(Span::styled(
                 "correct a wrong opening balance with an",
-                Style::default().fg(ACCENT),
+                c.accent(),
             )),
             rows[17],
         );
         frame.render_widget(
             Paragraph::new(Span::styled(
                 "adjusting transaction, not by rewriting it",
-                Style::default().fg(ACCENT),
+                c.accent(),
             )),
             rows[18],
         );
 
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[19]);
-        render_footer_hints(frame, rows[20]);
+        render_footer_hints(frame, rows[20], c);
     }
 }
 
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
-}
-
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":acct edit";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -339,26 +344,32 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
     frame.render_widget(Paragraph::new(msg::tui_account_edit_title()), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
 /// A bare section heading (`fixed at creation`/`computed`), with an optional right-aligned
 /// tag (`FR.13`) — distinct from [`render_field`]: this isn't a label/value row, it introduces
 /// the rows beneath it.
-fn render_section_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: Option<&str>) {
+fn render_section_heading(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    tag: Option<&str>,
+    c: &Colours,
+) {
     let Some(tag) = tag else {
-        frame.render_widget(Paragraph::new(Span::styled(label, dim())), area);
+        frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), area);
         return;
     };
     let columns = Layout::default()
@@ -368,24 +379,37 @@ fn render_section_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: O
             Constraint::Length(tag.chars().count() as u16),
         ])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
-fn render_text_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: &str, focused: bool) {
+fn render_text_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: &str,
+    focused: bool,
+    c: &Colours,
+) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", Style::default().fg(ACCENT)));
+        spans.push(Span::styled("\u{258c}", c.accent()));
     }
-    render_field(frame, area, label, Line::from(spans));
+    render_field(frame, area, label, Line::from(spans), c);
 }
 
-fn render_type_field(frame: &mut Frame<'_>, area: Rect, selected: AccountType, focused: bool) {
+fn render_type_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    selected: AccountType,
+    focused: bool,
+    c: &Colours,
+) {
     let selected_style = if focused {
-        Style::default().fg(ACCENT).add_modifier(Modifier::REVERSED)
+        c.accent().add_modifier(Modifier::REVERSED)
     } else {
         Style::default().add_modifier(Modifier::REVERSED)
     };
@@ -408,12 +432,19 @@ fn render_type_field(frame: &mut Frame<'_>, area: Rect, selected: AccountType, f
         area,
         &msg::tui_account_edit_field_type(),
         Line::from(spans),
+        c,
     );
 }
 
-fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused: bool) {
+fn render_active_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    active: bool,
+    focused: bool,
+    c: &Colours,
+) {
     let glyph_style = if focused {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -425,12 +456,13 @@ fn render_active_field(frame: &mut Frame<'_>, area: Rect, active: bool, focused:
         Line::from(vec![
             Span::styled(glyph, glyph_style),
             Span::raw(" "),
-            Span::styled("· clear to deactivate", dim()),
+            Span::styled("· clear to deactivate", c.muted()),
         ]),
+        c,
     );
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let hints = [
         ("tab", msg::tui_account_edit_help_tab()),
         ("^s", msg::tui_account_edit_help_save()),
@@ -439,7 +471,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
         ("esc", msg::tui_account_edit_help_cancel()),
     ];
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (index, (key, label)) in hints.iter().enumerate() {
@@ -493,11 +525,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &EditAccountPopup, store: &dyn AccountStore) -> String {
+    fn render(popup: &EditAccountPopup, store: &dyn AccountStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -525,9 +557,10 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let everyday = find_id(&store, "Everyday Spending");
-        render(&EditAccountPopup::new(&store, everyday), &store);
+        render(&EditAccountPopup::new(&store, everyday), &store, c);
     }
 
     #[test]
@@ -626,9 +659,10 @@ mod tests {
 
     #[test]
     fn shows_unit_and_starting_balance_read_only_under_the_fr13_heading() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let everyday = find_id(&store, "Everyday Spending");
-        let text = render(&EditAccountPopup::new(&store, everyday), &store);
+        let text = render(&EditAccountPopup::new(&store, everyday), &store, c);
 
         assert!(text.contains("fixed at creation"));
         assert!(text.contains("FR.13"));
@@ -638,9 +672,10 @@ mod tests {
 
     #[test]
     fn shows_the_computed_section_with_real_balance_and_transaction_count() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let everyday = find_id(&store, "Everyday Spending");
-        let text = render(&EditAccountPopup::new(&store, everyday), &store);
+        let text = render(&EditAccountPopup::new(&store, everyday), &store, c);
 
         assert!(text.contains("computed"));
         assert!(text.contains("4,210.65 · not stored"));
@@ -650,17 +685,19 @@ mod tests {
 
     #[test]
     fn shows_none_for_an_account_with_no_transactions() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let wallet = find_id(&store, "Wallet");
-        let text = render(&EditAccountPopup::new(&store, wallet), &store);
+        let text = render(&EditAccountPopup::new(&store, wallet), &store, c);
         assert!(text.contains("none"));
     }
 
     #[test]
     fn shows_the_closing_note_and_footer_hints_including_ctrl_d() {
+        let c = &Colours::default();
         let store = AccountFixture::new();
         let everyday = find_id(&store, "Everyday Spending");
-        let text = render(&EditAccountPopup::new(&store, everyday), &store);
+        let text = render(&EditAccountPopup::new(&store, everyday), &store, c);
 
         assert!(text.contains("nothing derives"));
         assert!(text.contains("adjusting transaction"));

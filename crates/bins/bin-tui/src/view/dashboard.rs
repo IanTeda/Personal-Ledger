@@ -18,11 +18,8 @@ use tui_piechart::{PieChart, PieSlice, Resolution, symbols::PIE_CHAR_LIGHT};
 
 use lib_locale::format::upper;
 
+use crate::colours::Colours;
 use crate::view::{Action, View, ViewId};
-
-/// The theme's one accent colour — reserved for negatives, over-budget, variance, and
-/// Liabilities, per `docs/ux/tui/README.md`'s style table.
-const ACCENT: Color = Color::Red;
 
 /// The window the headline delta and the spending pie both report over, in days — named by their
 /// own Messages rather than written into them.
@@ -75,7 +72,7 @@ impl DashboardView {
 impl View for DashboardView {
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -91,9 +88,9 @@ impl View for DashboardView {
         // rows[0], rows[2], and rows[4] are left blank — breathing space between the
         // shell's title bar and the headline, between the headline and the trend band, and
         // between the trend band and the lower band, not visible rules.
-        render_headline(frame, rows[1]);
-        render_trend_band(frame, rows[3]);
-        render_lower_band(frame, rows[5]);
+        render_headline(frame, rows[1], c);
+        render_trend_band(frame, rows[3], c);
+        render_lower_band(frame, rows[5], c);
     }
 
     fn id(&self) -> ViewId {
@@ -110,7 +107,7 @@ impl View for DashboardView {
 /// liabilities label-over-value trio, bottom-aligned to match, on the right. A terminal has
 /// no literal font size, so the box-text figure stands in for the handoff's "double-height
 /// or bold" net position treatment from `docs/ux/tui/README.md`.
-fn render_headline(frame: &mut Frame<'_>, area: Rect) {
+fn render_headline(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let box_text_width = NET_POSITION.chars().count() as u16 * BOX_CHAR_WIDTH;
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -119,7 +116,7 @@ fn render_headline(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     render_net_position(frame, columns[0]);
-    render_headline_stats_area(frame, columns[1]);
+    render_headline_stats_area(frame, columns[1], c);
 }
 
 /// The left headline area: "NET POSITION" over the box-text net position figure. No border
@@ -144,7 +141,7 @@ fn render_net_position(frame: &mut Frame<'_>, area: Rect) {
 /// The right headline area: the 30-day delta / assets / liabilities label-over-value trio,
 /// bottom-aligned so its two rows line up with the net position area's last two box-text
 /// lines. No border or title.
-fn render_headline_stats_area(frame: &mut Frame<'_>, area: Rect) {
+fn render_headline_stats_area(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let label_row = Rect {
         y: area.y + area.height.saturating_sub(2),
         height: 1,
@@ -155,12 +152,12 @@ fn render_headline_stats_area(frame: &mut Frame<'_>, area: Rect) {
         height: 1,
         ..area
     };
-    render_headline_stats(frame, label_row, value_row);
+    render_headline_stats(frame, label_row, value_row, c);
 }
 
 /// The 30-day delta / assets / liabilities trio, right of the net position figure: a label
 /// row and a value row, each split into three columns. Liabilities render in the accent.
-fn render_headline_stats(frame: &mut Frame<'_>, label_area: Rect, value_area: Rect) {
+fn render_headline_stats(frame: &mut Frame<'_>, label_area: Rect, value_area: Rect, c: &Colours) {
     let column_widths = [
         Constraint::Length(16),
         Constraint::Length(16),
@@ -198,7 +195,7 @@ fn render_headline_stats(frame: &mut Frame<'_>, label_area: Rect, value_area: Re
         value_columns[1],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled("$320,334", bold.fg(ACCENT))),
+        Paragraph::new(Span::styled("$320,334", bold.patch(c.accent()))),
         value_columns[2],
     );
 }
@@ -236,15 +233,15 @@ fn render_box_text(frame: &mut Frame<'_>, area: Rect, text: &str) {
 
 /// Items 2-3 — the net-worth line chart and the income-vs-expense divergent bars share one
 /// 18-row band: the line chart takes roughly 60% of the width, the bars the rest.
-fn render_trend_band(frame: &mut Frame<'_>, area: Rect) {
+fn render_trend_band(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(60), Constraint::Min(0)])
         .spacing(3)
         .split(area);
 
-    render_net_worth_chart(frame, columns[0], &fake_net_worth());
-    render_income_vs_expense(frame, columns[1], &fake_income_vs_expense());
+    render_net_worth_chart(frame, columns[0], &fake_net_worth(), c);
+    render_income_vs_expense(frame, columns[1], &fake_income_vs_expense(), c);
 }
 
 /// One month's fake net-worth balance, feeding the placeholder 18-month line chart.
@@ -260,7 +257,12 @@ struct NetWorthPoint {
 /// the "NET POSITION" label pattern in the headline), underlined with a full-width rule
 /// rather than boxed. X-axis labelled at the first/middle/last month; no y-axis labels,
 /// since a real headline net-position figure will carry the magnitude once one exists.
-fn render_net_worth_chart(frame: &mut Frame<'_>, area: Rect, net_worth: &[NetWorthPoint]) {
+fn render_net_worth_chart(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    net_worth: &[NetWorthPoint],
+    c: &Colours,
+) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -295,7 +297,7 @@ fn render_net_worth_chart(frame: &mut Frame<'_>, area: Rect, net_worth: &[NetWor
     let dataset = Dataset::default()
         .marker(symbols::Marker::Braille)
         .graph_type(GraphType::Line)
-        .style(Style::default().fg(ACCENT))
+        .style(c.accent())
         .data(&points);
 
     let mid = net_worth.len() / 2;
@@ -356,7 +358,7 @@ struct MonthFlow {
 /// right-aligned "8M DIVERGENT" tag (matching the "WHERE IT WENT · PIE CHART" pattern),
 /// underlined with a full-width rule, matching the Net Worth box, then the month rows (with
 /// a blank row between each), then an "expense · income" caption.
-fn render_income_vs_expense(frame: &mut Frame<'_>, area: Rect, flows: &[MonthFlow]) {
+fn render_income_vs_expense(frame: &mut Frame<'_>, area: Rect, flows: &[MonthFlow], c: &Colours) {
     // `flows.len()` rows plus a 1-row gap between each.
     let month_rows_height = (flows.len() as u16) * 2 - 1;
 
@@ -406,7 +408,7 @@ fn render_income_vs_expense(frame: &mut Frame<'_>, area: Rect, flows: &[MonthFlo
         .flat_map(|flow| [flow.income, flow.expense])
         .fold(1.0_f64, f64::max);
     for (index, flow) in flows.iter().enumerate() {
-        render_divergent_bar_row(frame, month_rows[index], flow, max_flow);
+        render_divergent_bar_row(frame, month_rows[index], flow, max_flow, c);
     }
 
     let caption_row = rows[4];
@@ -442,7 +444,13 @@ fn render_income_vs_expense(frame: &mut Frame<'_>, area: Rect, flows: &[MonthFlo
 /// remaining track — expense (accent) growing left, income (default) growing right — both
 /// scaled against `max_flow`, a scale shared across every month rather than a per-row
 /// proportion, so a bigger number always draws a longer bar.
-fn render_divergent_bar_row(frame: &mut Frame<'_>, area: Rect, flow: &MonthFlow, max_flow: f64) {
+fn render_divergent_bar_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    flow: &MonthFlow,
+    max_flow: f64,
+    c: &Colours,
+) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(MONTH_LABEL_WIDTH), Constraint::Min(0)])
@@ -482,7 +490,7 @@ fn render_divergent_bar_row(frame: &mut Frame<'_>, area: Rect, flow: &MonthFlow,
             " ".repeat(left_width as usize - expense_len),
             "█".repeat(expense_len)
         ),
-        Style::default().fg(ACCENT),
+        c.accent(),
     ));
     frame.render_widget(Paragraph::new(expense_line), left_half);
 
@@ -541,14 +549,14 @@ fn fake_income_vs_expense() -> Vec<MonthFlow> {
 /// Items 4-6 — the pie chart, the budget gauges, and needs-attention share the remaining
 /// band: the pie chart takes 2/5 of the screen width; budgets and needs-attention split the
 /// rest vertically, needs-attention pinned to the bottom.
-fn render_lower_band(frame: &mut Frame<'_>, area: Rect) {
+fn render_lower_band(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(40), Constraint::Min(0)])
         .spacing(3)
         .split(area);
 
-    render_where_it_went(frame, columns[0], &fake_spending());
+    render_where_it_went(frame, columns[0], &fake_spending(c));
 
     let attention_items = fake_attention_items();
     let attention_height = ATTENTION_FIXED_ROWS + attention_items.len() as u16;
@@ -563,8 +571,9 @@ fn render_lower_band(frame: &mut Frame<'_>, area: Rect) {
         budgets_rows[0],
         capped_budgets(&budgets),
         &fake_budget_period(),
+        c,
     );
-    render_needs_attention(frame, budgets_rows[1], &attention_items);
+    render_needs_attention(frame, budgets_rows[1], &attention_items, c);
 }
 
 /// One category's fake 30-day spending share, feeding the pie chart. Largest first,
@@ -662,12 +671,12 @@ fn render_spending_legend(frame: &mut Frame<'_>, area: Rect, slices: &[SpendingS
 }
 
 /// The fake 30-day spending breakdown behind the pie chart and its legend.
-fn fake_spending() -> Vec<SpendingSlice> {
+fn fake_spending(c: &Colours) -> Vec<SpendingSlice> {
     vec![
         SpendingSlice {
             category: "housing",
             percent: 31.0,
-            color: ACCENT,
+            color: c.accent_colour(),
         },
         SpendingSlice {
             category: "groceries",
@@ -729,6 +738,7 @@ fn render_budgets_this_period(
     area: Rect,
     budgets: &[BudgetCategory],
     period: &BudgetPeriod,
+    c: &Colours,
 ) {
     // `budgets.len()` rows plus a 1-row gap between each.
     let category_rows_height = (budgets.len() as u16) * 2 - 1;
@@ -774,7 +784,7 @@ fn render_budgets_this_period(
         .split(rows[2]);
     let period_progress = period.elapsed_percent / 100.0;
     for (budget, row) in budgets.iter().zip(category_rows.iter()) {
-        render_budget_row(frame, *row, budget, period_progress);
+        render_budget_row(frame, *row, budget, period_progress, c);
     }
 
     frame.render_widget(
@@ -794,10 +804,11 @@ fn render_budget_row(
     area: Rect,
     budget: &BudgetCategory,
     period_progress: f64,
+    c: &Colours,
 ) {
     let is_over = budget.actual > budget.limit;
     let figure_style = if is_over {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -816,7 +827,7 @@ fn render_budget_row(
         Paragraph::new(Span::styled(budget.category, figure_style)),
         columns[0],
     );
-    render_budget_bar(frame, columns[1], budget, period_progress, is_over);
+    render_budget_bar(frame, columns[1], budget, period_progress, is_over, c);
     frame.render_widget(
         Paragraph::new(Span::styled(
             format!(
@@ -841,6 +852,7 @@ fn render_budget_bar(
     budget: &BudgetCategory,
     period_progress: f64,
     is_over: bool,
+    c: &Colours,
 ) {
     let bar_width = area.width as usize;
     if bar_width == 0 {
@@ -851,7 +863,11 @@ fn render_budget_bar(
     let fill_len = (ratio * bar_width as f64).round() as usize;
     let tick_pos = ((period_progress * bar_width as f64).round() as usize).min(bar_width - 1);
 
-    let fill_color = if is_over { ACCENT } else { Color::Gray };
+    let fill_color = if is_over {
+        c.accent_colour()
+    } else {
+        Color::Gray
+    };
     let spans: Vec<Span<'_>> = (0..bar_width)
         .map(|column| {
             if column == tick_pos {
@@ -946,7 +962,7 @@ struct AttentionItem {
 /// Item 6 — "Needs attention": 2-3 lines only, each naming the command (or context) that
 /// resolves it, right-aligned — deliberately not a table (`docs/ux/tui/README.md`). A
 /// trailing "...more" row hints at a fuller to-do list beyond what fits here.
-fn render_needs_attention(frame: &mut Frame<'_>, area: Rect, items: &[AttentionItem]) {
+fn render_needs_attention(frame: &mut Frame<'_>, area: Rect, items: &[AttentionItem], c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -985,7 +1001,7 @@ fn render_needs_attention(frame: &mut Frame<'_>, area: Rect, items: &[AttentionI
         .split(rows[2]);
     for (item, row) in items.iter().zip(item_rows.iter()) {
         let description_style = if item.is_alert {
-            Style::default().fg(ACCENT)
+            c.accent()
         } else {
             Style::default()
         };
@@ -1088,24 +1104,24 @@ mod tests {
 
     use super::*;
 
-    fn render(view: &DashboardView) -> String {
-        render_at(view, 30)
+    fn render(view: &DashboardView, c: &Colours) -> String {
+        render_at(view, 30, c)
     }
 
     /// The 96x30 minimum from `docs/ux/tui/README.md` cuts the lower band off, so anything below
     /// the trend band needs a taller backend to appear at all.
-    fn render_tall(view: &DashboardView) -> String {
-        render_at(view, 50)
+    fn render_tall(view: &DashboardView, c: &Colours) -> String {
+        render_at(view, 50, c)
     }
 
-    fn render_at(view: &DashboardView, height: u16) -> String {
+    fn render_at(view: &DashboardView, height: u16, c: &Colours) -> String {
         crate::locale::init_for_tests();
         let backend = TestBackend::new(96, height);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                view.view(frame, area);
+                view.view(frame, area, c);
             })
             .expect("drawing the dashboard should not error");
 
@@ -1122,12 +1138,14 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&DashboardView::new());
+        let c = &Colours::default();
+        render(&DashboardView::new(), c);
     }
 
     #[test]
     fn needs_attention_rows_agree_with_the_counts_they_name() {
-        let text = render_tall(&DashboardView::new());
+        let c = &Colours::default();
+        let text = render_tall(&DashboardView::new(), c);
         assert!(
             text.contains("14 unreconciled transactions"),
             "the unreconciled row should name its count:\n{text}"
@@ -1150,7 +1168,8 @@ mod tests {
 
     #[test]
     fn the_budget_caption_and_period_tag_are_messages() {
-        let text = render_tall(&DashboardView::new());
+        let c = &Colours::default();
+        let text = render_tall(&DashboardView::new(), c);
         assert!(
             text.contains("\u{2502} = period progress \u{b7} bar = actual / limit"),
             "the budget caption is missing:\n{text}"
@@ -1166,6 +1185,7 @@ mod tests {
     /// mock data and deliberately do.
     #[test]
     fn the_labels_and_captions_are_fully_pseudo_localised() {
+        let c = &Colours::default();
         crate::locale::init_for_tests();
         lib_locale::with_locale(lib_locale::Locale::EnXa, || {
             let backend = TestBackend::new(96, 50);
@@ -1173,7 +1193,7 @@ mod tests {
             terminal
                 .draw(|frame| {
                     let area = frame.area();
-                    DashboardView::new().view(frame, area);
+                    DashboardView::new().view(frame, area, c);
                 })
                 .expect("drawing the dashboard should not error");
             let buffer = terminal.backend().buffer();
@@ -1221,6 +1241,7 @@ mod tests {
 
     #[test]
     fn shows_all_seven_headline_regions() {
+        let c = &Colours::default();
         // The 96x30 minimum from `docs/ux/tui/README.md` doesn't leave enough height for
         // both the "Budgets this period" and "Needs attention" boxes once the latter grows
         // to 3 content lines — the same pre-existing space crunch as
@@ -1232,7 +1253,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area);
+                DashboardView::new().view(frame, area, c);
             })
             .expect("drawing the dashboard should not error");
         let buffer = terminal.backend().buffer();
@@ -1264,7 +1285,8 @@ mod tests {
 
     #[test]
     fn net_worth_box_shows_a_placeholder_line_chart() {
-        let text = render(&DashboardView::new());
+        let c = &Colours::default();
+        let text = render(&DashboardView::new(), c);
 
         assert!(text.contains("NET WORTH"), "net worth label missing");
         assert!(text.contains("apr 25"), "first month x-axis label missing");
@@ -1286,7 +1308,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area);
+                DashboardView::new().view(frame, area, c);
             })
             .expect("drawing the dashboard should not error");
         let buffer = terminal.backend().buffer();
@@ -1296,7 +1318,8 @@ mod tests {
 
     #[test]
     fn income_vs_expense_shows_eight_months_and_a_caption() {
-        let text = render(&DashboardView::new());
+        let c = &Colours::default();
+        let text = render(&DashboardView::new(), c);
 
         assert!(text.contains("INCOME VS EXPENSE"), "heading missing");
         assert!(text.contains("8M DIVERGENT"), "8m divergent tag missing");
@@ -1309,12 +1332,13 @@ mod tests {
 
     #[test]
     fn income_vs_expense_bars_vary_by_month() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area);
+                DashboardView::new().view(frame, area, c);
             })
             .expect("drawing the dashboard should not error");
 
@@ -1324,7 +1348,7 @@ mod tests {
         let buffer = terminal.backend().buffer();
         let expense_len = |y: u16| -> usize {
             (0..buffer.area.width)
-                .filter(|&x| buffer[(x, y)].fg == Color::Red)
+                .filter(|&x| buffer[(x, y)].fg == c.accent_colour())
                 .count()
         };
 
@@ -1349,7 +1373,8 @@ mod tests {
 
     #[test]
     fn headline_shows_the_net_position_as_box_text() {
-        let text = render(&DashboardView::new());
+        let c = &Colours::default();
+        let text = render(&DashboardView::new(), c);
 
         // The `$` glyph's top row, per `tui_box_text`'s character table — confirms the
         // box-text figure actually rendered rather than falling back to plain digits.
@@ -1359,7 +1384,8 @@ mod tests {
 
     #[test]
     fn headline_shows_delta_assets_and_liabilities_right_of_net_position() {
-        let text = render(&DashboardView::new());
+        let c = &Colours::default();
+        let text = render(&DashboardView::new(), c);
 
         assert!(text.contains("30 DAYS"), "30-day delta label missing");
         assert!(text.contains("+1,268"), "30-day delta value missing");
@@ -1372,12 +1398,13 @@ mod tests {
 
     #[test]
     fn net_position_box_text_is_bold() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area);
+                DashboardView::new().view(frame, area, c);
             })
             .expect("drawing the dashboard should not error");
 
@@ -1393,7 +1420,8 @@ mod tests {
 
     #[test]
     fn where_it_went_shows_heading_and_pie_chart() {
-        let text = render(&DashboardView::new());
+        let c = &Colours::default();
+        let text = render(&DashboardView::new(), c);
 
         assert!(text.contains("WHERE IT WENT · 30D"), "heading missing");
         assert!(text.contains("PIE CHART"), "pie chart tag missing");
@@ -1404,6 +1432,7 @@ mod tests {
 
     #[test]
     fn where_it_went_legend_shows_all_five_slices() {
+        let c = &Colours::default();
         // The 96x30 minimum from `docs/ux/tui/README.md` doesn't leave enough height for
         // the full 5-row legend once the headline and trend band grow to their current
         // sizes, so this uses a taller backend to check the legend content itself is
@@ -1414,7 +1443,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                DashboardView::new().view(frame, area);
+                DashboardView::new().view(frame, area, c);
             })
             .expect("drawing the dashboard should not error");
         let buffer = terminal.backend().buffer();
@@ -1440,6 +1469,7 @@ mod tests {
 
     #[test]
     fn budgets_this_period_shows_heading_and_all_seven_categories() {
+        let c = &Colours::default();
         // Rendered in isolation (calling the private render fn directly) rather than through
         // the whole `DashboardView` — "groceries" and "other" both appear a second time in
         // the pie chart's own legend at overlapping row indices, which would make a
@@ -1451,7 +1481,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                render_budgets_this_period(frame, area, &budgets, &period);
+                render_budgets_this_period(frame, area, &budgets, &period, c);
             })
             .expect("drawing budgets this period should not error");
 
@@ -1488,6 +1518,7 @@ mod tests {
 
     #[test]
     fn budgets_this_period_flips_over_budget_category_to_the_accent() {
+        let c = &Colours::default();
         let backend = TestBackend::new(80, 20);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         let budgets = fake_budgets();
@@ -1495,7 +1526,7 @@ mod tests {
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                render_budgets_this_period(frame, area, &budgets, &period);
+                render_budgets_this_period(frame, area, &budgets, &period, c);
             })
             .expect("drawing budgets this period should not error");
 
@@ -1511,8 +1542,9 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
-        let row_has_accent =
-            |y: u16| -> bool { (0..buffer.area.width).any(|x| buffer[(x, y)].fg == ACCENT) };
+        let row_has_accent = |y: u16| -> bool {
+            (0..buffer.area.width).any(|x| buffer[(x, y)].fg == Colours::default().accent_colour())
+        };
 
         // "dining" and "subscriptions" are over budget and should flip to the accent;
         // "groceries" is under budget and should not.
@@ -1579,13 +1611,14 @@ mod tests {
 
     #[test]
     fn needs_attention_shows_heading_items_and_the_more_row() {
+        let c = &Colours::default();
         let backend = TestBackend::new(80, 10);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         let items = fake_attention_items();
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                render_needs_attention(frame, area, &items);
+                render_needs_attention(frame, area, &items, c);
             })
             .expect("drawing needs attention should not error");
 
@@ -1616,13 +1649,14 @@ mod tests {
 
     #[test]
     fn needs_attention_flips_alert_item_to_the_accent_and_dims_the_command_column() {
+        let c = &Colours::default();
         let backend = TestBackend::new(80, 10);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         let items = fake_attention_items();
         terminal
             .draw(|frame| {
                 let area = frame.area();
-                render_needs_attention(frame, area, &items);
+                render_needs_attention(frame, area, &items, c);
             })
             .expect("drawing needs attention should not error");
 
@@ -1638,8 +1672,9 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
-        let row_has_accent =
-            |y: u16| -> bool { (0..buffer.area.width).any(|x| buffer[(x, y)].fg == ACCENT) };
+        let row_has_accent = |y: u16| -> bool {
+            (0..buffer.area.width).any(|x| buffer[(x, y)].fg == Colours::default().accent_colour())
+        };
         let cell_is_dim =
             |x: u16, y: u16| -> bool { buffer[(x, y)].modifier.contains(Modifier::DIM) };
         let row_ends_dim = |y: u16| -> bool {

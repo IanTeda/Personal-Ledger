@@ -18,7 +18,7 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Clear, Paragraph},
 };
@@ -26,11 +26,8 @@ use ratatui::{
 use lib_core::RowID;
 
 use super::path::{Resolution, ancestor_names, completions, resolve, tab_complete};
+use crate::colours::Colours;
 use crate::{category::CategoryStore, msg, popup::REFERENCE_TERMINAL_WIDTH};
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// the input cursor and the moving node's marked landing row.
-const ACCENT: Color = Color::Red;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per the handoff's "~88% width" —
 /// matches `popup::unit`'s own forms.
@@ -110,12 +107,18 @@ impl MovePopup {
     /// as" fragment's height varies with how many children the landing parent has), within
     /// `area` — the full terminal area, per §3a's "centred floating overlay" every form in
     /// this design reuses.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn CategoryStore) {
+    pub fn render(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        store: &dyn CategoryStore,
+        c: &Colours,
+    ) {
         let Some(moving) = store.find(self.moving_id) else {
             return;
         };
         let resolution = resolve(store, &self.input);
-        let landing_lines = landing_fragment_lines(store, &resolution, moving.id);
+        let landing_lines = landing_fragment_lines(store, &resolution, moving.id, c);
         let content_rows = 6 + landing_lines.len() as u16 + 1 + 3 + 2;
         let popup = popup_rect(area, content_rows);
 
@@ -177,7 +180,7 @@ impl MovePopup {
             .unwrap_or_else(|| "—".to_string());
         render_field(frame, rows[3], "from", Line::from(from_text));
 
-        render_new_parent_field(frame, rows[4], &self.input);
+        render_new_parent_field(frame, rows[4], &self.input, c);
         render_completion_row(frame, rows[5], store, &self.input);
         // rows[6] is left blank — breathing space above the "lands as" preview.
 
@@ -253,8 +256,8 @@ fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'sta
 
 /// The `new parent` field: the focused input box glyph (`┌`) per the handoff's drawn example,
 /// the typed text, and a trailing accent cursor.
-fn render_new_parent_field(frame: &mut Frame<'_>, area: Rect, input: &str) {
-    let cursor = Style::default().fg(ACCENT);
+fn render_new_parent_field(frame: &mut Frame<'_>, area: Rect, input: &str, c: &Colours) {
+    let cursor = c.accent();
     let label = format!("\u{250c} {}", msg::tui_category_move_field_target());
     render_field(
         frame,
@@ -313,9 +316,10 @@ fn landing_fragment_lines<'a>(
     store: &dyn CategoryStore,
     resolution: &Resolution,
     moving_id: RowID,
+    c: &Colours,
 ) -> Vec<Paragraph<'a>> {
     let dim = Style::default().add_modifier(Modifier::DIM);
-    let accent = Style::default().fg(ACCENT);
+    let accent = c.accent();
 
     match resolution {
         Resolution::Existing(parent_id) => {
@@ -456,11 +460,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &MovePopup, store: &dyn CategoryStore) -> String {
+    fn render(popup: &MovePopup, store: &dyn CategoryStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -484,16 +488,18 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        render(&MovePopup::new(&store, groceries), &store);
+        render(&MovePopup::new(&store, groceries), &store, c);
     }
 
     #[test]
     fn shows_the_moving_and_from_fields() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        let text = render(&MovePopup::new(&store, groceries), &store);
+        let text = render(&MovePopup::new(&store, groceries), &store, c);
 
         assert!(
             text.contains("Groceries · leaf · 148 txns"),
@@ -549,12 +555,13 @@ mod tests {
 
     #[test]
     fn shows_the_lands_as_preview_with_the_moving_node_marked() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
         let mut popup = MovePopup::new(&store, groceries);
         popup.input = "expenses/transport".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("lands as"), "lands as heading missing");
         assert!(
             text.contains("Groceries · moves here"),
@@ -570,13 +577,14 @@ mod tests {
 
     #[test]
     fn shows_a_refusal_in_the_lands_as_preview_for_a_cycle() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let food = find_by_name(&store, "Food");
         let groceries = find_by_name(&store, "Groceries");
         let mut popup = MovePopup::new(&store, food);
         popup.input = "expenses/food/groceries".to_string();
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(
             text.contains("can't move into its own descendant set"),
             "cycle refusal missing from lands-as preview, got: {text}"
@@ -586,9 +594,10 @@ mod tests {
 
     #[test]
     fn shows_the_footer_hints() {
+        let c = &Colours::default();
         let store = CategoryFixture::new();
         let groceries = find_by_name(&store, "Groceries");
-        let text = render(&MovePopup::new(&store, groceries), &store);
+        let text = render(&MovePopup::new(&store, groceries), &store, c);
         for key in ["tab", "^n", "^s", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }

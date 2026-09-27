@@ -36,15 +36,15 @@ use lib_core::RowID;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::payee::{AliasMode, AliasSource, PayeeAlias, PayeeResolution, PayeeStore};
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
-const ACCENT: Color = Color::Red;
 const POPUP_WIDTH_PERCENT: u32 = 88;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 
@@ -241,7 +241,7 @@ impl PayeeMatchesPopup {
     }
 
     /// Renders the floating overlay, centred and fixed-height, within `area`.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore, c: &Colours) {
         let Some(payee) = store.find(self.payee_id) else {
             return;
         };
@@ -278,19 +278,19 @@ impl PayeeMatchesPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0], &payee.name);
+        render_title(frame, rows[0], &payee.name, c);
         frame.render_widget(
             Paragraph::new(Span::styled(
                 "typed text that resolves to this payee",
-                dim(),
+                c.muted(),
             )),
             rows[1],
         );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[2]);
-        render_column_header(frame, rows[3]);
-        self.render_list(frame, rows[4], store);
+        render_column_header(frame, rows[3], c);
+        self.render_list(frame, rows[4], store, c);
         // rows[5] is left blank — breathing space above the compose block.
-        self.render_compose(frame, [rows[6], rows[7], rows[8], rows[9]], store);
+        self.render_compose(frame, [rows[6], rows[7], rows[8], rows[9]], store, c);
         // rows[10] is left blank — breathing space above the resolve-order note.
         frame.render_widget(
             Paragraph::new("1 an exact payee name   2 these matches"),
@@ -301,20 +301,20 @@ impl PayeeMatchesPopup {
             rows[12],
         );
         // rows[13] is left blank — breathing space above the conflict block.
-        render_conflict_block(frame, [rows[14], rows[15]], self.payee_id, store);
+        render_conflict_block(frame, [rows[14], rows[15]], self.payee_id, store, c);
         // rows[16] is left blank — breathing space above the protected-match note.
         frame.render_widget(
             Paragraph::new(Span::styled(
                 "a rename match is protected — remove and edit both refuse it",
-                dim(),
+                c.muted(),
             )),
             rows[17],
         );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[18]);
-        render_footer_hints(frame, rows[19], self.compose.as_ref().map(|c| c.kind));
+        render_footer_hints(frame, rows[19], self.compose.as_ref().map(|c| c.kind), c);
     }
 
-    fn render_list(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore) {
+    fn render_list(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn PayeeStore, c: &Colours) {
         let aliases = store.aliases(self.payee_id);
         let shown = aliases.len().min(MAX_LIST_ROWS);
         let row_areas = Layout::default()
@@ -324,7 +324,7 @@ impl PayeeMatchesPopup {
 
         if aliases.is_empty() {
             frame.render_widget(
-                Paragraph::new(Span::styled("no matches yet", dim())),
+                Paragraph::new(Span::styled("no matches yet", c.muted())),
                 row_areas[0],
             );
             return;
@@ -363,9 +363,15 @@ impl PayeeMatchesPopup {
         }
     }
 
-    fn render_compose(&self, frame: &mut Frame<'_>, rows: [Rect; 4], store: &dyn PayeeStore) {
+    fn render_compose(
+        &self,
+        frame: &mut Frame<'_>,
+        rows: [Rect; 4],
+        store: &dyn PayeeStore,
+        c: &Colours,
+    ) {
         let Some(compose) = &self.compose else {
-            render_compose_hint(frame, rows[0]);
+            render_compose_hint(frame, rows[0], c);
             return;
         };
 
@@ -380,8 +386,9 @@ impl PayeeMatchesPopup {
             label,
             Line::from(vec![
                 Span::raw(compose.input.clone()),
-                Span::styled("\u{258c}", Style::default().fg(ACCENT)),
+                Span::styled("\u{258c}", c.accent()),
             ]),
+            c,
         );
 
         let (exact_marker, regex_marker) = match compose.mode {
@@ -393,17 +400,15 @@ impl PayeeMatchesPopup {
             rows[1],
             "as",
             Line::from(format!("{exact_marker} exact text   {regex_marker} regex")),
+            c,
         );
 
         let pattern = compiled_pattern(compose.input.trim(), compose.mode);
         let mut stores_line = vec![Span::raw(pattern.clone())];
         if let Some(other) = store.conflicting_holder(self.payee_id, &pattern) {
-            stores_line.push(Span::styled(
-                format!(" · also matches {other}"),
-                Style::default().fg(ACCENT),
-            ));
+            stores_line.push(Span::styled(format!(" · also matches {other}"), c.accent()));
         }
-        render_compose_field(frame, rows[2], "stores", Line::from(stores_line));
+        render_compose_field(frame, rows[2], "stores", Line::from(stores_line), c);
 
         let resolution = store.resolve(compose.input.trim());
         let test_text = format!(
@@ -411,24 +416,20 @@ impl PayeeMatchesPopup {
             compose.input.trim(),
             describe_resolution(resolution, store)
         );
-        render_compose_field(frame, rows[3], "test", Line::from(test_text));
+        render_compose_field(frame, rows[3], "test", Line::from(test_text), c);
     }
 }
 
 /// Shown in the compose block's first row while nothing is being composed — the footer hints
 /// already state `a`/`e`/`t`, so this just points at the block itself being where they land.
-fn render_compose_hint(frame: &mut Frame<'_>, area: Rect) {
+fn render_compose_hint(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     frame.render_widget(
-        Paragraph::new(Span::styled("(a/e/t opens this box)", dim())),
+        Paragraph::new(Span::styled("(a/e/t opens this box)", c.muted())),
         area,
     );
 }
 
-fn dim() -> Style {
-    Style::default().add_modifier(Modifier::DIM)
-}
-
-fn render_title(frame: &mut Frame<'_>, area: Rect, payee_name: &str) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, payee_name: &str, c: &Colours) {
     let tag = ":payee match";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -439,12 +440,12 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, payee_name: &str) {
         .split(area);
     frame.render_widget(Paragraph::new(format!("matches {payee_name}")), columns[0]);
     frame.render_widget(
-        Paragraph::new(Span::styled(tag, dim())).alignment(Alignment::Right),
+        Paragraph::new(Span::styled(tag, c.muted())).alignment(Alignment::Right),
         columns[1],
     );
 }
 
-fn render_column_header(frame: &mut Frame<'_>, area: Rect) {
+fn render_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -454,7 +455,7 @@ fn render_column_header(frame: &mut Frame<'_>, area: Rect) {
         ])
         .spacing(1)
         .split(area);
-    let style = dim();
+    let style = c.muted();
     frame.render_widget(Paragraph::new(Span::styled("PATTERN", style)), columns[0]);
     frame.render_widget(Paragraph::new(Span::styled("FROM", style)), columns[1]);
     frame.render_widget(
@@ -464,12 +465,18 @@ fn render_column_header(frame: &mut Frame<'_>, area: Rect) {
 }
 
 /// One `label   value` compose row — mirrors `popup::account::new::render_field`.
-fn render_compose_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_compose_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    value: Line<'static>,
+    c: &Colours,
+) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(8), Constraint::Min(0)])
         .split(area);
-    frame.render_widget(Paragraph::new(Span::styled(label, dim())), columns[0]);
+    frame.render_widget(Paragraph::new(Span::styled(label, c.muted())), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
 
@@ -480,6 +487,7 @@ fn render_conflict_block(
     rows: [Rect; 2],
     payee_id: RowID,
     store: &dyn PayeeStore,
+    c: &Colours,
 ) {
     let partners = store.conflict_partners(payee_id);
     if partners.is_empty() {
@@ -493,20 +501,25 @@ fn render_conflict_block(
     frame.render_widget(
         Paragraph::new(Span::styled(
             format!("! also matches {}", names.join(", ")),
-            Style::default().fg(ACCENT),
+            c.accent(),
         )),
         rows[0],
     );
     frame.render_widget(
         Paragraph::new(Span::styled(
             "two payees matching one text resolves arbitrarily",
-            dim(),
+            c.muted(),
         )),
         rows[1],
     );
 }
 
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, composing: Option<ComposeKind>) {
+fn render_footer_hints(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    composing: Option<ComposeKind>,
+    c: &Colours,
+) {
     let hints: &[(&str, &str)] = match composing {
         None => &[
             ("j/k", "match"),
@@ -520,7 +533,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, composing: Option<Comp
         Some(_) => &[("tab", "as"), ("^s", "save"), ("esc", "cancel")],
     };
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = dim();
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(hints.len() * 3);
     for (index, (key, label)) in hints.iter().enumerate() {
@@ -627,11 +640,11 @@ mod tests {
             .id
     }
 
-    fn render(popup: &PayeeMatchesPopup, store: &dyn PayeeStore) -> String {
+    fn render(popup: &PayeeMatchesPopup, store: &dyn PayeeStore, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area(), store))
+            .draw(|frame| popup.render(frame, frame.area(), store, c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -647,9 +660,10 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
-        render(&PayeeMatchesPopup::new(woolworths), &store);
+        render(&PayeeMatchesPopup::new(woolworths), &store, c);
     }
 
     #[test]
@@ -712,6 +726,7 @@ mod tests {
 
     #[test]
     fn exact_text_mode_escapes_and_anchors_without_a_backslash_for_a_space() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let coles_central = find_id(&store, "Coles Central");
         let mut popup = PayeeMatchesPopup::new(coles_central);
@@ -720,12 +735,13 @@ mod tests {
             popup.push_char(c);
         }
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("(?i)^WW Metro$"));
     }
 
     #[test]
     fn regex_mode_passes_the_typed_text_through_verbatim() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let coles_central = find_id(&store, "Coles Central");
         let mut popup = PayeeMatchesPopup::new(coles_central);
@@ -735,7 +751,7 @@ mod tests {
             popup.push_char(c);
         }
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("stores"));
         assert!(text.contains("^WW.*$"));
         // Verbatim, not re-escaped — no `(?i)` wrapper added.
@@ -744,6 +760,7 @@ mod tests {
 
     #[test]
     fn test_resolves_through_the_real_resolution_order() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let coles_central = find_id(&store, "Coles Central");
         let mut popup = PayeeMatchesPopup::new(coles_central);
@@ -752,12 +769,13 @@ mod tests {
             popup.push_char(c);
         }
 
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("Home Loan Direct \u{2713}"));
     }
 
     #[test]
     fn commit_refuses_a_pattern_colliding_with_another_payees_name() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let coles_central = find_id(&store, "Coles Central");
         let mut popup = PayeeMatchesPopup::new(coles_central);
@@ -767,7 +785,7 @@ mod tests {
         }
 
         assert!(popup.commit(&store).is_none());
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("also matches Woolworths"));
     }
 
@@ -841,29 +859,32 @@ mod tests {
 
     #[test]
     fn conflict_block_names_the_woolworths_woolies_pair() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
         let popup = PayeeMatchesPopup::new(woolworths);
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(text.contains("! also matches WOOLIES"));
         assert!(text.contains("resolves arbitrarily"));
     }
 
     #[test]
     fn no_conflict_block_for_an_unrelated_payee() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let sunrise_payroll = find_id(&store, "Sunrise Payroll");
         let popup = PayeeMatchesPopup::new(sunrise_payroll);
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
         assert!(!text.contains("also matches"));
     }
 
     #[test]
     fn shows_the_resolve_order_and_protected_match_notes() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
         let popup = PayeeMatchesPopup::new(woolworths);
-        let text = render(&popup, &store);
+        let text = render(&popup, &store, c);
 
         assert!(text.contains("1 an exact payee name"));
         assert!(text.contains("3 create a new payee from what was typed"));
@@ -872,20 +893,21 @@ mod tests {
 
     #[test]
     fn footer_hints_change_between_idle_and_composing() {
+        let c = &Colours::default();
         let store = PayeeFixture::new();
         let woolworths = find_id(&store, "Woolworths");
         let mut popup = PayeeMatchesPopup::new(woolworths);
 
-        let idle_text = render(&popup, &store);
+        let idle_text = render(&popup, &store, c);
         assert!(idle_text.contains("remove"));
 
         popup.begin_add();
-        let composing_text = render(&popup, &store);
+        let composing_text = render(&popup, &store, c);
         assert!(composing_text.contains("save"));
 
         popup.cancel_compose();
         popup.begin_test();
-        let testing_text = render(&popup, &store);
+        let testing_text = render(&popup, &store, c);
         assert!(!testing_text.contains("save"));
     }
 

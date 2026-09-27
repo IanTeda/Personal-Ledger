@@ -12,17 +12,14 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// the input cursor and the permanence warning.
-const ACCENT: Color = Color::Red;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per `docs/ux/tui/units/README.md`
 /// "The forms" ("~88% width on the drawing") — wider than `popup::command`'s 78%, since a form
@@ -59,7 +56,7 @@ impl NewUnitPopup {
     /// Renders the floating overlay, centred and sized to its fixed field list, within `area`
     /// (the full terminal area — the popup floats over the shell's status line and footer too,
     /// per §3a's "centred floating overlay", which §4b's own forms reuse verbatim).
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -94,7 +91,7 @@ impl NewUnitPopup {
             frame,
             rows[2],
             &msg::tui_unit_new_field_code(),
-            code_value(),
+            code_value(c),
         );
         render_field(
             frame,
@@ -145,7 +142,7 @@ impl NewUnitPopup {
             Line::from("[×]"),
         );
         // rows[11] is left blank — breathing space above the permanence warning.
-        render_warning(frame, rows[12], &msg::tui_unit_new_warning());
+        render_warning(frame, rows[12], &msg::tui_unit_new_warning(), c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[13]);
         render_footer_hints(frame, rows[14]);
     }
@@ -197,9 +194,9 @@ fn hinted<'a>(value: &'static str, hint: &'a str) -> Line<'a> {
 
 /// The `code` field's value: the placeholder code, an accent block cursor, then its dim rule
 /// hint — the one field the mockup shows mid-typing.
-fn code_value() -> Line<'static> {
+fn code_value(c: &Colours) -> Line<'static> {
     let dim = Style::default().add_modifier(Modifier::DIM);
-    let cursor = Style::default().fg(ACCENT);
+    let cursor = c.accent();
     Line::from(vec![
         Span::raw("VGS"),
         Span::styled("▌", cursor),
@@ -234,11 +231,8 @@ fn source_value() -> Line<'static> {
 
 /// One line of the permanence warning, in the accent — the mockup's own emphasis for a
 /// constraint that can only be honoured at creation.
-fn render_warning(frame: &mut Frame<'_>, area: Rect, text: &str) {
-    frame.render_widget(
-        Paragraph::new(Span::styled(text, Style::default().fg(ACCENT))),
-        area,
-    );
+fn render_warning(frame: &mut Frame<'_>, area: Rect, text: &str, c: &Colours) {
+    frame.render_widget(Paragraph::new(Span::styled(text, c.accent())), area);
 }
 
 /// The window footer hint row: each key bold, its label dim — matching the command popup's own
@@ -290,11 +284,11 @@ mod tests {
 
     use super::*;
 
-    fn render(popup: &NewUnitPopup) -> String {
+    fn render(popup: &NewUnitPopup, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -310,19 +304,22 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        render(&NewUnitPopup::new(), c);
     }
 
     #[test]
     fn shows_the_title_and_command_tag() {
-        let text = render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&NewUnitPopup::new(), c);
         assert!(text.contains("new unit"), "title missing");
         assert!(text.contains(":unit new"), "command tag missing");
     }
 
     #[test]
     fn shows_every_field_label() {
-        let text = render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&NewUnitPopup::new(), c);
         for label in [
             "code",
             "name",
@@ -340,7 +337,8 @@ mod tests {
 
     #[test]
     fn shows_the_permanence_warning() {
-        let text = render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&NewUnitPopup::new(), c);
         assert!(
             text.contains("CODE AND PRICE PRECISION CANNOT CHANGE ONCE"),
             "warning line 1 missing"
@@ -353,7 +351,8 @@ mod tests {
 
     #[test]
     fn shows_the_footer_hints() {
-        let text = render(&NewUnitPopup::new());
+        let c = &Colours::default();
+        let text = render(&NewUnitPopup::new(), c);
         for key in ["tab", "^s", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }

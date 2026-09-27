@@ -14,6 +14,7 @@
 pub mod edit;
 pub mod guard;
 
+use crate::colours::Colours;
 use ratatui::{Frame, layout::Rect};
 
 /// The one settings-domain popup `Shell` can have open at a time — mirrors `popup::unit::
@@ -25,10 +26,10 @@ pub enum SettingsPopup {
 
 impl SettingsPopup {
     /// Renders whichever popup is open — see each variant's own `render` for its layout.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         match self {
-            SettingsPopup::Edit(popup) => popup.render(frame, area),
-            SettingsPopup::BaseUnitGuard(popup) => popup.render(frame, area),
+            SettingsPopup::Edit(popup) => popup.render(frame, area, c),
+            SettingsPopup::BaseUnitGuard(popup) => popup.render(frame, area, c),
         }
     }
 }

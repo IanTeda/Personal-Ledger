@@ -44,23 +44,20 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
         Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
     },
 };
 
+use crate::colours::Colours;
 use crate::{
     msg,
     payee::{Payee, PayeeCategoryShare, PayeeFixture, PayeeStore, PayeeTransaction},
     view::{Action, View, ViewId},
 };
 use lib_core::{Money, RowID};
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used for
-/// negative totals and the conflict flag.
-const ACCENT: Color = Color::Red;
 
 /// Width of the left pane (list + record box), per the handoff's own `Layout::horizontal([
 /// Constraint::Length(41), Constraint::Min(0)])`.
@@ -432,7 +429,7 @@ impl View for PayeesView {
         }
     }
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -446,8 +443,8 @@ impl View for PayeesView {
             .spacing(2)
             .split(rows[1]);
 
-        self.render_left_pane(frame, columns[0]);
-        self.render_right_pane(frame, columns[1]);
+        self.render_left_pane(frame, columns[0], c);
+        self.render_right_pane(frame, columns[1], c);
     }
 
     fn id(&self) -> ViewId {
@@ -468,7 +465,7 @@ impl View for PayeesView {
 }
 
 impl PayeesView {
-    fn render_left_pane(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_left_pane(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -480,12 +477,12 @@ impl PayeesView {
             .split(area);
 
         render_list_column_header(frame, rows[0]);
-        self.render_list(frame, rows[1]);
+        self.render_list(frame, rows[1], c);
         render_legend(frame, rows[2]);
         self.render_record(frame, rows[3]);
     }
 
-    fn render_list(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_list(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let split = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -504,7 +501,7 @@ impl PayeesView {
             .split(content_area);
 
         for (payee, row_area) in visible.iter().zip(row_areas.iter()) {
-            self.render_list_row(frame, *row_area, payee);
+            self.render_list_row(frame, *row_area, payee, c);
         }
 
         let total = visible.len();
@@ -517,7 +514,7 @@ impl PayeesView {
         frame.render_stateful_widget(scrollbar, scrollbar_column, &mut scrollbar_state);
     }
 
-    fn render_list_row(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee) {
+    fn render_list_row(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee, c: &Colours) {
         let is_selected = payee.id == self.selected;
         if is_selected {
             frame.render_widget(
@@ -528,7 +525,7 @@ impl PayeesView {
 
         let (flag_area, name_area, match_area, total_area) = list_row_columns(area);
         let dim = Style::default().add_modifier(Modifier::DIM);
-        let accent = Style::default().fg(ACCENT);
+        let accent = c.accent();
 
         if let Some(flag) = self.flag_for(payee) {
             let style = if flag == '!' { accent } else { dim };
@@ -661,7 +658,7 @@ impl PayeesView {
 
     /// The right pane: category mix, then transactions — nothing renders when no Payee is
     /// selected (an all-filtered-out list), mirroring `view::tags`'s own identical fallback.
-    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let Some(payee) = self.selected_payee() else {
             return;
         };
@@ -675,14 +672,14 @@ impl PayeesView {
             ])
             .split(area);
 
-        self.render_category_mix(frame, rows[0], payee);
-        self.render_transactions(frame, rows[2], payee);
+        self.render_category_mix(frame, rows[0], payee, c);
+        self.render_transactions(frame, rows[2], payee, c);
     }
 
     /// The category mix, biggest first, as proportional block-glyph bars — this is the
     /// justification for the default category, per the handoff's own "it is why `c` sits next
     /// to it".
-    fn render_category_mix(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee) {
+    fn render_category_mix(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -722,6 +719,7 @@ impl PayeesView {
                     &row.category_path,
                     row.share,
                     &row.amount,
+                    c,
                 );
             }
             if mix.len() > shown {
@@ -735,6 +733,7 @@ impl PayeesView {
                     &label,
                     rest_share,
                     &Money(rest_amount),
+                    c,
                 );
             }
         }
@@ -744,7 +743,7 @@ impl PayeesView {
 
     /// The Payee's transaction rows, newest first, capped to [`TRANSACTIONS_VISIBLE_ROWS`] —
     /// mirrors `view::accounts::render_ledger`'s own column/heading/footer shape.
-    fn render_transactions(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee) {
+    fn render_transactions(&self, frame: &mut Frame<'_>, area: Rect, payee: &Payee, c: &Colours) {
         let all_rows = self.store.transactions(payee.id);
         let total = all_rows.len();
         let visible_count = all_rows.len().min(TRANSACTIONS_VISIBLE_ROWS);
@@ -775,7 +774,7 @@ impl PayeesView {
             .constraints(vec![Constraint::Length(1); row_count])
             .split(sections[3]);
         for (row, row_area) in visible.iter().zip(row_areas.iter()) {
-            render_txn_row(frame, *row_area, row);
+            render_txn_row(frame, *row_area, row, c);
         }
 
         let dim = Style::default().add_modifier(Modifier::DIM);
@@ -902,7 +901,14 @@ fn render_section_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &
 /// cells, `▌` a half-cell remainder — the handoff's own two glyphs, giving the bar half-cell
 /// resolution rather than just rounding to the nearest whole cell) plus its percentage, and the
 /// right-aligned signed amount.
-fn render_mix_bar(frame: &mut Frame<'_>, area: Rect, label: &str, share: f64, amount: &Money) {
+fn render_mix_bar(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    label: &str,
+    share: f64,
+    amount: &Money,
+    c: &Colours,
+) {
     let pct = (share * 100.0).round() as i64;
     let scaled = share * BAR_MAX_CELLS as f64;
     let full_cells = scaled.floor() as usize;
@@ -927,7 +933,7 @@ fn render_mix_bar(frame: &mut Frame<'_>, area: Rect, label: &str, share: f64, am
     frame.render_widget(Paragraph::new(format!("{bar} {pct}%")), columns[1]);
     let is_negative = amount.0 < 0;
     let amount_style = if is_negative {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -1010,7 +1016,7 @@ fn render_txn_column_header(frame: &mut Frame<'_>, area: Rect) {
     );
 }
 
-fn render_txn_row(frame: &mut Frame<'_>, area: Rect, row: &PayeeTransaction) {
+fn render_txn_row(frame: &mut Frame<'_>, area: Rect, row: &PayeeTransaction, c: &Colours) {
     let (glyph_area, date_area, category_area, amount_area) = txn_row_columns(area);
 
     frame.render_widget(Paragraph::new(row.status.glyph().to_string()), glyph_area);
@@ -1019,7 +1025,7 @@ fn render_txn_row(frame: &mut Frame<'_>, area: Rect, row: &PayeeTransaction) {
 
     let is_negative = row.amount.0 < 0;
     let amount_style = if is_negative {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -1048,11 +1054,11 @@ mod tests {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    fn render(view: &PayeesView) -> String {
+    fn render(view: &PayeesView, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("rendering the Payees view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1084,7 +1090,8 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&PayeesView::new());
+        let c = &Colours::default();
+        render(&PayeesView::new(), c);
     }
 
     #[test]
@@ -1257,16 +1264,18 @@ mod tests {
 
     #[test]
     fn negative_totals_render_with_a_minus_sign() {
+        let c = &Colours::default();
         let view = PayeesView::new();
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("\u{2212}42,180.00"));
     }
 
     #[test]
     fn record_box_shows_the_selections_fact_line_and_five_fields() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.selected = find_id(&view, "Woolworths");
-        let text = render(&view);
+        let text = render(&view, c);
 
         assert!(text.contains("active"));
         assert!(text.contains("184 txns"));
@@ -1283,26 +1292,28 @@ mod tests {
 
     #[test]
     fn record_box_shows_not_set_for_a_payee_with_no_website_or_default() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.selected = find_id(&view, "Telstra");
-        let text = render(&view);
+        let text = render(&view, c);
         // Both `website` and `default` should fall back to "not set".
         assert!(text.matches("not set").count() >= 2);
     }
 
     #[test]
     fn record_box_updates_on_j_and_k() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.selected = find_id(&view, "Sunrise Payroll");
-        let before = render(&view);
+        let before = render(&view, c);
         view.handle_key(key(KeyCode::Char('j')));
-        let after = render(&view);
+        let after = render(&view, c);
         assert_ne!(before, after);
     }
 
     /// Renders a single mix bar into an isolated buffer and counts its glyphs — mirrors
     /// `view::tags`'s own `render_bar` test helper.
-    fn mix_bar_glyphs(share: f64) -> (usize, usize) {
+    fn mix_bar_glyphs(share: f64, c: &Colours) -> (usize, usize) {
         // Wide enough that the bar column itself (`Min(0)`, after the label and amount
         // columns) never clips a full 16-cell bar.
         let backend = TestBackend::new(60, 1);
@@ -1315,6 +1326,7 @@ mod tests {
                     "test",
                     share,
                     &Money(BigDecimal::from(1)),
+                    c,
                 )
             })
             .expect("rendering a bar row should not error");
@@ -1328,33 +1340,36 @@ mod tests {
 
     #[test]
     fn mix_bar_is_proportional_and_capped_at_bar_max_cells() {
-        assert_eq!(mix_bar_glyphs(1.0), (BAR_MAX_CELLS, 0));
-        assert_eq!(mix_bar_glyphs(0.0), (0, 0));
+        let c = &Colours::default();
+        assert_eq!(mix_bar_glyphs(1.0, c), (BAR_MAX_CELLS, 0));
+        assert_eq!(mix_bar_glyphs(0.0, c), (0, 0));
         // 0.5 * 16 = 8.0 exactly — no remainder, so no half-cell glyph.
-        assert_eq!(mix_bar_glyphs(0.5), (8, 0));
+        assert_eq!(mix_bar_glyphs(0.5, c), (8, 0));
         // 0.84 * 16 = 13.44 — 13 full cells, and the 0.44 remainder is under half a cell.
-        assert_eq!(mix_bar_glyphs(0.84), (13, 0));
+        assert_eq!(mix_bar_glyphs(0.84, c), (13, 0));
         // 0.55 * 16 = 8.8 — 8 full cells, and the 0.8 remainder rounds up to a half-cell glyph.
-        assert_eq!(mix_bar_glyphs(0.55), (8, 1));
+        assert_eq!(mix_bar_glyphs(0.55, c), (8, 1));
     }
 
     #[test]
     fn category_mix_heading_shows_the_category_count() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.selected = find_id(&view, "Woolworths");
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("3 categories"));
     }
 
     #[test]
     fn woolworths_mix_agrees_with_its_stored_default() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.selected = find_id(&view, "Woolworths");
         let mix = view.store.category_mix(view.selected);
         let top = mix.first().expect("woolworths has a mix");
         let expected_pct = format!("{}%", (top.share * 100.0).round() as i64);
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("default follows the mix"));
         assert!(text.contains(&expected_pct));
         assert!(text.contains("food/groceries"));
@@ -1362,23 +1377,26 @@ mod tests {
 
     #[test]
     fn bunnings_warehouse_mix_disagrees_with_its_stored_default() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.selected = find_id(&view, "Bunnings Warehouse");
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("disagrees with the mix"));
     }
 
     #[test]
     fn coles_central_has_no_default_and_its_mix_is_stated_as_spread() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.selected = find_id(&view, "Coles Central");
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("no default set"));
         assert!(text.contains("mix spans"));
     }
 
     #[test]
     fn transactions_show_a_status_glyph_and_a_legend() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.selected = find_id(&view, "Woolworths");
         let rows = view.store.transactions(view.selected);
@@ -1387,15 +1405,16 @@ mod tests {
             assert!(row.status.glyph() == '○' || row.status.glyph() == '✓');
         }
 
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("○ open · ✓ reconciled"));
     }
 
     #[test]
     fn transactions_span_shows_count_and_date_range() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.selected = find_id(&view, "Woolworths");
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("184 txns"));
         assert!(text.contains("oct 2024"));
         assert!(text.contains("sep 2026"));
@@ -1403,17 +1422,19 @@ mod tests {
 
     #[test]
     fn footer_states_the_screens_own_misreading_warning() {
+        let c = &Colours::default();
         let view = PayeesView::new();
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("payees are created by typing them on a transaction"));
     }
 
     #[test]
     fn enter_shows_a_not_yet_built_message_and_any_other_key_clears_it() {
+        let c = &Colours::default();
         let mut view = PayeesView::new();
         view.handle_key(key(KeyCode::Enter));
         assert!(view.transactions_not_yet_built);
-        let text = render(&view);
+        let text = render(&view, c);
         assert!(text.contains("opening filtered Transactions — not yet built"));
 
         view.handle_key(key(KeyCode::Char('j')));

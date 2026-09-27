@@ -20,7 +20,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{
         Block, Borders, Padding, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
@@ -29,12 +29,9 @@ use ratatui::{
 
 use lib_core::DateStyle;
 
+use crate::colours::Colours;
 use crate::msg;
 use crate::view::{Action, View, ViewId};
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for
-/// the override dot, the "3 overridden" figure and a setting's `consequence` warning.
-const ACCENT: Color = Color::Red;
 
 /// Width of the left pane — widened past §4a's own "left 28 cols fixed" terminal geometry to
 /// match `view::units`'s `LEFT_COLUMN_WIDTH`, so the two views' left columns share the same
@@ -114,7 +111,7 @@ impl View for SettingsView {
 
     fn update(&mut self, _action: &Action) {}
 
-    fn view(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(1), Constraint::Min(0)])
@@ -128,8 +125,8 @@ impl View for SettingsView {
             .spacing(2)
             .split(rows[1]);
 
-        render_left_pane(frame, columns[0]);
-        render_right_pane(frame, columns[1]);
+        render_left_pane(frame, columns[0], c);
+        render_right_pane(frame, columns[1], c);
     }
 
     fn id(&self) -> ViewId {
@@ -147,7 +144,7 @@ impl View for SettingsView {
 /// reset block — pinning "where values live" and reset to the bottom of the pane, the same
 /// "extra height grows the element above, not a fixed-height one" technique `view::units` uses
 /// for its own summary box.
-fn render_left_pane(frame: &mut Frame<'_>, area: Rect) {
+fn render_left_pane(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -160,7 +157,7 @@ fn render_left_pane(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     render_groups(frame, rows[0]);
-    render_where_values_live(frame, rows[2]);
+    render_where_values_live(frame, rows[2], c);
     render_reset(frame, rows[4]);
 }
 
@@ -281,7 +278,7 @@ struct WhereValuesFact {
 /// worked example verbatim — the model stated on screen, because a user cannot otherwise tell
 /// where a value came from. The border echoes `view::units`'s summary box, so both left-column
 /// boxes read as the same kind of element.
-fn render_where_values_live(frame: &mut Frame<'_>, area: Rect) {
+fn render_where_values_live(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -325,7 +322,7 @@ fn render_where_values_live(frame: &mut Frame<'_>, area: Rect) {
         Line::from(Span::styled("ledger.db · table", dim)),
         Line::from("settings"),
     ];
-    lines.extend(facts.iter().map(where_values_fact_line));
+    lines.extend(facts.iter().map(|fact| where_values_fact_line(fact, c)));
     // The rule above the bootstrap line is kept even under the tighter height budget the
     // border leaves — it separates the mutable `settings` store from the read-only bootstrap
     // file, "different things [that] must not read as one list" (§4a) — but the bootstrap
@@ -342,10 +339,10 @@ fn render_where_values_live(frame: &mut Frame<'_>, area: Rect) {
 
 /// One `label   value` line, the label padded to `WHERE_VALUES_LABEL_WIDTH` and dimmed; the
 /// value renders in `ACCENT` when `fact.accent` is set (the `overrides` row).
-fn where_values_fact_line(fact: &WhereValuesFact) -> Line<'_> {
+fn where_values_fact_line<'a>(fact: &'a WhereValuesFact, c: &Colours) -> Line<'a> {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let value_style = if fact.accent {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -450,7 +447,7 @@ fn rule(width: u16) -> Line<'static> {
 /// that 16, not for their own sake; touching `SELECTED_SECTION_HEIGHT`, `SETTINGS_TABLE_HEIGHT`
 /// or `WHERE_VALUES_SECTION_HEIGHT` will throw the alignment off and need a matching change
 /// here (or in `render_left_pane`) to restore it.
-fn render_right_pane(frame: &mut Frame<'_>, area: Rect) {
+fn render_right_pane(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -464,8 +461,8 @@ fn render_right_pane(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    render_settings_list(frame, rows[0]);
-    render_selected(frame, rows[2]);
+    render_settings_list(frame, rows[0], c);
+    render_selected(frame, rows[2], c);
     render_settings_table(frame, rows[4]);
     render_command_hint(frame, rows[6]);
 }
@@ -571,7 +568,7 @@ fn settings() -> Vec<SettingRow> {
 
 /// The settings list: a "SETTINGS" heading tagged with the focused group and its count, over
 /// the gutter/`SETTING`/`VALUE`/`NOTE` column set, per §4a.
-fn render_settings_list(frame: &mut Frame<'_>, area: Rect) {
+fn render_settings_list(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -590,7 +587,7 @@ fn render_settings_list(frame: &mut Frame<'_>, area: Rect) {
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
     render_settings_column_header(frame, sections[2]);
-    render_setting_rows(frame, sections[3]);
+    render_setting_rows(frame, sections[3], c);
 }
 
 /// The gutter/`SETTING`/`VALUE`/`NOTE` column header row, dim — the gutter carries no label.
@@ -611,7 +608,7 @@ fn render_settings_column_header(frame: &mut Frame<'_>, area: Rect) {
 
 /// One row per `general` setting, capped to however many rows actually fit `area` — the same
 /// defensive cap `view::units`'s own row renderers use.
-fn render_setting_rows(frame: &mut Frame<'_>, area: Rect) {
+fn render_setting_rows(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let settings = settings();
     let visible = settings.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
@@ -622,13 +619,13 @@ fn render_setting_rows(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     for (setting, row) in settings.iter().zip(rows.iter()) {
-        render_setting_row(frame, *row, setting);
+        render_setting_row(frame, *row, setting, c);
     }
 }
 
 /// One setting row: the override gutter, `SETTING`, `VALUE` (dim unless selected) and `NOTE`
 /// (always dim). The selected row (`base unit`) reverses full width.
-fn render_setting_row(frame: &mut Frame<'_>, area: Rect, setting: &SettingRow) {
+fn render_setting_row(frame: &mut Frame<'_>, area: Rect, setting: &SettingRow, c: &Colours) {
     if setting.selected {
         frame.render_widget(
             Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
@@ -645,10 +642,7 @@ fn render_setting_row(frame: &mut Frame<'_>, area: Rect, setting: &SettingRow) {
 
     let columns = setting_row_columns(area);
     if setting.overridden {
-        frame.render_widget(
-            Paragraph::new(Span::styled("·", Style::default().fg(ACCENT))),
-            columns[0],
-        );
+        frame.render_widget(Paragraph::new(Span::styled("·", c.accent())), columns[0]);
     }
     frame.render_widget(Paragraph::new(setting.setting.as_str()), columns[1]);
     frame.render_widget(
@@ -715,7 +709,7 @@ const SELECTED_FACTS: &[SelectedFact] = &[
 
 /// The "selected" box: a heading tagged with the highlighted setting, the `explain` prose,
 /// then the ruled facts block — `default` / `accepts` / `changing it`, per §4a.
-fn render_selected(frame: &mut Frame<'_>, area: Rect) {
+fn render_selected(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -739,16 +733,16 @@ fn render_selected(frame: &mut Frame<'_>, area: Rect) {
         .constraints(row_constraints)
         .split(sections[4]);
     for (fact, row) in SELECTED_FACTS.iter().zip(rows.iter()) {
-        frame.render_widget(selected_fact_line(fact), *row);
+        frame.render_widget(selected_fact_line(fact, c), *row);
     }
 }
 
 /// One `label   value` line, the label padded to `SELECTED_FACT_LABEL_WIDTH` and dimmed; the
 /// value renders in `ACCENT` when `fact.accent` is set (`changing it`).
-fn selected_fact_line(fact: &SelectedFact) -> Paragraph<'static> {
+fn selected_fact_line(fact: &SelectedFact, c: &Colours) -> Paragraph<'static> {
     let dim = Style::default().add_modifier(Modifier::DIM);
     let value_style = if fact.accent {
-        Style::default().fg(ACCENT)
+        c.accent()
     } else {
         Style::default()
     };
@@ -904,11 +898,11 @@ mod tests {
         assert_eq!(action, None);
     }
 
-    fn render(view: &SettingsView) -> String {
+    fn render(view: &SettingsView, c: &Colours) -> String {
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| view.view(frame, frame.area()))
+            .draw(|frame| view.view(frame, frame.area(), c))
             .expect("drawing the settings view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -924,7 +918,8 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&SettingsView::new());
+        let c = &Colours::default();
+        render(&SettingsView::new(), c);
     }
 
     #[test]
@@ -936,7 +931,8 @@ mod tests {
 
     #[test]
     fn shows_every_pane_heading() {
-        let text = render(&SettingsView::new());
+        let c = &Colours::default();
+        let text = render(&SettingsView::new(), c);
 
         assert!(text.contains("GROUPS"), "groups heading missing");
         assert!(
@@ -960,8 +956,9 @@ mod tests {
 
     #[test]
     fn the_locale_row_shows_the_effective_locale_and_its_source_read_only() {
+        let c = &Colours::default();
         crate::locale::init_for_tests();
-        let text = render(&SettingsView::new());
+        let text = render(&SettingsView::new(), c);
         assert!(text.contains("locale"), "locale row missing");
         assert!(text.contains("en-US"), "effective Locale missing");
         assert!(text.contains("the default"), "source missing");
@@ -974,8 +971,9 @@ mod tests {
 
     #[test]
     fn shows_every_group_and_every_general_setting() {
+        let c = &Colours::default();
         crate::locale::init_for_tests();
-        let text = render(&SettingsView::new());
+        let text = render(&SettingsView::new(), c);
 
         for group in GROUPS {
             assert!(text.contains(group.label), "{} group missing", group.label);
@@ -996,10 +994,11 @@ mod tests {
 
     #[test]
     fn general_group_row_reverses_and_others_do_not() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| SettingsView::new().view(frame, frame.area()))
+            .draw(|frame| SettingsView::new().view(frame, frame.area(), c))
             .expect("drawing the settings view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1030,10 +1029,11 @@ mod tests {
 
     #[test]
     fn base_unit_row_reverses_and_shows_the_override_dot() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| SettingsView::new().view(frame, frame.area()))
+            .draw(|frame| SettingsView::new().view(frame, frame.area(), c))
             .expect("drawing the settings view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1053,7 +1053,8 @@ mod tests {
                 .any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
         };
         let row_has_accent = |y: u16| -> bool {
-            (LEFT_COLUMN_WIDTH + 2..buffer.area.width).any(|x| buffer[(x, y)].fg == ACCENT)
+            (LEFT_COLUMN_WIDTH + 2..buffer.area.width)
+                .any(|x| buffer[(x, y)].fg == Colours::default().accent_colour())
         };
 
         let base_unit_row = row_containing("base unit");
@@ -1079,7 +1080,8 @@ mod tests {
 
     #[test]
     fn selected_box_shows_explain_and_facts() {
-        let text = render(&SettingsView::new());
+        let c = &Colours::default();
+        let text = render(&SettingsView::new(), c);
 
         assert!(text.contains(SELECTED_EXPLAIN), "explain prose missing");
         for fact in SELECTED_FACTS {
@@ -1090,7 +1092,8 @@ mod tests {
 
     #[test]
     fn settings_table_shows_the_truncation_tag_and_its_scrollbar() {
-        let text = render(&SettingsView::new());
+        let c = &Colours::default();
+        let text = render(&SettingsView::new(), c);
 
         assert!(
             text.contains("3 rows · 2 shown"),
@@ -1112,18 +1115,20 @@ mod tests {
 
     #[test]
     fn shows_the_command_hint_row() {
-        let text = render(&SettingsView::new());
+        let c = &Colours::default();
+        let text = render(&SettingsView::new(), c);
 
         assert!(text.contains(COMMAND_HINT), "command hint row missing");
     }
 
     #[test]
     fn where_values_live_box_is_bordered_and_shows_its_full_content_at_the_96x30_minimum() {
+        let c = &Colours::default();
         // Regression guard: adding the border around this box costs 2 rows against the view's
         // 96x30-cell minimum, which previously clipped the last lines of its content
         // (`WHERE_VALUES_SECTION_HEIGHT` didn't yet account for the border) with no test
         // catching it, since none of these strings were asserted on before.
-        let text = render(&SettingsView::new());
+        let text = render(&SettingsView::new(), c);
 
         assert!(text.contains(['┌', '┐', '└', '┘']), "box border missing");
         assert!(text.contains("ledger.db · table"), "table line missing");
@@ -1146,6 +1151,7 @@ mod tests {
 
     #[test]
     fn extra_terminal_height_pushes_where_values_live_and_reset_toward_the_bottom() {
+        let c = &Colours::default();
         // Taller than the 96x30 minimum: the gap between the groups list and "where values
         // live" should grow to absorb the extra height, pinning "where values live" and reset
         // to the bottom of the pane — this view's own `render()` (a fixed 96x30) can't tell
@@ -1154,7 +1160,7 @@ mod tests {
         let backend = TestBackend::new(96, height);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| SettingsView::new().view(frame, frame.area()))
+            .draw(|frame| SettingsView::new().view(frame, frame.area(), c))
             .expect("drawing the settings view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1191,6 +1197,7 @@ mod tests {
 
     #[test]
     fn extra_terminal_height_pushes_selected_and_the_command_hint_toward_the_bottom() {
+        let c = &Colours::default();
         // The right pane's own version of the previous test: the gap above "selected" should
         // grow on a taller terminal, pinning "selected", the settings table and the command
         // hint row to the bottom of the pane instead of leaving them just below the settings
@@ -1199,7 +1206,7 @@ mod tests {
         let backend = TestBackend::new(96, height);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| SettingsView::new().view(frame, frame.area()))
+            .draw(|frame| SettingsView::new().view(frame, frame.area(), c))
             .expect("drawing the settings view should not error");
 
         let buffer = terminal.backend().buffer();
@@ -1237,6 +1244,7 @@ mod tests {
 
     #[test]
     fn where_values_live_and_selected_headings_line_up_on_a_taller_terminal() {
+        let c = &Colours::default();
         // Both panes are pinned to the bottom of the same-height column, so their headings
         // only land on the same row because the fixed total below each one (its own section
         // plus the spacers down to the pane's bottom) is equal — see `render_right_pane`'s own
@@ -1248,7 +1256,7 @@ mod tests {
         let backend = TestBackend::new(96, height);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| SettingsView::new().view(frame, frame.area()))
+            .draw(|frame| SettingsView::new().view(frame, frame.area(), c))
             .expect("drawing the settings view should not error");
 
         let buffer = terminal.backend().buffer();

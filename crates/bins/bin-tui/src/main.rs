@@ -10,6 +10,7 @@
 
 mod account;
 mod category;
+mod colours;
 mod db;
 mod error;
 mod event;
@@ -61,7 +62,14 @@ async fn main() -> Result<()> {
     let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
     locale::init(requested_locale, locale_source);
 
+    // Colour depth detection lands with #329; until then the TUI assumes truecolor.
+    let colours = colours::Colours::new(
+        config.theme_config().overrides.clone(),
+        config.personal_ledger_config().terminal_colours(),
+        colours::ColourDepth::default(),
+    );
     Shell::with_keybindings(config.keybindings_config().clone())
+        .with_colours(colours)
         .run()
         .await?;
 

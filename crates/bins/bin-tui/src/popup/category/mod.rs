@@ -17,6 +17,7 @@ pub mod path;
 use ratatui::{Frame, layout::Rect};
 
 use crate::category::CategoryStore;
+use crate::colours::Colours;
 
 /// The one Category-domain popup `Shell` can have open at a time — mirrors
 /// `crate::popup::unit::UnitPopup`'s own single-`Option`-of-an-enum shape.
@@ -29,11 +30,17 @@ pub enum CategoryPopup {
 impl CategoryPopup {
     /// Renders whichever form is open, against the live Category tree `store` — see
     /// `move_popup::MovePopup::render` for why this needs read access to it.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, store: &dyn CategoryStore) {
+    pub fn render(
+        &self,
+        frame: &mut Frame<'_>,
+        area: Rect,
+        store: &dyn CategoryStore,
+        c: &Colours,
+    ) {
         match self {
-            CategoryPopup::Move(popup) => popup.render(frame, area, store),
-            CategoryPopup::New(popup) => popup.render(frame, area, store),
-            CategoryPopup::Edit(popup) => popup.render(frame, area, store),
+            CategoryPopup::Move(popup) => popup.render(frame, area, store, c),
+            CategoryPopup::New(popup) => popup.render(frame, area, store, c),
+            CategoryPopup::Edit(popup) => popup.render(frame, area, store, c),
         }
     }
 }

@@ -9,17 +9,14 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-
-/// The theme's one accent colour, per `docs/ux/tui/README.md`'s style table — used here for the
-/// input cursor and the `preview` figure.
-const ACCENT: Color = Color::Red;
 
 /// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes. §4b itself calls for an in-place
 /// (non-floating) editor rather than a sized dialog, so this borrows `popup::unit`'s own ~88%
@@ -60,7 +57,7 @@ impl EditSettingPopup {
 
     /// Renders the floating overlay, centred and sized to its fixed field list, within `area`
     /// (the full terminal area, per `popup::unit::edit`'s own convention).
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let popup = popup_rect(area);
 
         frame.render_widget(Clear, popup);
@@ -95,14 +92,14 @@ impl EditSettingPopup {
             "",
             Line::from("how a negative amount prints everywhere"),
         );
-        render_value_box(frame, rows[3]);
-        render_preview(frame, rows[4]);
+        render_value_box(frame, rows[3], c);
+        render_preview(frame, rows[4], c);
         render_current(frame, rows[5]);
         render_applies_to_heading(frame, rows[6]);
         render_applies_to_lines(frame, rows[7]);
         // rows[8] is left blank — breathing space above the on-accept box.
         render_on_accept_box(frame, rows[9]);
-        render_typed_command(frame, rows[10]);
+        render_typed_command(frame, rows[10], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[11]);
         render_footer_hints(frame, rows[12]);
     }
@@ -144,8 +141,8 @@ fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'sta
 /// The `value` field's focused box — an accent-bordered `Block` around the enum's segmented
 /// row (the selected variant reversed, per §4b's "the selection is a reversed block") and its
 /// `←→` hint, mirroring `popup::unit::edit`'s own accent-bordered precision warning box.
-fn render_value_box(frame: &mut Frame<'_>, area: Rect) {
-    let accent = Style::default().fg(ACCENT);
+fn render_value_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let accent = c.accent();
     let block = Block::bordered().border_style(accent);
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -177,8 +174,8 @@ fn render_value_box(frame: &mut Frame<'_>, area: Rect) {
 /// The `preview` row: a real figure in the candidate format, per §4b's own "a real figure from
 /// the user's data ... not lorem" — styled `ACCENT`, matching the design's own `← accent`
 /// marker on this row.
-fn render_preview(frame: &mut Frame<'_>, area: Rect) {
-    let accent = Style::default().fg(ACCENT);
+fn render_preview(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let accent = c.accent();
     render_field(
         frame,
         area,
@@ -290,8 +287,8 @@ fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect) {
 
 /// The typed-command echo — §4b's own "the command line echoes the equivalent command", with
 /// an accent cursor after the value and the dim "same edit, typed" note.
-fn render_typed_command(frame: &mut Frame<'_>, area: Rect) {
-    let cursor = Style::default().fg(ACCENT);
+fn render_typed_command(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let cursor = c.accent();
     let dim = Style::default().add_modifier(Modifier::DIM);
     frame.render_widget(
         Paragraph::new(Line::from(vec![
@@ -358,11 +355,11 @@ mod tests {
 
     use super::*;
 
-    fn render(popup: &EditSettingPopup) -> String {
+    fn render(popup: &EditSettingPopup, c: &Colours) -> String {
         let backend = TestBackend::new(96, 34);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| popup.render(frame, frame.area()))
+            .draw(|frame| popup.render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -378,19 +375,22 @@ mod tests {
 
     #[test]
     fn renders_without_panicking() {
-        render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        render(&EditSettingPopup::new(), c);
     }
 
     #[test]
     fn shows_the_title_and_key() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         assert!(text.contains("negatives"), "title missing");
         assert!(text.contains("general.negatives"), "dotted key missing");
     }
 
     #[test]
     fn shows_the_value_choices_and_the_choose_hint() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         for variant in ["minus", "brackets", "trailing"] {
             assert!(text.contains(variant), "{variant} option missing");
         }
@@ -399,10 +399,11 @@ mod tests {
 
     #[test]
     fn the_selected_variant_renders_reversed() {
+        let c = &Colours::default();
         let backend = TestBackend::new(96, 34);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
-            .draw(|frame| EditSettingPopup::new().render(frame, frame.area()))
+            .draw(|frame| EditSettingPopup::new().render(frame, frame.area(), c))
             .expect("rendering the popup should not error");
 
         let buffer = terminal.backend().buffer();
@@ -429,7 +430,8 @@ mod tests {
 
     #[test]
     fn shows_preview_current_and_applies_to() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         assert!(text.contains("preview"), "preview label missing");
         assert!(text.contains("−320 334.10"), "preview value missing");
         assert!(text.contains("current"), "current label missing");
@@ -446,7 +448,8 @@ mod tests {
 
     #[test]
     fn shows_the_on_accept_write_and_drop_override_hint() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         assert!(text.contains("on accept"), "on accept label missing");
         assert!(
             text.contains("upsert settings row"),
@@ -464,7 +467,8 @@ mod tests {
 
     #[test]
     fn shows_the_typed_command_echo() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         assert!(
             text.contains(":set negatives minus"),
             "typed command echo missing"
@@ -477,7 +481,8 @@ mod tests {
 
     #[test]
     fn shows_the_footer_hints() {
-        let text = render(&EditSettingPopup::new());
+        let c = &Colours::default();
+        let text = render(&EditSettingPopup::new(), c);
         for key in ["←→", "^s", "esc"] {
             assert!(text.contains(key), "{key} hint missing");
         }

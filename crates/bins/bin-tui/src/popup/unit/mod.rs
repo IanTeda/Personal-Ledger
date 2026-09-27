@@ -7,6 +7,7 @@ pub mod delete;
 pub mod edit;
 pub mod new;
 
+use crate::colours::Colours;
 use ratatui::{Frame, layout::Rect};
 
 /// The one unit-domain popup `Shell` can have open at a time. Only one form is ever up, so
@@ -21,11 +22,11 @@ pub enum UnitPopup {
 
 impl UnitPopup {
     /// Renders whichever form is open — see each variant's own `render` for its layout.
-    pub fn render(&self, frame: &mut Frame<'_>, area: Rect) {
+    pub fn render(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         match self {
-            UnitPopup::New(popup) => popup.render(frame, area),
-            UnitPopup::Edit(popup) => popup.render(frame, area),
-            UnitPopup::Delete(popup) => popup.render(frame, area),
+            UnitPopup::New(popup) => popup.render(frame, area, c),
+            UnitPopup::Edit(popup) => popup.render(frame, area, c),
+            UnitPopup::Delete(popup) => popup.render(frame, area, c),
         }
     }
 }
