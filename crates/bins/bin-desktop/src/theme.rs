@@ -8,43 +8,14 @@
 //! encode, and adding a `RADIUS` constant would invite someone to eventually pass it a
 //! non-zero value.
 
-use gpui::{FontWeight, Pixels, Rgba, px};
-
-/// Same conversion `gpui::rgb`/`gpui::rgba` do, redeclared as `const fn` so the palette below
-/// can be real compile-time constants -- `gpui`'s own versions aren't `const fn`.
-const fn rgb(hex: u32) -> Rgba {
-    let bytes = hex.to_be_bytes();
-    Rgba {
-        r: bytes[1] as f32 / 255.0,
-        g: bytes[2] as f32 / 255.0,
-        b: bytes[3] as f32 / 255.0,
-        a: 1.0,
-    }
-}
-
-/// See [`rgb`]. `hex` is packed `0xRRGGBBAA`, matching `gpui::rgba`'s own convention.
-const fn rgba(hex: u32) -> Rgba {
-    let bytes = hex.to_be_bytes();
-    Rgba {
-        r: bytes[0] as f32 / 255.0,
-        g: bytes[1] as f32 / 255.0,
-        b: bytes[2] as f32 / 255.0,
-        a: bytes[3] as f32 / 255.0,
-    }
-}
+use gpui::{FontWeight, Pixels, px};
 
 /// The resolved Colour Theme's colours, one accessor per Colour Role and calculated colour
 /// (`docs/colour-themes-design.md`), read from the `crate::colours::Colours` Global.
-///
-/// The `SCREAMING_CASE` consts are the fixed Modernist light tokens this module held before
-/// Colour Themes, kept as deprecated aliases so unconverted files still compile while the
-/// per-domain sweeps move them onto the accessors (strangler). Each file still using them
-/// carries its own `#![expect(deprecated)]`, which fails once the file is clean.
 pub mod color {
     use gpui::{App, Rgba};
     use lib_colour_theme::ResolvedColours;
 
-    use super::{rgb, rgba};
     use crate::colours::{resolved, to_gpui};
 
     macro_rules! accessors {
@@ -115,94 +86,6 @@ pub mod color {
     pub fn chart_series(index: usize, cx: &App) -> Rgba {
         to_gpui(resolved(cx).chart_series_colour(index))
     }
-
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const GROUND: Rgba = rgb(0xf3f2f2);
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const CHROME: Rgba = rgb(0xeae9e9);
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const INSET_TRACK: Rgba = rgb(0xe2e0df);
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const INK: Rgba = rgb(0x201e1d);
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const INK_SECONDARY: Rgba = rgb(0x605d5d);
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const INK_TERTIARY: Rgba = rgb(0x9b9797);
-    /// Ink on dark (inverted rows, e.g. a selected rail row).
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const INK_ON_DARK: Rgba = rgb(0xf3f2f2);
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const INK_ON_DARK_SECONDARY: Rgba = rgb(0xbab6b6);
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const INK_ON_DARK_TERTIARY: Rgba = rgb(0xd7d3d3);
-    /// Hairline between rows within a rail.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const HAIRLINE: Rgba = rgb(0xd7d3d3);
-    /// The 2px structural rule between shell bands/columns: `rgba(32,30,29,.38)`.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const STRUCTURAL_RULE: Rgba = rgba(0x201e1d61);
-    /// `Border`: `rgba(32,30,29,.30)` -- an unfocused input/button border (the handoffs'
-    /// design-token tables list this role separately from [`Self::STRUCTURAL_RULE`]'s `.38`,
-    /// even though earlier code duplicated its value as an inline `gpui::rgba(0x201e1d4d)`
-    /// rather than a shared constant -- see `crate::explorer`'s own header/Cancel button).
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const BORDER: Rgba = rgba(0x201e1d4d);
-    /// The in-rail group divider: `rgba(32,30,29,.20)`.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const RAIL_DIVIDER: Rgba = rgba(0x201e1d33);
-    /// Row/result hover tint: `rgba(32,30,29,.06)`.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const HOVER_TINT: Rgba = rgba(0x201e1d0f);
-    /// The shared design system's generic `--color-divider` (`styles.css`):
-    /// `color-mix(in srgb, #201e1d 40%, transparent)`, i.e. `rgba(32,30,29,.40)`. Used by the
-    /// `.seg`/`.seg-opt` segmented-control classes (`crate::view::settings::add_unit_dialog::segmented_control`,
-    /// reused by `display`) -- distinct from [`Self::BORDER`]'s `.30`, which is the value every inline-styled
-    /// `Input`/`select` border in the 2a mockup uses instead. Coincides numerically with
-    /// [`Self::DIALOG_SHADOW`]'s own `.40` alpha; named separately since the two mean
-    /// different things.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const DIVIDER: Rgba = rgba(0x201e1d66);
-
-    /// Reserved for the primary action, the Reconcile badge, over-budget state, the block
-    /// caret, matched substrings, the focus ring, the COMMAND mode badge, and a segmented
-    /// control's selected option (`.seg-opt:has(input:checked)` in `styles.css`) -- never an
-    /// unconditional background field in the shell otherwise (the handoff's "Accent
-    /// discipline").
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const ACCENT: Rgba = rgb(0xec3013);
-    /// Accent for a matched substring on a dark (selected) row.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const ACCENT_ON_DARK: Rgba = rgb(0xff9783);
-    /// `ACCENT` doesn't clear 4.5:1 contrast on `GROUND` at body size and below -- use this
-    /// instead for accent-colored *text* at 13px or smaller.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const ACCENT_TEXT: Rgba = rgb(0xae1800);
-
-    /// The command palette's own drop shadow: `0 12px 32px rgba(45,43,43,.30)` -- the handoff's
-    /// "Shadows" section names this as the shell's one exception to "nothing else elevates," so
-    /// it earns its own token rather than reusing `STRUCTURAL_RULE`'s different ink/alpha.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const PALETTE_SHADOW: Rgba = rgba(0x2d2b2b4d);
-    /// The "1e" file explorer dialog's own drop shadow: `0 16px 48px rgba(32,30,29,.40)`, named
-    /// inline in the handoff's mockup markup rather than its "Shadows" table (that table
-    /// predates the file explorer) -- a second named exception alongside `PALETTE_SHADOW`.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const DIALOG_SHADOW: Rgba = rgba(0x201e1d66);
-    /// `Positive` (`docs/ux/desktop/Settings/README.md`'s Design Tokens table): the Sync
-    /// server section's own "connected" status dot and text -- the first use of this role.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const POSITIVE: Rgba = rgb(0x2ecc71);
-    /// `.tag-accent`'s own background (`docs/ux/desktop/Shell & Navigation/styles.css`'s
-    /// `--color-accent-100`) -- the Units section's own "base" flag pill (issue #189). `.tag`'s
-    /// own `border-radius` is deliberately not carried over here: this crate's "Radius 0
-    /// everywhere" rule (this module's own doc) has no other exception for a general rounded
-    /// pill shape, only the one already-justified circular status dot, so the flag renders
-    /// square rather than reproducing the shared library's own rounded corner.
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const TAG_ACCENT_BG: Rgba = rgb(0xfff2ef);
-    /// `.tag-accent`'s own text colour (`--color-accent-800`).
-    #[deprecated(note = "read the resolved Colour Theme through this module's accessor functions")]
-    pub const TAG_ACCENT_TEXT: Rgba = rgb(0x7c1405);
 }
 
 /// Type scale. Archivo throughout, bundled offline (see `crate::main`'s `add_fonts` call) --

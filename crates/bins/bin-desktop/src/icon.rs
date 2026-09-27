@@ -60,7 +60,7 @@ impl DesktopIcon {
     }
 
     /// A `gpui_component::Icon` ready to size/color and render, e.g.
-    /// `icon.icon().text_color(color::INK).with_size(px(14.0))`.
+    /// `icon.icon().text_color(color::foreground(cx)).with_size(px(14.0))`.
     pub fn icon(self) -> Icon {
         Icon::empty().path(self.path())
     }
