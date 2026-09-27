@@ -4,7 +4,7 @@ The developer-facing design for Colour Themes in the Desktop and TUI Clients. Th
 
 ## Status
 
-In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md)) the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)) and what is not part of a Colour Theme ([#304](https://github.com/IanTeda/Personal-Ledger/issues/304)). Still open on the map: the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
+In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md)) the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)), what is not part of a Colour Theme ([#304](https://github.com/IanTeda/Personal-Ledger/issues/304)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
 
 ## Colour Roles
 
@@ -143,7 +143,27 @@ Preference changes and OS light/dark changes apply live. `[theme]` is read once 
 
 ### Settings
 
-The Colour Theme and Colour Appearance pickers are always enabled. While any role is overridden, a note under the picker says how many colours are overridden by Configuration.
+Decided on [#303](https://github.com/IanTeda/Personal-Ledger/issues/303), from an HTML prototype kept on the [`prototype/303-colour-theme-settings`](https://github.com/IanTeda/Personal-Ledger/tree/prototype/303-colour-theme-settings/prototypes) branch.
+
+The Colour Theme and Colour Appearance pickers are always enabled: `[theme]` overrides Colour Roles, never the Colour Theme or Colour Appearance themselves, so neither control is ever locked.
+
+**Both Clients.**
+
+- A change applies live on selection; there is no Apply button.
+- System names the Colour Variant it resolved to: "System (currently Dark)". If the OS or terminal reports nothing, System uses Dark and says so: "System (not detected, using Dark)".
+- While any role is overridden, a note under the picker names the overridden roles and the Configuration file they came from, and says a restart is needed to change them (`[theme]` is read once at start).
+- Contrast failures that `resolve` returns (only possible through `[theme]` overrides, since every built-in Colour Theme passes) show as warning lines under that note, for example "accent on background is 2.4:1, needs 3:1".
+- Colour Theme names are Messages in the shared `lib-locale` Catalogue, brand names (Catppuccin, Gruvbox, Nord) included and left untranslated.
+
+**Desktop (Display section).** A full-width Colour Theme group below the existing 300px column holds both controls:
+
+- Colour Appearance is a Light / Dark / System segmented control, the same as the section's other segmented fields, above the grid.
+- Colour Theme is a wrapping grid of ~160px preview cards. Each card draws a miniature ledger (header bar, three rows with one selected, a positive and a negative amount, an accent chip) in that Colour Theme, with its name underneath.
+- Cards draw the Colour Variant in effect, run through `resolve` with this Client's `[theme]` overrides, so they show what would actually appear.
+- The chosen card has a 2px border in the current Colour Theme's `accent` and a bold name (radius stays 0).
+- Keyboard: Tab onto the grid, arrows or `h`/`j`/`k`/`l` move focus, Enter selects. Moving focus or hovering never previews. The command palette has one command per Colour Theme and per Colour Appearance.
+
+**TUI (Settings view).** Colour Theme and Colour Appearance are rows in a Display group. Enter opens a list popup (the §4b in-place editor pattern) where each Colour Theme row carries seven `█` swatch cells; `j`/`k` previews live, Enter keeps, Esc reverts. With `terminal_colours = true` both rows stay editable, since the Preferences still sync to the user's other Clients, and a note names the `terminal_colours` Configuration key as the reason this Client draws the terminal's colours.
 
 ## Built-in Colour Themes
 
