@@ -47,7 +47,7 @@ use lib_core::RowID;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Modifier, Style},
+    style::Style,
     symbols,
     text::{Line, Span},
     widgets::{
@@ -362,8 +362,8 @@ impl View for TagsView {
             ])
             .split(columns[0]);
 
-        self.render_list(frame, pane_rows[0]);
-        self.render_summary(frame, pane_rows[1]);
+        self.render_list(frame, pane_rows[0], c);
+        self.render_summary(frame, pane_rows[1], c);
         self.render_right_pane(frame, columns[1], c);
     }
 
@@ -385,7 +385,7 @@ impl View for TagsView {
 }
 
 impl TagsView {
-    fn render_list(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_list(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let split = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -404,7 +404,7 @@ impl TagsView {
             .split(content_area);
 
         for (tag, row_area) in visible.iter().zip(row_areas.iter()) {
-            render_tag_row(frame, *row_area, tag, tag.id == self.selected);
+            render_tag_row(frame, *row_area, tag, tag.id == self.selected, c);
         }
 
         let total = self.store.tags().len();
@@ -439,16 +439,10 @@ impl TagsView {
 
         let total = self.store.tags().len();
         let text = msg::tui_tags_heading(&visible_count.to_string(), &total.to_string());
-        frame.render_widget(
-            Paragraph::new(Span::styled(
-                text,
-                Style::default().add_modifier(Modifier::DIM),
-            )),
-            area,
-        );
+        frame.render_widget(Paragraph::new(Span::styled(text, c.muted())), area);
     }
 
-    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let block = Block::bordered().padding(Padding::horizontal(1));
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -479,13 +473,13 @@ impl TagsView {
             msg::tui_tags_summary_active_value_off()
         };
         frame.render_widget(
-            summary_field_line(&msg::tui_tags_summary_active(), &active_text),
+            summary_field_line(&msg::tui_tags_summary_active(), &active_text, c),
             rows[2],
         );
 
         let tagged_text = msg::tui_tags_summary_tagged_count(tag.tagged_transaction_count as i64);
         frame.render_widget(
-            summary_field_line(&msg::tui_tags_summary_tagged(), &tagged_text),
+            summary_field_line(&msg::tui_tags_summary_tagged(), &tagged_text, c),
             rows[3],
         );
 
@@ -496,6 +490,7 @@ impl TagsView {
             summary_field_line(
                 &msg::tui_tags_summary_created(),
                 &format_date_full_year(tag.created_on),
+                c,
             ),
             rows[4],
         );
@@ -503,6 +498,7 @@ impl TagsView {
             summary_field_line(
                 &msg::tui_tags_summary_updated(),
                 &format_date_full_year(tag.updated_on),
+                c,
             ),
             rows[5],
         );
@@ -528,7 +524,7 @@ impl TagsView {
             .split(area);
 
         self.render_tagged_spend(frame, rows[0], tag, c);
-        self.render_where_it_lands(frame, rows[2], tag);
+        self.render_where_it_lands(frame, rows[2], tag, c);
         self.render_tag_transactions(frame, rows[4], tag, c);
     }
 
@@ -552,6 +548,7 @@ impl TagsView {
             rows[0],
             &msg::tui_tag_right_pane_spend_heading(),
             &tagged_spend_window_tag(),
+            c,
         );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
@@ -563,12 +560,12 @@ impl TagsView {
             .collect();
 
         render_spend_chart(frame, rows[2], &series, c);
-        render_spend_footer(frame, rows[3], tag, &series);
+        render_spend_footer(frame, rows[3], tag, &series, c);
     }
 
     /// The category breakdown, biggest first, as proportional block-glyph bars — top
     /// [`CATEGORY_ROWS_SHOWN`] plus an `N more` roll-up, per the design doc's own shape.
-    fn render_where_it_lands(&self, frame: &mut Frame<'_>, area: Rect, tag: &Tag) {
+    fn render_where_it_lands(&self, frame: &mut Frame<'_>, area: Rect, tag: &Tag, c: &Colours) {
         let rows = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
@@ -590,11 +587,12 @@ impl TagsView {
             rows[0],
             &msg::tui_tag_right_pane_lands_heading(),
             &heading_tag,
+            c,
         );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         if breakdown.is_empty() {
-            let dim = Style::default().add_modifier(Modifier::DIM);
+            let dim = c.muted();
             frame.render_widget(
                 Paragraph::new(Span::styled(msg::tui_tag_right_pane_lands_empty(), dim)),
                 rows[2],
@@ -631,7 +629,7 @@ impl TagsView {
             render_category_bar(frame, bar_rows[shown], &label, rest_total, total);
         }
 
-        let dim = Style::default().add_modifier(Modifier::DIM);
+        let dim = c.muted();
         frame.render_widget(
             Paragraph::new(Span::styled(msg::tui_tag_right_pane_lands_statement(), dim)),
             rows[3],
@@ -666,9 +664,10 @@ impl TagsView {
             sections[0],
             &msg::tui_tag_right_pane_txn_heading(),
             &heading_tag,
+            c,
         );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-        render_txn_column_header(frame, sections[2]);
+        render_txn_column_header(frame, sections[2], c);
 
         let row_count = visible.len().min(sections[3].height as usize);
         let row_areas = Layout::default()
@@ -701,7 +700,7 @@ impl TagsView {
             return;
         }
 
-        let dim = Style::default().add_modifier(Modifier::DIM);
+        let dim = c.muted();
         if rows.is_empty() {
             frame.render_widget(
                 Paragraph::new(Span::styled(
@@ -720,15 +719,12 @@ impl TagsView {
     }
 }
 
-fn render_tag_row(frame: &mut Frame<'_>, area: Rect, tag: &Tag, selected: bool) {
+fn render_tag_row(frame: &mut Frame<'_>, area: Rect, tag: &Tag, selected: bool, c: &Colours) {
     if selected {
-        frame.render_widget(
-            Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-            area,
-        );
+        frame.render_widget(Block::new().style(c.selection()), area);
     }
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let name_text = if tag.is_active {
         tag.name.clone()
     } else {
@@ -742,8 +738,8 @@ fn render_tag_row(frame: &mut Frame<'_>, area: Rect, tag: &Tag, selected: bool) 
     frame.render_widget(Paragraph::new(Span::styled(name_text, style)), area);
 }
 
-fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn summary_field_line<'a>(label: &'a str, value: &'a str, c: &Colours) -> Paragraph<'a> {
+    let dim = c.muted();
     Paragraph::new(Line::from(vec![
         Span::styled(format!("{label:<SUMMARY_LABEL_WIDTH$}"), dim),
         Span::raw(value),
@@ -757,8 +753,8 @@ fn format_date_full_year(date: NaiveDate) -> String {
 /// A section heading row shared by every right-pane widget: the label flush left (dim), a
 /// short dim tag right-aligned — mirrors `view::accounts::render_chart_heading`'s own shape,
 /// generalised since every widget here needs a slightly different tag.
-fn render_section_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_section_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str, c: &Colours) {
+    let dim = c.muted();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -845,8 +841,8 @@ fn render_spend_chart(frame: &mut Frame<'_>, area: Rect, series: &[f64], c: &Col
 
 /// `first used <month> · peak <month> <amount> · <latest month> <amount>` — the design doc's
 /// own three-figure footer, or a plain empty-state line for a Tag with no transactions.
-fn render_spend_footer(frame: &mut Frame<'_>, area: Rect, tag: &Tag, series: &[f64]) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_spend_footer(frame: &mut Frame<'_>, area: Rect, tag: &Tag, series: &[f64], c: &Colours) {
+    let dim = c.muted();
     if tag.tagged_transaction_count == 0 {
         frame.render_widget(
             Paragraph::new(Span::styled(
@@ -921,8 +917,8 @@ fn txn_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect, Rect) {
     (columns[0], columns[1], columns[2], columns[3], columns[4])
 }
 
-fn render_txn_column_header(frame: &mut Frame<'_>, area: Rect) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_txn_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let dim = c.muted();
     let (date, payee, category, other_tags, amount) = txn_row_columns(area);
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_tag_txn_column_date(), dim)),

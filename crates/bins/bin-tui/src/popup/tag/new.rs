@@ -202,7 +202,7 @@ fn render_text_field(
 ) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", c.accent()));
+        spans.push(Span::styled("\u{258c}", c.cursor()));
     }
     render_field(frame, area, label, Line::from(spans), c);
 }
