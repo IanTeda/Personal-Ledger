@@ -7,16 +7,11 @@
 //! build.rs stamps one), so it stays the mockup's own static value. "Built with" names this
 //! binary's actual stack (Rust + GPUI + SQLite), not the mockup's copy-pasted web stack.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
-use gpui::{AnyElement, div, prelude::*, px};
+use gpui::{AnyElement, App, div, prelude::*, px};
 
 use crate::{theme::color, view::help};
 
-pub fn render() -> AnyElement {
+pub fn render(cx: &App) -> AnyElement {
     let version = div()
         .flex()
         .gap(px(4.0))
@@ -25,7 +20,7 @@ pub fn render() -> AnyElement {
         ))
         .child("(08 September 2026)");
     let built_with = div()
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .child(crate::msg::desktop_settings_about_built_with());
     let before_author = div()
         .flex()

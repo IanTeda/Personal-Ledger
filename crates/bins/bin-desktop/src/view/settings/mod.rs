@@ -11,11 +11,6 @@
 //! documents this offset, since `gpui::ScrollHandle::scroll_to_top_of_item` addresses direct
 //! children by index.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 mod about;
 pub mod add_institution_dialog;
 pub mod add_unit_dialog;
@@ -91,13 +86,13 @@ pub fn render(
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
         .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::INK)
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .py(px(22.0))
         .px(px(28.0))
         .flex()
         .flex_col()
-        .child(page_heading())
+        .child(page_heading(cx))
         .children(
             SettingsSection::ALL
                 .into_iter()
@@ -106,7 +101,7 @@ pub fn render(
         .into_any_element()
 }
 
-fn page_heading() -> impl IntoElement {
+fn page_heading(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -119,20 +114,20 @@ fn page_heading() -> impl IntoElement {
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(28.0))
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(Noun::Settings.label()),
                 )
                 .child(
                     div()
                         .text_size(px(11.5))
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .child(crate::msg::desktop_settings_scope_preferences()),
                 ),
         )
         .child(
             div()
                 .h(px(2.0))
-                .bg(color::STRUCTURAL_RULE)
+                .bg(color::structural_rule(cx))
                 .mt(px(14.0))
                 .mb(px(18.0)),
         )
@@ -160,20 +155,20 @@ fn section_block(
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(20.0))
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(section.label()),
                 )
                 .child(
                     div()
                         .text_size(px(11.5))
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .child(scope_note(section, props)),
                 ),
         )
         .child(
             div()
                 .h(px(2.0))
-                .bg(color::STRUCTURAL_RULE)
+                .bg(color::structural_rule(cx))
                 .mt(px(14.0))
                 .mb(px(18.0)),
         )
@@ -210,7 +205,7 @@ fn section_content(
     cx: &App,
 ) -> AnyElement {
     match section {
-        SettingsSection::General => general::render(),
+        SettingsSection::General => general::render(cx),
         SettingsSection::Display => display::render(
             props.date_style,
             props.row_density,
@@ -239,19 +234,22 @@ fn section_content(
             props.on_institution_edit_click.clone(),
             props.on_institution_delete_click.clone(),
             props.on_add_institution_click.clone(),
+            cx,
         ),
-        SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone()),
+        SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone(), cx),
         SettingsSection::DataBackup => data_backup::render(
             props.on_backup_now_click.clone(),
             props.on_export_ledger_click.clone(),
+            cx,
         ),
         SettingsSection::Tracing => tracing::render(
             props.tracing_level,
             props.log_lines,
             props.on_tracing_level_click.clone(),
             props.on_clear_logs_click.clone(),
+            cx,
         ),
-        SettingsSection::About => about::render(),
+        SettingsSection::About => about::render(cx),
     }
 }
 
@@ -276,14 +274,18 @@ pub(super) fn field_label(label: impl Into<SharedString>) -> impl IntoElement {
 /// (`gpui-component` ships an `Input` widget, but adopting it is a bigger, crate-wide styling
 /// decision than one section's ticket should make on its own -- left for whichever future
 /// ticket needs it first). "Save on change" therefore has nothing to save yet.
-pub(super) fn field_value(value: impl Into<SharedString>, select_style: bool) -> impl IntoElement {
+pub(super) fn field_value(
+    value: impl Into<SharedString>,
+    select_style: bool,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .w_full()
         .py(px(8.0))
         .px(px(10.0))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .text_size(px(13.0))
-        .when(select_style, |this| this.bg(color::GROUND))
+        .when(select_style, |this| this.bg(color::background(cx)))
         .child(value.into())
 }

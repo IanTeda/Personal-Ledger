@@ -80,22 +80,22 @@ impl BaseUnitGuardPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_prose(frame, rows[2]);
         // rows[3] is left blank — breathing space above the impact facts.
         render_impact_facts(frame, rows[4], c);
         // rows[5] is left blank — breathing space above the missing-rates box.
-        render_missing_rates_box(frame, rows[6]);
+        render_missing_rates_box(frame, rows[6], c);
         render_confirmation_box(frame, rows[7], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[8]);
-        render_footer_hints(frame, rows[9]);
+        render_footer_hints(frame, rows[9], c);
     }
 }
 
 /// The title row: `base unit  AUD → USD` flush left, `:set base` dim and right-aligned — §4c's
 /// own "Header: `base unit AUD → USD` with `:set base` right-aligned".
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = ":set base";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -106,7 +106,7 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     frame.render_widget(Paragraph::new("base unit  AUD → USD"), columns[0]);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -139,7 +139,7 @@ fn render_fact(
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
     let value = if accent {
         value.style(c.accent())
@@ -204,7 +204,7 @@ fn render_impact_facts(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         false,
         c,
     );
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     render_fact(
         frame,
         rows[5],
@@ -221,7 +221,7 @@ fn render_impact_facts(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 /// The missing-rates box — a plain bordered `Block` naming the gap this dialog exists to
 /// prevent and offering the fix as a first-class option, per §4c's own "name the count and the
 /// range, then offer the fix as a first-class option rather than an error".
-fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect) {
+fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let block = Block::bordered();
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -236,7 +236,7 @@ fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect) {
         rows[0],
     );
     let bold = Style::default().add_modifier(Modifier::BOLD);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("i", bold),
@@ -247,12 +247,11 @@ fn render_missing_rates_box(frame: &mut Frame<'_>, area: Rect) {
     );
 }
 
-/// The typed-confirmation box — an accent-bordered focused input, matching the delete
-/// confirmation convention on the unit forms per §4c's own "matching the delete-confirmation
-/// convention on the unit forms".
+/// The typed-confirmation box — a `negative`-bordered focused input, since re-converting
+/// every figure is destructive, matching the delete-confirmation convention on the unit forms
+/// per §4c's own "matching the delete-confirmation convention on the unit forms".
 fn render_confirmation_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let accent = c.accent();
-    let block = Block::bordered().border_style(accent);
+    let block = Block::bordered().border_style(c.negative());
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -260,7 +259,7 @@ fn render_confirmation_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         Paragraph::new(Line::from(vec![
             Span::raw("type the unit  "),
             Span::raw("USD"),
-            Span::styled("▌", accent),
+            Span::styled("▌", c.cursor()),
         ])),
         inner,
     );
@@ -268,7 +267,7 @@ fn render_confirmation_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 
 /// The window footer hint row: each key bold, its label dim — §4c's own "Keys: `enter` commit
 /// and re-convert · `i` import first · `esc` cancel".
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     const HINTS: &[(&str, &str)] = &[
         ("enter", "commit and re-convert"),
         ("i", "import first"),
@@ -276,7 +275,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = Style::default().add_modifier(Modifier::DIM);
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(HINTS.len() * 3);
     for (idx, (key, label)) in HINTS.iter().enumerate() {

@@ -10,11 +10,6 @@
 //! stubs flash a plain "not yet built" message with no issue number to point at, rather than
 //! inventing one.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -32,12 +27,13 @@ pub fn render(
     on_edit_click: OnRowIndexClick,
     on_delete_click: OnRowIndexClick,
     on_add_click: OnAddClick,
+    cx: &App,
 ) -> AnyElement {
     div()
         .flex()
         .flex_col()
-        .child(table(institutions, on_edit_click, on_delete_click))
-        .child(add_button(on_add_click))
+        .child(table(institutions, on_edit_click, on_delete_click, cx))
+        .child(add_button(on_add_click, cx))
         .into_any_element()
 }
 
@@ -48,14 +44,15 @@ fn table(
     institutions: &[InstitutionRow],
     on_edit_click: OnRowIndexClick,
     on_delete_click: OnRowIndexClick,
+    cx: &App,
 ) -> impl IntoElement {
     let last_index = institutions.len().saturating_sub(1);
     div()
         .flex()
         .flex_col()
         .border_1()
-        .border_color(color::BORDER)
-        .child(table_header())
+        .border_color(color::border(cx))
+        .child(table_header(cx))
         .children(institutions.iter().enumerate().map(|(index, institution)| {
             row(
                 institution,
@@ -63,22 +60,23 @@ fn table(
                 index,
                 on_edit_click.clone(),
                 on_delete_click.clone(),
+                cx,
             )
         }))
 }
 
-fn table_header() -> impl IntoElement {
+fn table_header(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
         .px(px(16.0))
         .py(px(12.0))
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_b(px(1.0))
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .child(div().flex_1().child(lib_locale::format::upper(
             &lib_locale::msg::column_institution(),
         )))
@@ -99,6 +97,7 @@ fn row(
     index: usize,
     on_edit_click: OnRowIndexClick,
     on_delete_click: OnRowIndexClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -106,7 +105,7 @@ fn row(
         .px(px(16.0))
         .py(px(12.0))
         .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::HAIRLINE)
+            this.border_b(px(1.0)).border_color(color::hairline(cx))
         })
         .child(
             div()
@@ -117,7 +116,7 @@ fn row(
         .child(
             div()
                 .w(ACCOUNT_TYPE_WIDTH)
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(institution.account_type.clone()),
         )
         .child(
@@ -132,6 +131,7 @@ fn row(
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_edit_click(index, window, cx)
                     }),
+                    cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("institution-delete-{index}")),
@@ -139,20 +139,26 @@ fn row(
                     Rc::new(move |window: &mut Window, cx: &mut App| {
                         on_delete_click(index, window, cx)
                     }),
+                    cx,
                 )),
         )
 }
 
 /// A row action button: `padding:4px 10px; border:1px solid rgba(32,30,29,.30);
 /// background:transparent; font-size:11px`.
-fn row_action_button(id: SharedString, label: String, on_click: OnPlainClick) -> impl IntoElement {
+fn row_action_button(
+    id: SharedString,
+    label: String,
+    on_click: OnPlainClick,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .id(id)
         .cursor_pointer()
         .py(px(4.0))
         .px(px(10.0))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .text_size(px(11.0))
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(label)
@@ -163,7 +169,7 @@ fn row_action_button(id: SharedString, label: String, on_click: OnPlainClick) ->
 /// markup for this button already uses `margin-top:16px` (not the table's own inline
 /// `margin-bottom:48px` slip `units::add_button`'s doc calls out), so this one needs no
 /// deviation from the raw markup.
-fn add_button(on_click: OnAddClick) -> impl IntoElement {
+fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
     // `align_self: flex-start` (no direct `Styled` builder for it, unlike the container-level
     // `items_start`/etc.) -- without it, this button stretches to the full width of its column
     // parent instead of shrinking to its own content, unlike `width:fit-content` in the mockup.
@@ -173,9 +179,9 @@ fn add_button(on_click: OnAddClick) -> impl IntoElement {
         .mt(px(16.0))
         .py(px(10.0))
         .px(px(16.0))
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .on_click(move |_event, window, cx| on_click(window, cx))

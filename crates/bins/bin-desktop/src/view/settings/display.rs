@@ -15,11 +15,6 @@
 //! every other click in this map, a selection is "saved" only in `Shell`-owned in-memory state,
 //! not written to `personal-ledger.conf`.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -76,7 +71,7 @@ pub fn render(
             on_status_glyphs_click,
             cx,
         ))
-        .child(preview_column(date_style, row_density, status_glyphs))
+        .child(preview_column(date_style, row_density, status_glyphs, cx))
         .into_any_element()
 }
 
@@ -101,10 +96,13 @@ fn field_column(
         .flex()
         .flex_col()
         .gap(px(18.0))
-        .child(locale_field())
+        .child(locale_field(cx))
         .child(
             div()
-                .child(field_label(crate::msg::desktop_display_date_style_label()))
+                .child(field_label(
+                    crate::msg::desktop_display_date_style_label(),
+                    cx,
+                ))
                 .child(segmented_control(
                     "display-date-style",
                     &DATE_STYLE_CHOICES,
@@ -118,6 +116,7 @@ fn field_column(
             div()
                 .child(field_label(
                     crate::msg::desktop_settings_display_row_density(),
+                    cx,
                 ))
                 .child(segmented_control(
                     "display-row-density",
@@ -128,33 +127,42 @@ fn field_column(
                     cx,
                 )),
         )
-        .child(status_glyphs_field(status_glyphs, on_status_glyphs_click))
+        .child(status_glyphs_field(
+            status_glyphs,
+            on_status_glyphs_click,
+            cx,
+        ))
         .child(start_sidebar_minimised_toggle(
             start_sidebar_minimised,
             on_start_sidebar_minimised_click,
+            cx,
         ))
 }
 
 /// The effective Locale, read-only, with where it came from. There is no control: the Locale is
 /// Configuration, changed by the `locale` setting or `--locale` and a restart.
-fn locale_field() -> impl IntoElement {
+fn locale_field(cx: &App) -> impl IntoElement {
     let (line, fallback_note) = crate::locale::describe(&crate::locale::info());
     let note = |text: String| {
         div()
             .mt(px(3.0))
             .text_size(px(12.0))
-            .text_color(color::INK_SECONDARY)
+            .text_color(color::muted(cx))
             .child(text)
     };
     div()
         .id("display-locale")
-        .child(field_label(crate::msg::desktop_display_locale_label()))
+        .child(field_label(crate::msg::desktop_display_locale_label(), cx))
         .child(div().text_size(px(13.0)).child(line))
         .children(fallback_note.map(note))
         .child(note(crate::msg::desktop_display_locale_hint()))
 }
 
-fn start_sidebar_minimised_toggle(checked: bool, on_click: OnPlainClick) -> impl IntoElement {
+fn start_sidebar_minimised_toggle(
+    checked: bool,
+    on_click: OnPlainClick,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .id("display-start-sidebar-minimised")
         .cursor_pointer()
@@ -169,14 +177,14 @@ fn start_sidebar_minimised_toggle(checked: bool, on_click: OnPlainClick) -> impl
                 .flex_none()
                 .border_1()
                 .border_color(if checked {
-                    color::ACCENT
+                    color::accent(cx)
                 } else {
-                    color::DIVIDER
+                    color::divider(cx)
                 })
                 .bg(if checked {
-                    color::ACCENT
+                    color::accent(cx)
                 } else {
-                    color::GROUND
+                    color::background(cx)
                 }),
         )
         .child(
@@ -190,18 +198,23 @@ fn start_sidebar_minimised_toggle(checked: bool, on_click: OnPlainClick) -> impl
 /// 70%, transparent)` -- the same style the now-removed `ledger_units.rs`'s own field label used
 /// (issue #189), distinct from General's bold `super::field_label`
 /// (`font-weight:800; margin-bottom:6px`), which only sits over `Input`/`select` pairs.
-fn field_label(label: impl Into<SharedString>) -> impl IntoElement {
+fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     div()
         .text_size(px(12.0))
         .mb(px(5.0))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .child(label.into())
 }
 
-fn status_glyphs_field(selected: StatusGlyphs, on_click: OnStatusGlyphsClick) -> impl IntoElement {
+fn status_glyphs_field(
+    selected: StatusGlyphs,
+    on_click: OnStatusGlyphsClick,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .child(field_label(
             crate::msg::desktop_settings_display_status_glyphs(),
+            cx,
         ))
         .child(
             div().flex().flex_col().gap(px(7.0)).mt(px(2.0)).children(
@@ -218,6 +231,7 @@ fn status_glyphs_field(selected: StatusGlyphs, on_click: OnStatusGlyphsClick) ->
                             Rc::new(move |window: &mut Window, cx: &mut App| {
                                 on_click(option, window, cx)
                             }),
+                            cx,
                         )
                     }),
             ),
@@ -229,6 +243,7 @@ fn status_glyphs_option(
     option: StatusGlyphs,
     checked: bool,
     on_click: OnPlainClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .id(SharedString::from(format!("display-status-glyphs-{index}")))
@@ -237,7 +252,7 @@ fn status_glyphs_option(
         .items_center()
         .gap(px(8.0))
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(radio_dot(checked))
+        .child(radio_dot(checked, cx))
         .child(div().text_size(px(12.0)).child(option.label()))
 }
 
@@ -245,6 +260,7 @@ fn preview_column(
     date_style: Option<DateStyle>,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .flex_1()
@@ -254,18 +270,18 @@ fn preview_column(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .mb(px(10.0))
                 .child(lib_locale::format::upper(
                     &crate::msg::desktop_settings_display_preview(),
                 )),
         )
-        .child(preview_table(date_style, row_density, status_glyphs))
+        .child(preview_table(date_style, row_density, status_glyphs, cx))
         .child(
             div()
                 .mt(px(14.0))
                 .text_size(px(12.0))
-                .text_color(color::INK_SECONDARY)
+                .text_color(color::muted(cx))
                 .child(crate::msg::desktop_settings_display_note()),
         )
 }
@@ -274,15 +290,16 @@ fn preview_table(
     date_style: Option<DateStyle>,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
+    cx: &App,
 ) -> impl IntoElement {
     let last_index = DEFAULT_DISPLAY_PREVIEW_ROWS.len().saturating_sub(1);
     div()
         .border_1()
-        .border_color(color::BORDER)
-        .bg(color::CHROME)
+        .border_color(color::border(cx))
+        .bg(color::chrome(cx))
         .flex()
         .flex_col()
-        .child(preview_table_header())
+        .child(preview_table_header(cx))
         .children(
             DEFAULT_DISPLAY_PREVIEW_ROWS
                 .iter()
@@ -294,21 +311,22 @@ fn preview_table(
                         date_style,
                         row_density,
                         status_glyphs,
+                        cx,
                     )
                 }),
         )
 }
 
-fn preview_table_header() -> impl IntoElement {
+fn preview_table_header(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .px(px(12.0))
         .py(px(7.0))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .border_b(px(1.0))
-        .border_color(color::HAIRLINE)
+        .border_color(color::hairline(cx))
         .child(div().w(PREVIEW_GLYPH_WIDTH))
         .child(
             div()
@@ -328,7 +346,7 @@ fn preview_table_header() -> impl IntoElement {
         )
 }
 
-/// One PREVIEW row -- the glyph column takes `color::ACCENT` only for a flagged row, matching
+/// One PREVIEW row -- the glyph column takes `color::accent(cx)` only for a flagged row, matching
 /// the mockup's own `<span style="color:#ec3013">\u{2691}</span>` (the only coloured glyph among
 /// the three seeded rows).
 fn preview_row(
@@ -337,6 +355,7 @@ fn preview_row(
     date_style: Option<DateStyle>,
     row_density: RowDensity,
     status_glyphs: StatusGlyphs,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .flex()
@@ -344,13 +363,13 @@ fn preview_row(
         .px(px(12.0))
         .py(px(row_density.preview_row_padding_y()))
         .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::HAIRLINE)
+            this.border_b(px(1.0)).border_color(color::hairline(cx))
         })
         .child(
             div()
                 .w(PREVIEW_GLYPH_WIDTH)
                 .when(row.status == PreviewStatus::Flagged, |this| {
-                    this.text_color(color::ACCENT)
+                    this.text_color(color::accent_text(cx))
                 })
                 .child(row.status.glyph(status_glyphs)),
         )

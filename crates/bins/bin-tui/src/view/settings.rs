@@ -156,9 +156,9 @@ fn render_left_pane(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         ])
         .split(area);
 
-    render_groups(frame, rows[0]);
+    render_groups(frame, rows[0], c);
     render_where_values_live(frame, rows[2], c);
-    render_reset(frame, rows[4]);
+    render_reset(frame, rows[4], c);
 }
 
 /// One row in the groups list — a group `label` plus its right-aligned override-eligible
@@ -211,7 +211,7 @@ const GROUPS: &[GroupRow] = &[
 
 /// The groups list: a "GROUPS" heading over the seven group rows, the selected row a
 /// full-width reversed block per §4a.
-fn render_groups(frame: &mut Frame<'_>, area: Rect) {
+fn render_groups(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -221,7 +221,7 @@ fn render_groups(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_settings_groups_heading(), dim)),
         sections[0],
@@ -236,18 +236,15 @@ fn render_groups(frame: &mut Frame<'_>, area: Rect) {
         .split(sections[2]);
 
     for (group, row) in GROUPS.iter().zip(rows.iter()) {
-        render_group_row(frame, *row, group);
+        render_group_row(frame, *row, group, c);
     }
 }
 
 /// One group row: label flush left, count right-aligned. The selected group (`general`)
 /// reverses full width, per the shell's "reversed for the selected row" style role.
-fn render_group_row(frame: &mut Frame<'_>, area: Rect, group: &GroupRow) {
+fn render_group_row(frame: &mut Frame<'_>, area: Rect, group: &GroupRow, c: &Colours) {
     if group.selected {
-        frame.render_widget(
-            Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-            area,
-        );
+        frame.render_widget(Block::new().style(c.selection()), area);
     }
 
     let columns = Layout::default()
@@ -265,7 +262,7 @@ fn render_group_row(frame: &mut Frame<'_>, area: Rect, group: &GroupRow) {
     );
 }
 
-/// One `label   value` line inside the "where values live" box, the value styled `ACCENT`
+/// One `label   value` line inside the "where values live" box, the value styled `accent`
 /// only for the `overrides` row — the "the red dot ... is the presence of the override" model
 /// stated on screen, per §4a.
 struct WhereValuesFact {
@@ -293,6 +290,7 @@ fn render_where_values_live(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         sections[0],
         &msg::tui_settings_where_heading(),
         &msg::tui_settings_where_tag(),
+        c,
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
 
@@ -300,7 +298,7 @@ fn render_where_values_live(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let inner = block.inner(sections[2]);
     frame.render_widget(block, sections[2]);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let facts: [WhereValuesFact; 3] = [
         WhereValuesFact {
             label: msg::tui_settings_where_overrides(),
@@ -338,9 +336,9 @@ fn render_where_values_live(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 }
 
 /// One `label   value` line, the label padded to `WHERE_VALUES_LABEL_WIDTH` and dimmed; the
-/// value renders in `ACCENT` when `fact.accent` is set (the `overrides` row).
+/// value renders in `accent` when `fact.accent` is set (the `overrides` row).
 fn where_values_fact_line<'a>(fact: &'a WhereValuesFact, c: &Colours) -> Line<'a> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let value_style = if fact.accent {
         c.accent()
     } else {
@@ -355,7 +353,7 @@ fn where_values_fact_line<'a>(fact: &'a WhereValuesFact, c: &Colours) -> Line<'a
 /// The reset block: a "RESET" heading carrying the "deletes the row" note — the important
 /// word, since it tells the user reset is a deletion, not a write — then the `r`/`R` key
 /// hints, bold key / dim label matching the shell footer's own convention.
-fn render_reset(frame: &mut Frame<'_>, area: Rect) {
+fn render_reset(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -371,18 +369,19 @@ fn render_reset(frame: &mut Frame<'_>, area: Rect) {
         sections[0],
         &msg::tui_settings_reset_heading(),
         &msg::tui_settings_reset_tag(),
+        c,
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
     let r_hint = msg::tui_settings_reset_hint_r();
     let big_r_hint = msg::tui_settings_reset_hint_group();
-    render_hint_row(frame, sections[2], "r", &r_hint);
-    render_hint_row(frame, sections[3], "R", &big_r_hint);
+    render_hint_row(frame, sections[2], "r", &r_hint, c);
+    render_hint_row(frame, sections[3], "R", &big_r_hint, c);
 }
 
 /// One bold-key / dim-label line, matching `view::units`'s own `KEY_HINTS` convention.
-fn key_hint_line(key: &'static str, label: &'static str) -> Paragraph<'static> {
+fn key_hint_line(key: &'static str, label: &'static str, c: &Colours) -> Paragraph<'static> {
     let bold = Style::default().add_modifier(Modifier::BOLD);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     Paragraph::new(Line::from(vec![
         Span::styled(key, bold),
         Span::raw("  "),
@@ -391,9 +390,9 @@ fn key_hint_line(key: &'static str, label: &'static str) -> Paragraph<'static> {
 }
 
 /// Render a hint row with key and dynamic label text.
-fn render_hint_row(frame: &mut Frame<'_>, area: Rect, key: &str, label: &str) {
+fn render_hint_row(frame: &mut Frame<'_>, area: Rect, key: &str, label: &str, c: &Colours) {
     let bold = Style::default().add_modifier(Modifier::BOLD);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(key, bold),
@@ -407,7 +406,7 @@ fn render_hint_row(frame: &mut Frame<'_>, area: Rect, key: &str, label: &str) {
 /// A dim label / dim tag heading row, matching `view::units`'s own heading convention —
 /// shared by every box in this view. `tag` need not be `'static` — the settings table
 /// heading's own tag is computed fresh each render from `TABLE_ROWS.len()`.
-fn render_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str) {
+fn render_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -416,7 +415,7 @@ fn render_heading(frame: &mut Frame<'_>, area: Rect, label: &str, tag: &str) {
         ])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
@@ -463,8 +462,8 @@ fn render_right_pane(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 
     render_settings_list(frame, rows[0], c);
     render_selected(frame, rows[2], c);
-    render_settings_table(frame, rows[4]);
-    render_command_hint(frame, rows[6]);
+    render_settings_table(frame, rows[4], c);
+    render_command_hint(frame, rows[6], c);
 }
 
 /// One row in the settings list — matches §4a's own eight `general` settings verbatim.
@@ -584,16 +583,17 @@ fn render_settings_list(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         sections[0],
         &msg::tui_settings_list_heading(),
         &msg::tui_settings_list_heading_tag(),
+        c,
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-    render_settings_column_header(frame, sections[2]);
+    render_settings_column_header(frame, sections[2], c);
     render_setting_rows(frame, sections[3], c);
 }
 
 /// The gutter/`SETTING`/`VALUE`/`NOTE` column header row, dim — the gutter carries no label.
-fn render_settings_column_header(frame: &mut Frame<'_>, area: Rect) {
+fn render_settings_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let columns = setting_row_columns(area);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
 
     frame.render_widget(
         Paragraph::new(Span::styled(msg::tui_settings_list_column_setting(), dim)),
@@ -627,13 +627,10 @@ fn render_setting_rows(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 /// (always dim). The selected row (`base unit`) reverses full width.
 fn render_setting_row(frame: &mut Frame<'_>, area: Rect, setting: &SettingRow, c: &Colours) {
     if setting.selected {
-        frame.render_widget(
-            Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-            area,
-        );
+        frame.render_widget(Block::new().style(c.selection()), area);
     }
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let muted = if setting.selected {
         Style::default()
     } else {
@@ -721,7 +718,7 @@ fn render_selected(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         ])
         .split(area);
 
-    render_heading(frame, sections[0], "SELECTED", "BASE UNIT");
+    render_heading(frame, sections[0], "SELECTED", "BASE UNIT", c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
     frame.render_widget(Paragraph::new(SELECTED_EXPLAIN), sections[2]);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[3]);
@@ -738,9 +735,9 @@ fn render_selected(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 }
 
 /// One `label   value` line, the label padded to `SELECTED_FACT_LABEL_WIDTH` and dimmed; the
-/// value renders in `ACCENT` when `fact.accent` is set (`changing it`).
+/// value renders in `accent` when `fact.accent` is set (`changing it`).
 fn selected_fact_line(fact: &SelectedFact, c: &Colours) -> Paragraph<'static> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let value_style = if fact.accent {
         c.accent()
     } else {
@@ -787,7 +784,7 @@ const TABLE_ROWS: &[TableRow] = &[
 /// ledger show" now that there is no config file to diff. A scrollbar rides the right edge
 /// since more rows exist than `SETTINGS_TABLE_SHOWN` — signalling the truncation the heading's
 /// tag already states in words.
-fn render_settings_table(frame: &mut Frame<'_>, area: Rect) {
+fn render_settings_table(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let split = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -807,10 +804,10 @@ fn render_settings_table(frame: &mut Frame<'_>, area: Rect) {
         .split(content_area);
 
     let tag = format!("{} rows · {} shown", TABLE_ROWS.len(), SETTINGS_TABLE_SHOWN);
-    render_heading(frame, sections[0], "SETTINGS TABLE", &tag);
+    render_heading(frame, sections[0], "SETTINGS TABLE", &tag, c);
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let columns = table_row_columns(sections[2]);
     frame.render_widget(Paragraph::new(Span::styled("KEY", dim)), columns[0]);
     frame.render_widget(Paragraph::new(Span::styled("VALUE", dim)), columns[1]);
@@ -865,8 +862,8 @@ fn table_row_columns(area: Rect) -> [Rect; 3] {
 /// matches `view::units`'s wider `LEFT_COLUMN_WIDTH`.
 const COMMAND_HINT: &str = ":set base <unit> · :settings log";
 
-fn render_command_hint(frame: &mut Frame<'_>, area: Rect) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_command_hint(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(COMMAND_HINT, dim)), area);
 }
 
@@ -1013,16 +1010,17 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
-        let row_is_reversed = |y: u16| -> bool {
-            (0..LEFT_COLUMN_WIDTH).any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
+        let row_is_selected = |y: u16| -> bool {
+            (0..LEFT_COLUMN_WIDTH)
+                .any(|x| buffer[(x, y)].bg == c.selection().bg.unwrap_or_default())
         };
 
         assert!(
-            row_is_reversed(row_containing("general")),
+            row_is_selected(row_containing("general")),
             "the selected group row should reverse"
         );
         assert!(
-            !row_is_reversed(row_containing("display")),
+            !row_is_selected(row_containing("display")),
             "a non-selected group row should not reverse"
         );
     }
@@ -1048,9 +1046,9 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
-        let row_is_reversed = |y: u16| -> bool {
+        let row_is_selected = |y: u16| -> bool {
             (LEFT_COLUMN_WIDTH + 2..buffer.area.width)
-                .any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
+                .any(|x| buffer[(x, y)].bg == c.selection().bg.unwrap_or_default())
         };
         let row_has_accent = |y: u16| -> bool {
             (LEFT_COLUMN_WIDTH + 2..buffer.area.width)
@@ -1059,7 +1057,7 @@ mod tests {
 
         let base_unit_row = row_containing("base unit");
         assert!(
-            row_is_reversed(base_unit_row),
+            row_is_selected(base_unit_row),
             "base unit row should reverse"
         );
         assert!(
@@ -1069,7 +1067,7 @@ mod tests {
 
         let fiscal_year_row = row_containing("fiscal year starts");
         assert!(
-            !row_is_reversed(fiscal_year_row),
+            !row_is_selected(fiscal_year_row),
             "a non-selected setting row should not reverse"
         );
         assert!(

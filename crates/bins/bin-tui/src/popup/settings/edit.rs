@@ -84,30 +84,31 @@ impl EditSettingPopup {
             ])
             .split(inner);
 
-        render_title(frame, rows[0]);
+        render_title(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
         render_field(
             frame,
             rows[2],
             "",
             Line::from("how a negative amount prints everywhere"),
+            c,
         );
         render_value_box(frame, rows[3], c);
         render_preview(frame, rows[4], c);
-        render_current(frame, rows[5]);
-        render_applies_to_heading(frame, rows[6]);
-        render_applies_to_lines(frame, rows[7]);
+        render_current(frame, rows[5], c);
+        render_applies_to_heading(frame, rows[6], c);
+        render_applies_to_lines(frame, rows[7], c);
         // rows[8] is left blank — breathing space above the on-accept box.
-        render_on_accept_box(frame, rows[9]);
+        render_on_accept_box(frame, rows[9], c);
         render_typed_command(frame, rows[10], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[11]);
-        render_footer_hints(frame, rows[12]);
+        render_footer_hints(frame, rows[12], c);
     }
 }
 
 /// The title row: `negatives` flush left, `general.negatives` dim and right-aligned — matches
 /// `popup::unit::edit`'s own "title left, context right" convention.
-fn render_title(frame: &mut Frame<'_>, area: Rect) {
+fn render_title(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = msg::tui_setting_edit_command();
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -118,7 +119,7 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
         .split(area);
 
     frame.render_widget(Paragraph::new(msg::tui_setting_edit_title()), columns[0]);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
         columns[1],
@@ -127,13 +128,13 @@ fn render_title(frame: &mut Frame<'_>, area: Rect) {
 
 /// One `label   value` row, the label dim and fixed-width — mirrors `popup::unit::edit`'s own
 /// `render_field`. `label` is `""` for the explain line, which has no label of its own.
-fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>) {
+fn render_field(frame: &mut Frame<'_>, area: Rect, label: &str, value: Line<'static>, c: &Colours) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Length(LABEL_WIDTH), Constraint::Min(0)])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled(label, dim)), columns[0]);
     frame.render_widget(Paragraph::new(value), columns[1]);
 }
@@ -152,7 +153,7 @@ fn render_value_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         .constraints([Constraint::Length(1), Constraint::Length(1)])
         .split(inner);
 
-    let reversed = Style::default().add_modifier(Modifier::REVERSED);
+    let reversed = c.selection();
     render_field(
         frame,
         lines[0],
@@ -161,18 +162,20 @@ fn render_value_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
             Span::styled("minus", reversed),
             Span::raw(" brackets trailing"),
         ]),
+        c,
     );
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     render_field(
         frame,
         lines[1],
         "",
         Line::from(Span::styled("↔ choose · 3 options", dim)),
+        c,
     );
 }
 
 /// The `preview` row: a real figure in the candidate format, per §4b's own "a real figure from
-/// the user's data ... not lorem" — styled `ACCENT`, matching the design's own `← accent`
+/// the user's data ... not lorem" — styled `accent`, matching the design's own `← accent`
 /// marker on this row.
 fn render_preview(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let accent = c.accent();
@@ -181,14 +184,15 @@ fn render_preview(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         area,
         "preview",
         Line::from(Span::styled("−320 334.10", accent)),
+        c,
     );
 }
 
 /// The `current` row: the value the row would fall back to if there were no override, and
 /// whether it is the default — §4b's own "names the current value *and* whether it is the
 /// default, in one line".
-fn render_current(frame: &mut Frame<'_>, area: Rect) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_current(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let dim = c.muted();
     render_field(
         frame,
         area,
@@ -197,12 +201,13 @@ fn render_current(frame: &mut Frame<'_>, area: Rect) {
             Span::raw("(320 334.10) "),
             Span::styled("· DEFAULT", dim),
         ]),
+        c,
     );
 }
 
 /// The "applies to" heading, tagged with §4b's own "everywhere an amount prints" — same dim
 /// label / dim tag pattern as `view::settings`'s own `render_heading`.
-fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect) {
+fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let tag = "EVERYWHERE AN AMOUNT PRINTS";
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -212,7 +217,7 @@ fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(Paragraph::new(Span::styled("APPLIES TO", dim)), columns[0]);
     frame.render_widget(
         Paragraph::new(Span::styled(tag, dim)).alignment(Alignment::Right),
@@ -223,7 +228,7 @@ fn render_applies_to_heading(frame: &mut Frame<'_>, area: Rect) {
 /// The "applies to" box's three lines — net position, one ledger row and the csv-export note,
 /// §4b's own "the same candidate shown in the three places it lands, so scope is legible
 /// before committing".
-fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect) {
+fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -233,14 +238,15 @@ fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect) {
         ])
         .split(area);
 
-    render_field(frame, rows[0], "net", Line::from("−320 334.10"));
+    render_field(frame, rows[0], "net", Line::from("−320 334.10"), c);
     render_field(
         frame,
         rows[1],
         "ledger row",
         Line::from("Woolworths −184.20"),
+        c,
     );
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled("csv export unaffected · machine format", dim)),
         rows[2],
@@ -252,7 +258,7 @@ fn render_applies_to_lines(frame: &mut Frame<'_>, area: Rect) {
 /// two-line hint ("drop the override and fall back to the" / "shipped default instead of
 /// storing a row") is folded onto one line here to keep the box within this popup's trimmed
 /// height budget (`CONTENT_ROWS`'s own doc comment).
-fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect) {
+fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let block = Block::bordered();
     let inner = block.inner(area);
     frame.render_widget(block, area);
@@ -271,10 +277,11 @@ fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect) {
         rows[0],
         "on accept",
         Line::from("upsert settings row"),
+        c,
     );
     frame.render_widget(Paragraph::new("general.negatives = \"minus\""), rows[1]);
     let bold = Style::default().add_modifier(Modifier::BOLD);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("r", bold),
@@ -286,10 +293,10 @@ fn render_on_accept_box(frame: &mut Frame<'_>, area: Rect) {
 }
 
 /// The typed-command echo — §4b's own "the command line echoes the equivalent command", with
-/// an accent cursor after the value and the dim "same edit, typed" note.
+/// a `cursor` caret after the value and the dim "same edit, typed" note.
 fn render_typed_command(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let cursor = c.accent();
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let cursor = c.cursor();
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::raw(":set negatives minus"),
@@ -305,7 +312,7 @@ fn render_typed_command(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 /// choose · `enter` commit · `esc` revert · `r` drop override", `enter` folded into `commit`
 /// per `popup::unit::edit`'s own bold-key convention (`^s` there since a unit form has other
 /// text fields `enter` would otherwise submit early).
-fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
+fn render_footer_hints(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     const HINTS: &[(&str, &str)] = &[
         ("←→", "choose"),
         ("^s", "commit"),
@@ -314,7 +321,7 @@ fn render_footer_hints(frame: &mut Frame<'_>, area: Rect) {
     ];
 
     let key_style = Style::default().add_modifier(Modifier::BOLD);
-    let label_style = Style::default().add_modifier(Modifier::DIM);
+    let label_style = c.muted();
 
     let mut spans = Vec::with_capacity(HINTS.len() * 3);
     for (idx, (key, label)) in HINTS.iter().enumerate() {
@@ -418,12 +425,13 @@ mod tests {
                 })
                 .unwrap_or_else(|| panic!("no row contains {needle:?}"))
         };
-        let row_is_reversed = |y: u16| -> bool {
-            (0..buffer.area.width).any(|x| buffer[(x, y)].modifier.contains(Modifier::REVERSED))
+        let row_is_selected = |y: u16| -> bool {
+            (0..buffer.area.width)
+                .any(|x| buffer[(x, y)].bg == c.selection().bg.unwrap_or_default())
         };
 
         assert!(
-            row_is_reversed(row_containing("brackets trailing")),
+            row_is_selected(row_containing("brackets trailing")),
             "the value row should carry a reversed span on the selected variant"
         );
     }
