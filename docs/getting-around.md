@@ -70,6 +70,31 @@ Ever unsure what a key will do? Glance at the bottom of the screen first.
 
 Each screen also has its own keys for things like adding, editing or deleting an item, and the help screen (`?`) lists them for wherever you are.
 
+## Toasts
+
+When something finishes, such as deleting an account or opening a ledger, a small message called a Toast pops up in the bottom-right corner, just above the status line. A coloured mark at its start tells you what kind it is:
+
+| Mark | Kind | Stays for |
+| --- | --- | --- |
+| `i` | Info | 4 seconds |
+| `✓` | Success | 4 seconds |
+| `!` | Warning | 8 seconds |
+| `✗` | Error | until you dismiss it |
+
+Up to three Toasts show at once, newest at the bottom. If the same message comes up again, it shows a count such as `×2` instead of stacking a copy. A Toast waits while you have the command box, a dialog or help open, and in the desktop app while your mouse is over it. Long messages are cut short with `…`; the history shows them in full.
+
+To get rid of Toasts:
+
+- **`Ctrl+L`** clears them all (when no box or dialog is open).
+- **`:dismiss`** clears the newest, and **`:dismiss all`** clears the lot.
+- In the desktop app, click the `✕` on a Toast.
+
+`Esc` deliberately leaves Toasts alone, so backing out of a dialog never loses an Error.
+
+Missed one? Run **`:toasts`** (or `:messages`) to see every Toast from this session, newest first, with the time it came up. Press `Esc` to close it. The list holds the last 100 and is emptied when you quit.
+
+If you'd rather not see Toasts, you can turn them off in [Settings](settings.md#toasts).
+
 ## Quitting
 
 In the terminal app there are three ways out, and they all work:

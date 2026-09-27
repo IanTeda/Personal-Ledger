@@ -220,6 +220,23 @@ Example:
 log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 ```
 
+## Toasts
+
+A Toast is a short message in the bottom-right corner that tells you how something turned out, for example "Deleted tag Food". You can turn Toasts off from Settings: go to Display, where the Toasts row sits above the Colour Theme settings. In the Desktop app it's an On / Off switch; in the TUI, move to the row and press `Enter` to flip it. From the command box you can also run `toasts on` or `toasts off`.
+
+With Toasts off, the message shows on the status line at the bottom instead, for as long as the Toast would have shown. Errors still appear as Toasts either way, so you never miss one; the note beside the row says so.
+
+Two keys go with Toasts, both set in the Keybindings Section below:
+
+- `dismiss_toasts` (`Ctrl+L` by default) clears every Toast on screen.
+- `toast_history` has no key by default. The `toasts` command (or `messages`) opens the list of this session's Toasts; set this key if you'd like a shortcut too.
+
+See [Getting around](getting-around.md#toasts) for reading and dismissing Toasts.
+
+### Heads up
+
+- Whether Toasts are on is remembered only until you close the app, and only on this device.
+
 ## Colour Theme and Colour Appearance
 
 You choose how Personal Ledger looks from Settings, not from a configuration file. Two settings work together:
