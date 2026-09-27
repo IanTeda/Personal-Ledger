@@ -153,6 +153,24 @@ impl Colours {
         self.accent().fg.unwrap_or(Color::Red)
     }
 
+    /// Chart series `index` (0-based), repeating after the fifth. Terminal colours keep the
+    /// series rule through the fallback table: red first, then the default foreground
+    /// stepping to paler greys.
+    pub fn chart_series(&self, index: usize) -> Color {
+        if self.terminal() {
+            const FALLBACK: [Color; 5] = [
+                Color::Red,
+                Color::Reset,
+                Color::White,
+                Color::Gray,
+                Color::DarkGray,
+            ];
+            FALLBACK[index % FALLBACK.len()]
+        } else {
+            self.colour(self.resolved.chart_series_colour(index))
+        }
+    }
+
     /// The drawn text-entry caret `▌`: the `cursor` role, or red in terminal colours.
     pub fn cursor(&self) -> Style {
         if self.terminal() {
