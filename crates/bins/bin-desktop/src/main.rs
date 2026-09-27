@@ -93,6 +93,10 @@ async fn main() -> Result<()> {
         .key_for("dismiss_toasts")
         .unwrap_or(key_router::DEFAULT_DISMISS_TOASTS)
         .to_string();
+    let toast_history_binding = config
+        .keybindings_config()
+        .key_for("toast_history")
+        .map(str::to_string);
 
     // Resolved once, before any window opens; the Locale never changes at runtime.
     let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
@@ -177,6 +181,7 @@ async fn main() -> Result<()> {
                         let mut shell = Shell::new(nav, focus_handle);
                         shell.set_start_sidebar_minimised(start_sidebar_minimised);
                         shell.set_dismiss_toasts_binding(dismiss_toasts_binding);
+                        shell.set_toast_history_binding(toast_history_binding);
                         shell.start_toast_clock(cx);
                         shell
                     })

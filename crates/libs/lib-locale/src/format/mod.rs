@@ -1,4 +1,4 @@
-//! Locale-aware formatting of numbers, dates, currency amounts and casing.
+//! Locale-aware formatting of numbers, dates, times, currency amounts and casing.
 //!
 //! Every function formats for the Locale in effect ([`crate::locale`]), so a call site never
 //! passes one. `en-XA` formats as `en-US`, because ICU4X has no `en-XA` data. Amounts stay
@@ -17,6 +17,7 @@ mod currency;
 mod date;
 mod input;
 mod number;
+mod time;
 
 pub use amount::{Amount, AmountStyle, Places, format_amount};
 pub use casing::upper;
@@ -27,6 +28,7 @@ pub use input::{
     parse_date_with,
 };
 pub use number::format_number;
+pub use time::format_time;
 
 use std::cell::RefCell;
 use std::collections::HashMap;

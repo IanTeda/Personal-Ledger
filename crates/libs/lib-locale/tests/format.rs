@@ -10,11 +10,11 @@
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use lib_core::{DateStyle, Money, UnitKind};
 use lib_locale::format::{
     Amount, AmountStyle, Unit, format_amount, format_date, format_money, format_month,
-    format_month_day, format_number, format_year_month, upper,
+    format_month_day, format_number, format_time, format_year_month, upper,
 };
 use lib_locale::{Locale, with_locale};
 
@@ -303,4 +303,16 @@ fn a_month_and_day_follow_the_locale_order() {
     with_locale(Locale::EnGb, || {
         assert_eq!(format_month_day(date(2026, 1, 5)), "5 Jan")
     });
+}
+
+#[test]
+fn a_time_shows_seconds_in_the_locale_clock() {
+    let time = NaiveTime::from_hms_opt(15, 4, 5).expect("test time is valid");
+    with_locale(Locale::EnAu, || {
+        assert_eq!(format_time(time), "3:04:05\u{202f}pm")
+    });
+    with_locale(Locale::EnUs, || {
+        assert_eq!(format_time(time), "3:04:05\u{202f}PM")
+    });
+    with_locale(Locale::EnGb, || assert_eq!(format_time(time), "15:04:05"));
 }

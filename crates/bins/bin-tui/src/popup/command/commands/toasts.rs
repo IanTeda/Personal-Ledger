@@ -1,5 +1,5 @@
-//! The Toasts domain — dismissing the Toast overlay (`crate::toast`) and turning Toasts on or
-//! off (ADR-0027). `dismiss all` is also the
+//! The Toasts domain — dismissing the Toast overlay (`crate::toast`), turning Toasts on or
+//! off (ADR-0027) and opening the session Toast history (`messages` is its alias). `dismiss all` is also the
 //! `dismiss_toasts` binding (`Ctrl+L`), which `Chord` cannot show, so both read `—`.
 
 use super::{Chord, Command, CommandId};
@@ -31,6 +31,20 @@ pub const COMMANDS: &[Command] = &[
         name: "toasts off",
         chord: Chord::NONE,
         description: crate::msg::tui_command_toasts_off_description,
+        args: &[],
+    },
+    Command {
+        id: CommandId::ToastHistory,
+        name: "toasts",
+        chord: Chord::NONE,
+        description: crate::msg::tui_command_toasts_description,
+        args: &[],
+    },
+    Command {
+        id: CommandId::ToastHistoryAlias,
+        name: "messages",
+        chord: Chord::NONE,
+        description: crate::msg::tui_command_toasts_description,
         args: &[],
     },
 ];

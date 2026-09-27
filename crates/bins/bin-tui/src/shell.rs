@@ -44,6 +44,7 @@ use crate::{
             guard::BaseUnitGuardPopup,
         },
         tag::{TagPopup, edit::EditTagPopup, new::NewTagPopup},
+        toast_history::ToastHistoryPopup,
         unit::{UnitPopup, delete::DeleteUnitPopup, edit::EditUnitPopup, new::NewUnitPopup},
     },
     tui::Tui,
@@ -152,6 +153,10 @@ pub struct Shell {
     /// The Toasts raised this session (`crate::toast` draws them), stamped with the local time
     /// for the history. Advanced on each tick unless a popup is open.
     toasts: Toasts<DateTime<Local>>,
+    /// The session Toast history popup (`crate::popup::toast_history`) — `Some` while open.
+    /// Showing Toasts hide and their timers pause behind it. Mutually exclusive with every
+    /// other popup field.
+    toast_history: Option<ToastHistoryPopup>,
 }
 
 impl Shell {
@@ -190,6 +195,7 @@ impl Shell {
             keybindings,
             colours: Colours::default(),
             toasts: Toasts::default(),
+            toast_history: None,
         }
     }
 
@@ -213,6 +219,7 @@ impl Shell {
             || self.account_popup.is_some()
             || self.tag_popup.is_some()
             || self.payee_popup.is_some()
+            || self.toast_history.is_some()
     }
 
     /// Runs the shell until the user quits.
@@ -317,6 +324,9 @@ impl Shell {
                 if self.payee_popup.is_some() {
                     return self.map_payee_popup_key(key);
                 }
+                if self.toast_history.is_some() {
+                    return map_toast_history_key(key);
+                }
                 if self.pending_leader {
                     self.pending_leader = false;
                     return match key.code {
@@ -358,6 +368,14 @@ impl Shell {
                 // on a key meant for a form. Not `Esc`, which pops the view stack.
                 if self.matches_binding(key, "dismiss_toasts", "ctrl+l") {
                     return Some(Action::DismissAllToasts);
+                }
+                // Unbound by default: the `toasts` command opens the history.
+                if self
+                    .keybindings
+                    .key_for("toast_history")
+                    .is_some_and(|spec| key_binding_matches(key, spec))
+                {
+                    return Some(Action::OpenToastHistory);
                 }
                 if self.is_open_command_popup(key) {
                     return Some(Action::OpenCommandPopup);
@@ -437,6 +455,9 @@ impl Shell {
             CommandId::DismissAll => Some(Action::DismissAllToasts),
             CommandId::ToastsOn => Some(Action::SetToasts(true)),
             CommandId::ToastsOff => Some(Action::SetToasts(false)),
+            CommandId::ToastHistory | CommandId::ToastHistoryAlias => {
+                Some(Action::OpenToastHistory)
+            }
             CommandId::Settings => Some(Action::OpenSettings),
             CommandId::Category => Some(Action::OpenCategories),
             // The command popup has no real typed-argument resolution (`popup::command::
@@ -1084,6 +1105,17 @@ impl Shell {
                     toasts_on: on,
                     ..self.toasts.display()
                 });
+            }
+            Action::OpenToastHistory => {
+                self.command_popup = None;
+                self.toast_history = Some(ToastHistoryPopup::new());
+            }
+            Action::CloseToastHistory => self.toast_history = None,
+            Action::ToastHistoryScroll(down) => {
+                let len = self.toasts.history().len();
+                if let Some(popup) = &mut self.toast_history {
+                    popup.scroll(down, len);
+                }
             }
             Action::OpenCommandPopup => self.command_popup = Some(CommandPopup::new()),
             Action::CloseCommandPopup => self.command_popup = None,
@@ -1736,6 +1768,7 @@ impl Shell {
         let base_unit_guard_popup_open =
             matches!(self.settings_popup, Some(SettingsPopup::BaseUnitGuard(_)));
         let colour_popup_open = matches!(self.settings_popup, Some(SettingsPopup::Colour(_)));
+        let toast_history_open = self.toast_history.is_some();
         let account_popup_open = self.account_popup.is_some();
         let tag_popup_open = self.tag_popup.is_some();
         let payee_popup_open = self.payee_popup.is_some();
@@ -1820,7 +1853,7 @@ impl Shell {
                 crate::msg::tui_footer_close_form(back_key, &noun)
             ))
             .style(dim)
-        } else if base_unit_guard_popup_open {
+        } else if base_unit_guard_popup_open || toast_history_open {
             Line::from(format!(
                 " {} ",
                 crate::msg::tui_footer_close_dialog(back_key)
@@ -1893,10 +1926,16 @@ impl Shell {
             if let Some(store) = self.view.payee_store() {
                 popup.render(frame, frame.area(), store, c);
             }
+        } else if let Some(popup) = &self.toast_history {
+            frame.render_widget(Dim, rows[1]);
+            popup.render(frame, frame.area(), self.toasts.history(), c);
         }
 
         // Above every popup and its `Dim`, confined to the view region so never over the footer.
-        crate::toast::render(frame, rows[1], &self.toasts, c);
+        // Hidden while the history is open, which lists them in full.
+        if self.toast_history.is_none() {
+            crate::toast::render(frame, rows[1], &self.toasts, c);
+        }
 
         // Last, so cells a popup `Clear`ed also land on the Colour Theme.
         c.paint_base(frame.buffer_mut());
@@ -1911,6 +1950,16 @@ fn hint_text(hints: &[(&str, String)]) -> String {
         .map(|(key, label)| format!("{key} {label}"))
         .collect::<Vec<_>>()
         .join(HINT_SEPARATOR)
+}
+
+/// Routes a key while the Toast history popup is open: it only scrolls and closes.
+fn map_toast_history_key(key: KeyEvent) -> Option<Action> {
+    match key.code {
+        KeyCode::Esc => Some(Action::CloseToastHistory),
+        KeyCode::Down | KeyCode::Char('j') => Some(Action::ToastHistoryScroll(true)),
+        KeyCode::Up | KeyCode::Char('k') => Some(Action::ToastHistoryScroll(false)),
+        _ => None,
+    }
 }
 
 /// `Ctrl+C` — the one key that always quits immediately, regardless of the active view.
@@ -2385,6 +2434,48 @@ mod tests {
         assert!(
             !line.contains(":report") && !line.contains("echoed"),
             "{line}"
+        );
+    }
+
+    #[test]
+    fn the_toasts_command_and_its_alias_open_the_history() {
+        let shell = Shell::new();
+        assert_eq!(
+            shell.command_action(CommandId::ToastHistory, "toasts"),
+            Some(Action::OpenToastHistory)
+        );
+        assert_eq!(
+            shell.command_action(CommandId::ToastHistoryAlias, "messages"),
+            Some(Action::OpenToastHistory)
+        );
+    }
+
+    #[test]
+    fn the_history_hides_showing_toasts_and_pauses_them_without_dismissing() {
+        let mut shell = Shell::new();
+        shell.raise_toast(ToastKind::Error, "sticky failure");
+        shell.raise_toast(ToastKind::Info, "timed note");
+        shell.update(Action::OpenToastHistory);
+        let text = drawn(&mut shell);
+        assert!(
+            !text.contains("│▌"),
+            "a Toast box drew behind the history:\n{text}"
+        );
+        assert!(
+            text.contains("sticky failure"),
+            "history missing an entry:\n{text}"
+        );
+
+        // Far past the Info lifetime: paused, so it survives.
+        for _ in 0..40 {
+            shell.update(Action::Tick);
+        }
+        shell.update(Action::CloseToastHistory);
+        assert_eq!(shell.toasts.visible().len(), 2);
+        let text = drawn(&mut shell);
+        assert!(
+            text.contains("│▌ ✗ sticky failure"),
+            "Toasts did not return:\n{text}"
         );
     }
 

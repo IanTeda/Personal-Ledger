@@ -251,6 +251,18 @@ pub fn dismisses_toasts(
     mode == InputMode::Normal && !pending_g_active && binding_matches(spec, key, modifiers)
 }
 
+/// Whether a keystroke is the `toast_history` binding, which is unbound unless `[keybindings]`
+/// sets it, and may act: in `Normal` mode with no `g` pending, like `dismiss_toasts`.
+pub fn opens_toast_history(
+    mode: InputMode,
+    pending_g_active: bool,
+    spec: Option<&str>,
+    key: &str,
+    modifiers: Modifiers,
+) -> bool {
+    spec.is_some_and(|spec| dismisses_toasts(mode, pending_g_active, spec, key, modifiers))
+}
+
 /// Matches a `[keybindings]` spec (`ctrl+l`, `alt+shift+x`, `f2`) against a `gpui` key name and
 /// its modifiers. Every modifier must match exactly, so `ctrl+l` doesn't fire on `ctrl+shift+l`.
 fn binding_matches(spec: &str, key: &str, modifiers: Modifiers) -> bool {
@@ -280,6 +292,45 @@ mod tests {
         alt: false,
         shift: false,
     };
+
+    // Toast history
+
+    #[test]
+    fn toast_history_is_unbound_by_default() {
+        assert!(!opens_toast_history(
+            InputMode::Normal,
+            false,
+            None,
+            "t",
+            CTRL
+        ));
+    }
+
+    #[test]
+    fn a_bound_toast_history_opens_in_normal_mode_only() {
+        let spec = Some("ctrl+t");
+        assert!(opens_toast_history(
+            InputMode::Normal,
+            false,
+            spec,
+            "t",
+            CTRL
+        ));
+        assert!(!opens_toast_history(
+            InputMode::Dialog,
+            false,
+            spec,
+            "t",
+            CTRL
+        ));
+        assert!(!opens_toast_history(
+            InputMode::Normal,
+            true,
+            spec,
+            "t",
+            CTRL
+        ));
+    }
 
     // Dismiss Toasts
     #[test]

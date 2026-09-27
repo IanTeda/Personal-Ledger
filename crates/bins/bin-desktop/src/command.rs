@@ -53,6 +53,8 @@ pub enum CommandEffect {
     DismissAllToasts,
     /// `:toasts on` / `:toasts off`: sets the Toasts Preference, the same as Settings' Toasts row.
     SetToasts(bool),
+    /// `:toasts` / `:messages`: opens the session Toast history.
+    OpenToastHistory,
     /// No real behaviour behind this command yet (`docs/ux/tui/README.md`'s commitment: "a
     /// command that has no real behaviour yet says so explicitly when run") --
     /// `Shell::run_command` turns this into the status-line flash.
@@ -330,6 +332,21 @@ pub const COMMANDS: &[Command] = &[
         effect: CommandEffect::SetToasts(false),
     },
     Command {
+        name: "toasts",
+        domain: Domain::Toasts,
+        description: crate::msg::desktop_command_toasts_description,
+        binding: None,
+        effect: CommandEffect::OpenToastHistory,
+    },
+    // `messages` is the alias the design names, for a user reaching for vim's `:messages`.
+    Command {
+        name: "messages",
+        domain: Domain::Toasts,
+        description: crate::msg::desktop_command_toasts_description,
+        binding: None,
+        effect: CommandEffect::OpenToastHistory,
+    },
+    Command {
         name: "transactions",
         domain: Domain::Transactions,
         description: crate::msg::desktop_command_transactions_description,
@@ -402,6 +419,13 @@ mod tests {
         let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
         assert_eq!(effect("toasts on"), Some(CommandEffect::SetToasts(true)));
         assert_eq!(effect("toasts off"), Some(CommandEffect::SetToasts(false)));
+    }
+
+    #[test]
+    fn toasts_and_messages_open_the_history() {
+        let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
+        assert_eq!(effect("toasts"), Some(CommandEffect::OpenToastHistory));
+        assert_eq!(effect("messages"), Some(CommandEffect::OpenToastHistory));
     }
 
     #[test]

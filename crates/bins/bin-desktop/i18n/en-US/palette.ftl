@@ -29,6 +29,7 @@ desktop-command-dismiss-description = dismiss the newest Toast
 desktop-command-dismiss-all-description = dismiss every Toast
 desktop-command-toasts-on-description = show Toasts
 desktop-command-toasts-off-description = send Toasts to the status line (Errors still show)
+desktop-command-toasts-description = show this session's Toasts
 
 ## The match count beside the input, for example `3 of 16`.
 

@@ -77,6 +77,7 @@ tui-command-dismiss-description = dismiss the newest Toast
 tui-command-dismiss-all-description = dismiss every Toast
 tui-command-toasts-on-description = show Toasts
 tui-command-toasts-off-description = send Toasts to the status line (Errors still show)
+tui-command-toasts-description = show this session's Toasts
 tui-command-settings-description = groups, overrides and the settings table
 
 ## Payees.

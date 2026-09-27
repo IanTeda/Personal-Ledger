@@ -7,4 +7,5 @@ pub mod categories;
 pub mod dashboard;
 pub mod help;
 pub mod settings;
+pub mod toast_history;
 pub mod transactions;

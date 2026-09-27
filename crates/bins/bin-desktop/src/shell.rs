@@ -72,7 +72,7 @@ use crate::{
         dashboard::Dashboard,
         help as help_view,
         settings::{self as settings_view, SettingsBodyProps},
-        transactions as transactions_view,
+        toast_history as toast_history_view, transactions as transactions_view,
     },
 };
 
@@ -181,6 +181,10 @@ pub struct Shell {
     toasts_hovered: bool,
     /// The `[keybindings] dismiss_toasts` spec, `ctrl+l` by default.
     dismiss_toasts_binding: String,
+    /// The `[keybindings] toast_history` spec; unbound by default.
+    toast_history_binding: Option<String>,
+    /// The session Toast history is open (in `InputMode::Dialog`). Showing Toasts hide behind it.
+    toast_history_open: bool,
     /// Debug builds only: the Kind `F9` raises next, so each can be eyeballed.
     #[cfg(debug_assertions)]
     debug_toast_kind: usize,
@@ -338,6 +342,8 @@ impl Shell {
             toasts: Toasts::default(),
             toasts_hovered: false,
             dismiss_toasts_binding: key_router::DEFAULT_DISMISS_TOASTS.to_string(),
+            toast_history_binding: None,
+            toast_history_open: false,
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
             palette: None,
@@ -392,6 +398,17 @@ impl Shell {
 
     pub fn set_dismiss_toasts_binding(&mut self, spec: String) {
         self.dismiss_toasts_binding = spec;
+    }
+
+    pub fn set_toast_history_binding(&mut self, spec: Option<String>) {
+        self.toast_history_binding = spec;
+    }
+
+    /// Opens the session Toast history as a modal, which pauses the Toast timers.
+    fn open_toast_history(&mut self) {
+        self.palette = None;
+        self.toast_history_open = true;
+        self.nav.enter_mode(InputMode::Dialog);
     }
 
     /// Sets the Client-scoped Toasts Preference (ADR-0027), held in memory like the Colour Theme
@@ -540,6 +557,18 @@ impl Shell {
             return true;
         }
 
+        if key_router::opens_toast_history(
+            self.nav.mode(),
+            pending_g_active,
+            self.toast_history_binding.as_deref(),
+            key,
+            modifiers,
+        ) {
+            self.open_toast_history();
+            self.status_message = None;
+            return true;
+        }
+
         // Debug builds only: F9 raises each Kind in turn, to eyeball the layer before real
         // call sites exist (#346).
         #[cfg(debug_assertions)]
@@ -582,6 +611,7 @@ impl Shell {
                 self.transactions_filter_form = None;
                 self.settings_dialog = None;
                 self.accounts_dialog = None;
+                self.toast_history_open = false;
                 // README's "Interactions" > "Navigation": `esc` clears the settings index
                 // rail's own filter, the same as it closes the palette/file explorer above.
                 self.settings_filter.clear();
@@ -996,6 +1026,10 @@ impl Shell {
     /// dialog is up. `Enter` submits only when the form validates, mirroring
     /// `dialog::confirm_button`'s own `enabled`-gated `on_click`.
     fn handle_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        // Read-only: `Esc` (handled before this) is its only key; the list scrolls by pointer.
+        if self.toast_history_open {
+            return false;
+        }
         if self.accounts_dialog.is_some() {
             return self.handle_accounts_dialog_key(keystroke);
         }
@@ -2512,6 +2546,10 @@ impl Shell {
                 self.nav.exit_mode();
                 self.set_toasts_on(on);
             }
+            CommandEffect::OpenToastHistory => {
+                self.nav.exit_mode();
+                self.open_toast_history();
+            }
             CommandEffect::NotYetBuilt => {
                 self.nav.exit_mode();
                 self.status_message = Some(format!(":{} — not yet built", command.name));
@@ -2996,7 +3034,22 @@ impl Render for Shell {
                 entity.update(cx, |shell, _cx| shell.toasts_hovered = hovered);
             })
         };
-        let toast_layer = crate::toast::render(&self.toasts, on_toast_dismiss, on_toast_hover, cx);
+        // Hidden while the history is open, which lists them in full.
+        let toast_layer = if self.toast_history_open {
+            None
+        } else {
+            crate::toast::render(&self.toasts, on_toast_dismiss, on_toast_hover, cx)
+        };
+        let on_toast_history_close: toast_history_view::OnClose = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.toast_history_open = false;
+                    shell.nav.exit_mode();
+                    cx.notify();
+                });
+            })
+        };
         let on_help_close: help_view::OnClose = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -3673,6 +3726,7 @@ impl Render for Shell {
                 .toast_echo(
                     self.toasts
                         .echo()
+                        .filter(|_| !self.toast_history_open)
                         .map(|toast| (toast.kind(), toast.text().to_string())),
                 )
                 .page(page_status)
@@ -3692,6 +3746,9 @@ impl Render for Shell {
             .children(
                 (self.nav.mode() == InputMode::Help).then(|| help_view::render(on_help_close, cx)),
             )
+            .children(self.toast_history_open.then(|| {
+                toast_history_view::render(self.toasts.history(), on_toast_history_close, cx)
+            }))
             .children(self.accounts_dialog.as_ref().map(|dialog| match dialog {
                 AccountsDialog::Add(form) => accounts_view::add_dialog::render(
                     form,
