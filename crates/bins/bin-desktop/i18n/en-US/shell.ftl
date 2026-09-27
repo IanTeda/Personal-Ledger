@@ -55,3 +55,7 @@ desktop-topbar-synced = synced { $time }
 
 desktop-empty-state-title = No ledger open
 desktop-empty-state-hint = Run <open>{ $open }</open> to load a ledger file, or <new>{ $new }</new> to start one.
+
+## Toasts. The line above the stack counting Toasts held back out of view.
+
+desktop-toast-more = +{ $count } more

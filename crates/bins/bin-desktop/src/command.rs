@@ -47,6 +47,10 @@ pub enum CommandEffect {
     /// Sets the `colour_theme` or `colour_appearance` Preference, the same as picking it in
     /// Settings' Colour Theme group.
     Colour(ColourChange),
+    /// `:dismiss`: removes the newest Toast.
+    DismissToast,
+    /// `:dismiss all`: removes every Toast, the same as the `dismiss_toasts` binding.
+    DismissAllToasts,
     /// No real behaviour behind this command yet (`docs/ux/tui/README.md`'s commitment: "a
     /// command that has no real behaviour yet says so explicitly when run") --
     /// `Shell::run_command` turns this into the status-line flash.
@@ -81,6 +85,7 @@ pub enum Domain {
     Reports,
     Settings,
     Tags,
+    Toasts,
     Transactions,
 }
 
@@ -98,6 +103,7 @@ impl Domain {
             Domain::Reports => Noun::Reports.label(),
             Domain::Settings => Noun::Settings.label(),
             Domain::Tags => Noun::Tags.label(),
+            Domain::Toasts => crate::msg::desktop_command_domain_toasts(),
             Domain::Transactions => Noun::Transactions.label(),
         }
     }
@@ -291,6 +297,21 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_tags_description,
         binding: Some("g t"),
         effect: CommandEffect::Navigate(Noun::Tags),
+    },
+    Command {
+        name: "dismiss",
+        domain: Domain::Toasts,
+        description: crate::msg::desktop_command_dismiss_description,
+        binding: None,
+        effect: CommandEffect::DismissToast,
+    },
+    Command {
+        name: "dismiss all",
+        domain: Domain::Toasts,
+        description: crate::msg::desktop_command_dismiss_all_description,
+        // The `dismiss_toasts` binding's default; a remap isn't reflected here.
+        binding: Some("ctrl+l"),
+        effect: CommandEffect::DismissAllToasts,
     },
     Command {
         name: "transactions",

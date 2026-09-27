@@ -28,7 +28,9 @@ use gpui::{
     SharedString, Timer, UniformListScrollHandle, Window, div, point, prelude::*, px,
 };
 
+use chrono::{DateTime, Local};
 use lib_core::{CategoryTypes, DateStyle};
+use lib_toast::{ToastKind, Toasts};
 
 use crate::{
     accounts::{
@@ -41,7 +43,7 @@ use crate::{
     command::{self, AccountsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
     format,
-    key_router::{KeyOutcome, Movement, route_key},
+    key_router::{self, KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
     payees::{self, Payee},
@@ -172,6 +174,16 @@ pub struct Shell {
     /// "flash the hint strip" abort message, and the command palette's "not yet built" message
     /// once it closes back to `Normal` (see [`Self::run_command`]).
     status_message: Option<String>,
+    /// The Toasts raised this session (`crate::toast` draws them), stamped with the local time
+    /// for the history. Advanced by [`Self::start_toast_clock`]'s timer.
+    toasts: Toasts<DateTime<Local>>,
+    /// The pointer is over the Toast stack, which pauses the timers.
+    toasts_hovered: bool,
+    /// The `[keybindings] dismiss_toasts` spec, `ctrl+l` by default.
+    dismiss_toasts_binding: String,
+    /// Debug builds only: the Kind `F9` raises next, so each can be eyeballed.
+    #[cfg(debug_assertions)]
+    debug_toast_kind: usize,
     /// The command palette's own input/selection state -- `Some` only while
     /// `NavState::mode` is `InputMode::Command`, mirroring `bin-tui`'s own
     /// `Shell`'s `Option<popup::command::CommandPopup>` (`docs/ux/desktop/README.md`'s Notes).
@@ -305,7 +317,7 @@ pub struct Shell {
 
 impl Shell {
     pub fn new(nav: NavState, focus_handle: FocusHandle) -> Self {
-        let today = chrono::Local::now().date_naive();
+        let today = Local::now().date_naive();
         let seeded_accounts = accounts::default_accounts();
         let categories = categories::default_categories();
         let payees = payees::default_payees();
@@ -323,6 +335,11 @@ impl Shell {
             view_scroll_handle: ScrollHandle::new(),
             pending_g: None,
             status_message: None,
+            toasts: Toasts::default(),
+            toasts_hovered: false,
+            dismiss_toasts_binding: key_router::DEFAULT_DISMISS_TOASTS.to_string(),
+            #[cfg(debug_assertions)]
+            debug_toast_kind: 0,
             palette: None,
             command_history: Vec::new(),
             collapsed_rail_tooltip: None,
@@ -371,6 +388,70 @@ impl Shell {
 
     pub fn set_start_sidebar_minimised(&mut self, minimised: bool) {
         self.settings_start_sidebar_minimised = minimised;
+    }
+
+    pub fn set_dismiss_toasts_binding(&mut self, spec: String) {
+        self.dismiss_toasts_binding = spec;
+    }
+
+    /// Raises a Toast whose Message the caller has already resolved to text.
+    pub fn raise_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
+        self.toasts.raise(kind, text, Local::now());
+    }
+
+    /// Starts the Toast clock for the window's life: every [`crate::toast::TICK`] it advances
+    /// the model by the real time elapsed, paused while the pointer is over the stack or a modal
+    /// surface is open, and redraws only when a Toast has gone.
+    pub fn start_toast_clock(&self, cx: &mut Context<'_, Self>) {
+        cx.spawn(async move |this, cx| {
+            let mut last = Instant::now();
+            loop {
+                Timer::after(crate::toast::TICK).await;
+                let now = Instant::now();
+                let elapsed = now - last;
+                last = now;
+                // Stops once the window, and with it the Shell, has gone.
+                if this
+                    .update(cx, |shell, cx| {
+                        if shell.advance_toasts(elapsed) {
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// One clock tick; `true` when the stack changed and needs a redraw.
+    fn advance_toasts(&mut self, elapsed: Duration) -> bool {
+        let before = (self.toasts.visible().len(), self.toasts.more_count());
+        if before.0 == 0 {
+            // A dismissed stack never reports the pointer leaving it.
+            self.toasts_hovered = false;
+            return false;
+        }
+        if self.toasts_hovered || self.modal_open() {
+            self.toasts.pause();
+        } else {
+            self.toasts.resume();
+        }
+        self.toasts.advance(elapsed);
+        before != (self.toasts.visible().len(), self.toasts.more_count())
+    }
+
+    /// Whether a modal surface is open -- the palette, the file explorer, a dialog, the filter
+    /// popover or the help overlay -- which pauses the Toast timers.
+    fn modal_open(&self) -> bool {
+        self.palette.is_some()
+            || self.file_explorer.is_some()
+            || matches!(
+                self.nav.mode(),
+                InputMode::Command | InputMode::Dialog | InputMode::Filter | InputMode::Help
+            )
     }
 
     pub fn nav(&self) -> &NavState {
@@ -423,6 +504,33 @@ impl Shell {
             .pending_g
             .take()
             .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
+
+        let modifiers = key_router::Modifiers {
+            ctrl,
+            alt: keystroke.modifiers.alt,
+            shift,
+        };
+        if key_router::dismisses_toasts(
+            self.nav.mode(),
+            pending_g_active,
+            &self.dismiss_toasts_binding,
+            key,
+            modifiers,
+        ) {
+            self.toasts.dismiss_all();
+            self.status_message = None;
+            return true;
+        }
+
+        // Debug builds only: F9 raises each Kind in turn, to eyeball the layer before real
+        // call sites exist (#346).
+        #[cfg(debug_assertions)]
+        if key == "f9" && self.nav.mode() == InputMode::Normal {
+            let kind = ToastKind::ALL[self.debug_toast_kind % ToastKind::ALL.len()];
+            self.debug_toast_kind += 1;
+            self.raise_toast(kind, format!("{kind:?} Toast raised from F9"));
+            return true;
+        }
 
         let outcome = route_key(self.nav.mode(), pending_g_active, key, ctrl, shift);
 
@@ -1898,7 +2006,7 @@ impl Shell {
                     .and_then(|code| self.settings_units.iter().find(|unit| unit.code == code))
                     .is_none_or(|unit| unit.kind == "currency");
                 let id = accounts::next_account_id(&self.accounts);
-                let opened_at = chrono::Local::now().date_naive();
+                let opened_at = Local::now().date_naive();
                 form.into_account(id, opened_at, is_currency)
                     .map(|account| {
                         self.accounts.push(account);
@@ -2383,6 +2491,14 @@ impl Shell {
                 self.nav.exit_mode();
                 self.pending_colour_change = Some(change);
             }
+            CommandEffect::DismissToast => {
+                self.nav.exit_mode();
+                self.toasts.dismiss_newest();
+            }
+            CommandEffect::DismissAllToasts => {
+                self.nav.exit_mode();
+                self.toasts.dismiss_all();
+            }
             CommandEffect::NotYetBuilt => {
                 self.nav.exit_mode();
                 self.status_message = Some(format!(":{} — not yet built", command.name));
@@ -2836,6 +2952,22 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_hint_click(action, cx));
             })
         };
+        let on_toast_dismiss: crate::toast::OnDismiss = {
+            let entity = entity.clone();
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.toasts.dismiss_visible(index);
+                    cx.notify();
+                });
+            })
+        };
+        let on_toast_hover: crate::toast::OnHover = {
+            let entity = entity.clone();
+            Rc::new(move |hovered, _window, cx| {
+                entity.update(cx, |shell, _cx| shell.toasts_hovered = hovered);
+            })
+        };
+        let toast_layer = crate::toast::render(&self.toasts, on_toast_dismiss, on_toast_hover, cx);
         let on_help_close: help_view::OnClose = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -3729,6 +3861,8 @@ impl Render for Shell {
                     )
                 }
             }))
+            // Last: above every dialog, the palette and their scrim, never over the status line.
+            .children(toast_layer)
     }
 }
 

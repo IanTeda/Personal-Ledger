@@ -199,6 +199,16 @@ impl<S> Toasts<S> {
         true
     }
 
+    /// The Desktop ✕: removes the Toast at `index` in [`Self::visible`]. `false` if out of range.
+    pub fn dismiss_visible(&mut self, index: usize) -> bool {
+        let start = self.stack.len().saturating_sub(MAX_VISIBLE);
+        if !self.display.can_draw || index >= self.stack.len() - start {
+            return false;
+        }
+        self.stack.remove(start + index);
+        true
+    }
+
     /// `:dismiss all` and `Ctrl+L`: removes every live Toast, held-back Errors included.
     pub fn dismiss_all(&mut self) {
         self.stack.clear();
@@ -429,6 +439,19 @@ mod tests {
         toasts.dismiss_all();
         assert!(toasts.visible().is_empty());
         assert!(!toasts.dismiss_newest());
+    }
+
+    #[test]
+    fn dismiss_visible_removes_that_toast_and_brings_a_held_back_error_into_view() {
+        let mut toasts = Toasts::default();
+        for i in 0..4 {
+            toasts.raise(Error, format!("e{i}"), i);
+        }
+        assert_eq!(texts(&toasts), ["e1", "e2", "e3"]);
+        assert!(toasts.dismiss_visible(1));
+        assert_eq!(texts(&toasts), ["e0", "e1", "e3"]);
+        assert_eq!(toasts.more_count(), 0);
+        assert!(!toasts.dismiss_visible(3));
     }
 
     #[test]

@@ -31,6 +31,7 @@ mod shell;
 mod statusline;
 mod tags;
 mod theme;
+mod toast;
 mod topbar;
 mod transaction_chips;
 mod transaction_filter_form;
@@ -87,6 +88,11 @@ async fn main() -> Result<()> {
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
     config.theme_config().warn_invalid();
     let theme_overrides = config.theme_config().overrides.clone();
+    let dismiss_toasts_binding = config
+        .keybindings_config()
+        .key_for("dismiss_toasts")
+        .unwrap_or(key_router::DEFAULT_DISMISS_TOASTS)
+        .to_string();
 
     // Resolved once, before any window opens; the Locale never changes at runtime.
     let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
@@ -167,9 +173,11 @@ async fn main() -> Result<()> {
                             colours::set_system(window.appearance(), cx);
                         })
                         .detach();
-                    cx.new(|_cx| {
+                    cx.new(|cx| {
                         let mut shell = Shell::new(nav, focus_handle);
                         shell.set_start_sidebar_minimised(start_sidebar_minimised);
+                        shell.set_dismiss_toasts_binding(dismiss_toasts_binding);
+                        shell.start_toast_clock(cx);
                         shell
                     })
                 },

@@ -226,9 +226,151 @@ pub fn route_key(
     }
 }
 
+/// The `dismiss_toasts` binding's default, used when `[keybindings]` doesn't set it.
+pub const DEFAULT_DISMISS_TOASTS: &str = "ctrl+l";
+
+/// The modifier state of a keystroke, for matching a `[keybindings]` spec.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Modifiers {
+    pub ctrl: bool,
+    pub alt: bool,
+    pub shift: bool,
+}
+
+/// Whether a keystroke is the `dismiss_toasts` binding (`spec`, e.g. `ctrl+l`) and may act: in
+/// `Normal` mode only, with no pending `g`, so a sticky Error can't vanish on a key meant for the
+/// palette, a dialog or a form. Checked before [`route_key`], which would otherwise read `ctrl+d`
+/// or `ctrl+u` as a half-page move. Not `Esc`, which leaves modes and overlays.
+pub fn dismisses_toasts(
+    mode: InputMode,
+    pending_g_active: bool,
+    spec: &str,
+    key: &str,
+    modifiers: Modifiers,
+) -> bool {
+    mode == InputMode::Normal && !pending_g_active && binding_matches(spec, key, modifiers)
+}
+
+/// Matches a `[keybindings]` spec (`ctrl+l`, `alt+shift+x`, `f2`) against a `gpui` key name and
+/// its modifiers. Every modifier must match exactly, so `ctrl+l` doesn't fire on `ctrl+shift+l`.
+fn binding_matches(spec: &str, key: &str, modifiers: Modifiers) -> bool {
+    let spec = spec.trim().to_ascii_lowercase();
+    let mut parts: Vec<&str> = spec.split('+').collect();
+    let Some(spec_key) = parts.pop() else {
+        return false;
+    };
+    let mut wanted = Modifiers::default();
+    for part in parts {
+        match part {
+            "ctrl" | "control" => wanted.ctrl = true,
+            "alt" => wanted.alt = true,
+            "shift" => wanted.shift = true,
+            _ => return false,
+        }
+    }
+    wanted == modifiers && spec_key == key.to_ascii_lowercase()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const CTRL: Modifiers = Modifiers {
+        ctrl: true,
+        alt: false,
+        shift: false,
+    };
+
+    // Dismiss Toasts
+    #[test]
+    fn ctrl_l_dismisses_toasts_in_normal_mode() {
+        assert!(dismisses_toasts(
+            InputMode::Normal,
+            false,
+            DEFAULT_DISMISS_TOASTS,
+            "l",
+            CTRL
+        ));
+    }
+
+    #[test]
+    fn ctrl_l_is_inert_outside_normal_mode_and_mid_chord() {
+        for mode in [
+            InputMode::Command,
+            InputMode::Insert,
+            InputMode::Search,
+            InputMode::Dialog,
+            InputMode::Filter,
+            InputMode::Help,
+        ] {
+            assert!(!dismisses_toasts(
+                mode,
+                false,
+                DEFAULT_DISMISS_TOASTS,
+                "l",
+                CTRL
+            ));
+        }
+        assert!(!dismisses_toasts(
+            InputMode::Normal,
+            true,
+            DEFAULT_DISMISS_TOASTS,
+            "l",
+            CTRL
+        ));
+    }
+
+    #[test]
+    fn dismiss_binding_needs_its_exact_modifiers() {
+        let normal = |key, modifiers| {
+            dismisses_toasts(
+                InputMode::Normal,
+                false,
+                DEFAULT_DISMISS_TOASTS,
+                key,
+                modifiers,
+            )
+        };
+        assert!(!normal("l", Modifiers::default()));
+        assert!(!normal(
+            "l",
+            Modifiers {
+                shift: true,
+                ..CTRL
+            }
+        ));
+        assert!(!normal("k", CTRL));
+    }
+
+    #[test]
+    fn dismiss_binding_is_remappable() {
+        let alt_shift = Modifiers {
+            ctrl: false,
+            alt: true,
+            shift: true,
+        };
+        assert!(dismisses_toasts(
+            InputMode::Normal,
+            false,
+            "Alt+Shift+X",
+            "x",
+            alt_shift
+        ));
+        assert!(dismisses_toasts(
+            InputMode::Normal,
+            false,
+            "f2",
+            "f2",
+            Modifiers::default()
+        ));
+        assert!(!dismisses_toasts(
+            InputMode::Normal,
+            false,
+            "hyper+l",
+            "l",
+            CTRL
+        ));
+    }
 
     // Escape
     #[test]

@@ -82,6 +82,17 @@ pub mod color {
         info_toast_bar => |c| c.info_toast.bar;
     }
 
+    /// A Toast Kind's leading bar and glyph: its role corrected to 3:1 against chrome (ADR-0026).
+    pub fn toast_mark(kind: lib_toast::ToastKind, cx: &App) -> Rgba {
+        let marks = resolved(cx).toast_marks;
+        to_gpui(match kind {
+            lib_toast::ToastKind::Info => marks.info,
+            lib_toast::ToastKind::Success => marks.success,
+            lib_toast::ToastKind::Warning => marks.warning,
+            lib_toast::ToastKind::Error => marks.error,
+        })
+    }
+
     /// Chart series `index` (0-based), repeating after the fifth.
     pub fn chart_series(index: usize, cx: &App) -> Rgba {
         to_gpui(resolved(cx).chart_series_colour(index))

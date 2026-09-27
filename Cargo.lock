@@ -720,6 +720,7 @@ dependencies = [
  "lib_database",
  "lib_locale",
  "lib_locale_build",
+ "lib_toast",
  "lib_tracing",
  "serde",
  "serde_json",

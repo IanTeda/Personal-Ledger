@@ -1,10 +1,11 @@
 ## The command palette. Command names and syntax (`accounts new`) are stable English ids and are
 ## passed in; only the descriptions, the placeholder words and the hints are Messages.
 
-## The palette's group header for the file-level commands. Noun groups reuse the shared navigation
-## Messages.
+## The palette's group headers for the commands with no noun of their own: the file-level ones and
+## the Toast ones. Noun groups reuse the shared navigation Messages.
 
 desktop-command-domain-ledger = Ledger
+desktop-command-domain-toasts = Toasts
 
 ## Command descriptions, written in lower case as the palette shows them.
 
@@ -24,6 +25,8 @@ desktop-command-reports-description = net worth and variance reports
 desktop-command-settings-description = ledger preferences
 desktop-command-tags-description = the tags every transaction can carry any number of
 desktop-command-transactions-description = the transaction ledger
+desktop-command-dismiss-description = dismiss the newest Toast
+desktop-command-dismiss-all-description = dismiss every Toast
 
 ## The match count beside the input, for example `3 of 16`.
 
