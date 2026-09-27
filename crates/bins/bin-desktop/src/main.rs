@@ -160,6 +160,13 @@ async fn main() -> Result<()> {
                     // as soon as the window opens -- nothing else in the window competes
                     // for it yet.
                     window.focus(&focus_handle);
+                    // System follows the OS light/dark setting live. Held for the window's
+                    // life, which is the app's, hence `detach()`.
+                    window
+                        .observe_window_appearance(|window, cx| {
+                            colours::set_system(window.appearance(), cx);
+                        })
+                        .detach();
                     cx.new(|_cx| {
                         let mut shell = Shell::new(nav, focus_handle);
                         shell.set_start_sidebar_minimised(start_sidebar_minimised);

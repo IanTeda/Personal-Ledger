@@ -4,8 +4,11 @@
 //!
 //! The `colour_theme` and `colour_appearance` Preferences live here in memory until the
 //! Desktop reads `preferences` from the database; null means Modernist and System.
+//!
+//! System follows the OS light/dark setting as `gpui` reports it: read once at start, then
+//! re-resolved live through the main window's appearance observer (`set_system`).
 
-use gpui::{App, Global, Rgba};
+use gpui::{App, Global, Rgba, WindowAppearance};
 use gpui_component::theme::{Theme, ThemeMode};
 use lib_colour_theme::{
     ColourAppearance, ColourVariant, ResolveInputs, ResolvedColours, ThemeOverrides, resolve,
@@ -54,28 +57,42 @@ fn resolve_logged(inputs: ResolveInputs<'_>) -> ResolvedColours {
     resolved
 }
 
-/// Stands in for the system light/dark setting until System detection lands (#328). Light,
-/// not `resolve`'s undetected Dark, because unconverted files still draw the deprecated
-/// Modernist light aliases and the two must agree during the sweep.
-const SYSTEM_UNTIL_DETECTED: Option<ColourVariant> = Some(ColourVariant::Light);
+/// The OS light/dark setting as a Colour Variant. `gpui` always reports one, so System on the
+/// Desktop is never "not detected"; the vibrant macOS appearances are still light or dark.
+fn system_variant(appearance: WindowAppearance) -> ColourVariant {
+    match appearance {
+        WindowAppearance::Light | WindowAppearance::VibrantLight => ColourVariant::Light,
+        WindowAppearance::Dark | WindowAppearance::VibrantDark => ColourVariant::Dark,
+    }
+}
 
-/// Installs the Global with null Preferences. Call after `gpui_component::init`, which the
-/// component theme write-through needs in place.
+/// Installs the Global with null Preferences and the OS setting at start. Call after
+/// `gpui_component::init`, which the component theme write-through needs in place.
 pub fn init(overrides: ThemeOverrides, cx: &mut App) {
+    let system = Some(system_variant(cx.window_appearance()));
     let resolved = resolve_logged(ResolveInputs {
         colour_theme: None,
         colour_appearance: None,
         overrides: &overrides,
-        system: SYSTEM_UNTIL_DETECTED,
+        system,
     });
     cx.set_global(Colours {
         resolved,
         colour_theme: None,
         colour_appearance: None,
         overrides,
-        system: SYSTEM_UNTIL_DETECTED,
+        system,
     });
     apply_to_component_theme(cx);
+}
+
+/// Records a change to the OS light/dark setting. Re-resolves only when it changed, since the
+/// observer also fires for the initial report (the Linux portal answers after start).
+pub fn set_system(appearance: WindowAppearance, cx: &mut App) {
+    let system = Some(system_variant(appearance));
+    if cx.global::<Colours>().system != system {
+        update(cx, |colours| colours.system = system);
+    }
 }
 
 /// Sets the in-memory `colour_theme` Preference and redraws.
@@ -169,12 +186,12 @@ mod tests {
                 colour_theme: None,
                 colour_appearance: None,
                 overrides: &overrides,
-                system: SYSTEM_UNTIL_DETECTED,
+                system: Some(ColourVariant::Light),
             }),
             colour_theme: None,
             colour_appearance: None,
             overrides,
-            system: SYSTEM_UNTIL_DETECTED,
+            system: Some(ColourVariant::Light),
         }
     }
 
@@ -193,6 +210,18 @@ mod tests {
         colours.resolve();
         assert_eq!(colours.resolved().theme_id, "nord");
         assert_eq!(colours.resolved().variant, ColourVariant::Dark);
+    }
+
+    #[test]
+    fn a_system_change_re_resolves_only_under_system() {
+        let mut colours = colours();
+        colours.system = Some(system_variant(WindowAppearance::VibrantDark));
+        colours.resolve();
+        assert_eq!(colours.resolved().variant, ColourVariant::Dark);
+
+        colours.colour_appearance = Some(ColourAppearance::Light);
+        colours.resolve();
+        assert_eq!(colours.resolved().variant, ColourVariant::Light);
     }
 
     #[test]
