@@ -53,6 +53,7 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_accounts_add_title(),
             false,
+            cx,
         ))
         .child(dialog::body([
             text_field(
@@ -132,17 +133,21 @@ pub fn render(
                 cx,
             ),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("add-account-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "add-account-confirm",
-                crate::msg::desktop_accounts_add_submit(),
-                form.is_valid(),
-                false,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("add-account-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "add-account-confirm",
+                    crate::msg::desktop_accounts_add_submit(),
+                    form.is_valid(),
+                    false,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
     dialog::overlay(WIDTH, false, card, cx)
 }

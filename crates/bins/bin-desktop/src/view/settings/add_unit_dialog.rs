@@ -58,6 +58,7 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_settings_units_add_title(),
             false,
+            cx,
         ))
         .child(dialog::body([
             text_field(
@@ -82,17 +83,21 @@ pub fn render(
             .into_any_element(),
             type_field("add-unit-type", form.kind, on_kind_click, cx).into_any_element(),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("add-unit-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "add-unit-confirm",
-                crate::msg::desktop_settings_units_add_submit(),
-                form.is_valid(),
-                false,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("add-unit-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "add-unit-confirm",
+                    crate::msg::desktop_settings_units_add_submit(),
+                    form.is_valid(),
+                    false,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
     dialog::overlay(dialog::WIDTH, false, card, cx)
 }

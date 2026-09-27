@@ -60,6 +60,7 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_accounts_edit_title(),
             false,
+            cx,
         ))
         .child(dialog::body([
             text_field(
@@ -132,19 +133,23 @@ pub fn render(
                 click(AccountField::AccountNumber),
                 cx,
             ),
-            dialog::info_panel(usage_notice(account)).into_any_element(),
+            dialog::info_panel(usage_notice(account), cx).into_any_element(),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("edit-account-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "edit-account-confirm",
-                crate::msg::desktop_accounts_edit_submit(),
-                form.is_valid(),
-                false,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("edit-account-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "edit-account-confirm",
+                    crate::msg::desktop_accounts_edit_submit(),
+                    form.is_valid(),
+                    false,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
     dialog::overlay(add_dialog::WIDTH, false, card, cx)
 }

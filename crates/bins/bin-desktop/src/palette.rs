@@ -8,12 +8,7 @@
 //! split `nav.rs` uses between pure state and its `RenderOnce` chrome; `render` is the one
 //! method that touches `gpui`.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
-use gpui::{BoxShadow, div, point, prelude::*, px};
+use gpui::{App, BoxShadow, div, point, prelude::*, px};
 
 use crate::{
     command::{self, Command, Domain},
@@ -238,7 +233,7 @@ impl Palette {
     /// position `gpui` has no transform to recentre). Borrows `self` rather than consuming it
     /// (unlike the chrome's `RenderOnce` components) since `Shell` must keep this state past the
     /// render call that draws it.
-    pub fn render(&self) -> gpui::AnyElement {
+    pub fn render(&self, cx: &App) -> gpui::AnyElement {
         let rows = self.rows();
         let match_count = rows
             .iter()
@@ -254,11 +249,11 @@ impl Palette {
         // using the row's own index to decide highlighting.
         let mut entry_index = 0;
         let rendered_rows = rows.into_iter().map(|row| match row {
-            Row::Header(domain) => domain_header(domain).into_any_element(),
+            Row::Header(domain) => domain_header(domain, cx).into_any_element(),
             Row::Entry(command) => {
                 let is_selected = entry_index == selected;
                 entry_index += 1;
-                result_row(command, &query, is_selected).into_any_element()
+                result_row(command, &query, is_selected, cx).into_any_element()
             }
         });
 
@@ -274,20 +269,20 @@ impl Palette {
                     .w(WIDTH)
                     .flex()
                     .flex_col()
-                    .bg(color::GROUND)
+                    .bg(color::background(cx))
                     .border_t(px(2.0))
                     .border_b(px(2.0))
                     .border_l(px(2.0))
                     .border_r(px(2.0))
-                    .border_color(color::INK)
+                    .border_color(color::foreground(cx))
                     .shadow(vec![BoxShadow {
-                        color: color::PALETTE_SHADOW.into(),
+                        color: color::palette_shadow(cx).into(),
                         offset: point(px(0.0), px(12.0)),
                         blur_radius: px(32.0),
                         spread_radius: px(0.0),
                     }])
-                    .child(input_row(&self.input, match_count))
-                    .child(div().h(px(2.0)).bg(color::INK))
+                    .child(input_row(&self.input, match_count, cx))
+                    .child(div().h(px(2.0)).bg(color::foreground(cx)))
                     .child(
                         div()
                             .id("palette-rows")
@@ -298,8 +293,8 @@ impl Palette {
                             .track_scroll(&self.scroll_handle)
                             .children(rendered_rows),
                     )
-                    .child(div().h(px(1.0)).bg(color::HAIRLINE))
-                    .child(footer_row()),
+                    .child(div().h(px(1.0)).bg(color::hairline(cx)))
+                    .child(footer_row(cx)),
             )
             .into_any_element()
     }
@@ -323,20 +318,20 @@ fn match_rank(command: &Command, needle: &str) -> u8 {
 
 /// A domain header in the resting-state list (`Row::Header`) -- mirrors `bin-tui`'s own
 /// section-header styling for its command popup (dim, extra-bold, uppercase, small).
-fn domain_header(domain: Domain) -> impl IntoElement {
+fn domain_header(domain: Domain, cx: &App) -> impl IntoElement {
     div()
         .px(px(16.0))
         .pt(px(10.0))
         .pb(px(4.0))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .child(lib_locale::format::upper(&domain.label()))
 }
 
 /// The "1d" spec's input row: leading `:` (matching the key that opens it; the spec draws `>`), the live query with a block caret, right-aligned
 /// match count.
-fn input_row(input: &str, match_count: usize) -> impl IntoElement {
+fn input_row(input: &str, match_count: usize, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -345,15 +340,15 @@ fn input_row(input: &str, match_count: usize) -> impl IntoElement {
         .py(px(12.0))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(15.0))
-        .text_color(color::INK)
+        .text_color(color::foreground(cx))
         .child(":")
         .child(div().flex_1().child(input.to_string()))
-        .child(div().w(px(8.0)).h(px(17.0)).bg(color::ACCENT))
+        .child(div().w(px(8.0)).h(px(17.0)).bg(color::cursor(cx)))
         .child(
             div()
                 .font_weight(gpui::FontWeight::NORMAL)
                 .text_size(px(11.5))
-                .text_color(color::INK_SECONDARY)
+                .text_color(color::muted(cx))
                 .child(crate::msg::desktop_palette_match_count(
                     &match_count.to_string(),
                     &command::COMMANDS.len().to_string(),
@@ -365,22 +360,27 @@ fn input_row(input: &str, match_count: usize) -> impl IntoElement {
 /// column (an em dash when the command has none), then the description -- selected styling
 /// inverts per the "1d" spec ("Selected result: ink fill, ground text, accent-on-dark
 /// substring").
-fn result_row(command: &'static Command, needle: &str, selected: bool) -> impl IntoElement {
+fn result_row(
+    command: &'static Command,
+    needle: &str,
+    selected: bool,
+    cx: &App,
+) -> impl IntoElement {
     let (bg, text, matched, description_color, binding_color) = if selected {
         (
-            Some(color::INK),
-            color::INK_ON_DARK,
-            color::ACCENT_ON_DARK,
-            color::INK_ON_DARK_TERTIARY,
-            color::INK_ON_DARK_SECONDARY,
+            Some(color::selection_background(cx)),
+            color::selection_text(cx),
+            color::selection_accent_text(cx),
+            color::selection_muted(cx),
+            color::selection_muted(cx),
         )
     } else {
         (
             None,
-            color::INK,
-            color::ACCENT,
-            color::INK_SECONDARY,
-            color::INK_TERTIARY,
+            color::foreground(cx),
+            color::accent_text(cx),
+            color::muted(cx),
+            color::faint_text(cx),
         )
     };
 
@@ -419,12 +419,12 @@ fn result_row(command: &'static Command, needle: &str, selected: bool) -> impl I
 
 /// The "1d" spec's footer hint row, below the rule under the result list: every key the palette
 /// answers to, in the handoff's own order and wording.
-fn footer_row() -> impl IntoElement {
+fn footer_row(cx: &App) -> impl IntoElement {
     div()
         .px(px(16.0))
         .py(px(8.0))
         .text_size(px(11.5))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .child(
             [
                 crate::msg::desktop_palette_hint_select("\u{2191}\u{2193}"),

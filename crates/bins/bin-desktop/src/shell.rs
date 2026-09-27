@@ -19,11 +19,6 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -3305,8 +3300,8 @@ impl Render for Shell {
             .size_full()
             .flex()
             .flex_col()
-            .bg(color::GROUND)
-            .text_color(color::INK)
+            .bg(color::background(cx))
+            .text_color(color::foreground(cx))
             .font_family(type_scale::FONT_FAMILY)
             .text_size(type_scale::BODY)
             .track_focus(&self.focus_handle)
@@ -3406,7 +3401,7 @@ impl Render for Shell {
                 .page(page_status)
                 .on_hint(on_hint),
             )
-            .children(self.palette.as_ref().map(Palette::render))
+            .children(self.palette.as_ref().map(|palette| palette.render(cx)))
             .children(self.file_explorer.as_ref().map(|explorer| {
                 explorer.render(
                     on_explorer_entry_click,
@@ -3776,11 +3771,11 @@ fn render_view(
 
     let content = match noun {
         Noun::Dashboard if ledger_open => Dashboard::new().into_any_element(),
-        Noun::Dashboard => empty_state(on_empty_state_command_click),
+        Noun::Dashboard => empty_state(on_empty_state_command_click, cx),
         Noun::Settings | Noun::Accounts => unreachable!("handled above"),
         other => div()
             .p(px(24.0))
-            .text_color(color::INK_TERTIARY)
+            .text_color(color::faint_text(cx))
             .child(format!("{other:?} -- not yet built (see issue #153)"))
             .into_any_element(),
     };
@@ -3793,7 +3788,7 @@ fn render_view(
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
         .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::INK)
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .child(content)
         .into_any_element()
@@ -3807,13 +3802,13 @@ fn render_view(
 /// Both command names are real click targets (issue #167), not just copy: clicking one lands
 /// in exactly the state running it from the palette would (this shell's own repeated invariant
 /// -- rail click, `g`-jump and the palette already all call `NavState::set_noun` identically).
-fn empty_state(on_command_click: OnEmptyStateCommandClick) -> gpui::AnyElement {
+fn empty_state(on_command_click: OnEmptyStateCommandClick, cx: &gpui::App) -> gpui::AnyElement {
     let command = |name: &'static str, on_command_click: OnEmptyStateCommandClick, text: String| {
         div()
             .id(SharedString::from(format!("empty-state-{name}")))
             .cursor_pointer()
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
-            .text_color(color::INK)
+            .text_color(color::foreground(cx))
             .on_click(move |_event, window, cx| on_command_click(name, window, cx))
             .child(text)
     };
@@ -3841,7 +3836,7 @@ fn empty_state(on_command_click: OnEmptyStateCommandClick) -> gpui::AnyElement {
                 .justify_center()
                 .text_align(gpui::TextAlign::Center)
                 .text_size(px(13.0))
-                .text_color(color::INK_SECONDARY)
+                .text_color(color::muted(cx))
                 .children(
                     crate::msg::desktop_empty_state_hint(":open", ":new")
                         .into_iter()

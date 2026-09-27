@@ -32,6 +32,6 @@ pub fn render(cx: &App) -> AnyElement {
 
     div()
         .w_full()
-        .child(help::facts(Some(before_author), None))
+        .child(help::facts(Some(before_author), None, cx))
         .into_any_element()
 }

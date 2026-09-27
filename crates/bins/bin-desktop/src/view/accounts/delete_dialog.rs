@@ -31,10 +31,11 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_accounts_delete_title(&account.name),
             true,
+            cx,
         ))
         .child(dialog::body([
             warning_copy(account),
-            dialog::info_panel(reference_notice(account)).into_any_element(),
+            dialog::info_panel(reference_notice(account), cx).into_any_element(),
             text_field(
                 "delete-account-confirm-input",
                 confirm_label(&account.name),
@@ -45,17 +46,21 @@ pub fn render(
                 cx,
             ),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("delete-account-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "delete-account-confirm",
-                crate::msg::desktop_accounts_delete_submit(),
-                form.matches(&account.name),
-                true,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("delete-account-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "delete-account-confirm",
+                    crate::msg::desktop_accounts_delete_submit(),
+                    form.matches(&account.name),
+                    true,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
     dialog::overlay(WIDTH, true, card, cx)
 }

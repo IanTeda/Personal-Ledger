@@ -24,11 +24,6 @@
 //! no palette dispatch to piggyback on. Issues #184/#185 picked `InputMode::Dialog`
 //! (`Shell::handle_dialog_key`), a new mode alongside `Command`/`Search`.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, BoxShadow, SharedString, Window, div, point, prelude::*, px};
@@ -46,7 +41,7 @@ pub type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// Wraps `card` in the full-viewport dimmer + centred frame (`docs/ux/desktop/Settings/README.md`'s
 /// "Dimmer"/"Dialog" rows: `position:absolute; inset:0; ...; align-items:center;
 /// justify-content:center`), then the bordered card itself -- `destructive` swaps the border to
-/// `#ec3013` (the "Destructive dialog" row). `width` is almost always [`WIDTH`]; see that
+/// `negative` (the "Destructive dialog" row). `width` is almost always [`WIDTH`]; see that
 /// constant's own doc for the one exception.
 pub fn overlay(
     width: gpui::Pixels,
@@ -67,15 +62,15 @@ pub fn overlay(
                 .w(width)
                 .flex()
                 .flex_col()
-                .bg(color::GROUND)
+                .bg(color::background(cx))
                 .border(px(2.0))
                 .border_color(if destructive {
-                    color::ACCENT
+                    color::negative(cx)
                 } else {
-                    color::INK
+                    color::foreground(cx)
                 })
                 .shadow(vec![BoxShadow {
-                    color: color::DIALOG_SHADOW.into(),
+                    color: color::dialog_shadow(cx).into(),
                     offset: point(px(0.0), px(16.0)),
                     blur_radius: px(48.0),
                     spread_radius: px(0.0),
@@ -86,24 +81,24 @@ pub fn overlay(
 }
 
 /// The header row: `padding:18px 20px; border-bottom:2px solid rgba(32,30,29,.30)`, title
-/// `800 16px`. `destructive` swaps the rule to `#ec3013` and the title to `#ae1800`
+/// `800 16px`. `destructive` swaps the rule to `negative` and the title to its text shade
 /// (`docs/ux/desktop/Settings/README.md`'s "Destructive header" row, e.g. "Delete unit — btc").
-pub fn header(title: impl Into<SharedString>, destructive: bool) -> impl IntoElement {
+pub fn header(title: impl Into<SharedString>, destructive: bool, cx: &App) -> impl IntoElement {
     div()
         .px(px(20.0))
         .py(px(18.0))
         .border_b(px(2.0))
         .border_color(if destructive {
-            color::ACCENT
+            color::negative(cx)
         } else {
-            color::BORDER
+            color::border(cx)
         })
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(16.0))
         .text_color(if destructive {
-            color::ACCENT_TEXT
+            color::negative_text(cx)
         } else {
-            color::INK
+            color::foreground(cx)
         })
         .child(title.into())
 }
@@ -121,7 +116,7 @@ pub fn body(fields: impl IntoIterator<Item = AnyElement>) -> impl IntoElement {
 /// The action row: `padding:16px 20px; border-top:1px solid #d7d3d3; justify-content:flex-end;
 /// gap:10px`. `buttons` are typically [`cancel_button`]/[`confirm_button`], in the order they
 /// should read left to right (Cancel first, per every "Dialog lifecycle" row in the README).
-pub fn action_row(buttons: impl IntoIterator<Item = AnyElement>) -> impl IntoElement {
+pub fn action_row(buttons: impl IntoIterator<Item = AnyElement>, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .justify_end()
@@ -129,23 +124,23 @@ pub fn action_row(buttons: impl IntoIterator<Item = AnyElement>) -> impl IntoEle
         .px(px(20.0))
         .py(px(16.0))
         .border_t(px(1.0))
-        .border_color(color::HAIRLINE)
+        .border_color(color::hairline(cx))
         .children(buttons)
 }
 
 /// The Cancel button: `padding:8px 16px; border:1px solid rgba(32,30,29,.30);
 /// background:transparent; font-weight:800`. `id` must be unique within the dialog it's used in
 /// (`gpui`'s own element-identity requirement for a clickable node).
-pub fn cancel_button(id: impl Into<SharedString>, on_click: OnClick) -> impl IntoElement {
+pub fn cancel_button(id: impl Into<SharedString>, on_click: OnClick, cx: &App) -> impl IntoElement {
     div()
         .id(id.into())
         .cursor_pointer()
         .py(px(8.0))
         .px(px(16.0))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_color(color::INK)
+        .text_color(color::foreground(cx))
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(lib_locale::msg::dialog_cancel())
 }
@@ -154,19 +149,19 @@ pub fn cancel_button(id: impl Into<SharedString>, on_click: OnClick) -> impl Int
 /// font-size:11.5px` (`docs/ux/desktop/Settings/README.md`'s Components table) -- the Edit unit
 /// dialog's own usage notice (issue #185) and the Delete unit dialog's own reference panel
 /// (issue #186) share this exact style, so it's extracted here rather than built twice.
-pub fn info_panel(content: impl Into<SharedString>) -> impl IntoElement {
+pub fn info_panel(content: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     div()
         .p(px(10.0))
-        .bg(color::CHROME)
+        .bg(color::chrome(cx))
         .border_l(px(2.0))
-        .border_color(color::ACCENT)
+        .border_color(color::accent(cx))
         .text_size(px(11.5))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .child(content.into())
 }
 
 /// The Confirm button: `padding:8px 16px; background:#201e1d; color:#f3f2f2; border:none;
-/// font-weight:800`. `destructive` swaps the fill to `#ec3013` (the "Destructive confirm" row).
+/// font-weight:800`. `destructive` swaps the fill to `negative` (the "Destructive confirm" row).
 /// Disabled (45% opacity, matching the shell's own "Disabled" state convention, and no click
 /// handler at all) while `enabled` is `false` -- the Delete-unit dialog's own typed-confirmation
 /// gate (issue #186) is exactly this parameter.
@@ -176,6 +171,7 @@ pub fn confirm_button(
     enabled: bool,
     destructive: bool,
     on_click: OnClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .id(id.into())
@@ -184,11 +180,11 @@ pub fn confirm_button(
         .py(px(8.0))
         .px(px(16.0))
         .bg(if destructive {
-            color::ACCENT
+            color::negative(cx)
         } else {
-            color::INK
+            color::foreground(cx)
         })
-        .text_color(color::INK_ON_DARK)
+        .text_color(color::background(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .when(enabled, |this| {
             this.on_click(move |_event, window, cx| on_click(window, cx))

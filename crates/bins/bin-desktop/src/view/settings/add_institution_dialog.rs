@@ -53,6 +53,7 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_settings_institutions_add_title(),
             false,
+            cx,
         ))
         .child(dialog::body([
             name_field(&form.name, cx).into_any_element(),
@@ -60,17 +61,21 @@ pub fn render(
             default_unit_field(units, form.default_unit_code.as_deref(), on_unit_click, cx)
                 .into_any_element(),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("add-institution-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "add-institution-confirm",
-                crate::msg::desktop_settings_institutions_add_submit(),
-                form.is_valid(),
-                false,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("add-institution-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "add-institution-confirm",
+                    crate::msg::desktop_settings_institutions_add_submit(),
+                    form.is_valid(),
+                    false,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
     dialog::overlay(WIDTH, false, card, cx)
 }

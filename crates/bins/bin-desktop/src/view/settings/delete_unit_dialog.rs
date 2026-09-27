@@ -41,26 +41,32 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_settings_units_delete_title(code),
             true,
+            cx,
         ))
         .child(dialog::body([
             warning_copy().into_any_element(),
-            dialog::info_panel(crate::msg::desktop_settings_units_delete_held(
-                &row.name, "0.4120 u",
-            ))
+            dialog::info_panel(
+                crate::msg::desktop_settings_units_delete_held(&row.name, "0.4120 u"),
+                cx,
+            )
             .into_any_element(),
             confirm_field(code, &form.confirm_input, cx).into_any_element(),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("delete-unit-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "delete-unit-confirm",
-                crate::msg::desktop_settings_units_delete_submit(),
-                form.matches(code),
-                true,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("delete-unit-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "delete-unit-confirm",
+                    crate::msg::desktop_settings_units_delete_submit(),
+                    form.matches(code),
+                    true,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
     dialog::overlay(dialog::WIDTH, true, card, cx)
 }

@@ -65,6 +65,7 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_categories_edit_title(),
             false,
+            cx,
         ))
         .child(dialog::body([
             name_field(
@@ -98,17 +99,21 @@ pub fn render(
             ),
             edit_notice(split_count, is_parent, type_locked, parent_category, cx),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("edit-category-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "edit-category-confirm",
-                crate::msg::desktop_categories_edit_submit(),
-                is_valid(form, all_categories, category_id),
-                false,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("edit-category-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "edit-category-confirm",
+                    crate::msg::desktop_categories_edit_submit(),
+                    is_valid(form, all_categories, category_id),
+                    false,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
     dialog::overlay(WIDTH, false, card, cx)
 }

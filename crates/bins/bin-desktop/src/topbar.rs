@@ -15,11 +15,6 @@
 //! (`Window::minimize_window`/`Window::zoom_window`/`App::quit`) rather than threaded through
 //! a callback the way `OnRailToggle` is.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::rc::Rc;
 
 use gpui::{App, ClickEvent, Window, div, prelude::*, px};
@@ -50,7 +45,7 @@ impl TopBar {
 }
 
 impl RenderOnce for TopBar {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
             .h(HEIGHT)
             .flex_none()
@@ -59,18 +54,18 @@ impl RenderOnce for TopBar {
             .gap(px(12.0))
             .pl(px(12.0))
             .pr(px(10.0))
-            .bg(color::CHROME)
+            .bg(color::chrome(cx))
             .border_b(px(2.0))
-            .border_color(color::STRUCTURAL_RULE)
-            .child(rail_toggle(self.on_rail_toggle))
-            .child(brand_mark(self.active_noun))
+            .border_color(color::structural_rule(cx))
+            .child(rail_toggle(self.on_rail_toggle, cx))
+            .child(brand_mark(self.active_noun, cx))
             .child(div().flex_1())
-            .child(sync_indicator())
-            .child(window_controls())
+            .child(sync_indicator(cx))
+            .child(window_controls(cx))
     }
 }
 
-fn rail_toggle(on_rail_toggle: OnRailToggle) -> impl IntoElement {
+fn rail_toggle(on_rail_toggle: OnRailToggle, cx: &App) -> impl IntoElement {
     div()
         .id("topbar-rail-toggle")
         .w(px(28.0))
@@ -79,13 +74,13 @@ fn rail_toggle(on_rail_toggle: OnRailToggle) -> impl IntoElement {
         .items_center()
         .justify_center()
         .cursor_pointer()
-        .hover(|this| this.bg(color::HOVER_TINT))
+        .hover(|this| this.bg(color::hover(cx)))
         .on_click(move |event, window, cx| on_rail_toggle(event, window, cx))
         .child(
             DesktopIcon::RailToggle
                 .icon()
                 .with_size(px(16.0))
-                .text_color(color::INK),
+                .text_color(color::foreground(cx)),
         )
 }
 
@@ -94,7 +89,7 @@ fn rail_toggle(on_rail_toggle: OnRailToggle) -> impl IntoElement {
 /// duplicate this same fact and was dropped in favour of naming it once, here. The open
 /// Ledger's own file path lives at the status line's own bottom right instead
 /// (`crate::statusline`), not here.
-fn brand_mark(active_noun: Noun) -> impl IntoElement {
+fn brand_mark(active_noun: Noun, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_baseline()
@@ -105,22 +100,22 @@ fn brand_mark(active_noun: Noun) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .child(lib_locale::msg::app_name()),
         )
-        .child(div().text_color(color::INK_TERTIARY).child("|"))
+        .child(div().text_color(color::faint_text(cx)).child("|"))
         .child(active_noun.label())
 }
 
-fn sync_indicator() -> impl IntoElement {
+fn sync_indicator(cx: &App) -> impl IntoElement {
     div()
         .ml(px(6.0))
         .text_size(px(12.0))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         // Representative content -- a real last-write timestamp lands with the sync ticket.
         .child(crate::msg::desktop_topbar_synced("14:22"))
 }
 
 /// Minimize/maximize/close, in that order -- the conventional cross-platform window-control
 /// layout (GNOME, Windows), close trailing at the window's own edge.
-fn window_controls() -> impl IntoElement {
+fn window_controls(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -130,16 +125,19 @@ fn window_controls() -> impl IntoElement {
             "topbar-window-minimize",
             DesktopIcon::WindowMinimize,
             |_event, window, _cx| window.minimize_window(),
+            cx,
         ))
         .child(window_control_button(
             "topbar-window-maximize",
             DesktopIcon::WindowMaximize,
             |_event, window, _cx| window.zoom_window(),
+            cx,
         ))
         .child(window_control_button(
             "topbar-window-close",
             DesktopIcon::WindowClose,
             |_event, _window, cx| cx.quit(),
+            cx,
         ))
 }
 
@@ -150,6 +148,7 @@ fn window_control_button(
     id: &'static str,
     icon: DesktopIcon,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .id(id)
@@ -159,7 +158,11 @@ fn window_control_button(
         .items_center()
         .justify_center()
         .cursor_pointer()
-        .hover(|this| this.bg(color::HOVER_TINT))
+        .hover(|this| this.bg(color::hover(cx)))
         .on_click(on_click)
-        .child(icon.icon().with_size(px(14.0)).text_color(color::INK))
+        .child(
+            icon.icon()
+                .with_size(px(14.0))
+                .text_color(color::foreground(cx)),
+        )
 }

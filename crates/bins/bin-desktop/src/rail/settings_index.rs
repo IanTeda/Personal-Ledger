@@ -4,11 +4,6 @@
 //! pattern -- that rail is a flat record list with no scroll-to-section/index mode, so this is a
 //! new mechanism (see issue #173's own ticket body).
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::rc::Rc;
 
 use gpui::{App, SharedString, Window, div, prelude::*, px};
@@ -43,37 +38,43 @@ impl SettingsIndexRail {
 }
 
 impl RenderOnce for SettingsIndexRail {
-    fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
         div()
             .w(WIDTH)
             .flex_none()
             .h_full()
             .flex()
             .flex_col()
-            .bg(color::GROUND)
+            .bg(color::background(cx))
             .border_r(px(2.0))
-            .border_color(color::STRUCTURAL_RULE)
-            .child(filter_box(&self.filter))
+            .border_color(color::structural_rule(cx))
+            .child(filter_box(&self.filter, cx))
             .child(
                 div()
                     .flex_1()
                     .min_h(px(0.0))
                     .flex()
                     .flex_col()
-                    .child(rail_label(&lib_locale::format::upper(
-                        &crate::nav::Noun::Settings.label(),
-                    )))
+                    .child(rail_label(
+                        &lib_locale::format::upper(&crate::nav::Noun::Settings.label()),
+                        cx,
+                    ))
                     .children(
                         SettingsSection::ALL
                             .into_iter()
                             .filter(|section| section.matches_filter(&self.filter))
                             .map(|section| {
-                                entry_row(section, section == self.selected, self.on_click.clone())
+                                entry_row(
+                                    section,
+                                    section == self.selected,
+                                    self.on_click.clone(),
+                                    cx,
+                                )
                             }),
                     ),
             )
-            .child(div().h(px(1.0)).bg(color::HAIRLINE))
-            .child(footer())
+            .child(div().h(px(1.0)).bg(color::hairline(cx)))
+            .child(footer(cx))
     }
 }
 
@@ -81,13 +82,13 @@ impl RenderOnce for SettingsIndexRail {
 /// `22px 12px 25.4px` closed by a 2px rule -- tuned so that rule aligns with the one under the
 /// body's own "Settings" page heading (`docs/ux/desktop/Settings/README.md`'s "Layout" bullet
 /// and implementation note 5).
-fn filter_box(filter: &str) -> impl IntoElement {
+fn filter_box(filter: &str, cx: &App) -> impl IntoElement {
     div()
         .pt(px(22.0))
         .px(px(12.0))
         .pb(px(25.4))
         .border_b(px(2.0))
-        .border_color(color::STRUCTURAL_RULE)
+        .border_color(color::structural_rule(cx))
         .child(
             div()
                 .h(px(30.0))
@@ -96,43 +97,48 @@ fn filter_box(filter: &str) -> impl IntoElement {
                 .items_center()
                 .px(px(10.0))
                 .border_1()
-                .border_color(color::STRUCTURAL_RULE)
+                .border_color(color::structural_rule(cx))
                 .text_size(px(12.5))
-                .child(div().text_color(color::INK_TERTIARY).child("/ "))
+                .child(div().text_color(color::faint_text(cx)).child("/ "))
                 .child(if filter.is_empty() {
                     div()
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .child(crate::msg::desktop_hint_filter())
                         .into_any_element()
                 } else {
                     div()
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(filter.to_string())
                         .into_any_element()
                 }),
         )
 }
 
-fn rail_label(label: &str) -> impl IntoElement {
+fn rail_label(label: &str, cx: &App) -> impl IntoElement {
     div()
         .pt(px(10.0))
         .px(px(12.0))
         .pb(px(4.0))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .child(label.to_string())
 }
 
-fn entry_row(section: SettingsSection, active: bool, on_click: OnEntryClick) -> impl IntoElement {
+fn entry_row(
+    section: SettingsSection,
+    active: bool,
+    on_click: OnEntryClick,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .id(SharedString::from(format!("settings-index-{section:?}")))
         .cursor_pointer()
         .py(px(8.0))
         .px(px(14.0))
         .when(active, |this| {
-            this.bg(color::INK)
-                .text_color(color::INK_ON_DARK)
+            this.bg(color::selection_background(cx))
+                .text_color(color::selection_text(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
         })
         .on_click(move |_event, window, cx| on_click(section, window, cx))
@@ -141,11 +147,11 @@ fn entry_row(section: SettingsSection, active: bool, on_click: OnEntryClick) -> 
 
 /// The rail's own footer note, above the 1px rule this sits below (README's "Layout" bullet:
 /// "Footer note, above a 1px rule").
-fn footer() -> impl IntoElement {
+fn footer(cx: &App) -> impl IntoElement {
     div()
         .py(px(10.0))
         .px(px(12.0))
         .text_size(px(11.5))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .child(crate::msg::desktop_settings_index_footer())
 }

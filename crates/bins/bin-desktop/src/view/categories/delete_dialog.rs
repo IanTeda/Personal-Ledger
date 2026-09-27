@@ -31,23 +31,28 @@ pub fn render(
         .child(dialog::header(
             crate::msg::desktop_categories_delete_title(&category.name),
             true,
+            cx,
         ))
         .child(dialog::body([
             warning_copy(split_count),
-            dialog::info_panel(reference_notice(budget_count)).into_any_element(),
+            dialog::info_panel(reference_notice(budget_count), cx).into_any_element(),
             confirm_input_field(&category.name, &form.confirmation_name, cx),
         ]))
-        .child(dialog::action_row([
-            dialog::cancel_button("delete-category-cancel", on_cancel).into_any_element(),
-            dialog::confirm_button(
-                "delete-category-confirm",
-                crate::msg::desktop_categories_delete_submit(),
-                form.matches(&category.name),
-                true,
-                on_confirm,
-            )
-            .into_any_element(),
-        ]));
+        .child(dialog::action_row(
+            [
+                dialog::cancel_button("delete-category-cancel", on_cancel, cx).into_any_element(),
+                dialog::confirm_button(
+                    "delete-category-confirm",
+                    crate::msg::desktop_categories_delete_submit(),
+                    form.matches(&category.name),
+                    true,
+                    on_confirm,
+                    cx,
+                )
+                .into_any_element(),
+            ],
+            cx,
+        ));
 
     dialog::overlay(WIDTH, true, card, cx)
 }

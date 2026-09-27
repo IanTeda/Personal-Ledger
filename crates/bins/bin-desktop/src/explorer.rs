@@ -11,11 +11,6 @@
 //! (`crate::nav::NavState::open_ledger`, from issue #164): real `.pldb` parsing is separate
 //! future work, out of scope for this map (issue #144).
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
@@ -313,11 +308,11 @@ impl FileExplorer {
                     .w(WIDTH)
                     .flex()
                     .flex_col()
-                    .bg(color::GROUND)
+                    .bg(color::background(cx))
                     .border(px(2.0))
-                    .border_color(color::INK)
+                    .border_color(color::foreground(cx))
                     .shadow(vec![BoxShadow {
-                        color: color::DIALOG_SHADOW.into(),
+                        color: color::dialog_shadow(cx).into(),
                         offset: point(px(0.0), px(16.0)),
                         blur_radius: px(48.0),
                         spread_radius: px(0.0),
@@ -327,8 +322,9 @@ impl FileExplorer {
                         &self.current_path,
                         self.entries.len(),
                         on_breadcrumb_click,
+                        cx,
                     ))
-                    .child(column_header())
+                    .child(column_header(cx))
                     .child(
                         div()
                             .id("explorer-rows")
@@ -367,6 +363,7 @@ fn path_bar(
     current_path: &Path,
     entry_count: usize,
     on_breadcrumb_click: OnBreadcrumbClick,
+    cx: &App,
 ) -> impl IntoElement {
     let segments = breadcrumb_segments(current_path);
     let last_index = segments.len().saturating_sub(1);
@@ -378,14 +375,14 @@ fn path_bar(
         .px(px(20.0))
         .py(px(12.0))
         .border_b(px(1.0))
-        .border_color(color::HAIRLINE)
+        .border_color(color::hairline(cx))
         .text_size(px(12.0))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .child(
             DesktopIcon::Folder
                 .icon()
                 .with_size(px(13.0))
-                .text_color(color::INK_SECONDARY),
+                .text_color(color::muted(cx)),
         )
         .child(
             div().flex().items_center().gap(px(6.0)).children(
@@ -398,6 +395,7 @@ fn path_bar(
                             path,
                             index == last_index,
                             on_breadcrumb_click.clone(),
+                            cx,
                         )
                     }),
             ),
@@ -413,28 +411,29 @@ fn breadcrumb_segment(
     path: PathBuf,
     current: bool,
     on_breadcrumb_click: OnBreadcrumbClick,
+    cx: &App,
 ) -> impl IntoElement {
     div()
         .id(SharedString::from(format!("explorer-breadcrumb-{label}")))
         .cursor_pointer()
         .when(current, |this| {
             this.font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_color(color::INK)
+                .text_color(color::foreground(cx))
         })
         .on_click(move |_event, window, cx| on_breadcrumb_click(path.clone(), window, cx))
         .child(label)
 }
 
-fn column_header() -> impl IntoElement {
+fn column_header(cx: &App) -> impl IntoElement {
     div()
         .flex()
         .px(px(20.0))
         .py(px(8.0))
         .border_b(px(1.0))
-        .border_color(color::HAIRLINE)
+        .border_color(color::hairline(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
-        .text_color(color::INK_TERTIARY)
+        .text_color(color::faint_text(cx))
         .child(div().flex_1().child(msg::desktop_explorer_column_name()))
         .child(div().w(px(90.0)).child(msg::desktop_explorer_column_size()))
         .child(
@@ -454,13 +453,16 @@ fn row(
 ) -> impl IntoElement {
     let clickable = entry.kind != EntryKind::Other;
     let (bg, text_color) = if selected {
-        (Some(color::INK), color::INK_ON_DARK)
+        (
+            Some(color::selection_background(cx)),
+            color::selection_text(cx),
+        )
     } else {
         (
             None,
             match entry.kind {
-                EntryKind::Folder => color::INK_TERTIARY,
-                EntryKind::Ledger | EntryKind::Other => color::INK_SECONDARY,
+                EntryKind::Folder => color::faint_text(cx),
+                EntryKind::Ledger | EntryKind::Other => color::muted(cx),
             },
         )
     };
@@ -529,9 +531,9 @@ fn footer(
         .px(px(20.0))
         .py(px(16.0))
         .border_t(px(1.0))
-        .border_color(color::HAIRLINE)
+        .border_color(color::hairline(cx))
         .text_size(px(11.5))
-        .text_color(color::INK_SECONDARY)
+        .text_color(color::muted(cx))
         .child(
             div()
                 .flex()
@@ -539,7 +541,7 @@ fn footer(
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(".pldb"),
                 )
                 .child(msg::desktop_explorer_file_type_info_suffix()),
@@ -554,7 +556,7 @@ fn footer(
                 .border(px(1.0))
                 .border_color(color::border(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_color(color::INK)
+                .text_color(color::foreground(cx))
                 .on_click(move |_event, window, cx| on_cancel(window, cx))
                 .child(msg::desktop_explorer_cancel()),
         )
@@ -565,14 +567,14 @@ fn footer(
                 .py(px(8.0))
                 .px(px(16.0))
                 .bg(if can_open {
-                    color::INK
+                    color::foreground(cx)
                 } else {
-                    color::INSET_TRACK
+                    color::inset_track(cx)
                 })
                 .text_color(if can_open {
-                    color::INK_ON_DARK
+                    color::background(cx)
                 } else {
-                    color::INK_TERTIARY
+                    color::faint_text(cx)
                 })
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .when(can_open, |this| {

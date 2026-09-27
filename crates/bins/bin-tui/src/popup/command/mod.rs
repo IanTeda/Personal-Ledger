@@ -486,7 +486,7 @@ impl CommandPopup {
                     );
                     let text = pad_line(&text, line_rows[idx].width);
                     let base_style = if row_idx == selected_row {
-                        Style::default().add_modifier(Modifier::REVERSED)
+                        c.selection()
                     } else {
                         Style::default()
                     };
