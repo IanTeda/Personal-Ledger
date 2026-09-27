@@ -43,9 +43,9 @@ As of [ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.m
 [ADR-0021](docs/adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md),
 the Preferences are the default Unit for new Accounts, Colour Theme, Colour Appearance and date style — all four Ledger-scoped, so they sync across a user's own Clients rather than being set separately on each one. The Colour Theme and Colour Appearance are nullable like the date style ([ADR-0023](docs/adr/0023-colour-theme-preferences-and-theme-role-overrides.md)). The date style is nullable: no value means "use the Locale's
 default", and only an explicit choice is stored and synced. The Locale is not a Preference
-(see Locale, below). No Client-scoped Preference exists
-yet; that half of the split stays available for whenever a genuinely per-device setting
-shows up.
+(see Locale, below). The first Client-scoped Preference is Toasts on/off, default on
+([ADR-0027](docs/adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md)),
+because whether Toasts are welcome depends on the device, not the Ledger.
 _Avoid_: Configuration, setting — "Configuration" is reserved for `lib-config`'s layered,
 deployment-time config (files/env vars, see `docs/settings.md`); a Preference is
 edited by the user from inside a running Client instead.
