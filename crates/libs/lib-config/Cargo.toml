@@ -11,6 +11,8 @@ doctest = false
 
 [dependencies]
 ## -- Internal Dependencies --
+lib_colour_theme = { path = "../lib-colour-theme" }
+lib_core = { path = "../lib-core" }
 lib_tracing = { path = "../../../crates/libs/lib-tracing" }
 
 ## -- Workspace Shared Dependencies --
@@ -18,6 +20,7 @@ chrono = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 
 ## -- Workspace Shared Dependencies (continued) --
 dirs = { workspace = true }

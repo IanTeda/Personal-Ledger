@@ -74,6 +74,7 @@ Configuration sections group related settings together. The application currentl
 
 * [Personal-Ledger]: Bootstrap and startup configurations.
 * [Keybindings]: Navigation and action keybindings.
+* [Theme]: Colour Role overrides laid over the chosen Colour Theme, with [Theme.Light] and [Theme.Dark] for one Colour Variant. Read by bin-tui and bin-desktop.
 * [Sync-Server]: Sync Server-specific settings (bind address). Only bin-sync-server uses the configuration settings. Both bin-tui and bin-desktop Sync Server settings are dynamic and thus use settings pulled from the database.
 
 ### Personal Ledger Section
@@ -219,6 +220,30 @@ Example:
 log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 ```
 
+## Theme Section
+
+The `[theme]` section overrides the colours of the Colour Theme you picked in Settings, on this Client only. It holds only the seven Colour Role keys; it can't choose a Colour Theme or Colour Appearance, which are Preferences and sync. Every other colour (borders, hover, selection, chart series) is calculated from these roles, so it follows your overrides. Changing `[theme]` needs a restart.
+
+A key in `[theme]` applies to both the light and dark Colour Variants. A key in `[theme.light]` or `[theme.dark]` applies to that Colour Variant only and wins over the same key in `[theme]`. Name only the roles you want to change; the rest come from the Colour Theme.
+
+Keys: `foreground`, `background`, `accent`, `cursor`, `muted`, `positive`, `negative`.
+
+* Type: Hex colour, with or without the leading `#` (e.g. `"#1F6FEB"` or `"1F6FEB"`)
+* Default: unset (the Colour Theme's own colour)
+* Environment Variable: PERSONAL_LEDGER_THEME__ACCENT, PERSONAL_LEDGER_THEME__DARK__ACCENT (and so on for each key)
+
+A value that isn't a hex colour, or a key that isn't one of the seven roles, is ignored with a warning in the log; the Client still starts. A colour that fails the contrast rules is still used, with a warning in the log and in Settings.
+
+Example:
+
+```ini
+[Theme]
+accent = "#1F6FEB"
+
+[Theme.Dark]
+accent = "#58A6FF"
+```
+
 ## Keybindings Section
 
 The `[Keybindings]` section defines the keyboard navigation keys and key combinations. Refer to [Navigation and keyboard grammar](navigation-design.md) for Personal Ledger's philosophy and approach to keyboard navigation.
@@ -349,6 +374,12 @@ new = "n"
 delete = "d"
 confirm = "y"
 cancel = "x"
+
+# Optional: override Colour Roles of the chosen Colour Theme on this Client.
+# [Theme]
+# accent = "#1F6FEB"
+# [Theme.Dark]
+# accent = "#58A6FF"
 
 # Only read by bin-sync-server -- bin-tui/bin-desktop ignore this section.
 [Sync-Server]

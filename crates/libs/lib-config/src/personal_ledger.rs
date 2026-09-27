@@ -63,6 +63,11 @@ pub struct PersonalLedgerConfig {
     /// written to a configuration source.
     #[serde(skip)]
     system_locale: Option<String>,
+
+    /// Draw with the terminal's own ANSI colours instead of the Colour Theme (ADR-0024).
+    /// Read only by the TUI; Configuration, so it never syncs.
+    #[serde(default)]
+    pub terminal_colours: bool,
 }
 
 impl Default for PersonalLedgerConfig {
@@ -78,6 +83,7 @@ impl Default for PersonalLedgerConfig {
             log_file_path: None,
             locale: None,
             system_locale: None,
+            terminal_colours: false,
         }
     }
 }
@@ -109,6 +115,11 @@ impl PersonalLedgerConfig {
     /// file.
     pub fn log_file_path(&self) -> Option<&std::path::Path> {
         self.log_file_path.as_deref()
+    }
+
+    /// Whether the TUI draws with the terminal's own colours rather than the Colour Theme.
+    pub fn terminal_colours(&self) -> bool {
+        self.terminal_colours
     }
 
     /// Returns the Locale set by configuration, if any (canonical casing once parsed).

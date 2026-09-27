@@ -73,6 +73,12 @@ pub struct LedgerConfig {
     /// [`Self::normalise_ini`] for the `-`/`_` translation); never read by Clients.
     #[serde(alias = "SyncServer", alias = "Sync-Server", alias = "sync-server")]
     pub sync_server: crate::SyncServerConfig,
+
+    /// `[theme]` Colour Role overrides, read by the TUI/Desktop Clients. Filled from the
+    /// merged configuration by hand rather than by serde, so a bad entry is dropped with a
+    /// warning instead of failing the whole parse (ADR-0023).
+    #[serde(skip)]
+    pub theme: crate::ThemeConfig,
 }
 
 impl LedgerConfig {
@@ -243,7 +249,9 @@ impl LedgerConfig {
     /// Build and deserialize the layered `config::Config` into a `LedgerConfig`.
     fn build(config_builder: ConfigBuilder<DefaultState>) -> crate::Result<LedgerConfig> {
         let config = config_builder.build()?;
-        let ledger_config: LedgerConfig = config.try_deserialize()?;
+        let theme = crate::ThemeConfig::from_config(&config);
+        let mut ledger_config: LedgerConfig = config.try_deserialize()?;
+        ledger_config.theme = theme;
         Ok(ledger_config)
     }
 
@@ -330,6 +338,11 @@ impl LedgerConfig {
     /// Get the key binding configuration.
     pub fn keybindings_config(&self) -> &crate::KeyBindingConfig {
         &self.keybindings
+    }
+
+    /// Get the `[theme]` Colour Role overrides.
+    pub fn theme_config(&self) -> &crate::ThemeConfig {
+        &self.theme
     }
 
     /// Get the Personal Ledger bootstrap/startup configuration.
@@ -707,6 +720,72 @@ mod tests {
             let config = LedgerConfig::parse_with_detector(None, env, || None).unwrap();
             assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::ERROR);
         });
+    }
+
+    #[test]
+    fn theme_variant_file_section_and_env_override_merge() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_file = temp_dir.path().join("theme.conf");
+        fs::write(
+            &config_file,
+            r##"
+            [Theme]
+            accent = "#111111"
+            muted = "#444444"
+            [theme.dark]
+            accent = "#222222"
+            "##,
+        )
+        .unwrap();
+
+        let env = env_map(&[
+            ("PERSONAL_LEDGER_THEME__MUTED", "555555"),
+            ("PERSONAL_LEDGER_THEME__LIGHT__POSITIVE", "#00AA00"),
+            ("PERSONAL_LEDGER_THEME__DARK__NEGATIVE", "not-a-colour"),
+        ]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(Some(&config_file), env).unwrap();
+        let theme = config.theme_config();
+        let hex = |v: &str| lib_core::HexColor::parse(v).unwrap();
+        use lib_colour_theme::{ColourRole, ColourVariant};
+
+        assert_eq!(
+            theme.overrides.get(ColourVariant::Dark, ColourRole::Accent),
+            Some(&hex("#222222"))
+        );
+        assert_eq!(
+            theme
+                .overrides
+                .get(ColourVariant::Light, ColourRole::Accent),
+            Some(&hex("#111111"))
+        );
+        assert_eq!(
+            theme.overrides.get(ColourVariant::Light, ColourRole::Muted),
+            Some(&hex("#555555"))
+        );
+        assert_eq!(
+            theme
+                .overrides
+                .get(ColourVariant::Light, ColourRole::Positive),
+            Some(&hex("#00AA00"))
+        );
+        assert_eq!(
+            theme
+                .overrides
+                .get(ColourVariant::Light, ColourRole::Negative),
+            None
+        );
+        assert_eq!(theme.invalid.len(), 1);
+        assert_eq!(theme.invalid[0].key, "theme.dark.negative");
+    }
+
+    #[test]
+    fn terminal_colours_defaults_off_and_reads_env() {
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env_map(&[])).unwrap();
+        assert!(!config.personal_ledger.terminal_colours());
+
+        let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__TERMINAL_COLOURS", "true")]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
+        assert!(config.personal_ledger.terminal_colours());
     }
 
     const LOCALE_ENV: &str = "PERSONAL_LEDGER_PERSONAL_LEDGER__LOCALE";

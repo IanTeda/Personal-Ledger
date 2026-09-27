@@ -13,6 +13,8 @@
 //!   level/file, shared by all three consumers (superseded `[tracing]`/`TracingConfig`)
 //! - [`sync_server`] - Sync-Server-only configuration (bind address, database URI), not
 //!   read by Clients
+//! - [`theme`] - `[theme]`/`[theme.light]`/`[theme.dark]` Colour Role overrides, read by
+//!   the TUI/Desktop Clients
 //! - [`keybindings`] - Keyboard shortcut configuration, read by the TUI/Desktop Clients
 //! - [`cli`] - Shared `--config`/`-c`/`--data`/`-d`/`--file`/`-f`/`--log`/`-l`/`--locale` CLI
 //!   arguments, flattened into each binary's own parser
@@ -32,6 +34,7 @@ mod keybindings;
 mod ledger;
 mod personal_ledger;
 mod sync_server;
+mod theme;
 
 /// Re-export settings [`Error`] type.
 pub use error::Error;
@@ -53,3 +56,6 @@ pub use keybindings::KeyBindingConfig;
 
 /// Shared `--config`/`-c` CLI argument, flattened into each binary's own `clap::Parser`.
 pub use cli::ConfigArgs;
+
+/// `[theme]` Colour Role overrides, read by the TUI/Desktop Clients.
+pub use theme::{InvalidThemeEntry, ThemeConfig};
