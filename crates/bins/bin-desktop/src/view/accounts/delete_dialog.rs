@@ -42,6 +42,7 @@ pub fn render(
                 &account.name,
                 true,
                 Rc::new(|_window: &mut Window, _cx: &mut App| {}),
+                cx,
             ),
         ]))
         .child(dialog::action_row([

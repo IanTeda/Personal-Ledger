@@ -153,6 +153,35 @@ impl Colours {
         self.accent().fg.unwrap_or(Color::Red)
     }
 
+    /// The drawn text-entry caret `▌`: the `cursor` role, or red in terminal colours.
+    pub fn cursor(&self) -> Style {
+        if self.terminal() {
+            Style::default().fg(Color::Red)
+        } else {
+            Style::default().fg(self.colour(self.resolved.roles.cursor))
+        }
+    }
+
+    /// Negative values and destructive consequences on `background`: the `negative` text
+    /// shade, or red in terminal colours.
+    pub fn negative(&self) -> Style {
+        if self.terminal() {
+            Style::default().fg(Color::Red)
+        } else {
+            Style::default().fg(self.colour(self.resolved.text_shades.negative))
+        }
+    }
+
+    /// [`negative`](Self::negative) on the [`selection`](Self::selection) fill, whose own
+    /// text shade keeps the contrast rule there.
+    pub fn negative_on_selection(&self) -> Style {
+        if self.terminal() {
+            Style::default().fg(Color::Red)
+        } else {
+            Style::default().fg(self.colour(self.resolved.selection.text_shades.negative))
+        }
+    }
+
     /// The current or selected row: the calculated selection swap, or `REVERSED` in terminal
     /// colours.
     pub fn selection(&self) -> Style {
@@ -163,6 +192,21 @@ impl Colours {
             Style::default()
                 .fg(self.colour(selection.text))
                 .bg(self.colour(selection.background))
+        }
+    }
+
+    /// The chosen option of a focused choice field: `background` on an `accent` fill, or red
+    /// `REVERSED` in terminal colours. Unfocused, the chosen option is a plain
+    /// [`selection`](Self::selection).
+    pub fn accent_selection(&self) -> Style {
+        if self.terminal() {
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::REVERSED)
+        } else {
+            Style::default()
+                .fg(self.colour(self.resolved.roles.background))
+                .bg(self.colour(self.resolved.roles.accent))
         }
     }
 
@@ -261,6 +305,29 @@ mod tests {
             colours.selection(),
             Style::default().add_modifier(Modifier::REVERSED)
         );
+        assert_eq!(colours.cursor(), Style::default().fg(Color::Red));
+        assert_eq!(colours.negative(), Style::default().fg(Color::Red));
+        assert_eq!(
+            colours.accent_selection(),
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::REVERSED)
+        );
+    }
+
+    #[test]
+    fn cursor_and_negative_draw_their_own_roles_not_the_accent() {
+        let colours = Colours::default();
+        let resolved = colours.resolved();
+        assert_eq!(
+            colours.cursor().fg,
+            Some(colours.colour(resolved.roles.cursor))
+        );
+        assert_eq!(
+            colours.negative().fg,
+            Some(colours.colour(resolved.text_shades.negative))
+        );
+        assert_ne!(colours.negative(), colours.accent());
     }
 
     #[test]

@@ -254,7 +254,7 @@ impl DeleteAccountPopup {
                 msg::tui_account_delete_field_transactions(),
                 Line::from(vec![
                     Span::raw("( ) delete them too · "),
-                    Span::styled("refused", c.accent()),
+                    Span::styled("refused", c.negative()),
                 ]),
                 c,
             ));
@@ -349,7 +349,7 @@ impl DeleteAccountPopup {
         ));
         rows.push(plain_row(Line::from(Span::styled(
             "deletion is permanent and not synced back",
-            c.accent(),
+            c.negative(),
         ))));
         rows.push(plain_row(Line::from(
             "^a deactivate instead — keeps everything readable",
@@ -362,7 +362,7 @@ impl DeleteAccountPopup {
 fn text_field_value(value: &str, focused: bool, c: &Colours) -> Line<'static> {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", c.accent()));
+        spans.push(Span::styled("\u{258c}", c.cursor()));
     }
     Line::from(spans)
 }

@@ -3225,21 +3225,24 @@ impl Render for Shell {
                 None => (px(300.0), px(200.0)),
             };
             let options = self.filter_form_options();
-            transactions_view::render_popover(transactions_view::PopoverProps {
-                form,
-                options: &options,
-                start_hint: form.start_hint(self.today, self.settings_date_style),
-                end_hint: form.end_hint(self.today, self.settings_date_style),
-                can_apply: form.is_valid(self.today, self.settings_date_style),
-                left,
-                top,
-                on_field_click,
-                on_option_click,
-                on_status_click,
-                on_reset: entity_for(Shell::handle_filter_reset),
-                on_apply: entity_for(Shell::handle_filter_apply),
-                on_cancel: entity_for(Shell::handle_filter_cancel),
-            })
+            transactions_view::render_popover(
+                transactions_view::PopoverProps {
+                    form,
+                    options: &options,
+                    start_hint: form.start_hint(self.today, self.settings_date_style),
+                    end_hint: form.end_hint(self.today, self.settings_date_style),
+                    can_apply: form.is_valid(self.today, self.settings_date_style),
+                    left,
+                    top,
+                    on_field_click,
+                    on_option_click,
+                    on_status_click,
+                    on_reset: entity_for(Shell::handle_filter_reset),
+                    on_apply: entity_for(Shell::handle_filter_apply),
+                    on_cancel: entity_for(Shell::handle_filter_cancel),
+                },
+                cx,
+            )
         });
         let transactions_page = (self.nav.noun() == Noun::Transactions).then(|| {
             let ledger = self.transactions_ledger();
@@ -3390,6 +3393,7 @@ impl Render for Shell {
                                     on_tracing_level_click,
                                     on_clear_logs_click,
                                 },
+                                cx,
                             )),
                     ),
             )
@@ -3694,6 +3698,10 @@ struct SettingsPanelProps<'a> {
 /// second scrollable container here would fight it for the same scroll state. Every other noun
 /// is scrollable and focus-bordered regardless of which is active, since both are properties of
 /// the `View` zone itself, not of any one noun's content.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the view props plus the App the Colour Theme is read from; the remaining sweeps may fold them into one struct"
+)]
 fn render_view(
     noun: Noun,
     ledger_open: bool,
@@ -3702,9 +3710,10 @@ fn render_view(
     on_empty_state_command_click: OnEmptyStateCommandClick,
     pages: PageProps<'_>,
     settings: SettingsPanelProps<'_>,
+    cx: &gpui::App,
 ) -> gpui::AnyElement {
     if noun == Noun::Accounts {
-        return accounts_view::render(focused, scroll_handle, pages.accounts);
+        return accounts_view::render(focused, scroll_handle, pages.accounts, cx);
     }
     if noun == Noun::Categories {
         return categories_view::render(focused, scroll_handle, pages.categories);

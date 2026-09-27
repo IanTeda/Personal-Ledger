@@ -7,11 +7,6 @@
 //! model. Institution, Type and Unit are the shared dropdown (`super::select_field`); Institution
 //! reads as the read-only placeholder while Type is Cash.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -67,42 +62,52 @@ pub fn render(
                 &crate::msg::desktop_accounts_name_placeholder(),
                 focused(AccountField::Name),
                 click(AccountField::Name),
+                cx,
             ),
             two_up([
-                select_field::render(SelectFieldProps {
-                    id: "add-account-institution",
-                    label: lib_locale::msg::column_institution().into(),
-                    options: &options.institutions,
-                    state: &form.institution,
-                    focused: focused(AccountField::Institution),
-                    read_only: form
-                        .is_cash()
-                        .then(|| accounts::institution_label(NO_INSTITUTION).into()),
-                    on_field_click: click(AccountField::Institution),
-                    on_option_click: option_click(AccountField::Institution),
-                }),
-                select_field::render(SelectFieldProps {
-                    id: "add-account-type",
-                    label: lib_locale::msg::column_type().into(),
-                    options: &options.types,
-                    state: &form.account_type,
-                    focused: focused(AccountField::Type),
-                    read_only: None,
-                    on_field_click: click(AccountField::Type),
-                    on_option_click: option_click(AccountField::Type),
-                }),
+                select_field::render(
+                    SelectFieldProps {
+                        id: "add-account-institution",
+                        label: lib_locale::msg::column_institution().into(),
+                        options: &options.institutions,
+                        state: &form.institution,
+                        focused: focused(AccountField::Institution),
+                        read_only: form
+                            .is_cash()
+                            .then(|| accounts::institution_label(NO_INSTITUTION).into()),
+                        on_field_click: click(AccountField::Institution),
+                        on_option_click: option_click(AccountField::Institution),
+                    },
+                    cx,
+                ),
+                select_field::render(
+                    SelectFieldProps {
+                        id: "add-account-type",
+                        label: lib_locale::msg::column_type().into(),
+                        options: &options.types,
+                        state: &form.account_type,
+                        focused: focused(AccountField::Type),
+                        read_only: None,
+                        on_field_click: click(AccountField::Type),
+                        on_option_click: option_click(AccountField::Type),
+                    },
+                    cx,
+                ),
             ]),
             two_up([
-                select_field::render(SelectFieldProps {
-                    id: "add-account-unit",
-                    label: lib_locale::msg::column_unit().into(),
-                    options: &options.units,
-                    state: &form.unit,
-                    focused: focused(AccountField::Unit),
-                    read_only: None,
-                    on_field_click: click(AccountField::Unit),
-                    on_option_click: option_click(AccountField::Unit),
-                }),
+                select_field::render(
+                    SelectFieldProps {
+                        id: "add-account-unit",
+                        label: lib_locale::msg::column_unit().into(),
+                        options: &options.units,
+                        state: &form.unit,
+                        focused: focused(AccountField::Unit),
+                        read_only: None,
+                        on_field_click: click(AccountField::Unit),
+                        on_option_click: option_click(AccountField::Unit),
+                    },
+                    cx,
+                ),
                 div()
                     .flex_1()
                     .min_w(px(0.0))
@@ -113,16 +118,18 @@ pub fn render(
                         "0.00",
                         focused(AccountField::OpeningBalance),
                         click(AccountField::OpeningBalance),
+                        cx,
                     ))
                     .into_any_element(),
             ]),
             text_field(
                 "add-account-number",
-                optional_label(crate::msg::desktop_accounts_field_number()),
+                optional_label(crate::msg::desktop_accounts_field_number(), cx),
                 &form.account_number,
                 "\u{2022}\u{2022}\u{2022}\u{2022} \u{2022}\u{2022}\u{2022}\u{2022} 1234",
                 focused(AccountField::AccountNumber),
                 click(AccountField::AccountNumber),
+                cx,
             ),
         ]))
         .child(dialog::action_row([
@@ -161,14 +168,15 @@ pub(crate) fn label(text: impl Into<SharedString>) -> AnyElement {
 }
 
 /// A label suffixed `(optional)` in the tertiary ink.
-pub(crate) fn optional_label(text: impl Into<SharedString>) -> AnyElement {
-    suffixed_label(text, crate::msg::desktop_field_optional())
+pub(crate) fn optional_label(text: impl Into<SharedString>, cx: &App) -> AnyElement {
+    suffixed_label(text, crate::msg::desktop_field_optional(), cx)
 }
 
 /// A label followed by a `suffix` in the tertiary ink, at regular weight.
 pub(crate) fn suffixed_label(
     text: impl Into<SharedString>,
     suffix: impl Into<SharedString>,
+    cx: &App,
 ) -> AnyElement {
     div()
         .flex()
@@ -180,13 +188,13 @@ pub(crate) fn suffixed_label(
         .child(
             div()
                 .font_weight(gpui::FontWeight::NORMAL)
-                .text_color(color::INK_TERTIARY)
+                .text_color(color::faint_text(cx))
                 .child(suffix.into()),
         )
         .into_any_element()
 }
 
-/// A label above a clickable text box whose border turns `ACCENT` with a trailing caret while
+/// A label above a clickable text box whose border turns `accent` with a trailing caret while
 /// focused -- the same look as the Settings dialogs' text fields.
 pub(crate) fn text_field(
     id: &'static str,
@@ -195,15 +203,19 @@ pub(crate) fn text_field(
     placeholder: &str,
     focused: bool,
     on_click: dialog::OnClick,
+    cx: &App,
 ) -> AnyElement {
     let caret = if focused { "\u{2502}" } else { "" };
     let (text, text_color) = if value.is_empty() {
         (
             SharedString::from(format!("{placeholder}{caret}")),
-            color::INK_TERTIARY,
+            color::faint_text(cx),
         )
     } else {
-        (SharedString::from(format!("{value}{caret}")), color::INK)
+        (
+            SharedString::from(format!("{value}{caret}")),
+            color::foreground(cx),
+        )
     };
 
     div()
@@ -217,9 +229,9 @@ pub(crate) fn text_field(
                 .px(px(10.0))
                 .border_1()
                 .border_color(if focused {
-                    color::ACCENT
+                    color::accent(cx)
                 } else {
-                    color::BORDER
+                    color::border(cx)
                 })
                 .text_size(px(13.0))
                 .text_color(text_color)

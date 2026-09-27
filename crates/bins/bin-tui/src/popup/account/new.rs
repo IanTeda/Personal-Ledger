@@ -342,7 +342,7 @@ fn render_text_field(
 ) {
     let mut spans = vec![Span::raw(value.to_string())];
     if focused {
-        spans.push(Span::styled("\u{258c}", c.accent()));
+        spans.push(Span::styled("\u{258c}", c.cursor()));
     }
     render_field(frame, area, label, Line::from(spans), c);
 }
@@ -358,9 +358,9 @@ fn render_type_field(
     c: &Colours,
 ) {
     let selected_style = if focused {
-        c.accent().add_modifier(Modifier::REVERSED)
+        c.accent_selection()
     } else {
-        Style::default().add_modifier(Modifier::REVERSED)
+        c.selection()
     };
 
     let mut spans = Vec::new();

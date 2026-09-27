@@ -464,7 +464,7 @@ impl AccountsView {
             .split(area);
 
         self.render_list(frame, rows[0], c);
-        self.render_summary(frame, rows[1]);
+        self.render_summary(frame, rows[1], c);
     }
 
     fn render_list(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
@@ -501,7 +501,7 @@ impl AccountsView {
 
     /// The summary box beneath the list, for whichever account is selected — see the
     /// handoff's own worked example (`docs/ux/tui/accounts/README.md` "Summary box").
-    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect) {
+    fn render_summary(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let block = Block::bordered().padding(Padding::horizontal(1));
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -538,6 +538,7 @@ impl AccountsView {
         let balance = self.store.balance(account.id);
         frame.render_widget(
             summary_field_line(
+                c,
                 "balance now · computed",
                 &crate::format::money(&balance, account.unit.decimal_places),
             ),
@@ -553,7 +554,7 @@ impl AccountsView {
             )
         };
         frame.render_widget(
-            summary_field_line("transactions", &transactions_text),
+            summary_field_line(c, "transactions", &transactions_text),
             rows[3],
         );
 
@@ -569,14 +570,17 @@ impl AccountsView {
             }
             None => "none".to_string(),
         };
-        frame.render_widget(summary_field_line("last check", &last_check_text), rows[4]);
+        frame.render_widget(
+            summary_field_line(c, "last check", &last_check_text),
+            rows[4],
+        );
 
         let active_text = if account.is_active {
             "[×] · offered when posting"
         } else {
             "[ ] · not offered"
         };
-        frame.render_widget(summary_field_line("active", active_text), rows[5]);
+        frame.render_widget(summary_field_line(c, "active", active_text), rows[5]);
     }
 
     fn render_right_pane(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
@@ -621,7 +625,7 @@ impl AccountsView {
             ])
             .split(area);
 
-        render_chart_heading(frame, rows[0]);
+        render_chart_heading(frame, rows[0], c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         let series: Vec<f64> = self
@@ -659,7 +663,7 @@ impl AccountsView {
             .y_axis(Axis::default().bounds([min - margin, max + margin]));
         frame.render_widget(chart, rows[2]);
 
-        render_chart_labels(frame, rows[3], &series, account.unit.decimal_places);
+        render_chart_labels(frame, rows[3], &series, account.unit.decimal_places, c);
     }
 
     /// The ledger list: status glyph / `DATE` / `PAYEE` / `AMOUNT` / `BALANCE`, newest first,
@@ -695,9 +699,9 @@ impl AccountsView {
             ])
             .split(content_area);
 
-        render_ledger_heading(frame, sections[0], visible.len(), total);
+        render_ledger_heading(frame, sections[0], visible.len(), total, c);
         frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
-        render_ledger_column_header(frame, sections[2]);
+        render_ledger_column_header(frame, sections[2], c);
         render_ledger_rows(
             frame,
             sections[3],
@@ -706,7 +710,7 @@ impl AccountsView {
             blank_balance,
             c,
         );
-        render_ledger_legend(frame, sections[4], account.open_count);
+        render_ledger_legend(frame, sections[4], account.open_count, c);
         render_net_line(frame, sections[5], self.visible_accounts());
 
         let rows_scrollbar_area = Rect {
@@ -787,7 +791,7 @@ fn render_list_line(
                 width: unit_area.width + 1 + balance_area.width,
                 ..unit_area
             };
-            let dim = Style::default().add_modifier(Modifier::DIM);
+            let dim = c.muted();
             frame.render_widget(
                 Paragraph::new(Span::styled(format!("{count}    {right_text}"), dim))
                     .alignment(Alignment::Right),
@@ -800,13 +804,10 @@ fn render_list_line(
         } => {
             let is_selected = account.id == selected;
             if is_selected {
-                frame.render_widget(
-                    Block::new().style(Style::default().add_modifier(Modifier::REVERSED)),
-                    area,
-                );
+                frame.render_widget(Block::new().style(c.selection()), area);
             }
 
-            let dim = Style::default().add_modifier(Modifier::DIM);
+            let dim = c.muted();
             let (name_area, unit_area, balance_area) = list_row_columns(area);
 
             let connector = if *is_last_in_group { "└ " } else { "├ " };
@@ -834,8 +835,10 @@ fn render_list_line(
 
             let balance = balance_for_display(account);
             let is_negative = balance.0 < 0;
-            let balance_style = if is_negative {
-                c.accent()
+            let balance_style = if is_negative && is_selected {
+                c.negative_on_selection()
+            } else if is_negative {
+                c.negative()
             } else {
                 Style::default()
             };
@@ -860,8 +863,8 @@ fn balance_for_display(account: &Account) -> Money {
 
 /// One `label   value` summary row, the label padded to [`SUMMARY_LABEL_WIDTH`] and dimmed —
 /// mirrors `view::categories`'s own `summary_field_line`.
-fn summary_field_line<'a>(label: &'a str, value: &'a str) -> Paragraph<'a> {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn summary_field_line<'a>(c: &Colours, label: &'a str, value: &'a str) -> Paragraph<'a> {
+    let dim = c.muted();
     Paragraph::new(Line::from(vec![
         Span::styled(format!("{label:<SUMMARY_LABEL_WIDTH$}"), dim),
         Span::raw(value),
@@ -884,8 +887,8 @@ fn running_balance_is_meaningful(filtered: bool, sorted_by_date_descending: bool
 /// The `BALANCE` heading over the chart, with the trailing window as its dim tag — mirrors
 /// `view::categories`'s own `render_chart_heading`, without the direct/subtree label swap
 /// Categories needs (an Account's balance line has only one series).
-fn render_chart_heading(frame: &mut Frame<'_>, area: Rect) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_chart_heading(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let dim = c.muted();
     let tag = format!(
         "{} – {}",
         format_month(chart_month(0)),
@@ -912,7 +915,13 @@ fn render_chart_heading(frame: &mut Frame<'_>, area: Rect) {
 /// month, last month + its value — per the handoff's "Labels beneath: first point, low with
 /// its month, last point" (Categories' sibling chart instead labels an average here; Accounts'
 /// own handoff asks for the low point specifically).
-fn render_chart_labels(frame: &mut Frame<'_>, area: Rect, series: &[f64], decimal_places: i64) {
+fn render_chart_labels(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    series: &[f64],
+    decimal_places: i64,
+    c: &Colours,
+) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(0), Constraint::Min(0), Constraint::Min(0)])
@@ -926,7 +935,7 @@ fn render_chart_labels(frame: &mut Frame<'_>, area: Rect, series: &[f64], decima
         return;
     };
 
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     let first_text = format!(
         "{}  {}",
         format_month(chart_month(0)),
@@ -989,8 +998,14 @@ fn ledger_row_columns(area: Rect) -> (Rect, Rect, Rect, Rect, Rect) {
 }
 
 /// The `LEDGER  N of M · newest first` heading.
-fn render_ledger_heading(frame: &mut Frame<'_>, area: Rect, shown: usize, total: usize) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_ledger_heading(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    shown: usize,
+    total: usize,
+    c: &Colours,
+) {
+    let dim = c.muted();
     let tag = format!("{shown} of {total} · newest first");
     let columns = Layout::default()
         .direction(Direction::Horizontal)
@@ -1009,9 +1024,9 @@ fn render_ledger_heading(frame: &mut Frame<'_>, area: Rect, shown: usize, total:
     );
 }
 
-fn render_ledger_column_header(frame: &mut Frame<'_>, area: Rect) {
+fn render_ledger_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let (_, date, payee, amount, balance) = ledger_row_columns(area);
-    let dim = Style::default().add_modifier(Modifier::DIM);
+    let dim = c.muted();
     frame.render_widget(
         Paragraph::new(Span::styled(crate::msg::tui_accounts_column_date(), dim)),
         date,
@@ -1058,7 +1073,7 @@ fn render_ledger_rows(
 
         let is_negative = row.amount.0 < 0;
         let amount_style = if is_negative {
-            c.accent()
+            c.negative()
         } else {
             Style::default()
         };
@@ -1077,7 +1092,7 @@ fn render_ledger_rows(
             crate::format::money(balance, decimal_places)
         };
         let balance_style = if !blank_balance && balance.0 < 0 {
-            c.accent()
+            c.negative()
         } else {
             Style::default()
         };
@@ -1090,8 +1105,8 @@ fn render_ledger_rows(
 
 /// `○ open · ✓ reconciled · N open` — the handoff's "legend in the footer row alongside the
 /// open count".
-fn render_ledger_legend(frame: &mut Frame<'_>, area: Rect, open_count: u32) {
-    let dim = Style::default().add_modifier(Modifier::DIM);
+fn render_ledger_legend(frame: &mut Frame<'_>, area: Rect, open_count: u32, c: &Colours) {
+    let dim = c.muted();
     let text = format!("○ open · ✓ reconciled · {open_count} open");
     frame.render_widget(Paragraph::new(Span::styled(text, dim)), area);
 }

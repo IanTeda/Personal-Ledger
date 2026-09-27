@@ -25,7 +25,7 @@ pub use table::OnRowClick;
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, Pixels, UniformListScrollHandle, div, prelude::*, px};
+use gpui::{AnyElement, App, Pixels, UniformListScrollHandle, div, prelude::*, px};
 
 use crate::{theme::color, transaction_chips::Footer, transaction_rows::RowView};
 
@@ -72,6 +72,6 @@ pub fn render(focused: bool, props: TransactionsPageProps) -> AnyElement {
 }
 
 /// Draws the filter popover over the window: see [`filter_popover`].
-pub fn render_popover(props: PopoverProps<'_>) -> AnyElement {
-    filter_popover::render(props)
+pub fn render_popover(props: PopoverProps<'_>, cx: &App) -> AnyElement {
+    filter_popover::render(props, cx)
 }

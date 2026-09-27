@@ -60,7 +60,7 @@ pub struct PopoverProps<'a> {
     pub on_cancel: dialog::OnClick,
 }
 
-pub fn render(props: PopoverProps<'_>) -> AnyElement {
+pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
     let PopoverProps {
         form,
         options,
@@ -125,26 +125,32 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                 .flex()
                 .flex_col()
                 .gap(px(14.0))
-                .child(select_field::render(SelectFieldProps {
-                    id: "filter-account",
-                    label: lib_locale::msg::column_account().into(),
-                    options: options.for_field(FormField::Account),
-                    state: &form.account,
-                    focused: focused(FormField::Account),
-                    read_only: None,
-                    on_field_click: click(FormField::Account),
-                    on_option_click: option_click(FormField::Account),
-                }))
-                .child(select_field::render(SelectFieldProps {
-                    id: "filter-category",
-                    label: lib_locale::msg::column_category().into(),
-                    options: options.for_field(FormField::Category),
-                    state: &form.category,
-                    focused: focused(FormField::Category),
-                    read_only: None,
-                    on_field_click: click(FormField::Category),
-                    on_option_click: option_click(FormField::Category),
-                }))
+                .child(select_field::render(
+                    SelectFieldProps {
+                        id: "filter-account",
+                        label: lib_locale::msg::column_account().into(),
+                        options: options.for_field(FormField::Account),
+                        state: &form.account,
+                        focused: focused(FormField::Account),
+                        read_only: None,
+                        on_field_click: click(FormField::Account),
+                        on_option_click: option_click(FormField::Account),
+                    },
+                    cx,
+                ))
+                .child(select_field::render(
+                    SelectFieldProps {
+                        id: "filter-category",
+                        label: lib_locale::msg::column_category().into(),
+                        options: options.for_field(FormField::Category),
+                        state: &form.category,
+                        focused: focused(FormField::Category),
+                        read_only: None,
+                        on_field_click: click(FormField::Category),
+                        on_option_click: option_click(FormField::Category),
+                    },
+                    cx,
+                ))
                 .child(text_field(
                     "filter-payee",
                     label(lib_locale::msg::column_payee()),
@@ -152,6 +158,7 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                     &crate::msg::desktop_transactions_filter_any_payee(),
                     focused(FormField::Payee),
                     click(FormField::Payee),
+                    cx,
                 ))
                 .child(text_field(
                     "filter-tag",
@@ -160,6 +167,7 @@ pub fn render(props: PopoverProps<'_>) -> AnyElement {
                     &crate::msg::desktop_transactions_filter_any_tag(),
                     focused(FormField::Tag),
                     click(FormField::Tag),
+                    cx,
                 ))
                 .child(two_up([
                     date_field(
