@@ -19,6 +19,11 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -3404,11 +3409,12 @@ impl Render for Shell {
                     on_explorer_breadcrumb_click,
                     on_explorer_cancel,
                     on_explorer_open,
+                    cx,
                 )
             }))
             .children(filter_popover)
             .children(
-                (self.nav.mode() == InputMode::Help).then(|| help_view::render(on_help_close)),
+                (self.nav.mode() == InputMode::Help).then(|| help_view::render(on_help_close, cx)),
             )
             .children(self.accounts_dialog.as_ref().map(|dialog| match dialog {
                 AccountsDialog::Add(form) => accounts_view::add_dialog::render(
@@ -3418,6 +3424,7 @@ impl Render for Shell {
                     on_accounts_dialog_option_click,
                     on_accounts_dialog_cancel,
                     on_accounts_dialog_confirm,
+                    cx,
                 ),
                 AccountsDialog::Edit(id, form) => {
                     match self.accounts.iter().find(|account| account.id == *id) {
@@ -3429,6 +3436,7 @@ impl Render for Shell {
                             on_accounts_dialog_option_click,
                             on_accounts_dialog_cancel,
                             on_accounts_dialog_confirm,
+                            cx,
                         ),
                         // Defensive only: the id comes from a live row when the dialog opens.
                         None => div().into_any_element(),
@@ -3441,6 +3449,7 @@ impl Render for Shell {
                             form,
                             on_accounts_dialog_cancel,
                             on_accounts_dialog_confirm,
+                            cx,
                         ),
                         // Defensive only: the id comes from a live row when the dialog opens.
                         None => div().into_any_element(),
@@ -3475,6 +3484,7 @@ impl Render for Shell {
                             on_cancel: on_categories_dialog_cancel,
                             on_confirm: on_categories_dialog_confirm,
                         },
+                        cx,
                     )
                 }
                 categories::CategoriesDialog::Edit(category_id, form) => {
@@ -3534,6 +3544,7 @@ impl Render for Shell {
                             on_cancel: on_categories_dialog_cancel,
                             on_confirm: on_categories_dialog_confirm,
                         },
+                        cx,
                     )
                 }
                 categories::CategoriesDialog::Delete(category_id, form) => {
@@ -3569,6 +3580,7 @@ impl Render for Shell {
                             budget_count,
                             on_categories_dialog_cancel.clone(),
                             on_categories_dialog_confirm.clone(),
+                            cx,
                         )
                     } else {
                         div().into_any_element()
@@ -3582,6 +3594,7 @@ impl Render for Shell {
                     on_unit_dialog_kind_click.clone(),
                     on_settings_dialog_cancel.clone(),
                     on_settings_dialog_confirm.clone(),
+                    cx,
                 ),
                 SettingsDialog::EditUnit(_, form) => settings_view::edit_unit_dialog::render(
                     form,
@@ -3589,6 +3602,7 @@ impl Render for Shell {
                     on_unit_dialog_kind_click,
                     on_settings_dialog_cancel.clone(),
                     on_settings_dialog_confirm.clone(),
+                    cx,
                 ),
                 SettingsDialog::DeleteUnit(index, form) => {
                     match self.settings_units.get(*index) {
@@ -3597,6 +3611,7 @@ impl Render for Shell {
                             form,
                             on_settings_dialog_cancel.clone(),
                             on_settings_dialog_confirm.clone(),
+                            cx,
                         ),
                         // Defensive only: `index` should always be in bounds (it's only ever
                         // set from a real row's own click handler) -- an empty overlay is a
@@ -3612,6 +3627,7 @@ impl Render for Shell {
                         on_add_institution_unit_click,
                         on_settings_dialog_cancel,
                         on_settings_dialog_confirm,
+                        cx,
                     )
                 }
             }))

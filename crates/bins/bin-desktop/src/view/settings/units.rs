@@ -21,6 +21,11 @@
 //! slip, not the intended spacing -- built to the 16px gap that's consistent both with
 //! Institutions' own button and with the stated rule.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};

@@ -714,6 +714,7 @@ dependencies = [
  "dirs 6.0.0",
  "gpui",
  "gpui-component",
+ "lib_colour_theme",
  "lib_config",
  "lib_core",
  "lib_database",

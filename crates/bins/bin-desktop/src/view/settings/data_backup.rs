@@ -8,6 +8,11 @@
 //! handlers with no real effect) rather than "not yet built" behind a future ticket -- so, like
 //! `sync_server::sync_now_button`, their stub status-line messages name no issue.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};

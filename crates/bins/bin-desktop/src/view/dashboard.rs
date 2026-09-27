@@ -4,6 +4,11 @@
 //! representative content matching the handoff's own mockup, not real `lib_database` data --
 //! wiring a real Ledger's figures in is separate future work (issue #144's "Out of scope").
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use gpui::{App, SharedString, Window, div, prelude::*, px, relative};
 use gpui_component::chart::{LineChart, PieChart};
 

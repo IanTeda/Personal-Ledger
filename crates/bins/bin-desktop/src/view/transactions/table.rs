@@ -11,6 +11,11 @@
 //! The selected row is the dark treatment: ink fill, ground text, secondary text stepped down to
 //! `#d7d3d3`, payee at weight 800, negatives in the on-dark accent.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::{ops::Range, rc::Rc};
 
 use gpui::{
@@ -124,7 +129,7 @@ pub fn rows(
         count,
         // Called for the visible range, and once for row 0 to measure: a pure function of the
         // index, with every cell already formatted (see `transaction_rows::build_rows`).
-        move |range: Range<usize>, _window: &mut Window, _cx: &mut App| {
+        move |range: Range<usize>, _window: &mut Window, cx: &mut App| {
             range
                 .map(|index| {
                     row(
@@ -133,6 +138,7 @@ pub fn rows(
                         index == selected,
                         row_height,
                         on_row_click.clone(),
+                        cx,
                     )
                 })
                 .collect::<Vec<_>>()
@@ -150,6 +156,7 @@ fn row(
     selected: bool,
     height: Pixels,
     on_click: OnRowClick,
+    cx: &App,
 ) -> AnyElement {
     let (primary, secondary, tertiary) = if selected {
         (
@@ -184,7 +191,7 @@ fn row(
         .border_color(if selected {
             color::INK
         } else {
-            color::HAIRLINE_LIGHT
+            color::hairline(cx)
         })
         .when(selected, |this| this.bg(color::INK).text_color(primary))
         .when(!selected, |this| {

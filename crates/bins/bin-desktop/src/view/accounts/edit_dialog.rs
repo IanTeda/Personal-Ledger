@@ -8,6 +8,11 @@
 //! recorded on the Desktop Accounts map). Institution reads as the placeholder while Type is
 //! Cash, as in Add.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use chrono::Datelike;
 use gpui::{AnyElement, SharedString, div, prelude::*, px};
 
@@ -24,6 +29,10 @@ use crate::{
     theme::color,
 };
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the dialog's callbacks plus the App the Colour Theme is read from; a handlers struct is the sweep's call"
+)]
 pub fn render(
     form: &AccountForm,
     account: &Account,
@@ -32,6 +41,7 @@ pub fn render(
     on_option_click: OnOptionClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &gpui::App,
 ) -> AnyElement {
     let focused = |field: AccountField| form.focused == field;
     let click = |field: AccountField| -> dialog::OnClick {
@@ -129,7 +139,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(add_dialog::WIDTH, false, card)
+    dialog::overlay(add_dialog::WIDTH, false, card, cx)
 }
 
 /// `Opened Mar 2019 · 312 transactions. Renaming is safe. ...` -- the usage notice, with the

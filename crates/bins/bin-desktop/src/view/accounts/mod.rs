@@ -11,6 +11,11 @@
 //! Every action here (row click, edit, delete, add) is a callback into `Shell`, so the keyboard
 //! (`n`/`e`/`d`/`enter`) and the mouse reach the same handlers.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 pub mod add_dialog;
 pub mod delete_dialog;
 pub mod edit_dialog;

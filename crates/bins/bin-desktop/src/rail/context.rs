@@ -5,6 +5,11 @@
 //! no entities renders no context rail at all; `Shell` is what skips calling this, not this
 //! module (rule 4 lives in `NavState::noun`, not here).
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use gpui::{App, Window, div, prelude::*, px};
 
 use crate::{nav::Noun, theme::color};

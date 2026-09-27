@@ -7,6 +7,11 @@
 //! (changed from the default) ends in a clickable `✕` that resets just that filter, and a click on
 //! the chip itself opens the filter popover.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gpui::{AnyElement, App, Bounds, Pixels, SharedString, Window, canvas, div, prelude::*, px};

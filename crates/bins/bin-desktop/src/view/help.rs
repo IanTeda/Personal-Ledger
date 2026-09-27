@@ -1,6 +1,11 @@
 //! The `?` help overlay: an About-style card on `dialog`'s chrome -- project facts on the left,
 //! the shortcut cheat-sheet on the right, a Close button in the footer.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -13,7 +18,7 @@ const KEY_WIDTH: gpui::Pixels = px(44.0);
 
 pub type OnClose = dialog::OnClick;
 
-pub fn render(on_close: OnClose) -> AnyElement {
+pub fn render(on_close: OnClose, cx: &App) -> AnyElement {
     let overlay = dialog::overlay(
         WIDTH,
         false,
@@ -23,6 +28,7 @@ pub fn render(on_close: OnClose) -> AnyElement {
             .child(header())
             .child(div().flex().child(facts_column()).child(shortcuts_column()))
             .child(footer(on_close)),
+        cx,
     );
     // Keyboard input is already swallowed in `InputMode::Help`; this stops clicks reaching the
     // rails behind.

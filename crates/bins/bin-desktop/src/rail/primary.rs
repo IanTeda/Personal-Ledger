@@ -6,6 +6,11 @@
 //! Letter-spacing (`.11em` on the group headings) isn't rendered: `gpui` 0.2.2's `Styled`
 //! trait has no letter-spacing property to set. Everything else in this component is exact.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{App, BoxShadow, Window, div, point, prelude::*, px};

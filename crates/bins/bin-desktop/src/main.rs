@@ -9,6 +9,7 @@ mod accounts;
 mod assets;
 mod budgets;
 mod categories;
+mod colours;
 mod command;
 mod dialog;
 mod error;
@@ -85,6 +86,7 @@ async fn main() -> Result<()> {
     // flushes buffered log lines to `log_file_path` (when configured).
     let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
     config.theme_config().warn_invalid();
+    let theme_overrides = config.theme_config().overrides.clone();
 
     // Resolved once, before any window opens; the Locale never changes at runtime.
     let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
@@ -95,6 +97,7 @@ async fn main() -> Result<()> {
         .run(move |cx: &mut App| {
             gpui_component::init(cx);
             gpui_component::set_locale(locale::gpui_component_tag(locale));
+            colours::init(theme_overrides, cx);
 
             // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
             // .. }` request resolves against the bundled weights rather than a fallback.

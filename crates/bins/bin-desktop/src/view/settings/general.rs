@@ -3,6 +3,11 @@
 //! throughout, matching the mockup's own -- no real `lib_database::Preferences` wiring in this
 //! map (see the Desktop Settings Surface map's Destination).
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use gpui::{AnyElement, div, prelude::*, px};
 
 use crate::theme::color;

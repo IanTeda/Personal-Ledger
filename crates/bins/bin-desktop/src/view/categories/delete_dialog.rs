@@ -4,6 +4,11 @@
 //! typed-name confirm (exact, case-sensitive) gating **Delete category**. A parent is refused
 //! (status message, dialog not opened) with "delete or move its children first".
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use gpui::{AnyElement, SharedString, div, prelude::*, px};
 
 use super::add_dialog::WIDTH;
@@ -23,6 +28,7 @@ pub fn render(
     budget_count: usize,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &gpui::App,
 ) -> AnyElement {
     let card = div()
         .flex()
@@ -48,7 +54,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(WIDTH, true, card)
+    dialog::overlay(WIDTH, true, card, cx)
 }
 
 fn reference_notice(budget_count: usize) -> String {

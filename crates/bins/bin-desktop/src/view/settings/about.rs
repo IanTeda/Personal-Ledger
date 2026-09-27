@@ -7,6 +7,11 @@
 //! build.rs stamps one), so it stays the mockup's own static value. "Built with" names this
 //! binary's actual stack (Rust + GPUI + SQLite), not the mockup's copy-pasted web stack.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use gpui::{AnyElement, div, prelude::*, px};
 
 use crate::{theme::color, view::help};

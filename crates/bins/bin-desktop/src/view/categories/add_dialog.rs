@@ -3,6 +3,11 @@
 //! Parent category (tree select, excluding depth-3), Monthly budget (optional).
 //! Inline notice explains type locking behavior.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -35,6 +40,7 @@ pub fn render(
     parent_options: &[ParentOption],
     all_categories: &[categories::Category],
     handlers: DialogHandlers,
+    cx: &App,
 ) -> AnyElement {
     let DialogHandlers {
         on_field_click,
@@ -94,7 +100,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(WIDTH, false, card)
+    dialog::overlay(WIDTH, false, card, cx)
 }
 
 fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyElement {

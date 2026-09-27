@@ -6,6 +6,11 @@
 //! A pure render-helper over `crate::select::SelectState`; `Shell` owns the state and the keys.
 //! A read-only variant shows fixed text and takes no clicks (Institution while Type is Cash).
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};

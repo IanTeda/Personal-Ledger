@@ -16,6 +16,11 @@
 //!   function. Still a segmented control rather than the raw mockup's own `<select>`, same
 //!   reasoning as `add_unit_dialog`'s own Type field.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -45,6 +50,7 @@ pub fn render(
     on_unit_click: OnUnitClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &App,
 ) -> AnyElement {
     let card = div()
         .flex()
@@ -71,7 +77,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(WIDTH, false, card)
+    dialog::overlay(WIDTH, false, card, cx)
 }
 
 fn name_field(value: &str) -> AnyElement {

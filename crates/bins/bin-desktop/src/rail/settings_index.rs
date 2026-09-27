@@ -4,6 +4,11 @@
 //! pattern -- that rail is a flat record list with no scroll-to-section/index mode, so this is a
 //! new mechanism (see issue #173's own ticket body).
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{App, SharedString, Window, div, prelude::*, px};

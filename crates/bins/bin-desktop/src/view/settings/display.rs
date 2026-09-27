@@ -15,6 +15,11 @@
 //! every other click in this map, a selection is "saved" only in `Shell`-owned in-memory state,
 //! not written to `personal-ledger.conf`.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};

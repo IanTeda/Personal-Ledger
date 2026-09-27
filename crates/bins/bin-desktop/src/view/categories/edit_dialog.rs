@@ -3,6 +3,11 @@
 //! Parent category (tree select, excluding depth-3, the category itself and its descendants),
 //! Monthly budget (optional, disabled on parents showing rollup). Warning notice with Split count.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -30,6 +35,10 @@ pub struct ParentOption {
     pub is_available: bool,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the dialog's callbacks plus the App the Colour Theme is read from; a handlers struct is the sweep's call"
+)]
 pub fn render(
     category_id: u32,
     form: &CategoryForm,
@@ -38,6 +47,7 @@ pub fn render(
     split_count: usize,
     is_parent: bool,
     handlers: DialogHandlers,
+    cx: &App,
 ) -> AnyElement {
     let DialogHandlers {
         on_field_click,
@@ -101,7 +111,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(WIDTH, false, card)
+    dialog::overlay(WIDTH, false, card, cx)
 }
 
 fn name_field(value: &str, focused: bool, on_field_click: OnFieldClick) -> AnyElement {

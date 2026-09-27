@@ -15,6 +15,11 @@
 //! (`Window::minimize_window`/`Window::zoom_window`/`App::quit`) rather than threaded through
 //! a callback the way `OnRailToggle` is.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{App, ClickEvent, Window, div, prelude::*, px};

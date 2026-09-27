@@ -10,6 +10,11 @@
 //! by the page itself (`opacity .55`, the map's blur-free replacement for the mockup's blur), not by
 //! a scrim here, so the rails and header stay at full strength.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point, prelude::*, px};

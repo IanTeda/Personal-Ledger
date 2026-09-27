@@ -3,6 +3,11 @@
 //! <noun>`) was dropped -- the top bar's brand tile now names the active screen instead
 //! (`crate::topbar::brand_mark`), and showing it in both places was a plain duplicate.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{App, Window, div, prelude::*, px};

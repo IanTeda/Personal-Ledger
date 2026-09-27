@@ -24,6 +24,11 @@
 //! no palette dispatch to piggyback on. Issues #184/#185 picked `InputMode::Dialog`
 //! (`Shell::handle_dialog_key`), a new mode alongside `Command`/`Search`.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, BoxShadow, SharedString, Window, div, point, prelude::*, px};
@@ -43,7 +48,12 @@ pub type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// justify-content:center`), then the bordered card itself -- `destructive` swaps the border to
 /// `#ec3013` (the "Destructive dialog" row). `width` is almost always [`WIDTH`]; see that
 /// constant's own doc for the one exception.
-pub fn overlay(width: gpui::Pixels, destructive: bool, card: impl IntoElement) -> AnyElement {
+pub fn overlay(
+    width: gpui::Pixels,
+    destructive: bool,
+    card: impl IntoElement,
+    cx: &App,
+) -> AnyElement {
     div()
         .id("dialog-overlay")
         .absolute()
@@ -51,7 +61,7 @@ pub fn overlay(width: gpui::Pixels, destructive: bool, card: impl IntoElement) -
         .flex()
         .items_center()
         .justify_center()
-        .bg(color::DIMMER)
+        .bg(color::scrim(cx))
         .child(
             div()
                 .w(width)

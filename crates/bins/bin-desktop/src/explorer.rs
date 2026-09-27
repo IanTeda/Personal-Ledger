@@ -11,6 +11,11 @@
 //! (`crate::nav::NavState::open_ledger`, from issue #164): real `.pldb` parsing is separate
 //! future work, out of scope for this map (issue #144).
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::{
     path::{Path, PathBuf},
     rc::Rc,
@@ -294,6 +299,7 @@ impl FileExplorer {
         on_breadcrumb_click: OnBreadcrumbClick,
         on_cancel: OnCancel,
         on_open: OnOpen,
+        cx: &App,
     ) -> gpui::AnyElement {
         div()
             .absolute()
@@ -316,7 +322,7 @@ impl FileExplorer {
                         blur_radius: px(48.0),
                         spread_radius: px(0.0),
                     }])
-                    .child(header(self.mode))
+                    .child(header(self.mode, cx))
                     .child(path_bar(
                         &self.current_path,
                         self.entries.len(),
@@ -333,16 +339,16 @@ impl FileExplorer {
                                 let is_last = index == self.entries.len() - 1;
                                 let selected =
                                     self.selected.as_deref() == Some(entry.path.as_path());
-                                row(entry, index, selected, is_last, on_entry_click.clone())
+                                row(entry, index, selected, is_last, on_entry_click.clone(), cx)
                             })),
                     )
-                    .child(footer(self.mode, self.can_open(), on_cancel, on_open)),
+                    .child(footer(self.mode, self.can_open(), on_cancel, on_open, cx)),
             )
             .into_any_element()
     }
 }
 
-fn header(mode: ExplorerMode) -> impl IntoElement {
+fn header(mode: ExplorerMode, cx: &App) -> impl IntoElement {
     let title = match mode {
         ExplorerMode::Open => msg::desktop_explorer_open(),
         ExplorerMode::New => msg::desktop_explorer_new(),
@@ -351,7 +357,7 @@ fn header(mode: ExplorerMode) -> impl IntoElement {
         .px(px(20.0))
         .py(px(16.0))
         .border_b(px(2.0))
-        .border_color(gpui::rgba(0x201e1d4d)) // rgba(32,30,29,.30)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(16.0))
         .child(title)
@@ -444,6 +450,7 @@ fn row(
     selected: bool,
     is_last: bool,
     on_entry_click: OnEntryClick,
+    cx: &App,
 ) -> impl IntoElement {
     let clickable = entry.kind != EntryKind::Other;
     let (bg, text_color) = if selected {
@@ -475,7 +482,7 @@ fn row(
         .id(SharedString::from(format!("explorer-row-{index}")))
         .when(clickable, |this| this.cursor_pointer())
         .when(!is_last, |this| {
-            this.border_b(px(1.0)).border_color(color::HAIRLINE_LIGHT)
+            this.border_b(px(1.0)).border_color(color::hairline(cx))
         })
         .when_some(bg, |this, bg| this.bg(bg))
         .flex()
@@ -509,6 +516,7 @@ fn footer(
     can_open: bool,
     on_cancel: OnCancel,
     on_open: OnOpen,
+    cx: &App,
 ) -> impl IntoElement {
     let confirm_label = match mode {
         ExplorerMode::Open => msg::desktop_explorer_open_button(),
@@ -544,7 +552,7 @@ fn footer(
                 .py(px(8.0))
                 .px(px(16.0))
                 .border(px(1.0))
-                .border_color(gpui::rgba(0x201e1d4d)) // rgba(32,30,29,.30)
+                .border_color(color::border(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_color(color::INK)
                 .on_click(move |_event, window, cx| on_cancel(window, cx))

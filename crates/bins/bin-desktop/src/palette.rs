@@ -8,6 +8,11 @@
 //! split `nav.rs` uses between pure state and its `RenderOnce` chrome; `render` is the one
 //! method that touches `gpui`.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use gpui::{BoxShadow, div, point, prelude::*, px};
 
 use crate::{

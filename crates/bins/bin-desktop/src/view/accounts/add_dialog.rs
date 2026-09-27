@@ -7,6 +7,11 @@
 //! model. Institution, Type and Unit are the shared dropdown (`super::select_field`); Institution
 //! reads as the read-only placeholder while Type is Cash.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -33,6 +38,7 @@ pub fn render(
     on_option_click: OnOptionClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &App,
 ) -> AnyElement {
     let focused = |field: AccountField| form.focused == field;
     let click = |field: AccountField| -> dialog::OnClick {
@@ -131,7 +137,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(WIDTH, false, card)
+    dialog::overlay(WIDTH, false, card, cx)
 }
 
 /// Two fields side by side: `gap:16px`, each `flex:1`.

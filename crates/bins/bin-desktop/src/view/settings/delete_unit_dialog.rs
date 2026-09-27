@@ -32,6 +32,7 @@ pub fn render(
     form: &DeleteUnitForm,
     on_cancel: dialog::OnClick,
     on_confirm: dialog::OnClick,
+    cx: &App,
 ) -> AnyElement {
     let code = row.code.as_str();
     let card = div()
@@ -61,7 +62,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(dialog::WIDTH, true, card)
+    dialog::overlay(dialog::WIDTH, true, card, cx)
 }
 
 fn warning_copy() -> impl IntoElement {

@@ -9,6 +9,11 @@
 //! Like `view::settings` and `view::accounts`, the page owns its scroll container directly:
 //! `Shell` scrolls a section into view with `ScrollHandle::scroll_to_item`. Context rail is hidden.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 pub mod add_dialog;
 pub mod delete_dialog;
 pub mod edit_dialog;

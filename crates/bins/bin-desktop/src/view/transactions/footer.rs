@@ -3,6 +3,11 @@
 //! or `mixed units` when the visible rows span more than one Unit and no sum exists (the map's
 //! no-cross-Unit rule).
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use gpui::{AnyElement, div, prelude::*, px};
 
 use crate::{

@@ -15,6 +15,11 @@
 //! (`docs/ux/desktop/Settings/README.md`'s implementation note 11: "namespace radio groups per
 //! instance" so a duplicated section's own radios can't collide with these).
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};

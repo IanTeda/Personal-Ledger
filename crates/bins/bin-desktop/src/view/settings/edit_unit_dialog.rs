@@ -28,6 +28,7 @@ pub fn render(
     on_kind_click: OnKindClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &gpui::App,
 ) -> AnyElement {
     let card = div()
         .flex()
@@ -71,5 +72,5 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(dialog::WIDTH, false, card)
+    dialog::overlay(dialog::WIDTH, false, card, cx)
 }

@@ -9,6 +9,11 @@
 //!
 //! Every row action is a callback into `Shell`, so keyboard and mouse reach the same handlers.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 mod filter_popover;
 mod footer;
 mod header;

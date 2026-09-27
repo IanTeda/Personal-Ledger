@@ -25,6 +25,11 @@
 //! copy. `segmented_control` itself moved here from the now-deleted `ledger_units.rs` (issue
 //! #189): this is its only consumer once that module's own two fields were removed.
 
+#![expect(
+    deprecated,
+    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
+)]
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
@@ -50,6 +55,7 @@ pub fn render(
     on_kind_click: OnKindClick,
     on_cancel: OnCancel,
     on_confirm: OnConfirm,
+    cx: &App,
 ) -> AnyElement {
     let card = div()
         .flex()
@@ -91,7 +97,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(dialog::WIDTH, false, card)
+    dialog::overlay(dialog::WIDTH, false, card, cx)
 }
 
 /// Curries `field` into a plain click handler -- what [`text_field`] binds its own `on_click` to.

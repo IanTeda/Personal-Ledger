@@ -23,6 +23,7 @@ pub fn render(
     form: &DeleteAccountForm,
     on_cancel: dialog::OnClick,
     on_confirm: dialog::OnClick,
+    cx: &App,
 ) -> AnyElement {
     let card = div()
         .flex()
@@ -55,7 +56,7 @@ pub fn render(
             .into_any_element(),
         ]));
 
-    dialog::overlay(WIDTH, true, card)
+    dialog::overlay(WIDTH, true, card, cx)
 }
 
 /// `-2,318.44 aud`, the balance in the account's own Unit.
