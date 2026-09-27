@@ -1046,8 +1046,16 @@ impl Shell {
         }
     }
 
-    /// Applies an [`Action`] to shell state.
+    /// Applies an [`Action`] to shell state, then raises any Toasts the view queued while
+    /// handling it (or the key that produced it).
     fn update(&mut self, action: Action) {
+        self.apply(action);
+        for (kind, text) in self.view.take_toasts() {
+            self.raise_toast(kind, text);
+        }
+    }
+
+    fn apply(&mut self, action: Action) {
         match action {
             Action::Quit => self.should_quit = true,
             Action::GracefulQuit => self.should_quit = true,
@@ -2124,6 +2132,61 @@ mod tests {
 
     fn lines(text: &str) -> Vec<&str> {
         text.lines().collect()
+    }
+
+    #[test]
+    fn deleting_a_tag_raises_a_success_toast_naming_it() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.update(Action::OpenTags);
+        let name = {
+            let store = shell.view.tag_store().expect("the Tags view has a store");
+            let selected = shell
+                .view
+                .tag_selection()
+                .expect("the Tags view has a selection");
+            store
+                .find(selected)
+                .expect("the selection exists")
+                .name
+                .clone()
+        };
+        shell.update(Action::ArmTagDelete);
+        let key = Event::Key(KeyEvent::new(KeyCode::Char('y'), KeyModifiers::NONE));
+        let action = shell.map_event(key).expect("`y` confirms the armed delete");
+        shell.update(action);
+        let raised: Vec<_> = shell
+            .toasts
+            .visible()
+            .iter()
+            .map(|t| (t.kind(), t.text()))
+            .collect();
+        assert_eq!(
+            raised,
+            [(
+                ToastKind::Success,
+                lib_locale::msg::toast_tag_deleted(&name).as_str()
+            )]
+        );
+    }
+
+    #[test]
+    fn a_refused_account_write_raises_an_error_toast() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.update(Action::OpenAccounts);
+        shell.update(Action::SetAccountActive {
+            id: lib_core::RowID::new(),
+            active: false,
+        });
+        let visible = shell.toasts.visible();
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].kind(), ToastKind::Error);
+        assert!(
+            visible[0].text().starts_with("Couldn't save account: "),
+            "unexpected text: {}",
+            visible[0].text()
+        );
     }
 
     #[test]

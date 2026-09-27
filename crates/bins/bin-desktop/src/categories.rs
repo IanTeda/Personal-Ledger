@@ -310,19 +310,25 @@ impl DeleteCategoryForm {
 }
 
 /// Errors for category operations.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CategoryError {
     /// Attempted to nest a category deeper than the 3-level cap.
+    #[error("categories nest at most three levels deep")]
     DepthExceeded,
     /// Attempted to make a category its own parent (directly or via a cycle).
+    #[error("a category can't be its own parent")]
     CycleDetected,
     /// Attempted to move an Expense to Income (or vice versa) or parent has different type.
+    #[error("the parent category is a different type")]
     TypeMismatch,
     /// Attempted to delete a non-leaf category with children.
+    #[error("delete or move its children first")]
     NonLeafDeletion,
     /// Category not found.
+    #[error("category not found")]
     NotFound,
     /// Parent category not found.
+    #[error("parent category not found")]
     ParentNotFound,
 }
 

@@ -55,9 +55,10 @@ use crate::colours::Colours;
 use crate::{
     msg,
     payee::{Payee, PayeeCategoryShare, PayeeFixture, PayeeStore, PayeeTransaction},
-    view::{Action, View, ViewId},
+    view::{Action, View, ViewId, save_failed},
 };
 use lib_core::{Money, RowID};
+use lib_toast::ToastKind;
 
 /// Width of the left pane (list + record box), per the handoff's own `Layout::horizontal([
 /// Constraint::Length(41), Constraint::Min(0)])`.
@@ -131,6 +132,8 @@ pub struct PayeesView {
     /// the transactions section instead of jumping anywhere, mirroring `view::tags`'s own
     /// identical flag.
     transactions_not_yet_built: bool,
+    /// Toasts raised since `Shell` last drained them (`View::take_toasts`).
+    toasts: Vec<(ToastKind, String)>,
 }
 
 impl Default for PayeesView {
@@ -140,6 +143,14 @@ impl Default for PayeesView {
 }
 
 impl PayeesView {
+    /// Queues the `toast-save-failed` Error for a write the store refused.
+    fn push_if_refused(&mut self, result: Result<(), crate::payee::PayeeError>) {
+        if let Err(error) = result {
+            let entity = lib_locale::msg::toast_entity_payee();
+            self.toasts.push(save_failed(&entity, &error));
+        }
+    }
+
     pub fn new() -> Self {
         let store = PayeeFixture::new();
         let selected = Self::visible_payees_of(&store, false, "")
@@ -155,6 +166,7 @@ impl PayeesView {
             filter: String::new(),
             filtering: false,
             transactions_not_yet_built: false,
+            toasts: Vec::new(),
         }
     }
 
@@ -379,15 +391,17 @@ impl View for PayeesView {
                 default_category_path,
                 active,
             } => {
-                let _ = self.store.rename(*id, name.clone());
-                let _ = self.store.update(
-                    *id,
-                    website.clone(),
-                    icon_url.clone(),
-                    *icon_derived,
-                    default_category_path.clone(),
-                );
-                let _ = self.store.set_active(*id, *active);
+                let result = self.store.rename(*id, name.clone()).and_then(|()| {
+                    self.store.update(
+                        *id,
+                        website.clone(),
+                        icon_url.clone(),
+                        *icon_derived,
+                        default_category_path.clone(),
+                    )
+                });
+                let result = result.and_then(|()| self.store.set_active(*id, *active));
+                self.push_if_refused(result);
             }
             // `AddPayeeAlias`/`ReplacePayeeAlias`/`RemovePayeeAlias` are only ever dispatched
             // once `Shell`'s key routing (`map_payee_popup_key`) has already checked they'll
@@ -399,7 +413,8 @@ impl View for PayeesView {
                 typed,
                 mode,
             } => {
-                let _ = self.store.add_alias(*payee_id, typed, *mode);
+                let result = self.store.add_alias(*payee_id, typed, *mode).map(|_| ());
+                self.push_if_refused(result);
             }
             Action::ReplacePayeeAlias {
                 old_alias_id,
@@ -407,22 +422,30 @@ impl View for PayeesView {
                 typed,
                 mode,
             } => {
-                let _ = self.store.remove_alias(*old_alias_id);
-                let _ = self.store.add_alias(*payee_id, typed, *mode);
+                let result = self
+                    .store
+                    .remove_alias(*old_alias_id)
+                    .and_then(|()| self.store.add_alias(*payee_id, typed, *mode).map(|_| ()));
+                self.push_if_refused(result);
             }
             Action::RemovePayeeAlias(alias_id) => {
-                let _ = self.store.remove_alias(*alias_id);
+                let result = self.store.remove_alias(*alias_id);
+                self.push_if_refused(result);
             }
             Action::SetPayeeActive { id, active } => {
-                let _ = self.store.set_active(*id, *active);
+                let result = self.store.set_active(*id, *active);
+                self.push_if_refused(result);
             }
-            #[expect(
-                clippy::collapsible_match,
-                reason = "clippy's fix moves the delete into a match guard, disguising the mutation as a predicate; see AccountsView::update"
-            )]
             Action::DeletePayee(id) => {
-                if self.store.delete(*id).is_ok() {
-                    self.recover_selection();
+                let name = self.store.find(*id).map(|payee| payee.name.clone());
+                match self.store.delete(*id) {
+                    Ok(()) => {
+                        let name = name.unwrap_or_default();
+                        let text = lib_locale::msg::toast_payee_deleted(&name);
+                        self.toasts.push((ToastKind::Success, text));
+                        self.recover_selection();
+                    }
+                    Err(error) => self.push_if_refused(Err(error)),
                 }
             }
             _ => {}
@@ -445,6 +468,10 @@ impl View for PayeesView {
 
         self.render_left_pane(frame, columns[0], c);
         self.render_right_pane(frame, columns[1], c);
+    }
+
+    fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
+        std::mem::take(&mut self.toasts)
     }
 
     fn id(&self) -> ViewId {

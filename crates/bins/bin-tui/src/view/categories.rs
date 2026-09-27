@@ -32,6 +32,7 @@ use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::{Months, NaiveDate};
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::{Money, RowID};
+use lib_toast::ToastKind;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -49,7 +50,7 @@ use crate::fixture::seed_from_id;
 use crate::{
     category::{CategoryFixture, CategoryNode, CategoryStore},
     msg,
-    view::{Action, View, ViewId},
+    view::{Action, View, ViewId, save_failed},
 };
 
 /// How many trailing months the direct-spend chart plots, per the handoff's "~24 points".
@@ -149,6 +150,8 @@ pub struct CategoriesView {
     /// fallback until any other key is pressed (`handle_key` clears it unconditionally before
     /// matching, then sets it again only if the new key is another `X`).
     merge_hint: Option<&'static str>,
+    /// Toasts raised since `Shell` last drained them (`View::take_toasts`).
+    toasts: Vec<(ToastKind, String)>,
 }
 
 impl Default for CategoriesView {
@@ -158,6 +161,14 @@ impl Default for CategoriesView {
 }
 
 impl CategoriesView {
+    /// Queues the `toast-save-failed` Error for a write the store refused.
+    fn push_if_refused(&mut self, result: Result<(), crate::category::CategoryError>) {
+        if let Err(error) = result {
+            let entity = lib_locale::msg::toast_entity_category();
+            self.toasts.push(save_failed(&entity, &error));
+        }
+    }
+
     pub fn new() -> Self {
         let store = CategoryFixture::new();
         // "Roots default expanded, everything else folded on first open" — only non-root
@@ -185,6 +196,7 @@ impl CategoriesView {
             pending_z: false,
             show_subtree: false,
             merge_hint: None,
+            toasts: Vec::new(),
         }
     }
 
@@ -472,7 +484,8 @@ impl View for CategoriesView {
             // handoff's own quick soft-delete path. Silently no-ops on a root
             // (`CategoryStore::set_active` refuses `IsRoot`).
             KeyCode::Char('a') => {
-                let _ = self.store.set_active(self.selected, false);
+                let result = self.store.set_active(self.selected, false);
+                self.push_if_refused(result);
                 Some(Action::NoOp)
             }
             // `X`: merge has no real logic yet ("Not yet designed" in the handoff) — shows the
@@ -491,10 +504,12 @@ impl View for CategoriesView {
     fn update(&mut self, action: &Action) {
         match action {
             Action::MoveCategory { id, new_parent } => {
-                let _ = self.store.move_to(*id, *new_parent);
+                let result = self.store.move_to(*id, *new_parent);
+                self.push_if_refused(result);
             }
             Action::CreateCategoryChild { parent, name } => {
-                let _ = self.store.insert(*parent, name.clone(), None);
+                let result = self.store.insert(*parent, name.clone(), None).map(|_| ());
+                self.push_if_refused(result);
             }
             Action::CreateCategory {
                 parent,
@@ -503,13 +518,19 @@ impl View for CategoriesView {
                 active,
                 ..
             } => {
-                if let Ok(id) = self.store.insert(*parent, name.clone(), note.clone())
-                    && !active
-                {
-                    // `insert` always creates active — flip it off if the draft's `active`
-                    // checkbox was unticked (rare; `[×]` is the handoff's own default).
-                    let _ = self.store.set_active(id, false);
-                }
+                // `insert` always creates active — flip it off if the draft's `active`
+                // checkbox was unticked (rare; `[×]` is the handoff's own default).
+                let result = self
+                    .store
+                    .insert(*parent, name.clone(), note.clone())
+                    .and_then(|id| {
+                        if *active {
+                            Ok(())
+                        } else {
+                            self.store.set_active(id, false)
+                        }
+                    });
+                self.push_if_refused(result);
             }
             Action::UpdateCategory {
                 id,
@@ -517,9 +538,12 @@ impl View for CategoriesView {
                 note,
                 active,
             } => {
-                let _ = self.store.rename(*id, name.clone());
-                let _ = self.store.set_note(*id, note.clone());
-                let _ = self.store.set_active(*id, *active);
+                let result = self
+                    .store
+                    .rename(*id, name.clone())
+                    .and_then(|()| self.store.set_note(*id, note.clone()))
+                    .and_then(|()| self.store.set_active(*id, *active));
+                self.push_if_refused(result);
             }
             _ => {}
         }
@@ -542,6 +566,10 @@ impl View for CategoriesView {
 
         self.render_left_pane(frame, columns[0], c);
         self.render_right_pane(frame, columns[1], c);
+    }
+
+    fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
+        std::mem::take(&mut self.toasts)
     }
 
     fn id(&self) -> ViewId {

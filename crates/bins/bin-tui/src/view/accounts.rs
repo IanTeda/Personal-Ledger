@@ -42,6 +42,7 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::{AccountType, Money, RowID};
+use lib_toast::ToastKind;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -59,7 +60,7 @@ use crate::account::{
     shared_unit,
 };
 use crate::colours::Colours;
-use crate::view::{Action, View, ViewId};
+use crate::view::{Action, View, ViewId, save_failed};
 
 /// Width of the left pane (list + summary), per the handoff's own `Layout::horizontal([
 /// Constraint::Length(41), Constraint::Min(0)])`.
@@ -140,6 +141,8 @@ pub struct AccountsView {
     /// `true` while `/`'s input buffer has focus — every printable key appends to `filter`
     /// instead of being read as a command.
     filtering: bool,
+    /// Toasts raised since `Shell` last drained them (`View::take_toasts`).
+    toasts: Vec<(ToastKind, String)>,
 }
 
 impl Default for AccountsView {
@@ -163,6 +166,7 @@ impl AccountsView {
             pending_z: false,
             filter: String::new(),
             filtering: false,
+            toasts: Vec::new(),
         }
     }
 
@@ -397,22 +401,52 @@ impl View for AccountsView {
                 active,
             } => {
                 let account_type = AccountType::from_str(account_type).unwrap_or_default();
-                let _ = self.store.update(*id, name.clone(), account_type, *active);
+                if let Err(error) = self.store.update(*id, name.clone(), account_type, *active) {
+                    self.toasts.push(save_failed(
+                        &lib_locale::msg::toast_entity_account(),
+                        &error,
+                    ));
+                }
             }
             Action::DeleteAccount { id, target } => {
-                if self.store.delete(*id, *target).is_ok() {
-                    self.recover_selection();
+                // Read before the delete: afterwards the account (and its count) are gone.
+                let name = self
+                    .store
+                    .find(*id)
+                    .map(|a| a.name.clone())
+                    .unwrap_or_default();
+                let moved = i64::from(self.store.find(*id).map_or(0, |a| a.transaction_count));
+                let target_name = target
+                    .and_then(|t| self.store.find(t))
+                    .map(|a| a.name.clone());
+                match self.store.delete(*id, *target) {
+                    Ok(()) => {
+                        let text = match target_name {
+                            Some(target) if moved > 0 => {
+                                lib_locale::msg::toast_account_deleted_moved(&name, moved, &target)
+                            }
+                            _ => lib_locale::msg::toast_account_deleted(&name, 0),
+                        };
+                        self.toasts.push((ToastKind::Success, text));
+                        self.recover_selection();
+                    }
+                    Err(error) => {
+                        self.toasts.push(save_failed(
+                            &lib_locale::msg::toast_entity_account(),
+                            &error,
+                        ));
+                    }
                 }
             }
-            #[expect(
-                clippy::collapsible_match,
-                reason = "clippy's fix moves set_active into a match guard, disguising the mutation as a predicate"
-            )]
-            Action::SetAccountActive { id, active } => {
-                if self.store.set_active(*id, *active).is_ok() {
-                    self.recover_selection();
+            Action::SetAccountActive { id, active } => match self.store.set_active(*id, *active) {
+                Ok(()) => self.recover_selection(),
+                Err(error) => {
+                    self.toasts.push(save_failed(
+                        &lib_locale::msg::toast_entity_account(),
+                        &error,
+                    ));
                 }
-            }
+            },
             _ => {}
         }
     }
@@ -434,6 +468,10 @@ impl View for AccountsView {
 
         self.render_left_pane(frame, columns[0], c);
         self.render_right_pane(frame, columns[1], c);
+    }
+
+    fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
+        std::mem::take(&mut self.toasts)
     }
 
     fn id(&self) -> ViewId {

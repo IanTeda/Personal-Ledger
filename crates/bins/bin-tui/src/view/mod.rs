@@ -20,6 +20,7 @@ pub mod units;
 
 use crossterm::event::KeyEvent;
 use lib_core::{Money, RowID};
+use lib_toast::ToastKind;
 use ratatui::{Frame, layout::Rect};
 use tokio::sync::mpsc::UnboundedSender;
 
@@ -575,6 +576,15 @@ pub enum ViewId {
 }
 
 /// The single view `Shell` hosts at a time.
+/// The Error Toast for a write `entity`'s store refused, carrying the store's own reason
+/// (`docs/toasts-design.md` "Which events raise a Toast").
+pub fn save_failed(entity: &str, error: &impl std::fmt::Display) -> (ToastKind, String) {
+    (
+        ToastKind::Error,
+        lib_locale::msg::toast_save_failed(entity, &error.to_string()),
+    )
+}
+
 pub trait View {
     /// Called once when the view becomes active, with a sender any background work (e.g. a
     /// data load) can use to report results back as an [`Action`]. Most views have no
@@ -619,6 +629,13 @@ pub trait View {
     /// typed-argument resolution to supply a `<cat>` from instead.
     fn category_selection(&self) -> Option<RowID> {
         None
+    }
+
+    /// Hands `Shell` the Toasts this view raised since the last call, oldest first. A view
+    /// owns its store, so it is the one that learns a delete went through or a write was
+    /// refused; `Shell` owns the Toast stack and drains this after every [`Action`].
+    fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
+        Vec::new()
     }
 
     /// Read-only access to this view's Account list, if it has one — `Some` only for

@@ -44,6 +44,7 @@
 use chrono::NaiveDate;
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_core::RowID;
+use lib_toast::ToastKind;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -59,7 +60,7 @@ use ratatui::{
 use crate::colours::Colours;
 use crate::msg;
 use crate::tag::{Tag, TagFixture, TagStore, TagTransaction};
-use crate::view::{Action, View, ViewId};
+use crate::view::{Action, View, ViewId, save_failed};
 
 /// Width of the list + summary column — matches `view::accounts`'s own `LEFT_PANE_WIDTH`; the
 /// remaining terminal width is deliberately left blank, since there's no right-pane content
@@ -138,6 +139,8 @@ pub struct TagsView {
     /// rather than silently doing nothing indistinguishable from an unhandled key, mirroring
     /// `popup::command::CommandPopup`'s own `not_yet_built` field.
     transactions_not_yet_built: bool,
+    /// Toasts raised since `Shell` last drained them (`View::take_toasts`).
+    toasts: Vec<(ToastKind, String)>,
 }
 
 impl Default for TagsView {
@@ -163,6 +166,7 @@ impl TagsView {
             filtering: false,
             pending_delete: false,
             transactions_not_yet_built: false,
+            toasts: Vec::new(),
         }
     }
 
@@ -228,7 +232,18 @@ impl View for TagsView {
         if self.pending_delete {
             self.pending_delete = false;
             if key.code == KeyCode::Char('y') {
-                let _ = self.store.delete(self.selected);
+                let name = self.store.find(self.selected).map(|tag| tag.name.clone());
+                match self.store.delete(self.selected) {
+                    Ok(()) => {
+                        let name = name.unwrap_or_default();
+                        let text = lib_locale::msg::toast_tag_deleted(&name);
+                        self.toasts.push((ToastKind::Success, text));
+                    }
+                    Err(error) => {
+                        let entity = lib_locale::msg::toast_entity_tag();
+                        self.toasts.push(save_failed(&entity, &error));
+                    }
+                }
                 self.recover_selection();
             }
             return Some(Action::NoOp);
@@ -317,13 +332,18 @@ impl View for TagsView {
                 }
             }
             Action::UpdateTag { id, name, active } => {
-                let _ = self.store.update(*id, name.clone(), *active);
-            }
-            Action::SetTagActive { id, active } => {
-                if self.store.set_active(*id, *active).is_ok() {
-                    self.recover_selection();
+                if let Err(error) = self.store.update(*id, name.clone(), *active) {
+                    let entity = lib_locale::msg::toast_entity_tag();
+                    self.toasts.push(save_failed(&entity, &error));
                 }
             }
+            Action::SetTagActive { id, active } => match self.store.set_active(*id, *active) {
+                Ok(()) => self.recover_selection(),
+                Err(error) => {
+                    let entity = lib_locale::msg::toast_entity_tag();
+                    self.toasts.push(save_failed(&entity, &error));
+                }
+            },
             Action::ArmTagDelete => self.pending_delete = true,
             _ => {}
         }
@@ -365,6 +385,10 @@ impl View for TagsView {
         self.render_list(frame, pane_rows[0], c);
         self.render_summary(frame, pane_rows[1], c);
         self.render_right_pane(frame, columns[1], c);
+    }
+
+    fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
+        std::mem::take(&mut self.toasts)
     }
 
     fn id(&self) -> ViewId {

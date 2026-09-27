@@ -14,6 +14,13 @@ toast-category-deleted = Deleted category { $name } · { $splits ->
    *[other] { $splits } splits moved to Uncategorised
 }
 
+## The TUI refuses to delete an account with transactions until they have a transfer target, so they move rather than go.
+
+toast-account-deleted-moved = Deleted account { $name } · { $transactions ->
+    [one] { $transactions } transaction moved to { $target }
+   *[other] { $transactions } transactions moved to { $target }
+}
+
 toast-payee-deleted = Deleted payee { $name }
 toast-tag-deleted = Deleted tag { $name }
 toast-unit-deleted = Deleted unit { $name }
@@ -21,6 +28,13 @@ toast-unit-deleted = Deleted unit { $name }
 ## A store refusal. $entity is the thing being saved ("account", "tag"), $reason the store's own words.
 
 toast-save-failed = Couldn't save { $entity }: { $reason }
+
+## The $entity of toast-save-failed.
+
+toast-entity-account = account
+toast-entity-category = category
+toast-entity-payee = payee
+toast-entity-tag = tag
 
 ## Ledger files.
 

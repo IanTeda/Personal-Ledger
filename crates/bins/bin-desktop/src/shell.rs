@@ -1888,25 +1888,14 @@ impl Shell {
             let category = self.categories.iter().find(|c| c.id == *category_id);
             let matches = category.is_some_and(|c| form.matches(&c.name));
             if matches {
-                if let Some(category) = category {
-                    let category_type = category.category_type.clone();
-                    // Re-point splits to Uncategorised
-                    let uncategorised_id = categories::get_or_create_uncategorised(
-                        &mut self.categories,
-                        category_type,
-                    );
-                    for transaction in &mut self.transactions {
-                        for split in &mut transaction.splits {
-                            if split.category_id == *category_id {
-                                split.category_id = uncategorised_id;
-                            }
-                        }
-                    }
-                    // Remove the budget
-                    budgets::delete_budget(&mut self.budgets, *category_id, 1);
-                }
-                // Delete the category
-                let _ = categories::delete_category(&mut self.categories, *category_id);
+                let category_id = *category_id;
+                let (kind, text) = delete_category(
+                    &mut self.categories,
+                    &mut self.transactions,
+                    &mut self.budgets,
+                    category_id,
+                );
+                self.raise_toast(kind, text);
                 // Keep the selection in range
                 let tree_rows = categories::tree_rows(&self.categories, &self.categories_expanded);
                 let filtered_rows: Vec<_> = tree_rows
@@ -2019,10 +2008,8 @@ impl Shell {
                 .find(|account| account.id == id)
                 .and_then(|account| form.apply_to(account).then_some(id)),
             AccountsDialog::Delete(id, _) => {
-                self.accounts.retain(|account| account.id != id);
-                // The Delete dialog says its transactions go with it, so they do.
-                self.transactions
-                    .retain(|transaction| transaction.account_id != id);
+                let (kind, text) = delete_account(&mut self.accounts, &mut self.transactions, id);
+                self.raise_toast(kind, text);
                 // The selection is a position in display order: keep it in range, so it lands on
                 // the account that slid into the deleted row's place (or the last one).
                 self.accounts_selected = self
@@ -2409,7 +2396,11 @@ impl Shell {
                     return;
                 }
                 if index < self.settings_units.len() {
-                    self.settings_units.remove(index);
+                    let unit = self.settings_units.remove(index);
+                    self.raise_toast(
+                        ToastKind::Success,
+                        lib_locale::msg::toast_unit_deleted(&unit.code),
+                    );
                 }
             }
             SettingsDialog::AddInstitution(form) => {
@@ -2851,8 +2842,24 @@ impl Shell {
         if !explorer.can_open() {
             return;
         }
+        let name = explorer
+            .selected()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        // Neither mode can fail yet (no real `.pldb` I/O), so `toast-ledger-open-failed` waits
+        // for the ticket that parses and creates ledger files.
         if explorer.mode() == ExplorerMode::Open {
             self.nav.open_ledger();
+            self.raise_toast(
+                ToastKind::Success,
+                lib_locale::msg::toast_ledger_opened(&name),
+            );
+        } else {
+            self.raise_toast(
+                ToastKind::Success,
+                lib_locale::msg::toast_ledger_created(&name),
+            );
         }
         self.file_explorer = None;
         self.nav.exit_mode();
@@ -4103,9 +4110,134 @@ fn typed_char(keystroke: &Keystroke) -> Option<char> {
     }
 }
 
+/// Deletes account `id` and, as the Delete dialog says, the transactions booked to it,
+/// returning the Success Toast that counts them.
+fn delete_account(
+    accounts: &mut Vec<Account>,
+    transactions: &mut Vec<Transaction>,
+    id: u32,
+) -> (ToastKind, String) {
+    let name = accounts
+        .iter()
+        .find(|account| account.id == id)
+        .map(|account| account.name.clone())
+        .unwrap_or_default();
+    accounts.retain(|account| account.id != id);
+    let before = transactions.len();
+    transactions.retain(|transaction| transaction.account_id != id);
+    let deleted = i64::try_from(before - transactions.len()).unwrap_or(i64::MAX);
+    (
+        ToastKind::Success,
+        lib_locale::msg::toast_account_deleted(&name, deleted),
+    )
+}
+
+/// Deletes category `id`, re-pointing its splits to Uncategorised and dropping its budget,
+/// and returns the Toast: Success counting the moved splits, or the `toast-save-failed` Error
+/// if the store refuses (the dialog only opens on a leaf, so that means the tree changed
+/// underneath it). Nothing is touched on a refusal.
+fn delete_category(
+    categories: &mut Vec<Category>,
+    transactions: &mut [Transaction],
+    budgets: &mut Vec<budgets::Budget>,
+    id: u32,
+) -> (ToastKind, String) {
+    let refused = |error: categories::CategoryError| {
+        (
+            ToastKind::Error,
+            lib_locale::msg::toast_save_failed(
+                &lib_locale::msg::toast_entity_category(),
+                &error.to_string(),
+            ),
+        )
+    };
+    let Some(category) = categories.iter().find(|c| c.id == id) else {
+        return refused(categories::CategoryError::NotFound);
+    };
+    if !categories::is_leaf(categories, id) {
+        return refused(categories::CategoryError::NonLeafDeletion);
+    }
+    let name = category.name.clone();
+    let category_type = category.category_type.clone();
+    let uncategorised_id = categories::get_or_create_uncategorised(categories, category_type);
+    let mut moved = 0_i64;
+    for split in transactions.iter_mut().flat_map(|t| t.splits.iter_mut()) {
+        if split.category_id == id {
+            split.category_id = uncategorised_id;
+            moved += 1;
+        }
+    }
+    budgets::delete_budget(budgets, id, 1);
+    match categories::delete_category(categories, id) {
+        Ok(()) => (
+            ToastKind::Success,
+            lib_locale::msg::toast_category_deleted(&name, moved),
+        ),
+        Err(error) => refused(error),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
+        let accounts = accounts::default_accounts();
+        let categories = categories::default_categories();
+        let transactions = transactions::default_transactions(
+            &accounts,
+            &categories,
+            &payees::default_payees(),
+            &tags::default_tags(),
+            Local::now().date_naive(),
+        );
+        (accounts, categories, transactions)
+    }
+
+    #[test]
+    fn deleting_an_account_raises_a_success_toast_counting_its_transactions() {
+        crate::locale::init_for_tests();
+        let (mut accounts, _, mut transactions) = seeded_ledger();
+        let account = accounts[0].clone();
+        let booked = transactions
+            .iter()
+            .filter(|t| t.account_id == account.id)
+            .count();
+        let (kind, text) = delete_account(&mut accounts, &mut transactions, account.id);
+        assert_eq!(kind, ToastKind::Success);
+        assert_eq!(
+            text,
+            lib_locale::msg::toast_account_deleted(&account.name, booked as i64)
+        );
+        assert!(transactions.iter().all(|t| t.account_id != account.id));
+    }
+
+    #[test]
+    fn a_refused_category_delete_raises_an_error_toast_and_changes_nothing() {
+        crate::locale::init_for_tests();
+        let (_, mut categories, mut transactions) = seeded_ledger();
+        let mut budgets = budgets::default_budgets();
+        let food = categories::find_by_name(&categories, "Food").expect("seeded");
+        let before = categories.len();
+        let (kind, text) = delete_category(&mut categories, &mut transactions, &mut budgets, food);
+        assert_eq!(kind, ToastKind::Error);
+        assert_eq!(
+            text,
+            "Couldn't save category: delete or move its children first"
+        );
+        assert_eq!(categories.len(), before);
+    }
+
+    #[test]
+    fn deleting_a_leaf_category_raises_a_success_toast() {
+        crate::locale::init_for_tests();
+        let (_, mut categories, mut transactions) = seeded_ledger();
+        let mut budgets = budgets::default_budgets();
+        let rent = categories::find_by_name(&categories, "Rent").expect("seeded");
+        let (kind, text) = delete_category(&mut categories, &mut transactions, &mut budgets, rent);
+        assert_eq!(kind, ToastKind::Success);
+        assert!(text.starts_with("Deleted category Rent · "), "{text}");
+    }
 
     #[test]
     fn record_history_pushes_a_new_entry_to_the_front() {
