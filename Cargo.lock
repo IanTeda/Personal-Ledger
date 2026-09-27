@@ -4632,6 +4632,13 @@ name = "lib-omarchy"
 version = "0.1.0"
 
 [[package]]
+name = "lib_colour_theme"
+version = "0.1.0"
+dependencies = [
+ "lib_core",
+]
+
+[[package]]
 name = "lib_config"
 version = "0.1.0"
 dependencies = [
