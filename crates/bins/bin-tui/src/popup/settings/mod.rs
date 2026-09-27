@@ -11,6 +11,7 @@
 //! dimmed view" treatment, the same simplification the units screen's own forms already made
 //! against their design doc's more contextual language.
 
+pub mod colour;
 pub mod edit;
 pub mod guard;
 
@@ -22,6 +23,7 @@ use ratatui::{Frame, layout::Rect};
 pub enum SettingsPopup {
     Edit(edit::EditSettingPopup),
     BaseUnitGuard(guard::BaseUnitGuardPopup),
+    Colour(colour::ColourPopup),
 }
 
 impl SettingsPopup {
@@ -30,6 +32,7 @@ impl SettingsPopup {
         match self {
             SettingsPopup::Edit(popup) => popup.render(frame, area, c),
             SettingsPopup::BaseUnitGuard(popup) => popup.render(frame, area, c),
+            SettingsPopup::Colour(popup) => popup.render(frame, area, c),
         }
     }
 }

@@ -15,6 +15,10 @@
 //! `general.negatives`, `enter` → §4c's `general.base_unit`, matching the one row this view's
 //! fake data actually marks selected). This mirrors `view::units`'s own `n`/`e`/`d` opening
 //! fixed forms regardless of "real" selection.
+//!
+//! The `display` group is the exception (#331): `Tab` focuses it, `j`/`k` pick between its real
+//! `colour theme` and `appearance` rows, and `enter` opens `crate::popup::settings::colour`'s
+//! list popup for the one selected.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -85,14 +89,22 @@ const WHERE_VALUES_LABEL_WIDTH: usize = 14;
 /// (`"changing it"`).
 const SELECTED_FACT_LABEL_WIDTH: usize = 13;
 
-/// A trivial placeholder Settings `View`: the §4a "at rest" wireframe over static fake data —
-/// no database-backed registry, no in-place editor, no base-unit guard yet.
+/// The §4a "at rest" wireframe over static fake data, plus the Display group's real Colour
+/// Theme rows (#331). `Tab` switches the focused group between `general` and `display`.
 #[derive(Default)]
-pub struct SettingsView;
+pub struct SettingsView {
+    /// `true` while the `display` group is focused, `false` for `general`.
+    display: bool,
+    /// The selected row in the `display` group.
+    display_row: usize,
+}
+
+/// How many rows the `display` group lists: `colour theme`, then `appearance`.
+const DISPLAY_ROWS: usize = 2;
 
 impl SettingsView {
     pub fn new() -> Self {
-        Self
+        Self::default()
     }
 }
 
@@ -102,6 +114,25 @@ impl View for SettingsView {
     /// these are fixed keys rather than acting on a "currently selected" row. Everything else
     /// falls through to `Shell`'s global keys.
     fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
+        if key.code == KeyCode::Tab {
+            self.display = !self.display;
+            return Some(Action::NoOp);
+        }
+        if self.display {
+            return match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.display_row = (self.display_row + 1).min(DISPLAY_ROWS - 1);
+                    Some(Action::NoOp)
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.display_row = self.display_row.saturating_sub(1);
+                    Some(Action::NoOp)
+                }
+                KeyCode::Enter if self.display_row == 0 => Some(Action::OpenColourThemePopup),
+                KeyCode::Enter => Some(Action::OpenColourAppearancePopup),
+                _ => None,
+            };
+        }
         match key.code {
             KeyCode::Char('e') => Some(Action::OpenEditSettingPopup),
             KeyCode::Enter => Some(Action::OpenBaseUnitGuardPopup),
@@ -125,8 +156,8 @@ impl View for SettingsView {
             .spacing(2)
             .split(rows[1]);
 
-        render_left_pane(frame, columns[0], c);
-        render_right_pane(frame, columns[1], c);
+        render_left_pane(frame, columns[0], self.display, c);
+        render_right_pane(frame, columns[1], self, c);
     }
 
     fn id(&self) -> ViewId {
@@ -144,7 +175,7 @@ impl View for SettingsView {
 /// reset block — pinning "where values live" and reset to the bottom of the pane, the same
 /// "extra height grows the element above, not a fixed-height one" technique `view::units` uses
 /// for its own summary box.
-fn render_left_pane(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+fn render_left_pane(frame: &mut Frame<'_>, area: Rect, display: bool, c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -156,7 +187,7 @@ fn render_left_pane(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         ])
         .split(area);
 
-    render_groups(frame, rows[0], c);
+    render_groups(frame, rows[0], display, c);
     render_where_values_live(frame, rows[2], c);
     render_reset(frame, rows[4], c);
 }
@@ -166,7 +197,6 @@ fn render_left_pane(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 struct GroupRow {
     label: &'static str,
     count: &'static str,
-    selected: bool,
 }
 
 /// §4a's own worked example, verbatim — `general` selected, matching the status line's own
@@ -175,43 +205,36 @@ const GROUPS: &[GroupRow] = &[
     GroupRow {
         label: "general",
         count: "8",
-        selected: true,
     },
     GroupRow {
         label: "display",
         count: "7",
-        selected: false,
     },
     GroupRow {
         label: "units & prices",
         count: "6",
-        selected: false,
     },
     GroupRow {
         label: "files & backup",
         count: "5",
-        selected: false,
     },
     GroupRow {
         label: "reconcile",
         count: "4",
-        selected: false,
     },
     GroupRow {
         label: "keys",
         count: "12",
-        selected: false,
     },
     GroupRow {
         label: "about",
         count: "—",
-        selected: false,
     },
 ];
 
 /// The groups list: a "GROUPS" heading over the seven group rows, the selected row a
 /// full-width reversed block per §4a.
-fn render_groups(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+fn render_groups(frame: &mut Frame<'_>, area: Rect, display: bool, c: &Colours) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -235,15 +258,23 @@ fn render_groups(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         .constraints(row_constraints)
         .split(sections[2]);
 
-    for (group, row) in GROUPS.iter().zip(rows.iter()) {
-        render_group_row(frame, *row, group, c);
+    // `general` is the first group and `display` the second.
+    let focused = usize::from(display);
+    for (index, (group, row)) in GROUPS.iter().zip(rows.iter()).enumerate() {
+        render_group_row(frame, *row, group, index == focused, c);
     }
 }
 
 /// One group row: label flush left, count right-aligned. The selected group (`general`)
 /// reverses full width, per the shell's "reversed for the selected row" style role.
-fn render_group_row(frame: &mut Frame<'_>, area: Rect, group: &GroupRow, c: &Colours) {
-    if group.selected {
+fn render_group_row(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    group: &GroupRow,
+    selected: bool,
+    c: &Colours,
+) {
+    if selected {
         frame.render_widget(Block::new().style(c.selection()), area);
     }
 
@@ -446,7 +477,7 @@ fn rule(width: u16) -> Line<'static> {
 /// that 16, not for their own sake; touching `SELECTED_SECTION_HEIGHT`, `SETTINGS_TABLE_HEIGHT`
 /// or `WHERE_VALUES_SECTION_HEIGHT` will throw the alignment off and need a matching change
 /// here (or in `render_left_pane`) to restore it.
-fn render_right_pane(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+fn render_right_pane(frame: &mut Frame<'_>, area: Rect, view: &SettingsView, c: &Colours) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -460,7 +491,11 @@ fn render_right_pane(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         ])
         .split(area);
 
-    render_settings_list(frame, rows[0], c);
+    if view.display {
+        render_settings_list(frame, rows[0], &display_settings(view.display_row, c), c);
+    } else {
+        render_settings_list(frame, rows[0], &settings(), c);
+    }
     render_selected(frame, rows[2], c);
     render_settings_table(frame, rows[4], c);
     render_command_hint(frame, rows[6], c);
@@ -565,9 +600,45 @@ fn settings() -> Vec<SettingRow> {
     ]
 }
 
+/// The `display` group's Colour Theme and Colour Appearance rows, showing the Colour Theme
+/// drawn now and the Colour Appearance Preference (System naming what it resolved to). Both stay
+/// editable under `terminal_colours`, since the Preferences still sync, with a note naming it.
+fn display_settings(selected: usize, c: &Colours) -> Vec<SettingRow> {
+    use crate::popup::settings::colour::{appearance_label, colour_theme_name, system_hint};
+
+    let note = if c.terminal_colours() {
+        msg::tui_settings_colour_terminal_row_note("terminal_colours")
+    } else {
+        msg::tui_settings_colour_theme_note()
+    };
+    let appearance = c.colour_appearance().unwrap_or_default();
+    // The System hint outgrows the VALUE column, so it takes the note instead.
+    let appearance_note = if appearance == lib_colour_theme::ColourAppearance::System {
+        system_hint(c.system())
+    } else {
+        note.clone()
+    };
+    vec![
+        row(
+            c.colour_theme().is_some(),
+            &msg::tui_settings_setting_colour_theme(),
+            &colour_theme_name(c.resolved().theme_id),
+            &note,
+            selected == 0,
+        ),
+        row(
+            c.colour_appearance().is_some(),
+            &msg::tui_settings_setting_colour_appearance(),
+            &appearance_label(appearance),
+            &appearance_note,
+            selected == 1,
+        ),
+    ]
+}
+
 /// The settings list: a "SETTINGS" heading tagged with the focused group and its count, over
 /// the gutter/`SETTING`/`VALUE`/`NOTE` column set, per §4a.
-fn render_settings_list(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+fn render_settings_list(frame: &mut Frame<'_>, area: Rect, settings: &[SettingRow], c: &Colours) {
     let sections = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -587,7 +658,7 @@ fn render_settings_list(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     );
     frame.render_widget(Block::new().borders(Borders::BOTTOM), sections[1]);
     render_settings_column_header(frame, sections[2], c);
-    render_setting_rows(frame, sections[3], c);
+    render_setting_rows(frame, sections[3], settings, c);
 }
 
 /// The gutter/`SETTING`/`VALUE`/`NOTE` column header row, dim — the gutter carries no label.
@@ -608,8 +679,7 @@ fn render_settings_column_header(frame: &mut Frame<'_>, area: Rect, c: &Colours)
 
 /// One row per `general` setting, capped to however many rows actually fit `area` — the same
 /// defensive cap `view::units`'s own row renderers use.
-fn render_setting_rows(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
-    let settings = settings();
+fn render_setting_rows(frame: &mut Frame<'_>, area: Rect, settings: &[SettingRow], c: &Colours) {
     let visible = settings.len().min(area.height as usize);
     let row_constraints: Vec<Constraint> =
         std::iter::repeat_n(Constraint::Length(1), visible).collect();
@@ -886,6 +956,57 @@ mod tests {
         let mut view = SettingsView::new();
         let action = view.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
         assert_eq!(action, Some(Action::OpenBaseUnitGuardPopup));
+    }
+
+    #[test]
+    fn tab_focuses_display_where_enter_opens_each_colour_popup() {
+        let key = |code| KeyEvent::new(code, KeyModifiers::NONE);
+        let mut view = SettingsView::new();
+        view.handle_key(key(KeyCode::Tab));
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
+            Some(Action::OpenColourThemePopup)
+        );
+        view.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
+            Some(Action::OpenColourAppearancePopup)
+        );
+        view.handle_key(key(KeyCode::Tab));
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
+            Some(Action::OpenBaseUnitGuardPopup)
+        );
+    }
+
+    #[test]
+    fn the_display_group_shows_the_colour_rows() {
+        crate::locale::init_for_tests();
+        let c = &Colours::default();
+        let mut view = SettingsView::new();
+        view.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
+        let text = render(&view, c);
+        assert!(text.contains("colour theme"), "{text}");
+        assert!(text.contains("Modernist"), "{text}");
+        assert!(text.contains("appearance"), "{text}");
+        assert!(text.contains("System"), "{text}");
+        // The hint outgrows the NOTE column at the minimum width; the row carries it whole.
+        assert_eq!(
+            display_settings(1, c)[1].note,
+            "System (not detected, using Dark)"
+        );
+    }
+
+    #[test]
+    fn under_terminal_colours_the_rows_name_the_key() {
+        crate::locale::init_for_tests();
+        let c = &Colours::new(
+            lib_colour_theme::ThemeOverrides::default(),
+            true,
+            crate::colours::ColourDepth::TrueColor,
+        );
+        let rows = display_settings(0, c);
+        assert!(rows[0].note.contains("terminal_colours"));
     }
 
     #[test]

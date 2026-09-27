@@ -11,7 +11,8 @@
 //! reads `preferences` from the database; null means Modernist and System.
 
 use lib_colour_theme::{
-    ColourAppearance, ColourVariant, ResolveInputs, ResolvedColours, Rgba, ThemeOverrides, resolve,
+    ColourAppearance, ColourVariant, ContrastFailure, ResolveInputs, ResolvedColours, Rgba,
+    ThemeOverrides, resolve,
 };
 use ratatui::{
     buffer::Buffer,
@@ -33,6 +34,7 @@ pub enum ColourDepth {
 #[derive(Debug, Clone)]
 pub struct Colours {
     resolved: ResolvedColours,
+    failures: Vec<ContrastFailure>,
     colour_theme: Option<String>,
     colour_appearance: Option<ColourAppearance>,
     overrides: ThemeOverrides,
@@ -51,13 +53,15 @@ impl Colours {
     /// Resolves with null Preferences and System undetected, so it draws Dark until
     /// [`with_system`](Self::with_system) says otherwise.
     pub fn new(overrides: ThemeOverrides, terminal_colours: bool, depth: ColourDepth) -> Self {
+        let (resolved, failures) = resolve_logged(ResolveInputs {
+            colour_theme: None,
+            colour_appearance: None,
+            overrides: &overrides,
+            system: None,
+        });
         Self {
-            resolved: resolve_logged(ResolveInputs {
-                colour_theme: None,
-                colour_appearance: None,
-                overrides: &overrides,
-                system: None,
-            }),
+            resolved,
+            failures,
             colour_theme: None,
             colour_appearance: None,
             overrides,
@@ -75,7 +79,7 @@ impl Colours {
     }
 
     fn resolve(&mut self) {
-        self.resolved = resolve_logged(ResolveInputs {
+        (self.resolved, self.failures) = resolve_logged(ResolveInputs {
             colour_theme: self.colour_theme.as_deref(),
             colour_appearance: self.colour_appearance,
             overrides: &self.overrides,
@@ -97,6 +101,58 @@ impl Colours {
 
     pub fn resolved(&self) -> &ResolvedColours {
         &self.resolved
+    }
+
+    /// The in-memory `colour_theme` Preference, null for the default.
+    pub fn colour_theme(&self) -> Option<&str> {
+        self.colour_theme.as_deref()
+    }
+
+    /// The in-memory `colour_appearance` Preference, null for System.
+    pub fn colour_appearance(&self) -> Option<ColourAppearance> {
+        self.colour_appearance
+    }
+
+    /// The colours `colour_theme` would draw with the current Colour Appearance, terminal
+    /// background and `[theme]` overrides, for the Settings swatches.
+    pub fn preview(&self, colour_theme: &str) -> ResolvedColours {
+        resolve(ResolveInputs {
+            colour_theme: Some(colour_theme),
+            colour_appearance: self.colour_appearance,
+            overrides: &self.overrides,
+            system: self.system,
+        })
+        .0
+    }
+
+    /// The pairs below their contrast rule in the colours drawn, for the Settings warnings.
+    pub fn failures(&self) -> &[ContrastFailure] {
+        &self.failures
+    }
+
+    pub fn overrides(&self) -> &ThemeOverrides {
+        &self.overrides
+    }
+
+    /// The terminal's detected light/dark background, for the Settings System hint.
+    pub fn system(&self) -> Option<ColourVariant> {
+        self.system
+    }
+
+    /// Whether the `terminal_colours` Configuration switch is on, for the Settings note. A
+    /// 16-colour terminal also draws terminal colours but is not named by that note.
+    pub fn terminal_colours(&self) -> bool {
+        self.terminal_colours
+    }
+
+    /// A Settings swatch cell drawn in `colour`; unstyled on a 16-colour terminal, which
+    /// cannot show it.
+    pub fn swatch(&self, colour: Rgba) -> Style {
+        if self.depth == ColourDepth::Ansi16 {
+            Style::default()
+        } else {
+            Style::default().fg(self.colour(colour))
+        }
     }
 
     /// Whether the fallback table is drawn instead of the Colour Theme.
@@ -248,12 +304,12 @@ impl Colours {
 }
 
 // Contrast failures are only possible through `[theme]` overrides; they are drawn anyway.
-fn resolve_logged(inputs: ResolveInputs<'_>) -> ResolvedColours {
+fn resolve_logged(inputs: ResolveInputs<'_>) -> (ResolvedColours, Vec<ContrastFailure>) {
     let (resolved, failures) = resolve(inputs);
-    for failure in failures {
+    for failure in &failures {
         tracing::warn!(%failure, "Colour Theme pair below its contrast rule");
     }
-    resolved
+    (resolved, failures)
 }
 
 /// The nearest xterm 256 index to an opaque colour: the 6×6×6 cube or the 24-step grey

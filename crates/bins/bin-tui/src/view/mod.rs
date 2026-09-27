@@ -129,6 +129,18 @@ pub enum Action {
     /// no real "currently selected setting" state yet to route a generic commit through —
     /// `view::settings::SettingsView`'s own module doc says more.
     OpenBaseUnitGuardPopup,
+    /// `Enter` on the Settings Display group's `colour theme` row — opens its list popup.
+    OpenColourThemePopup,
+    /// `Enter` on the Settings Display group's `appearance` row — opens its list popup.
+    OpenColourAppearancePopup,
+    /// `j`/`Down` in the colour list popup — moves down a row and previews it.
+    ColourPopupDown,
+    /// `k`/`Up` in the colour list popup — moves up a row and previews it.
+    ColourPopupUp,
+    /// `Enter` in the colour list popup — keeps the previewed Preference and closes.
+    ColourPopupKeep,
+    /// `Esc` in the colour list popup — restores the Preference it opened on and closes.
+    ColourPopupRevert,
     /// `Esc` while a settings popup (the §4b editor or the §4c guard) is open — closes it
     /// without committing anything.
     CloseSettingsPopup,
