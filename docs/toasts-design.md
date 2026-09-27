@@ -26,7 +26,7 @@ Colour sits on the non-text marks only: the leading bar and the glyph, each in a
 - **Pausing:** a Toast's timer pauses on hover (Desktop) and while a modal surface is open (command palette, dialog, help overlay, TUI popup, the Toast history). No pause on window or terminal unfocus.
 - **Stacking:** at most 3 visible. Past the limit the oldest *timed* Toast is evicted early; when every visible Toast is sticky, the oldest Error is not dropped but held back out of view until a slot frees. A muted `+N more` line above the stack counts the held-back Errors.
 - **Duplicates:** a Toast with the same Kind and text as a visible one merges into it, restarting its timer and showing a muted `×N` badge.
-- **Dismissal:** the Desktop ✕ on each Toast; `:dismiss` (newest) and `:dismiss all` in both Clients; `Ctrl+L` dismisses all, in `Normal`/`NORMAL` mode only (inert while the palette, a popup or a dialog has focus), remappable as `[keybindings] dismiss-toasts`. Deliberately not `Esc`, which already pops the TUI view stack and leaves Desktop modes and overlays.
+- **Dismissal:** the Desktop ✕ on each Toast; `:dismiss` (newest) and `:dismiss all` in both Clients; `Ctrl+L` dismisses all, in `Normal`/`NORMAL` mode only (inert while the palette, a popup or a dialog has focus), remappable as `[keybindings] dismiss_toasts`. Deliberately not `Esc`, which already pops the TUI view stack and leaves Desktop modes and overlays.
 
 ## Placement and layout
 
@@ -49,7 +49,7 @@ Toasts on/off is the first **Client-scoped Preference**: default on, one switch,
 
 ## Session Toast history
 
-- **Open:** the `toasts` command (alias `messages`), and an unbound `[keybindings] toast-history`.
+- **Open:** the `toasts` command (alias `messages`), and an unbound `[keybindings] toast_history`.
 - **Contents:** Toasts only, whatever the Preference; status-line messages are not recorded. 100 entries in memory, oldest dropped, no clear; it empties on restart.
 - **Entry:** Kind glyph in its mark colour, full untruncated Message, time last raised (Locale-formatted `HH:MM:SS`), `×N`. A merged duplicate is one entry. Dismissed or expired state is not shown.
 - **Display:** a modal popup in both Clients, newest first, scrollable, `Esc` closes. Empty state is the Message `toast-history-empty`. The TUI follows existing popups' small-size behaviour.

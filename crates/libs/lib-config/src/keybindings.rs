@@ -29,7 +29,12 @@
 //! delete = "d"
 //! confirm = "y"
 //! cancel = "x"
+//! dismiss_toasts = "ctrl+l"
+//! toast_history = "ctrl+t"
 //! ```
+//!
+//! `toast_history` has no default key -- it opens with the `toasts` command -- so it only binds
+//! when a configuration source sets it.
 //!
 //! `quit` is deliberately **not** one of these -- `docs/navigation-design.md`'s own "Quit" section
 //! explains why: `bin-tui` has three separate, non-configurable quit mechanisms (`Ctrl+C`
@@ -71,6 +76,8 @@ const DEFAULT_BINDINGS: &[(&str, &str)] = &[
     ("delete", "d"),
     ("confirm", "y"),
     ("cancel", "x"),
+    // Not `esc`: a sticky Error Toast must not vanish on the key that backs out of a dialog.
+    ("dismiss_toasts", "ctrl+l"),
 ];
 
 /// Configuration structure for keyboard shortcuts.
@@ -197,6 +204,12 @@ mod tests {
         assert_eq!(config.key_for("delete"), Some("d"));
         assert_eq!(config.key_for("confirm"), Some("y"));
         assert_eq!(config.key_for("cancel"), Some("x"));
+        assert_eq!(config.key_for("dismiss_toasts"), Some("ctrl+l"));
+        assert_eq!(
+            config.key_for("toast_history"),
+            None,
+            "toast_history is unbound by default"
+        );
     }
 
     #[test]

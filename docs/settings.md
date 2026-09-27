@@ -300,8 +300,12 @@ The built-in defaults are:
 | `delete`             | `d`         |
 | `confirm`            | `y`         |
 | `cancel`             | `x`         |
+| `dismiss_toasts`     | `ctrl+l`    |
+| `toast_history`      | unbound     |
 
 `quit` is deliberately **not** configurable: `bin-tui` has three separate, hardcoded quit mechanisms (`Ctrl+C` hard-quit, `Q`/`q` graceful quit, and the `:quit` command), none of which read this section.
+
+`dismiss_toasts` dismisses every showing Toast, in `Normal` mode only; it is deliberately not `esc`, so a sticky Error Toast doesn't vanish on the key that backs out of a dialog. `toast_history` has no default key because the `toasts` command (alias `messages`) opens the Toast history; set it to bind one. See [Toasts design](toasts-design.md).
 
 Individual bindings can be overridden by environment variable with the `PERSONAL_LEDGER_KEYBINDINGS__` prefix, e.g. `PERSONAL_LEDGER_KEYBINDINGS__BACK=ctrl+h` or `PERSONAL_LEDGER_KEYBINDINGS__SUPER_KEY=alt`.
 
@@ -322,6 +326,7 @@ new = "n"
 delete = "d"
 confirm = "y"
 cancel = "x"
+dismiss_toasts = "ctrl+l"
 ```
 
 ## Sync Server Section

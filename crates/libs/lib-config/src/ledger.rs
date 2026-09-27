@@ -676,6 +676,44 @@ mod tests {
     }
 
     #[test]
+    fn toast_keybindings_default_to_ctrl_l_and_unbound() {
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env_map(&[])).unwrap();
+        assert_eq!(config.keybindings.key_for("dismiss_toasts"), Some("ctrl+l"));
+        assert_eq!(config.keybindings.key_for("toast_history"), None);
+    }
+
+    #[test]
+    fn toast_keybindings_remap_from_config_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let config_file = temp_dir.path().join("toasts.conf");
+        fs::write(
+            &config_file,
+            r#"
+        [keybindings]
+        dismiss_toasts = "ctrl+d"
+        toast_history = "ctrl+t"
+        "#,
+        )
+        .unwrap();
+
+        let config =
+            LedgerConfig::parse_for_sync_server_with_env(Some(&config_file), env_map(&[])).unwrap();
+        assert_eq!(config.keybindings.key_for("dismiss_toasts"), Some("ctrl+d"));
+        assert_eq!(config.keybindings.key_for("toast_history"), Some("ctrl+t"));
+    }
+
+    #[test]
+    fn toast_keybindings_remap_from_env() {
+        let env = env_map(&[
+            ("PERSONAL_LEDGER_KEYBINDINGS__DISMISS_TOASTS", "ctrl+x"),
+            ("PERSONAL_LEDGER_KEYBINDINGS__TOAST_HISTORY", "ctrl+m"),
+        ]);
+        let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
+        assert_eq!(config.keybindings.key_for("dismiss_toasts"), Some("ctrl+x"));
+        assert_eq!(config.keybindings.key_for("toast_history"), Some("ctrl+m"));
+    }
+
+    #[test]
     fn env_preserves_single_underscores_within_a_key() {
         let env = env_map(&[(
             "PERSONAL_LEDGER_PERSONAL_LEDGER__LOG_FILE_PATH",
