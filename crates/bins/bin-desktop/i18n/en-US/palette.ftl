@@ -27,6 +27,8 @@ desktop-command-tags-description = the tags every transaction can carry any numb
 desktop-command-transactions-description = the transaction ledger
 desktop-command-dismiss-description = dismiss the newest Toast
 desktop-command-dismiss-all-description = dismiss every Toast
+desktop-command-toasts-on-description = show Toasts
+desktop-command-toasts-off-description = send Toasts to the status line (Errors still show)
 
 ## The match count beside the input, for example `3 of 16`.
 

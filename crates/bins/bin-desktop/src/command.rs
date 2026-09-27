@@ -51,6 +51,8 @@ pub enum CommandEffect {
     DismissToast,
     /// `:dismiss all`: removes every Toast, the same as the `dismiss_toasts` binding.
     DismissAllToasts,
+    /// `:toasts on` / `:toasts off`: sets the Toasts Preference, the same as Settings' Toasts row.
+    SetToasts(bool),
     /// No real behaviour behind this command yet (`docs/ux/tui/README.md`'s commitment: "a
     /// command that has no real behaviour yet says so explicitly when run") --
     /// `Shell::run_command` turns this into the status-line flash.
@@ -314,6 +316,20 @@ pub const COMMANDS: &[Command] = &[
         effect: CommandEffect::DismissAllToasts,
     },
     Command {
+        name: "toasts on",
+        domain: Domain::Toasts,
+        description: crate::msg::desktop_command_toasts_on_description,
+        binding: None,
+        effect: CommandEffect::SetToasts(true),
+    },
+    Command {
+        name: "toasts off",
+        domain: Domain::Toasts,
+        description: crate::msg::desktop_command_toasts_off_description,
+        binding: None,
+        effect: CommandEffect::SetToasts(false),
+    },
+    Command {
         name: "transactions",
         domain: Domain::Transactions,
         description: crate::msg::desktop_command_transactions_description,
@@ -379,6 +395,13 @@ mod tests {
             assert!(!command.name.is_empty());
             assert!(!(command.description)().is_empty());
         }
+    }
+
+    #[test]
+    fn toasts_on_and_off_set_the_preference() {
+        let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
+        assert_eq!(effect("toasts on"), Some(CommandEffect::SetToasts(true)));
+        assert_eq!(effect("toasts off"), Some(CommandEffect::SetToasts(false)));
     }
 
     #[test]

@@ -7,6 +7,8 @@ use std::rc::Rc;
 
 use gpui::{App, Window, div, prelude::*, px};
 
+use lib_toast::ToastKind;
+
 use crate::{nav::InputMode, theme::color};
 
 /// Band height: `docs/ux/desktop/Shell & Navigation/README.md`'s "Layout" table.
@@ -54,6 +56,9 @@ pub struct StatusLine {
     /// `Some` while a page with its own legend is showing (`docs/ux/desktop/Accounts/README.md`'s
     /// 3a status bar). Ignored in command mode, which owns the whole line.
     page: Option<PageStatus>,
+    /// The status-line echo (ADR-0027): the Toast carried here while Toasts are off. Below
+    /// `status_message`, above the page legend and hint strip.
+    toast_echo: Option<(ToastKind, String)>,
 }
 
 impl StatusLine {
@@ -68,7 +73,13 @@ impl StatusLine {
             status_message,
             command_echo,
             page: None,
+            toast_echo: None,
         }
+    }
+
+    pub fn toast_echo(mut self, echo: Option<(ToastKind, String)>) -> Self {
+        self.toast_echo = echo;
+        self
     }
 
     /// Makes the shell-wide hint strip's entries clickable.
@@ -98,18 +109,24 @@ impl RenderOnce for StatusLine {
             .text_size(px(11.5))
             .text_color(color::muted(cx))
             .child(mode_badge(self.mode, cx))
-            .child(match (&self.command_echo, self.status_message) {
-                (Some((query, _)), _) => command_query_echo(query, cx).into_any_element(),
-                (None, Some(message)) => div()
-                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_color(color::accent_text(cx))
-                    .child(message)
-                    .into_any_element(),
-                (None, None) => match &self.page {
-                    Some(page) => page_hint_strip(&page.hints, cx).into_any_element(),
-                    None => hint_strip(self.on_hint.clone(), cx).into_any_element(),
+            .child(
+                match left(
+                    self.command_echo.as_ref().map(|(query, _)| query.as_str()),
+                    self.status_message,
+                    self.toast_echo,
+                    self.page.as_ref(),
+                ) {
+                    Left::CommandEcho(query) => command_query_echo(query, cx).into_any_element(),
+                    Left::StatusMessage(message) => div()
+                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                        .text_color(color::accent_text(cx))
+                        .child(message)
+                        .into_any_element(),
+                    Left::ToastEcho(kind, text) => toast_echo(kind, text, cx).into_any_element(),
+                    Left::PageHints(hints) => page_hint_strip(hints, cx).into_any_element(),
+                    Left::HintStrip => hint_strip(self.on_hint.clone(), cx).into_any_element(),
                 },
-            })
+            )
             .child(div().flex_1())
             .child(match (self.command_echo, self.page) {
                 (Some((_, hint)), _) => div().child(hint).into_any_element(),
@@ -117,6 +134,52 @@ impl RenderOnce for StatusLine {
                 (None, None) => file_path().into_any_element(),
             })
     }
+}
+
+/// What the left side of the status line shows, highest precedence first (ADR-0027): command
+/// echo > status-line message > Toast echo > page legend / shell hint strip.
+#[derive(Debug, PartialEq, Eq)]
+enum Left<'a> {
+    CommandEcho(&'a str),
+    StatusMessage(String),
+    ToastEcho(ToastKind, String),
+    PageHints(&'a [(&'static str, String)]),
+    HintStrip,
+}
+
+fn left<'a>(
+    command_echo: Option<&'a str>,
+    status_message: Option<String>,
+    toast_echo: Option<(ToastKind, String)>,
+    page: Option<&'a PageStatus>,
+) -> Left<'a> {
+    if let Some(query) = command_echo {
+        Left::CommandEcho(query)
+    } else if let Some(message) = status_message {
+        Left::StatusMessage(message)
+    } else if let Some((kind, text)) = toast_echo {
+        Left::ToastEcho(kind, text)
+    } else if let Some(page) = page {
+        Left::PageHints(&page.hints)
+    } else {
+        Left::HintStrip
+    }
+}
+
+/// The Kind glyph in its mark colour, then the Message in `foreground`, as a Toast reads.
+fn toast_echo(kind: ToastKind, text: String, cx: &App) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(6.0))
+        .text_color(color::foreground(cx))
+        .child(
+            div()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_color(color::toast_mark(kind, cx))
+                .child(kind.glyph().to_string()),
+        )
+        .child(text)
 }
 
 fn mode_badge(mode: InputMode, cx: &App) -> impl IntoElement {
@@ -240,4 +303,42 @@ fn command_query_echo(query: &str, cx: &App) -> impl IntoElement {
 /// #164/#165).
 fn file_path() -> impl IntoElement {
     div().child("~/Documents/My-Personal-Ledger.pldb · aud")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn echo() -> Option<(ToastKind, String)> {
+        Some((ToastKind::Success, "Deleted tag Food".to_string()))
+    }
+
+    #[test]
+    fn the_toast_echo_replaces_the_hint_strip_and_the_page_legend() {
+        let page = PageStatus {
+            hints: vec![("j/k", "row".to_string())],
+            right: String::new(),
+        };
+        assert_eq!(left(None, None, None, None), Left::HintStrip);
+        assert_eq!(
+            left(None, None, None, Some(&page)),
+            Left::PageHints(&page.hints)
+        );
+        let echoed = Left::ToastEcho(ToastKind::Success, "Deleted tag Food".to_string());
+        assert_eq!(left(None, None, echo(), None), echoed);
+        assert_eq!(left(None, None, echo(), Some(&page)), echoed);
+    }
+
+    #[test]
+    fn a_status_line_message_and_the_command_echo_outrank_the_toast_echo() {
+        let message = Some("not yet built".to_string());
+        assert_eq!(
+            left(None, message.clone(), echo(), None),
+            Left::StatusMessage("not yet built".to_string())
+        );
+        assert_eq!(
+            left(Some("acc"), message, echo(), None),
+            Left::CommandEcho("acc")
+        );
+    }
 }

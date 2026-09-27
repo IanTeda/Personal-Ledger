@@ -51,6 +51,8 @@ pub struct SettingsBodyProps<'a> {
     pub on_date_style_click: display::OnDateStyleClick,
     pub on_row_density_click: display::OnRowDensityClick,
     pub on_status_glyphs_click: display::OnStatusGlyphsClick,
+    pub toasts_on: bool,
+    pub on_toasts_click: display::OnToastsClick,
     /// The Colour Theme card the keyboard is on, when the grid has focus.
     pub colour_theme_focus: Option<usize>,
     pub on_colour_theme_click: colour_theme::OnColourThemeClick,
@@ -219,6 +221,8 @@ fn section_content(
             props.on_date_style_click.clone(),
             props.on_row_density_click.clone(),
             props.on_status_glyphs_click.clone(),
+            props.toasts_on,
+            props.on_toasts_click.clone(),
             props.colour_theme_focus,
             props.on_colour_theme_click.clone(),
             cx,

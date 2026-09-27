@@ -10,7 +10,7 @@ use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
 use lib_locale::format::upper;
-use lib_toast::{ToastKind, Toasts};
+use lib_toast::{Display, ToastKind, Toasts};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -435,6 +435,8 @@ impl Shell {
             CommandId::Dashboard => Some(Action::OpenDashboard),
             CommandId::Dismiss => Some(Action::DismissNewestToast),
             CommandId::DismissAll => Some(Action::DismissAllToasts),
+            CommandId::ToastsOn => Some(Action::SetToasts(true)),
+            CommandId::ToastsOff => Some(Action::SetToasts(false)),
             CommandId::Settings => Some(Action::OpenSettings),
             CommandId::Category => Some(Action::OpenCategories),
             // The command popup has no real typed-argument resolution (`popup::command::
@@ -1076,6 +1078,13 @@ impl Shell {
                 self.command_popup = None;
                 self.toasts.dismiss_all();
             }
+            Action::SetToasts(on) => {
+                self.command_popup = None;
+                self.toasts.set_display(Display {
+                    toasts_on: on,
+                    ..self.toasts.display()
+                });
+            }
             Action::OpenCommandPopup => self.command_popup = Some(CommandPopup::new()),
             Action::CloseCommandPopup => self.command_popup = None,
             Action::CommandPopupInput(c) => {
@@ -1698,7 +1707,17 @@ impl Shell {
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
     /// keybind hint bar — around the active view, per `docs/ux/tui/README.md`.
-    fn draw(&self, frame: &mut Frame<'_>) {
+    fn draw(&mut self, frame: &mut Frame<'_>) {
+        // The frame size is only known here, so this is where a view shrinking under 40×8
+        // hands its Toasts to the status-line echo, and back again.
+        let area = frame.area();
+        self.toasts.set_display(Display {
+            can_draw: area.width >= crate::toast::MIN_FRAME.0
+                && area.height >= crate::toast::MIN_FRAME.1,
+            ..self.toasts.display()
+        });
+        self.view.set_toasts_on(self.toasts.display().toasts_on);
+
         let c = &self.colours;
         let rows = Layout::default()
             .direction(Direction::Vertical)
@@ -1821,6 +1840,13 @@ impl Shell {
                 " {} ",
                 crate::msg::tui_footer_not_yet_built(&format!(":{command}"))
             ))
+        } else if let Some(toast) = self.toasts.echo() {
+            // The status-line echo (ADR-0027): below a status-line message, above the hints.
+            Line::from(vec![
+                Span::raw(" "),
+                Span::styled(toast.kind().glyph().to_string(), c.toast_mark(toast.kind())),
+                Span::raw(format!(" {} ", toast.text())),
+            ])
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             let mut spans = vec![Span::raw(" ")];
@@ -2104,11 +2130,11 @@ mod tests {
     }
 
     /// Every row of a drawn frame as one string, for asserting on what the chrome actually shows.
-    fn drawn(shell: &Shell) -> String {
+    fn drawn(shell: &mut Shell) -> String {
         drawn_at(shell, 96, 30)
     }
 
-    fn drawn_at(shell: &Shell, width: u16, height: u16) -> String {
+    fn drawn_at(shell: &mut Shell, width: u16, height: u16) -> String {
         let backend = TestBackend::new(width, height);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
@@ -2194,7 +2220,7 @@ mod tests {
         crate::locale::init_for_tests();
         let mut shell = Shell::new();
         shell.raise_toast(ToastKind::Success, "Deleted tag Food");
-        let text = drawn(&shell);
+        let text = drawn(&mut shell);
         let rows = lines(&text);
         // Bottom up: footer, rule, the box's bottom border, then its content row.
         let toast_row = rows[rows.len() - 4];
@@ -2219,7 +2245,7 @@ mod tests {
         shell.raise_toast(ToastKind::Info, "first");
         shell.raise_toast(ToastKind::Warning, "second");
         shell.raise_toast(ToastKind::Error, "third");
-        let text = drawn(&shell);
+        let text = drawn(&mut shell);
         let rows = lines(&text);
         let n = rows.len();
         assert!(rows[n - 4].contains("▌ ✗ third"), "{text}");
@@ -2235,7 +2261,7 @@ mod tests {
         for i in 0..5 {
             shell.raise_toast(ToastKind::Error, format!("failure {i}"));
         }
-        let text = drawn(&shell);
+        let text = drawn(&mut shell);
         let rows = lines(&text);
         let n = rows.len();
         assert!(rows[n - 4].contains("failure 4"), "{text}");
@@ -2253,7 +2279,7 @@ mod tests {
         }
         // 12 rows: a 9-row view fits three boxes exactly, so no room for the more line; 11 rows
         // leaves 7, which fits two and the line.
-        let text = drawn_at(&shell, 60, 11);
+        let text = drawn_at(&mut shell, 60, 11);
         assert!(
             text.contains("failure 2") && text.contains("failure 1"),
             "{text}"
@@ -2269,7 +2295,7 @@ mod tests {
         let long = "Couldn't save account: the store refused it because the name is taken";
         shell.raise_toast(ToastKind::Error, long);
         shell.raise_toast(ToastKind::Error, long);
-        let text = drawn(&shell);
+        let text = drawn(&mut shell);
         let row = lines(&text)[lines(&text).len() - 4];
         assert!(row.ends_with("… ×2 │"), "badge cut or no ellipsis:\n{text}");
         let start = row.find("│▌").unwrap_or(0);
@@ -2281,13 +2307,85 @@ mod tests {
     }
 
     #[test]
-    fn no_toast_draws_under_a_forty_by_eight_view() {
+    fn under_a_forty_by_eight_view_the_toast_moves_to_the_footer_echo() {
         crate::locale::init_for_tests();
         let mut shell = Shell::new();
         shell.raise_toast(ToastKind::Error, "hidden");
-        assert!(!drawn_at(&shell, 39, 20).contains("hidden"));
-        assert!(!drawn_at(&shell, 60, 7).contains("hidden"));
-        assert!(drawn_at(&shell, 40, 8).contains("hidden"));
+        for (width, height) in [(39, 20), (60, 7)] {
+            let text = drawn_at(&mut shell, width, height);
+            let footer = text.lines().last().unwrap_or_default();
+            assert!(footer.starts_with(" ✗ hidden"), "no echo:\n{text}");
+            assert!(!text.contains("│▌"), "a Toast box drew:\n{text}");
+        }
+        let text = drawn_at(&mut shell, 40, 8);
+        assert!(text.contains("│▌ ✗ hidden"), "no Toast box:\n{text}");
+        assert!(!text.lines().last().unwrap_or_default().contains("hidden"));
+    }
+
+    fn footer(shell: &mut Shell) -> String {
+        drawn(shell).lines().last().unwrap_or_default().to_string()
+    }
+
+    #[test]
+    fn toasts_off_echoes_on_the_footer_but_an_error_still_toasts() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        let action = shell.command_action(CommandId::ToastsOff, "toasts off");
+        assert_eq!(action, Some(Action::SetToasts(false)));
+        shell.update(Action::SetToasts(false));
+
+        shell.raise_toast(ToastKind::Success, "Deleted tag Food");
+        let text = drawn(&mut shell);
+        assert!(!text.contains("│▌"), "a Toast box drew while off:\n{text}");
+        assert!(footer(&mut shell).starts_with(" ✓ Deleted tag Food"));
+
+        shell.raise_toast(ToastKind::Error, "Couldn't save tag");
+        let text = drawn(&mut shell);
+        assert!(text.contains("│▌ ✗ Couldn't save tag"), "{text}");
+        assert!(footer(&mut shell).starts_with(" ✓ Deleted tag Food"));
+    }
+
+    #[test]
+    fn turning_toasts_off_moves_the_newest_to_the_echo() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.raise_toast(ToastKind::Info, "older");
+        shell.raise_toast(ToastKind::Warning, "newer");
+        shell.update(Action::SetToasts(false));
+        assert!(shell.toasts.visible().is_empty());
+        assert!(footer(&mut shell).starts_with(" ! newer"));
+        shell.update(Action::SetToasts(true));
+        assert!(footer(&mut shell).contains(&crate::msg::tui_hint_help()));
+    }
+
+    #[test]
+    fn a_status_line_message_outranks_the_echo_which_outranks_the_hints() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.update(Action::SetToasts(false));
+        let hints = crate::msg::tui_hint_help();
+        assert!(footer(&mut shell).contains(&hints));
+
+        shell.raise_toast(ToastKind::Info, "echoed");
+        let line = footer(&mut shell);
+        assert!(
+            line.starts_with(" i echoed") && !line.contains(&hints),
+            "{line}"
+        );
+
+        shell.jump_not_yet_built = Some("report");
+        let line = footer(&mut shell);
+        assert!(
+            line.contains(":report") && !line.contains("echoed"),
+            "{line}"
+        );
+
+        shell.update(Action::OpenCommandPopup);
+        let line = footer(&mut shell);
+        assert!(
+            !line.contains(":report") && !line.contains("echoed"),
+            "{line}"
+        );
     }
 
     #[test]
@@ -2296,7 +2394,7 @@ mod tests {
         let mut shell = Shell::new();
         shell.update(Action::OpenCommandPopup);
         shell.raise_toast(ToastKind::Success, "Deleted tag Food");
-        assert!(drawn(&shell).contains("✓ Deleted tag Food"));
+        assert!(drawn(&mut shell).contains("✓ Deleted tag Food"));
     }
 
     #[test]
@@ -2377,7 +2475,7 @@ mod tests {
     #[test]
     fn the_status_line_names_the_product_and_the_active_view() {
         crate::locale::init_for_tests();
-        let text = drawn(&Shell::new());
+        let text = drawn(&mut Shell::new());
         // The glyph is double-width, so the buffer holds a blank continuation cell after it --
         // the assertion starts at the product name rather than counting those cells.
         assert!(
@@ -2396,14 +2494,14 @@ mod tests {
         let mut shell = Shell::new();
         shell.update(Action::OpenCommandPopup);
         assert!(
-            drawn(&shell).contains("| Dashboard \u{b7} COMMAND"),
+            drawn(&mut shell).contains("| Dashboard \u{b7} COMMAND"),
             "command mode missing from the status line"
         );
 
         let mut shell = Shell::new();
         shell.update(Action::OpenNewUnitPopup);
         assert!(
-            drawn(&shell).contains("\u{b7} INSERT"),
+            drawn(&mut shell).contains("\u{b7} INSERT"),
             "insert mode missing from the status line"
         );
     }
@@ -2411,7 +2509,7 @@ mod tests {
     #[test]
     fn the_resting_footer_names_each_configured_key_with_its_label() {
         crate::locale::init_for_tests();
-        let text = drawn(&Shell::new());
+        let text = drawn(&mut Shell::new());
         assert!(
             text.contains(": command \u{b7} / search \u{b7} ? help"),
             "resting hints missing:\n{text}"
@@ -2423,7 +2521,7 @@ mod tests {
         crate::locale::init_for_tests();
         let mut keybindings = KeyBindingConfig::default();
         keybindings.bindings.insert("help".into(), "F1".into());
-        let text = drawn(&Shell::with_keybindings(keybindings));
+        let text = drawn(&mut Shell::with_keybindings(keybindings));
         assert!(
             text.contains("F1 help"),
             "the hint should name the rebound key:\n{text}"
@@ -2442,7 +2540,7 @@ mod tests {
         for (action, hint) in cases {
             let mut shell = Shell::new();
             shell.update(action.clone());
-            let text = drawn(&shell);
+            let text = drawn(&mut shell);
             assert!(text.contains(hint), "{hint} missing:\n{text}");
         }
     }
@@ -2453,7 +2551,7 @@ mod tests {
         let mut shell = Shell::new();
         shell.jump_not_yet_built = Some("report");
         assert!(
-            drawn(&shell).contains(":report \u{2014} not yet built"),
+            drawn(&mut shell).contains(":report \u{2014} not yet built"),
             "the not-yet-built flash should name the command"
         );
     }
@@ -2466,7 +2564,7 @@ mod tests {
         lib_locale::with_locale(lib_locale::Locale::EnXa, || {
             let mut shell = Shell::new();
             shell.update(Action::OpenCommandPopup);
-            let text = drawn(&shell);
+            let text = drawn(&mut shell);
 
             for word in [
                 "Personal Ledger",
@@ -2487,7 +2585,7 @@ mod tests {
 
     #[test]
     fn renders_the_shell_layout_without_panicking() {
-        let shell = Shell::new();
+        let mut shell = Shell::new();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
 
@@ -2556,7 +2654,7 @@ mod tests {
 
     #[test]
     fn changing_the_colour_preferences_re_resolves_and_redraws() {
-        let draw = |shell: &Shell| {
+        let draw = |shell: &mut Shell| {
             let mut terminal =
                 Terminal::new(TestBackend::new(96, 30)).expect("test backend should initialise");
             terminal
@@ -2565,14 +2663,14 @@ mod tests {
             terminal.backend().buffer()[(0, 0)].bg
         };
         let mut shell = Shell::new();
-        let before = draw(&shell);
+        let before = draw(&mut shell);
         shell.update(Action::SetColourTheme(Some("nord".to_string())));
         shell.update(Action::SetColourAppearance(Some(
             lib_colour_theme::ColourAppearance::Light,
         )));
         assert_eq!(shell.colours.resolved().theme_id, "nord");
         assert_ne!(
-            draw(&shell),
+            draw(&mut shell),
             before,
             "the status line should redraw in Nord light"
         );
@@ -2580,7 +2678,7 @@ mod tests {
 
     #[test]
     fn footer_has_no_background_and_a_rule_separates_it_from_the_view() {
-        let shell = Shell::new();
+        let mut shell = Shell::new();
         let backend = TestBackend::new(96, 30);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal

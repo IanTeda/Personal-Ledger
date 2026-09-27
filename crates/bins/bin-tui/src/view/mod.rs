@@ -52,6 +52,9 @@ pub enum Action {
     /// `:dismiss all`, or the `dismiss_toasts` binding (`Ctrl+L`) in NORMAL mode — removes
     /// every Toast.
     DismissAllToasts,
+    /// `toasts on` / `toasts off`, or `enter` on the Settings `toasts` row — sets the
+    /// Client-scoped Toasts Preference (ADR-0027).
+    SetToasts(bool),
     /// `Ctrl+C` — the hard-quit safety net, recognised by `Shell` itself before any `View`
     /// sees the key.
     Quit,
@@ -637,6 +640,10 @@ pub trait View {
     fn take_toasts(&mut self) -> Vec<(ToastKind, String)> {
         Vec::new()
     }
+
+    /// Tells the view the Toasts Preference, whenever it opens or changes, for the one view
+    /// that shows it (Settings). `Shell` owns the Preference inside its `Toasts`.
+    fn set_toasts_on(&mut self, _on: bool) {}
 
     /// Read-only access to this view's Account list, if it has one — `Some` only for
     /// `view::accounts::AccountsView`. Mirrors `category_store`: lets `Shell` resolve the

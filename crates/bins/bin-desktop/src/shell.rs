@@ -394,6 +394,15 @@ impl Shell {
         self.dismiss_toasts_binding = spec;
     }
 
+    /// Sets the Client-scoped Toasts Preference (ADR-0027), held in memory like the Colour Theme
+    /// Preferences. The Desktop can always draw a Toast, so only `toasts_on` ever changes.
+    pub fn set_toasts_on(&mut self, on: bool) {
+        self.toasts.set_display(lib_toast::Display {
+            toasts_on: on,
+            ..self.toasts.display()
+        });
+    }
+
     /// Raises a Toast whose Message the caller has already resolved to text.
     pub fn raise_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
         self.toasts.raise(kind, text, Local::now());
@@ -428,7 +437,11 @@ impl Shell {
 
     /// One clock tick; `true` when the stack changed and needs a redraw.
     fn advance_toasts(&mut self, elapsed: Duration) -> bool {
-        let before = (self.toasts.visible().len(), self.toasts.more_count());
+        let before = (
+            self.toasts.visible().len(),
+            self.toasts.more_count(),
+            self.toasts.echo().is_some(),
+        );
         if before.0 == 0 {
             // A dismissed stack never reports the pointer leaving it.
             self.toasts_hovered = false;
@@ -440,7 +453,12 @@ impl Shell {
             self.toasts.resume();
         }
         self.toasts.advance(elapsed);
-        before != (self.toasts.visible().len(), self.toasts.more_count())
+        before
+            != (
+                self.toasts.visible().len(),
+                self.toasts.more_count(),
+                self.toasts.echo().is_some(),
+            )
     }
 
     /// Whether a modal surface is open -- the palette, the file explorer, a dialog, the filter
@@ -2490,6 +2508,10 @@ impl Shell {
                 self.nav.exit_mode();
                 self.toasts.dismiss_all();
             }
+            CommandEffect::SetToasts(on) => {
+                self.nav.exit_mode();
+                self.set_toasts_on(on);
+            }
             CommandEffect::NotYetBuilt => {
                 self.nav.exit_mode();
                 self.status_message = Some(format!(":{} — not yet built", command.name));
@@ -3186,6 +3208,16 @@ impl Render for Shell {
             })
         };
 
+        let on_toasts_click: settings_view::display::OnToastsClick = {
+            let entity = entity.clone();
+            Rc::new(move |on, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.set_toasts_on(on);
+                    cx.notify();
+                });
+            })
+        };
+
         let on_start_sidebar_minimised_click: settings_view::display::OnPlainClick = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -3603,6 +3635,8 @@ impl Render for Shell {
                                     on_date_style_click,
                                     on_row_density_click,
                                     on_status_glyphs_click,
+                                    toasts_on: self.toasts.display().toasts_on,
+                                    on_toasts_click,
                                     colour_theme_focus: self.colour_theme_focus,
                                     on_colour_theme_click,
                                     units: &self.settings_units,
@@ -3635,6 +3669,11 @@ impl Render for Shell {
                     self.nav.mode(),
                     self.status_message.clone(),
                     self.command_echo(),
+                )
+                .toast_echo(
+                    self.toasts
+                        .echo()
+                        .map(|toast| (toast.kind(), toast.text().to_string())),
                 )
                 .page(page_status)
                 .on_hint(on_hint),
@@ -3898,6 +3937,8 @@ struct SettingsPanelProps<'a> {
     on_date_style_click: settings_view::display::OnDateStyleClick,
     on_row_density_click: settings_view::display::OnRowDensityClick,
     on_status_glyphs_click: settings_view::display::OnStatusGlyphsClick,
+    toasts_on: bool,
+    on_toasts_click: settings_view::display::OnToastsClick,
     colour_theme_focus: Option<usize>,
     on_colour_theme_click: settings_view::colour_theme::OnColourThemeClick,
     units: &'a [UnitRow],
@@ -3985,6 +4026,8 @@ fn render_view(
                     on_date_style_click: settings.on_date_style_click,
                     on_row_density_click: settings.on_row_density_click,
                     on_status_glyphs_click: settings.on_status_glyphs_click,
+                    toasts_on: settings.toasts_on,
+                    on_toasts_click: settings.on_toasts_click,
                     colour_theme_focus: settings.colour_theme_focus,
                     on_colour_theme_click: settings.on_colour_theme_click,
                     units: settings.units,

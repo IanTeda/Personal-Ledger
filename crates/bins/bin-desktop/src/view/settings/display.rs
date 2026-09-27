@@ -33,6 +33,7 @@ use super::{add_unit_dialog::segmented_control, colour_theme, tracing::radio_dot
 pub type OnDateStyleClick = Rc<dyn Fn(Option<DateStyle>, &mut Window, &mut App)>;
 pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
 pub type OnStatusGlyphsClick = Rc<dyn Fn(StatusGlyphs, &mut Window, &mut App)>;
+pub type OnToastsClick = Rc<dyn Fn(bool, &mut Window, &mut App)>;
 /// A curried, option-less click handler -- what a [`status_glyphs_option`] is bound to after its
 /// own option has already been curried in (mirrors `units::OnPlainClick`).
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -55,6 +56,8 @@ pub fn render(
     on_date_style_click: OnDateStyleClick,
     on_row_density_click: OnRowDensityClick,
     on_status_glyphs_click: OnStatusGlyphsClick,
+    toasts_on: bool,
+    on_toasts_click: OnToastsClick,
     colour_theme_focus: Option<usize>,
     on_colour_theme_click: colour_theme::OnColourThemeClick,
     cx: &App,
@@ -78,6 +81,7 @@ pub fn render(
         .flex()
         .flex_col()
         .child(columns)
+        .child(toasts_field(toasts_on, on_toasts_click, cx))
         .child(colour_theme::render(
             colour_theme_focus,
             on_colour_theme_click,
@@ -148,6 +152,38 @@ fn field_column(
             on_start_sidebar_minimised_click,
             cx,
         ))
+}
+
+/// The "Toasts" On/Off row (ADR-0027), above the Colour Theme group, noting that Errors still
+/// show when off.
+fn toasts_field(toasts_on: bool, on_click: OnToastsClick, cx: &App) -> impl IntoElement {
+    fn label(on: bool) -> String {
+        if on {
+            lib_locale::msg::toast_setting_on()
+        } else {
+            lib_locale::msg::toast_setting_off()
+        }
+    }
+    div()
+        .id("display-toasts")
+        .mt(px(24.0))
+        .w(FIELD_COLUMN_WIDTH)
+        .child(field_label(lib_locale::msg::toast_setting_label(), cx))
+        .child(segmented_control(
+            "display-toasts",
+            &[true, false],
+            toasts_on,
+            label,
+            on_click,
+            cx,
+        ))
+        .child(
+            div()
+                .mt(px(3.0))
+                .text_size(px(12.0))
+                .text_color(color::muted(cx))
+                .child(lib_locale::msg::toast_setting_note()),
+        )
 }
 
 /// The effective Locale, read-only, with where it came from. There is no control: the Locale is

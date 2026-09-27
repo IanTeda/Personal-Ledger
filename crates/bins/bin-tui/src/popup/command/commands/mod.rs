@@ -133,6 +133,8 @@ pub enum CommandId {
     // toasts
     Dismiss,
     DismissAll,
+    ToastsOn,
+    ToastsOff,
     // transactions
     TxnRecent,
     TxnNew,

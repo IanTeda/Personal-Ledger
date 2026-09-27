@@ -17,8 +17,8 @@
 //! fixed forms regardless of "real" selection.
 //!
 //! The `display` group is the exception (#331): `Tab` focuses it, `j`/`k` pick between its real
-//! `colour theme` and `appearance` rows, and `enter` opens `crate::popup::settings::colour`'s
-//! list popup for the one selected.
+//! `toasts`, `colour theme` and `appearance` rows; `enter` flips `toasts` (ADR-0027) or opens
+//! `crate::popup::settings::colour`'s list popup for the colour row selected.
 
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::{
@@ -97,14 +97,19 @@ pub struct SettingsView {
     display: bool,
     /// The selected row in the `display` group.
     display_row: usize,
+    /// The Toasts Preference as `Shell` last reported it.
+    toasts_on: bool,
 }
 
-/// How many rows the `display` group lists: `colour theme`, then `appearance`.
-const DISPLAY_ROWS: usize = 2;
+/// How many rows the `display` group lists: `toasts`, `colour theme`, then `appearance`.
+const DISPLAY_ROWS: usize = 3;
 
 impl SettingsView {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            toasts_on: true,
+            ..Self::default()
+        }
     }
 }
 
@@ -128,8 +133,11 @@ impl View for SettingsView {
                     self.display_row = self.display_row.saturating_sub(1);
                     Some(Action::NoOp)
                 }
-                KeyCode::Enter if self.display_row == 0 => Some(Action::OpenColourThemePopup),
-                KeyCode::Enter => Some(Action::OpenColourAppearancePopup),
+                KeyCode::Enter => Some(match self.display_row {
+                    0 => Action::SetToasts(!self.toasts_on),
+                    1 => Action::OpenColourThemePopup,
+                    _ => Action::OpenColourAppearancePopup,
+                }),
                 _ => None,
             };
         }
@@ -141,6 +149,10 @@ impl View for SettingsView {
     }
 
     fn update(&mut self, _action: &Action) {}
+
+    fn set_toasts_on(&mut self, on: bool) {
+        self.toasts_on = on;
+    }
 
     fn view(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let rows = Layout::default()
@@ -492,7 +504,12 @@ fn render_right_pane(frame: &mut Frame<'_>, area: Rect, view: &SettingsView, c: 
         .split(area);
 
     if view.display {
-        render_settings_list(frame, rows[0], &display_settings(view.display_row, c), c);
+        render_settings_list(
+            frame,
+            rows[0],
+            &display_settings(view.display_row, view.toasts_on, c),
+            c,
+        );
     } else {
         render_settings_list(frame, rows[0], &settings(), c);
     }
@@ -600,10 +617,12 @@ fn settings() -> Vec<SettingRow> {
     ]
 }
 
-/// The `display` group's Colour Theme and Colour Appearance rows, showing the Colour Theme
-/// drawn now and the Colour Appearance Preference (System naming what it resolved to). Both stay
-/// editable under `terminal_colours`, since the Preferences still sync, with a note naming it.
-fn display_settings(selected: usize, c: &Colours) -> Vec<SettingRow> {
+/// The `display` group's Toasts, Colour Theme and Colour Appearance rows, showing the Toasts
+/// Preference, the Colour Theme drawn now and the Colour Appearance Preference (System naming
+/// what it resolved to). The colour rows stay editable under `terminal_colours`, since the
+/// Preferences still sync, with a note naming it. Toasts is never overridden: it is held in
+/// memory, not in `settings`.
+fn display_settings(selected: usize, toasts_on: bool, c: &Colours) -> Vec<SettingRow> {
     use crate::popup::settings::colour::{appearance_label, colour_theme_name, system_hint};
 
     let note = if c.terminal_colours() {
@@ -618,20 +637,32 @@ fn display_settings(selected: usize, c: &Colours) -> Vec<SettingRow> {
     } else {
         note.clone()
     };
+    let toasts_value = if toasts_on {
+        lib_locale::msg::toast_setting_on()
+    } else {
+        lib_locale::msg::toast_setting_off()
+    };
     vec![
+        row(
+            false,
+            &lib_locale::msg::toast_setting_label(),
+            &toasts_value,
+            &lib_locale::msg::toast_setting_note(),
+            selected == 0,
+        ),
         row(
             c.colour_theme().is_some(),
             &msg::tui_settings_setting_colour_theme(),
             &colour_theme_name(c.resolved().theme_id),
             &note,
-            selected == 0,
+            selected == 1,
         ),
         row(
             c.colour_appearance().is_some(),
             &msg::tui_settings_setting_colour_appearance(),
             &appearance_label(appearance),
             &appearance_note,
-            selected == 1,
+            selected == 2,
         ),
     ]
 }
@@ -965,6 +996,16 @@ mod tests {
         view.handle_key(key(KeyCode::Tab));
         assert_eq!(
             view.handle_key(key(KeyCode::Enter)),
+            Some(Action::SetToasts(false))
+        );
+        view.set_toasts_on(false);
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
+            Some(Action::SetToasts(true))
+        );
+        view.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(
+            view.handle_key(key(KeyCode::Enter)),
             Some(Action::OpenColourThemePopup)
         );
         view.handle_key(key(KeyCode::Char('j')));
@@ -986,13 +1027,14 @@ mod tests {
         let mut view = SettingsView::new();
         view.handle_key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
         let text = render(&view, c);
+        assert!(text.contains("Toasts"), "{text}");
         assert!(text.contains("colour theme"), "{text}");
         assert!(text.contains("Modernist"), "{text}");
         assert!(text.contains("appearance"), "{text}");
         assert!(text.contains("System"), "{text}");
         // The hint outgrows the NOTE column at the minimum width; the row carries it whole.
         assert_eq!(
-            display_settings(1, c)[1].note,
+            display_settings(2, true, c)[2].note,
             "System (not detected, using Dark)"
         );
     }
@@ -1005,8 +1047,8 @@ mod tests {
             true,
             crate::colours::ColourDepth::TrueColor,
         );
-        let rows = display_settings(0, c);
-        assert!(rows[0].note.contains("terminal_colours"));
+        let rows = display_settings(1, true, c);
+        assert!(rows[1].note.contains("terminal_colours"));
     }
 
     #[test]
