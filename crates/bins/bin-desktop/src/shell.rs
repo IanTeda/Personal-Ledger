@@ -3721,7 +3721,7 @@ fn render_view(
     if noun == Noun::Transactions
         && let Some(transactions) = pages.transactions
     {
-        return transactions_view::render(focused, transactions);
+        return transactions_view::render(focused, transactions, cx);
     }
 
     if noun == Noun::Settings {

@@ -3,12 +3,7 @@
 //! or `mixed units` when the visible rows span more than one Unit and no sum exists (the map's
 //! no-cross-Unit rule).
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
-use gpui::{AnyElement, div, prelude::*, px};
+use gpui::{AnyElement, App, div, prelude::*, px};
 
 use crate::{
     theme::color,
@@ -16,7 +11,7 @@ use crate::{
 };
 
 /// `padding:11px 28px; border-top:2px solid rgba(32,30,29,.38); background:#eae9e9`.
-pub fn render(footer: &Footer) -> AnyElement {
+pub fn render(footer: &Footer, cx: &App) -> AnyElement {
     div()
         .flex_none()
         .flex()
@@ -26,25 +21,25 @@ pub fn render(footer: &Footer) -> AnyElement {
         .px(px(28.0))
         .py(px(11.0))
         .border_t(px(2.0))
-        .border_color(color::STRUCTURAL_RULE)
-        .bg(color::CHROME)
+        .border_color(color::structural_rule(cx))
+        .bg(color::chrome(cx))
         .child(
             div()
                 .text_size(px(11.5))
-                .text_color(color::INK_SECONDARY)
+                .text_color(color::muted(cx))
                 .child(footer.label()),
         )
-        .child(total(&footer.total))
+        .child(total(&footer.total, cx))
         .into_any_element()
 }
 
 /// The label (11px, tertiary) and the figure (20px, 800; `#ae1800` when negative), with the Unit's
 /// code after a single-Unit figure.
-fn total(total: &FooterTotal) -> impl IntoElement {
+fn total(total: &FooterTotal, cx: &App) -> impl IntoElement {
     let row = div().flex().items_baseline().gap(px(10.0)).child(
         div()
             .text_size(px(11.0))
-            .text_color(color::INK_TERTIARY)
+            .text_color(color::faint_text(cx))
             .child(lib_locale::format::upper(
                 &crate::msg::desktop_transactions_total_label(),
             )),
@@ -66,24 +61,24 @@ fn total(total: &FooterTotal) -> impl IntoElement {
             .child(figure(
                 text.clone(),
                 if *negative {
-                    color::ACCENT_TEXT
+                    color::negative_text(cx)
                 } else {
-                    color::INK
+                    color::foreground(cx)
                 },
             ))
             .child(
                 div()
                     .text_size(px(11.0))
-                    .text_color(color::INK_TERTIARY)
+                    .text_color(color::faint_text(cx))
                     .child(unit.clone()),
             ),
         FooterTotal::Mixed => row.child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(13.0))
-                .text_color(color::INK_SECONDARY)
+                .text_color(color::muted(cx))
                 .child(crate::msg::desktop_transactions_total_mixed()),
         ),
-        FooterTotal::Empty => row.child(figure("\u{2014}".to_string(), color::INK_TERTIARY)),
+        FooterTotal::Empty => row.child(figure("\u{2014}".to_string(), color::faint_text(cx))),
     }
 }

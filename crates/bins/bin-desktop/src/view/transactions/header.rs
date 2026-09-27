@@ -7,11 +7,6 @@
 //! (changed from the default) ends in a clickable `✕` that resets just that filter, and a click on
 //! the chip itself opens the filter popover.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use gpui::{AnyElement, App, Bounds, Pixels, SharedString, Window, canvas, div, prelude::*, px};
@@ -50,7 +45,7 @@ pub struct HeaderProps {
 }
 
 /// `padding:16px 28px 14px; border-bottom:2px solid rgba(32,30,29,.38)`.
-pub fn render(props: HeaderProps) -> AnyElement {
+pub fn render(props: HeaderProps, cx: &App) -> AnyElement {
     let HeaderProps {
         count_line,
         chips,
@@ -74,8 +69,8 @@ pub fn render(props: HeaderProps) -> AnyElement {
         .pt(px(16.0))
         .pb(px(14.0))
         .border_b(px(2.0))
-        .border_color(color::STRUCTURAL_RULE)
-        .child(title_row(count_line, on_add_click))
+        .border_color(color::structural_rule(cx))
+        .child(title_row(count_line, on_add_click, cx))
         .child(
             div()
                 .flex()
@@ -89,17 +84,18 @@ pub fn render(props: HeaderProps) -> AnyElement {
                         on_chip_click.clone(),
                         on_chip_clear.clone(),
                         chip_bounds.clone(),
+                        cx,
                     )
                 }))
-                .when(show_clear, |this| this.child(clear_link(on_clear_all)))
+                .when(show_clear, |this| this.child(clear_link(on_clear_all, cx)))
                 .child(div().flex_1())
-                .child(search_box(search, searching, on_search_click)),
+                .child(search_box(search, searching, on_search_click, cx)),
         )
         .into_any_element()
 }
 
 /// The title (26px/800) with the count line (11.5px, tertiary) beside it, and the primary button.
-fn title_row(count_line: String, on_add_click: OnPlainClick) -> impl IntoElement {
+fn title_row(count_line: String, on_add_click: OnPlainClick, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_end()
@@ -115,21 +111,22 @@ fn title_row(count_line: String, on_add_click: OnPlainClick) -> impl IntoElement
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(26.0))
-                        .text_color(color::INK)
+                        .text_color(color::foreground(cx))
                         .child(Noun::Transactions.label()),
                 )
                 .child(
                     div()
                         .text_size(px(11.5))
-                        .text_color(color::INK_TERTIARY)
+                        .text_color(color::faint_text(cx))
                         .child(count_line),
                 ),
         )
-        .child(add_button(on_add_click))
+        .child(add_button(on_add_click, cx))
 }
 
 /// The primary button: 32px tall, ink fill, with the `n` key hint trailing at 75% opacity.
-fn add_button(on_click: OnPlainClick) -> impl IntoElement {
+fn add_button(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
+    let hover = color::muted(cx);
     div()
         .id("transactions-add")
         .cursor_pointer()
@@ -139,11 +136,11 @@ fn add_button(on_click: OnPlainClick) -> impl IntoElement {
         .gap(px(8.0))
         .h(px(32.0))
         .px(px(14.0))
-        .bg(color::INK)
-        .text_color(color::INK_ON_DARK)
+        .bg(color::foreground(cx))
+        .text_color(color::selection_text(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
-        .hover(|style| style.bg(color::INK_SECONDARY))
+        .hover(move |style| style.bg(hover))
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(crate::msg::desktop_transactions_add_button())
         .child(
@@ -164,6 +161,7 @@ fn chip(
     on_click: OnChipClick,
     on_clear: OnChipClick,
     bounds_store: ChipBounds,
+    cx: &App,
 ) -> AnyElement {
     let field = chip.field;
     let base = div()
@@ -194,9 +192,9 @@ fn chip(
         );
 
     if chip.active {
-        base.bg(color::TAG_ACCENT_BG)
-            .border_color(color::ACCENT)
-            .text_color(color::TAG_ACCENT_TEXT)
+        base.bg(color::accent_tint(cx))
+            .border_color(color::accent(cx))
+            .text_color(color::accent_tint_text(cx))
             .child(
                 div()
                     .id(("transactions-chip-clear", index))
@@ -210,22 +208,23 @@ fn chip(
             )
             .into_any_element()
     } else {
-        base.border_color(color::BORDER)
-            .text_color(color::INK_SECONDARY)
-            .hover(|style| style.bg(color::HOVER_TINT))
+        let hover = color::hover(cx);
+        base.border_color(color::border(cx))
+            .text_color(color::muted(cx))
+            .hover(move |style| style.bg(hover))
             .child(div().text_size(px(9.0)).child("\u{25be}"))
             .into_any_element()
     }
 }
 
 /// The `clear filters` link: 11.5px, underlined.
-fn clear_link(on_click: OnPlainClick) -> impl IntoElement {
+fn clear_link(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
     div()
         .id("transactions-clear-filters")
         .cursor_pointer()
         .flex_none()
         .text_size(px(11.5))
-        .text_color(color::INK)
+        .text_color(color::foreground(cx))
         .underline()
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(crate::msg::desktop_transactions_clear_filters())
@@ -233,15 +232,23 @@ fn clear_link(on_click: OnPlainClick) -> impl IntoElement {
 
 /// The right-aligned search box (28px tall, 12px): the `/ search payee or memo` placeholder, or the
 /// text typed so far, with a caret and an accent border while search mode is active.
-fn search_box(search: String, searching: bool, on_click: OnPlainClick) -> impl IntoElement {
+fn search_box(
+    search: String,
+    searching: bool,
+    on_click: OnPlainClick,
+    cx: &App,
+) -> impl IntoElement {
     let caret = if searching { "\u{2502}" } else { "" };
     let (text, text_color) = if search.is_empty() && !searching {
         (
             SharedString::from(crate::msg::desktop_transactions_search_placeholder()),
-            color::INK_TERTIARY,
+            color::faint_text(cx),
         )
     } else {
-        (SharedString::from(format!("{search}{caret}")), color::INK)
+        (
+            SharedString::from(format!("{search}{caret}")),
+            color::foreground(cx),
+        )
     };
     div()
         .id("transactions-search")
@@ -254,9 +261,9 @@ fn search_box(search: String, searching: bool, on_click: OnPlainClick) -> impl I
         .px(px(10.0))
         .border_1()
         .border_color(if searching {
-            color::ACCENT
+            color::accent(cx)
         } else {
-            color::BORDER
+            color::border(cx)
         })
         .text_size(px(12.0))
         .text_color(text_color)

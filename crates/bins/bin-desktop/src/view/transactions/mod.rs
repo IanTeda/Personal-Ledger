@@ -9,11 +9,6 @@
 //!
 //! Every row action is a callback into `Shell`, so keyboard and mouse reach the same handlers.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 mod filter_popover;
 mod footer;
 mod header;
@@ -45,7 +40,7 @@ pub struct TransactionsPageProps {
 }
 
 /// The page: the fixed header block, the fixed column header, the one flexing list, the fixed footer.
-pub fn render(focused: bool, props: TransactionsPageProps) -> AnyElement {
+pub fn render(focused: bool, props: TransactionsPageProps, cx: &App) -> AnyElement {
     div()
         .id("transactions")
         .flex_1()
@@ -55,19 +50,20 @@ pub fn render(focused: bool, props: TransactionsPageProps) -> AnyElement {
         .flex_col()
         .overflow_hidden()
         .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::INK)
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .when(props.dimmed, |this| this.opacity(0.55))
-        .child(header::render(props.header))
-        .child(table::column_header())
+        .child(header::render(props.header, cx))
+        .child(table::column_header(cx))
         .child(table::rows(
             props.rows,
             props.selected,
             props.row_height,
             props.scroll,
             props.on_row_click,
+            cx,
         ))
-        .child(footer::render(&props.footer))
+        .child(footer::render(&props.footer, cx))
         .into_any_element()
 }
 

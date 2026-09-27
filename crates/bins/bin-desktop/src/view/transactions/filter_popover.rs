@@ -10,11 +10,6 @@
 //! by the page itself (`opacity .55`, the map's blur-free replacement for the mockup's blur), not by
 //! a scrim here, so the rails and header stay at full strength.
 
-#![expect(
-    deprecated,
-    reason = "Colour Theme strangler: this file still reads the fixed Modernist `theme::color` consts until its sweep (#292)"
-)]
-
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point, prelude::*, px};
@@ -97,11 +92,11 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
         .w(WIDTH)
         .flex()
         .flex_col()
-        .bg(color::GROUND)
+        .bg(color::background(cx))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .shadow(vec![BoxShadow {
-            color: color::DIALOG_SHADOW.into(),
+            color: color::dialog_shadow(cx).into(),
             offset: point(px(0.0), px(18.0)),
             blur_radius: px(44.0),
             spread_radius: px(0.0),
@@ -113,7 +108,7 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                 .px(px(18.0))
                 .py(px(14.0))
                 .border_b(px(2.0))
-                .border_color(color::STRUCTURAL_RULE)
+                .border_color(color::structural_rule(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(13.5))
                 .child(crate::msg::desktop_transactions_filter_title()),
@@ -178,6 +173,7 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                         focused(FormField::From),
                         start_hint,
                         click(FormField::From),
+                        cx,
                     ),
                     date_field(
                         "filter-to",
@@ -187,6 +183,7 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                         focused(FormField::To),
                         end_hint,
                         click(FormField::To),
+                        cx,
                     ),
                 ]))
                 .child(status_field(
@@ -211,9 +208,9 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                 .px(px(18.0))
                 .py(px(14.0))
                 .border_t(px(1.0))
-                .border_color(color::HAIRLINE)
-                .child(reset_button(on_reset))
-                .child(apply_button(can_apply, on_apply)),
+                .border_color(color::hairline(cx))
+                .child(reset_button(on_reset, cx))
+                .child(apply_button(can_apply, on_apply, cx)),
         );
 
     div()
@@ -225,8 +222,12 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// A From / To field: the label over a text box, the box turning `ACCENT` with a hint beneath it
-/// while the text is not a date.
+/// A From / To field: the label over a text box, the box turning `negative` with a hint beneath it
+/// while the text is not a date, and `accent` while focused.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a stateless GPUI render fn takes each value and handler it wires, plus the App the Colour Theme is read from"
+)]
 fn date_field(
     id: &'static str,
     title: String,
@@ -235,20 +236,26 @@ fn date_field(
     focused: bool,
     error: Option<String>,
     on_click: dialog::OnClick,
+    cx: &App,
 ) -> AnyElement {
     let caret = if focused { "\u{2502}" } else { "" };
     let (text, text_color) = if value.is_empty() {
         (
             SharedString::from(format!("{placeholder}{caret}")),
-            color::INK_TERTIARY,
+            color::faint_text(cx),
         )
     } else {
-        (SharedString::from(format!("{value}{caret}")), color::INK)
+        (
+            SharedString::from(format!("{value}{caret}")),
+            color::foreground(cx),
+        )
     };
-    let border = if error.is_some() || focused {
-        color::ACCENT
+    let border = if error.is_some() {
+        color::negative(cx)
+    } else if focused {
+        color::accent(cx)
     } else {
-        color::BORDER
+        color::border(cx)
     };
     div()
         .flex_1()
@@ -273,7 +280,7 @@ fn date_field(
             div()
                 .mt(px(4.0))
                 .text_size(px(11.0))
-                .text_color(color::ACCENT_TEXT)
+                .text_color(color::negative_text(cx))
                 .child(message)
         }))
         .into_any_element()
@@ -294,9 +301,9 @@ fn status_field(
                 .p(px(2.0))
                 .border_1()
                 .border_color(if focused {
-                    color::ACCENT
+                    color::accent(cx)
                 } else {
-                    color::GROUND
+                    color::background(cx)
                 })
                 .child(segmented_control(
                     "filter-status",
@@ -311,23 +318,24 @@ fn status_field(
 }
 
 /// `reset`: the ghost button.
-fn reset_button(on_click: dialog::OnClick) -> impl IntoElement {
+fn reset_button(on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
+    let hover = color::hover(cx);
     div()
         .id("filter-reset")
         .cursor_pointer()
         .py(px(8.0))
         .px(px(16.0))
         .border_1()
-        .border_color(color::BORDER)
+        .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_color(color::INK)
-        .hover(|style| style.bg(color::HOVER_TINT))
+        .text_color(color::foreground(cx))
+        .hover(move |style| style.bg(hover))
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(crate::msg::desktop_hint_reset())
 }
 
 /// `apply`: the primary button with its `enter` hint, at 45% opacity and inert while a date is bad.
-fn apply_button(enabled: bool, on_click: dialog::OnClick) -> impl IntoElement {
+fn apply_button(enabled: bool, on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
     div()
         .id("filter-apply")
         .when(enabled, |this| this.cursor_pointer())
@@ -337,8 +345,8 @@ fn apply_button(enabled: bool, on_click: dialog::OnClick) -> impl IntoElement {
         .gap(px(8.0))
         .py(px(8.0))
         .px(px(16.0))
-        .bg(color::INK)
-        .text_color(color::INK_ON_DARK)
+        .bg(color::foreground(cx))
+        .text_color(color::selection_text(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .when(enabled, |this| {
             this.on_click(move |_event, window, cx| on_click(window, cx))
