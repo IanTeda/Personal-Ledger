@@ -15,6 +15,6 @@ pub use colour::{Rgba, contrast_ratio, mix};
 pub use parse::{ParseError, ThemeFile, parse_hex, parse_theme};
 pub use resolve::{
     CHART_SERIES_COUNT, ContrastFailure, InfoToast, NON_TEXT_CONTRAST, ResolveInputs,
-    ResolvedColours, Selection, TextShades, ThemeOverrides, resolve,
+    ResolvedColours, Selection, TextShades, ThemeOverrides, ToastMarks, resolve,
 };
 pub use theme::{ColourAppearance, ColourRole, ColourTheme, ColourVariant, Palette};

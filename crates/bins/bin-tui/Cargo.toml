@@ -19,6 +19,7 @@ lib_database = { path = "../../libs/lib-database" }
 lib_core = { path = "../../libs/lib-core" }
 lib_colour_theme = { path = "../../libs/lib-colour-theme" }
 lib_locale = { path = "../../libs/lib-locale" }
+lib_toast = { path = "../../libs/lib-toast" }
 lib_tracing = { path = "../../libs/lib-tracing" }
 
 ## -- Workspace Dependencies --

@@ -119,6 +119,16 @@ pub struct InfoToast {
     pub bar: Rgba,
 }
 
+/// Each Toast Kind's mark shade: its Colour Role corrected to the non-text 3:1 rule against
+/// chrome, for the leading bar and glyph only; the text stays `foreground` (ADR-0026).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToastMarks {
+    pub info: Rgba,
+    pub success: Rgba,
+    pub warning: Rgba,
+    pub error: Rgba,
+}
+
 /// The seven resolved Colour Roles plus every calculated colour. A Client converts what it
 /// can draw and ignores the rest (the TUI has no shadows or hover).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -153,6 +163,7 @@ pub struct ResolvedColours {
     pub accent_tint: Rgba,
     pub accent_tint_text: Rgba,
     pub info_toast: InfoToast,
+    pub toast_marks: ToastMarks,
     /// Series 1 is `accent`; 2–5 step from `foreground` to the palest mix reaching 3:1.
     pub chart_series: [Rgba; CHART_SERIES_COUNT],
 }
@@ -272,6 +283,12 @@ fn calculate(
             text: fg,
             border: muted,
             bar: fg,
+        },
+        toast_marks: ToastMarks {
+            info: text_shade(fg, chrome, NON_TEXT_CONTRAST),
+            success: text_shade(positive, chrome, NON_TEXT_CONTRAST),
+            warning: text_shade(accent, chrome, NON_TEXT_CONTRAST),
+            error: text_shade(negative, chrome, NON_TEXT_CONTRAST),
         },
         chart_series: chart_series(accent, fg, bg),
     }
@@ -474,6 +491,24 @@ mod tests {
                     "{} {appearance:?}: {failures:#?}",
                     theme.id
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn toast_marks_reach_three_to_one_on_chrome() {
+        let none = ThemeOverrides::default();
+        for theme in ColourTheme::built_in() {
+            for appearance in [ColourAppearance::Light, ColourAppearance::Dark] {
+                let (c, _) = resolve(inputs(theme.id, appearance, &none));
+                let m = c.toast_marks;
+                for mark in [m.info, m.success, m.warning, m.error] {
+                    assert!(
+                        contrast_ratio(mark, c.chrome) >= NON_TEXT_CONTRAST,
+                        "{} {appearance:?}: {mark:?}",
+                        theme.id
+                    );
+                }
             }
         }
     }

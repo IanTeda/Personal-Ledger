@@ -6,9 +6,11 @@
 
 use std::time::Duration;
 
+use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
 use lib_locale::format::upper;
+use lib_toast::{ToastKind, Toasts};
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
@@ -147,6 +149,9 @@ pub struct Shell {
     /// The resolved Colour Theme every view and popup draws with, passed into each render
     /// rather than held in a global (ADR-0025).
     colours: Colours,
+    /// The Toasts raised this session (`crate::toast` draws them), stamped with the local time
+    /// for the history. Advanced on each tick unless a popup is open.
+    toasts: Toasts<DateTime<Local>>,
 }
 
 impl Shell {
@@ -184,6 +189,7 @@ impl Shell {
             jump_not_yet_built: None,
             keybindings,
             colours: Colours::default(),
+            toasts: Toasts::default(),
         }
     }
 
@@ -191,6 +197,22 @@ impl Shell {
     pub fn with_colours(mut self, colours: Colours) -> Self {
         self.colours = colours;
         self
+    }
+
+    /// Raises a Toast whose Message the caller has already resolved to text.
+    pub fn raise_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
+        self.toasts.raise(kind, text, Local::now());
+    }
+
+    /// Whether any popup is open: the view behind is inert and Toast timers pause.
+    fn popup_open(&self) -> bool {
+        self.command_popup.is_some()
+            || self.unit_popup.is_some()
+            || self.category_popup.is_some()
+            || self.settings_popup.is_some()
+            || self.account_popup.is_some()
+            || self.tag_popup.is_some()
+            || self.payee_popup.is_some()
     }
 
     /// Runs the shell until the user quits.
@@ -332,6 +354,11 @@ impl Shell {
                         _ => None,
                     };
                 }
+                // NORMAL mode only: every popup returned above, so a sticky Error can't vanish
+                // on a key meant for a form. Not `Esc`, which pops the view stack.
+                if self.matches_binding(key, "dismiss_toasts", "ctrl+l") {
+                    return Some(Action::DismissAllToasts);
+                }
                 if self.is_open_command_popup(key) {
                     return Some(Action::OpenCommandPopup);
                 }
@@ -406,6 +433,8 @@ impl Shell {
             CommandId::UnitEdit => Some(Action::OpenEditUnitPopup),
             CommandId::UnitDelete => Some(Action::OpenDeleteUnitPopup),
             CommandId::Dashboard => Some(Action::OpenDashboard),
+            CommandId::Dismiss => Some(Action::DismissNewestToast),
+            CommandId::DismissAll => Some(Action::DismissAllToasts),
             CommandId::Settings => Some(Action::OpenSettings),
             CommandId::Category => Some(Action::OpenCategories),
             // The command popup has no real typed-argument resolution (`popup::command::
@@ -1022,7 +1051,23 @@ impl Shell {
         match action {
             Action::Quit => self.should_quit = true,
             Action::GracefulQuit => self.should_quit = true,
-            Action::Tick => self.view.update(&action),
+            Action::Tick => {
+                if self.popup_open() {
+                    self.toasts.pause();
+                } else {
+                    self.toasts.resume();
+                }
+                self.toasts.advance(TICK_RATE);
+                self.view.update(&action);
+            }
+            Action::DismissNewestToast => {
+                self.command_popup = None;
+                self.toasts.dismiss_newest();
+            }
+            Action::DismissAllToasts => {
+                self.command_popup = None;
+                self.toasts.dismiss_all();
+            }
             Action::OpenCommandPopup => self.command_popup = Some(CommandPopup::new()),
             Action::CloseCommandPopup => self.command_popup = None,
             Action::CommandPopupInput(c) => {
@@ -1816,6 +1861,9 @@ impl Shell {
             }
         }
 
+        // Above every popup and its `Dim`, confined to the view region so never over the footer.
+        crate::toast::render(frame, rows[1], &self.toasts, c);
+
         // Last, so cells a popup `Clear`ed also land on the Colour Theme.
         c.paint_base(frame.buffer_mut());
     }
@@ -1963,6 +2011,7 @@ impl Default for Shell {
 
 #[cfg(test)]
 mod tests {
+    use lib_toast::Toast;
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;
@@ -2048,7 +2097,11 @@ mod tests {
 
     /// Every row of a drawn frame as one string, for asserting on what the chrome actually shows.
     fn drawn(shell: &Shell) -> String {
-        let backend = TestBackend::new(96, 30);
+        drawn_at(shell, 96, 30)
+    }
+
+    fn drawn_at(shell: &Shell, width: u16, height: u16) -> String {
+        let backend = TestBackend::new(width, height);
         let mut terminal = Terminal::new(backend).expect("test backend should initialise");
         terminal
             .draw(|frame| shell.draw(frame))
@@ -2063,6 +2116,199 @@ mod tests {
             text.push('\n');
         }
         text
+    }
+
+    fn ctrl_l() -> Event {
+        Event::Key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::CONTROL))
+    }
+
+    fn lines(text: &str) -> Vec<&str> {
+        text.lines().collect()
+    }
+
+    #[test]
+    fn one_toast_draws_bottom_right_above_the_footer_rule() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.raise_toast(ToastKind::Success, "Deleted tag Food");
+        let text = drawn(&shell);
+        let rows = lines(&text);
+        // Bottom up: footer, rule, the box's bottom border, then its content row.
+        let toast_row = rows[rows.len() - 4];
+        assert!(
+            toast_row.ends_with("│▌ ✓ Deleted tag Food │"),
+            "toast content row wrong:\n{text}"
+        );
+        assert!(
+            rows[rows.len() - 3].ends_with('┘'),
+            "bottom border not above the rule:\n{text}"
+        );
+        assert!(
+            !rows[rows.len() - 2].contains('┘'),
+            "toast drew over the rule:\n{text}"
+        );
+    }
+
+    #[test]
+    fn three_toasts_stack_newest_nearest_the_footer() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.raise_toast(ToastKind::Info, "first");
+        shell.raise_toast(ToastKind::Warning, "second");
+        shell.raise_toast(ToastKind::Error, "third");
+        let text = drawn(&shell);
+        let rows = lines(&text);
+        let n = rows.len();
+        assert!(rows[n - 4].contains("▌ ✗ third"), "{text}");
+        assert!(rows[n - 7].contains("▌ ! second"), "{text}");
+        assert!(rows[n - 10].contains("▌ i first"), "{text}");
+        assert!(!text.contains("more"), "{text}");
+    }
+
+    #[test]
+    fn held_back_errors_show_a_more_line_above_the_stack() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        for i in 0..5 {
+            shell.raise_toast(ToastKind::Error, format!("failure {i}"));
+        }
+        let text = drawn(&shell);
+        let rows = lines(&text);
+        let n = rows.len();
+        assert!(rows[n - 4].contains("failure 4"), "{text}");
+        assert!(rows[n - 10].contains("failure 2"), "{text}");
+        assert!(rows[n - 12].trim_end().ends_with("+2 more"), "{text}");
+        assert!(!text.contains("failure 1"), "{text}");
+    }
+
+    #[test]
+    fn stacking_stops_at_what_fits_and_counts_the_rest() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        for i in 0..3 {
+            shell.raise_toast(ToastKind::Error, format!("failure {i}"));
+        }
+        // 12 rows: a 9-row view fits three boxes exactly, so no room for the more line; 11 rows
+        // leaves 7, which fits two and the line.
+        let text = drawn_at(&shell, 60, 11);
+        assert!(
+            text.contains("failure 2") && text.contains("failure 1"),
+            "{text}"
+        );
+        assert!(!text.contains("failure 0"), "{text}");
+        assert!(text.contains("+1 more"), "{text}");
+    }
+
+    #[test]
+    fn long_text_truncates_and_keeps_its_badge() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        let long = "Couldn't save account: the store refused it because the name is taken";
+        shell.raise_toast(ToastKind::Error, long);
+        shell.raise_toast(ToastKind::Error, long);
+        let text = drawn(&shell);
+        let row = lines(&text)[lines(&text).len() - 4];
+        assert!(row.ends_with("… ×2 │"), "badge cut or no ellipsis:\n{text}");
+        let start = row.find("│▌").unwrap_or(0);
+        assert_eq!(
+            row[start..].chars().count(),
+            48,
+            "box wider than 48 columns:\n{text}"
+        );
+    }
+
+    #[test]
+    fn no_toast_draws_under_a_forty_by_eight_view() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.raise_toast(ToastKind::Error, "hidden");
+        assert!(!drawn_at(&shell, 39, 20).contains("hidden"));
+        assert!(!drawn_at(&shell, 60, 7).contains("hidden"));
+        assert!(drawn_at(&shell, 40, 8).contains("hidden"));
+    }
+
+    #[test]
+    fn toasts_draw_above_an_open_popup() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        shell.raise_toast(ToastKind::Success, "Deleted tag Food");
+        assert!(drawn(&shell).contains("✓ Deleted tag Food"));
+    }
+
+    #[test]
+    fn ticks_expire_timed_toasts_and_pause_while_a_popup_is_open() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.raise_toast(ToastKind::Info, "info");
+        shell.raise_toast(ToastKind::Error, "error");
+        shell.update(Action::OpenCommandPopup);
+        for _ in 0..40 {
+            shell.update(Action::Tick);
+        }
+        assert_eq!(shell.toasts.visible().len(), 2, "timers ran under a popup");
+        shell.update(Action::CloseCommandPopup);
+        for _ in 0..16 {
+            shell.update(Action::Tick);
+        }
+        let left: Vec<_> = shell.toasts.visible().iter().map(Toast::text).collect();
+        assert_eq!(left, vec!["error"], "4 s Info should expire, Error stay");
+    }
+
+    #[test]
+    fn ctrl_l_dismisses_every_toast_in_normal_mode() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.raise_toast(ToastKind::Error, "error");
+        assert_eq!(shell.map_event(ctrl_l()), Some(Action::DismissAllToasts));
+        shell.update(Action::DismissAllToasts);
+        assert!(shell.toasts.visible().is_empty());
+    }
+
+    #[test]
+    fn ctrl_l_is_inert_while_a_popup_is_open() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.update(Action::OpenCommandPopup);
+        assert_ne!(shell.map_event(ctrl_l()), Some(Action::DismissAllToasts));
+        let mut shell = Shell::new();
+        shell.update(Action::OpenNewUnitPopup);
+        assert_ne!(shell.map_event(ctrl_l()), Some(Action::DismissAllToasts));
+    }
+
+    #[test]
+    fn dismiss_toasts_is_remappable() {
+        let mut keybindings = KeyBindingConfig::default();
+        keybindings
+            .bindings
+            .insert("dismiss_toasts".into(), "ctrl+k".into());
+        let mut shell = Shell::with_keybindings(keybindings);
+        assert_ne!(shell.map_event(ctrl_l()), Some(Action::DismissAllToasts));
+        let ctrl_k = Event::Key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL));
+        assert_eq!(shell.map_event(ctrl_k), Some(Action::DismissAllToasts));
+    }
+
+    #[test]
+    fn the_dismiss_commands_dismiss_and_close_the_popup() {
+        crate::locale::init_for_tests();
+        let mut shell = Shell::new();
+        shell.raise_toast(ToastKind::Error, "older");
+        shell.raise_toast(ToastKind::Error, "newer");
+        assert_eq!(
+            shell.command_action(CommandId::Dismiss, "dismiss"),
+            Some(Action::DismissNewestToast)
+        );
+        shell.update(Action::OpenCommandPopup);
+        shell.update(Action::DismissNewestToast);
+        assert!(shell.command_popup.is_none());
+        let left: Vec<_> = shell.toasts.visible().iter().map(Toast::text).collect();
+        assert_eq!(left, vec!["older"]);
+        assert_eq!(
+            shell.command_action(CommandId::DismissAll, "dismiss all"),
+            Some(Action::DismissAllToasts)
+        );
+        shell.update(Action::DismissAllToasts);
+        assert!(shell.toasts.visible().is_empty());
     }
 
     #[test]

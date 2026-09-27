@@ -48,3 +48,7 @@ tui-form-noun-payee = payee
 ## `$command` is the command as typed, including its leading colon.
 
 tui-footer-not-yet-built = { $command } — not yet built
+
+## Toasts. The line above the stack counting Toasts held back out of view.
+
+tui-toast-more = +{ $count } more

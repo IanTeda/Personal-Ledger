@@ -46,6 +46,11 @@ use crate::tag::TagStore;
 pub enum Action {
     /// A periodic tick, driving redraws even without input.
     Tick,
+    /// `:dismiss` — removes the newest Toast.
+    DismissNewestToast,
+    /// `:dismiss all`, or the `dismiss_toasts` binding (`Ctrl+L`) in NORMAL mode — removes
+    /// every Toast.
+    DismissAllToasts,
     /// `Ctrl+C` — the hard-quit safety net, recognised by `Shell` itself before any `View`
     /// sees the key.
     Quit,

@@ -4,9 +4,10 @@
 ## footer hints are Messages.
 
 ## The resting-state group headers. Every other domain reuses a `nav-*` Message, or the shell's own
-## `tui-view-balance-checks-title`, so only the file-level group needs one of its own.
+## `tui-view-balance-checks-title`, so only Quit and Toasts need one of their own.
 
 tui-command-domain-quit = Quit
+tui-command-domain-toasts = Toasts
 
 ## The prompt row's match count, for example `3 of 57`.
 
@@ -72,6 +73,8 @@ tui-command-category-tree-description = prints the subtree — scriptable/pipeab
 tui-command-dashboard-description = financial position — the default view
 tui-command-help-description = browse every command
 tui-command-quit-description = quit the app
+tui-command-dismiss-description = dismiss the newest Toast
+tui-command-dismiss-all-description = dismiss every Toast
 tui-command-settings-description = groups, overrides and the settings table
 
 ## Payees.

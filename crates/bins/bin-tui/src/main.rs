@@ -22,6 +22,7 @@ mod payee;
 mod popup;
 mod shell;
 mod tag;
+mod toast;
 mod tui;
 mod view;
 

@@ -26,6 +26,7 @@ mod quit;
 mod reports;
 mod settings;
 mod tags;
+mod toasts;
 mod transactions;
 mod units;
 
@@ -129,6 +130,9 @@ pub enum CommandId {
     TagOff,
     TagOn,
     TagDelete,
+    // toasts
+    Dismiss,
+    DismissAll,
     // transactions
     TxnRecent,
     TxnNew,
@@ -241,6 +245,10 @@ pub const DOMAINS: &[Domain] = &[
     Domain {
         name: lib_locale::msg::nav_tags,
         commands: tags::COMMANDS,
+    },
+    Domain {
+        name: crate::msg::tui_command_domain_toasts,
+        commands: toasts::COMMANDS,
     },
     Domain {
         name: lib_locale::msg::nav_transactions,

@@ -14,6 +14,7 @@ use lib_colour_theme::{
     ColourAppearance, ColourVariant, ContrastFailure, ResolveInputs, ResolvedColours, Rgba,
     ThemeOverrides, resolve,
 };
+use lib_toast::ToastKind;
 use ratatui::{
     buffer::Buffer,
     style::{Color, Modifier, Style},
@@ -291,6 +292,49 @@ impl Colours {
         }
     }
 
+    /// A Toast's ground and text: `foreground` on chrome, or the terminal's defaults in
+    /// terminal colours.
+    pub fn toast(&self) -> Style {
+        if self.terminal() {
+            Style::default()
+        } else {
+            let toast = self.resolved.info_toast;
+            Style::default()
+                .fg(self.colour(toast.text))
+                .bg(self.colour(toast.background))
+        }
+    }
+
+    /// A Toast's border: `muted`, or the terminal's default colour in terminal colours.
+    pub fn toast_border(&self) -> Style {
+        if self.terminal() {
+            Style::default()
+        } else {
+            Style::default().fg(self.colour(self.resolved.info_toast.border))
+        }
+    }
+
+    /// A Toast Kind's leading bar and glyph: its mark shade (ADR-0026), or the fallback table's
+    /// green and red in terminal colours, where Info keeps the default colour.
+    pub fn toast_mark(&self, kind: ToastKind) -> Style {
+        if self.terminal() {
+            match kind {
+                ToastKind::Info => Style::default(),
+                ToastKind::Success => Style::default().fg(Color::Green),
+                ToastKind::Warning | ToastKind::Error => Style::default().fg(Color::Red),
+            }
+        } else {
+            let marks = self.resolved.toast_marks;
+            let mark = match kind {
+                ToastKind::Info => marks.info,
+                ToastKind::Success => marks.success,
+                ToastKind::Warning => marks.warning,
+                ToastKind::Error => marks.error,
+            };
+            Style::default().fg(self.colour(mark))
+        }
+    }
+
     /// The status line bar: `chrome` behind `foreground`, or `REVERSED` in terminal colours.
     pub fn status_bar(&self) -> Style {
         if self.terminal() {
@@ -399,6 +443,20 @@ mod tests {
             Style::default()
                 .fg(Color::Red)
                 .add_modifier(Modifier::REVERSED)
+        );
+        assert_eq!(colours.toast(), Style::default());
+        assert_eq!(colours.toast_mark(ToastKind::Info), Style::default());
+        assert_eq!(
+            colours.toast_mark(ToastKind::Success),
+            Style::default().fg(Color::Green)
+        );
+        assert_eq!(
+            colours.toast_mark(ToastKind::Warning),
+            Style::default().fg(Color::Red)
+        );
+        assert_eq!(
+            colours.toast_mark(ToastKind::Error),
+            Style::default().fg(Color::Red)
         );
     }
 
