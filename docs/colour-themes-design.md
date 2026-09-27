@@ -4,7 +4,7 @@ The developer-facing design for Colour Themes in the Desktop and TUI Clients. Th
 
 ## Status
 
-In design. The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md)) the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)), what is not part of a Colour Theme ([#304](https://github.com/IanTeda/Personal-Ledger/issues/304)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)). Nothing here is built yet.
+Built (tickets #314–#333), except that the two Preferences are held in memory until the Settings screens read and write `preferences`, and the TUI reads System appearance once at start rather than following live mode 2031 notifications (crossterm 0.29 would swallow input after the unknown sequence). The Colour Role set is decided ([#298](https://github.com/IanTeda/Personal-Ledger/issues/298), [ADR-0022](adr/0022-seven-stored-colour-roles-with-calculated-shades.md)), the Preferences and `[theme]` precedence ([#300](https://github.com/IanTeda/Personal-Ledger/issues/300), [ADR-0023](adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) the TUI's terminal-colour approach ([#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) the code architecture ([#302](https://github.com/IanTeda/Personal-Ledger/issues/302), [ADR-0025](adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md)) the built-in Colour Themes ([#301](https://github.com/IanTeda/Personal-Ledger/issues/301)), what is not part of a Colour Theme ([#304](https://github.com/IanTeda/Personal-Ledger/issues/304)) and the Settings controls ([#303](https://github.com/IanTeda/Personal-Ledger/issues/303)).
 
 ## Colour Roles
 
@@ -260,6 +260,6 @@ Two related questions sit outside this map. A single Desktop UI scale factor tha
 
 ## Open items
 
-- Everything on the tickets listed under [Status](#status).
-- Rewriting the Modernist handoffs' "introduce no values outside this set" rule to speak in Colour Roles.
+- Persisting and syncing the `colour_theme` and `colour_appearance` Preferences.
+- Live System appearance changes in the TUI.
 - A TUI ASCII glyph fallback (see [Not part of a Colour Theme](#not-part-of-a-colour-theme)).

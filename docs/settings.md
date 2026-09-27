@@ -220,6 +220,42 @@ Example:
 log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 ```
 
+## Colour Theme and Colour Appearance
+
+You choose how Personal Ledger looks from Settings, not from a configuration file. Two settings work together:
+
+- **Colour Theme**: the set of colours the app draws in. Five are built in: Modernist (the default), High Contrast, Catppuccin, Gruvbox and Nord. Each one has a light and a dark version.
+- **Colour Appearance**: which version you see. Light and Dark always use that version. System follows your computer's light or dark setting, and the picker tells you which one it found, for example "System (currently Dark)". If it can't find out, it uses Dark and says so: "System (not detected, using Dark)".
+
+A change applies straight away, with no Apply button. Both are meant to be Preferences that sync across your own devices.
+
+### In the Desktop app
+
+Open Settings and go to Display. Below the other display settings is a Colour Theme group:
+
+- Appearance is a Light / Dark / System switch.
+- Colour Theme is a grid of preview cards, each showing a small ledger drawn in that Colour Theme. The card you've chosen has a border in the accent colour and a bold name.
+- With the keyboard, press `Tab` to move onto the grid, use the arrow keys or `h` `j` `k` `l` to move between cards, and press `Enter` to choose one. Moving between cards doesn't change anything until you press `Enter`.
+- From the command palette you can also run `theme modernist`, `theme high-contrast`, `theme catppuccin`, `theme gruvbox` or `theme nord`, and `appearance light`, `appearance dark` or `appearance system`.
+
+When your computer switches between light and dark, the Desktop follows it straight away if Appearance is System.
+
+### In the TUI
+
+Open Settings and press `Tab` to reach the Display group, where you'll find the colour theme and appearance rows. Press `Enter` on a row to open a list. Each Colour Theme in the list shows seven colour swatches. As you move with `j` and `k`, the screen previews that choice; press `Enter` to keep it or `Esc` to go back to what you had.
+
+The TUI draws the Colour Theme's exact colours by default. If your terminal only supports 256 colours, it uses the closest ones it has. If it only supports 16 colours, or you set `terminal_colours = true` (see the Personal Ledger Section), it uses your terminal's own colours instead. You can still change the rows while `terminal_colours` is on, and a note under them explains why this TUI isn't using them.
+
+For System, the TUI asks your terminal whether its background is light or dark when it starts. It doesn't notice a change after that, so restart the TUI to pick up a new setting.
+
+### Changing individual colours
+
+If a built-in Colour Theme is nearly right, you can change individual colours on one device with the `[theme]` section below. While any colour is changed that way, Settings shows a note under the pickers naming the colours and the file they came from. If a colour you set is hard to read against another, Settings shows a warning line such as "accent on background is 2.4:1, needs 3:1".
+
+### Heads up
+
+- Your Colour Theme and Colour Appearance are remembered only until you close the app. Saving them to your ledger, and syncing them to your other devices, isn't built yet.
+
 ## Theme Section
 
 The `[theme]` section overrides the colours of the Colour Theme you picked in Settings, on this Client only. It holds only the seven Colour Role keys; it can't choose a Colour Theme or Colour Appearance, which are Preferences and sync. Every other colour (borders, hover, selection, chart series) is calculated from these roles, so it follows your overrides. Changing `[theme]` needs a restart.
