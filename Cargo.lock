@@ -4748,6 +4748,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib_toast"
+version = "0.1.0"
+
+[[package]]
 name = "lib_tracing"
 version = "0.1.0"
 dependencies = [

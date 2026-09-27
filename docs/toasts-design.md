@@ -24,7 +24,7 @@ Colour sits on the non-text marks only: the leading bar and the glyph, each in a
 ## Lifetime, stacking and dismissal
 
 - **Pausing:** a Toast's timer pauses on hover (Desktop) and while a modal surface is open (command palette, dialog, help overlay, TUI popup, the Toast history). No pause on window or terminal unfocus.
-- **Stacking:** at most 3 visible. Past the limit the oldest *timed* Toast is evicted early; a sticky Error is evicted only if every visible Toast is sticky. A muted `+N more` line sits above the stack.
+- **Stacking:** at most 3 visible. Past the limit the oldest *timed* Toast is evicted early; when every visible Toast is sticky, the oldest Error is not dropped but held back out of view until a slot frees. A muted `+N more` line above the stack counts the held-back Errors.
 - **Duplicates:** a Toast with the same Kind and text as a visible one merges into it, restarting its timer and showing a muted `×N` badge.
 - **Dismissal:** the Desktop ✕ on each Toast; `:dismiss` (newest) and `:dismiss all` in both Clients; `Ctrl+L` dismisses all, in `Normal`/`NORMAL` mode only (inert while the palette, a popup or a dialog has focus), remappable as `[keybindings] dismiss-toasts`. Deliberately not `Esc`, which already pops the TUI view stack and leaves Desktop modes and overlays.
 

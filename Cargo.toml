@@ -76,6 +76,7 @@ members = [
   "./crates/libs/lib-omarchy",
   "./crates/libs/lib-tracing",
   "./crates/libs/lib-rpc",
+  "./crates/libs/lib-toast",
 ]
 
 
