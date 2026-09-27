@@ -36,3 +36,8 @@ desktop-palette-hint-complete = { $key } complete
 desktop-palette-hint-run = { $key } run
 desktop-palette-hint-history = { $key } history
 desktop-palette-hint-close = { $key } close
+
+## `$theme` is a Colour Theme name, `$appearance` a Colour Appearance label.
+
+desktop-command-colour-theme-description = use the { $theme } colour theme
+desktop-command-colour-appearance-description = use the { $appearance } appearance

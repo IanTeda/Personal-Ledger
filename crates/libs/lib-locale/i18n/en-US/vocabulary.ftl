@@ -32,3 +32,21 @@ budget-period-yearly = Yearly
 ## never this text, so each Client renders it in its own Locale.
 
 institution-none = No institution
+
+## Colour Theme names, shared by the desktop and the TUI. Brand names (Catppuccin, Gruvbox,
+## Nord) are left untranslated.
+
+colour-theme-modernist = Modernist
+colour-theme-high-contrast = High Contrast
+colour-theme-catppuccin = Catppuccin
+colour-theme-gruvbox = Gruvbox
+colour-theme-nord = Nord
+
+colour-appearance-light = Light
+colour-appearance-dark = Dark
+colour-appearance-system = System
+
+## The Colour Variant System resolved to. `$variant` is the Colour Appearance label for it.
+
+colour-appearance-system-current = System (currently { $variant })
+colour-appearance-system-undetected = System (not detected, using { $variant })

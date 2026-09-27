@@ -37,6 +37,7 @@ use crate::{
     },
     budgets,
     categories::{self, Category},
+    colours::ColourChange,
     command::{self, AccountsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
     format,
@@ -210,6 +211,11 @@ pub struct Shell {
     /// The same section's "Row density" segmented control -- also drives the PREVIEW table's own
     /// row padding (`view::settings::display`'s own doc), unlike a purely-cosmetic preference.
     settings_row_density: RowDensity,
+    /// The Colour Theme card the keyboard is on, while Settings' Colour Theme grid has focus.
+    colour_theme_focus: Option<usize>,
+    /// A Colour Theme or Colour Appearance picked by a keystroke or palette command, applied by
+    /// the caller once it has an `App` (the key handling runs without one).
+    pending_colour_change: Option<ColourChange>,
     /// The same section's "Status glyphs" radio group.
     settings_status_glyphs: StatusGlyphs,
     /// The same section's "Start Sidebar minimised" toggle -- persisted across restarts (see
@@ -326,6 +332,8 @@ impl Shell {
             settings_selected_section: SettingsSection::default(),
             settings_date_style: None,
             settings_row_density: RowDensity::default(),
+            colour_theme_focus: None,
+            pending_colour_change: None,
             settings_status_glyphs: StatusGlyphs::default(),
             settings_start_sidebar_minimised: false,
             settings_units: settings::default_units(),
@@ -539,6 +547,71 @@ impl Shell {
             | KeyOutcome::ClosePopupsAndExitMode
             | KeyOutcome::EscapeNoOp => {
                 unreachable!("handled above")
+            }
+        }
+    }
+
+    /// Settings' Colour Theme grid (`docs/colour-themes-design.md` "Settings"): `Tab` from the
+    /// View zone moves onto the grid at the chosen card, arrows or `h`/`j`/`k`/`l` move focus,
+    /// `Enter` selects, and `Esc` or `Tab` leaves it (`Tab` going on to the next zone). Moving
+    /// focus never previews. `false` for any key the grid does not take.
+    fn handle_colour_theme_grid_key(&mut self, keystroke: &Keystroke, chosen: usize) -> bool {
+        let key = keystroke.key.as_str();
+        let pending_g_active = self
+            .pending_g
+            .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
+        if self.nav.mode() != InputMode::Normal
+            || self.nav.noun() != Noun::Settings
+            || self.nav.focus() != FocusZone::View
+            || keystroke.modifiers.control
+            || pending_g_active
+        {
+            self.colour_theme_focus = None;
+            return false;
+        }
+        let Some(index) = self.colour_theme_focus else {
+            if key == "tab" && !keystroke.modifiers.shift {
+                self.status_message = None;
+                self.colour_theme_focus = Some(chosen);
+                self.settings_selected_section = SettingsSection::Display;
+                self.view_scroll_handle
+                    .scroll_to_top_of_item(SettingsSection::Display.body_child_index());
+                return true;
+            }
+            return false;
+        };
+        match key {
+            "escape" => {
+                self.status_message = None;
+                self.colour_theme_focus = None;
+                true
+            }
+            "tab" => {
+                self.colour_theme_focus = None;
+                false
+            }
+            "enter" => {
+                if let Some(theme) = lib_colour_theme::ColourTheme::built_in().get(index) {
+                    self.pending_colour_change = Some(ColourChange::Theme(theme.id));
+                }
+                true
+            }
+            _ => {
+                let columns = settings_view::colour_theme::grid_columns(f32::from(
+                    self.view_scroll_handle.bounds().size.width,
+                ));
+                let len = lib_colour_theme::ColourTheme::built_in().len();
+                match settings_view::colour_theme::grid_move(index, len, columns, key) {
+                    Some(next) => {
+                        self.colour_theme_focus = Some(next);
+                        true
+                    }
+                    // Any other key leaves the grid and goes on to the usual handling.
+                    None => {
+                        self.colour_theme_focus = None;
+                        false
+                    }
+                }
             }
         }
     }
@@ -2306,6 +2379,10 @@ impl Shell {
                 self.nav.exit_mode();
                 self.run_accounts_command(command.name, verb, argument);
             }
+            CommandEffect::Colour(change) => {
+                self.nav.exit_mode();
+                self.pending_colour_change = Some(change);
+            }
             CommandEffect::NotYetBuilt => {
                 self.nav.exit_mode();
                 self.status_message = Some(format!(":{} — not yet built", command.name));
@@ -2681,6 +2758,9 @@ impl Shell {
         };
         self.nav.enter_mode(InputMode::Command);
         self.run_command(command, "");
+        if let Some(change) = self.pending_colour_change.take() {
+            change.apply(cx);
+        }
         cx.notify();
     }
 }
@@ -2947,6 +3027,17 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |density, _window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_row_density_click(density, cx));
+            })
+        };
+        // A click selects the card and clears any keyboard focus left on the grid.
+        let on_colour_theme_click: settings_view::colour_theme::OnColourThemeClick = {
+            let entity = entity.clone();
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.colour_theme_focus = None;
+                    cx.notify();
+                });
+                ColourChange::Theme(id).apply(cx);
             })
         };
         let on_status_glyphs_click: settings_view::display::OnStatusGlyphsClick = {
@@ -3306,8 +3397,14 @@ impl Render for Shell {
             .text_size(type_scale::BODY)
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
-                if this.handle_key_down(event) {
+                let chosen = settings_view::colour_theme::chosen_index(cx);
+                if this.handle_colour_theme_grid_key(&event.keystroke, chosen)
+                    || this.handle_key_down(event)
+                {
                     cx.notify();
+                }
+                if let Some(change) = this.pending_colour_change.take() {
+                    change.apply(cx);
                 }
             }))
             .child(
@@ -3367,6 +3464,8 @@ impl Render for Shell {
                                     on_date_style_click,
                                     on_row_density_click,
                                     on_status_glyphs_click,
+                                    colour_theme_focus: self.colour_theme_focus,
+                                    on_colour_theme_click,
                                     units: &self.settings_units,
                                     on_unit_edit_click,
                                     on_unit_delete_click,
@@ -3658,6 +3757,8 @@ struct SettingsPanelProps<'a> {
     on_date_style_click: settings_view::display::OnDateStyleClick,
     on_row_density_click: settings_view::display::OnRowDensityClick,
     on_status_glyphs_click: settings_view::display::OnStatusGlyphsClick,
+    colour_theme_focus: Option<usize>,
+    on_colour_theme_click: settings_view::colour_theme::OnColourThemeClick,
     units: &'a [UnitRow],
     on_unit_edit_click: settings_view::units::OnRowIndexClick,
     on_unit_delete_click: settings_view::units::OnRowIndexClick,
@@ -3743,6 +3844,8 @@ fn render_view(
                     on_date_style_click: settings.on_date_style_click,
                     on_row_density_click: settings.on_row_density_click,
                     on_status_glyphs_click: settings.on_status_glyphs_click,
+                    colour_theme_focus: settings.colour_theme_focus,
+                    on_colour_theme_click: settings.on_colour_theme_click,
                     units: settings.units,
                     on_unit_edit_click: settings.on_unit_edit_click,
                     on_unit_delete_click: settings.on_unit_delete_click,

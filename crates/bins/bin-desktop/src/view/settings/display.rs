@@ -28,7 +28,7 @@ use crate::{
     theme::color,
 };
 
-use super::{add_unit_dialog::segmented_control, tracing::radio_dot};
+use super::{add_unit_dialog::segmented_control, colour_theme, tracing::radio_dot};
 
 pub type OnDateStyleClick = Rc<dyn Fn(Option<DateStyle>, &mut Window, &mut App)>;
 pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
@@ -55,9 +55,11 @@ pub fn render(
     on_date_style_click: OnDateStyleClick,
     on_row_density_click: OnRowDensityClick,
     on_status_glyphs_click: OnStatusGlyphsClick,
+    colour_theme_focus: Option<usize>,
+    on_colour_theme_click: colour_theme::OnColourThemeClick,
     cx: &App,
 ) -> AnyElement {
-    div()
+    let columns = div()
         .flex()
         .gap(px(40.0))
         .child(field_column(
@@ -71,7 +73,16 @@ pub fn render(
             on_status_glyphs_click,
             cx,
         ))
-        .child(preview_column(date_style, row_density, status_glyphs, cx))
+        .child(preview_column(date_style, row_density, status_glyphs, cx));
+    div()
+        .flex()
+        .flex_col()
+        .child(columns)
+        .child(colour_theme::render(
+            colour_theme_focus,
+            on_colour_theme_click,
+            cx,
+        ))
         .into_any_element()
 }
 

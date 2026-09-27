@@ -14,6 +14,7 @@
 mod about;
 pub mod add_institution_dialog;
 pub mod add_unit_dialog;
+pub mod colour_theme;
 pub mod data_backup;
 pub mod delete_unit_dialog;
 pub mod display;
@@ -50,6 +51,9 @@ pub struct SettingsBodyProps<'a> {
     pub on_date_style_click: display::OnDateStyleClick,
     pub on_row_density_click: display::OnRowDensityClick,
     pub on_status_glyphs_click: display::OnStatusGlyphsClick,
+    /// The Colour Theme card the keyboard is on, when the grid has focus.
+    pub colour_theme_focus: Option<usize>,
+    pub on_colour_theme_click: colour_theme::OnColourThemeClick,
     pub units: &'a [UnitRow],
     pub on_unit_edit_click: units::OnRowIndexClick,
     pub on_unit_delete_click: units::OnRowIndexClick,
@@ -215,6 +219,8 @@ fn section_content(
             props.on_date_style_click.clone(),
             props.on_row_density_click.clone(),
             props.on_status_glyphs_click.clone(),
+            props.colour_theme_focus,
+            props.on_colour_theme_click.clone(),
             cx,
         ),
         SettingsSection::Units => units::render(

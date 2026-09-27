@@ -11,12 +11,14 @@
 use gpui::{App, Global, Rgba, WindowAppearance};
 use gpui_component::theme::{Theme, ThemeMode};
 use lib_colour_theme::{
-    ColourAppearance, ColourVariant, ResolveInputs, ResolvedColours, ThemeOverrides, resolve,
+    ColourAppearance, ColourVariant, ContrastFailure, ResolveInputs, ResolvedColours,
+    ThemeOverrides, resolve,
 };
 
 /// The Global: the colours drawn plus the inputs they were resolved from.
 pub struct Colours {
     resolved: ResolvedColours,
+    failures: Vec<ContrastFailure>,
     colour_theme: Option<String>,
     colour_appearance: Option<ColourAppearance>,
     overrides: ThemeOverrides,
@@ -27,12 +29,38 @@ impl Global for Colours {}
 
 impl Colours {
     fn resolve(&mut self) {
-        self.resolved = resolve_logged(ResolveInputs {
+        (self.resolved, self.failures) = resolve_logged(ResolveInputs {
             colour_theme: self.colour_theme.as_deref(),
             colour_appearance: self.colour_appearance,
             overrides: &self.overrides,
             system: self.system,
         });
+    }
+
+    /// The colours `colour_theme` would draw with the current Colour Appearance, OS setting
+    /// and `[theme]` overrides: the Settings preview cards show what would actually appear.
+    pub fn preview(&self, colour_theme: &str) -> ResolvedColours {
+        resolve(ResolveInputs {
+            colour_theme: Some(colour_theme),
+            colour_appearance: self.colour_appearance,
+            overrides: &self.overrides,
+            system: self.system,
+        })
+        .0
+    }
+
+    /// The pairs below their contrast rule in the colours drawn, for the Settings warnings.
+    pub fn failures(&self) -> &[ContrastFailure] {
+        &self.failures
+    }
+
+    pub fn overrides(&self) -> &ThemeOverrides {
+        &self.overrides
+    }
+
+    /// The OS light/dark setting, for the Settings System hint.
+    pub fn system(&self) -> Option<ColourVariant> {
+        self.system
     }
 
     pub fn resolved(&self) -> &ResolvedColours {
@@ -49,12 +77,12 @@ impl Colours {
 }
 
 // Contrast failures are only possible through `[theme]` overrides; they are drawn anyway.
-fn resolve_logged(inputs: ResolveInputs<'_>) -> ResolvedColours {
+fn resolve_logged(inputs: ResolveInputs<'_>) -> (ResolvedColours, Vec<ContrastFailure>) {
     let (resolved, failures) = resolve(inputs);
-    for failure in failures {
+    for failure in &failures {
         tracing::warn!(%failure, "Colour Theme pair below its contrast rule");
     }
-    resolved
+    (resolved, failures)
 }
 
 /// The OS light/dark setting as a Colour Variant. `gpui` always reports one, so System on the
@@ -70,7 +98,7 @@ fn system_variant(appearance: WindowAppearance) -> ColourVariant {
 /// `gpui_component::init`, which the component theme write-through needs in place.
 pub fn init(overrides: ThemeOverrides, cx: &mut App) {
     let system = Some(system_variant(cx.window_appearance()));
-    let resolved = resolve_logged(ResolveInputs {
+    let (resolved, failures) = resolve_logged(ResolveInputs {
         colour_theme: None,
         colour_appearance: None,
         overrides: &overrides,
@@ -78,6 +106,7 @@ pub fn init(overrides: ThemeOverrides, cx: &mut App) {
     });
     cx.set_global(Colours {
         resolved,
+        failures,
         colour_theme: None,
         colour_appearance: None,
         overrides,
@@ -103,6 +132,28 @@ pub fn set_colour_theme(colour_theme: Option<String>, cx: &mut App) {
 /// Sets the in-memory `colour_appearance` Preference and redraws.
 pub fn set_colour_appearance(colour_appearance: Option<ColourAppearance>, cx: &mut App) {
     update(cx, |colours| colours.colour_appearance = colour_appearance);
+}
+
+/// A Preference change picked in Settings or the command palette, carried out of `Shell`'s
+/// key handling (which has no `App`) and applied once it has one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColourChange {
+    Theme(&'static str),
+    Appearance(ColourAppearance),
+}
+
+impl ColourChange {
+    pub fn apply(self, cx: &mut App) {
+        match self {
+            Self::Theme(id) => set_colour_theme(Some(id.to_string()), cx),
+            Self::Appearance(appearance) => set_colour_appearance(Some(appearance), cx),
+        }
+    }
+}
+
+/// The Global, for Settings, which shows the inputs as well as the colours.
+pub fn colours(cx: &App) -> &Colours {
+    cx.global::<Colours>()
 }
 
 fn update(cx: &mut App, change: impl FnOnce(&mut Colours)) {
@@ -181,13 +232,15 @@ mod tests {
 
     fn colours() -> Colours {
         let overrides = ThemeOverrides::default();
+        let (resolved, failures) = resolve_logged(ResolveInputs {
+            colour_theme: None,
+            colour_appearance: None,
+            overrides: &overrides,
+            system: Some(ColourVariant::Light),
+        });
         Colours {
-            resolved: resolve_logged(ResolveInputs {
-                colour_theme: None,
-                colour_appearance: None,
-                overrides: &overrides,
-                system: Some(ColourVariant::Light),
-            }),
+            resolved,
+            failures,
             colour_theme: None,
             colour_appearance: None,
             overrides,
@@ -222,6 +275,29 @@ mod tests {
         colours.colour_appearance = Some(ColourAppearance::Light);
         colours.resolve();
         assert_eq!(colours.resolved().variant, ColourVariant::Light);
+    }
+
+    #[test]
+    fn a_preview_uses_the_current_appearance_but_its_own_theme() {
+        let mut colours = colours();
+        colours.colour_appearance = Some(ColourAppearance::Dark);
+        colours.resolve();
+        let preview = colours.preview("gruvbox");
+        assert_eq!(preview.theme_id, "gruvbox");
+        assert_eq!(preview.variant, ColourVariant::Dark);
+        assert_eq!(colours.resolved().theme_id, "modernist");
+    }
+
+    #[test]
+    fn contrast_failures_are_kept_for_settings() {
+        let mut colours = colours();
+        assert!(colours.failures().is_empty());
+        colours.overrides.both.insert(
+            lib_colour_theme::ColourRole::Foreground,
+            lib_core::HexColor::parse("#ffffff").unwrap(),
+        );
+        colours.resolve();
+        assert!(!colours.failures().is_empty());
     }
 
     #[test]
