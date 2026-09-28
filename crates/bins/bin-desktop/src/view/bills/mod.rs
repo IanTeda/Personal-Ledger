@@ -2,10 +2,11 @@
 //! tab's meta line, **+ Add bill plan**), the Schedule / Planner / History tab row with the
 //! Schedule tab's period nav at its right, a 2px rule, then the active tab's body.
 //!
-//! Only the Schedule tab (8a, `schedule`) is built so far; Planner (8b) and History (8f) land with
-//! their own tickets. Every action is a callback into `Shell`, so the keyboard and the mouse reach
+//! The Schedule (8a, `schedule`) and Planner (8b, `planner`) tabs are built; History (8f) lands
+//! with its own ticket. Every action is a callback into `Shell`, so the keyboard and the mouse reach
 //! the same handlers.
 
+pub mod planner;
 pub mod schedule;
 
 use std::rc::Rc;
@@ -19,7 +20,8 @@ use crate::{
 };
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-/// Called with a Schedule row's position in `bills::schedule_rows`' order.
+/// Called with a row's position in the active tab's order (`bills::schedule_rows` or
+/// `bills::planner_order`).
 pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 pub type OnTabClick = Rc<dyn Fn(BillsTab, &mut Window, &mut App)>;
 
@@ -27,6 +29,7 @@ pub struct BillsPageProps<'a> {
     pub tab: BillsTab,
     pub period: Period,
     pub schedule: schedule::ScheduleProps<'a>,
+    pub planner: planner::PlannerProps<'a>,
     pub on_add_click: OnPlainClick,
     pub on_tab_click: OnTabClick,
     pub on_period_prev: OnPlainClick,
@@ -41,11 +44,13 @@ pub fn render(
 ) -> AnyElement {
     let meta = match props.tab {
         BillsTab::Schedule => Some(schedule::meta_line(&props.schedule, cx).into_any_element()),
-        BillsTab::Planner | BillsTab::History => None,
+        BillsTab::Planner => Some(planner::meta_line(&props.planner, cx).into_any_element()),
+        BillsTab::History => None,
     };
     let body = match props.tab {
         BillsTab::Schedule => schedule::render(&props.schedule, cx),
-        BillsTab::Planner | BillsTab::History => div()
+        BillsTab::Planner => planner::render(&props.planner, cx),
+        BillsTab::History => div()
             .text_color(color::muted(cx))
             .child(crate::msg::desktop_bills_tab_not_yet_built())
             .into_any_element(),

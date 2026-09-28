@@ -41,6 +41,37 @@ desktop-bills-row-not-actionable = not yet actionable
 desktop-bills-schedule-empty = No bills fall due this period.
 desktop-bills-schedule-footnote = These rows are generated ahead of time from the Bill Plans on the Planner tab — one per due date, never deleted. Overdue rows, and Due rows inside their Bill Plan's attention lead (⚑), also surface in Needs Attention on the Dashboard.
 
+## The Planner tab (8b): its meta line, table and footnote.
+
+desktop-bills-planner-plans = { $count ->
+    [one] { $count } bill plan
+   *[other] { $count } bill plans
+}
+desktop-bills-planner-inactive = <strong>{ $count }</strong> inactive
+desktop-bills-column-name = Name
+desktop-bills-column-category = Category
+desktop-bills-column-recurs = Recurs
+desktop-bills-column-lead = Lead
+desktop-bills-column-active = Active
+desktop-bills-recurrence-weekly = Weekly
+desktop-bills-recurrence-fortnightly = Fortnightly
+desktop-bills-recurrence-monthly = Monthly
+desktop-bills-recurrence-quarterly = Quarterly
+desktop-bills-recurrence-annually = Annually
+desktop-bills-recurrence-one-shot = One-shot
+# `$days` is the Attention Lead in days.
+desktop-bills-lead-days = { $days }d
+desktop-bills-active-yes = yes
+desktop-bills-active-no = no
+desktop-bills-row-edit = edit
+desktop-bills-planner-empty = No bill plans yet.
+desktop-bills-planner-footnote = Editing a plan only changes future Schedule rows. LEAD is the Attention Lead — days before the due date a still-Due (not yet Overdue) row also joins Needs Attention; blank means Overdue-only. An inactive plan generates no new rows, but its history stays intact under History.
+desktop-bills-status-plans = { $count ->
+    [one] { $count } bill plan
+   *[other] { $count } bill plans
+}
+desktop-status-edit-bill-plan-not-yet-built = edit bill plan — not yet built
+
 ## The tabs not built yet.
 
 desktop-bills-tab-not-yet-built = This tab is not yet built.

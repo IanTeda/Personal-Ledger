@@ -156,6 +156,16 @@ fn bills_schedule_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The Bills Planner tab's status-line legend (`docs/ux/desktop/Bills/README.md`'s 8b).
+fn bills_planner_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("n", crate::msg::desktop_hint_new()),
+        ("tab", crate::msg::desktop_hint_switch_view()),
+    ]
+}
+
 /// The status-line legend while the 7e Merge dialog is open.
 fn merge_tags_dialog_hints() -> Vec<(&'static str, String)> {
     vec![
@@ -1939,13 +1949,23 @@ impl Shell {
             .copied()
     }
 
+    /// The Planner tab's selected Bill Plan's id, its stored position clamped to the Plans.
+    fn selected_bill_plan(&self) -> Option<u32> {
+        let plans = bills::planner_order(&self.bill_plans);
+        plans
+            .get(self.bills_selected.min(plans.len().saturating_sub(1)))
+            .map(|plan| plan.id)
+    }
+
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the active Bills tab's row selection; `Enter` on a
-    /// Paid Schedule row opens its Transaction. Only the Schedule tab has rows so far.
+    /// Paid Schedule row opens its Transaction, and on a Planner row edits its Bill Plan. History
+    /// has no rows yet.
     fn apply_bills_movement(&mut self, movement: Movement) {
-        if self.bills_tab != bills::BillsTab::Schedule {
-            return;
-        }
-        let len = self.bills_schedule_rows().len();
+        let len = match self.bills_tab {
+            bills::BillsTab::Schedule => self.bills_schedule_rows().len(),
+            bills::BillsTab::Planner => self.bill_plans.len(),
+            bills::BillsTab::History => return,
+        };
         let selected = self.bills_selected.min(len.saturating_sub(1));
         self.bills_selected = match movement {
             Movement::Next => accounts::step_selection(selected, len, 1),
@@ -1955,7 +1975,11 @@ impl Shell {
             Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
             Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
             Movement::Enter => {
-                if let Some(row) = self.selected_bill_row() {
+                if self.bills_tab == bills::BillsTab::Planner {
+                    if let Some(id) = self.selected_bill_plan() {
+                        self.open_edit_bill_plan_dialog(id);
+                    }
+                } else if let Some(row) = self.selected_bill_row() {
                     self.open_bill_transaction(row.id);
                 }
                 selected
@@ -2004,7 +2028,7 @@ impl Shell {
         self.bills_selected = 0;
     }
 
-    /// The Bills page's own `p`/`s`/`n`/`[`/`]` (only while it is the active noun and the view has
+    /// The Bills page's own `p`/`s`/`e`/`n`/`[`/`]` (only while it is the active noun and the view has
     /// focus, in `Normal` mode).
     fn handle_bills_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Bills || self.nav.focus() != FocusZone::View {
@@ -2015,8 +2039,14 @@ impl Shell {
             return false;
         }
         let schedule = self.bills_tab == bills::BillsTab::Schedule;
+        let planner = self.bills_tab == bills::BillsTab::Planner;
         match keystroke.key.as_str() {
             "n" if !modifiers.shift => self.open_add_bill_plan_dialog(),
+            "e" if planner && !modifiers.shift => {
+                if let Some(id) = self.selected_bill_plan() {
+                    self.open_edit_bill_plan_dialog(id);
+                }
+            }
             "p" if schedule && !modifiers.shift => {
                 if let Some(row) = self.selected_bill_row() {
                     self.open_pay_bill_dialog(row);
@@ -2037,6 +2067,11 @@ impl Shell {
     /// The Add bill plan dialog (8c) lands with #373.
     fn open_add_bill_plan_dialog(&mut self) {
         self.status_message = Some(crate::msg::desktop_status_add_bill_plan_not_yet_built());
+    }
+
+    /// The Edit bill plan dialog (8c) lands with #373.
+    fn open_edit_bill_plan_dialog(&mut self, _id: u32) {
+        self.status_message = Some(crate::msg::desktop_status_edit_bill_plan_not_yet_built());
     }
 
     /// The Pay dialog (8d) lands with #374; until then `p` only reports it. A row with nothing to
@@ -2119,6 +2154,14 @@ impl Shell {
 
     fn handle_bills_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         self.bills_selected = index;
+        cx.notify();
+    }
+
+    fn handle_bills_edit_plan_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.bills_selected = index;
+        if let Some(id) = self.selected_bill_plan() {
+            self.open_edit_bill_plan_dialog(id);
+        }
         cx.notify();
     }
 
@@ -4924,6 +4967,12 @@ impl Render for Shell {
             &self.bill_entries,
             &self.transactions,
         );
+        let bills_planner_plans = bills::planner_order(&self.bill_plans);
+        let bills_base_unit = self
+            .settings_units
+            .iter()
+            .find(|unit| unit.is_base)
+            .map(|unit| unit.code.as_str());
         let bills_plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
             let on_click: bills_view::OnPlainClick = Rc::new(move |_window, cx| {
@@ -4948,11 +4997,7 @@ impl Render for Shell {
                 entries: &self.bill_entries,
                 accounts: &self.accounts,
                 transactions: &self.transactions,
-                base_unit: self
-                    .settings_units
-                    .iter()
-                    .find(|unit| unit.is_base)
-                    .map(|unit| unit.code.as_str()),
+                base_unit: bills_base_unit,
                 glyphs: self.settings_status_glyphs,
                 selected: (!bills_rows.is_empty())
                     .then(|| self.bills_selected.min(bills_rows.len() - 1)),
@@ -4962,6 +5007,17 @@ impl Render for Shell {
                 on_view_transaction_click: bills_indexed(
                     Shell::handle_bills_view_transaction_click,
                 ),
+            },
+            planner: bills_view::planner::PlannerProps {
+                plans: &bills_planner_plans,
+                inactive: bills::inactive_count(&self.bill_plans),
+                categories: &self.categories,
+                accounts: &self.accounts,
+                base_unit: bills_base_unit,
+                selected: (!bills_planner_plans.is_empty())
+                    .then(|| self.bills_selected.min(bills_planner_plans.len() - 1)),
+                on_row_click: bills_indexed(Shell::handle_bills_row_click),
+                on_edit_click: bills_indexed(Shell::handle_bills_edit_plan_click),
             },
             on_add_click: bills_plain(Shell::handle_bills_add_click),
             on_tab_click: {
@@ -5247,6 +5303,12 @@ impl Render for Shell {
                 right: crate::msg::desktop_bills_status_period(
                     &bills_view::period_label(self.bills_period),
                     i64::try_from(self.bills_schedule_rows().len()).unwrap_or(i64::MAX),
+                ),
+            }),
+            Noun::Bills if self.bills_tab == bills::BillsTab::Planner => Some(PageStatus {
+                hints: bills_planner_hints(),
+                right: crate::msg::desktop_bills_status_plans(
+                    i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
                 ),
             }),
             Noun::Tags => Some(PageStatus {
