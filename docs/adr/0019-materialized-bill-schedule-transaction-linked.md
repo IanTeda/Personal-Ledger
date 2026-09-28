@@ -23,3 +23,19 @@ Settled in [#367](https://github.com/IanTeda/Personal-Ledger/issues/367), on the
 **Live defaults.** An unresolved entry holds no copy of its Bill Plan's Planned Amount, Fixed/Estimated flag, Account, Payee or Category; it reads them live, so editing the Bill Plan updates every open entry, Overdue ones included. A Paid entry takes its figures from its linked Transaction. A Skipped entry keeps a snapshot of the Planned Amount at the moment it was skipped, for the history view.
 
 **Active and Ends On.** Turning a Bill Plan's Active off supersedes its unresolved future entries and keeps its Overdue ones, which still need resolving. Reaching Ends On removes nothing; generation simply finds no further due dates. Reactivating generates from today forward and does not backfill the due dates that fell while it was inactive.
+
+## Amendment: settlement by Match, at the Split
+
+Settled in [#368](https://github.com/IanTeda/Personal-Ledger/issues/368), on the [Desktop Bills Surface](https://github.com/IanTeda/Personal-Ledger/issues/364) map.
+
+**Match, not link or merge.** The domain act of tying a Bill Schedule entry to real money is to **Match** it; `docs/bills.md`'s "Merge existing" is retired because Merge already names folding one Tag into another. The Pay dialog's two paths are **Pay it directly** (create a Transaction and Match it) and **Match existing transaction**, and the future Transactions-side gesture of pairing an Anticipated Bill with a real Transaction is also Match.
+
+**At the Split, one-to-one.** What is Matched is a Split, not a whole Transaction: the foreign key is an optional, unique `bill_schedule_id` on the Split, so one bank payment covering two Bill Plans settles two entries through two Splits, while each Split and each entry take part in at most one Match. A Transaction "carries a Bill" when any of its Splits is Matched. A Paid entry reads its amount from the Matched Split and its date from that Split's Transaction.
+
+**Candidates.** The Match list offers Expense Splits in the Bill Plan's Unit, not already Matched, whose Transaction is dated within 14 days either side of the due date, from any Account or Payee. They are ordered by Payee match, then Account match, then closeness of amount, then closeness of date; the first is pre-selected only when its Payee matches the Bill Plan's.
+
+**Pay it directly.** Creates a Transaction dated today by default (editable), with Transaction Status Pending, holding one Split with the Bill Plan's Category, Payee and Account and an Amount pre-filled from the Planned Amount, which must be greater than zero; that Split is Matched to the entry.
+
+**Skip.** Any unresolved entry may be Skipped, a One-shot Bill Plan's included, where Skipping means the bill is cancelled.
+
+**Reversal.** Paid is undone by **Unmatch**, which clears the link, leaves the Transaction in place (one created by Pay it directly too) and returns the entry to its derived Upcoming, Due or Overdue status. Skipped is undone by **Unskip**. Deleting a Matched Split or its Transaction Unmatches the entry the same way, so it returns to Needs Attention. Editing a Matched Transaction's amount, date or Payee needs no handling: a Paid entry reads them live, and nothing re-checks that the Payee still matches.

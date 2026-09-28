@@ -62,7 +62,7 @@ The Schedule shows one calendar month at a time. Weekly and Fortnightly bills ca
 A bill never becomes "paid" with a checkbox. Instead, you link it to a real transaction. There are two ways:
 
 1. **Create new:** Personal Ledger creates a transaction for you, seeded from the bill's category, payee, account, and amount, then links the bill to it.
-2. **Merge existing:** You link the bill to a transaction you already recorded (e.g. from a CSV import).
+2. **Match existing:** You match the bill to a transaction you already recorded (e.g. from a CSV import).
 
 Once linked, the transaction's actual date and amount are what count — the bill's "planned amount" was only ever an estimate.
 
