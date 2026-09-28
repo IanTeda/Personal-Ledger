@@ -18,3 +18,7 @@ The Desktop Payees Surface ([#281](https://github.com/IanTeda/Personal-Ledger/is
 - **Not a search key:** Transactions search and the payee filter match a Split's current Payee name (or id), not its aliases; aliases resolve raw text (import, typed entry) only.
 
 A Payee also gains an optional **default Category** (a leaf Category) that pre-fills only *new* Splits for that Payee; changing it never touches existing Splits, and a deactivated default Category still stands but is shown as inactive.
+
+## Amendment: deleting an unused Payee
+
+Settled in [#283](https://github.com/IanTeda/Personal-Ledger/issues/283), against the handoff's always-hard-delete: the no-hard-delete rule stands for a Payee any Split references, which can only be deactivated (`is_active`), and reactivated later. A Payee **no Split references** may be hard-deleted, taking its Payee Aliases with it, behind a typed-name confirmation. An inactive Payee stays visible (dimmed, tagged "inactive") on the Payees list and in the Transactions payee filter so its history remains reachable, but its aliases no longer match on import, it is not offered in import's payee pickers, and it is left out of the Payee counts (the sidebar badge, "N payees", "N without a default category").
