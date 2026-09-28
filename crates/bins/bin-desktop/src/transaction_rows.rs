@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn income_is_signed_positive_and_not_negative() {
         let w = world();
-        let rows = rows_for(&w, &open_filters(), "Sunrise Payroll");
+        let rows = rows_for(&w, &open_filters(), "Employer Pty Ltd");
         let pay = rows
             .iter()
             .find(|r| r.amount == "+4,210.00")

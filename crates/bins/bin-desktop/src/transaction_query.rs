@@ -7,7 +7,8 @@
 //!
 //! - **Transaction-level** filters: account, status, and the date range (inclusive; an empty side
 //!   is unbounded). **Split-level** filters: category (a parent matches its descendants), payee and
-//!   tag (case-insensitive substrings of the Split's Payee current name and its Tag names).
+//!   tag (case-insensitive substrings of the Split's Payee current name and its Tag names), and an
+//!   exact Payee id -- the Payees page's hand-off, which a substring would over-match ("BP").
 //! - A Transaction matches a Split-level filter when **any** Split matches, and with several
 //!   Split-level filters active **one Split must satisfy all of them**: a Split is one line.
 //! - While any Split-level filter is active a row's amount is the **sum of its matching Splits**
@@ -79,6 +80,8 @@ pub struct TransactionFilters {
     /// A [`Category::id`]; a parent matches its descendants.
     pub category: Option<u32>,
     pub payee: String,
+    /// An exact [`Payee::id`]: what "view transactions" on the Payees page hands over.
+    pub payee_id: Option<u32>,
     pub tag: String,
     /// Inclusive lower bound; `None` is unbounded.
     pub from: Option<NaiveDate>,
@@ -101,6 +104,7 @@ impl TransactionFilters {
             account: None,
             category: None,
             payee: String::new(),
+            payee_id: None,
             tag: String::new(),
             from: Some(from),
             to: Some(to),
@@ -124,6 +128,14 @@ impl TransactionFilters {
         }
     }
 
+    /// The defaults narrowed to one Payee by id: what "view transactions" on the Payees page hands over.
+    pub fn for_payee(today: NaiveDate, payee: u32) -> Self {
+        Self {
+            payee_id: Some(payee),
+            ..Self::defaults(today)
+        }
+    }
+
     /// Whether these are exactly the defaults (so no chip is an "active" accent chip).
     pub fn is_default(&self, today: NaiveDate) -> bool {
         *self == Self::defaults(today)
@@ -132,7 +144,10 @@ impl TransactionFilters {
     /// Whether any Split-level filter (category, payee, tag) is set -- what switches a row's amount
     /// to the sum of its matching Splits.
     pub fn has_split_level(&self) -> bool {
-        self.category.is_some() || !self.payee.trim().is_empty() || !self.tag.trim().is_empty()
+        self.category.is_some()
+            || !self.payee.trim().is_empty()
+            || self.payee_id.is_some()
+            || !self.tag.trim().is_empty()
     }
 }
 
@@ -215,6 +230,7 @@ struct SplitFilter {
     /// The chosen category and everything nested under it.
     categories: Option<Vec<u32>>,
     payee: String,
+    payee_id: Option<u32>,
     tag: String,
 }
 
@@ -225,12 +241,16 @@ impl SplitFilter {
                 .category
                 .map(|id| categories::descendants_inclusive(ledger.categories, id)),
             payee: filters.payee.trim().to_lowercase(),
+            payee_id: filters.payee_id,
             tag: filters.tag.trim().to_lowercase(),
         }
     }
 
     fn is_active(&self) -> bool {
-        self.categories.is_some() || !self.payee.is_empty() || !self.tag.is_empty()
+        self.categories.is_some()
+            || !self.payee.is_empty()
+            || self.payee_id.is_some()
+            || !self.tag.is_empty()
     }
 
     /// Whether this one Split satisfies **every** active condition.
@@ -248,6 +268,9 @@ impl SplitFilter {
             if !payee_matches {
                 return false;
             }
+        }
+        if self.payee_id.is_some() && split.payee_id != self.payee_id {
+            return false;
         }
         if !self.tag.is_empty() {
             let tag_matches = split
@@ -669,6 +692,33 @@ mod tests {
         let mut filters = world.open();
         filters.payee = "woolies".to_string();
         assert!(world.run(&filters, "").rows.is_empty());
+    }
+
+    #[test]
+    fn a_payee_id_filter_matches_exactly_that_payee() {
+        let world = World::seeded();
+        let bp = payees::find_by_name(&world.payees, "BP").unwrap();
+        let filters = TransactionFilters {
+            from: None,
+            to: None,
+            ..TransactionFilters::for_payee(today(), bp)
+        };
+        assert!(filters.has_split_level());
+        let visible = world.run(&filters, "");
+        assert!(!visible.rows.is_empty());
+        for row in &visible.rows {
+            assert!(
+                row.transaction
+                    .splits
+                    .iter()
+                    .any(|s| s.payee_id == Some(bp))
+            );
+        }
+        // The substring "bp" also over-matches names that merely contain it; the id never does.
+        let mut by_name = filters.clone();
+        by_name.payee_id = None;
+        by_name.payee = "bp".to_string();
+        assert!(world.run(&by_name, "").rows.len() >= visible.rows.len());
     }
 
     #[test]

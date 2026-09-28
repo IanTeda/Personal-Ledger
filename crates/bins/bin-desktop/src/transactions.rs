@@ -166,7 +166,7 @@ struct Template {
 const TEMPLATES: &[Template] = &[
     Template {
         category: "Groceries",
-        payees: &["Woolworths", "Coles Online", "Aldi Kelvin Grove"],
+        payees: &["Woolworths", "Coles", "Aldi Kelvin Grove"],
         min: 1_200,
         max: 24_000,
         income: false,
@@ -220,7 +220,7 @@ const TEMPLATES: &[Template] = &[
     },
     Template {
         category: "Salary",
-        payees: &["Sunrise Payroll"],
+        payees: &["Employer Pty Ltd"],
         min: 380_000,
         max: 440_000,
         income: true,
@@ -463,7 +463,7 @@ fn specials(lookup: &Lookup<'_>, today: NaiveDate) -> Vec<(&'static str, Transac
             Reconciled,
             false,
             None,
-            vec![lookup.split(421_000, "Salary", Some("Sunrise Payroll"), &[])],
+            vec![lookup.split(421_000, "Salary", Some("Employer Pty Ltd"), &[])],
         ),
         make(
             "ANZ Everyday",
@@ -518,6 +518,19 @@ fn specials(lookup: &Lookup<'_>, today: NaiveDate) -> Vec<(&'static str, Transac
         ),
     ]
     .into_iter()
+    .chain(
+        // J Smith: a Payee with no default Category, used by four transfers.
+        [20, 50, 80, 110].map(|days| {
+            make(
+                "ANZ Everyday",
+                days,
+                Reconciled,
+                false,
+                Some("Shared bills"),
+                vec![lookup.split(-16_000, "Household", Some("J Smith"), &[])],
+            )
+        }),
+    )
     .flatten()
     .collect()
 }

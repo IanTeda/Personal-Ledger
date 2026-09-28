@@ -277,6 +277,8 @@ impl FilterForm {
                 .value()
                 .and_then(|label| options.category_id(label)),
             payee: self.payee.trim().to_string(),
+            // The popover has no Payee-id field yet; the Payees page's hand-off sets it directly.
+            payee_id: None,
             tag: self.tag.trim().to_string(),
             from: parse_date(&self.from, today, date_style).ok()?,
             to: parse_date(&self.to, today, date_style).ok()?,

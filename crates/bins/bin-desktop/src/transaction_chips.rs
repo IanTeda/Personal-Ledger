@@ -169,7 +169,10 @@ pub fn clear_field(filters: &mut TransactionFilters, field: FilterField, today: 
     match field {
         FilterField::Account => filters.account = defaults.account,
         FilterField::Category => filters.category = defaults.category,
-        FilterField::Payee => filters.payee = defaults.payee,
+        FilterField::Payee => {
+            filters.payee = defaults.payee;
+            filters.payee_id = defaults.payee_id;
+        }
         FilterField::Tag => filters.tag = defaults.tag,
         FilterField::Date => {
             filters.from = defaults.from;

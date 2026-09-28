@@ -294,6 +294,11 @@ pub struct Shell {
     /// for exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
     categories_dialog: Option<categories::CategoriesDialog>,
     payees: Vec<Payee>,
+    /// The selected row on the Payees page.
+    payees_selected: usize,
+    /// The currently open Payees dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
+    /// exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
+    payees_dialog: Option<payees::PayeesDialog>,
     tags: Vec<Tag>,
     /// The Transactions view's stub dataset, newest first (`transactions::default_transactions`).
     /// A real, mutable `Vec`, like [`Self::accounts`]: saved-in-memory state that survives leaving
@@ -376,6 +381,8 @@ impl Shell {
             categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
             categories_dialog: None,
             payees,
+            payees_selected: 0,
+            payees_dialog: None,
             tags,
             transactions,
             transactions_selected: 0,
@@ -1644,6 +1651,17 @@ impl Shell {
 
     fn open_category_transactions(&mut self, id: u32) {
         self.transactions_filters = TransactionFilters::for_category(self.today, id);
+        self.transactions_search.clear();
+        self.transactions_filter_form = None;
+        self.reset_transactions_selection();
+        self.nav.set_noun(Noun::Transactions);
+        self.reset_view_scroll();
+    }
+
+    /// "View transactions" on the Payees page: Transactions filtered to exactly this Payee's id, not
+    /// a name substring that would over-match ("BP").
+    fn open_payee_transactions(&mut self, id: u32) {
+        self.transactions_filters = TransactionFilters::for_payee(self.today, id);
         self.transactions_search.clear();
         self.transactions_filter_form = None;
         self.reset_transactions_selection();
