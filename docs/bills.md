@@ -40,7 +40,8 @@ When you create a bill, you fill in:
 - **Planned Amount:** An estimate of what's owed each time.
 - **Fixed or Estimated:** Fixed (Netflix) or Estimated (electricity) — estimates are planning figures, not promises.
 - **Recurrence:** Weekly, Fortnightly, Monthly, Quarterly, Annually, or One-time.
-- **Ends On:** Optional — when a recurring bill stops generating new entries.
+- **First Due:** The first due date; every later due date is stepped from it. Defaults to today. A Monthly, Quarterly or Annual bill due on the 29th–31st falls on the last day of a shorter month.
+- **Ends On:** Optional — the last date (inclusive) a recurring bill can fall due. Not offered for a one-time bill.
 - **Attention Lead:** Optional — days before due date to flag it in Needs Attention (different for rent vs a small subscription).
 - **Active:** Deactivating a bill stops new entries but keeps its history.
 
