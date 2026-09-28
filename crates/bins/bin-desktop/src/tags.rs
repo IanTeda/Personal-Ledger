@@ -576,6 +576,31 @@ impl TagForm {
     }
 }
 
+/// The 7d Remove dialog's typed-name confirm (#353): only a used Tag asks for it, since removing
+/// an unused one loses nothing but the name.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RemoveTagForm {
+    pub confirmation_name: String,
+}
+
+impl RemoveTagForm {
+    pub fn push_char(&mut self, ch: char) {
+        if !ch.is_control() {
+            self.confirmation_name.push(ch);
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        self.confirmation_name.pop();
+    }
+
+    /// Whether **Remove tag** is live: always for an unused Tag, else once the name is typed
+    /// exactly (case-sensitive, as the Payees dialog's).
+    pub fn allows(&self, name: &str, transactions: usize) -> bool {
+        transactions == 0 || self.confirmation_name == name
+    }
+}
+
 /// Which Tags dialog is open on the Tags page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagsDialog {
@@ -583,7 +608,7 @@ pub enum TagsDialog {
     /// Editing the Tag with this [`Tag::id`].
     Edit(u32, TagForm),
     /// Removing the Tag with this [`Tag::id`].
-    Remove(u32),
+    Remove(u32, RemoveTagForm),
     /// Merging `source` into `target`; either is empty until chosen (the palette's `tags merge`
     /// opens with neither, `m` on an unflagged Tag with only the source).
     Merge {
@@ -1153,5 +1178,23 @@ mod tests {
             form.name_error(&tags, Some(shared)),
             Some(TagError::DuplicateName("gift".to_string()))
         );
+    }
+
+    #[test]
+    fn removing_an_unused_tag_needs_no_confirm_but_a_used_one_needs_its_exact_name() {
+        let mut form = RemoveTagForm::default();
+        assert!(form.allows("travel", 0));
+        assert!(!form.allows("travel", 3));
+        for ch in "Travel".chars() {
+            form.push_char(ch);
+        }
+        assert!(!form.allows("travel", 3));
+        form.confirmation_name.clear();
+        for ch in "travel\n".chars() {
+            form.push_char(ch);
+        }
+        assert!(form.allows("travel", 3));
+        form.backspace();
+        assert!(!form.allows("travel", 3));
     }
 }

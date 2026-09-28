@@ -60,3 +60,15 @@ desktop-tags-edit-callout = { $count ->
     [one] { $count } transaction uses this tag.
    *[other] { $count } transactions use this tag.
 } Renaming or recolouring updates all of them immediately — nothing needs re-tagging.
+
+## The Remove tag dialog (7d). Removing always deletes the Tag (#353). `$name` is the Tag's name,
+## `$count` how many Transactions carry it.
+
+desktop-tags-remove-title = Remove tag — { $name }
+desktop-tags-remove-submit = Remove tag
+desktop-tags-remove-unused = No transactions use <strong>{ $name }</strong>. Removing it deletes the tag.
+desktop-tags-remove-used = This removes <strong>{ $name }</strong> from <strong>{ $count ->
+    [one] { $count } transaction
+   *[other] { $count } transactions
+}</strong> and deletes the tag. The transactions keep their amount, category and payee. This can't be undone.
+desktop-tags-remove-confirm-label = Type { $name } to confirm

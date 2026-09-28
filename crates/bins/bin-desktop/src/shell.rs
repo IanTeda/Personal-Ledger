@@ -182,7 +182,8 @@ fn payee_dialog_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The status-line legend while the Delete payee dialog is open: it has one field, so no `tab`.
+/// The status-line legend while the Delete payee or Remove tag dialog is open: each has at most
+/// the one confirm field, so no `tab`.
 fn delete_payee_dialog_hints() -> Vec<(&'static str, String)> {
     vec![
         ("esc", crate::msg::desktop_hint_cancel()),
@@ -1833,7 +1834,8 @@ impl Shell {
     }
 
     /// The Tags page's own `n`/`e`/`x`/`m` (only while it is the active noun and the view has
-    /// focus, in `Normal` mode). The 7d-7e dialogs aren't built yet, so each says so.
+    /// focus, in `Normal` mode). The 7e Merge dialog isn't built yet,
+    /// so `m` says so.
     fn handle_tags_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Tags || self.nav.focus() != FocusZone::View {
             return false;
@@ -1881,6 +1883,29 @@ impl Shell {
     /// hex box and (Edit only) Active, `←`/`→` step the swatch row, `space` toggles Active, and
     /// `enter` submits from anywhere. `Esc` never reaches here.
     fn handle_tags_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        if let Some(tags::TagsDialog::Remove(_, form)) = self.tags_dialog.as_mut() {
+            match keystroke.key.as_str() {
+                "enter" => self.confirm_remove_tag_dialog(),
+                "backspace" => form.backspace(),
+                _ => {
+                    let modifiers = &keystroke.modifiers;
+                    if modifiers.control
+                        || modifiers.alt
+                        || modifiers.platform
+                        || modifiers.function
+                    {
+                        return false;
+                    }
+                    if let Some(text) = keystroke.key_char.as_deref()
+                        && text.chars().count() == 1
+                        && let Some(ch) = text.chars().next()
+                    {
+                        form.push_char(ch);
+                    }
+                }
+            }
+            return true;
+        }
         let Some(form) = self.tag_form_mut() else {
             return false;
         };
@@ -1972,7 +1997,11 @@ impl Shell {
     }
 
     fn handle_tags_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_tags_dialog();
+        if matches!(self.tags_dialog, Some(tags::TagsDialog::Remove(..))) {
+            self.confirm_remove_tag_dialog();
+        } else {
+            self.confirm_tags_dialog();
+        }
         cx.notify();
     }
 
@@ -1984,8 +2013,46 @@ impl Shell {
         self.nav.enter_mode(InputMode::Dialog);
     }
 
-    fn open_remove_tag_dialog(&mut self, _id: u32) {
-        self.status_message = Some(crate::msg::desktop_status_remove_tag_not_yet_built());
+    fn open_remove_tag_dialog(&mut self, id: u32) {
+        if tags::get(&self.tags, id).is_none() {
+            return;
+        }
+        self.tags_dialog = Some(tags::TagsDialog::Remove(id, tags::RemoveTagForm::default()));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// **Remove tag** and `enter`: a no-op until a used Tag's name is typed, then untags every
+    /// Split, deletes the Tag, toasts it and closes the dialog. The selection keeps its position,
+    /// so it lands on the next Tag in usage order (or the new last one).
+    fn confirm_remove_tag_dialog(&mut self) {
+        let Some(tags::TagsDialog::Remove(id, form)) = self.tags_dialog.as_ref() else {
+            return;
+        };
+        let id = *id;
+        let Some(tag) = tags::get(&self.tags, id) else {
+            return;
+        };
+        if !form.allows(&tag.name, tags::transaction_count(&self.transactions, id)) {
+            return;
+        }
+        let name = tag.name.clone();
+        let (kind, text) = match tags::remove_tag(&mut self.tags, &mut self.transactions, id) {
+            Ok(()) => (
+                ToastKind::Success,
+                lib_locale::msg::toast_tag_deleted(&name),
+            ),
+            Err(error) => (
+                ToastKind::Error,
+                lib_locale::msg::toast_save_failed(
+                    &lib_locale::msg::toast_entity_tag(),
+                    &error.to_string(),
+                ),
+            ),
+        };
+        self.raise_toast(kind, text);
+        self.tags_dialog = None;
+        self.nav.exit_mode();
+        self.tags_selected = self.tags_selected.min(self.tags.len().saturating_sub(1));
     }
 
     /// Merge with `source` as the source Tag (`None` from the subline link when nothing is flagged).
@@ -4722,6 +4789,7 @@ impl Render for Shell {
                 hints: match self.tags_dialog {
                     Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
                     Some(tags::TagsDialog::Edit(..)) => tag_dialog_hints(true),
+                    Some(tags::TagsDialog::Remove(..)) => delete_payee_dialog_hints(),
                     _ => tags_hints(),
                 },
                 right: {
@@ -5038,6 +5106,18 @@ impl Render for Shell {
                             on_toggle_active: tag_plain(Shell::handle_tags_dialog_toggle_active),
                         },
                         tags_dialog_handlers,
+                        cx,
+                    )
+                }),
+                Some(tags::TagsDialog::Remove(id, form)) => tags::get(&self.tags, *id).map(|tag| {
+                    tags_view::remove_dialog::render(
+                        tags_view::remove_dialog::RemoveTagProps {
+                            tag,
+                            form,
+                            transactions: tags::transaction_count(&self.transactions, *id),
+                            on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
+                            on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
+                        },
                         cx,
                     )
                 }),
