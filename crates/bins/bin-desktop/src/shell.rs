@@ -1836,8 +1836,9 @@ impl Shell {
         true
     }
 
-    /// **Add payee** and `enter`: adds the Payee and selects it, closing the dialog. A no-op while
-    /// the name is invalid; a refused rule keeps the dialog open with the error shown.
+    /// **Add payee** / **Save** and `enter`: adds or edits the Payee and selects it, closing the
+    /// dialog. A no-op while the name is invalid; a refused rule keeps the dialog open with the
+    /// error shown.
     fn confirm_payees_dialog(&mut self) {
         let options = self.payee_dialog_options();
         let own_id = self.payee_dialog_own_id();
@@ -1853,7 +1854,11 @@ impl Shell {
         let draft = form.draft(&options);
         let result = match dialog {
             payees::PayeesDialog::Add(_) => payees::insert_payee(&mut self.payees, &draft),
-            payees::PayeesDialog::Edit(..) | payees::PayeesDialog::Delete(_) => return,
+            payees::PayeesDialog::Edit(id, _) => {
+                let id = *id;
+                payees::edit_payee(&mut self.payees, id, &draft).map(|()| id)
+            }
+            payees::PayeesDialog::Delete(_) => return,
         };
         match result {
             Ok(id) => {
@@ -1932,8 +1937,14 @@ impl Shell {
         cx.notify();
     }
 
-    fn open_edit_payee_dialog(&mut self, _id: u32) {
-        self.status_message = Some(crate::msg::desktop_status_edit_payee_not_yet_built());
+    /// Opens the Edit dialog pre-filled from Payee `id`.
+    fn open_edit_payee_dialog(&mut self, id: u32) {
+        let Some(payee) = payees::get(&self.payees, id) else {
+            return;
+        };
+        let form = payees::PayeeForm::from_payee(payee, &self.payee_dialog_options());
+        self.payees_dialog = Some(payees::PayeesDialog::Edit(id, form));
+        self.nav.enter_mode(InputMode::Dialog);
     }
 
     fn open_delete_payee_dialog(&mut self, _id: u32) {
@@ -4188,6 +4199,7 @@ impl Render for Shell {
             }))
             .children(match self.payees_dialog.as_ref() {
                 Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
+                    payees_view::add_dialog::PayeeDialogMode::Add,
                     form,
                     &self.payee_dialog_options(),
                     form.name_error(&self.payees, None),
@@ -4195,6 +4207,28 @@ impl Render for Shell {
                     payees_dialog_handlers,
                     cx,
                 )),
+                Some(payees::PayeesDialog::Edit(id, form)) => {
+                    payees::get(&self.payees, *id).map(|payee| {
+                        payees_view::add_dialog::render(
+                            payees_view::add_dialog::PayeeDialogMode::Edit {
+                                name: &payee.name,
+                                splits: payees::usage(
+                                    &self.transactions,
+                                    &self.accounts,
+                                    None,
+                                    *id,
+                                )
+                                .splits,
+                            },
+                            form,
+                            &self.payee_dialog_options(),
+                            form.name_error(&self.payees, Some(*id)),
+                            form.is_valid(&self.payees, Some(*id)),
+                            payees_dialog_handlers,
+                            cx,
+                        )
+                    })
+                }
                 _ => None,
             })
             .children(self.categories_dialog.as_ref().map(|dialog| match dialog {

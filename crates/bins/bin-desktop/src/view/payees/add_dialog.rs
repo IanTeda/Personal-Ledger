@@ -1,11 +1,13 @@
-//! Renders the **Add payee** dialog (`docs/ux/desktop/Payees/README.md`'s 6b) on the shared
-//! `crate::dialog` chrome: Name, Default category (the shared `select_field` dropdown, "none"
-//! then the leaf Categories), the shared Match rules field, and the dark-bordered callout.
-//! `Shell` owns the live form (`payees::PayeeForm`) and every keystroke while it is open.
+//! Renders the **Add payee** and **Edit payee** dialogs (`docs/ux/desktop/Payees/README.md`'s 6b
+//! and 6c) on the shared `crate::dialog` chrome: Name, Default category (the shared `select_field`
+//! dropdown, "none" then the leaf Categories), the shared Match rules field, and a callout. The two
+//! differ only in title, rule placeholder, submit label and callout, so they share one renderer
+//! keyed by [`PayeeDialogMode`]. `Shell` owns the live form (`payees::PayeeForm`) and every
+//! keystroke while it is open.
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use super::rules_field::{self, OnRemoveRule, RulesFieldProps};
 use crate::{
@@ -18,7 +20,19 @@ use crate::{
     },
 };
 
-/// The dialog's width: the handoff's 6b.
+/// Which dialog to draw.
+#[derive(Debug, Clone, Copy)]
+pub enum PayeeDialogMode<'a> {
+    Add,
+    /// Editing the Payee stored as `name` (the title keeps it while the Name field is retyped),
+    /// which `splits` Splits carry.
+    Edit {
+        name: &'a str,
+        splits: usize,
+    },
+}
+
+/// The dialog's width: the handoff's 6b and 6c.
 pub const WIDTH: gpui::Pixels = px(460.0);
 
 pub type OnFieldClick = Rc<dyn Fn(PayeeField, &mut Window, &mut App)>;
@@ -34,6 +48,7 @@ pub struct PayeeDialogHandlers {
 }
 
 pub fn render(
+    mode: PayeeDialogMode<'_>,
     form: &PayeeForm,
     options: &PayeeOptions,
     name_error: Option<PayeeError>,
@@ -53,18 +68,33 @@ pub fn render(
         let on_field_click = on_field_click.clone();
         Rc::new(move |window: &mut Window, cx: &mut App| on_field_click(field, window, cx))
     };
+    let (id, title, placeholder, submit) = match mode {
+        PayeeDialogMode::Add => (
+            "add-payee",
+            crate::msg::desktop_payees_add_title(),
+            crate::msg::desktop_payees_rule_placeholder(),
+            crate::msg::desktop_payees_add_submit(),
+        ),
+        PayeeDialogMode::Edit { name, .. } => (
+            "edit-payee",
+            crate::msg::desktop_payees_edit_title(name),
+            crate::msg::desktop_payees_edit_rule_placeholder(),
+            crate::msg::desktop_payees_edit_submit(),
+        ),
+    };
+    let element_id = |suffix: &str| SharedString::from(format!("{id}-{suffix}"));
+    let (name_id, category_id) = match mode {
+        PayeeDialogMode::Add => ("add-payee-name", "add-payee-category"),
+        PayeeDialogMode::Edit { .. } => ("edit-payee-name", "edit-payee-category"),
+    };
     let card = div()
         .flex()
         .flex_col()
-        .child(dialog::header(
-            crate::msg::desktop_payees_add_title(),
-            false,
-            cx,
-        ))
+        .child(dialog::header(title, false, cx))
         .child(dialog::body([
             div()
                 .child(text_field(
-                    "add-payee-name",
+                    name_id,
                     label(lib_locale::msg::column_name()),
                     &form.name,
                     &crate::msg::desktop_payees_name_placeholder(),
@@ -76,7 +106,7 @@ pub fn render(
                 .into_any_element(),
             select_field::render(
                 SelectFieldProps {
-                    id: "add-payee-category",
+                    id: category_id,
                     label: format!(
                         "{} {}",
                         crate::msg::desktop_payees_field_default_category(),
@@ -95,10 +125,10 @@ pub fn render(
             div()
                 .child(rules_field::render(
                     RulesFieldProps {
-                        id: "add-payee",
+                        id,
                         rules: &form.rules,
                         input: &form.rule_input,
-                        placeholder: crate::msg::desktop_payees_rule_placeholder(),
+                        placeholder,
                         focused: form.focused == PayeeField::Rule,
                         on_input_click: click(PayeeField::Rule),
                         on_add_click: on_add_rule,
@@ -112,31 +142,42 @@ pub fn render(
                         .map(|error| rules_field::error_line(error, cx)),
                 )
                 .into_any_element(),
-            div()
-                .p(px(10.0))
-                .bg(color::chrome(cx))
-                .border_l(px(2.0))
-                .border_color(color::foreground(cx))
-                .text_size(px(11.5))
-                .text_color(color::muted(cx))
-                .child(crate::msg::desktop_payees_rules_callout())
-                .into_any_element(),
+            callout(mode, cx),
         ]))
         .child(dialog::action_row(
             [
-                dialog::cancel_button("add-payee-cancel", on_cancel, cx).into_any_element(),
-                dialog::confirm_button(
-                    "add-payee-confirm",
-                    crate::msg::desktop_payees_add_submit(),
-                    valid,
-                    false,
-                    on_confirm,
-                    cx,
-                )
-                .into_any_element(),
+                dialog::cancel_button(element_id("cancel"), on_cancel, cx).into_any_element(),
+                dialog::confirm_button(element_id("confirm"), submit, valid, false, on_confirm, cx)
+                    .into_any_element(),
             ],
             cx,
         ));
 
     dialog::overlay(WIDTH, false, card, cx)
+}
+
+/// Add's dark-bordered note on how rules match; on Edit, while Splits carry the Payee, the handoff's
+/// red-bordered usage warning takes its place.
+fn callout(mode: PayeeDialogMode<'_>, cx: &App) -> AnyElement {
+    let (text, border) = match mode {
+        PayeeDialogMode::Edit { splits, .. } if splits > 0 => (
+            crate::msg::desktop_payees_edit_usage_callout(
+                i64::try_from(splits).unwrap_or(i64::MAX),
+            ),
+            color::negative(cx),
+        ),
+        _ => (
+            crate::msg::desktop_payees_rules_callout(),
+            color::foreground(cx),
+        ),
+    };
+    div()
+        .p(px(10.0))
+        .bg(color::chrome(cx))
+        .border_l(px(2.0))
+        .border_color(border)
+        .text_size(px(11.5))
+        .text_color(color::muted(cx))
+        .child(text)
+        .into_any_element()
 }

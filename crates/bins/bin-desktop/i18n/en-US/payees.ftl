@@ -33,7 +33,6 @@ desktop-payees-footnote = Payees without a default category need one picked each
 ## The hint strip and the flashes for dialogs still to come.
 
 desktop-hint-view-transactions = view transactions
-desktop-status-edit-payee-not-yet-built = edit payee — not yet built
 desktop-status-delete-payee-not-yet-built = delete payee — not yet built
 
 ## The Add and Edit payee dialogs. `$glyph` is the add button's leading plus sign.
@@ -51,3 +50,13 @@ desktop-payees-rules-callout = Rules match case-insensitively against the raw st
 desktop-payees-error-name-taken = { $name } already exists
 desktop-payees-error-alias-taken = { $alias } is already a match rule on { $owner }
 desktop-hint-confirm = confirm
+
+## The Edit payee dialog. `$name` is the Payee's stored name; `$count` the Splits carrying it.
+
+desktop-payees-edit-title = Edit payee — { $name }
+desktop-payees-edit-submit = Save
+desktop-payees-edit-rule-placeholder = add another format…
+desktop-payees-edit-usage-callout = { $count ->
+    [one] { $count } transaction uses this payee.
+   *[other] { $count } transactions use this payee.
+} Changing the default category only affects new transactions — existing ones keep whatever category they were assigned at the time.
