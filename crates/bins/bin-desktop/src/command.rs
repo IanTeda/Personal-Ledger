@@ -55,6 +55,9 @@ pub enum CommandEffect {
     SetToasts(bool),
     /// `:toasts` / `:messages`: opens the session Toast history.
     OpenToastHistory,
+    /// `:tags merge`: jumps to the Tags page and opens the 7e Merge dialog with neither select
+    /// chosen (#354).
+    MergeTags,
     /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
     Import,
     /// No real behaviour behind this command yet (`docs/ux/tui/README.md`'s commitment: "a
@@ -305,6 +308,13 @@ pub const COMMANDS: &[Command] = &[
         effect: CommandEffect::Navigate(Noun::Tags),
     },
     Command {
+        name: "tags merge",
+        domain: Domain::Tags,
+        description: crate::msg::desktop_command_tags_merge_description,
+        binding: None,
+        effect: CommandEffect::MergeTags,
+    },
+    Command {
         name: "dismiss",
         domain: Domain::Toasts,
         description: crate::msg::desktop_command_dismiss_description,
@@ -428,6 +438,12 @@ mod tests {
         let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
         assert_eq!(effect("toasts on"), Some(CommandEffect::SetToasts(true)));
         assert_eq!(effect("toasts off"), Some(CommandEffect::SetToasts(false)));
+    }
+
+    #[test]
+    fn tags_merge_opens_the_merge_dialog() {
+        let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
+        assert_eq!(effect("tags merge"), Some(CommandEffect::MergeTags));
     }
 
     #[test]

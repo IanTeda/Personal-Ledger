@@ -72,3 +72,26 @@ desktop-tags-remove-used = This removes <strong>{ $name }</strong> from <strong>
    *[other] { $count } transactions
 }</strong> and deletes the tag. The transactions keep their amount, category and payee. This can't be undone.
 desktop-tags-remove-confirm-label = Type { $name } to confirm
+
+## The Merge tags dialog (7e, #354). `$name` is a Tag's name and `$count` how many Transactions
+## carry it; `$source` and `$target` are the Tags being merged. The callout reads accordingly when
+## the target has no colour.
+
+desktop-tags-merge-title = Merge tags
+desktop-tags-merge-source-label = Merge this tag
+desktop-tags-merge-target-label = into this tag
+desktop-tags-merge-option = { $name } ({ $count ->
+    [one] { $count } txn
+   *[other] { $count } txns
+})
+desktop-tags-merge-callout = All <strong>{ $count ->
+    [one] { $count } transaction
+   *[other] { $count } transactions
+}</strong> tagged "{ $source }" will be retagged "{ $target }" instead, using { $target }'s colour. "{ $source }" is then deleted. This can't be undone, but the transactions themselves are never touched beyond their tag.
+desktop-tags-merge-callout-no-colour = All <strong>{ $count ->
+    [one] { $count } transaction
+   *[other] { $count } transactions
+}</strong> tagged "{ $source }" will be retagged "{ $target }" instead, which has no colour. "{ $source }" is then deleted. This can't be undone, but the transactions themselves are never touched beyond their tag.
+desktop-tags-merge-choose = Choose the tag to merge and the tag to keep.
+desktop-tags-merge-submit = Merge into "{ $target }"
+desktop-tags-merge-submit-empty = Merge

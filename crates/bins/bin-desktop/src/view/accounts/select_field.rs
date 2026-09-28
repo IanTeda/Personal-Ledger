@@ -20,6 +20,8 @@ pub struct SelectFieldProps<'a> {
     pub options: &'a [String],
     pub state: &'a SelectState,
     pub focused: bool,
+    /// Keeps the accent border on while unfocused: 7e's source select marks the Tag that goes.
+    pub accent: bool,
     /// `Some` makes the field read-only, showing this text instead of the value.
     pub read_only: Option<SharedString>,
     pub on_field_click: dialog::OnClick,
@@ -33,6 +35,7 @@ pub fn render(props: SelectFieldProps<'_>, cx: &App) -> AnyElement {
         options,
         state,
         focused,
+        accent,
         read_only,
         on_field_click,
         on_option_click,
@@ -55,7 +58,7 @@ pub fn render(props: SelectFieldProps<'_>, cx: &App) -> AnyElement {
         .py(px(8.0))
         .px(px(10.0))
         .border_1()
-        .border_color(if focused && read_only.is_none() {
+        .border_color(if (focused || accent) && read_only.is_none() {
             color::accent(cx)
         } else {
             color::border(cx)

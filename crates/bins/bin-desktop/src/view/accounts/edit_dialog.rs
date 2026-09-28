@@ -80,6 +80,7 @@ pub fn render(
                         options: &options.institutions,
                         state: &form.institution,
                         focused: focused(AccountField::Institution),
+                        accent: false,
                         read_only: form
                             .is_cash()
                             .then(|| accounts::institution_label(NO_INSTITUTION).into()),
@@ -95,6 +96,7 @@ pub fn render(
                         options: &options.types,
                         state: &form.account_type,
                         focused: focused(AccountField::Type),
+                        accent: false,
                         read_only: None,
                         on_field_click: click(AccountField::Type),
                         on_option_click: option_click(AccountField::Type),

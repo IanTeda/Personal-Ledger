@@ -116,6 +116,7 @@ pub fn render(
                     options: &options.labels,
                     state: &form.default_category,
                     focused: form.focused == PayeeField::DefaultCategory,
+                    accent: false,
                     read_only: None,
                     on_field_click: click(PayeeField::DefaultCategory),
                     on_option_click,

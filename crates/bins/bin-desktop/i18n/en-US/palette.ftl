@@ -25,6 +25,7 @@ desktop-command-import-description = import a bank statement (sample statement f
 desktop-command-reports-description = net worth and variance reports
 desktop-command-settings-description = ledger preferences
 desktop-command-tags-description = the tags every transaction can carry any number of
+desktop-command-tags-merge-description = fold one tag into another, retagging its transactions
 desktop-command-transactions-description = the transaction ledger
 desktop-command-dismiss-description = dismiss the newest Toast
 desktop-command-dismiss-all-description = dismiss every Toast

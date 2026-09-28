@@ -24,7 +24,9 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{HexColor, Money};
 
-use crate::{accounts::Account, transaction_query::Total, transactions::Transaction};
+use crate::{
+    accounts::Account, select::SelectState, transaction_query::Total, transactions::Transaction,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tag {
@@ -601,6 +603,21 @@ impl RemoveTagForm {
     }
 }
 
+/// The 7e selects' options in usage order, each labelled by `label(name, transactions)`.
+pub fn merge_options(
+    tags: &[Tag],
+    transactions: &[Transaction],
+    label: impl Fn(&str, usize) -> String,
+) -> Vec<MergeOption> {
+    sorted_by_usage(tags, transactions)
+        .into_iter()
+        .map(|tag| MergeOption {
+            id: tag.id,
+            label: label(&tag.name, transaction_count(transactions, tag.id)),
+        })
+        .collect()
+}
+
 /// Which Tags dialog is open on the Tags page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagsDialog {
@@ -609,12 +626,168 @@ pub enum TagsDialog {
     Edit(u32, TagForm),
     /// Removing the Tag with this [`Tag::id`].
     Remove(u32, RemoveTagForm),
-    /// Merging `source` into `target`; either is empty until chosen (the palette's `tags merge`
-    /// opens with neither, `m` on an unflagged Tag with only the source).
-    Merge {
-        source: Option<u32>,
-        target: Option<u32>,
-    },
+    /// Merging one Tag into another; either select is empty until chosen (the palette's
+    /// `tags merge` opens with neither, `m` on an unflagged Tag with only the source).
+    Merge(MergeTagsForm),
+}
+
+/// A 7e select's option: a Tag and its label, `Shared (9 txns)`. Labels are unique because names
+/// are, so the selects key their value on the label and map it back to the id here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergeOption {
+    pub id: u32,
+    pub label: String,
+}
+
+/// Which 7e select has focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum MergeField {
+    #[default]
+    Source,
+    Target,
+}
+
+/// The 7e Merge dialog's two selects (#354). Target's options leave out the chosen source, so the
+/// two can never be equal; choosing as source the Tag already picked as target clears the target.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct MergeTagsForm {
+    pub source: SelectState,
+    pub target: SelectState,
+    pub focused: MergeField,
+}
+
+fn label_of(options: &[MergeOption], id: Option<u32>) -> Option<String> {
+    let id = id?;
+    options
+        .iter()
+        .find(|option| option.id == id)
+        .map(|option| option.label.clone())
+}
+
+fn id_of(options: &[MergeOption], label: Option<&str>) -> Option<u32> {
+    let label = label?;
+    options
+        .iter()
+        .find(|option| option.label == label)
+        .map(|option| option.id)
+}
+
+impl MergeTagsForm {
+    /// Opens on `source` and `target` (ignored if equal), focusing the first one still empty.
+    pub fn new(options: &[MergeOption], source: Option<u32>, target: Option<u32>) -> Self {
+        let target = target.filter(|target| Some(*target) != source);
+        let focused = if source.is_some() && target.is_none() {
+            MergeField::Target
+        } else {
+            MergeField::Source
+        };
+        Self {
+            source: SelectState::new(label_of(options, source)),
+            target: SelectState::new(label_of(options, target)),
+            focused,
+        }
+    }
+
+    pub fn source_id(&self, options: &[MergeOption]) -> Option<u32> {
+        id_of(options, self.source.value())
+    }
+
+    pub fn target_id(&self, options: &[MergeOption]) -> Option<u32> {
+        id_of(options, self.target.value())
+    }
+
+    /// The labels `field`'s list offers: every Tag for the source, every Tag but the source for
+    /// the target.
+    pub fn labels(&self, options: &[MergeOption], field: MergeField) -> Vec<String> {
+        let source = self.source_id(options);
+        options
+            .iter()
+            .filter(|option| field == MergeField::Source || Some(option.id) != source)
+            .map(|option| option.label.clone())
+            .collect()
+    }
+
+    /// Whether **Merge** is live: both chosen, and different.
+    pub fn pair(&self, options: &[MergeOption]) -> Option<(u32, u32)> {
+        let source = self.source_id(options)?;
+        let target = self.target_id(options)?;
+        (source != target).then_some((source, target))
+    }
+
+    fn state_mut(&mut self, field: MergeField) -> &mut SelectState {
+        match field {
+            MergeField::Source => &mut self.source,
+            MergeField::Target => &mut self.target,
+        }
+    }
+
+    /// Clears the target once the source has moved onto it.
+    fn settle(&mut self, options: &[MergeOption]) {
+        if self.source_id(options).is_some() && self.source_id(options) == self.target_id(options) {
+            self.target = SelectState::default();
+        }
+    }
+
+    /// Closes whichever list is open, returning whether one was (`Esc`'s first press).
+    pub fn close_open_select(&mut self) -> bool {
+        let was_open = self.source.is_open() || self.target.is_open();
+        self.source.cancel();
+        self.target.cancel();
+        was_open
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.source.is_open() || self.target.is_open()
+    }
+
+    /// `Tab` / `Shift-Tab`: commits an open list's highlight and moves to the other select.
+    pub fn cycle_focus(&mut self, options: &[MergeOption]) {
+        let field = self.focused;
+        let labels = self.labels(options, field);
+        self.state_mut(field).commit(&labels);
+        self.settle(options);
+        self.focused = match field {
+            MergeField::Source => MergeField::Target,
+            MergeField::Target => MergeField::Source,
+        };
+    }
+
+    /// `Up`/`Down` on the focused select: moves an open list's highlight, else steps the value.
+    pub fn step(&mut self, options: &[MergeOption], delta: isize) {
+        let field = self.focused;
+        let labels = self.labels(options, field);
+        let state = self.state_mut(field);
+        if state.is_open() {
+            state.move_highlight(&labels, delta);
+        } else {
+            state.step(&labels, delta);
+        }
+        self.settle(options);
+    }
+
+    /// `Space`, or a click on the closed field: opens the list, or commits the open one.
+    pub fn toggle(&mut self, options: &[MergeOption], field: MergeField) {
+        if field != self.focused {
+            self.close_open_select();
+            self.focused = field;
+        }
+        let labels = self.labels(options, field);
+        let state = self.state_mut(field);
+        if state.is_open() {
+            state.commit(&labels);
+        } else {
+            state.open(&labels);
+        }
+        self.settle(options);
+    }
+
+    /// A click on row `index` of `field`'s open list.
+    pub fn choose(&mut self, options: &[MergeOption], field: MergeField, index: usize) {
+        let labels = self.labels(options, field);
+        self.focused = field;
+        self.state_mut(field).choose(&labels, index);
+        self.settle(options);
+    }
 }
 
 #[cfg(test)]
@@ -1196,5 +1369,99 @@ mod tests {
         assert!(form.allows("travel", 3));
         form.backspace();
         assert!(!form.allows("travel", 3));
+    }
+
+    fn merge_options_of(ids: &[u32]) -> Vec<MergeOption> {
+        ids.iter()
+            .map(|id| MergeOption {
+                id: *id,
+                label: format!("tag {id}"),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn merge_options_follow_usage_order_with_their_counts() {
+        let (_, tags, transactions) = seeded();
+        let options = merge_options(&tags, &transactions, |name, count| {
+            format!("{name} ({count})")
+        });
+        let sorted = sorted_by_usage(&tags, &transactions);
+        assert_eq!(options.len(), tags.len());
+        for (option, tag) in options.iter().zip(sorted) {
+            assert_eq!(option.id, tag.id);
+            assert_eq!(
+                option.label,
+                format!(
+                    "{} ({})",
+                    tag.name,
+                    transaction_count(&transactions, tag.id)
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn a_merge_form_opens_on_its_pair_and_focuses_the_first_empty_select() {
+        let options = merge_options_of(&[1, 2, 3]);
+        let both = MergeTagsForm::new(&options, Some(2), Some(1));
+        assert_eq!(both.pair(&options), Some((2, 1)));
+        assert_eq!(both.focused, MergeField::Source);
+
+        let source_only = MergeTagsForm::new(&options, Some(2), None);
+        assert_eq!(source_only.pair(&options), None);
+        assert_eq!(source_only.focused, MergeField::Target);
+
+        let same = MergeTagsForm::new(&options, Some(2), Some(2));
+        assert_eq!(same.target_id(&options), None);
+    }
+
+    #[test]
+    fn the_target_list_leaves_out_the_source() {
+        let options = merge_options_of(&[1, 2, 3]);
+        let form = MergeTagsForm::new(&options, Some(2), None);
+        assert_eq!(form.labels(&options, MergeField::Source).len(), 3);
+        assert_eq!(
+            form.labels(&options, MergeField::Target),
+            ["tag 1", "tag 3"]
+        );
+    }
+
+    #[test]
+    fn moving_the_source_onto_the_target_clears_the_target() {
+        let options = merge_options_of(&[1, 2, 3]);
+        let mut form = MergeTagsForm::new(&options, Some(1), Some(2));
+        form.step(&options, 1);
+        assert_eq!(form.source_id(&options), Some(2));
+        assert_eq!(form.target_id(&options), None);
+        assert_eq!(form.pair(&options), None);
+    }
+
+    #[test]
+    fn toggling_opens_then_commits_and_choose_picks_a_row() {
+        let options = merge_options_of(&[1, 2, 3]);
+        let mut form = MergeTagsForm::new(&options, Some(1), None);
+        form.toggle(&options, MergeField::Target);
+        assert!(form.target.is_open());
+        form.step(&options, 1);
+        form.toggle(&options, MergeField::Target);
+        assert!(!form.is_open());
+        assert_eq!(form.pair(&options), Some((1, 3)));
+
+        form.toggle(&options, MergeField::Source);
+        form.choose(&options, MergeField::Source, 2);
+        assert_eq!(form.pair(&options), None);
+        assert_eq!(form.source_id(&options), Some(3));
+    }
+
+    #[test]
+    fn tab_commits_the_open_list_and_moves_on() {
+        let options = merge_options_of(&[1, 2, 3]);
+        let mut form = MergeTagsForm::new(&options, None, None);
+        form.toggle(&options, MergeField::Source);
+        form.cycle_focus(&options);
+        assert_eq!(form.source_id(&options), Some(1));
+        assert_eq!(form.focused, MergeField::Target);
+        assert!(!form.close_open_select());
     }
 }

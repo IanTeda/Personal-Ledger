@@ -25,6 +25,11 @@ toast-payee-deleted = Deleted payee { $name }
 toast-payee-deactivated = Deactivated payee { $name }
 toast-payee-reactivated = Reactivated payee { $name }
 toast-tag-deleted = Deleted tag { $name }
+toast-tag-merged = Merged tag { $source } into { $target } · { $transactions ->
+    [0] no transactions
+    [one] { $transactions } transaction retagged
+   *[other] { $transactions } transactions retagged
+}
 toast-unit-deleted = Deleted unit { $name }
 
 ## A store refusal. $entity is the thing being saved ("account", "tag"), $reason the store's own words.

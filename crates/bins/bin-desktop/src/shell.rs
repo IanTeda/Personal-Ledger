@@ -144,6 +144,16 @@ fn tags_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The status-line legend while the 7e Merge dialog is open.
+fn merge_tags_dialog_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("esc", crate::msg::desktop_hint_cancel()),
+        ("enter", crate::msg::desktop_hint_confirm()),
+        ("tab", crate::msg::desktop_hint_next_field()),
+        ("\u{2191}/\u{2193}", crate::msg::desktop_hint_choose()),
+    ]
+}
+
 /// The status-line legend while the Add or Edit tag dialog is open (the handoff's 7b/7c), with
 /// `←/→ colour` added: the swatch row has no other key. Edit adds `space` for its Active checkbox.
 fn tag_dialog_hints(editing: bool) -> Vec<(&'static str, String)> {
@@ -696,6 +706,11 @@ impl Shell {
                     .payees_dialog
                     .as_mut()
                     .and_then(payees::PayeesDialog::form_mut)
+                    && form.close_open_select()
+                {
+                    return true;
+                }
+                if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut()
                     && form.close_open_select()
                 {
                     return true;
@@ -1834,8 +1849,7 @@ impl Shell {
     }
 
     /// The Tags page's own `n`/`e`/`x`/`m` (only while it is the active noun and the view has
-    /// focus, in `Normal` mode). The 7e Merge dialog isn't built yet,
-    /// so `m` says so.
+    /// focus, in `Normal` mode).
     fn handle_tags_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Tags || self.nav.focus() != FocusZone::View {
             return false;
@@ -1883,6 +1897,9 @@ impl Shell {
     /// hex box and (Edit only) Active, `←`/`→` step the swatch row, `space` toggles Active, and
     /// `enter` submits from anywhere. `Esc` never reaches here.
     fn handle_tags_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        if matches!(self.tags_dialog, Some(tags::TagsDialog::Merge(_))) {
+            return self.handle_merge_tags_key(keystroke);
+        }
         if let Some(tags::TagsDialog::Remove(_, form)) = self.tags_dialog.as_mut() {
             match keystroke.key.as_str() {
                 "enter" => self.confirm_remove_tag_dialog(),
@@ -1999,6 +2016,8 @@ impl Shell {
     fn handle_tags_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
         if matches!(self.tags_dialog, Some(tags::TagsDialog::Remove(..))) {
             self.confirm_remove_tag_dialog();
+        } else if matches!(self.tags_dialog, Some(tags::TagsDialog::Merge(_))) {
+            self.confirm_merge_tags_dialog();
         } else {
             self.confirm_tags_dialog();
         }
@@ -2055,9 +2074,116 @@ impl Shell {
         self.tags_selected = self.tags_selected.min(self.tags.len().saturating_sub(1));
     }
 
-    /// Merge with `source` as the source Tag (`None` from the subline link when nothing is flagged).
-    fn open_merge_tags_dialog(&mut self, _source: Option<u32>) {
-        self.status_message = Some(crate::msg::desktop_status_merge_tags_not_yet_built());
+    /// The 7e selects' options, labelled `Shared (9 txns)`.
+    fn merge_tag_options(&self) -> Vec<tags::MergeOption> {
+        tags::merge_options(&self.tags, &self.transactions, |name, count| {
+            crate::msg::desktop_tags_merge_option(name, i64::try_from(count).unwrap_or(i64::MAX))
+        })
+    }
+
+    /// Opens 7e with `source` as the source Tag and, when it is flagged as a likely duplicate, its
+    /// suggested target (#354). `None` (the palette's `tags merge`, or the subline link with
+    /// nothing flagged) leaves both selects empty.
+    fn open_merge_tags_dialog(&mut self, source: Option<u32>) {
+        let groups = tags::duplicate_groups(&self.tags, &self.transactions);
+        let target = source.and_then(|id| tags::duplicate_of(&groups, id));
+        let options = self.merge_tag_options();
+        self.tags_dialog = Some(tags::TagsDialog::Merge(tags::MergeTagsForm::new(
+            &options, source, target,
+        )));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Keys while 7e is open: `tab` commits an open list and moves to the other select, `↑`/`↓`
+    /// step the value (or an open list's highlight), `space` opens or commits the list, and
+    /// `enter` commits an open list or else merges. `Esc` never reaches here.
+    fn handle_merge_tags_key(&mut self, keystroke: &Keystroke) -> bool {
+        let options = self.merge_tag_options();
+        let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut() else {
+            return false;
+        };
+        match keystroke.key.as_str() {
+            "tab" => form.cycle_focus(&options),
+            "up" => form.step(&options, -1),
+            "down" => form.step(&options, 1),
+            "space" => form.toggle(&options, form.focused),
+            "enter" if form.is_open() => form.toggle(&options, form.focused),
+            "enter" => self.confirm_merge_tags_dialog(),
+            _ => {
+                let modifiers = &keystroke.modifiers;
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// **Merge into "…"** and `enter`: a no-op until both Tags are chosen, then retags the
+    /// source's Splits with the target, deletes the source, toasts it, closes the dialog and
+    /// selects the target.
+    fn confirm_merge_tags_dialog(&mut self) {
+        let options = self.merge_tag_options();
+        let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_ref() else {
+            return;
+        };
+        let Some((source, target)) = form.pair(&options) else {
+            return;
+        };
+        let (Some(source_name), Some(target_name)) = (
+            tags::get(&self.tags, source).map(|tag| tag.name.clone()),
+            tags::get(&self.tags, target).map(|tag| tag.name.clone()),
+        ) else {
+            return;
+        };
+        let transactions = tags::transaction_count(&self.transactions, source);
+        let (kind, text) =
+            match tags::merge_tags(&mut self.tags, &mut self.transactions, source, target) {
+                Ok(()) => (
+                    ToastKind::Success,
+                    lib_locale::msg::toast_tag_merged(
+                        &source_name,
+                        &target_name,
+                        i64::try_from(transactions).unwrap_or(i64::MAX),
+                    ),
+                ),
+                Err(error) => (
+                    ToastKind::Error,
+                    lib_locale::msg::toast_save_failed(
+                        &lib_locale::msg::toast_entity_tag(),
+                        &error.to_string(),
+                    ),
+                ),
+            };
+        self.raise_toast(kind, text);
+        self.tags_dialog = None;
+        self.nav.exit_mode();
+        self.select_tag(target);
+    }
+
+    fn handle_merge_tags_field_click(
+        &mut self,
+        field: tags::MergeField,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let options = self.merge_tag_options();
+        if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut() {
+            form.toggle(&options, field);
+        }
+        cx.notify();
+    }
+
+    fn handle_merge_tags_option_click(
+        &mut self,
+        field: tags::MergeField,
+        index: usize,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let options = self.merge_tag_options();
+        if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut() {
+            form.choose(&options, field, index);
+        }
+        cx.notify();
     }
 
     /// The subline's "merge them" link: the first flagged Tag in usage order as the source.
@@ -3555,6 +3681,15 @@ impl Shell {
                 self.nav.exit_mode();
                 self.open_toast_history();
             }
+            CommandEffect::MergeTags => {
+                self.nav.exit_mode();
+                let noun_before = self.nav.noun();
+                self.nav.set_noun(Noun::Tags);
+                if noun_before != Noun::Tags {
+                    self.reset_view_scroll();
+                }
+                self.open_merge_tags_dialog(None);
+            }
             CommandEffect::Import => {
                 self.nav.exit_mode();
                 self.open_import();
@@ -4790,6 +4925,7 @@ impl Render for Shell {
                     Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
                     Some(tags::TagsDialog::Edit(..)) => tag_dialog_hints(true),
                     Some(tags::TagsDialog::Remove(..)) => delete_payee_dialog_hints(),
+                    Some(tags::TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
                     _ => tags_hints(),
                 },
                 right: {
@@ -5121,7 +5257,43 @@ impl Render for Shell {
                         cx,
                     )
                 }),
-                _ => None,
+                Some(tags::TagsDialog::Merge(form)) => {
+                    let options = self.merge_tag_options();
+                    let source = form.source_id(&options);
+                    let entity = entity.clone();
+                    let on_field_click: tags_view::merge_dialog::OnFieldClick = {
+                        let entity = entity.clone();
+                        Rc::new(move |field, _window, cx| {
+                            entity.update(cx, |shell, cx| {
+                                shell.handle_merge_tags_field_click(field, cx);
+                            });
+                        })
+                    };
+                    let on_option_click: tags_view::merge_dialog::OnOptionClick =
+                        Rc::new(move |field, index, _window, cx| {
+                            entity.update(cx, |shell, cx| {
+                                shell.handle_merge_tags_option_click(field, index, cx);
+                            });
+                        });
+                    Some(tags_view::merge_dialog::render(
+                        tags_view::merge_dialog::MergeTagsProps {
+                            form,
+                            options: &options,
+                            source: source.and_then(|id| tags::get(&self.tags, id)),
+                            target: form
+                                .target_id(&options)
+                                .and_then(|id| tags::get(&self.tags, id)),
+                            transactions: source
+                                .map_or(0, |id| tags::transaction_count(&self.transactions, id)),
+                            on_field_click,
+                            on_option_click,
+                            on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
+                            on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
+                        },
+                        cx,
+                    ))
+                }
+                None => None,
             })
             .children(self.categories_dialog.as_ref().map(|dialog| match dialog {
                 categories::CategoriesDialog::Add { form, .. } => {

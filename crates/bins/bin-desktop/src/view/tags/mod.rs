@@ -12,6 +12,7 @@
 pub mod add_dialog;
 pub mod colour_field;
 pub mod edit_dialog;
+pub mod merge_dialog;
 pub mod remove_dialog;
 
 use std::rc::Rc;
