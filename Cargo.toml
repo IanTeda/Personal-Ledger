@@ -58,6 +58,9 @@ unwrap_in_result = "deny"
 # dep handling). Minimum required Cargo version for resolver 3 is 1.51.
 resolver = "3"
 
+# Vendored dependency patches, not workspace crates (see `[patch.crates-io]`).
+exclude = ["vendor/stacksafe-macro"]
+
 # List of workspace members (crates included in the workspace)
 # You can add a library crate with the command: `$ cargo new crates/proto --lib`
 # Or manually by creating a new directory with a `Cargo.toml` file and including its
@@ -136,3 +139,8 @@ tonic = { version = "0.14.2", features = ["transport", "codegen"] }
 tracing = { version = "0.1.43" }
 unic-langid = { version = "0.9.6" }
 uuid = { version = "1.19.0", features = ["v7", "serde"] }
+
+# Drop `proc-macro-error2` (future-incompatibility warning E0365) from gpui's
+# `stacksafe` 0.1 dependency; see `vendor/stacksafe-macro/Cargo.toml`.
+[patch.crates-io]
+stacksafe-macro = { path = "vendor/stacksafe-macro" }

@@ -1,0 +1,23 @@
+# Vendored patch of `stacksafe-macro` 0.1.4, with the macro source taken from
+# upstream 1.0.3 (Apache-2.0, https://github.com/fast/stacksafe).
+#
+# WHY: gpui 0.2 pins `stacksafe = "0.1"`, whose macro crate depends on
+# `proc-macro-error2`, which trips a future-incompatibility warning (E0365).
+# Upstream 1.x dropped that dependency and expands `#[stacksafe]` to the same
+# code, so this keeps the 0.1 version number for the resolver and swaps in the
+# 1.x source. Remove it (and the `[patch.crates-io]` entry in the root
+# `Cargo.toml`) once gpui depends on `stacksafe` 1.x.
+[package]
+name = "stacksafe-macro"
+version = "0.1.4"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", default-features = false, features = ["full", "parsing", "printing", "proc-macro"] }
