@@ -92,6 +92,29 @@ Tag management for the Personal Ledger desktop app. Tags are free-form, cross-cu
 ## Assets
 Icons are inline stroke SVGs (stroke 1.5) — see `Tags.html`. No images.
 
+## Acceptance pass
+
+Built by the [Desktop Tags Surface](https://github.com/IanTeda/Personal-Ledger/issues/351) map: the stub model (#356), the list (7a, #357), Add (7b, #358), Edit (7c, #359), Remove (7d, #360) and Merge (7e, #361) dialogs, all on in-memory stubs.
+
+### Deliberate departures from the mockup
+
+- **A Tag's colour is optional** (#352): a new Tag has none, and the picker offers "none", the six swatches as presets and a free hex field. A colourless Tag shows no swatch, with the slot kept so names stay aligned.
+- **Remove always deletes, with neutral styling** (#353): used or not, 7d untags every Split and deletes the Tag. A used Tag needs its name typed to confirm. Deactivating is a toggle on 7c instead; inactive Tags are dimmed, marked "inactive" and left out of the count.
+- **No reuse offer on Add** (#354): names are unique by their normalised form (ignoring case, spaces and punctuation), so 7b shows a plain "already exists" error rather than a reuse button, and the handoff's `Shared`/`shared` pair is impossible. The duplicate flag stays as a safety net; the stub seeds `Work Trip`/`work-trip` on purpose.
+- **Merge entry points**: the subline's "merge them" link, a row's duplicate badge, `m` on the selected row and the `:tags merge` palette verb.
+- **Usage figures are computed live** (#355) from the Transactions stub, all time and every Account: TRANSACTIONS counts distinct Transactions and drives the sort, TOTAL appends the Unit code when it isn't the base Unit and shows "mixed units" rather than summing across Units, so the figures differ from the mockup's samples.
+
+### Verified live vs by code review
+
+**Not yet verified live.** The #362 pass so far is a code review: the app was not run and no screenshots were taken. Keys, Messages, the status-line legends and the rules above were checked against the code (`shell.rs`'s `handle_tags_key`/`handle_tags_dialog_key`, `tags_hints`/`tag_dialog_hints`/`merge_tags_dialog_hints`, `i18n/en-US/tags.ftl`), and the pure rules are covered by `cargo test -p bin_desktop tags` (42 passing). A live pass (every screen screenshotted against `Tags.html`) is still owed before #362 closes.
+
+### Known gaps
+
+- `gpui` 0.2 has no letter-spacing or `tabular-nums` hook, so header tracking and tabular figures are not reproduced (as on the other desktop surfaces).
+- The Tag swatch shows on 7a, 7b/7c, 7e and the Transactions tag chips, but not yet in the 4b filter builder.
+- The desktop has no transaction form, so tagging a Split (and `resolve_split_tag`'s reuse-or-create) has no UI yet.
+- The TUI's Tags screen doesn't show colour yet (#363).
+
 ## Files
 - `Tags.html` — screens 7a–7e
 - `styles.css` — design-system stylesheet (`.btn`, `.tag` variants)
