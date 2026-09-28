@@ -139,6 +139,14 @@ fn payee_dialog_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The status-line legend while the Delete payee dialog is open: it has one field, so no `tab`.
+fn delete_payee_dialog_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("esc", crate::msg::desktop_hint_cancel()),
+        ("enter", crate::msg::desktop_hint_confirm()),
+    ]
+}
+
 /// The Accounts page's status-line legend (`docs/ux/desktop/Accounts/README.md`'s 3a), as
 /// `(key, action)`.
 fn accounts_hints() -> Vec<(&'static str, String)> {
@@ -1744,8 +1752,7 @@ impl Shell {
     }
 
     /// The Payees page's own `n`/`e`/`d` (only while it is the active noun and the view has focus,
-    /// in `Normal` mode). `n` opens the Add dialog; Edit and Delete arrive with #288-#289, and
-    /// until then each flashes "not yet built".
+    /// in `Normal` mode): the Add, Edit and Delete dialogs.
     fn handle_payees_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Payees || self.nav.focus() != FocusZone::View {
             return false;
@@ -1794,6 +1801,29 @@ impl Shell {
     /// Keys while an Add or Edit payee dialog is open. `enter` in the rule input adds a chip; on a
     /// closed select it opens the list; anywhere else it submits. `Esc` never reaches here.
     fn handle_payees_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        if let Some(payees::PayeesDialog::Delete(_, form)) = self.payees_dialog.as_mut() {
+            match keystroke.key.as_str() {
+                "enter" => self.confirm_delete_payee_dialog(),
+                "backspace" => form.backspace(),
+                _ => {
+                    let modifiers = &keystroke.modifiers;
+                    if modifiers.control
+                        || modifiers.alt
+                        || modifiers.platform
+                        || modifiers.function
+                    {
+                        return false;
+                    }
+                    if let Some(text) = keystroke.key_char.as_deref()
+                        && text.chars().count() == 1
+                        && let Some(ch) = text.chars().next()
+                    {
+                        form.push_char(ch);
+                    }
+                }
+            }
+            return true;
+        }
         let options = self.payee_dialog_options();
         let own_id = self.payee_dialog_own_id();
         let Some(form) = self
@@ -1858,7 +1888,7 @@ impl Shell {
                 let id = *id;
                 payees::edit_payee(&mut self.payees, id, &draft).map(|()| id)
             }
-            payees::PayeesDialog::Delete(_) => return,
+            payees::PayeesDialog::Delete(..) => return,
         };
         match result {
             Ok(id) => {
@@ -1947,8 +1977,76 @@ impl Shell {
         self.nav.enter_mode(InputMode::Dialog);
     }
 
-    fn open_delete_payee_dialog(&mut self, _id: u32) {
-        self.status_message = Some(crate::msg::desktop_status_delete_payee_not_yet_built());
+    fn open_delete_payee_dialog(&mut self, id: u32) {
+        if payees::get(&self.payees, id).is_none() {
+            return;
+        }
+        self.payees_dialog = Some(payees::PayeesDialog::Delete(
+            id,
+            payees::DeletePayeeForm::default(),
+        ));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// The Payee the Delete dialog is open on and what confirming it would do (#283).
+    fn delete_payee_target(&self) -> Option<(&Payee, payees::DeleteAction)> {
+        let Some(payees::PayeesDialog::Delete(id, _)) = self.payees_dialog.as_ref() else {
+            return None;
+        };
+        let payee = payees::get(&self.payees, *id)?;
+        Some((
+            payee,
+            payees::DeleteAction::for_payee(payee, &self.transactions),
+        ))
+    }
+
+    /// **Delete payee** / **Deactivate payee** / **Reactivate payee** and `enter`: a no-op until the
+    /// typed name matches (for the destructive two), then applies the action, toasts the outcome
+    /// and closes the dialog.
+    fn confirm_delete_payee_dialog(&mut self) {
+        let Some((payee, action)) = self.delete_payee_target() else {
+            return;
+        };
+        let Some(payees::PayeesDialog::Delete(_, form)) = self.payees_dialog.as_ref() else {
+            return;
+        };
+        if !form.allows(action, &payee.name) {
+            return;
+        }
+        let (id, name) = (payee.id, payee.name.clone());
+        let (kind, text) =
+            match payees::apply_delete_action(&mut self.payees, &self.transactions, id, action) {
+                Ok(()) => (
+                    ToastKind::Success,
+                    match action {
+                        payees::DeleteAction::Delete => lib_locale::msg::toast_payee_deleted(&name),
+                        payees::DeleteAction::Deactivate => {
+                            lib_locale::msg::toast_payee_deactivated(&name)
+                        }
+                        payees::DeleteAction::Reactivate => {
+                            lib_locale::msg::toast_payee_reactivated(&name)
+                        }
+                    },
+                ),
+                Err(error) => (
+                    ToastKind::Error,
+                    lib_locale::msg::toast_save_failed(
+                        &lib_locale::msg::toast_entity_payee(),
+                        &error.to_string(),
+                    ),
+                ),
+            };
+        self.raise_toast(kind, text);
+        self.payees_dialog = None;
+        self.nav.exit_mode();
+        self.payees_selected = self
+            .payees_selected
+            .min(self.payees.len().saturating_sub(1));
+    }
+
+    fn handle_delete_payee_confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.confirm_delete_payee_dialog();
+        cx.notify();
     }
 
     fn handle_payees_add_click(&mut self, cx: &mut Context<'_, Self>) {
@@ -3723,14 +3821,15 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_payees_add_click(cx));
             })
         };
+        let plain_payees = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
         let payees_dialog_handlers = {
-            let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-                let entity = entity.clone();
-                let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
-                    entity.update(cx, handler);
-                });
-                on_click
-            };
+            let plain = plain_payees;
             let indexed = |handler: fn(&mut Shell, usize, &mut Context<'_, Shell>)| {
                 let entity = entity.clone();
                 let on_click: payees_view::add_dialog::OnOptionClick =
@@ -3991,10 +4090,10 @@ impl Render for Shell {
                 ),
             }),
             Noun::Payees => Some(PageStatus {
-                hints: if self.payees_dialog.is_some() {
-                    payee_dialog_hints()
-                } else {
-                    payees_hints()
+                hints: match self.payees_dialog {
+                    Some(payees::PayeesDialog::Delete(..)) => delete_payee_dialog_hints(),
+                    Some(_) => payee_dialog_hints(),
+                    None => payees_hints(),
                 },
                 right: format!(
                     "{} \u{b7} {}",
@@ -4229,7 +4328,28 @@ impl Render for Shell {
                         )
                     })
                 }
-                _ => None,
+                Some(payees::PayeesDialog::Delete(id, form)) => {
+                    self.delete_payee_target().map(|(payee, action)| {
+                        payees_view::delete_dialog::render(
+                            payees_view::delete_dialog::DeletePayeeProps {
+                                payee,
+                                action,
+                                form,
+                                splits: payees::usage(
+                                    &self.transactions,
+                                    &self.accounts,
+                                    None,
+                                    *id,
+                                )
+                                .splits,
+                                on_cancel: plain_payees(Shell::handle_payees_dialog_cancel),
+                                on_confirm: plain_payees(Shell::handle_delete_payee_confirm),
+                            },
+                            cx,
+                        )
+                    })
+                }
+                None => None,
             })
             .children(self.categories_dialog.as_ref().map(|dialog| match dialog {
                 categories::CategoriesDialog::Add { form, .. } => {

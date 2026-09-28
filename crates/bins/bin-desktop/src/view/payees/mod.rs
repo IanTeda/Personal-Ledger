@@ -8,6 +8,7 @@
 //! Every action is a callback into `Shell`, so the keyboard and the mouse reach the same handlers.
 
 pub mod add_dialog;
+pub mod delete_dialog;
 pub mod rules_field;
 
 use std::rc::Rc;

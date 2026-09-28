@@ -592,7 +592,7 @@ pub enum PayeesDialog {
     /// Editing the Payee with this [`Payee::id`].
     Edit(u32, PayeeForm),
     /// Deleting (or, when referenced, deactivating) the Payee with this [`Payee::id`].
-    Delete(u32),
+    Delete(u32, DeletePayeeForm),
 }
 
 impl PayeesDialog {
@@ -602,6 +602,70 @@ impl PayeesDialog {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
             Self::Delete(..) => None,
         }
+    }
+}
+
+/// What the 6d dialog does to a Payee (#283): an unreferenced one is hard-deleted, a referenced
+/// active one can only be deactivated, and a referenced inactive one is offered reactivation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeleteAction {
+    Delete,
+    Deactivate,
+    Reactivate,
+}
+
+impl DeleteAction {
+    pub fn for_payee(payee: &Payee, transactions: &[Transaction]) -> Self {
+        if !is_referenced(transactions, payee.id) {
+            Self::Delete
+        } else if payee.is_active {
+            Self::Deactivate
+        } else {
+            Self::Reactivate
+        }
+    }
+
+    /// Reactivating loses nothing, so it skips the typed-name gate and the destructive chrome.
+    pub fn is_destructive(self) -> bool {
+        self != Self::Reactivate
+    }
+}
+
+/// The 6d dialog's typed-name confirmation (exact and case-sensitive, as in Accounts and
+/// Categories).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeletePayeeForm {
+    pub confirmation_name: String,
+}
+
+impl DeletePayeeForm {
+    pub fn push_char(&mut self, ch: char) {
+        if !ch.is_control() {
+            self.confirmation_name.push(ch);
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        self.confirmation_name.pop();
+    }
+
+    /// Whether the confirm button is live: the typed name matches for a destructive action.
+    pub fn allows(&self, action: DeleteAction, name: &str) -> bool {
+        !action.is_destructive() || self.confirmation_name == name
+    }
+}
+
+/// Applies the dialog's [`DeleteAction`] to Payee `id`.
+pub fn apply_delete_action(
+    payees: &mut Vec<Payee>,
+    transactions: &[Transaction],
+    id: u32,
+    action: DeleteAction,
+) -> Result<(), PayeeError> {
+    match action {
+        DeleteAction::Delete => delete_payee(payees, transactions, id),
+        DeleteAction::Deactivate => set_active(payees, id, false),
+        DeleteAction::Reactivate => set_active(payees, id, true),
     }
 }
 
@@ -832,6 +896,54 @@ mod tests {
             delete_payee(&mut payees, &transactions, netflix),
             Err(PayeeError::NotFound)
         );
+    }
+
+    #[test]
+    fn the_delete_action_follows_references_and_activity() {
+        let mut payees = default_payees();
+        let transactions = seeded_transactions(&payees);
+        let netflix = id_of(&payees, "Netflix");
+        let j_smith = id_of(&payees, "J Smith");
+        let action =
+            |payees: &[Payee], id| DeleteAction::for_payee(get(payees, id).unwrap(), &transactions);
+
+        assert_eq!(action(&payees, netflix), DeleteAction::Delete);
+        assert_eq!(action(&payees, j_smith), DeleteAction::Deactivate);
+        apply_delete_action(
+            &mut payees,
+            &transactions,
+            j_smith,
+            DeleteAction::Deactivate,
+        )
+        .unwrap();
+        assert!(!get(&payees, j_smith).unwrap().is_active);
+        assert_eq!(action(&payees, j_smith), DeleteAction::Reactivate);
+        apply_delete_action(
+            &mut payees,
+            &transactions,
+            j_smith,
+            DeleteAction::Reactivate,
+        )
+        .unwrap();
+        assert!(get(&payees, j_smith).unwrap().is_active);
+        apply_delete_action(&mut payees, &transactions, netflix, DeleteAction::Delete).unwrap();
+        assert_eq!(get(&payees, netflix), None);
+    }
+
+    #[test]
+    fn the_delete_form_needs_the_exact_name_unless_reactivating() {
+        let mut form = DeletePayeeForm::default();
+        for ch in "j smith".chars() {
+            form.push_char(ch);
+        }
+        assert!(!form.allows(DeleteAction::Delete, "J Smith"));
+        assert!(!form.allows(DeleteAction::Deactivate, "J Smith"));
+        assert!(form.allows(DeleteAction::Reactivate, "J Smith"));
+
+        form.confirmation_name = "J Smith".to_string();
+        assert!(form.allows(DeleteAction::Delete, "J Smith"));
+        form.backspace();
+        assert!(!form.allows(DeleteAction::Delete, "J Smith"));
     }
 
     #[test]

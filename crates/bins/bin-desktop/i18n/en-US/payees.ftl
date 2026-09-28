@@ -30,10 +30,9 @@ desktop-payees-row-edit = edit
 desktop-payees-row-delete = delete
 desktop-payees-footnote = Payees without a default category need one picked each time. Match rules drive renaming on import.
 
-## The hint strip and the flashes for dialogs still to come.
+## The hint strip.
 
 desktop-hint-view-transactions = view transactions
-desktop-status-delete-payee-not-yet-built = delete payee — not yet built
 
 ## The Add and Edit payee dialogs. `$glyph` is the add button's leading plus sign.
 
@@ -60,3 +59,31 @@ desktop-payees-edit-usage-callout = { $count ->
     [one] { $count } transaction uses this payee.
    *[other] { $count } transactions use this payee.
 } Changing the default category only affects new transactions — existing ones keep whatever category they were assigned at the time.
+
+## The Delete payee dialog (6d). A Payee no Split carries is deleted; one in use can only be
+## deactivated, and an inactive one in use is offered reactivation. `$name` is the Payee's name,
+## `$count` the Splits carrying it, `$rules` its match rules.
+
+desktop-payees-delete-title = Delete payee — { $name }
+desktop-payees-delete-submit = Delete payee
+desktop-payees-delete-warning = This payee isn't used by any transaction. Deleting it <strong>cannot be undone.</strong>
+desktop-payees-delete-callout = { $rules ->
+    [0] It has no match rules.
+    [one] Its { $rules } match rule is also removed.
+   *[other] Its { $rules } match rules are also removed.
+}
+desktop-payees-deactivate-title = Deactivate payee — { $name }
+desktop-payees-deactivate-submit = Deactivate payee
+desktop-payees-deactivate-warning = This payee is used by <strong>{ $count ->
+    [one] { $count } transaction
+   *[other] { $count } transactions
+}</strong>, so it can't be deleted — only deactivated.
+desktop-payees-deactivate-callout = It stays on the list and in the Transactions filter, dimmed, and its transactions keep it. Its match rules stop matching on import. You can reactivate it later.
+desktop-payees-reactivate-title = Reactivate payee — { $name }
+desktop-payees-reactivate-submit = Reactivate payee
+desktop-payees-reactivate-warning = This payee is inactive and used by <strong>{ $count ->
+    [one] { $count } transaction
+   *[other] { $count } transactions
+}</strong>.
+desktop-payees-reactivate-callout = Reactivating counts it again and its match rules match on import again.
+desktop-payees-delete-confirm-label = Type { $name } to confirm

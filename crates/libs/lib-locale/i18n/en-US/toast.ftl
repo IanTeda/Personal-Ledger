@@ -22,6 +22,8 @@ toast-account-deleted-moved = Deleted account { $name } · { $transactions ->
 }
 
 toast-payee-deleted = Deleted payee { $name }
+toast-payee-deactivated = Deactivated payee { $name }
+toast-payee-reactivated = Reactivated payee { $name }
 toast-tag-deleted = Deleted tag { $name }
 toast-unit-deleted = Deleted unit { $name }
 
