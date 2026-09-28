@@ -144,6 +144,17 @@ fn tags_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The status-line legend while the Add tag dialog is open (the handoff's 7b), with `←/→ colour`
+/// added: the swatch row has no other key.
+fn tag_dialog_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("esc", crate::msg::desktop_hint_cancel()),
+        ("enter", crate::msg::desktop_hint_confirm()),
+        ("tab", crate::msg::desktop_hint_next_field()),
+        ("\u{2190}/\u{2192}", crate::msg::desktop_hint_colour()),
+    ]
+}
+
 /// The 6e Import step's status-line legend. The handoff's `enter accept suggestion` has no
 /// separate key here: a suggestion is pre-selected, so `enter` continues (#290).
 fn import_hints() -> Vec<(&'static str, String)> {
@@ -699,6 +710,7 @@ impl Shell {
                 self.settings_dialog = None;
                 self.accounts_dialog = None;
                 self.payees_dialog = None;
+                self.tags_dialog = None;
                 self.toast_history_open = false;
                 // README's "Interactions" > "Navigation": `esc` clears the settings index
                 // rail's own filter, the same as it closes the palette/file explorer above.
@@ -1136,6 +1148,9 @@ impl Shell {
         }
         if self.payees_dialog.is_some() {
             return self.handle_payees_dialog_key(keystroke);
+        }
+        if self.tags_dialog.is_some() {
+            return self.handle_tags_dialog_key(keystroke);
         }
         let Some(dialog) = self.settings_dialog.as_mut() else {
             return false;
@@ -1814,7 +1829,7 @@ impl Shell {
     }
 
     /// The Tags page's own `n`/`e`/`x`/`m` (only while it is the active noun and the view has
-    /// focus, in `Normal` mode). The 7b-7e dialogs aren't built yet, so each says so.
+    /// focus, in `Normal` mode). The 7c-7e dialogs aren't built yet, so each says so.
     fn handle_tags_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Tags || self.nav.focus() != FocusZone::View {
             return false;
@@ -1846,7 +1861,97 @@ impl Shell {
     }
 
     fn open_add_tag_dialog(&mut self) {
-        self.status_message = Some(crate::msg::desktop_status_add_tag_not_yet_built());
+        self.tags_dialog = Some(tags::TagsDialog::Add(tags::TagForm::new()));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// The form behind the open Add tag dialog, if that is what's open.
+    fn tag_form_mut(&mut self) -> Option<&mut tags::TagForm> {
+        match self.tags_dialog.as_mut() {
+            Some(tags::TagsDialog::Add(form)) => Some(form),
+            _ => None,
+        }
+    }
+
+    /// Keys while the Add tag dialog is open: `tab` moves between Name, the swatch row and the hex
+    /// box, `←`/`→` step the swatch row, and `enter` submits from anywhere. `Esc` never reaches
+    /// here.
+    fn handle_tags_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(form) = self.tag_form_mut() else {
+            return false;
+        };
+        let modifiers = &keystroke.modifiers;
+        let on_swatches = form.focused == tags::TagField::Swatches;
+        match keystroke.key.as_str() {
+            "tab" => form.cycle_focus(modifiers.shift),
+            "left" if on_swatches => form.step_pick(false),
+            "right" if on_swatches => form.step_pick(true),
+            "enter" => self.confirm_tags_dialog(),
+            "backspace" => form.backspace(),
+            _ => {
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(text) = keystroke.key_char.as_deref()
+                    && text.chars().count() == 1
+                    && let Some(ch) = text.chars().next()
+                {
+                    form.push_char(ch);
+                }
+            }
+        }
+        true
+    }
+
+    /// **Add tag** and `enter`: adds the Tag and selects it, closing the dialog. A no-op while the
+    /// name or the hex box is invalid.
+    fn confirm_tags_dialog(&mut self) {
+        let Some(tags::TagsDialog::Add(form)) = self.tags_dialog.as_ref() else {
+            return;
+        };
+        if !form.is_valid(&self.tags, None) {
+            return;
+        }
+        let Some(draft) = form.draft() else {
+            return;
+        };
+        // `is_valid` ran the same name check, so a refusal here can only leave the dialog open.
+        let Ok(id) = tags::insert_tag(&mut self.tags, &draft) else {
+            return;
+        };
+        self.tags_dialog = None;
+        self.nav.exit_mode();
+        self.select_tag(id);
+    }
+
+    fn handle_tags_dialog_field_click(
+        &mut self,
+        field: tags::TagField,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if let Some(form) = self.tag_form_mut() {
+            form.focus(field);
+        }
+        cx.notify();
+    }
+
+    fn handle_tags_dialog_pick(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        if let Some(form) = self.tag_form_mut() {
+            form.focus(tags::TagField::Swatches);
+            form.pick(index);
+        }
+        cx.notify();
+    }
+
+    fn handle_tags_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
+        self.tags_dialog = None;
+        self.nav.exit_mode();
+        cx.notify();
+    }
+
+    fn handle_tags_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.confirm_tags_dialog();
+        cx.notify();
     }
 
     fn open_edit_tag_dialog(&mut self, _id: u32) {
@@ -4278,6 +4383,28 @@ impl Render for Shell {
             });
             on_click
         };
+        let tags_dialog_handlers = {
+            let on_field_click: tags_view::add_dialog::OnFieldClick = {
+                let entity = entity.clone();
+                Rc::new(move |field, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.handle_tags_dialog_field_click(field, cx);
+                    });
+                })
+            };
+            let on_pick: tags_view::colour_field::OnPick = {
+                let entity = entity.clone();
+                Rc::new(move |index, _window, cx| {
+                    entity.update(cx, |shell, cx| shell.handle_tags_dialog_pick(index, cx));
+                })
+            };
+            tags_view::add_dialog::TagDialogHandlers {
+                on_field_click,
+                on_pick,
+                on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
+                on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
+            }
+        };
         let tags_page = tags_view::TagsPageProps {
             tags: &self.tags,
             transactions: &self.transactions,
@@ -4566,7 +4693,10 @@ impl Render for Shell {
                 ),
             }),
             Noun::Tags => Some(PageStatus {
-                hints: tags_hints(),
+                hints: match self.tags_dialog {
+                    Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(),
+                    _ => tags_hints(),
+                },
                 right: {
                     let count = crate::msg::desktop_tags_count(
                         i64::try_from(tags::active_count(&self.tags)).unwrap_or(i64::MAX),
@@ -4861,6 +4991,16 @@ impl Render for Shell {
                     })
                 }
                 None => None,
+            })
+            .children(match self.tags_dialog.as_ref() {
+                Some(tags::TagsDialog::Add(form)) => Some(tags_view::add_dialog::render(
+                    form,
+                    form.name_error(&self.tags, None),
+                    form.is_valid(&self.tags, None),
+                    tags_dialog_handlers,
+                    cx,
+                )),
+                _ => None,
             })
             .children(self.categories_dialog.as_ref().map(|dialog| match dialog {
                 categories::CategoriesDialog::Add { form, .. } => {

@@ -9,6 +9,9 @@
 //! its suggested merge target; an inactive Tag stays listed, dimmed and tagged (#353). Every action
 //! is a callback into `Shell`, so the keyboard and the mouse reach the same handlers.
 
+pub mod add_dialog;
+pub mod colour_field;
+
 use std::rc::Rc;
 
 use chrono::NaiveDate;

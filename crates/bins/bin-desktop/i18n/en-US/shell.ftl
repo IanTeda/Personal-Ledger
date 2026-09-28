@@ -35,6 +35,7 @@ desktop-hint-next-field = next field
 desktop-hint-apply = apply
 desktop-hint-cancel = cancel
 desktop-hint-reset = reset
+desktop-hint-colour = colour
 
 ## The right-hand side of the status line while a command surface is open. `$key` is the key token.
 
@@ -56,7 +57,6 @@ desktop-status-delete-children-first = delete or move its children first
 desktop-status-open-transaction-not-yet-built = open transaction — not yet built
 desktop-status-add-transaction-not-yet-built = add transaction — not yet built
 desktop-status-edit-transaction-not-yet-built = edit transaction — not yet built
-desktop-status-add-tag-not-yet-built = add tag — not yet built
 desktop-status-edit-tag-not-yet-built = edit tag — not yet built
 desktop-status-remove-tag-not-yet-built = remove tag — not yet built
 desktop-status-merge-tags-not-yet-built = merge tags — not yet built

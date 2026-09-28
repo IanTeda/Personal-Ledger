@@ -385,10 +385,158 @@ pub fn duplicate_of(groups: &[DuplicateGroup], id: u32) -> Option<u32> {
         .map(|group| group.target)
 }
 
+/// The Add and Edit tag dialogs' fields, in `Tab` order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TagField {
+    #[default]
+    Name,
+    /// The swatch row: "none" then the [`swatches`] presets.
+    Swatches,
+    /// The free hex field beside the swatches.
+    Hex,
+}
+
+impl TagField {
+    const ORDER: [TagField; 3] = [Self::Name, Self::Swatches, Self::Hex];
+}
+
+/// The Add and Edit tag dialogs' live form state -- pure, `gpui`-free. The hex field is the one
+/// source of the colour: picking a swatch writes its value there and "none" empties it, so a typed
+/// value and a picked one can never disagree.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TagForm {
+    pub name: String,
+    pub hex: String,
+    pub focused: TagField,
+}
+
+impl TagForm {
+    /// The picker's choices: "none" at 0, then the [`swatches`] presets.
+    pub const PICKS: usize = 7;
+
+    /// A fresh Add form: no name and no colour (#352: a new Tag has none).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The colour the hex field holds: `Ok(None)` when empty, `Err` while it isn't `#RRGGBB`.
+    pub fn colour(&self) -> Result<Option<HexColor>, lib_core::HexColorError> {
+        if self.hex.trim().is_empty() {
+            return Ok(None);
+        }
+        HexColor::parse(&self.hex).map(Some)
+    }
+
+    /// Whether the hex field holds something that isn't a colour.
+    pub fn hex_invalid(&self) -> bool {
+        self.colour().is_err()
+    }
+
+    /// The highlighted pick: 0 for "none", `1..=6` for a preset, `None` for any other colour.
+    pub fn picked(&self) -> Option<usize> {
+        match self.colour() {
+            Ok(None) => Some(0),
+            Ok(Some(colour)) => swatches()
+                .iter()
+                .position(|preset| *preset == colour)
+                .map(|index| index + 1),
+            Err(_) => None,
+        }
+    }
+
+    /// Picks "none" (0) or a preset (`1..=6`); anything else is ignored.
+    pub fn pick(&mut self, index: usize) {
+        match index {
+            0 => self.hex.clear(),
+            _ => {
+                if let Some(preset) = swatches().get(index - 1) {
+                    self.hex = preset.as_str().to_string();
+                }
+            }
+        }
+    }
+
+    /// `←`/`→` on the swatch row: steps the pick, stopping at either end. From a custom colour it
+    /// starts over at "none".
+    pub fn step_pick(&mut self, forward: bool) {
+        let next = match (self.picked(), forward) {
+            (None, _) => 0,
+            (Some(index), true) => (index + 1).min(Self::PICKS - 1),
+            (Some(index), false) => index.saturating_sub(1),
+        };
+        self.pick(next);
+    }
+
+    /// What the dialog submits, or `None` while the hex field is invalid.
+    pub fn draft(&self) -> Option<TagDraft> {
+        Some(TagDraft {
+            name: self.name.clone(),
+            color: self.colour().ok()?,
+        })
+    }
+
+    /// The name's problem, checked live against every other Tag: `own_id` is the Tag being edited.
+    /// An empty name is not reported, only kept from submitting.
+    pub fn name_error(&self, tags: &[Tag], own_id: Option<u32>) -> Option<TagError> {
+        if self.name.trim().is_empty() {
+            return None;
+        }
+        name_error(tags, own_id, &self.name)
+    }
+
+    pub fn is_valid(&self, tags: &[Tag], own_id: Option<u32>) -> bool {
+        name_error(tags, own_id, &self.name).is_none() && !self.hex_invalid()
+    }
+
+    pub fn focus(&mut self, field: TagField) {
+        self.focused = field;
+    }
+
+    /// `Tab` / `Shift-Tab`.
+    pub fn cycle_focus(&mut self, backward: bool) {
+        let count = TagField::ORDER.len();
+        let index = TagField::ORDER
+            .iter()
+            .position(|field| *field == self.focused)
+            .unwrap_or(0);
+        let next = if backward {
+            (index + count - 1) % count
+        } else {
+            (index + 1) % count
+        };
+        self.focused = TagField::ORDER[next];
+    }
+
+    /// Types `ch` into the focused text field; the swatch row takes no text.
+    pub fn push_char(&mut self, ch: char) {
+        if ch.is_control() {
+            return;
+        }
+        match self.focused {
+            TagField::Name => self.name.push(ch),
+            // `#` plus six digits is the longest colour, so anything past it can only be a typo.
+            TagField::Hex if self.hex.chars().count() < 7 => self.hex.push(ch),
+            TagField::Hex | TagField::Swatches => {}
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        match self.focused {
+            TagField::Name => {
+                self.name.pop();
+            }
+            TagField::Hex => {
+                self.hex.pop();
+            }
+            TagField::Swatches => {}
+        }
+    }
+}
+
 /// Which Tags dialog is open on the Tags page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TagsDialog {
-    Add,
+    Add(TagForm),
     /// Editing the Tag with this [`Tag::id`].
     Edit(u32),
     /// Removing the Tag with this [`Tag::id`].
@@ -816,5 +964,109 @@ mod tests {
                 duplicates: vec![4, 5]
             }]
         );
+    }
+
+    #[test]
+    fn a_new_form_has_no_colour_and_picks_none() {
+        let form = TagForm::new();
+        assert_eq!(form.colour(), Ok(None));
+        assert_eq!(form.picked(), Some(0));
+        assert_eq!(form.focused, TagField::Name);
+    }
+
+    #[test]
+    fn picking_a_swatch_fills_the_hex_field_and_none_empties_it() {
+        let mut form = TagForm::new();
+        form.pick(4);
+        assert_eq!(form.hex, "#4A7C9E");
+        assert_eq!(form.colour(), Ok(Some(swatches()[3].clone())));
+        assert_eq!(form.picked(), Some(4));
+        form.pick(0);
+        assert_eq!(form.hex, "");
+        assert_eq!(form.picked(), Some(0));
+        form.pick(99);
+        assert_eq!(form.picked(), Some(0));
+    }
+
+    #[test]
+    fn stepping_the_pick_stops_at_either_end_and_restarts_from_a_custom_colour() {
+        let mut form = TagForm::new();
+        form.step_pick(false);
+        assert_eq!(form.picked(), Some(0));
+        for _ in 0..10 {
+            form.step_pick(true);
+        }
+        assert_eq!(form.picked(), Some(TagForm::PICKS - 1));
+        form.hex = "#123456".to_string();
+        assert_eq!(form.picked(), None);
+        form.step_pick(true);
+        assert_eq!(form.picked(), Some(0));
+    }
+
+    #[test]
+    fn a_typed_hex_is_any_colour_and_an_unfinished_one_blocks_submit() {
+        let tags = default_tags();
+        let mut form = TagForm::new();
+        for ch in "camping".chars() {
+            form.push_char(ch);
+        }
+        form.focus(TagField::Hex);
+        for ch in "#12ab".chars() {
+            form.push_char(ch);
+        }
+        assert!(form.hex_invalid());
+        assert!(!form.is_valid(&tags, None));
+        assert_eq!(form.draft(), None);
+        for ch in "ef99".chars() {
+            form.push_char(ch);
+        }
+        // Capped at `#` plus six digits.
+        assert_eq!(form.hex, "#12abef");
+        assert!(form.is_valid(&tags, None));
+        assert_eq!(
+            form.draft(),
+            Some(TagDraft {
+                name: "camping".to_string(),
+                color: Some(HexColor::from_rgb(0x12, 0xab, 0xef)),
+            })
+        );
+        form.backspace();
+        assert!(form.hex_invalid());
+    }
+
+    #[test]
+    fn the_name_error_is_live_but_silent_while_empty() {
+        let tags = default_tags();
+        let mut form = TagForm::new();
+        assert_eq!(form.name_error(&tags, None), None);
+        assert!(!form.is_valid(&tags, None));
+        form.name = "Work Trip!".to_string();
+        assert_eq!(
+            form.name_error(&tags, None),
+            Some(TagError::DuplicateName("work-trip".to_string()))
+        );
+        form.name = "--".to_string();
+        assert_eq!(
+            form.name_error(&tags, None),
+            Some(TagError::NoLetterOrDigit)
+        );
+        form.name = "camping".to_string();
+        assert!(form.is_valid(&tags, None));
+    }
+
+    #[test]
+    fn tab_cycles_the_fields_and_the_swatch_row_takes_no_text() {
+        let mut form = TagForm::new();
+        form.cycle_focus(false);
+        assert_eq!(form.focused, TagField::Swatches);
+        form.push_char('x');
+        form.backspace();
+        assert_eq!((form.name.as_str(), form.hex.as_str()), ("", ""));
+        form.cycle_focus(false);
+        assert_eq!(form.focused, TagField::Hex);
+        form.cycle_focus(false);
+        assert_eq!(form.focused, TagField::Name);
+        form.cycle_focus(true);
+        assert_eq!(form.focused, TagField::Hex);
     }
 }

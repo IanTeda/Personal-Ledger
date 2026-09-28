@@ -34,3 +34,17 @@ desktop-tags-duplicate-of = looks like a duplicate of "{ $name }"
 desktop-tags-row-edit = edit
 desktop-tags-row-remove = remove
 desktop-tags-footnote = Tags are free-form and can be applied to any number of transactions. Removing a tag untags its transactions — it never deletes them. Flagged tags differ from another tag only in case, spacing or punctuation; merge them to fold them together.
+
+## The Add tag dialog (7b), and the name, colour and hex fields the Edit dialog shares. `$name` is
+## the Tag already holding the name once case, spaces and punctuation are ignored.
+
+desktop-tags-add-title = Add tag
+desktop-tags-add-submit = Add tag
+desktop-tags-name-placeholder = e.g. work-trip
+desktop-tags-field-colour = Colour
+desktop-tags-colour-none = none
+desktop-tags-hex-placeholder = #RRGGBB
+desktop-tags-add-callout = Tag names are matched ignoring case, spaces and punctuation — "Work Trip" can't be added while "work-trip" exists.
+desktop-tags-error-name-taken = { $name } already exists
+desktop-tags-error-no-letter-or-digit = A tag name needs a letter or a digit
+desktop-tags-error-hex = A colour is # and six hex digits, e.g. #4A7C9E
