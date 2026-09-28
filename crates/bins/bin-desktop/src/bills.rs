@@ -803,6 +803,13 @@ pub struct ScheduleRow {
     pub needs_attention: bool,
 }
 
+impl ScheduleRow {
+    /// Whether Pay and Skip act on it: Due or Overdue, and a real entry rather than a preview.
+    pub fn is_actionable(&self) -> bool {
+        !self.preview && matches!(self.status, BillStatus::Due | BillStatus::Overdue)
+    }
+}
+
 /// The Schedule tab's rows for `period`, by due date: the period's entries, plus (for the current
 /// month) Overdue entries carried from earlier months, plus computed previews for active Plans in
 /// a period past the horizon.

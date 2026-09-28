@@ -1,8 +1,9 @@
 //! View interiors, one module per noun that has one built. Dashboard (issue #148), Settings
-//! (issue #173), Accounts (issue #150), Categories (issue #272), Payees (issue #286) and Tags (issue #357) exist so far -- the rest are
+//! (issue #173), Accounts (issue #150), Categories (issue #272), Payees (issue #286), Tags (issue #357) and Bills (issue #371) exist so far -- the rest are
 //! placeholder views, a separate ticket (#153).
 
 pub mod accounts;
+pub mod bills;
 pub mod categories;
 pub mod dashboard;
 pub mod help;

@@ -69,7 +69,7 @@ use crate::{
     transaction_rows::{self, DisplayPrefs},
     transactions::{self, Transaction},
     view::{
-        accounts as accounts_view, categories as categories_view,
+        accounts as accounts_view, bills as bills_view, categories as categories_view,
         dashboard::Dashboard,
         help as help_view, import as import_view, payees as payees_view,
         settings::{self as settings_view, SettingsBodyProps},
@@ -141,6 +141,18 @@ fn tags_hints() -> Vec<(&'static str, String)> {
         ("x", crate::msg::desktop_hint_remove()),
         ("m", crate::msg::desktop_hint_merge()),
         ("n", crate::msg::desktop_hint_new()),
+    ]
+}
+
+/// The Bills Schedule tab's status-line legend (`docs/ux/desktop/Bills/README.md`'s 8a), with
+/// `[/]` added for the period nav, which the handoff gives no key.
+fn bills_schedule_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("p", crate::msg::desktop_hint_pay()),
+        ("s", crate::msg::desktop_hint_skip()),
+        ("[/]", crate::msg::desktop_hint_period()),
+        ("tab", crate::msg::desktop_hint_switch_view()),
     ]
 }
 
@@ -843,6 +855,7 @@ impl Shell {
                     || self.handle_categories_key(keystroke)
                     || self.handle_payees_key(keystroke)
                     || self.handle_tags_key(keystroke)
+                    || self.handle_bills_key(keystroke)
                     || self.handle_transactions_key(keystroke)
                     || had_status_message
             }
@@ -1055,6 +1068,10 @@ impl Shell {
         }
         if self.nav.noun() == Noun::Tags {
             self.apply_tags_movement(movement);
+            return;
+        }
+        if self.nav.noun() == Noun::Bills {
+            self.apply_bills_movement(movement);
             return;
         }
         if self.nav.noun() == Noun::Settings
@@ -1903,6 +1920,230 @@ impl Shell {
             _ => return false,
         }
         true
+    }
+
+    /// The Schedule tab's rows for the shown period.
+    fn bills_schedule_rows(&self) -> Vec<bills::ScheduleRow> {
+        bills::schedule_rows(
+            &self.bill_plans,
+            &self.bill_entries,
+            self.bills_period,
+            self.today,
+        )
+    }
+
+    /// The selected Schedule row, its stored position clamped to the rows now shown.
+    fn selected_bill_row(&self) -> Option<bills::ScheduleRow> {
+        let rows = self.bills_schedule_rows();
+        rows.get(self.bills_selected.min(rows.len().saturating_sub(1)))
+            .copied()
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the active Bills tab's row selection; `Enter` on a
+    /// Paid Schedule row opens its Transaction. Only the Schedule tab has rows so far.
+    fn apply_bills_movement(&mut self, movement: Movement) {
+        if self.bills_tab != bills::BillsTab::Schedule {
+            return;
+        }
+        let len = self.bills_schedule_rows().len();
+        let selected = self.bills_selected.min(len.saturating_sub(1));
+        self.bills_selected = match movement {
+            Movement::Next => accounts::step_selection(selected, len, 1),
+            Movement::Prev => accounts::step_selection(selected, len, -1),
+            Movement::First => 0,
+            Movement::Last => len.saturating_sub(1),
+            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
+            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
+            Movement::Enter => {
+                if let Some(row) = self.selected_bill_row() {
+                    self.open_bill_transaction(row.id);
+                }
+                selected
+            }
+        };
+    }
+
+    /// `tab` on the Bills page switches its tab (the handoff's `tab switch view`) rather than
+    /// cycling focus; `shift-tab` still cycles focus, so the View zone can always be left. Runs
+    /// before the router, like the Colour Theme grid's own `tab`.
+    fn handle_bills_tab_key(&mut self, keystroke: &Keystroke) -> bool {
+        let pending_g_active = self
+            .pending_g
+            .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
+        let modifiers = &keystroke.modifiers;
+        if keystroke.key != "tab"
+            || modifiers.shift
+            || modifiers.control
+            || modifiers.alt
+            || modifiers.platform
+            || pending_g_active
+            || self.nav.mode() != InputMode::Normal
+            || self.nav.noun() != Noun::Bills
+            || self.nav.focus() != FocusZone::View
+        {
+            return false;
+        }
+        self.set_bills_tab(self.bills_tab.next());
+        true
+    }
+
+    fn set_bills_tab(&mut self, tab: bills::BillsTab) {
+        self.bills_tab = tab;
+        self.bills_selected = 0;
+        self.status_message = None;
+        self.reset_view_scroll();
+    }
+
+    /// Steps the Schedule tab's period a calendar month.
+    fn shift_bills_period(&mut self, forward: bool) {
+        self.bills_period = if forward {
+            self.bills_period.next()
+        } else {
+            self.bills_period.prev()
+        };
+        self.bills_selected = 0;
+    }
+
+    /// The Bills page's own `p`/`s`/`n`/`[`/`]` (only while it is the active noun and the view has
+    /// focus, in `Normal` mode).
+    fn handle_bills_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.noun() != Noun::Bills || self.nav.focus() != FocusZone::View {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform {
+            return false;
+        }
+        let schedule = self.bills_tab == bills::BillsTab::Schedule;
+        match keystroke.key.as_str() {
+            "n" if !modifiers.shift => self.open_add_bill_plan_dialog(),
+            "p" if schedule && !modifiers.shift => {
+                if let Some(row) = self.selected_bill_row() {
+                    self.open_pay_bill_dialog(row);
+                }
+            }
+            "s" if schedule && !modifiers.shift => {
+                if let Some(row) = self.selected_bill_row() {
+                    self.open_skip_bill_dialog(row);
+                }
+            }
+            "[" if schedule => self.shift_bills_period(false),
+            "]" if schedule => self.shift_bills_period(true),
+            _ => return false,
+        }
+        true
+    }
+
+    /// The Add bill plan dialog (8c) lands with #373.
+    fn open_add_bill_plan_dialog(&mut self) {
+        self.status_message = Some(crate::msg::desktop_status_add_bill_plan_not_yet_built());
+    }
+
+    /// The Pay dialog (8d) lands with #374; until then `p` only reports it. A row with nothing to
+    /// pay says so instead.
+    fn open_pay_bill_dialog(&mut self, row: bills::ScheduleRow) {
+        self.status_message = Some(if row.is_actionable() {
+            crate::msg::desktop_status_pay_bill_not_yet_built()
+        } else {
+            crate::msg::desktop_status_bill_not_actionable()
+        });
+    }
+
+    /// The Skip dialog (8e) lands with #375; as [`Self::open_pay_bill_dialog`].
+    fn open_skip_bill_dialog(&mut self, row: bills::ScheduleRow) {
+        self.status_message = Some(if row.is_actionable() {
+            crate::msg::desktop_status_skip_bill_not_yet_built()
+        } else {
+            crate::msg::desktop_status_bill_not_actionable()
+        });
+    }
+
+    /// A Paid Schedule row's hand-off: the Transactions page with its Matched Transaction selected,
+    /// the date range widened to reach it when it falls before this year. A no-op for any other row.
+    fn open_bill_transaction(&mut self, id: bills::EntryId) {
+        let Some(bills::Resolution::Paid(split)) =
+            bills::entry(&self.bill_entries, id).map(|entry| entry.resolution.clone())
+        else {
+            return;
+        };
+        let Some(date) = self
+            .transactions
+            .iter()
+            .find(|t| t.id == split.transaction_id)
+            .map(|t| t.date)
+        else {
+            return;
+        };
+        let mut filters = TransactionFilters::defaults(self.today);
+        filters.from = filters.from.map(|from| from.min(date));
+        filters.to = filters.to.map(|to| to.max(date));
+        self.transactions_filters = filters;
+        self.transactions_search.clear();
+        self.transactions_filter_form = None;
+        let index = transaction_query::query(
+            &self.transactions_ledger(),
+            &self.transactions,
+            &self.transactions_filters,
+            &self.transactions_search,
+        )
+        .rows
+        .iter()
+        .position(|row| row.transaction.id == split.transaction_id)
+        .unwrap_or(0);
+        self.transactions_selected = index;
+        self.transactions_scroll
+            .scroll_to_item_strict(index, ScrollStrategy::Center);
+        self.nav.set_noun(Noun::Transactions);
+        self.reset_view_scroll();
+    }
+
+    fn handle_bills_add_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_add_bill_plan_dialog();
+        cx.notify();
+    }
+
+    fn handle_bills_tab_click(&mut self, tab: bills::BillsTab, cx: &mut Context<'_, Self>) {
+        self.set_bills_tab(tab);
+        cx.notify();
+    }
+
+    fn handle_bills_period_prev(&mut self, cx: &mut Context<'_, Self>) {
+        self.shift_bills_period(false);
+        cx.notify();
+    }
+
+    fn handle_bills_period_next(&mut self, cx: &mut Context<'_, Self>) {
+        self.shift_bills_period(true);
+        cx.notify();
+    }
+
+    fn handle_bills_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.bills_selected = index;
+        cx.notify();
+    }
+
+    fn handle_bills_pay_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.bills_selected = index;
+        if let Some(row) = self.selected_bill_row() {
+            self.open_pay_bill_dialog(row);
+        }
+        cx.notify();
+    }
+
+    fn handle_bills_skip_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.bills_selected = index;
+        if let Some(row) = self.selected_bill_row() {
+            self.open_skip_bill_dialog(row);
+        }
+        cx.notify();
+    }
+
+    fn handle_bills_view_transaction_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.bills_selected = index;
+        if let Some(row) = self.selected_bill_row() {
+            self.open_bill_transaction(row.id);
+        }
+        cx.notify();
     }
 
     fn open_add_tag_dialog(&mut self) {
@@ -4676,6 +4917,62 @@ impl Render for Shell {
             on_edit_click: tag_click(Shell::handle_tags_edit_click),
             on_remove_click: tag_click(Shell::handle_tags_remove_click),
         };
+        let bills_rows = self.bills_schedule_rows();
+        let bills_summary = bills::period_summary(
+            &bills_rows,
+            &self.bill_plans,
+            &self.bill_entries,
+            &self.transactions,
+        );
+        let bills_plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: bills_view::OnPlainClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        let bills_indexed = |handler: fn(&mut Shell, usize, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: bills_view::OnRowClick = Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| handler(shell, index, cx));
+            });
+            on_click
+        };
+        let bills_page = bills_view::BillsPageProps {
+            tab: self.bills_tab,
+            period: self.bills_period,
+            schedule: bills_view::schedule::ScheduleProps {
+                rows: &bills_rows,
+                summary: &bills_summary,
+                plans: &self.bill_plans,
+                entries: &self.bill_entries,
+                accounts: &self.accounts,
+                transactions: &self.transactions,
+                base_unit: self
+                    .settings_units
+                    .iter()
+                    .find(|unit| unit.is_base)
+                    .map(|unit| unit.code.as_str()),
+                glyphs: self.settings_status_glyphs,
+                selected: (!bills_rows.is_empty())
+                    .then(|| self.bills_selected.min(bills_rows.len() - 1)),
+                on_row_click: bills_indexed(Shell::handle_bills_row_click),
+                on_pay_click: bills_indexed(Shell::handle_bills_pay_click),
+                on_skip_click: bills_indexed(Shell::handle_bills_skip_click),
+                on_view_transaction_click: bills_indexed(
+                    Shell::handle_bills_view_transaction_click,
+                ),
+            },
+            on_add_click: bills_plain(Shell::handle_bills_add_click),
+            on_tab_click: {
+                let entity = entity.clone();
+                Rc::new(move |tab, _window, cx| {
+                    entity.update(cx, |shell, cx| shell.handle_bills_tab_click(tab, cx));
+                })
+            },
+            on_period_prev: bills_plain(Shell::handle_bills_period_prev),
+            on_period_next: bills_plain(Shell::handle_bills_period_next),
+        };
         let import_categories = self.import_category_options();
         let import_page = self.import.as_ref().map(|state| {
             let entity_for = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
@@ -4945,6 +5242,13 @@ impl Render for Shell {
                     ),
                 ),
             }),
+            Noun::Bills if self.bills_tab == bills::BillsTab::Schedule => Some(PageStatus {
+                hints: bills_schedule_hints(),
+                right: crate::msg::desktop_bills_status_period(
+                    &bills_view::period_label(self.bills_period),
+                    i64::try_from(self.bills_schedule_rows().len()).unwrap_or(i64::MAX),
+                ),
+            }),
             Noun::Tags => Some(PageStatus {
                 hints: match self.tags_dialog {
                     Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
@@ -5012,6 +5316,7 @@ impl Render for Shell {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 let chosen = settings_view::colour_theme::chosen_index(cx);
                 if this.handle_colour_theme_grid_key(&event.keystroke, chosen)
+                    || this.handle_bills_tab_key(&event.keystroke)
                     || this.handle_key_down(event)
                 {
                     cx.notify();
@@ -5073,6 +5378,7 @@ impl Render for Shell {
                                     categories: categories_page,
                                     payees: payees_page,
                                     tags: tags_page,
+                                    bills: bills_page,
                                     import: import_page,
                                     transactions: transactions_page,
                                 },
@@ -5507,6 +5813,7 @@ struct PageProps<'a> {
     categories: categories_view::CategoriesPageProps<'a>,
     payees: payees_view::PayeesPageProps<'a>,
     tags: tags_view::TagsPageProps<'a>,
+    bills: bills_view::BillsPageProps<'a>,
     /// `Some` while 6e shows in place of the Transactions page.
     import: Option<import_view::ImportPageProps<'a>>,
     transactions: Option<transactions_view::TransactionsPageProps>,
@@ -5593,6 +5900,9 @@ fn render_view(
     }
     if noun == Noun::Tags {
         return tags_view::render(focused, scroll_handle, pages.tags, cx);
+    }
+    if noun == Noun::Bills {
+        return bills_view::render(focused, scroll_handle, pages.bills, cx);
     }
     if noun == Noun::Transactions
         && let Some(import) = pages.import
