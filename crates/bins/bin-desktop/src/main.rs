@@ -7,6 +7,7 @@
 
 mod accounts;
 mod assets;
+mod bills;
 mod budgets;
 mod categories;
 mod colours;

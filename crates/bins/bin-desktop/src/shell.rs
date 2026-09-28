@@ -37,7 +37,7 @@ use crate::{
         self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
         DeleteAccountForm, NameLookup, SelectKey,
     },
-    budgets,
+    bills, budgets,
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, Command, CommandEffect},
@@ -394,6 +394,18 @@ pub struct Shell {
     /// A real, mutable `Vec`, like [`Self::accounts`]: saved-in-memory state that survives leaving
     /// and re-entering the page. Deleting an account deletes its transactions with it.
     transactions: Vec<Transaction>,
+    /// The Bills surface's stub Bill Plans and Bill Schedule, seeded by `bills::default_bills`
+    /// (which also writes their settling Transactions into [`Self::transactions`]).
+    bill_plans: Vec<bills::BillPlan>,
+    bill_entries: Vec<bills::BillScheduleEntry>,
+    /// Which Bills tab shows, and the selected row on each (a position in that tab's list).
+    bills_tab: bills::BillsTab,
+    bills_selected: usize,
+    /// The Schedule tab's calendar month; starts at today's.
+    bills_period: bills::Period,
+    /// The currently open Bills dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
+    /// exactly as long as this is `Some`, following the pattern of `tags_dialog`.
+    bills_dialog: Option<bills::BillsDialog>,
     /// The selected row as a position in [`Self::transactions`] (the table shows them in this
     /// order), clamped wherever it is read. Once filters land it becomes a position in the
     /// filtered list.
@@ -421,11 +433,18 @@ impl Shell {
         let categories = categories::default_categories();
         let payees = payees::default_payees();
         let tags = tags::default_tags();
-        let transactions = transactions::default_transactions(
+        let mut transactions = transactions::default_transactions(
             &seeded_accounts,
             &categories,
             &payees,
             &tags,
+            today,
+        );
+        let bills_seed = bills::default_bills(
+            &seeded_accounts,
+            &categories,
+            &payees,
+            &mut transactions,
             today,
         );
         Self {
@@ -478,6 +497,12 @@ impl Shell {
             tags_selected: 0,
             tags_dialog: None,
             transactions,
+            bill_plans: bills_seed.plans,
+            bill_entries: bills_seed.entries,
+            bills_tab: bills::BillsTab::default(),
+            bills_selected: 0,
+            bills_period: bills::Period::of(today),
+            bills_dialog: None,
             transactions_selected: 0,
             transactions_scroll: UniformListScrollHandle::new(),
             transactions_filters: TransactionFilters::defaults(today),

@@ -293,7 +293,7 @@ const TAGGED_PERCENT: u64 = 28;
 
 /// Whether an account of this type takes Transactions directly (glossary: Loan and Investment
 /// accounts do not).
-fn takes_transactions(account_type: &AccountType) -> bool {
+pub fn takes_transactions(account_type: &AccountType) -> bool {
     matches!(
         account_type,
         AccountType::Cash | AccountType::Bank | AccountType::CreditCard

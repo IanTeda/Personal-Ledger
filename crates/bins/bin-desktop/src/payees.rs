@@ -93,6 +93,11 @@ pub fn default_payees() -> Vec<Payee> {
         payee(17, "Hudson News", None, &[]),
         payee(18, "Don Quijote", None, &[]),
         payee(19, "Ray White Rentals", Some(RENT), &["RAY WHITE"]),
+        // The Bills handoff's sample Bill Plans' Payees.
+        payee(20, "Telstra", Some(HOUSEHOLD), &["TELSTRA"]),
+        payee(21, "Fitness First", Some(HOUSEHOLD), &[]),
+        payee(22, "AAMI", Some(TRANSPORT), &[]),
+        payee(23, "Brisbane City Council", Some(HOUSEHOLD), &[]),
     ];
     // One inactive Payee, so the list's dimmed "inactive" state has something to show.
     if let Some(don_quijote) = payees.iter_mut().find(|p| p.id == 18) {
