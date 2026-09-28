@@ -70,7 +70,7 @@ use crate::{
     view::{
         accounts as accounts_view, categories as categories_view,
         dashboard::Dashboard,
-        help as help_view,
+        help as help_view, payees as payees_view,
         settings::{self as settings_view, SettingsBodyProps},
         toast_history as toast_history_view, transactions as transactions_view,
     },
@@ -118,6 +118,17 @@ const VIEW_LINE_STEP: f32 = 40.0;
 
 /// `Ctrl-d`/`Ctrl-u` on the Accounts page: half of a typical screenful of rows.
 const ACCOUNTS_HALF_PAGE: isize = 5;
+
+/// The Payees page's status-line legend (`docs/ux/desktop/Payees/README.md`'s 6a), as `(key, action)`.
+fn payees_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("enter", crate::msg::desktop_hint_view_transactions()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("d", crate::msg::desktop_hint_delete()),
+        ("n", crate::msg::desktop_hint_new()),
+    ]
+}
 
 /// The Accounts page's status-line legend (`docs/ux/desktop/Accounts/README.md`'s 3a), as
 /// `(key, action)`.
@@ -703,6 +714,7 @@ impl Shell {
             KeyOutcome::NoOp => {
                 self.handle_accounts_key(keystroke)
                     || self.handle_categories_key(keystroke)
+                    || self.handle_payees_key(keystroke)
                     || self.handle_transactions_key(keystroke)
                     || had_status_message
             }
@@ -907,6 +919,10 @@ impl Shell {
         }
         if self.nav.noun() == Noun::Transactions {
             self.apply_transactions_movement(movement);
+            return;
+        }
+        if self.nav.noun() == Noun::Payees {
+            self.apply_payees_movement(movement);
             return;
         }
         if self.nav.noun() == Noun::Settings
@@ -1667,6 +1683,106 @@ impl Shell {
         self.reset_transactions_selection();
         self.nav.set_noun(Noun::Transactions);
         self.reset_view_scroll();
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Payees page's row selection; `Enter` opens
+    /// Transactions filtered to the selected Payee.
+    fn apply_payees_movement(&mut self, movement: Movement) {
+        let len = self.payees.len();
+        let selected = self.payees_selected.min(len.saturating_sub(1));
+        self.payees_selected = match movement {
+            Movement::Next => accounts::step_selection(selected, len, 1),
+            Movement::Prev => accounts::step_selection(selected, len, -1),
+            Movement::First => 0,
+            Movement::Last => len.saturating_sub(1),
+            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
+            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
+            Movement::Enter => {
+                if let Some(id) = self.selected_payee_id() {
+                    self.open_payee_transactions(id);
+                }
+                selected
+            }
+        };
+    }
+
+    fn selected_payee_id(&self) -> Option<u32> {
+        self.payees
+            .get(
+                self.payees_selected
+                    .min(self.payees.len().saturating_sub(1)),
+            )
+            .map(|payee| payee.id)
+    }
+
+    /// Selects the Payee with `id`, if it still exists.
+    fn select_payee(&mut self, id: u32) {
+        if let Some(index) = self.payees.iter().position(|payee| payee.id == id) {
+            self.payees_selected = index;
+        }
+    }
+
+    /// The Payees page's own `n`/`e`/`d` (only while it is the active noun and the view has focus,
+    /// in `Normal` mode). The Add, Edit and Delete dialogs arrive with #287-#289; until then each
+    /// flashes "not yet built".
+    fn handle_payees_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.noun() != Noun::Payees || self.nav.focus() != FocusZone::View {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "n" => self.open_add_payee_dialog(),
+            "e" => {
+                if let Some(id) = self.selected_payee_id() {
+                    self.open_edit_payee_dialog(id);
+                }
+            }
+            "d" => {
+                if let Some(id) = self.selected_payee_id() {
+                    self.open_delete_payee_dialog(id);
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    fn open_add_payee_dialog(&mut self) {
+        self.status_message = Some(crate::msg::desktop_status_add_payee_not_yet_built());
+    }
+
+    fn open_edit_payee_dialog(&mut self, _id: u32) {
+        self.status_message = Some(crate::msg::desktop_status_edit_payee_not_yet_built());
+    }
+
+    fn open_delete_payee_dialog(&mut self, _id: u32) {
+        self.status_message = Some(crate::msg::desktop_status_delete_payee_not_yet_built());
+    }
+
+    fn handle_payees_add_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_add_payee_dialog();
+        cx.notify();
+    }
+
+    fn handle_payees_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_payee(id);
+        self.open_payee_transactions(id);
+        cx.notify();
+    }
+
+    fn handle_payees_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_payee(id);
+        self.open_edit_payee_dialog(id);
+        cx.notify();
+    }
+
+    fn handle_payees_delete_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_payee(id);
+        self.open_delete_payee_dialog(id);
+        cx.notify();
     }
 
     /// Selects the account with `id`, if it still exists.
@@ -3405,6 +3521,36 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_categories_row_click(id, cx));
             })
         };
+        let payee_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: payees_view::OnPayeeClick = Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| handler(shell, id, cx));
+            });
+            on_click
+        };
+        let on_payees_add_click: payees_view::OnAddClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_payees_add_click(cx));
+            })
+        };
+        let payees_page = payees_view::PayeesPageProps {
+            payees: &self.payees,
+            categories: &self.categories,
+            transactions: &self.transactions,
+            accounts: &self.accounts,
+            base_unit: self
+                .settings_units
+                .iter()
+                .find(|unit| unit.is_base)
+                .map(|unit| unit.code.as_str()),
+            selected: (!self.payees.is_empty())
+                .then(|| self.payees_selected.min(self.payees.len() - 1)),
+            on_add_click: on_payees_add_click,
+            on_row_click: payee_click(Shell::handle_payees_row_click),
+            on_edit_click: payee_click(Shell::handle_payees_edit_click),
+            on_delete_click: payee_click(Shell::handle_payees_delete_click),
+        };
         let categories_page = categories_view::CategoriesPageProps {
             categories: &self.categories,
             budgets: &self.budgets,
@@ -3622,6 +3768,18 @@ impl Render for Shell {
                     i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
                 ),
             }),
+            Noun::Payees => Some(PageStatus {
+                hints: payees_hints(),
+                right: format!(
+                    "{} \u{b7} {}",
+                    crate::msg::desktop_payees_count(
+                        i64::try_from(payees::active_count(&self.payees)).unwrap_or(i64::MAX)
+                    ),
+                    crate::msg::desktop_payees_status_without_default(
+                        &payees::without_default_category_count(&self.payees).to_string()
+                    ),
+                ),
+            }),
             Noun::Transactions => Some(PageStatus {
                 hints: if self.nav.mode() == InputMode::Filter {
                     filter_hints()
@@ -3675,7 +3833,8 @@ impl Render for Shell {
                                     on_row_hover,
                                     on_row_click,
                                 )
-                                .account_count(self.accounts.len()),
+                                .account_count(self.accounts.len())
+                                .payee_count(payees::active_count(&self.payees)),
                             )
                             .when(
                                 self.nav.noun().has_context_entities() && self.nav.ledger_open(),
@@ -3696,6 +3855,7 @@ impl Render for Shell {
                                 PageProps {
                                     accounts: accounts_page,
                                     categories: categories_page,
+                                    payees: payees_page,
                                     transactions: transactions_page,
                                 },
                                 SettingsPanelProps {
@@ -3996,6 +4156,7 @@ impl Render for Shell {
 struct PageProps<'a> {
     accounts: accounts_view::AccountsPageProps<'a>,
     categories: categories_view::CategoriesPageProps<'a>,
+    payees: payees_view::PayeesPageProps<'a>,
     transactions: Option<transactions_view::TransactionsPageProps>,
 }
 
@@ -4074,6 +4235,9 @@ fn render_view(
     }
     if noun == Noun::Categories {
         return categories_view::render(focused, scroll_handle, pages.categories, cx);
+    }
+    if noun == Noun::Payees {
+        return payees_view::render(focused, scroll_handle, pages.payees, cx);
     }
     if noun == Noun::Transactions
         && let Some(transactions) = pages.transactions

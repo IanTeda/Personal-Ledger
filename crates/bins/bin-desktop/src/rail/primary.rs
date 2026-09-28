@@ -116,6 +116,8 @@ pub struct PrimaryRail {
     on_row_click: OnRowClick,
     /// The Accounts row's count badge -- the live number of accounts, not a fixed stub.
     account_count: usize,
+    /// The Payees row's count badge: active Payees only (#283).
+    payee_count: usize,
 }
 
 impl PrimaryRail {
@@ -135,12 +137,19 @@ impl PrimaryRail {
             on_row_click,
             on_row_hover,
             account_count: crate::rail::context::account_count(),
+            payee_count: 0,
         }
     }
 
     /// Overrides the Accounts row's badge with the real account count.
     pub fn account_count(mut self, count: usize) -> Self {
         self.account_count = count;
+        self
+    }
+
+    /// Sets the Payees row's count badge.
+    pub fn payee_count(mut self, count: usize) -> Self {
+        self.payee_count = count;
         self
     }
 }
@@ -319,6 +328,21 @@ impl PrimaryRail {
                 .mr(px(4.0))
                 .child(self.account_count.to_string())
         });
+        // A plain count, inverted on the active row as the Payees handoff draws it.
+        let count_badge = (row.noun == Noun::Payees).then(|| {
+            div()
+                .when(selected, |this| {
+                    this.bg(color::selection_text(cx))
+                        .text_color(color::selection_background(cx))
+                })
+                .when(!selected, |this| this.text_color(color::faint_text(cx)))
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_size(px(10.0))
+                .py(px(1.0))
+                .px(px(5.0))
+                .mr(px(4.0))
+                .child(self.payee_count.to_string())
+        });
 
         let noun = row.noun;
         let on_click = self.on_row_click.clone();
@@ -350,6 +374,7 @@ impl PrimaryRail {
                     .child(row.noun.label()),
             )
             .children(badge)
+            .children(count_badge)
             .when_some(row.jump_key, |this, key| {
                 this.child(div().text_size(px(11.0)).text_color(jump_color).child(key))
             })
