@@ -101,6 +101,28 @@ Payee management for the Personal Ledger desktop app: a flat list of payees, Add
 ## Assets
 Icons are inline 16/14px stroke SVGs (stroke 1.5) — see `Payees.html`. No images.
 
+## Acceptance pass
+
+Built by the [Desktop Payees Surface](https://github.com/IanTeda/Personal-Ledger/issues/281) map: the list (6a, #286), Add (6b, #287), Edit (6c, #288) and Delete (6d, #289) dialogs, and the stubbed Import match step (6e, #290), all on in-memory stubs.
+
+### Deliberate departures from the mockup
+
+- **Delete becomes deactivate for a Payee in use** (#283): 6d's hard delete is offered only when no Split carries the Payee. A referenced Payee gets a Deactivate dialog (or Reactivate, if already inactive) with the same typed-name confirm; inactive rows are dimmed and tagged "inactive" and leave the counts.
+- **Match rules are Payee Aliases** (#282): matching is a case-insensitive *contains* with the **longest** alias winning, not "first match wins"; aliases are unique across Payees; rename-generated aliases are ordinary removable chips.
+- **TRANSACTIONS and TOTAL are computed live** from the Transactions stub (all time, base Unit only), so the figures differ from the mockup's samples.
+- **6e has no `enter accept suggestion` key**: a suggestion is pre-selected, so `enter` continues; `p`/`c` open the row's selects, `n` creates the suggested Payee, `r` toggles remember, `esc` goes back. Steps 1 and 3 of the stepper are not built.
+
+### Verified live vs by code review
+
+**Not yet verified live.** The #291 pass was run from a sandbox with no GPU device, so the app could not open a window and no screenshots were taken. Keys, Messages, the status-line legends and the rules above were checked against the code (`shell.rs`'s `handle_payees_key`/`handle_import_key`, `payees_hints`/`import_hints`, `i18n/en-US/payees.ftl`/`import.ftl`), and the pure rules are covered by `cargo test -p bin_desktop` (`payees`, `import`). A live pass (every screen screenshotted against `Payees.html`, via the temporary `dispatch_keystroke` injector) is still owed before #291 closes.
+
+### Known gaps
+
+- `gpui` 0.2 has no letter-spacing or `tabular-nums` hook, so header tracking and tabular figures are not reproduced (as on the other desktop surfaces).
+- No real CSV upload or parsing; the committed import lands only in the in-memory stubs.
+- The default Category pre-fills nothing yet outside 6e: the desktop has no transaction form.
+- Payee merge (PAY-006) and payee palette verbs beyond `:import` are not built.
+
 ## Files
 - `Payees.html` — screens 6a–6e
 - `styles.css` — design-system stylesheet (`.btn`, `.btn-primary`, `.btn-ghost`, `.tag`, `.tag-neutral`, `.tag-accent`, `.tag-outline`)
