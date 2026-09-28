@@ -9,8 +9,6 @@
 # ----------------------------[ DOT FILES ]------------------------------------
 # By Default, ignore all dot files `.*`, except for those with `!`
 .*
-# Claude AI config
-!.claude
 # Github workflows
 !.github
 # Git ignore config
@@ -37,6 +35,22 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+
+# ----------------------------[ CLAUDE FILES ]----------------------------------
+# Claude Code: ignore everything in .claude/ except config meant for contributors
+# Don't ignore .claude/ itself, so contributors can add their own files
+!.claude/
+# Ignore everything in .claude/ by default, except for the following dot files.
+.claude/*
+!.claude/settings.json
+!.claude/skills/
+!.claude/agents/
+!.claude/commands/
+!.claude/hooks/
+!.claude/workflows/
+# Personal Claude notes (not a dotfile, so `.*` doesn't catch it)
+CLAUDE.local.md
 
 
 # ----------------------------[ RUST FILES ]-----------------------------------
@@ -77,7 +91,6 @@ tramp
 # Vim
 *.swp
 *.swo
-*~
 
 # RustRover
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
@@ -143,10 +156,6 @@ coverage/
 test-results/
 test-outputs/
 
-# Test artifacts
-test-results/
-test-outputs/
-
 
 # -----------------------------[ NODE BUILD FILES ]------------------------------
 
@@ -160,4 +169,3 @@ dist-ssr
 # Personal tool-version / env overrides layered on top of mise.toml
 mise.local.toml
 .mise.local.toml
-
