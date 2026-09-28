@@ -637,11 +637,14 @@ mod tests {
         let accounts = default_accounts();
         let transactions = seeded_transactions(&payees);
         let j_smith = id_of(&payees, "J Smith");
-        let usage = super::usage(&transactions, &accounts, Some("aud"), j_smith);
-        assert_eq!(usage.splits, 4);
-        assert_eq!(usage.total, Money(BigDecimal::new((-64_000).into(), 2)));
+        let j_smith_usage = usage(&transactions, &accounts, Some("aud"), j_smith);
+        assert_eq!(j_smith_usage.splits, 4);
+        assert_eq!(
+            j_smith_usage.total,
+            Money(BigDecimal::new((-64_000).into(), 2))
+        );
 
-        let other_unit = super::usage(&transactions, &accounts, Some("xyz"), j_smith);
+        let other_unit = usage(&transactions, &accounts, Some("xyz"), j_smith);
         assert_eq!(other_unit.splits, 4);
         assert_eq!(other_unit.total, Money(BigDecimal::new(0.into(), 2)));
     }
