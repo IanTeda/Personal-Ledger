@@ -56,8 +56,20 @@ workspace = true
 product-name = "Personal Ledger Desktop"
 identifier = "au.id.teda.personal-ledger.desktop"
 formats = ["nsis", "dmg", "appimage"]
-# Placeholder only -- a plain square, no branding yet, same as bin-tui's own icon.
-icons = ["icons/icon-256.png"]
+# The "Totals rule" app icon (light set) copied from the handoff in docs/ux/Logo/ -- packager
+# paths are crate-relative. The PNGs feed the AppImage hicolor sizes, `.icns` the dmg and
+# `.ico` Windows. Square corners are deliberate: don't round or mask the tile.
+icons = [
+    "icons/app-icon-16.png",
+    "icons/app-icon-32.png",
+    "icons/app-icon-48.png",
+    "icons/app-icon-64.png",
+    "icons/app-icon-128.png",
+    "icons/app-icon-256.png",
+    "icons/app-icon-512.png",
+    "icons/app-icon.icns",
+    "icons/app-icon.ico",
+]
 
 # Not strictly required now that the CI invocation passes `--packages bin_desktop` (the
 # real fix for cargo-packager trying to bundle bin-tui's `tui.exe` -- see the CI workflow's

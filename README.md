@@ -17,9 +17,11 @@
 <div align="center">
     <!-- Absolute URL: the README renders both on GitHub (repo root) and in the mdBook build (outside `src = "docs"`), so no relative path resolves in both -->
     <a href="https://github.com/IanTeda/Personal-Ledger">
-        <img src="https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/images/personal-ledger-logo01.png" alt="Personal Ledger logo" width="120" height="120">
+        <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/ux/Logo/dark/png/lockup-128.png">
+            <img src="https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/ux/Logo/light/png/lockup-128.png" alt="Personal Ledger" height="64">
+        </picture>
     </a>
-    <h3 align="center">Personal Ledger</h3>
     <p align="center">
         Keep track of your spending, investments and assets, so you know where you stand and can make better decisions.
     <br />

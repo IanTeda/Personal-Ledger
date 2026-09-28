@@ -52,6 +52,4 @@ and no root at all (see the ADR for why).
    ./target/release/tui_0.1.0_x86_64.AppImage --appimage-extract-and-run
    ```
 
-`crates/bins/bin-tui/icons/icon-256.png` is a placeholder (a plain coloured square, no branding) —
-AppImage packaging requires a square icon to exist; swap it for real artwork whenever the app
-gets any.
+`crates/bins/bin-tui/icons/` holds the "Totals rule" app icon (the light set from `docs/ux/Logo/`): PNGs 16–512 for the AppImage, `app-icon.icns` for the dmg and `app-icon.ico` for Windows.
