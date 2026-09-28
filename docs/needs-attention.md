@@ -9,7 +9,7 @@ See `CONTEXT.md` for the one-paragraph canonical definition of Task and Needs At
 Needs Attention has four sources, but only one of them is new data:
 
 - **Task** — a plain to-do a user typed in themselves. Nothing else in the Ledger already tracks "I need to call the bank about this," so it needs a real, persisted row.
-- **Flagged Transactions**, **Cleared-but-not-Reconciled Transactions**, and **Overdue (or lead-time) Bill Schedule entries** — each is already a fact living on an existing row: a Transaction's Flagged marker, a Transaction's Status, a Bill Schedule entry's own status.
+- **Flagged Transactions**, **Cleared-but-not-Reconciled Transactions**, and **Bill Schedule entries inside their Attention Lead or Overdue** — each is already a fact living on an existing row: a Transaction's Flagged marker, a Transaction's Status, a Bill Schedule entry's own status.
 
 Rather than copying those three facts into a second table of their own, Needs Attention reads them directly off the rows that already carry them, every time the list is viewed. This mirrors the Anticipated Bill preview (`docs/bills.md`) — a computed view standing in for something that isn't its own stored row — rather than Bill Schedule, which *is* materialized because a Transaction needs a stable id to link against. See [ADR-0020](adr/0020-needs-attention-as-derived-view.md) for the full reasoning, including the alternative (a single materialized "Attention Item" table) that was considered and rejected.
 
@@ -36,24 +36,25 @@ Every time the list is viewed, it's built fresh from four sources:
 | Task | Status is Open | Marked Done |
 | Transaction | Flagged | Un-flagged |
 | Transaction | Status is Cleared, not yet Reconciled | Moved to Reconciled (a plain Open Transaction hasn't even been confirmed yet, so it isn't included) |
-| Bill Schedule entry | Status is Overdue, or Due and within that Bill's Attention Lead | Paid, or Skipped |
+| Bill Schedule entry | Unresolved, and due on or before today plus that Bill Plan's Attention Lead (unset = 0) | Paid, or Skipped |
 
 Flagged Transactions and Cleared-but-not-Reconciled Transactions are shown as aggregated counts (e.g. "14 unreconciled transactions", "3 transactions flagged for review") rather than one row per Transaction. Overdue (and lead-time) Bills are shown individually by Bill name instead — each Bill is a distinct, recognisable obligation worth naming on its own, the same way Budget's Known Costs (Bills) itemises by Bill rather than reporting one lump sum, rather than an interchangeable stack the way plain Transactions are.
 
 ### Bills and Attention Lead
 
-A Bill Schedule entry's Due/Overdue status (`docs/bills.md`) is unchanged by any of this — it's still computed purely from the due date. Attention Lead only widens *which* Due entries also count as needing attention, ahead of them going Overdue: an optional, per-Bill day count (unset by default, meaning Overdue-only) rather than a single global setting, since how early a Bill deserves attention varies Bill to Bill — a large recurring rent payment might warrant a week's notice, a small subscription none at all.
+A Bill Schedule entry's Due/Overdue status (`docs/bills.md`) is unchanged by any of this — it's still computed purely from the due date. Attention Lead is a date rule, separate from status: an unresolved entry counts once its due date is on or before today plus the lead, even while it's still Upcoming because it falls due early next month. It's an optional, per-Bill Plan day count (unset by default, meaning zero: the entry counts from its due day) rather than a single global setting, since how early a Bill deserves attention varies Bill to Bill — a large recurring rent payment might warrant a week's notice, a small subscription none at all.
 
 ### Example
 
-A Telstra Internet Bill has no Attention Lead set (Overdue-only); an Insurance Bill, due the 20th, has an Attention Lead of 5 days. Viewed on the 16th:
+A Telstra Internet Bill, due the 25th, has no Attention Lead set (counted from its due day); an Insurance Bill, due the 20th, has an Attention Lead of 5 days. Viewed on the 16th:
 
-- Telstra, still Due (not yet Overdue) — **not** shown in Needs Attention, even though it's coming up; it's visible in Bill Planner and Budget's Known Costs (Bills) as usual.
-- Insurance, Due the 20th, within its own 5-day Attention Lead from the 16th onward — **shown** in Needs Attention by name, ahead of actually being late.
+- Telstra, Due the 25th — **not** shown in Needs Attention, even though it's coming up; it's visible in Bill Planner and Budget's Known Costs (Bills) as usual.
+- Insurance, Due the 20th, within its own 5-day Attention Lead from the 15th onward — **shown** in Needs Attention by name, ahead of actually being late.
+- Rent, due the 1st of next month with a 5-day Attention Lead — viewed on the 28th it's still Upcoming, but it's **shown**, because the lead crosses the month boundary.
 
 ## Relationship to Bill's own Reminders
 
-`docs/bills.md`'s Reminders section describes Overdue (and now Attention-Lead-eligible Due) Bill Schedule entries surfacing on the Dashboard — that surfacing *is* Needs Attention; the two documents describe the same list from each entity's own vantage point. Needs Attention adds Flagged Transactions, Cleared-but-not-Reconciled Transactions, and Tasks alongside it, so a user checks one list rather than a Bill-specific one and everything else separately.
+`docs/bills.md`'s Reminders section describes Overdue (and Attention-Lead-eligible) Bill Schedule entries surfacing on the Dashboard — that surfacing *is* Needs Attention; the two documents describe the same list from each entity's own vantage point. Needs Attention adds Flagged Transactions, Cleared-but-not-Reconciled Transactions, and Tasks alongside it, so a user checks one list rather than a Bill-specific one and everything else separately.
 
 ## What's deliberately out of scope here
 

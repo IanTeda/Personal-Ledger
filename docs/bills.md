@@ -51,7 +51,9 @@ Each Bill Schedule entry moves through statuses as its due date approaches and p
 
 - **Upcoming:** The due date is in a future month.
 - **Due:** The due date is this month, up to and including the due day.
-- **Overdue:** The due day has passed this month and it's still unpaid.
+- **Overdue:** The due day has passed and it's still unpaid. An Overdue bill from an earlier month is carried into the current month's Schedule until you pay or skip it, and still shows in its own month.
+
+The Schedule shows one calendar month at a time. Weekly and Fortnightly bills can have several Due entries in the same month. Needs Attention uses dates, not these statuses: a bill appears there once its due date is within its Attention Lead (or on its due day if no lead is set), even when that falls in next month.
 - **Paid:** Linked to the real transaction that settled it.
 - **Skipped:** Deliberately not paid — a recurring cycle you skipped, or a one-time bill you cancelled.
 
@@ -100,7 +102,7 @@ Personal Ledger generates Bill Schedule entries for the next few months. On the 
 - **Accounts:** each bill is paid from one account.
 - **Categories:** bills are classified by expense category.
 - **Budgets:** bills appear as Known Costs within a budget's period.
-- **Needs Attention:** Overdue and Due (within lead time) bills appear here.
+- **Needs Attention:** unpaid bills appear here from their due date minus their Attention Lead onwards.
 - **Transactions:** linked transactions are the actual payments.
 
 ## Getting around
