@@ -145,6 +145,32 @@ pub fn cancel_button(id: impl Into<SharedString>, on_click: OnClick, cx: &App) -
         .child(lib_locale::msg::dialog_cancel())
 }
 
+/// A rich Message as one wrapping run of text, its `<strong>` spans bolded (and in `strong_color`
+/// when given). A `div` per Segment can't break inside a Segment, so long copy with an argument or
+/// a bold span in it overflowed the card instead of wrapping.
+pub fn rich_text(
+    segments: Vec<lib_locale::Segment>,
+    strong_color: Option<gpui::Hsla>,
+) -> gpui::StyledText {
+    let mut text = String::new();
+    let mut highlights = Vec::new();
+    for segment in segments {
+        let start = text.len();
+        text.push_str(&segment.text);
+        if segment.tag.as_deref() == Some("strong") {
+            highlights.push((
+                start..text.len(),
+                gpui::HighlightStyle {
+                    font_weight: Some(gpui::FontWeight::EXTRA_BOLD),
+                    color: strong_color,
+                    ..Default::default()
+                },
+            ));
+        }
+    }
+    gpui::StyledText::new(text).with_highlights(highlights)
+}
+
 /// The Info panel: `padding:10-12px; background:#eae9e9; border-left:2px solid #ec3013;
 /// font-size:11.5px` (`docs/ux/desktop/Settings/README.md`'s Components table) -- the Edit unit
 /// dialog's own usage notice (issue #185) and the Delete unit dialog's own reference panel

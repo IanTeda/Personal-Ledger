@@ -72,16 +72,8 @@ fn warning_copy(name: &str, transactions: usize) -> AnyElement {
         crate::msg::desktop_tags_remove_used(name, i64::try_from(transactions).unwrap_or(i64::MAX))
     };
     div()
-        .flex()
-        .flex_wrap()
         .text_size(px(13.0))
-        .children(segments.into_iter().map(|segment| {
-            let text = div().child(segment.text);
-            match segment.tag.as_deref() {
-                Some("strong") => text.font_weight(gpui::FontWeight::EXTRA_BOLD),
-                _ => text,
-            }
-        }))
+        .child(dialog::rich_text(segments, None))
         .into_any_element()
 }
 

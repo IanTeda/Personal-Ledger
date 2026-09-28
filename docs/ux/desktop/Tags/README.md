@@ -106,7 +106,9 @@ Built by the [Desktop Tags Surface](https://github.com/IanTeda/Personal-Ledger/i
 
 ### Verified live vs by code review
 
-**Not yet verified live.** The #362 pass so far is a code review: the app was not run and no screenshots were taken. Keys, Messages, the status-line legends and the rules above were checked against the code (`shell.rs`'s `handle_tags_key`/`handle_tags_dialog_key`, `tags_hints`/`tag_dialog_hints`/`merge_tags_dialog_hints`, `i18n/en-US/tags.ftl`), and the pure rules are covered by `cargo test -p bin_desktop tags` (42 passing). A live pass (every screen screenshotted against `Tags.html`) is still owed before #362 closes.
+**Verified live** (2026-09-28) by driving the running app through every screen against `Tags.html` with the temporary keystroke injector and `grim` screenshots: 7a (counts, swatches, the inactive and duplicate rows, the subline), 7b (the "already exists" error for `WORK trip`, a preset colour, adding `holiday`), 7c (renaming `shared` updates the row), 7d (the typed-name confirm for a used Tag) and 7e (`m` on the flagged row pre-fills `Work Trip → work-trip`; merging leaves 28 transactions and clears the flag). Keys, Messages and the status-line legends were also checked against the code (`shell.rs`'s `handle_tags_key`/`handle_tags_dialog_key`, `tags_hints`/`tag_dialog_hints`/`merge_tags_dialog_hints`, `i18n/en-US/tags.ftl`), and the pure rules are covered by `cargo test -p bin_desktop tags`.
+
+The pass found one defect: 7d's and 7e's copy, rendered as one `div` per Message Segment, couldn't wrap inside a Segment, so it broke after each bold span or name and ran past the card's edge. Both now render through `dialog::rich_text`, a single wrapping `StyledText` with bold highlights. That fix was checked by build and tests but not re-screenshotted. The Accounts, Categories and Payees delete dialogs still use the per-Segment pattern; their copy is short enough not to show the problem yet.
 
 ### Known gaps
 

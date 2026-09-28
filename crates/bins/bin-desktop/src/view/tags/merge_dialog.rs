@@ -142,8 +142,6 @@ pub fn render(props: MergeTagsProps<'_>, cx: &App) -> AnyElement {
 /// Until both Tags are chosen it asks for them instead.
 fn callout(pair: Option<(&Tag, &Tag)>, transactions: usize, cx: &App) -> AnyElement {
     let panel = div()
-        .flex()
-        .flex_wrap()
         .p(px(10.0))
         .bg(color::chrome(cx))
         .border_l(px(2.0))
@@ -156,19 +154,10 @@ fn callout(pair: Option<(&Tag, &Tag)>, transactions: usize, cx: &App) -> AnyElem
             .into_any_element();
     };
     panel
-        .children(
-            callout_segments(source, target, transactions)
-                .into_iter()
-                .map(|segment| {
-                    let text = div().child(segment.text);
-                    match segment.tag.as_deref() {
-                        Some("strong") => text
-                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                            .text_color(color::foreground(cx)),
-                        _ => text,
-                    }
-                }),
-        )
+        .child(dialog::rich_text(
+            callout_segments(source, target, transactions),
+            Some(color::foreground(cx).into()),
+        ))
         .into_any_element()
 }
 
