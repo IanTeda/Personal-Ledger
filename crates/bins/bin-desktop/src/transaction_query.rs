@@ -8,7 +8,8 @@
 //! - **Transaction-level** filters: account, status, and the date range (inclusive; an empty side
 //!   is unbounded). **Split-level** filters: category (a parent matches its descendants), payee and
 //!   tag (case-insensitive substrings of the Split's Payee current name and its Tag names), and an
-//!   exact Payee id -- the Payees page's hand-off, which a substring would over-match ("BP").
+//!   exact Payee id and Tag id -- the Payees and Tags pages' hand-offs, which a substring would
+//!   over-match ("BP", or "trip" for `work-trip`).
 //! - A Transaction matches a Split-level filter when **any** Split matches, and with several
 //!   Split-level filters active **one Split must satisfy all of them**: a Split is one line.
 //! - While any Split-level filter is active a row's amount is the **sum of its matching Splits**
@@ -83,6 +84,8 @@ pub struct TransactionFilters {
     /// An exact [`Payee::id`]: what "view transactions" on the Payees page hands over.
     pub payee_id: Option<u32>,
     pub tag: String,
+    /// An exact [`Tag::id`]: what "view transactions" on the Tags page hands over.
+    pub tag_id: Option<u32>,
     /// Inclusive lower bound; `None` is unbounded.
     pub from: Option<NaiveDate>,
     /// Inclusive upper bound; `None` is unbounded.
@@ -106,6 +109,7 @@ impl TransactionFilters {
             payee: String::new(),
             payee_id: None,
             tag: String::new(),
+            tag_id: None,
             from: Some(from),
             to: Some(to),
             status: StatusFilter::All,
@@ -136,6 +140,14 @@ impl TransactionFilters {
         }
     }
 
+    /// The defaults narrowed to one Tag by id: what "view transactions" on the Tags page hands over.
+    pub fn for_tag(today: NaiveDate, tag: u32) -> Self {
+        Self {
+            tag_id: Some(tag),
+            ..Self::defaults(today)
+        }
+    }
+
     /// Whether these are exactly the defaults (so no chip is an "active" accent chip).
     pub fn is_default(&self, today: NaiveDate) -> bool {
         *self == Self::defaults(today)
@@ -148,6 +160,7 @@ impl TransactionFilters {
             || !self.payee.trim().is_empty()
             || self.payee_id.is_some()
             || !self.tag.trim().is_empty()
+            || self.tag_id.is_some()
     }
 }
 
@@ -232,6 +245,7 @@ struct SplitFilter {
     payee: String,
     payee_id: Option<u32>,
     tag: String,
+    tag_id: Option<u32>,
 }
 
 impl SplitFilter {
@@ -243,6 +257,7 @@ impl SplitFilter {
             payee: filters.payee.trim().to_lowercase(),
             payee_id: filters.payee_id,
             tag: filters.tag.trim().to_lowercase(),
+            tag_id: filters.tag_id,
         }
     }
 
@@ -251,6 +266,7 @@ impl SplitFilter {
             || !self.payee.is_empty()
             || self.payee_id.is_some()
             || !self.tag.is_empty()
+            || self.tag_id.is_some()
     }
 
     /// Whether this one Split satisfies **every** active condition.
@@ -281,6 +297,11 @@ impl SplitFilter {
             if !tag_matches {
                 return false;
             }
+        }
+        if let Some(id) = self.tag_id
+            && !split.tag_ids.contains(&id)
+        {
+            return false;
         }
         true
     }
@@ -719,6 +740,28 @@ mod tests {
         by_name.payee_id = None;
         by_name.payee = "bp".to_string();
         assert!(world.run(&by_name, "").rows.len() >= visible.rows.len());
+    }
+
+    #[test]
+    fn a_tag_id_filter_matches_exactly_that_tag_and_sums_its_splits() {
+        let world = World::seeded();
+        let japan = tags::find_by_name(&world.tags, "Japan Trip 2026").unwrap();
+        let filters = TransactionFilters {
+            from: None,
+            to: None,
+            ..TransactionFilters::for_tag(today(), japan)
+        };
+        assert!(filters.has_split_level());
+        let visible = world.run(&filters, "");
+        // The Tokyo receipt: only its tagged Dining Split counts.
+        assert_eq!(visible.rows.len(), 1);
+        assert!(visible.rows[0].partial);
+        assert_eq!(visible.rows[0].amount, money("-64.00"));
+        // "trip" as a substring also over-matches `work-trip` and `Work Trip`; the id never does.
+        let mut by_name = filters.clone();
+        by_name.tag_id = None;
+        by_name.tag = "trip".to_string();
+        assert!(world.run(&by_name, "").rows.len() > visible.rows.len());
     }
 
     #[test]

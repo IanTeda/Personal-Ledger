@@ -280,6 +280,8 @@ impl FilterForm {
             // The popover has no Payee-id field yet; the Payees page's hand-off sets it directly.
             payee_id: None,
             tag: self.tag.trim().to_string(),
+            // Likewise the Tags page's hand-off sets the Tag id directly.
+            tag_id: None,
             from: parse_date(&self.from, today, date_style).ok()?,
             to: parse_date(&self.to, today, date_style).ok()?,
             status: self.status,

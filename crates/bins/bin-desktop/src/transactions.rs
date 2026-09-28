@@ -278,7 +278,18 @@ fn profile(account_name: &str) -> Option<(&'static [(&'static str, u32)], i64)> 
     }
 }
 
-const RANDOM_TAGS: [&str; 3] = ["shared", "tax deductible", "reimbursable"];
+/// The Tags random transactions draw from, weighted so the Tags page keeps the handoff's usage
+/// order (shared, reimbursable, tax-deductible, work-trip, gift).
+const RANDOM_TAGS: [(&str, u32); 5] = [
+    ("shared", 38),
+    ("reimbursable", 24),
+    ("tax-deductible", 12),
+    ("work-trip", 14),
+    ("gift", 6),
+];
+
+/// The share of random transactions (in percent) with one tagged Split.
+const TAGGED_PERCENT: u64 = 28;
 
 /// Whether an account of this type takes Transactions directly (glossary: Loan and Investment
 /// accounts do not).
@@ -368,9 +379,9 @@ fn random_transaction(
     }
 
     let tagged_index = rng
-        .chance(6)
+        .chance(TAGGED_PERCENT)
         .then(|| rng.range(0, parts.len() as i64 - 1) as usize);
-    let tag_name = *rng.pick(&RANDOM_TAGS);
+    let tag_name = weighted(rng, &RANDOM_TAGS);
     let mut splits = Vec::with_capacity(parts.len());
     for (index, (cents, category, payee)) in parts.into_iter().enumerate() {
         let tags: &[&str] = if tagged_index == Some(index) {
@@ -398,7 +409,8 @@ fn random_transaction(
 /// The hand-authored cases every seed contains, as `(account name, transaction)`. Each exists to
 /// exercise a rule: a groceries plus household receipt from one Payee, a receipt whose Splits carry
 /// different Payees, a receipt where only one Split has a Tag, a salary (positive, income
-/// Category), and one flagged transaction in each status.
+/// Category), one flagged transaction in each status, and the Tags page's hand-placed usage: three
+/// `one-off`s, the `Work Trip` likely duplicate and the inactive `Bali 2025`.
 fn specials(lookup: &Lookup<'_>, today: NaiveDate) -> Vec<(&'static str, Transaction)> {
     let day = |days: i64| today - Duration::days(days);
     let make = |account: &'static str,
@@ -531,6 +543,41 @@ fn specials(lookup: &Lookup<'_>, today: NaiveDate) -> Vec<(&'static str, Transac
             )
         }),
     )
+    .chain([3, 45, 160].map(|days| {
+        make(
+            "Amex Platinum",
+            days,
+            Cleared,
+            false,
+            Some("One-off purchase"),
+            vec![lookup.split(
+                -6_500,
+                "Household",
+                Some("Bunnings Warehouse"),
+                &["one-off"],
+            )],
+        )
+    }))
+    .chain([30, 31].map(|days| {
+        make(
+            "Amex Platinum",
+            days,
+            Cleared,
+            false,
+            Some("Conference travel"),
+            vec![lookup.split(-4_800, "Transport", Some("Uber"), &["Work Trip"])],
+        )
+    }))
+    .chain([500, 503].map(|days| {
+        make(
+            "ANZ Everyday",
+            days,
+            Reconciled,
+            false,
+            Some("Bali holiday"),
+            vec![lookup.split(-9_000, "Dining", Some("Cafe Vittoria"), &["Bali 2025"])],
+        )
+    }))
     .flatten()
     .collect()
 }

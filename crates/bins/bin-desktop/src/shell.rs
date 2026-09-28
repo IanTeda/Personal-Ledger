@@ -346,6 +346,11 @@ pub struct Shell {
     /// Transactions page (`:import`). Dropped on leaving Transactions.
     import: Option<ImportState>,
     tags: Vec<Tag>,
+    /// The selected row on the Tags page, a position in `tags::sorted_by_usage`'s order.
+    tags_selected: usize,
+    /// The currently open Tags dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
+    /// exactly as long as this is `Some`, following the pattern of `payees_dialog`.
+    tags_dialog: Option<tags::TagsDialog>,
     /// The Transactions view's stub dataset, newest first (`transactions::default_transactions`).
     /// A real, mutable `Vec`, like [`Self::accounts`]: saved-in-memory state that survives leaving
     /// and re-entering the page. Deleting an account deletes its transactions with it.
@@ -431,6 +436,8 @@ impl Shell {
             payees_dialog: None,
             import: None,
             tags,
+            tags_selected: 0,
+            tags_dialog: None,
             transactions,
             transactions_selected: 0,
             transactions_scroll: UniformListScrollHandle::new(),
@@ -1731,6 +1738,17 @@ impl Shell {
     /// a name substring that would over-match ("BP").
     fn open_payee_transactions(&mut self, id: u32) {
         self.transactions_filters = TransactionFilters::for_payee(self.today, id);
+        self.transactions_search.clear();
+        self.transactions_filter_form = None;
+        self.reset_transactions_selection();
+        self.nav.set_noun(Noun::Transactions);
+        self.reset_view_scroll();
+    }
+
+    /// "View transactions" on the Tags page: Transactions filtered to exactly this Tag's id, not a
+    /// name substring that would over-match ("trip").
+    fn open_tag_transactions(&mut self, id: u32) {
+        self.transactions_filters = TransactionFilters::for_tag(self.today, id);
         self.transactions_search.clear();
         self.transactions_filter_form = None;
         self.reset_transactions_selection();
