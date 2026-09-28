@@ -43,6 +43,7 @@ use crate::{
     command::{self, AccountsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
     format,
+    import::{self, ImportState, RowSelect},
     key_router::{self, KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
@@ -70,7 +71,7 @@ use crate::{
     view::{
         accounts as accounts_view, categories as categories_view,
         dashboard::Dashboard,
-        help as help_view, payees as payees_view,
+        help as help_view, import as import_view, payees as payees_view,
         settings::{self as settings_view, SettingsBodyProps},
         toast_history as toast_history_view, transactions as transactions_view,
     },
@@ -127,6 +128,20 @@ fn payees_hints() -> Vec<(&'static str, String)> {
         ("e", crate::msg::desktop_hint_edit()),
         ("d", crate::msg::desktop_hint_delete()),
         ("n", crate::msg::desktop_hint_new()),
+    ]
+}
+
+/// The 6e Import step's status-line legend. The handoff's `enter accept suggestion` has no
+/// separate key here: a suggestion is pre-selected, so `enter` continues (#290).
+fn import_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("p", crate::msg::desktop_hint_payee()),
+        ("c", crate::msg::desktop_hint_category()),
+        ("n", crate::msg::desktop_hint_create_new_payee()),
+        ("r", crate::msg::desktop_hint_remember_rules()),
+        ("enter", crate::msg::desktop_hint_continue()),
+        ("esc", crate::msg::desktop_hint_back()),
     ]
 }
 
@@ -327,6 +342,9 @@ pub struct Shell {
     /// The currently open Payees dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
     /// exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
     payees_dialog: Option<payees::PayeesDialog>,
+    /// The stubbed 6e Import "match payees" step, `Some` while it shows in place of the
+    /// Transactions page (`:import`). Dropped on leaving Transactions.
+    import: Option<ImportState>,
     tags: Vec<Tag>,
     /// The Transactions view's stub dataset, newest first (`transactions::default_transactions`).
     /// A real, mutable `Vec`, like [`Self::accounts`]: saved-in-memory state that survives leaving
@@ -411,6 +429,7 @@ impl Shell {
             payees,
             payees_selected: 0,
             payees_dialog: None,
+            import: None,
             tags,
             transactions,
             transactions_selected: 0,
@@ -611,6 +630,11 @@ impl Shell {
             let kind = ToastKind::ALL[self.debug_toast_kind % ToastKind::ALL.len()];
             self.debug_toast_kind += 1;
             self.raise_toast(kind, format!("{kind:?} Toast raised from F9"));
+            return true;
+        }
+
+        if !pending_g_active && self.handle_import_key(keystroke) {
+            self.status_message = None;
             return true;
         }
 
@@ -1779,6 +1803,198 @@ impl Shell {
     }
 
     /// The Default category select's options: "none", then the leaf Categories.
+    /// `:import`: opens the stubbed 6e step on the seeded statement, in place of the Transactions
+    /// page (#284).
+    fn open_import(&mut self) {
+        self.import = Some(ImportState::new(&self.payees, self.today));
+        self.transactions_filter_form = None;
+        self.nav.set_noun(Noun::Transactions);
+        self.nav.set_focus(FocusZone::View);
+        self.reset_view_scroll();
+    }
+
+    /// The Category select's options on 6e: "choose category…", then every leaf.
+    fn import_category_options(&self) -> payees::PayeeOptions {
+        payees::PayeeOptions::new(
+            &self.categories,
+            crate::msg::desktop_import_choose_category(),
+        )
+    }
+
+    /// 6e's keys, while it shows with the view focused in `Normal` mode: `j`/`k` move the row, `p`
+    /// and `c` open its Payee and Category selects, `n` creates a new Payee from its cleaned name,
+    /// `r` toggles "remember", `enter` continues and `esc` goes back. While a select is open it
+    /// owns `j`/`k`/arrows, `enter`/`space` and `esc`. Any other key falls through to the router.
+    fn handle_import_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.import.is_none()
+            || self.nav.noun() != Noun::Transactions
+            || self.nav.mode() != InputMode::Normal
+            || self.nav.focus() != FocusZone::View
+        {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform {
+            return false;
+        }
+        let categories = self.import_category_options();
+        let Some(state) = self.import.as_mut() else {
+            return false;
+        };
+        let key = keystroke.key.as_str();
+        let selected = state.selected.min(state.rows.len().saturating_sub(1));
+        let choices = state
+            .rows
+            .get(selected)
+            .map(|row| import_view::payee_choices(&self.payees, &row.raw));
+        let Some(choices) = choices else {
+            return false;
+        };
+
+        if state.open_select.is_some() {
+            let select_key = match key {
+                "j" | "down" => import::SelectKey::Down,
+                "k" | "up" => import::SelectKey::Up,
+                "enter" | "space" => import::SelectKey::Commit,
+                "escape" => import::SelectKey::Cancel,
+                // An open list swallows everything else, like the dialogs' selects.
+                _ => return true,
+            };
+            state.handle_select_key(select_key, &self.payees, &choices, &categories);
+            return true;
+        }
+
+        let len = state.rows.len();
+        match key {
+            "j" | "down" => state.selected = accounts::step_selection(selected, len, 1),
+            "k" | "up" => state.selected = accounts::step_selection(selected, len, -1),
+            "p" => state.open(selected, RowSelect::Payee, &choices, &categories),
+            "c" => state.open(selected, RowSelect::Category, &choices, &categories),
+            "n" => state.create_new_payee(&self.payees),
+            "r" => state.remember = !state.remember,
+            "enter" => {
+                self.continue_import();
+                return true;
+            }
+            "escape" => {
+                self.import = None;
+                return true;
+            }
+            _ => return false,
+        }
+        let selected = state.selected;
+        self.view_scroll_handle.scroll_to_item(selected);
+        true
+    }
+
+    /// **continue** / `enter`: commits the import to the stubs and lands on Transactions with a
+    /// Toast. Does nothing while a row needs review (the button is disabled then).
+    fn continue_import(&mut self) {
+        let Some(state) = self.import.as_ref() else {
+            return;
+        };
+        match import::commit(
+            &state.rows,
+            state.remember,
+            import::EVERYDAY_ACCOUNT_ID,
+            &mut self.payees,
+            &mut self.transactions,
+        ) {
+            Ok(committed) => {
+                if let Some(account) = self
+                    .accounts
+                    .iter_mut()
+                    .find(|account| account.id == import::EVERYDAY_ACCOUNT_ID)
+                {
+                    account.transaction_count = account
+                        .transaction_count
+                        .saturating_add(u32::try_from(committed.transactions).unwrap_or(u32::MAX));
+                }
+                self.import = None;
+                self.reset_transactions_selection();
+                self.reset_view_scroll();
+                self.raise_toast(
+                    ToastKind::Success,
+                    crate::msg::desktop_import_done(
+                        i64::try_from(committed.transactions).unwrap_or(i64::MAX),
+                    ),
+                );
+            }
+            Err(import::ImportError::NeedsReview(_)) => {}
+            Err(import::ImportError::Payee(error)) => {
+                self.raise_toast(ToastKind::Error, error.to_string());
+            }
+        }
+    }
+
+    fn handle_import_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        if let Some(state) = self.import.as_mut() {
+            state.selected = index;
+            if state
+                .open_select
+                .as_ref()
+                .is_some_and(|(row, _, _)| *row != index)
+            {
+                state.open_select = None;
+            }
+        }
+        self.nav.set_focus(FocusZone::View);
+        cx.notify();
+    }
+
+    /// A click on a row's select: opens it, or closes it when it is already the open one.
+    fn handle_import_select_click(
+        &mut self,
+        index: usize,
+        select: RowSelect,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let categories = self.import_category_options();
+        if let Some(state) = self.import.as_mut() {
+            if state
+                .open_select
+                .as_ref()
+                .is_some_and(|(row, open, _)| *row == index && *open == select)
+            {
+                state.open_select = None;
+            } else if let Some(row) = state.rows.get(index) {
+                let choices = import_view::payee_choices(&self.payees, &row.raw);
+                state.open(index, select, &choices, &categories);
+            }
+        }
+        self.nav.set_focus(FocusZone::View);
+        cx.notify();
+    }
+
+    fn handle_import_option_click(&mut self, option: usize, cx: &mut Context<'_, Self>) {
+        let categories = self.import_category_options();
+        if let Some(state) = self.import.as_mut()
+            && let Some((index, _, _)) = state.open_select.as_ref()
+            && let Some(row) = state.rows.get(*index)
+        {
+            let choices = import_view::payee_choices(&self.payees, &row.raw);
+            state.choose(option, &self.payees, &choices, &categories);
+        }
+        cx.notify();
+    }
+
+    fn handle_import_remember_click(&mut self, cx: &mut Context<'_, Self>) {
+        if let Some(state) = self.import.as_mut() {
+            state.remember = !state.remember;
+        }
+        cx.notify();
+    }
+
+    fn handle_import_back_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.import = None;
+        cx.notify();
+    }
+
+    fn handle_import_continue_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.continue_import();
+        cx.notify();
+    }
+
     fn payee_dialog_options(&self) -> payees::PayeeOptions {
         payees::PayeeOptions::new(&self.categories, crate::msg::desktop_payees_category_none())
     }
@@ -2973,6 +3189,10 @@ impl Shell {
                 self.nav.exit_mode();
                 self.open_toast_history();
             }
+            CommandEffect::Import => {
+                self.nav.exit_mode();
+                self.open_import();
+            }
             CommandEffect::NotYetBuilt => {
                 self.nav.exit_mode();
                 self.status_message = Some(crate::msg::desktop_status_command_not_yet_built(
@@ -3381,6 +3601,10 @@ impl Focusable for Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        // 6e shows only on Transactions: leaving the page (a jump, a rail click) abandons it.
+        if self.nav.noun() != Noun::Transactions {
+            self.import = None;
+        }
         let focus = self.nav.focus();
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
         // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
@@ -3872,6 +4096,42 @@ impl Render for Shell {
             on_edit_click: payee_click(Shell::handle_payees_edit_click),
             on_delete_click: payee_click(Shell::handle_payees_delete_click),
         };
+        let import_categories = self.import_category_options();
+        let import_page = self.import.as_ref().map(|state| {
+            let entity_for = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+                let entity = entity.clone();
+                let on_click: import_view::OnClick = Rc::new(move |_window, cx| {
+                    entity.update(cx, handler);
+                });
+                on_click
+            };
+            let indexed = |handler: fn(&mut Shell, usize, &mut Context<'_, Shell>)| {
+                let entity = entity.clone();
+                let on_click: import_view::OnRowClick = Rc::new(move |index, _window, cx| {
+                    entity.update(cx, |shell, cx| handler(shell, index, cx));
+                });
+                on_click
+            };
+            let on_select_click: import_view::OnSelectClick = {
+                let entity = entity.clone();
+                Rc::new(move |index, select, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.handle_import_select_click(index, select, cx);
+                    });
+                })
+            };
+            import_view::ImportPageProps {
+                state,
+                payees: &self.payees,
+                categories: &import_categories,
+                on_row_click: indexed(Shell::handle_import_row_click),
+                on_select_click,
+                on_option_click: indexed(Shell::handle_import_option_click),
+                on_remember_click: entity_for(Shell::handle_import_remember_click),
+                on_back_click: entity_for(Shell::handle_import_back_click),
+                on_continue_click: entity_for(Shell::handle_import_continue_click),
+            }
+        });
         let categories_page = categories_view::CategoriesPageProps {
             categories: &self.categories,
             budgets: &self.budgets,
@@ -4105,6 +4365,22 @@ impl Render for Shell {
                     ),
                 ),
             }),
+            Noun::Transactions if self.import.is_some() => {
+                let pending = self
+                    .import
+                    .as_ref()
+                    .map_or(0, |state| import::summary(&state.rows).needs_review);
+                Some(PageStatus {
+                    hints: import_hints(),
+                    right: if pending == 0 {
+                        crate::msg::desktop_import_status_ready()
+                    } else {
+                        crate::msg::desktop_import_status_pending(
+                            i64::try_from(pending).unwrap_or(i64::MAX),
+                        )
+                    },
+                })
+            }
             Noun::Transactions => Some(PageStatus {
                 hints: if self.nav.mode() == InputMode::Filter {
                     filter_hints()
@@ -4143,7 +4419,13 @@ impl Render for Shell {
                     .flex()
                     .flex_col()
                     .opacity(content_opacity)
-                    .child(TopBar::new(on_rail_toggle, self.nav.noun()))
+                    .child(
+                        TopBar::new(on_rail_toggle, self.nav.noun()).context(
+                            self.import.as_ref().map(|_| {
+                                crate::msg::desktop_import_context(import::STATEMENT_FILE)
+                            }),
+                        ),
+                    )
                     .child(
                         div()
                             .flex_1()
@@ -4181,6 +4463,7 @@ impl Render for Shell {
                                     accounts: accounts_page,
                                     categories: categories_page,
                                     payees: payees_page,
+                                    import: import_page,
                                     transactions: transactions_page,
                                 },
                                 SettingsPanelProps {
@@ -4237,6 +4520,10 @@ impl Render for Shell {
                         .map(|toast| (toast.kind(), toast.text().to_string())),
                 )
                 .page(page_status)
+                .mode_label(
+                    (self.import.is_some() && self.nav.mode() == InputMode::Normal)
+                        .then(crate::msg::desktop_mode_import),
+                )
                 .on_hint(on_hint),
             )
             .children(self.palette.as_ref().map(|palette| palette.render(cx)))
@@ -4537,6 +4824,8 @@ struct PageProps<'a> {
     accounts: accounts_view::AccountsPageProps<'a>,
     categories: categories_view::CategoriesPageProps<'a>,
     payees: payees_view::PayeesPageProps<'a>,
+    /// `Some` while 6e shows in place of the Transactions page.
+    import: Option<import_view::ImportPageProps<'a>>,
     transactions: Option<transactions_view::TransactionsPageProps>,
 }
 
@@ -4618,6 +4907,11 @@ fn render_view(
     }
     if noun == Noun::Payees {
         return payees_view::render(focused, scroll_handle, pages.payees, cx);
+    }
+    if noun == Noun::Transactions
+        && let Some(import) = pages.import
+    {
+        return import_view::render(focused, scroll_handle, import, cx);
     }
     if noun == Noun::Transactions
         && let Some(transactions) = pages.transactions

@@ -10,6 +10,7 @@ desktop-mode-command = Command
 desktop-mode-dialog = Dialog
 desktop-mode-filter = Filter
 desktop-mode-help = Help
+desktop-mode-import = Import
 
 ## The shell-wide hint strip. Each label sits beside its key, which the caller styles.
 

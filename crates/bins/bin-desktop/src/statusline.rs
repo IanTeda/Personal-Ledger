@@ -59,6 +59,8 @@ pub struct StatusLine {
     /// The status-line echo (ADR-0027): the Toast carried here while Toasts are off. Below
     /// `status_message`, above the page legend and hint strip.
     toast_echo: Option<(ToastKind, String)>,
+    /// Replaces the mode badge's text: a page's own mode (6e's `IMPORT`), drawn like `Normal`.
+    mode_label: Option<String>,
 }
 
 impl StatusLine {
@@ -74,6 +76,7 @@ impl StatusLine {
             command_echo,
             page: None,
             toast_echo: None,
+            mode_label: None,
         }
     }
 
@@ -85,6 +88,11 @@ impl StatusLine {
     /// Makes the shell-wide hint strip's entries clickable.
     pub fn on_hint(mut self, on_hint: OnHint) -> Self {
         self.on_hint = Some(on_hint);
+        self
+    }
+
+    pub fn mode_label(mut self, label: Option<String>) -> Self {
+        self.mode_label = label;
         self
     }
 
@@ -108,7 +116,7 @@ impl RenderOnce for StatusLine {
             .border_color(color::structural_rule(cx))
             .text_size(px(11.5))
             .text_color(color::muted(cx))
-            .child(mode_badge(self.mode, cx))
+            .child(mode_badge(self.mode, self.mode_label, cx))
             .child(
                 match left(
                     self.command_echo.as_ref().map(|(query, _)| query.as_str()),
@@ -182,7 +190,7 @@ fn toast_echo(kind: ToastKind, text: String, cx: &App) -> impl IntoElement {
         .child(text)
 }
 
-fn mode_badge(mode: InputMode, cx: &App) -> impl IntoElement {
+fn mode_badge(mode: InputMode, label_override: Option<String>, cx: &App) -> impl IntoElement {
     let (label, bg) = match mode {
         InputMode::Normal => (crate::msg::desktop_mode_normal(), color::foreground(cx)),
         InputMode::Insert => (crate::msg::desktop_mode_insert(), color::foreground(cx)),
@@ -195,6 +203,7 @@ fn mode_badge(mode: InputMode, cx: &App) -> impl IntoElement {
         InputMode::Filter => (crate::msg::desktop_mode_filter(), color::accent(cx)),
         InputMode::Help => (crate::msg::desktop_mode_help(), color::accent(cx)),
     };
+    let label = label_override.unwrap_or(label);
 
     div()
         .bg(bg)

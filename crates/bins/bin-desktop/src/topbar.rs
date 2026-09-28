@@ -33,6 +33,8 @@ pub type OnRailToggle = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 pub struct TopBar {
     on_rail_toggle: OnRailToggle,
     active_noun: Noun,
+    /// Extra context after the noun (6e's `import statement.csv`).
+    context: Option<String>,
 }
 
 impl TopBar {
@@ -40,7 +42,13 @@ impl TopBar {
         Self {
             on_rail_toggle,
             active_noun,
+            context: None,
         }
+    }
+
+    pub fn context(mut self, context: Option<String>) -> Self {
+        self.context = context;
+        self
     }
 }
 
@@ -58,7 +66,7 @@ impl RenderOnce for TopBar {
             .border_b(px(2.0))
             .border_color(color::structural_rule(cx))
             .child(rail_toggle(self.on_rail_toggle, cx))
-            .child(brand_mark(self.active_noun, cx))
+            .child(brand_mark(self.active_noun, self.context, cx))
             .child(div().flex_1())
             .child(sync_indicator(cx))
             .child(window_controls(cx))
@@ -89,7 +97,7 @@ fn rail_toggle(on_rail_toggle: OnRailToggle, cx: &App) -> impl IntoElement {
 /// duplicate this same fact and was dropped in favour of naming it once, here. The open
 /// Ledger's own file path lives at the status line's own bottom right instead
 /// (`crate::statusline`), not here.
-fn brand_mark(active_noun: Noun, cx: &App) -> impl IntoElement {
+fn brand_mark(active_noun: Noun, context: Option<String>, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_baseline()
@@ -102,6 +110,12 @@ fn brand_mark(active_noun: Noun, cx: &App) -> impl IntoElement {
         )
         .child(div().text_color(color::faint_text(cx)).child("|"))
         .child(active_noun.label())
+        .children(context.map(|context| {
+            div()
+                .text_size(px(12.0))
+                .text_color(color::faint_text(cx))
+                .child(format!("\u{203a} {context}"))
+        }))
 }
 
 fn sync_indicator(cx: &App) -> impl IntoElement {

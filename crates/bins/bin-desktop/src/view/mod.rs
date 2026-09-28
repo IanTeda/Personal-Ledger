@@ -6,6 +6,7 @@ pub mod accounts;
 pub mod categories;
 pub mod dashboard;
 pub mod help;
+pub mod import;
 pub mod payees;
 pub mod settings;
 pub mod toast_history;

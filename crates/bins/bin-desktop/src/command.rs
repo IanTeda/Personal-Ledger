@@ -55,6 +55,8 @@ pub enum CommandEffect {
     SetToasts(bool),
     /// `:toasts` / `:messages`: opens the session Toast history.
     OpenToastHistory,
+    /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
+    Import,
     /// No real behaviour behind this command yet (`docs/ux/tui/README.md`'s commitment: "a
     /// command that has no real behaviour yet says so explicitly when run") --
     /// `Shell::run_command` turns this into the status-line flash.
@@ -345,6 +347,13 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_toasts_description,
         binding: None,
         effect: CommandEffect::OpenToastHistory,
+    },
+    Command {
+        name: "import",
+        domain: Domain::Transactions,
+        description: crate::msg::desktop_command_import_description,
+        binding: None,
+        effect: CommandEffect::Import,
     },
     Command {
         name: "transactions",

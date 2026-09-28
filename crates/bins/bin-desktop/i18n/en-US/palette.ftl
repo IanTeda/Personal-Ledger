@@ -21,6 +21,7 @@ desktop-command-open-description = load a ledger file
 desktop-command-new-description = start a new ledger
 desktop-command-close-description = close the open ledger
 desktop-command-payees-description = payees and default categories
+desktop-command-import-description = import a bank statement (sample statement for now)
 desktop-command-reports-description = net worth and variance reports
 desktop-command-settings-description = ledger preferences
 desktop-command-tags-description = the tags every transaction can carry any number of

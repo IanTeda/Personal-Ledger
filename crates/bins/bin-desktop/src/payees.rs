@@ -168,7 +168,8 @@ fn clean_aliases(
     Ok(cleaned)
 }
 
-fn alias_owner<'a>(payees: &'a [Payee], alias: &str) -> Option<&'a Payee> {
+/// The Payee owning `alias` (as stored), if any.
+pub fn alias_owner<'a>(payees: &'a [Payee], alias: &str) -> Option<&'a Payee> {
     payees
         .iter()
         .find(|payee| payee.aliases.iter().any(|a| a == alias))
@@ -196,6 +197,11 @@ fn clean_name(payees: &[Payee], own_id: Option<u32>, name: &str) -> Result<Strin
         });
     }
     Ok(name.to_string())
+}
+
+/// Whether a new Payee could take `name`: present, and neither another Payee's name nor alias.
+pub fn name_available(payees: &[Payee], name: &str) -> bool {
+    clean_name(payees, None, name).is_ok()
 }
 
 /// Adds a new, active Payee and returns its id.
