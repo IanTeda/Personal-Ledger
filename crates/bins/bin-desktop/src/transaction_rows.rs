@@ -7,7 +7,7 @@
 //! Payees (`—` if none has one); TAGS is the first chip of the Splits' combined, deduplicated Tags
 //! with `+N` when there are more (`—` if none). A single-Split row reads exactly as the mockup's.
 
-use lib_core::DateStyle;
+use lib_core::{DateStyle, HexColor};
 
 use crate::{
     categories, format,
@@ -33,8 +33,12 @@ pub struct DisplayPrefs {
 pub enum TagsCell {
     /// No Split carries a Tag: the cell shows `—`.
     None,
-    /// The first Tag as a chip, and how many further Tags follow it.
-    Chips { first: String, more: usize },
+    /// The first Tag as a chip (with its colour, if it has one), and how many further Tags follow.
+    Chips {
+        first: String,
+        color: Option<HexColor>,
+        more: usize,
+    },
 }
 
 /// One table row, ready to paint.
@@ -104,15 +108,15 @@ pub fn tags_summary(transaction: &Transaction, tags: &[Tag]) -> TagsCell {
             }
         }
     }
-    let names: Vec<&str> = ids
+    let found: Vec<&Tag> = ids
         .iter()
         .filter_map(|id| tags.iter().find(|tag| tag.id == *id))
-        .map(|tag| tag.name.as_str())
         .collect();
-    match names.split_first() {
+    match found.split_first() {
         None => TagsCell::None,
         Some((first, rest)) => TagsCell::Chips {
-            first: (*first).to_string(),
+            first: first.name.clone(),
+            color: first.color.clone(),
             more: rest.len(),
         },
     }
@@ -306,6 +310,7 @@ mod tests {
             tags_summary(tokyo, &w.tags),
             TagsCell::Chips {
                 first: "Japan Trip 2026".to_string(),
+                color: crate::tags::get(&w.tags, 1).unwrap().color.clone(),
                 more: 0
             }
         );
@@ -315,6 +320,7 @@ mod tests {
             tags_summary(&many, &w.tags),
             TagsCell::Chips {
                 first: "Japan Trip 2026".to_string(),
+                color: crate::tags::get(&w.tags, 1).unwrap().color.clone(),
                 more: 2
             },
             "the duplicated Japan tag counts once"

@@ -118,6 +118,8 @@ pub struct PrimaryRail {
     account_count: usize,
     /// The Payees row's count badge: active Payees only (#283).
     payee_count: usize,
+    /// The Tags row's count badge: active Tags only (#353).
+    tag_count: usize,
 }
 
 impl PrimaryRail {
@@ -138,6 +140,7 @@ impl PrimaryRail {
             on_row_hover,
             account_count: crate::rail::context::account_count(),
             payee_count: 0,
+            tag_count: 0,
         }
     }
 
@@ -150,6 +153,12 @@ impl PrimaryRail {
     /// Sets the Payees row's count badge.
     pub fn payee_count(mut self, count: usize) -> Self {
         self.payee_count = count;
+        self
+    }
+
+    /// Sets the Tags row's count badge.
+    pub fn tag_count(mut self, count: usize) -> Self {
+        self.tag_count = count;
         self
     }
 }
@@ -328,8 +337,13 @@ impl PrimaryRail {
                 .mr(px(4.0))
                 .child(self.account_count.to_string())
         });
-        // A plain count, inverted on the active row as the Payees handoff draws it.
-        let count_badge = (row.noun == Noun::Payees).then(|| {
+        // A plain count, inverted on the active row as the Payees and Tags handoffs draw it.
+        let count = match row.noun {
+            Noun::Payees => Some(self.payee_count),
+            Noun::Tags => Some(self.tag_count),
+            _ => None,
+        };
+        let count_badge = count.map(|count| {
             div()
                 .when(selected, |this| {
                     this.bg(color::selection_text(cx))
@@ -341,7 +355,7 @@ impl PrimaryRail {
                 .py(px(1.0))
                 .px(px(5.0))
                 .mr(px(4.0))
-                .child(self.payee_count.to_string())
+                .child(count.to_string())
         });
 
         let noun = row.noun;

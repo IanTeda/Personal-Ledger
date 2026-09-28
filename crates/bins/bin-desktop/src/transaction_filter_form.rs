@@ -10,6 +10,9 @@
 //! - **From / To** accept `today` and dates in the chosen Date format (`12 sep 2026`, or day-first
 //!   `12/09/2026`), with ISO `2026-09-12` always accepted; an empty side is unbounded. A value that
 //!   parses as none of these is an error, and **apply** is refused until it is fixed.
+//! - A Payee or Tag hand-off (the Payees and Tags pages filter by id) pre-fills its text field
+//!   with the name and keeps the id while the field still reads exactly that name; editing the
+//!   text turns it back into a plain substring filter.
 //! - `reset` returns the draft to the defaults (this year, everything else empty); it never touches
 //!   the applied filters. `apply` commits the draft; `Esc` discards it.
 
@@ -22,7 +25,9 @@ use lib_locale::format::{
 use crate::{
     accounts::Account,
     categories::{self, Category},
+    payees::Payee,
     select::SelectState,
+    tags::Tag,
     transaction_chips::FilterField,
     transaction_query::{StatusFilter, TransactionFilters},
 };
@@ -83,17 +88,24 @@ impl FormField {
 }
 
 /// The two selects' options: each a label with the id it stands for (`None` for the "all" and
-/// "any" entries).
+/// "any" entries); plus the Payee and Tag names an id hand-off pre-fills.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormOptions {
     accounts: Vec<(Option<u32>, String)>,
     categories: Vec<(Option<u32>, String)>,
     account_labels: Vec<String>,
     category_labels: Vec<String>,
+    payees: Vec<(u32, String)>,
+    tags: Vec<(u32, String)>,
 }
 
 impl FormOptions {
-    pub fn new(accounts: &[Account], all_categories: &[Category]) -> Self {
+    pub fn new(
+        accounts: &[Account],
+        all_categories: &[Category],
+        payees: &[Payee],
+        tags: &[Tag],
+    ) -> Self {
         let mut account_options = vec![(None, all_accounts())];
         account_options.extend(
             accounts
@@ -114,7 +126,19 @@ impl FormOptions {
             category_labels: labels(&category_options),
             accounts: account_options,
             categories: category_options,
+            payees: payees.iter().map(|p| (p.id, p.name.clone())).collect(),
+            tags: tags.iter().map(|t| (t.id, t.name.clone())).collect(),
         }
+    }
+
+    /// `(id, name)` for a Payee id hand-off, if the Payee exists.
+    fn payee(&self, id: Option<u32>) -> Option<(u32, &str)> {
+        named(&self.payees, id?)
+    }
+
+    /// `(id, name)` for a Tag id hand-off, if the Tag exists.
+    fn tag(&self, id: Option<u32>) -> Option<(u32, &str)> {
+        named(&self.tags, id?)
     }
 
     /// The labels behind `field`'s select; empty for any other field.
@@ -155,6 +179,32 @@ impl FormOptions {
     }
 }
 
+fn named(names: &[(u32, String)], id: u32) -> Option<(u32, &str)> {
+    names
+        .iter()
+        .find(|(candidate, _)| *candidate == id)
+        .map(|(id, name)| (*id, name.as_str()))
+}
+
+/// A text field's draft for an id hand-off: `(id, name)` pre-fills the empty field with the name
+/// and keeps the id; otherwise the text as applied.
+fn prefill(text: &str, handed_off: Option<(u32, &str)>) -> (String, Option<u32>) {
+    match handed_off {
+        Some((id, name)) if text.trim().is_empty() => (name.to_string(), Some(id)),
+        _ => (text.to_string(), None),
+    }
+}
+
+/// The applied `(text, id)` for a text field: the id alone while the text still reads the
+/// hand-off's name, else the trimmed text as a substring filter.
+fn resolve(text: &str, handed_off: Option<(u32, &str)>) -> (String, Option<u32>) {
+    let text = text.trim();
+    match handed_off {
+        Some((id, name)) if name == text => (String::new(), Some(id)),
+        _ => (text.to_string(), None),
+    }
+}
+
 /// A key a focused select understands, parsed from a keystroke by `Shell`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SelectKey {
@@ -190,7 +240,11 @@ pub struct FilterForm {
     pub account: SelectState,
     pub category: SelectState,
     pub payee: String,
+    /// The Payees page's hand-off id, kept while `payee` reads its name.
+    pub payee_id: Option<u32>,
     pub tag: String,
+    /// The Tags page's hand-off id, kept while `tag` reads its name.
+    pub tag_id: Option<u32>,
     /// The From text as typed.
     pub from: String,
     /// The To text as typed.
@@ -208,11 +262,15 @@ impl FilterForm {
         today: NaiveDate,
         date_style: Option<DateStyle>,
     ) -> Self {
+        let (payee, payee_id) = prefill(&filters.payee, options.payee(filters.payee_id));
+        let (tag, tag_id) = prefill(&filters.tag, options.tag(filters.tag_id));
         Self {
             account: SelectState::new(Some(options.account_label(filters.account))),
             category: SelectState::new(Some(options.category_label(filters.category))),
-            payee: filters.payee.clone(),
-            tag: filters.tag.clone(),
+            payee,
+            payee_id,
+            tag,
+            tag_id,
             from: filters
                 .from
                 .map(|date| format_date_input(date, date_style))
@@ -267,6 +325,8 @@ impl FilterForm {
         today: NaiveDate,
         date_style: Option<DateStyle>,
     ) -> Option<TransactionFilters> {
+        let (payee, payee_id) = resolve(&self.payee, options.payee(self.payee_id));
+        let (tag, tag_id) = resolve(&self.tag, options.tag(self.tag_id));
         Some(TransactionFilters {
             account: self
                 .account
@@ -276,12 +336,10 @@ impl FilterForm {
                 .category
                 .value()
                 .and_then(|label| options.category_id(label)),
-            payee: self.payee.trim().to_string(),
-            // The popover has no Payee-id field yet; the Payees page's hand-off sets it directly.
-            payee_id: None,
-            tag: self.tag.trim().to_string(),
-            // Likewise the Tags page's hand-off sets the Tag id directly.
-            tag_id: None,
+            payee,
+            payee_id,
+            tag,
+            tag_id,
             from: parse_date(&self.from, today, date_style).ok()?,
             to: parse_date(&self.to, today, date_style).ok()?,
             status: self.status,
@@ -422,7 +480,10 @@ impl FilterForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{accounts::default_accounts, categories::default_categories};
+    use crate::{
+        accounts::default_accounts, categories::default_categories, payees::default_payees,
+        tags::default_tags,
+    };
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -433,7 +494,12 @@ mod tests {
     }
 
     fn options() -> FormOptions {
-        FormOptions::new(&default_accounts(), &default_categories())
+        FormOptions::new(
+            &default_accounts(),
+            &default_categories(),
+            &default_payees(),
+            &default_tags(),
+        )
     }
 
     fn fmt() -> Option<DateStyle> {
@@ -616,6 +682,31 @@ mod tests {
         assert_eq!(
             filters.category,
             categories::find_by_name(&default_categories(), "Dining")
+        );
+    }
+
+    #[test]
+    fn an_id_hand_off_shows_the_name_and_survives_apply_until_edited() {
+        let tag = crate::tags::find_by_name(&default_tags(), "work-trip").unwrap();
+        let filters = TransactionFilters::for_tag(today(), tag);
+        let mut form = au(|| FilterForm::from_filters(&filters, &options(), today(), fmt()));
+        assert_eq!((form.tag.as_str(), form.tag_id), ("work-trip", Some(tag)));
+        assert_eq!(
+            au(|| form.to_filters(&options(), today(), fmt())),
+            Some(filters)
+        );
+
+        form.tag = "work".to_string();
+        let edited = au(|| form.to_filters(&options(), today(), fmt())).unwrap();
+        assert_eq!((edited.tag.as_str(), edited.tag_id), ("work", None));
+
+        let payee = default_payees()[0].clone();
+        let filters = TransactionFilters::for_payee(today(), payee.id);
+        let form = au(|| FilterForm::from_filters(&filters, &options(), today(), fmt()));
+        assert_eq!(form.payee, payee.name);
+        assert_eq!(
+            au(|| form.to_filters(&options(), today(), fmt())),
+            Some(filters)
         );
     }
 

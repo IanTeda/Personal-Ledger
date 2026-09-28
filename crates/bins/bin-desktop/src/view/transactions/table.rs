@@ -284,8 +284,8 @@ fn row(
         .into_any_element()
 }
 
-/// `—` when untagged, else the first tag as a neutral chip (`padding:1px 6px; 10px`) with `+N`
-/// after it for the rest.
+/// `—` when untagged, else the first tag as a neutral chip (`padding:1px 6px; 10px`), led by its
+/// swatch when it has a colour (#352), with `+N` after it for the rest.
 fn tags_cell(
     tags: &TagsCell,
     selected: bool,
@@ -303,10 +303,12 @@ fn tags_cell(
         TagsCell::None => cell
             .text_color(tertiary)
             .child(crate::transaction_rows::EMPTY_CELL),
-        TagsCell::Chips { first, more } => {
+        TagsCell::Chips { first, color, more } => {
             let chip = div()
                 .min_w(px(0.0))
-                .truncate()
+                .flex()
+                .items_center()
+                .gap(px(4.0))
                 .px(px(6.0))
                 .py(px(1.0))
                 .text_size(px(10.0))
@@ -320,7 +322,10 @@ fn tags_cell(
                         .border_color(color::border(cx))
                         .text_color(color::muted(cx))
                 })
-                .child(first.clone());
+                .when_some(color.as_ref(), |this, colour| {
+                    this.child(crate::view::tags::swatch(Some(colour), px(6.0)))
+                })
+                .child(div().min_w(px(0.0)).truncate().child(first.clone()));
             cell.child(chip).when(*more > 0, |this| {
                 this.child(
                     div()

@@ -102,8 +102,22 @@ pub fn chips(
         categories::path(ledger.categories, id)
             .unwrap_or_else(crate::msg::desktop_transactions_chip_unknown)
     });
-    let payee = filters.payee.trim();
-    let tag = filters.tag.trim();
+    // An id-only filter (the Payees and Tags pages' hand-off) names its Payee or Tag.
+    let payee = match filters.payee_id {
+        Some(id) if filters.payee.trim().is_empty() => ledger
+            .payees
+            .iter()
+            .find(|payee| payee.id == id)
+            .map(|payee| payee.name.clone())
+            .unwrap_or_else(crate::msg::desktop_transactions_chip_unknown),
+        _ => filters.payee.trim().to_string(),
+    };
+    let tag = match filters.tag_id {
+        Some(id) if filters.tag.trim().is_empty() => crate::tags::get(ledger.tags, id)
+            .map(|tag| tag.name.clone())
+            .unwrap_or_else(crate::msg::desktop_transactions_chip_unknown),
+        _ => filters.tag.trim().to_string(),
+    };
     let date_active = filters.from != defaults.from || filters.to != defaults.to;
 
     let or_any = |text: &str| {
@@ -141,12 +155,12 @@ pub fn chips(
         ),
         make(
             FilterField::Payee,
-            crate::msg::desktop_transactions_chip_payee(&or_any(payee)),
+            crate::msg::desktop_transactions_chip_payee(&or_any(&payee)),
             !payee.is_empty(),
         ),
         make(
             FilterField::Tag,
-            crate::msg::desktop_transactions_chip_tag(&or_any(tag)),
+            crate::msg::desktop_transactions_chip_tag(&or_any(&tag)),
             !tag.is_empty(),
         ),
         make(
@@ -340,6 +354,27 @@ mod tests {
             [true, false, false, false, false, false]
         );
         assert_eq!(chips[4].label, "this year");
+    }
+
+    #[test]
+    fn a_payee_or_tag_hand_off_names_its_payee_or_tag_on_an_active_chip() {
+        let w = world();
+        let payee = &w.payees[0];
+        let chips = w.chips(&TransactionFilters::for_payee(today(), payee.id));
+        assert_eq!(chips[2].label, format!("payee: {}", payee.name));
+        assert!(chips[2].active);
+
+        let tag = crate::tags::find_by_name(&w.tags, "work-trip").unwrap();
+        let chips = w.chips(&TransactionFilters::for_tag(today(), tag));
+        assert_eq!(chips[3].label, "tag: work-trip");
+        assert_eq!(
+            chips.iter().map(|c| c.active).collect::<Vec<_>>(),
+            [false, false, false, true, false, false]
+        );
+
+        let mut filters = TransactionFilters::for_tag(today(), tag);
+        clear_field(&mut filters, FilterField::Tag, today());
+        assert_eq!(w.chips(&filters)[3].label, "tag: any");
     }
 
     #[test]

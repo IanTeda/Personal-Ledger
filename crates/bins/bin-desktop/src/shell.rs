@@ -73,7 +73,7 @@ use crate::{
         dashboard::Dashboard,
         help as help_view, import as import_view, payees as payees_view,
         settings::{self as settings_view, SettingsBodyProps},
-        toast_history as toast_history_view, transactions as transactions_view,
+        tags as tags_view, toast_history as toast_history_view, transactions as transactions_view,
     },
 };
 
@@ -127,6 +127,19 @@ fn payees_hints() -> Vec<(&'static str, String)> {
         ("enter", crate::msg::desktop_hint_view_transactions()),
         ("e", crate::msg::desktop_hint_edit()),
         ("d", crate::msg::desktop_hint_delete()),
+        ("n", crate::msg::desktop_hint_new()),
+    ]
+}
+
+/// The Tags page's status-line legend (`docs/ux/desktop/Tags/README.md`'s 7a), with `m merge`
+/// added for the merge entry point (#354).
+fn tags_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("enter", crate::msg::desktop_hint_view_transactions()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("x", crate::msg::desktop_hint_remove()),
+        ("m", crate::msg::desktop_hint_merge()),
         ("n", crate::msg::desktop_hint_new()),
     ]
 }
@@ -772,6 +785,7 @@ impl Shell {
                 self.handle_accounts_key(keystroke)
                     || self.handle_categories_key(keystroke)
                     || self.handle_payees_key(keystroke)
+                    || self.handle_tags_key(keystroke)
                     || self.handle_transactions_key(keystroke)
                     || had_status_message
             }
@@ -980,6 +994,10 @@ impl Shell {
         }
         if self.nav.noun() == Noun::Payees {
             self.apply_payees_movement(movement);
+            return;
+        }
+        if self.nav.noun() == Noun::Tags {
+            self.apply_tags_movement(movement);
             return;
         }
         if self.nav.noun() == Noun::Settings
@@ -1353,7 +1371,7 @@ impl Shell {
 
     /// The Account and Category selects' options, read live from the stub data.
     fn filter_form_options(&self) -> FormOptions {
-        FormOptions::new(&self.accounts, &self.categories)
+        FormOptions::new(&self.accounts, &self.categories, &self.payees, &self.tags)
     }
 
     /// Opens the filter popover on a draft of the applied filters. A chip focuses its own field
@@ -1754,6 +1772,138 @@ impl Shell {
         self.reset_transactions_selection();
         self.nav.set_noun(Noun::Transactions);
         self.reset_view_scroll();
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Tags page's row selection (in usage order);
+    /// `Enter` opens Transactions filtered to the selected Tag.
+    fn apply_tags_movement(&mut self, movement: Movement) {
+        let len = self.tags.len();
+        let selected = self.tags_selected.min(len.saturating_sub(1));
+        self.tags_selected = match movement {
+            Movement::Next => accounts::step_selection(selected, len, 1),
+            Movement::Prev => accounts::step_selection(selected, len, -1),
+            Movement::First => 0,
+            Movement::Last => len.saturating_sub(1),
+            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
+            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
+            Movement::Enter => {
+                if let Some(id) = self.selected_tag_id() {
+                    self.open_tag_transactions(id);
+                }
+                selected
+            }
+        };
+    }
+
+    /// The selected Tag: `tags_selected` indexes the page's usage order, not `self.tags`.
+    fn selected_tag_id(&self) -> Option<u32> {
+        let sorted = tags::sorted_by_usage(&self.tags, &self.transactions);
+        sorted
+            .get(self.tags_selected.min(sorted.len().saturating_sub(1)))
+            .map(|tag| tag.id)
+    }
+
+    /// Selects the Tag with `id`, if it still exists.
+    fn select_tag(&mut self, id: u32) {
+        if let Some(index) = tags::sorted_by_usage(&self.tags, &self.transactions)
+            .iter()
+            .position(|tag| tag.id == id)
+        {
+            self.tags_selected = index;
+        }
+    }
+
+    /// The Tags page's own `n`/`e`/`x`/`m` (only while it is the active noun and the view has
+    /// focus, in `Normal` mode). The 7b-7e dialogs aren't built yet, so each says so.
+    fn handle_tags_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.noun() != Noun::Tags || self.nav.focus() != FocusZone::View {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "n" => self.open_add_tag_dialog(),
+            "e" => {
+                if let Some(id) = self.selected_tag_id() {
+                    self.open_edit_tag_dialog(id);
+                }
+            }
+            "x" => {
+                if let Some(id) = self.selected_tag_id() {
+                    self.open_remove_tag_dialog(id);
+                }
+            }
+            "m" => {
+                if let Some(id) = self.selected_tag_id() {
+                    self.open_merge_tags_dialog(Some(id));
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    fn open_add_tag_dialog(&mut self) {
+        self.status_message = Some(crate::msg::desktop_status_add_tag_not_yet_built());
+    }
+
+    fn open_edit_tag_dialog(&mut self, _id: u32) {
+        self.status_message = Some(crate::msg::desktop_status_edit_tag_not_yet_built());
+    }
+
+    fn open_remove_tag_dialog(&mut self, _id: u32) {
+        self.status_message = Some(crate::msg::desktop_status_remove_tag_not_yet_built());
+    }
+
+    /// Merge with `source` as the source Tag (`None` from the subline link when nothing is flagged).
+    fn open_merge_tags_dialog(&mut self, _source: Option<u32>) {
+        self.status_message = Some(crate::msg::desktop_status_merge_tags_not_yet_built());
+    }
+
+    /// The subline's "merge them" link: the first flagged Tag in usage order as the source.
+    fn first_flagged_tag(&self) -> Option<u32> {
+        let groups = tags::duplicate_groups(&self.tags, &self.transactions);
+        tags::sorted_by_usage(&self.tags, &self.transactions)
+            .iter()
+            .map(|tag| tag.id)
+            .find(|id| tags::duplicate_of(&groups, *id).is_some())
+    }
+
+    fn handle_tags_add_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_add_tag_dialog();
+        cx.notify();
+    }
+
+    fn handle_tags_merge_link_click(&mut self, cx: &mut Context<'_, Self>) {
+        let source = self.first_flagged_tag();
+        self.open_merge_tags_dialog(source);
+        cx.notify();
+    }
+
+    fn handle_tags_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_tag(id);
+        self.open_tag_transactions(id);
+        cx.notify();
+    }
+
+    fn handle_tags_duplicate_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_tag(id);
+        self.open_merge_tags_dialog(Some(id));
+        cx.notify();
+    }
+
+    fn handle_tags_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_tag(id);
+        self.open_edit_tag_dialog(id);
+        cx.notify();
+    }
+
+    fn handle_tags_remove_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_tag(id);
+        self.open_remove_tag_dialog(id);
+        cx.notify();
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Payees page's row selection; `Enter` opens
@@ -4114,6 +4264,38 @@ impl Render for Shell {
             on_edit_click: payee_click(Shell::handle_payees_edit_click),
             on_delete_click: payee_click(Shell::handle_payees_delete_click),
         };
+        let tag_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: tags_view::OnTagClick = Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| handler(shell, id, cx));
+            });
+            on_click
+        };
+        let tag_plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: tags_view::OnPlainClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        let tags_page = tags_view::TagsPageProps {
+            tags: &self.tags,
+            transactions: &self.transactions,
+            accounts: &self.accounts,
+            base_unit: self
+                .settings_units
+                .iter()
+                .find(|unit| unit.is_base)
+                .map(|unit| unit.code.as_str()),
+            date_style: self.settings_date_style,
+            selected: (!self.tags.is_empty()).then(|| self.tags_selected.min(self.tags.len() - 1)),
+            on_add_click: tag_plain(Shell::handle_tags_add_click),
+            on_merge_link_click: tag_plain(Shell::handle_tags_merge_link_click),
+            on_row_click: tag_click(Shell::handle_tags_row_click),
+            on_duplicate_click: tag_click(Shell::handle_tags_duplicate_click),
+            on_edit_click: tag_click(Shell::handle_tags_edit_click),
+            on_remove_click: tag_click(Shell::handle_tags_remove_click),
+        };
         let import_categories = self.import_category_options();
         let import_page = self.import.as_ref().map(|state| {
             let entity_for = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
@@ -4383,6 +4565,28 @@ impl Render for Shell {
                     ),
                 ),
             }),
+            Noun::Tags => Some(PageStatus {
+                hints: tags_hints(),
+                right: {
+                    let count = crate::msg::desktop_tags_count(
+                        i64::try_from(tags::active_count(&self.tags)).unwrap_or(i64::MAX),
+                    );
+                    let duplicates = tags_view::likely_duplicate_count(&tags::duplicate_groups(
+                        &self.tags,
+                        &self.transactions,
+                    ));
+                    if duplicates == 0 {
+                        count
+                    } else {
+                        format!(
+                            "{count} \u{b7} {}",
+                            crate::msg::desktop_tags_status_duplicates(
+                                i64::try_from(duplicates).unwrap_or(i64::MAX)
+                            )
+                        )
+                    }
+                },
+            }),
             Noun::Transactions if self.import.is_some() => {
                 let pending = self
                     .import
@@ -4459,7 +4663,8 @@ impl Render for Shell {
                                     on_row_click,
                                 )
                                 .account_count(self.accounts.len())
-                                .payee_count(payees::active_count(&self.payees)),
+                                .payee_count(payees::active_count(&self.payees))
+                                .tag_count(tags::active_count(&self.tags)),
                             )
                             .when(
                                 self.nav.noun().has_context_entities() && self.nav.ledger_open(),
@@ -4481,6 +4686,7 @@ impl Render for Shell {
                                     accounts: accounts_page,
                                     categories: categories_page,
                                     payees: payees_page,
+                                    tags: tags_page,
                                     import: import_page,
                                     transactions: transactions_page,
                                 },
@@ -4842,6 +5048,7 @@ struct PageProps<'a> {
     accounts: accounts_view::AccountsPageProps<'a>,
     categories: categories_view::CategoriesPageProps<'a>,
     payees: payees_view::PayeesPageProps<'a>,
+    tags: tags_view::TagsPageProps<'a>,
     /// `Some` while 6e shows in place of the Transactions page.
     import: Option<import_view::ImportPageProps<'a>>,
     transactions: Option<transactions_view::TransactionsPageProps>,
@@ -4925,6 +5132,9 @@ fn render_view(
     }
     if noun == Noun::Payees {
         return payees_view::render(focused, scroll_handle, pages.payees, cx);
+    }
+    if noun == Noun::Tags {
+        return tags_view::render(focused, scroll_handle, pages.tags, cx);
     }
     if noun == Noun::Transactions
         && let Some(import) = pages.import
