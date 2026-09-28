@@ -7,6 +7,7 @@
 
 mod accounts;
 mod assets;
+mod bill_form;
 mod bills;
 mod budgets;
 mod categories;

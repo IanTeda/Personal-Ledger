@@ -30,6 +30,7 @@ use lib_core::{CategoryTypes, Money, TransactionStatus};
 
 use crate::{
     accounts::Account,
+    bill_form::BillPlanForm,
     categories::{self, Category},
     payees::{self, Payee},
     transaction_query::Total,
@@ -953,13 +954,24 @@ impl BillsTab {
     }
 }
 
-/// The open Bills dialog. The forms each carries land with the dialog tickets (8c–8e).
+/// The open Bills dialog. Pay and Skip's forms land with their tickets (8d, 8e).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BillsDialog {
-    Add,
-    Edit(u32),
+    Add(BillPlanForm),
+    /// Editing the Bill Plan with this [`BillPlan::id`].
+    Edit(u32, BillPlanForm),
     Pay(EntryId),
     Skip(EntryId),
+}
+
+impl BillsDialog {
+    /// The form behind the Add and Edit bill plan dialogs.
+    pub fn plan_form_mut(&mut self) -> Option<&mut BillPlanForm> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => Some(form),
+            Self::Pay(_) | Self::Skip(_) => None,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -37,7 +37,7 @@ use crate::{
         self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
         DeleteAccountForm, NameLookup, SelectKey,
     },
-    bills, budgets,
+    bill_form, bills, budgets,
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, Command, CommandEffect},
@@ -762,6 +762,14 @@ impl Shell {
                 {
                     return true;
                 }
+                if let Some(form) = self
+                    .bills_dialog
+                    .as_mut()
+                    .and_then(bills::BillsDialog::plan_form_mut)
+                    && form.close_open_select()
+                {
+                    return true;
+                }
                 self.palette = None;
                 self.file_explorer = None;
                 // The README's own Dialog lifecycle table: "`esc` closes any dialog without
@@ -778,6 +786,7 @@ impl Shell {
                 self.accounts_dialog = None;
                 self.payees_dialog = None;
                 self.tags_dialog = None;
+                self.bills_dialog = None;
                 self.toast_history_open = false;
                 // README's "Interactions" > "Navigation": `esc` clears the settings index
                 // rail's own filter, the same as it closes the palette/file explorer above.
@@ -1223,6 +1232,9 @@ impl Shell {
         }
         if self.tags_dialog.is_some() {
             return self.handle_tags_dialog_key(keystroke);
+        }
+        if self.bills_dialog.is_some() {
+            return self.handle_bills_dialog_key(keystroke);
         }
         let Some(dialog) = self.settings_dialog.as_mut() else {
             return false;
@@ -2064,14 +2076,270 @@ impl Shell {
         true
     }
 
-    /// The Add bill plan dialog (8c) lands with #373.
-    fn open_add_bill_plan_dialog(&mut self) {
-        self.status_message = Some(crate::msg::desktop_status_add_bill_plan_not_yet_built());
+    /// The Add and Edit bill plan dialogs' select options, for the open form's Unit (and, on
+    /// Edit, keeping the Plan's own Payee listed even if it has since been deactivated).
+    fn bill_plan_options(&self) -> bill_form::BillPlanOptions {
+        let (unit, keep_payee) = match self.bills_dialog.as_ref() {
+            Some(bills::BillsDialog::Add(form)) => (form.unit_code(), None),
+            Some(bills::BillsDialog::Edit(id, form)) => (
+                form.unit_code(),
+                bills::get(&self.bill_plans, *id).and_then(|plan| plan.payee_id),
+            ),
+            _ => (None, None),
+        };
+        self.bill_plan_options_for(unit, keep_payee)
     }
 
-    /// The Edit bill plan dialog (8c) lands with #373.
-    fn open_edit_bill_plan_dialog(&mut self, _id: u32) {
-        self.status_message = Some(crate::msg::desktop_status_edit_bill_plan_not_yet_built());
+    fn bill_plan_options_for(
+        &self,
+        unit: Option<&str>,
+        keep_payee: Option<u32>,
+    ) -> bill_form::BillPlanOptions {
+        bill_form::BillPlanOptions::new(
+            &self.categories,
+            &self.accounts,
+            &self.payees,
+            unit,
+            keep_payee,
+            crate::msg::desktop_payees_category_none(),
+            bills_view::planner::recurrence_label,
+        )
+    }
+
+    fn open_add_bill_plan_dialog(&mut self) {
+        let form = bill_form::BillPlanForm::new(
+            &self.categories,
+            &self.accounts,
+            &self.payees,
+            crate::msg::desktop_payees_category_none(),
+            bills_view::planner::recurrence_label,
+        );
+        self.bills_dialog = Some(bills::BillsDialog::Add(form));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Opens the Edit dialog pre-filled from Bill Plan `id`.
+    fn open_edit_bill_plan_dialog(&mut self, id: u32) {
+        let Some(plan) = bills::get(&self.bill_plans, id) else {
+            return;
+        };
+        let options = self.bill_plan_options_for(Some(&plan.unit), plan.payee_id);
+        let form = bill_form::BillPlanForm::from_plan(plan, &options, self.settings_date_style);
+        self.bills_dialog = Some(bills::BillsDialog::Edit(id, form));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Runs `change` on the open Add or Edit bill plan form, then keeps its Account in its Unit
+    /// (a Unit change rebuilds the Account list) and clears a stale Save error.
+    fn with_bill_plan_form(
+        &mut self,
+        change: impl FnOnce(&mut bill_form::BillPlanForm, &bill_form::BillPlanOptions),
+    ) {
+        let options = self.bill_plan_options();
+        let Some(form) = self
+            .bills_dialog
+            .as_mut()
+            .and_then(bills::BillsDialog::plan_form_mut)
+        else {
+            return;
+        };
+        change(form, &options);
+        form.error = None;
+        let options = self.bill_plan_options();
+        if let Some(form) = self
+            .bills_dialog
+            .as_mut()
+            .and_then(bills::BillsDialog::plan_form_mut)
+        {
+            form.sync_account(&options);
+        }
+    }
+
+    /// Keys while the Add or Edit bill plan dialog is open. `enter` on a select opens or commits
+    /// its list and anywhere else saves; `space` flips Fixed/Estimated and Active, as `left` /
+    /// `right` do on the segmented control. `Esc` never reaches here.
+    fn handle_bills_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(form) = self
+            .bills_dialog
+            .as_mut()
+            .and_then(bills::BillsDialog::plan_form_mut)
+        else {
+            // Pay and Skip's keys land with their dialogs (#374, #375).
+            return false;
+        };
+        let modifiers = keystroke.modifiers;
+        let focused = form.focused;
+        let on_toggle = matches!(
+            focused,
+            bill_form::BillPlanField::AmountKind | bill_form::BillPlanField::Active
+        );
+        let on_select = matches!(
+            focused,
+            bill_form::BillPlanField::Category
+                | bill_form::BillPlanField::Account
+                | bill_form::BillPlanField::Payee
+                | bill_form::BillPlanField::Recurrence
+        ) || (focused == bill_form::BillPlanField::Unit && !form.is_edit);
+        match keystroke.key.as_str() {
+            "tab" => self.with_bill_plan_form(|form, options| {
+                form.cycle_focus(modifiers.shift, options);
+            }),
+            "up" | "down" if on_select => {
+                let key = if keystroke.key == "up" {
+                    SelectKey::Up
+                } else {
+                    SelectKey::Down
+                };
+                self.with_bill_plan_form(|form, options| {
+                    form.handle_select_key(key, options);
+                });
+            }
+            "space" | "enter" if on_select => self.with_bill_plan_form(|form, options| {
+                form.handle_select_key(SelectKey::Activate, options);
+            }),
+            "space" | "left" | "right"
+                if on_toggle
+                    && (keystroke.key == "space"
+                        || focused == bill_form::BillPlanField::AmountKind) =>
+            {
+                self.with_bill_plan_form(|form, _| form.toggle());
+            }
+            "enter" => self.confirm_bill_plan_dialog(),
+            "backspace" => self.with_bill_plan_form(|form, _| form.backspace()),
+            _ => {
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(ch) = typed_char(keystroke) {
+                    self.with_bill_plan_form(|form, _| form.push_char(ch));
+                }
+            }
+        }
+        true
+    }
+
+    /// **Add bill plan** / **Save** and `enter`: adds or edits the Plan (Schedule regeneration is
+    /// `bills::insert_plan`'s, `edit_plan`'s and `set_active`'s), closes the dialog and selects
+    /// the Plan on the Planner tab. A no-op while the form is incomplete or has a problem; a
+    /// refused Save keeps the dialog open with the error shown.
+    fn confirm_bill_plan_dialog(&mut self) {
+        let options = self.bill_plan_options();
+        let (today, date_style) = (self.today, self.settings_date_style);
+        let Some(dialog) = self.bills_dialog.as_ref() else {
+            return;
+        };
+        let (editing, form) = match dialog {
+            bills::BillsDialog::Add(form) => (None, form),
+            bills::BillsDialog::Edit(id, form) => (Some(*id), form),
+            _ => return,
+        };
+        let Some(draft) = form.draft(&options, today, date_style) else {
+            return;
+        };
+        let is_active = form.is_active;
+        let result = match editing {
+            None => bills::insert_plan(
+                &mut self.bill_plans,
+                &mut self.bill_entries,
+                &draft,
+                &self.categories,
+                &self.accounts,
+                today,
+            ),
+            Some(id) => bills::edit_plan(
+                &mut self.bill_plans,
+                &mut self.bill_entries,
+                id,
+                &draft,
+                &self.categories,
+                &self.accounts,
+                today,
+            )
+            .and_then(|()| {
+                bills::set_active(
+                    &mut self.bill_plans,
+                    &mut self.bill_entries,
+                    id,
+                    is_active,
+                    today,
+                )
+            })
+            .map(|()| id),
+        };
+        match result {
+            Ok(id) => {
+                self.bills_dialog = None;
+                self.nav.exit_mode();
+                if self.bills_tab == bills::BillsTab::Planner {
+                    self.bills_selected = bills::planner_order(&self.bill_plans)
+                        .iter()
+                        .position(|plan| plan.id == id)
+                        .unwrap_or(0);
+                }
+            }
+            Err(error) => {
+                if let Some(form) = self
+                    .bills_dialog
+                    .as_mut()
+                    .and_then(bills::BillsDialog::plan_form_mut)
+                {
+                    form.error = Some(error);
+                }
+            }
+        }
+    }
+
+    fn handle_bill_plan_field_click(
+        &mut self,
+        field: bill_form::BillPlanField,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.with_bill_plan_form(|form, options| match field {
+            bill_form::BillPlanField::Category
+            | bill_form::BillPlanField::Unit
+            | bill_form::BillPlanField::Account
+            | bill_form::BillPlanField::Payee
+            | bill_form::BillPlanField::Recurrence => form.click_select(field, options),
+            bill_form::BillPlanField::Active => {
+                form.focus(field);
+                form.toggle();
+            }
+            _ => form.focus(field),
+        });
+        cx.notify();
+    }
+
+    fn handle_bill_plan_option_click(
+        &mut self,
+        field: bill_form::BillPlanField,
+        index: usize,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.with_bill_plan_form(|form, options| form.choose(field, index, options));
+        cx.notify();
+    }
+
+    fn handle_bill_plan_amount_kind_click(
+        &mut self,
+        kind: bills::AmountKind,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.with_bill_plan_form(|form, _| {
+            form.focus(bill_form::BillPlanField::AmountKind);
+            form.amount_kind = kind;
+        });
+        cx.notify();
+    }
+
+    fn handle_bills_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
+        self.bills_dialog = None;
+        self.nav.exit_mode();
+        cx.notify();
+    }
+
+    fn handle_bill_plan_confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.confirm_bill_plan_dialog();
+        cx.notify();
     }
 
     /// The Pay dialog (8d) lands with #374; until then `p` only reports it. A row with nothing to
@@ -4862,6 +5130,66 @@ impl Render for Shell {
             });
             on_click
         };
+        let bills_dialog_element = self.bills_dialog.as_ref().and_then(|dialog| {
+            let (editing, form) = match dialog {
+                bills::BillsDialog::Add(form) => (None, form),
+                bills::BillsDialog::Edit(id, form) => {
+                    (Some(bills::get(&self.bill_plans, *id)?.name.as_str()), form)
+                }
+                // Pay and Skip draw with their tickets (#374, #375).
+                _ => return None,
+            };
+            let options = self.bill_plan_options();
+            let (today, date_style) = (self.today, self.settings_date_style);
+            let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+                let entity = entity.clone();
+                let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                    entity.update(cx, handler);
+                });
+                on_click
+            };
+            let on_field_click: bills_view::plan_dialog::OnFieldClick = {
+                let entity = entity.clone();
+                Rc::new(move |field, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.handle_bill_plan_field_click(field, cx)
+                    });
+                })
+            };
+            let on_option_click: bills_view::plan_dialog::OnOptionClick = {
+                let entity = entity.clone();
+                Rc::new(move |field, index, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.handle_bill_plan_option_click(field, index, cx);
+                    });
+                })
+            };
+            let on_amount_kind_click: bills_view::plan_dialog::OnAmountKindClick = {
+                let entity = entity.clone();
+                Rc::new(move |kind, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.handle_bill_plan_amount_kind_click(kind, cx);
+                    });
+                })
+            };
+            Some(bills_view::plan_dialog::render(
+                bills_view::plan_dialog::PlanDialogProps {
+                    editing,
+                    form,
+                    options: &options,
+                    errors: form.errors(&options, today, date_style),
+                    valid: form.draft(&options, today, date_style).is_some(),
+                    handlers: bills_view::plan_dialog::PlanDialogHandlers {
+                        on_field_click,
+                        on_option_click,
+                        on_amount_kind_click,
+                        on_cancel: plain(Shell::handle_bills_dialog_cancel),
+                        on_confirm: plain(Shell::handle_bill_plan_confirm),
+                    },
+                },
+                cx,
+            ))
+        });
         let payees_dialog_handlers = {
             let plain = plain_payees;
             let indexed = |handler: fn(&mut Shell, usize, &mut Context<'_, Shell>)| {
@@ -5298,6 +5626,19 @@ impl Render for Shell {
                     ),
                 ),
             }),
+            Noun::Bills
+                if matches!(
+                    self.bills_dialog,
+                    Some(bills::BillsDialog::Add(_) | bills::BillsDialog::Edit(..))
+                ) =>
+            {
+                Some(PageStatus {
+                    hints: payee_dialog_hints(),
+                    right: crate::msg::desktop_bills_status_plans(
+                        i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
+                    ),
+                })
+            }
             Noun::Bills if self.bills_tab == bills::BillsTab::Schedule => Some(PageStatus {
                 hints: bills_schedule_hints(),
                 right: crate::msg::desktop_bills_status_period(
@@ -5561,6 +5902,7 @@ impl Render for Shell {
                     }
                 }
             }))
+            .children(bills_dialog_element)
             .children(match self.payees_dialog.as_ref() {
                 Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
                     payees_view::add_dialog::PayeeDialogMode::Add,

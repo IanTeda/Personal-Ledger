@@ -42,7 +42,7 @@ pub type OnKindClick = Rc<dyn Fn(UnitKind, &mut Window, &mut App)>;
 pub type OnCancel = dialog::OnClick;
 pub type OnConfirm = dialog::OnClick;
 /// A [`segmented_control`] row's own click handler, generic over which enum it selects.
-type OnSegmentClick<T> = Rc<dyn Fn(T, &mut Window, &mut App)>;
+pub(crate) type OnSegmentClick<T> = Rc<dyn Fn(T, &mut Window, &mut App)>;
 
 pub fn render(
     form: &UnitForm,

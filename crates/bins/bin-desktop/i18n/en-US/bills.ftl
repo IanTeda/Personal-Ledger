@@ -70,7 +70,6 @@ desktop-bills-status-plans = { $count ->
     [one] { $count } bill plan
    *[other] { $count } bill plans
 }
-desktop-status-edit-bill-plan-not-yet-built = edit bill plan — not yet built
 
 ## The tabs not built yet.
 
@@ -89,5 +88,33 @@ desktop-hint-switch-view = switch view
 desktop-hint-period = period
 desktop-status-pay-bill-not-yet-built = pay bill — not yet built
 desktop-status-skip-bill-not-yet-built = skip bill — not yet built
-desktop-status-add-bill-plan-not-yet-built = add bill plan — not yet built
 desktop-status-bill-not-actionable = this bill isn't actionable
+
+## The Add and Edit bill plan dialog (8c). `$name` is the Plan's stored name.
+
+desktop-bills-plan-add-title = Add bill plan
+desktop-bills-plan-edit-title = Edit bill plan — { $name }
+desktop-bills-plan-add-submit = Add bill plan
+desktop-bills-plan-edit-submit = Save
+desktop-bills-plan-name-placeholder = e.g. Telstra Internet
+desktop-bills-plan-field-category = Category (expense only)
+desktop-bills-plan-field-payee = Payee
+desktop-bills-plan-no-accounts = No account takes this unit
+desktop-bills-plan-field-amount = Planned amount
+desktop-bills-plan-field-amount-kind = Amount is
+desktop-bills-amount-fixed = Fixed
+desktop-bills-amount-estimated = Estimated
+desktop-bills-plan-field-recurrence = Recurrence
+desktop-bills-plan-field-first-due = First due
+desktop-bills-plan-field-ends-on = Ends on
+desktop-bills-plan-ends-on-placeholder = Recurs indefinitely
+desktop-bills-plan-field-lead = Attention lead
+desktop-bills-plan-lead-explainer = days before the due date a Due row joins Needs Attention; blank means Overdue only
+desktop-bills-plan-lead-placeholder = none
+desktop-bills-plan-active = Active — generate future Schedule rows
+desktop-bills-plan-error-name = A bill plan needs a name.
+desktop-bills-plan-error-category = Choose an expense category with no subcategories.
+desktop-bills-plan-error-account = Choose an account in this unit that takes transactions.
+desktop-bills-plan-error-amount = Enter an amount greater than zero.
+desktop-bills-plan-error-ends-before-first-due = Ends on can't be before first due.
+desktop-bills-plan-error-lead = Enter a whole number of days.
