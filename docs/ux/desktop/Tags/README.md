@@ -115,7 +115,6 @@ The pass found one defect: 7d's and 7e's copy, rendered as one `div` per Message
 - `gpui` 0.2 has no letter-spacing or `tabular-nums` hook, so header tracking and tabular figures are not reproduced (as on the other desktop surfaces).
 - The Tag swatch shows on 7a, 7b/7c, 7e and the Transactions tag chips, but not yet in the 4b filter builder.
 - The desktop has no transaction form, so tagging a Split (and `resolve_split_tag`'s reuse-or-create) has no UI yet.
-- The TUI's Tags screen doesn't show colour yet (#363).
 
 ## Files
 - `Tags.html` — screens 7a–7e

@@ -7,7 +7,8 @@
 //! **The domain model was fully settled before this map started** — `CONTEXT.md`'s **Tag**
 //! glossary entry and [ADR-0015](docs/adr/0015-tag-as-independent-transaction-label.md): a
 //! freeform, globally-unique (case-insensitive) label, `is_active` soft-delete, no note, no
-//! colour, no rename-alias history. `Tag` here carries exactly those fields and nothing more.
+//! rename-alias history, and (since ADR-0015's #352 amendment) an optional user-chosen colour —
+//! see [`colour`]. `Tag` here carries exactly those fields and nothing more.
 //!
 //! **`tagged_transaction_count` is fixture-only, never a real join** — `view::transactions`
 //! has no store of its own yet (this map's own Notes), so there is no real Transaction to
@@ -28,12 +29,13 @@
 //! `tagged_transaction_count`'s own precedent, extended: fixture-only simulation, never a real
 //! join back to Category or a real Transaction.
 
+pub mod colour;
 mod fixture;
 
 pub use fixture::{FIXTURE_NOW, TagFixture};
 
 use chrono::NaiveDate;
-use lib_core::{Money, RowID};
+use lib_core::{HexColor, Money, RowID};
 
 /// One Tag — a freeform, globally-unique label a user can attach to any number of
 /// Transactions, independent of their Category and Payee (`CONTEXT.md`, ADR-0015).
@@ -41,6 +43,9 @@ use lib_core::{Money, RowID};
 pub struct Tag {
     pub id: RowID,
     pub name: String,
+    /// The user's own colour for the Tag, drawn as a swatch before its name; `None` (a new
+    /// Tag's default) draws no swatch.
+    pub color: Option<HexColor>,
     pub is_active: bool,
     pub created_on: NaiveDate,
     pub updated_on: NaiveDate,
@@ -96,12 +101,23 @@ pub trait TagStore {
     /// Creates a new Tag, or `Err(TagError::DuplicateName)` if `name` clashes
     /// case-insensitively with an existing Tag (active or not — a deactivated Tag's name is
     /// still taken, nothing here frees it back up).
-    fn create(&mut self, name: String, active: bool) -> Result<RowID, TagError>;
+    fn create(
+        &mut self,
+        name: String,
+        color: Option<HexColor>,
+        active: bool,
+    ) -> Result<RowID, TagError>;
 
-    /// Updates `name`/`active`. The same case-insensitive uniqueness check as `create`
+    /// Updates `name`/`color`/`active`. The same case-insensitive uniqueness check as `create`
     /// applies, except against the Tag's own current name (renaming a Tag to the name it
     /// already has is never a clash).
-    fn update(&mut self, id: RowID, name: String, active: bool) -> Result<(), TagError>;
+    fn update(
+        &mut self,
+        id: RowID,
+        name: String,
+        color: Option<HexColor>,
+        active: bool,
+    ) -> Result<(), TagError>;
 
     fn set_active(&mut self, id: RowID, active: bool) -> Result<(), TagError>;
 

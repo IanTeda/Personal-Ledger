@@ -59,6 +59,7 @@ use ratatui::{
 
 use crate::colours::Colours;
 use crate::msg;
+use crate::tag::colour::swatch_span;
 use crate::tag::{Tag, TagFixture, TagStore, TagTransaction};
 use crate::view::{Action, View, ViewId, save_failed};
 
@@ -326,13 +327,23 @@ impl View for TagsView {
     /// module docs). Every other `Action` variant is ignored.
     fn update(&mut self, action: &Action) {
         match action {
-            Action::CreateTag { name, active, .. } => {
-                if let Ok(id) = self.store.create(name.clone(), *active) {
+            Action::CreateTag {
+                name,
+                color,
+                active,
+                ..
+            } => {
+                if let Ok(id) = self.store.create(name.clone(), color.clone(), *active) {
                     self.selected = id;
                 }
             }
-            Action::UpdateTag { id, name, active } => {
-                if let Err(error) = self.store.update(*id, name.clone(), *active) {
+            Action::UpdateTag {
+                id,
+                name,
+                color,
+                active,
+            } => {
+                if let Err(error) = self.store.update(*id, name.clone(), color.clone(), *active) {
                     let entity = lib_locale::msg::toast_entity_tag();
                     self.toasts.push(save_failed(&entity, &error));
                 }
@@ -488,7 +499,14 @@ impl TagsView {
             ])
             .split(inner);
 
-        frame.render_widget(Paragraph::new(tag.name.clone()), rows[0]);
+        frame.render_widget(
+            Paragraph::new(Line::from(vec![
+                swatch_span(tag.color.as_ref(), c),
+                Span::raw(" "),
+                Span::raw(tag.name.clone()),
+            ])),
+            rows[0],
+        );
         frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[1]);
 
         let active_text = if tag.is_active {
@@ -759,7 +777,13 @@ fn render_tag_row(frame: &mut Frame<'_>, area: Rect, tag: &Tag, selected: bool, 
     } else {
         Style::default()
     };
-    frame.render_widget(Paragraph::new(Span::styled(name_text, style)), area);
+    // The swatch leads (or its blank slot does) so names stay aligned with or without a colour.
+    let line = Line::from(vec![
+        swatch_span(tag.color.as_ref(), c),
+        Span::raw(" "),
+        Span::styled(name_text, style),
+    ]);
+    frame.render_widget(Paragraph::new(line), area);
 }
 
 fn summary_field_line<'a>(label: &'a str, value: &'a str, c: &Colours) -> Paragraph<'a> {
@@ -1111,6 +1135,7 @@ mod tests {
 
         view.update(&Action::CreateTag {
             name: "Wedding".to_string(),
+            color: None,
             active: true,
             close_after: true,
         });
@@ -1127,6 +1152,7 @@ mod tests {
 
         view.update(&Action::CreateTag {
             name: "Japan Trip 2026".to_string(),
+            color: None,
             active: true,
             close_after: true,
         });
@@ -1187,6 +1213,7 @@ mod tests {
         view.update(&Action::UpdateTag {
             id: home_renovation,
             name: "Reno 2026".to_string(),
+            color: None,
             active: false,
         });
 

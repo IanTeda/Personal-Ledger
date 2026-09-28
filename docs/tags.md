@@ -54,7 +54,7 @@ The Add and Edit dialogs ask for a name and an optional colour: pick none, one o
 
 - Cross-tag rollups and reports are built into Reports; see Reports for totals across themes.
 - Nested tags (tags inside tags) are not supported — keep them flat.
-- The dedicated Tags screen is in the desktop app only; the terminal app's Tags screen doesn't manage tags or show colours yet.
+- The dedicated Tags screen is in the desktop app only; the terminal app's Tags screen doesn't manage tags yet. It does show and set a tag's colour: in its new and edit popups, press `space` on the colour field to step through the presets (and back to none), or type a hex colour.
 - The desktop app has no transaction form yet, so you can't add a tag to a transaction there.
 - Everything is sample data for now; changes aren't saved.
 
@@ -90,7 +90,7 @@ Intended features for Tags. Ticked means built in at least one app; the tag says
 - [x] TAG-005 (desktop): Dedicated tag list screen showing usage counts
 - [x] TAG-006 (desktop): Merge two tags into one
 - [x] TAG-007 (desktop): Rename a tag across all transactions
-- [x] TAG-008 (desktop): Give a tag an optional colour
+- [x] TAG-008 (desktop, terminal): Give a tag an optional colour
 - [x] TAG-009 (desktop): Remove a tag, untagging every transaction that carries it
 - [x] TAG-010 (desktop): Deactivate and reactivate a tag
 - [x] TAG-011 (desktop): Flag likely duplicate tags and offer to merge them

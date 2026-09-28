@@ -15,7 +15,7 @@
 //! ("Tags: screen — list, summary box, and lightweight delete"), not a popup this one could
 //! hand off to.
 
-use lib_core::RowID;
+use lib_core::{HexColor, RowID};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -28,37 +28,44 @@ use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 use crate::tag::TagStore;
+use crate::tag::colour::{ColourDraft, swatch_span};
 
 const POPUP_WIDTH_PERCENT: u32 = 60;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "active".len() as u16 + 1;
 
-/// Content rows inside the border: title, its rule, the two fields, a blank spacer, a
+/// Content rows inside the border: title, its rule, the three fields, a blank spacer, a
 /// one-line note, a blank spacer, the footer's rule, then the footer itself — matches
 /// `popup::tag::new`'s own `CONTENT_ROWS` exactly.
-const CONTENT_ROWS: u16 = 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1;
+const CONTENT_ROWS: u16 = 1 + 1 + 3 + 1 + 1 + 1 + 1 + 1;
 const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
 
 /// Which editable field currently has focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Field {
     Name,
+    Colour,
     Active,
 }
 
 impl Field {
     fn next(self) -> Field {
         match self {
-            Field::Name => Field::Active,
+            Field::Name => Field::Colour,
+            Field::Colour => Field::Active,
             Field::Active => Field::Name,
         }
     }
 }
 
+/// The `(id, name, color, active)` a valid edit saves.
+pub type TagFields = (RowID, String, Option<HexColor>, bool);
+
 /// The `:tag edit` popup's own draft state, prefilled from the Tag being edited.
 pub struct EditTagPopup {
     editing_id: RowID,
     name: String,
+    colour: ColourDraft,
     active: bool,
     focus: Field,
 }
@@ -73,6 +80,7 @@ impl EditTagPopup {
         Self {
             editing_id,
             name: tag.map(|t| t.name.clone()).unwrap_or_default(),
+            colour: ColourDraft::new(tag.and_then(|t| t.color.as_ref())),
             active: tag.map(|t| t.is_active).unwrap_or(true),
             focus: Field::Name,
         }
@@ -85,14 +93,19 @@ impl EditTagPopup {
     pub fn push_char(&mut self, c: char) {
         match self.focus {
             Field::Name => self.name.push(c),
+            Field::Colour => self.colour.push_char(c),
             Field::Active if c == ' ' => self.active = !self.active,
             Field::Active => {}
         }
     }
 
     pub fn backspace(&mut self) {
-        if self.focus == Field::Name {
-            self.name.pop();
+        match self.focus {
+            Field::Name => {
+                self.name.pop();
+            }
+            Field::Colour => self.colour.backspace(),
+            Field::Active => {}
         }
     }
 
@@ -110,23 +123,25 @@ impl EditTagPopup {
             .any(|tag| tag.id != self.editing_id && tag.name.eq_ignore_ascii_case(name))
     }
 
-    /// The `(id, name, active)` `^s` would save, or `None` while the draft doesn't validate —
-    /// an empty name, or one that case-insensitively clashes with another Tag.
-    pub fn save_fields(&self, store: &dyn TagStore) -> Option<(RowID, String, bool)> {
+    /// The `(id, name, color, active)` `^s` would save, or `None` while the draft doesn't
+    /// validate — an empty name, one that case-insensitively clashes with another Tag, or a
+    /// half-typed colour.
+    pub fn save_fields(&self, store: &dyn TagStore) -> Option<TagFields> {
         let name = self.name.trim();
         if name.is_empty() || self.name_taken(store, name) {
             return None;
         }
-        Some((self.editing_id, name.to_string(), self.active))
+        let color = self.colour.colour().ok()?;
+        Some((self.editing_id, name.to_string(), color, self.active))
     }
 
     /// The `(id, name, active)` `^a` would save — the draft as typed, but with `active` forced
     /// `false` regardless of the checkbox's own current value, per the ticket's own `^a`
     /// "deactivates without requiring the checkbox to be toggled first", mirroring
     /// `EditAccountPopup::deactivate_fields`.
-    pub fn deactivate_fields(&self, store: &dyn TagStore) -> Option<(RowID, String, bool)> {
+    pub fn deactivate_fields(&self, store: &dyn TagStore) -> Option<TagFields> {
         self.save_fields(store)
-            .map(|(id, name, _)| (id, name, false))
+            .map(|(id, name, color, _)| (id, name, color, false))
     }
 
     /// Renders the floating overlay, centred within `area`.
@@ -144,6 +159,7 @@ impl EditTagPopup {
                 Constraint::Length(1), // title
                 Constraint::Length(1), // rule
                 Constraint::Length(1), // name
+                Constraint::Length(1), // colour
                 Constraint::Length(1), // active
                 Constraint::Length(1), // blank spacer
                 Constraint::Length(1), // note
@@ -163,12 +179,13 @@ impl EditTagPopup {
             self.focus == Field::Name,
             c,
         );
-        render_active_field(frame, rows[3], self.active, self.focus == Field::Active, c);
-        // rows[4] is left blank — breathing space above the note.
-        render_clash_note(frame, rows[5], store, self, c);
-        // rows[6] is left blank — breathing space above the footer rule.
-        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[7]);
-        render_footer_hints(frame, rows[8], c);
+        render_colour_field(frame, rows[3], &self.colour, self.focus == Field::Colour, c);
+        render_active_field(frame, rows[4], self.active, self.focus == Field::Active, c);
+        // rows[5] is left blank — breathing space above the note.
+        render_clash_note(frame, rows[6], store, self, c);
+        // rows[7] is left blank — breathing space above the footer rule.
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[8]);
+        render_footer_hints(frame, rows[9], c);
     }
 }
 
@@ -211,6 +228,38 @@ fn render_text_field(
         spans.push(Span::styled("\u{258c}", c.cursor()));
     }
     render_field(frame, area, label, Line::from(spans), c);
+}
+
+/// The `colour` row: the swatch (or its blank slot), the hex value or "none", and how to
+/// change it. Space steps the presets and typing edits the hex, so no extra keys are needed.
+fn render_colour_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    colour: &ColourDraft,
+    focused: bool,
+    c: &Colours,
+) {
+    let picked = colour.colour().ok().flatten();
+    let mut spans = vec![swatch_span(picked.as_ref(), c), Span::raw(" ")];
+    if colour.hex().is_empty() && !focused {
+        spans.push(Span::styled(msg::tui_tag_colour_none(), c.muted()));
+    } else {
+        spans.push(Span::raw(colour.hex().to_string()));
+    }
+    if focused {
+        spans.push(Span::styled("\u{258c}", c.cursor()));
+        spans.push(Span::styled(
+            format!(" · {}", msg::tui_tag_colour_hint()),
+            c.muted(),
+        ));
+    }
+    render_field(
+        frame,
+        area,
+        &msg::tui_tag_field_colour(),
+        Line::from(spans),
+        c,
+    );
 }
 
 /// The `active` checkbox row: the glyph in the accent when focused, "clear to deactivate" as
@@ -260,6 +309,13 @@ fn render_clash_note(
                 msg::tui_tag_edit_note_clash(trimmed),
                 c.accent(),
             )),
+            area,
+        );
+        return;
+    }
+    if popup.colour.colour().is_err() {
+        frame.render_widget(
+            Paragraph::new(Span::styled(msg::tui_tag_colour_invalid(), c.accent())),
             area,
         );
         return;
@@ -316,6 +372,7 @@ mod tests {
 
     use super::*;
     use crate::tag::TagFixture;
+    use crate::tag::colour::swatches;
 
     fn find_id(store: &TagFixture, name: &str) -> RowID {
         store
@@ -372,11 +429,13 @@ mod tests {
     }
 
     #[test]
-    fn tab_cycles_focus_between_the_two_fields_and_wraps() {
+    fn tab_cycles_focus_through_the_three_fields_and_wraps() {
         let store = TagFixture::new();
         let japan_trip = find_id(&store, "Japan Trip 2026");
         let mut popup = EditTagPopup::new(&store, japan_trip);
         assert_eq!(popup.focus, Field::Name);
+        popup.tab();
+        assert_eq!(popup.focus, Field::Colour);
         popup.tab();
         assert_eq!(popup.focus, Field::Active);
         popup.tab();
@@ -426,7 +485,12 @@ mod tests {
 
         assert_eq!(
             popup.save_fields(&store),
-            Some((japan_trip, "Japan Trip 2026".to_string(), true))
+            Some((
+                japan_trip,
+                "Japan Trip 2026".to_string(),
+                Some(swatches()[0].clone()),
+                true
+            ))
         );
     }
 
@@ -449,7 +513,12 @@ mod tests {
 
         assert_eq!(
             popup.save_fields(&store),
-            Some((japan_trip, "Japan Trip 2027".to_string(), true))
+            Some((
+                japan_trip,
+                "Japan Trip 2027".to_string(),
+                Some(swatches()[0].clone()),
+                true
+            ))
         );
     }
 
@@ -460,10 +529,36 @@ mod tests {
         let popup = EditTagPopup::new(&store, japan_trip);
         assert!(popup.active, "starts active per the fixture");
 
-        let (_, _, active) = popup
+        let (_, _, _, active) = popup
             .deactivate_fields(&store)
             .expect("should validate without toggling the checkbox first");
         assert!(!active);
+    }
+
+    #[test]
+    fn prefills_the_colour_and_saves_a_cleared_one_as_none() {
+        let store = TagFixture::new();
+        let japan_trip = find_id(&store, "Japan Trip 2026");
+        let mut popup = EditTagPopup::new(&store, japan_trip);
+        assert_eq!(popup.colour.colour(), Ok(Some(swatches()[0].clone())));
+
+        popup.tab(); // to colour
+        popup.colour.clear();
+        let (_, _, color, _) = popup.save_fields(&store).expect("should validate");
+        assert_eq!(color, None);
+    }
+
+    #[test]
+    fn save_fields_rejects_a_half_typed_colour() {
+        let store = TagFixture::new();
+        let japan_trip = find_id(&store, "Japan Trip 2026");
+        let mut popup = EditTagPopup::new(&store, japan_trip);
+        popup.tab(); // to colour
+        popup.backspace();
+        assert_eq!(popup.save_fields(&store), None);
+
+        let text = render(&popup, &store, &Colours::default());
+        assert!(text.contains("colour must be #RRGGBB"));
     }
 
     #[test]

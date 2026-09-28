@@ -12,31 +12,36 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph},
 };
 
+use lib_core::HexColor;
+
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 use crate::tag::TagStore;
+use crate::tag::colour::{ColourDraft, swatch_span};
 
 const POPUP_WIDTH_PERCENT: u32 = 60;
 const POPUP_WIDTH: u16 = ((REFERENCE_TERMINAL_WIDTH as u32 * POPUP_WIDTH_PERCENT) / 100) as u16;
 const LABEL_WIDTH: u16 = "active".len() as u16 + 1;
 
-/// Content rows inside the border: title, its rule, the two fields, a blank spacer, a
+/// Content rows inside the border: title, its rule, the three fields, a blank spacer, a
 /// one-line note, a blank spacer, the footer's rule, then the footer itself.
-const CONTENT_ROWS: u16 = 1 + 1 + 2 + 1 + 1 + 1 + 1 + 1;
+const CONTENT_ROWS: u16 = 1 + 1 + 3 + 1 + 1 + 1 + 1 + 1;
 const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
 
 /// Which editable field currently has focus.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Field {
     Name,
+    Colour,
     Active,
 }
 
 impl Field {
     fn next(self) -> Field {
         match self {
-            Field::Name => Field::Active,
+            Field::Name => Field::Colour,
+            Field::Colour => Field::Active,
             Field::Active => Field::Name,
         }
     }
@@ -45,6 +50,7 @@ impl Field {
 /// The `:tag new` popup's own draft state.
 pub struct NewTagPopup {
     name: String,
+    colour: ColourDraft,
     active: bool,
     focus: Field,
 }
@@ -56,6 +62,7 @@ impl NewTagPopup {
     pub fn new() -> Self {
         Self {
             name: String::new(),
+            colour: ColourDraft::default(),
             active: true,
             focus: Field::Name,
         }
@@ -66,14 +73,19 @@ impl NewTagPopup {
             Field::Name => self.name.push(c),
             // Space toggles the checkbox rather than being typed literally — `active` has no
             // text to hold.
+            Field::Colour => self.colour.push_char(c),
             Field::Active if c == ' ' => self.active = !self.active,
             Field::Active => {}
         }
     }
 
     pub fn backspace(&mut self) {
-        if self.focus == Field::Name {
-            self.name.pop();
+        match self.focus {
+            Field::Name => {
+                self.name.pop();
+            }
+            Field::Colour => self.colour.backspace(),
+            Field::Active => {}
         }
     }
 
@@ -94,15 +106,16 @@ impl NewTagPopup {
             .any(|tag| tag.name.eq_ignore_ascii_case(name))
     }
 
-    /// The `(name, active)` `^s`/`^a` would create, or `None` while the draft doesn't
-    /// validate — an empty name, or one that case-insensitively clashes with an existing Tag,
-    /// per ADR-0015's global (not sibling-scoped) uniqueness rule.
-    pub fn create_fields(&self, store: &dyn TagStore) -> Option<(String, bool)> {
+    /// The `(name, color, active)` `^s`/`^a` would create, or `None` while the draft doesn't
+    /// validate — an empty name, one that case-insensitively clashes with an existing Tag (per
+    /// ADR-0015's global, not sibling-scoped, uniqueness rule), or a half-typed colour.
+    pub fn create_fields(&self, store: &dyn TagStore) -> Option<(String, Option<HexColor>, bool)> {
         let name = self.name.trim();
         if name.is_empty() || Self::name_taken(store, name) {
             return None;
         }
-        Some((name.to_string(), self.active))
+        let color = self.colour.colour().ok()?;
+        Some((name.to_string(), color, self.active))
     }
 
     /// `^a`: after a successful create, clears `name` and resets `active` to its own default —
@@ -110,6 +123,7 @@ impl NewTagPopup {
     /// another".
     pub fn reset_for_next_tag(&mut self) {
         self.name.clear();
+        self.colour.clear();
         self.active = true;
         self.focus = Field::Name;
     }
@@ -129,6 +143,7 @@ impl NewTagPopup {
                 Constraint::Length(1), // title
                 Constraint::Length(1), // rule
                 Constraint::Length(1), // name
+                Constraint::Length(1), // colour
                 Constraint::Length(1), // active
                 Constraint::Length(1), // blank spacer
                 Constraint::Length(1), // note
@@ -148,12 +163,13 @@ impl NewTagPopup {
             self.focus == Field::Name,
             c,
         );
-        render_active_field(frame, rows[3], self.active, self.focus == Field::Active, c);
-        // rows[4] is left blank — breathing space above the note.
-        render_clash_note(frame, rows[5], store, &self.name, c);
-        // rows[6] is left blank — breathing space above the footer rule.
-        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[7]);
-        render_footer_hints(frame, rows[8], c);
+        render_colour_field(frame, rows[3], &self.colour, self.focus == Field::Colour, c);
+        render_active_field(frame, rows[4], self.active, self.focus == Field::Active, c);
+        // rows[5] is left blank — breathing space above the note.
+        render_clash_note(frame, rows[6], store, &self.name, &self.colour, c);
+        // rows[7] is left blank — breathing space above the footer rule.
+        frame.render_widget(Block::new().borders(Borders::BOTTOM), rows[8]);
+        render_footer_hints(frame, rows[9], c);
     }
 }
 
@@ -207,6 +223,38 @@ fn render_text_field(
     render_field(frame, area, label, Line::from(spans), c);
 }
 
+/// The `colour` row: the swatch (or its blank slot), the hex value or "none", and how to
+/// change it. Space steps the presets and typing edits the hex, so no extra keys are needed.
+fn render_colour_field(
+    frame: &mut Frame<'_>,
+    area: Rect,
+    colour: &ColourDraft,
+    focused: bool,
+    c: &Colours,
+) {
+    let picked = colour.colour().ok().flatten();
+    let mut spans = vec![swatch_span(picked.as_ref(), c), Span::raw(" ")];
+    if colour.hex().is_empty() && !focused {
+        spans.push(Span::styled(msg::tui_tag_colour_none(), c.muted()));
+    } else {
+        spans.push(Span::raw(colour.hex().to_string()));
+    }
+    if focused {
+        spans.push(Span::styled("\u{258c}", c.cursor()));
+        spans.push(Span::styled(
+            format!(" · {}", msg::tui_tag_colour_hint()),
+            c.muted(),
+        ));
+    }
+    render_field(
+        frame,
+        area,
+        &msg::tui_tag_field_colour(),
+        Line::from(spans),
+        c,
+    );
+}
+
 /// The `active` checkbox row: the glyph in the accent when focused, the "offered when
 /// tagging" consequence stated alongside it either way — mirrors `view::tags`'s own summary
 /// box wording.
@@ -245,6 +293,7 @@ fn render_clash_note(
     area: Rect,
     store: &dyn TagStore,
     name: &str,
+    colour: &ColourDraft,
     c: &Colours,
 ) {
     let trimmed = name.trim();
@@ -254,6 +303,13 @@ fn render_clash_note(
                 msg::tui_tag_new_note_clash(trimmed),
                 c.accent(),
             )),
+            area,
+        );
+        return;
+    }
+    if colour.colour().is_err() {
+        frame.render_widget(
+            Paragraph::new(Span::styled(msg::tui_tag_colour_invalid(), c.accent())),
             area,
         );
         return;
@@ -345,9 +401,11 @@ mod tests {
     }
 
     #[test]
-    fn tab_cycles_focus_between_the_two_fields_and_wraps() {
+    fn tab_cycles_focus_through_the_three_fields_and_wraps() {
         let mut popup = NewTagPopup::new();
         assert_eq!(popup.focus, Field::Name);
+        popup.tab();
+        assert_eq!(popup.focus, Field::Colour);
         popup.tab();
         assert_eq!(popup.focus, Field::Active);
         popup.tab();
@@ -432,8 +490,30 @@ mod tests {
 
         assert_eq!(
             popup.create_fields(&store),
-            Some(("Wedding".to_string(), false))
+            Some(("Wedding".to_string(), None, false))
         );
+    }
+
+    #[test]
+    fn create_fields_carries_a_picked_preset_colour() {
+        let store = TagFixture::new();
+        let mut popup = NewTagPopup::new();
+        popup.name = "Wedding".to_string();
+        popup.tab(); // to colour
+        popup.push_char(' ');
+
+        let (_, color, _) = popup.create_fields(&store).expect("should validate");
+        assert_eq!(color, Some(crate::tag::colour::swatches()[0].clone()));
+    }
+
+    #[test]
+    fn tab_from_name_lands_on_colour_where_typing_edits_the_hex() {
+        let mut popup = NewTagPopup::new();
+        popup.tab();
+        assert_eq!(popup.focus, Field::Colour);
+        "#12ab".chars().for_each(|ch| popup.push_char(ch));
+        assert_eq!(popup.name, "");
+        assert_eq!(popup.colour.hex(), "#12ab");
     }
 
     #[test]

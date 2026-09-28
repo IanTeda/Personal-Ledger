@@ -19,7 +19,7 @@ pub mod transactions;
 pub mod units;
 
 use crossterm::event::KeyEvent;
-use lib_core::{Money, RowID};
+use lib_core::{HexColor, Money, RowID};
 use lib_toast::ToastKind;
 use ratatui::{Frame, layout::Rect};
 use tokio::sync::mpsc::UnboundedSender;
@@ -385,12 +385,13 @@ pub enum Action {
     /// completion to apply, unlike `popup::account::new`'s `unit` field).
     TagNewPopupTab,
     /// `Ctrl+S`/`Ctrl+A` on the Tag new popup, once its draft validates (a non-empty `name`
-    /// with no case-insensitive clash) — `Shell` resolves the popup's current fields into this
-    /// pair before dispatching, mirroring `CreateAccount`. `close_after` is `false` for
+    /// with no case-insensitive clash, and a valid or empty colour) — `Shell` resolves the
+    /// popup's current fields into this before dispatching, mirroring `CreateAccount`. `close_after` is `false` for
     /// `Ctrl+A` ("create and start another" — the popup stays open, reset for the next Tag),
     /// `true` for `Ctrl+S`.
     CreateTag {
         name: String,
+        color: Option<HexColor>,
         active: bool,
         close_after: bool,
     },
@@ -411,6 +412,7 @@ pub enum Action {
     UpdateTag {
         id: RowID,
         name: String,
+        color: Option<HexColor>,
         active: bool,
     },
     /// `Enter` on the command popup's `tag off <tag>`/`tag on <tag>` entries — reaches

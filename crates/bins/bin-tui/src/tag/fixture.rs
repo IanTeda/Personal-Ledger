@@ -18,8 +18,9 @@
 
 use bigdecimal::{BigDecimal, FromPrimitive};
 use chrono::{Duration, Months, NaiveDate};
-use lib_core::{Money, RowID};
+use lib_core::{HexColor, Money, RowID};
 
+use super::colour::swatches;
 use super::{Tag, TagError, TagStore, TagTransaction};
 use crate::category::{CategoryFixture, CategoryStore};
 use crate::fixture::{date, month_start, seed_from_id};
@@ -282,10 +283,15 @@ impl TagFixture {
             ],
         );
 
+        // Two presets, with Home Renovation and Old Project left
+        // colourless so the list shows both a swatch and the blank slot that keeps names aligned.
+        let [red, _sage, ochre, ..] = swatches();
+
         let tags = vec![
             Tag {
                 id: id(),
                 name: "Japan Trip 2026".to_string(),
+                color: Some(red),
                 is_active: true,
                 created_on: date(2025, 11, 1),
                 updated_on: date(2026, 8, 15),
@@ -295,6 +301,7 @@ impl TagFixture {
             Tag {
                 id: id(),
                 name: "Home Renovation".to_string(),
+                color: None,
                 is_active: true,
                 created_on: date(2026, 1, 10),
                 updated_on: date(2026, 1, 10),
@@ -304,6 +311,7 @@ impl TagFixture {
             Tag {
                 id: id(),
                 name: "Tax Deductible".to_string(),
+                color: Some(ochre),
                 is_active: true,
                 created_on: date(2024, 7, 1),
                 updated_on: date(2026, 6, 30),
@@ -313,6 +321,7 @@ impl TagFixture {
             Tag {
                 id: id(),
                 name: "Old Project".to_string(),
+                color: None,
                 is_active: false,
                 created_on: date(2023, 3, 15),
                 updated_on: date(2023, 9, 1),
@@ -342,7 +351,12 @@ impl TagStore for TagFixture {
         self.tags.iter().find(|tag| tag.id == id)
     }
 
-    fn create(&mut self, name: String, active: bool) -> Result<RowID, TagError> {
+    fn create(
+        &mut self,
+        name: String,
+        color: Option<HexColor>,
+        active: bool,
+    ) -> Result<RowID, TagError> {
         if self.name_taken(&name, None) {
             return Err(TagError::DuplicateName { name });
         }
@@ -350,6 +364,7 @@ impl TagStore for TagFixture {
         self.tags.push(Tag {
             id,
             name,
+            color,
             is_active: active,
             created_on: FIXTURE_NOW,
             updated_on: FIXTURE_NOW,
@@ -359,7 +374,13 @@ impl TagStore for TagFixture {
         Ok(id)
     }
 
-    fn update(&mut self, id: RowID, name: String, active: bool) -> Result<(), TagError> {
+    fn update(
+        &mut self,
+        id: RowID,
+        name: String,
+        color: Option<HexColor>,
+        active: bool,
+    ) -> Result<(), TagError> {
         if self.name_taken(&name, Some(id)) {
             return Err(TagError::DuplicateName { name });
         }
@@ -369,6 +390,7 @@ impl TagStore for TagFixture {
             .find(|tag| tag.id == id)
             .ok_or(TagError::NotFound)?;
         tag.name = name;
+        tag.color = color;
         tag.is_active = active;
         tag.updated_on = FIXTURE_NOW;
         Ok(())
@@ -459,7 +481,7 @@ mod tests {
     #[test]
     fn create_rejects_a_case_insensitive_duplicate_against_an_active_tag() {
         let mut store = TagFixture::new();
-        let result = store.create("japan trip 2026".to_string(), true);
+        let result = store.create("japan trip 2026".to_string(), None, true);
         assert_eq!(
             result,
             Err(TagError::DuplicateName {
@@ -471,7 +493,7 @@ mod tests {
     #[test]
     fn create_rejects_a_case_insensitive_duplicate_against_an_inactive_tag() {
         let mut store = TagFixture::new();
-        let result = store.create("OLD PROJECT".to_string(), true);
+        let result = store.create("OLD PROJECT".to_string(), None, true);
         assert_eq!(
             result,
             Err(TagError::DuplicateName {
@@ -484,19 +506,51 @@ mod tests {
     fn create_succeeds_with_a_genuinely_new_name() {
         let mut store = TagFixture::new();
         let id = store
-            .create("Wedding".to_string(), true)
+            .create("Wedding".to_string(), None, true)
             .expect("a new name should create successfully");
         let tag = store.find(id).expect("just created");
         assert_eq!(tag.name, "Wedding");
         assert!(tag.is_active);
         assert_eq!(tag.tagged_transaction_count, 0);
+        assert_eq!(
+            tag.color, None,
+            "a new tag has no colour unless one is given"
+        );
+    }
+
+    #[test]
+    fn update_sets_and_clears_the_colour() {
+        let mut store = TagFixture::new();
+        let japan_trip = find_by_name(&store, "Japan Trip 2026").id;
+        let blue = swatches()[3].clone();
+
+        store
+            .update(
+                japan_trip,
+                "Japan Trip 2026".to_string(),
+                Some(blue.clone()),
+                true,
+            )
+            .expect("should succeed");
+        assert_eq!(
+            store.find(japan_trip).and_then(|tag| tag.color.clone()),
+            Some(blue)
+        );
+
+        store
+            .update(japan_trip, "Japan Trip 2026".to_string(), None, true)
+            .expect("should succeed");
+        assert_eq!(
+            store.find(japan_trip).and_then(|tag| tag.color.clone()),
+            None
+        );
     }
 
     #[test]
     fn update_rejects_a_case_insensitive_clash_with_a_different_tag() {
         let mut store = TagFixture::new();
         let home_renovation = find_by_name(&store, "Home Renovation").id;
-        let result = store.update(home_renovation, "tax deductible".to_string(), true);
+        let result = store.update(home_renovation, "tax deductible".to_string(), None, true);
         assert_eq!(
             result,
             Err(TagError::DuplicateName {
@@ -510,7 +564,7 @@ mod tests {
         let mut store = TagFixture::new();
         let japan_trip = find_by_name(&store, "Japan Trip 2026").id;
         store
-            .update(japan_trip, "Japan Trip 2026".to_string(), true)
+            .update(japan_trip, "Japan Trip 2026".to_string(), None, true)
             .expect("renaming to the same name should succeed");
     }
 
@@ -519,7 +573,7 @@ mod tests {
         let mut store = TagFixture::new();
         let home_renovation = find_by_name(&store, "Home Renovation").id;
         store
-            .update(home_renovation, "Renovation 2026".to_string(), false)
+            .update(home_renovation, "Renovation 2026".to_string(), None, false)
             .expect("should succeed");
 
         let tag = store.find(home_renovation).expect("still exists");

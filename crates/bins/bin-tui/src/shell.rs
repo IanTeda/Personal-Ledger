@@ -875,8 +875,9 @@ impl Shell {
                 KeyCode::Char('s') if ctrl => {
                     popup
                         .create_fields(store)
-                        .map(|(name, active)| Action::CreateTag {
+                        .map(|(name, color, active)| Action::CreateTag {
                             name,
+                            color,
                             active,
                             close_after: true,
                         })
@@ -884,8 +885,9 @@ impl Shell {
                 KeyCode::Char('a') if ctrl => {
                     popup
                         .create_fields(store)
-                        .map(|(name, active)| Action::CreateTag {
+                        .map(|(name, color, active)| Action::CreateTag {
                             name,
+                            color,
                             active,
                             close_after: false,
                         })
@@ -897,12 +899,26 @@ impl Shell {
                 KeyCode::Esc => Some(Action::CloseTagPopup),
                 KeyCode::Backspace => Some(Action::TagEditPopupBackspace),
                 KeyCode::Tab => Some(Action::TagEditPopupTab),
-                KeyCode::Char('s') if ctrl => popup
-                    .save_fields(store)
-                    .map(|(id, name, active)| Action::UpdateTag { id, name, active }),
-                KeyCode::Char('a') if ctrl => popup
-                    .deactivate_fields(store)
-                    .map(|(id, name, active)| Action::UpdateTag { id, name, active }),
+                KeyCode::Char('s') if ctrl => {
+                    popup
+                        .save_fields(store)
+                        .map(|(id, name, color, active)| Action::UpdateTag {
+                            id,
+                            name,
+                            color,
+                            active,
+                        })
+                }
+                KeyCode::Char('a') if ctrl => {
+                    popup
+                        .deactivate_fields(store)
+                        .map(|(id, name, color, active)| Action::UpdateTag {
+                            id,
+                            name,
+                            color,
+                            active,
+                        })
+                }
                 KeyCode::Char(c) if !ctrl => Some(Action::TagEditPopupInput(c)),
                 _ => None,
             },

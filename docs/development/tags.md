@@ -51,7 +51,7 @@ Desktop locations for the ticked requirements. The TUI's Tags code lives in `cra
 | TAG-005 | `view/tags/mod.rs`, `tags::usage`, `tags::sorted_by_usage` |
 | TAG-006 | `tags::merge_tags`, `view/tags/merge_dialog.rs` |
 | TAG-007 | `tags::edit_tag`, `view/tags/edit_dialog.rs` |
-| TAG-008 | `Tag::color`, `view/tags/colour_field.rs` |
+| TAG-008 | `Tag::color`, `view/tags/colour_field.rs`; TUI `tag/colour.rs` (`ColourDraft`, `swatch_span`) |
 | TAG-009 | `tags::remove_tag`, `view/tags/remove_dialog.rs` |
 | TAG-010 | `tags::set_active`, `view/tags/edit_dialog.rs` |
 | TAG-011 | `tags::duplicate_groups`, `view/tags/mod.rs` |
@@ -68,5 +68,5 @@ Desktop locations for the ticked requirements. The TUI's Tags code lives in `cra
 - **Transaction or Split?** ADR-0015 says Tags attach to Transactions, and [transactions.md](transactions.md)'s schema sketch has `split_tags` joining to a Split instead. These are different designs with different totals behaviour, and the discrepancy needs resolving before a migration is written.
 - **No transaction form on the desktop**, so `resolve_split_tag` has no UI call site and inactive Tags' exclusion from tagging is untested in practice.
 - **The 4b filter builder shows no swatch** yet, though #352 asks for one.
-- **The TUI doesn't show colour** (#363) or manage Tags.
+- **The TUI doesn't manage Tags** the desktop way; it does show and set the optional colour (#363) on its Tags screen, but has no Transactions tag chips to draw it on yet.
 - **The two Clients' stubs are independent** and share no model.

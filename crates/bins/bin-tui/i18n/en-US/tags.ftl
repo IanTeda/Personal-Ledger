@@ -97,3 +97,10 @@ tui-tag-edit-help-tab = next field
 tui-tag-edit-help-save = save
 tui-tag-edit-help-deactivate = deactivate
 tui-tag-edit-help-cancel = cancel
+
+## The colour field, shared by the New and Edit tag popups.
+
+tui-tag-field-colour = colour
+tui-tag-colour-none = none
+tui-tag-colour-hint = space for presets, or type #RRGGBB
+tui-tag-colour-invalid = colour must be #RRGGBB, or empty for none
