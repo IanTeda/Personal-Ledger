@@ -394,20 +394,38 @@ pub enum TagField {
     Swatches,
     /// The free hex field beside the swatches.
     Hex,
+    /// The Edit dialog's Active checkbox (#353: a Tag is reactivated from Edit); Add has none.
+    Active,
 }
 
 impl TagField {
-    const ORDER: [TagField; 3] = [Self::Name, Self::Swatches, Self::Hex];
+    const ADD_ORDER: [TagField; 3] = [Self::Name, Self::Swatches, Self::Hex];
+    const EDIT_ORDER: [TagField; 4] = [Self::Name, Self::Swatches, Self::Hex, Self::Active];
 }
 
 /// The Add and Edit tag dialogs' live form state -- pure, `gpui`-free. The hex field is the one
 /// source of the colour: picking a swatch writes its value there and "none" empties it, so a typed
 /// value and a picked one can never disagree.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagForm {
     pub name: String,
     pub hex: String,
+    pub is_active: bool,
     pub focused: TagField,
+    /// An Edit form, which adds the Active checkbox to the `Tab` order.
+    pub editing: bool,
+}
+
+impl Default for TagForm {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            hex: String::new(),
+            is_active: true,
+            focused: TagField::default(),
+            editing: false,
+        }
+    }
 }
 
 impl TagForm {
@@ -417,6 +435,26 @@ impl TagForm {
     /// A fresh Add form: no name and no colour (#352: a new Tag has none).
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// An Edit form pre-filled from `tag`.
+    pub fn for_edit(tag: &Tag) -> Self {
+        Self {
+            name: tag.name.clone(),
+            hex: tag
+                .color
+                .as_ref()
+                .map(|colour| colour.as_str().to_string())
+                .unwrap_or_default(),
+            is_active: tag.is_active,
+            focused: TagField::Name,
+            editing: true,
+        }
+    }
+
+    /// `Space` on, or a click of, the Active checkbox.
+    pub fn toggle_active(&mut self) {
+        self.is_active = !self.is_active;
     }
 
     /// The colour the hex field holds: `Ok(None)` when empty, `Err` while it isn't `#RRGGBB`.
@@ -494,8 +532,13 @@ impl TagForm {
 
     /// `Tab` / `Shift-Tab`.
     pub fn cycle_focus(&mut self, backward: bool) {
-        let count = TagField::ORDER.len();
-        let index = TagField::ORDER
+        let order: &[TagField] = if self.editing {
+            &TagField::EDIT_ORDER
+        } else {
+            &TagField::ADD_ORDER
+        };
+        let count = order.len();
+        let index = order
             .iter()
             .position(|field| *field == self.focused)
             .unwrap_or(0);
@@ -504,7 +547,7 @@ impl TagForm {
         } else {
             (index + 1) % count
         };
-        self.focused = TagField::ORDER[next];
+        self.focused = order[next];
     }
 
     /// Types `ch` into the focused text field; the swatch row takes no text.
@@ -516,7 +559,7 @@ impl TagForm {
             TagField::Name => self.name.push(ch),
             // `#` plus six digits is the longest colour, so anything past it can only be a typo.
             TagField::Hex if self.hex.chars().count() < 7 => self.hex.push(ch),
-            TagField::Hex | TagField::Swatches => {}
+            TagField::Hex | TagField::Swatches | TagField::Active => {}
         }
     }
 
@@ -528,7 +571,7 @@ impl TagForm {
             TagField::Hex => {
                 self.hex.pop();
             }
-            TagField::Swatches => {}
+            TagField::Swatches | TagField::Active => {}
         }
     }
 }
@@ -538,7 +581,7 @@ impl TagForm {
 pub enum TagsDialog {
     Add(TagForm),
     /// Editing the Tag with this [`Tag::id`].
-    Edit(u32),
+    Edit(u32, TagForm),
     /// Removing the Tag with this [`Tag::id`].
     Remove(u32),
     /// Merging `source` into `target`; either is empty until chosen (the palette's `tags merge`
@@ -1068,5 +1111,47 @@ mod tests {
         assert_eq!(form.focused, TagField::Name);
         form.cycle_focus(true);
         assert_eq!(form.focused, TagField::Hex);
+    }
+
+    #[test]
+    fn an_edit_form_is_pre_filled_and_only_it_tabs_to_active() {
+        let tag = Tag {
+            id: 7,
+            name: "gift".to_string(),
+            color: Some(swatches()[2].clone()),
+            is_active: false,
+        };
+        let mut form = TagForm::for_edit(&tag);
+        assert_eq!(form.name, "gift");
+        assert_eq!(form.picked(), Some(3));
+        assert!(!form.is_active);
+        for _ in 0..3 {
+            form.cycle_focus(false);
+        }
+        assert_eq!(form.focused, TagField::Active);
+        form.push_char('x');
+        form.backspace();
+        assert_eq!(form.name, "gift");
+        form.toggle_active();
+        assert!(form.is_active);
+        form.cycle_focus(false);
+        assert_eq!(form.focused, TagField::Name);
+        form.cycle_focus(true);
+        assert_eq!(form.focused, TagField::Active);
+    }
+
+    #[test]
+    fn an_edit_may_keep_its_own_name_but_not_take_another() {
+        let tags = default_tags();
+        let shared = find_by_name(&tags, "shared").unwrap();
+        let mut form = TagForm::for_edit(get(&tags, shared).unwrap());
+        assert!(form.is_valid(&tags, Some(shared)));
+        form.name = "Shared!".to_string();
+        assert!(form.is_valid(&tags, Some(shared)));
+        form.name = "GIFT".to_string();
+        assert_eq!(
+            form.name_error(&tags, Some(shared)),
+            Some(TagError::DuplicateName("gift".to_string()))
+        );
     }
 }

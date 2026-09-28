@@ -48,3 +48,15 @@ desktop-tags-add-callout = Tag names are matched ignoring case, spaces and punct
 desktop-tags-error-name-taken = { $name } already exists
 desktop-tags-error-no-letter-or-digit = A tag name needs a letter or a digit
 desktop-tags-error-hex = A colour is # and six hex digits, e.g. #4A7C9E
+
+## The Edit tag dialog (7c). `$name` is the Tag's name before this edit, `$count` how many
+## Transactions carry it.
+
+desktop-tags-edit-title = Edit tag — { $name }
+desktop-tags-edit-submit = Save
+desktop-tags-field-active = Active
+desktop-tags-active-hint = inactive tags aren't offered when tagging a split
+desktop-tags-edit-callout = { $count ->
+    [one] { $count } transaction uses this tag.
+   *[other] { $count } transactions use this tag.
+} Renaming or recolouring updates all of them immediately — nothing needs re-tagging.
