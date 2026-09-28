@@ -17,7 +17,12 @@
 use bigdecimal::BigDecimal;
 use lib_core::Money;
 
-use crate::{accounts::Account, transactions::Transaction};
+use crate::{
+    accounts::{Account, SelectKey},
+    categories::{self, Category},
+    select::SelectState,
+    transactions::Transaction,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Payee {
@@ -332,14 +337,272 @@ pub fn without_default_category_count(payees: &[Payee]) -> usize {
         .count()
 }
 
-/// Which Payees dialog is open, following `AccountsDialog`; the forms arrive with the dialogs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The Default category select's options: "none" first, then every leaf Category. `labels` are
+/// what the select shows and stores; `ids` runs parallel to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PayeeOptions {
+    pub labels: Vec<String>,
+    pub ids: Vec<Option<u32>>,
+}
+
+impl PayeeOptions {
+    /// `none_label` heads the list. A leaf whose name another leaf shares is shown under its
+    /// parent (`Parent › Leaf`), so the stored label always names exactly one Category.
+    pub fn new(categories: &[Category], none_label: String) -> Self {
+        let leaves: Vec<&Category> = categories
+            .iter()
+            .filter(|category| categories::is_leaf(categories, category.id))
+            .collect();
+        let mut labels = vec![none_label];
+        let mut ids = vec![None];
+        for leaf in &leaves {
+            let shared = leaves
+                .iter()
+                .filter(|other| other.name == leaf.name)
+                .count()
+                > 1;
+            let parent = leaf
+                .parent
+                .and_then(|id| categories.iter().find(|c| c.id == id));
+            labels.push(match parent {
+                Some(parent) if shared => format!("{} \u{203a} {}", parent.name, leaf.name),
+                _ => leaf.name.clone(),
+            });
+            ids.push(Some(leaf.id));
+        }
+        Self { labels, ids }
+    }
+
+    fn label_for(&self, id: Option<u32>) -> Option<String> {
+        self.ids
+            .iter()
+            .position(|candidate| *candidate == id)
+            .map(|index| self.labels[index].clone())
+    }
+
+    fn id_for(&self, label: &str) -> Option<u32> {
+        self.labels
+            .iter()
+            .position(|candidate| candidate == label)
+            .and_then(|index| self.ids[index])
+    }
+}
+
+/// The Add and Edit payee dialogs' fields, in `Tab` order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PayeeField {
+    #[default]
+    Name,
+    DefaultCategory,
+    /// The match-rule input beside **+ add**.
+    Rule,
+}
+
+impl PayeeField {
+    const ORDER: [PayeeField; 3] = [Self::Name, Self::DefaultCategory, Self::Rule];
+}
+
+/// The Add and Edit payee dialogs' live form state -- pure, `gpui`-free. Name and the rule input
+/// are typed into (append/pop only, like the other dialogs); Default category is a
+/// [`SelectState`]; the rules are chips, added from the input and removed by their `✕`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PayeeForm {
+    pub name: String,
+    pub default_category: SelectState,
+    /// The chips, normalised by [`normalise_alias`] as they are added.
+    pub rules: Vec<String>,
+    pub rule_input: String,
+    pub focused: PayeeField,
+    /// The last rejected rule or submit, shown inline until the offending text changes.
+    pub error: Option<PayeeError>,
+}
+
+impl PayeeForm {
+    /// A fresh Add form: no name, no default Category, no rules.
+    pub fn new(options: &PayeeOptions) -> Self {
+        Self {
+            name: String::new(),
+            default_category: SelectState::new(options.label_for(None)),
+            rules: Vec::new(),
+            rule_input: String::new(),
+            focused: PayeeField::Name,
+            error: None,
+        }
+    }
+
+    /// A form pre-filled from `payee`, for the Edit dialog.
+    pub fn from_payee(payee: &Payee, options: &PayeeOptions) -> Self {
+        Self {
+            name: payee.name.clone(),
+            default_category: SelectState::new(
+                options
+                    .label_for(payee.default_category)
+                    .or_else(|| options.label_for(None)),
+            ),
+            rules: payee.aliases.clone(),
+            ..Self::new(options)
+        }
+    }
+
+    /// What the dialog submits.
+    pub fn draft(&self, options: &PayeeOptions) -> PayeeDraft {
+        PayeeDraft {
+            name: self.name.clone(),
+            default_category: self
+                .default_category
+                .value()
+                .and_then(|label| options.id_for(label)),
+            aliases: self.rules.clone(),
+        }
+    }
+
+    /// The name's problem, if any, checked live against every other Payee: `own_id` is the Payee
+    /// being edited. An empty name is not reported, only kept from submitting.
+    pub fn name_error(&self, payees: &[Payee], own_id: Option<u32>) -> Option<PayeeError> {
+        if self.name.trim().is_empty() {
+            return None;
+        }
+        clean_name(payees, own_id, &self.name).err()
+    }
+
+    pub fn is_valid(&self, payees: &[Payee], own_id: Option<u32>) -> bool {
+        clean_name(payees, own_id, &self.name).is_ok()
+    }
+
+    /// Turns the rule input into a chip: normalised, ignored when blank or already a chip, and
+    /// refused (kept in the input, with [`Self::error`] set) when another Payee owns it.
+    pub fn add_rule(&mut self, payees: &[Payee], own_id: Option<u32>) {
+        let Some(rule) = normalise_alias(&self.rule_input) else {
+            self.rule_input.clear();
+            return;
+        };
+        if let Some(owner) = alias_owner(payees, &rule).filter(|p| Some(p.id) != own_id) {
+            self.error = Some(PayeeError::AliasTaken {
+                alias: rule,
+                owner: owner.name.clone(),
+            });
+            return;
+        }
+        if !self.rules.contains(&rule) {
+            self.rules.push(rule);
+        }
+        self.rule_input.clear();
+        self.error = None;
+    }
+
+    pub fn remove_rule(&mut self, index: usize) {
+        if index < self.rules.len() {
+            self.rules.remove(index);
+        }
+    }
+
+    /// Moves focus to `field`, closing the select's list when leaving it.
+    pub fn focus(&mut self, field: PayeeField) {
+        if field != self.focused {
+            self.default_category.cancel();
+        }
+        self.focused = field;
+    }
+
+    /// `Tab` / `Shift-Tab`: commits an open list's highlight, then moves to the next field.
+    pub fn cycle_focus(&mut self, backward: bool, options: &PayeeOptions) {
+        self.default_category.commit(&options.labels);
+        let count = PayeeField::ORDER.len();
+        let index = PayeeField::ORDER
+            .iter()
+            .position(|field| *field == self.focused)
+            .unwrap_or(0);
+        let next = if backward {
+            (index + count - 1) % count
+        } else {
+            (index + 1) % count
+        };
+        self.focused = PayeeField::ORDER[next];
+    }
+
+    /// A key on the Default category select. Returns whether it is focused (and so took the key).
+    pub fn handle_select_key(&mut self, key: SelectKey, options: &PayeeOptions) -> bool {
+        if self.focused != PayeeField::DefaultCategory {
+            return false;
+        }
+        let list = &options.labels;
+        let state = &mut self.default_category;
+        match (key, state.is_open()) {
+            (SelectKey::Up, true) => state.move_highlight(list, -1),
+            (SelectKey::Down, true) => state.move_highlight(list, 1),
+            (SelectKey::Up, false) => state.step(list, -1),
+            (SelectKey::Down, false) => state.step(list, 1),
+            (SelectKey::Activate, true) => state.commit(list),
+            (SelectKey::Activate, false) => state.open(list),
+        }
+        true
+    }
+
+    /// A click on the select's closed field: focuses it and toggles its list.
+    pub fn click_select(&mut self, options: &PayeeOptions) {
+        self.focus(PayeeField::DefaultCategory);
+        if self.default_category.is_open() {
+            self.default_category.cancel();
+        } else {
+            self.default_category.open(&options.labels);
+        }
+    }
+
+    /// Closes the select's list if open -- the first `Esc`. Returns whether it was open.
+    pub fn close_open_select(&mut self) -> bool {
+        let was_open = self.default_category.is_open();
+        self.default_category.cancel();
+        was_open
+    }
+
+    /// Types `ch` into the focused text field.
+    pub fn push_char(&mut self, ch: char) {
+        if ch.is_control() {
+            return;
+        }
+        match self.focused {
+            PayeeField::Name => self.name.push(ch),
+            PayeeField::Rule => self.rule_input.push(ch),
+            PayeeField::DefaultCategory => return,
+        }
+        self.error = None;
+    }
+
+    /// Deletes from the focused text field; in an empty rule input, removes the last chip.
+    pub fn backspace(&mut self) {
+        match self.focused {
+            PayeeField::Name => {
+                self.name.pop();
+            }
+            PayeeField::Rule => {
+                if self.rule_input.pop().is_none() {
+                    self.rules.pop();
+                }
+            }
+            PayeeField::DefaultCategory => return,
+        }
+        self.error = None;
+    }
+}
+
+/// Which Payees dialog is open, following `AccountsDialog`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PayeesDialog {
-    Add,
+    Add(PayeeForm),
     /// Editing the Payee with this [`Payee::id`].
-    Edit(u32),
+    Edit(u32, PayeeForm),
     /// Deleting (or, when referenced, deactivating) the Payee with this [`Payee::id`].
     Delete(u32),
+}
+
+impl PayeesDialog {
+    /// The form behind the Add and Edit dialogs.
+    pub fn form_mut(&mut self) -> Option<&mut PayeeForm> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => Some(form),
+            Self::Delete(..) => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -647,5 +910,160 @@ mod tests {
         let other_unit = usage(&transactions, &accounts, Some("xyz"), j_smith);
         assert_eq!(other_unit.splits, 4);
         assert_eq!(other_unit.total, Money(BigDecimal::new(0.into(), 2)));
+    }
+
+    fn options() -> PayeeOptions {
+        PayeeOptions::new(&default_categories(), "none".to_string())
+    }
+
+    #[test]
+    fn options_lead_with_none_then_only_leaves() {
+        let categories = default_categories();
+        let options = options();
+        assert_eq!(options.labels[0], "none");
+        assert_eq!(options.ids[0], None);
+        assert_eq!(options.labels.len(), options.ids.len());
+        for id in options.ids.iter().skip(1).flatten() {
+            assert!(categories::is_leaf(&categories, *id));
+        }
+        assert!(options.labels.contains(&"Groceries".to_string()));
+    }
+
+    #[test]
+    fn a_fresh_form_drafts_no_category_and_no_rules() {
+        let options = options();
+        let mut form = PayeeForm::new(&options);
+        assert_eq!(form.default_category.value(), Some("none"));
+        form.name = "Aussie Candle Co".to_string();
+        assert_eq!(
+            form.draft(&options),
+            PayeeDraft {
+                name: "Aussie Candle Co".to_string(),
+                default_category: None,
+                aliases: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn the_select_picks_a_leaf_category_into_the_draft() {
+        let options = options();
+        let mut form = PayeeForm::new(&options);
+        form.focus(PayeeField::DefaultCategory);
+        assert!(form.handle_select_key(SelectKey::Down, &options));
+        assert_eq!(form.draft(&options).default_category, options.ids[1]);
+        assert!(form.handle_select_key(SelectKey::Activate, &options));
+        assert!(form.default_category.is_open());
+        assert!(form.close_open_select());
+        assert!(!form.close_open_select());
+    }
+
+    #[test]
+    fn select_keys_are_ignored_off_the_select() {
+        let options = options();
+        let mut form = PayeeForm::new(&options);
+        assert!(!form.handle_select_key(SelectKey::Down, &options));
+        assert_eq!(form.default_category.value(), Some("none"));
+    }
+
+    #[test]
+    fn tab_cycles_the_three_fields_both_ways() {
+        let options = options();
+        let mut form = PayeeForm::new(&options);
+        form.cycle_focus(false, &options);
+        assert_eq!(form.focused, PayeeField::DefaultCategory);
+        form.cycle_focus(false, &options);
+        assert_eq!(form.focused, PayeeField::Rule);
+        form.cycle_focus(false, &options);
+        assert_eq!(form.focused, PayeeField::Name);
+        form.cycle_focus(true, &options);
+        assert_eq!(form.focused, PayeeField::Rule);
+    }
+
+    #[test]
+    fn add_rule_normalises_dedupes_and_ignores_blank() {
+        let payees = default_payees();
+        let mut form = PayeeForm::new(&options());
+        form.rule_input = " aussie candle ".to_string();
+        form.add_rule(&payees, None);
+        form.rule_input = "AUSSIE CANDLE".to_string();
+        form.add_rule(&payees, None);
+        form.rule_input = "   ".to_string();
+        form.add_rule(&payees, None);
+        assert_eq!(form.rules, vec!["AUSSIE CANDLE".to_string()]);
+        assert!(form.rule_input.is_empty());
+        assert_eq!(form.error, None);
+    }
+
+    #[test]
+    fn add_rule_refuses_another_payees_alias_and_keeps_the_input() {
+        let payees = default_payees();
+        let mut form = PayeeForm::new(&options());
+        form.rule_input = "woolies".to_string();
+        form.add_rule(&payees, None);
+        assert!(form.rules.is_empty());
+        assert_eq!(form.rule_input, "woolies");
+        assert_eq!(
+            form.error,
+            Some(PayeeError::AliasTaken {
+                alias: "WOOLIES".to_string(),
+                owner: "Woolworths".to_string(),
+            })
+        );
+        form.push_char('!');
+        assert_eq!(form.error, None);
+
+        // Editing Woolworths itself, its own alias is fine.
+        form.rule_input = "woolies".to_string();
+        form.add_rule(&payees, Some(id_of(&payees, "Woolworths")));
+        assert_eq!(form.rules, vec!["WOOLIES".to_string()]);
+    }
+
+    #[test]
+    fn backspace_in_an_empty_rule_input_removes_the_last_chip() {
+        let payees = default_payees();
+        let mut form = PayeeForm::new(&options());
+        form.focus(PayeeField::Rule);
+        for rule in ["ONE", "TWO"] {
+            form.rule_input = rule.to_string();
+            form.add_rule(&payees, None);
+        }
+        form.push_char('x');
+        form.backspace();
+        assert_eq!(form.rules.len(), 2);
+        form.backspace();
+        assert_eq!(form.rules, vec!["ONE".to_string()]);
+        form.remove_rule(0);
+        form.remove_rule(5);
+        assert!(form.rules.is_empty());
+    }
+
+    #[test]
+    fn the_name_is_checked_live_but_blank_is_only_invalid() {
+        let payees = default_payees();
+        let mut form = PayeeForm::new(&options());
+        assert_eq!(form.name_error(&payees, None), None);
+        assert!(!form.is_valid(&payees, None));
+        form.name = "coles".to_string();
+        assert_eq!(
+            form.name_error(&payees, None),
+            Some(PayeeError::DuplicateName("Coles".to_string()))
+        );
+        assert!(!form.is_valid(&payees, None));
+        assert!(form.is_valid(&payees, Some(id_of(&payees, "Coles"))));
+        form.name = "Aussie Candle Co".to_string();
+        assert!(form.is_valid(&payees, None));
+    }
+
+    #[test]
+    fn from_payee_prefills_name_category_and_rules() {
+        let payees = default_payees();
+        let options = options();
+        let woolworths = get(&payees, id_of(&payees, "Woolworths")).unwrap();
+        let form = PayeeForm::from_payee(woolworths, &options);
+        assert_eq!(form.name, "Woolworths");
+        assert_eq!(form.default_category.value(), Some("Groceries"));
+        assert_eq!(form.rules, woolworths.aliases);
+        assert_eq!(form.draft(&options).default_category, Some(7));
     }
 }

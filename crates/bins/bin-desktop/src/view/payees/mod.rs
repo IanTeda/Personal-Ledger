@@ -7,6 +7,9 @@
 //! header counts leave inactive Payees out (#283); an inactive row stays listed, dimmed and tagged.
 //! Every action is a callback into `Shell`, so the keyboard and the mouse reach the same handlers.
 
+pub mod add_dialog;
+pub mod rules_field;
+
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Rgba, ScrollHandle, SharedString, Window, div, prelude::*, px};

@@ -33,6 +33,21 @@ desktop-payees-footnote = Payees without a default category need one picked each
 ## The hint strip and the flashes for dialogs still to come.
 
 desktop-hint-view-transactions = view transactions
-desktop-status-add-payee-not-yet-built = add payee — not yet built
 desktop-status-edit-payee-not-yet-built = edit payee — not yet built
 desktop-status-delete-payee-not-yet-built = delete payee — not yet built
+
+## The Add and Edit payee dialogs. `$glyph` is the add button's leading plus sign.
+
+desktop-payees-add-title = Add payee
+desktop-payees-add-submit = Add payee
+desktop-payees-name-placeholder = e.g. Aussie Candle Co
+desktop-payees-field-default-category = Default category
+desktop-payees-category-none = — none, ask every time —
+desktop-payees-field-match-rules = Match rules
+desktop-payees-no-rules = no rules yet
+desktop-payees-rule-placeholder = e.g. AUSSIE CANDLE
+desktop-payees-rule-add = { $glyph } add
+desktop-payees-rules-callout = Rules match case-insensitively against the raw statement description. Add one per format, e.g. WOOLWORTHS, WW SUPERMARKET.
+desktop-payees-error-name-taken = { $name } already exists
+desktop-payees-error-alias-taken = { $alias } is already a match rule on { $owner }
+desktop-hint-confirm = confirm
