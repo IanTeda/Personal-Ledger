@@ -114,7 +114,7 @@ Built by the [Desktop Payees Surface](https://github.com/IanTeda/Personal-Ledger
 
 ### Verified live vs by code review
 
-**Not yet verified live.** The #291 pass was run from a sandbox with no GPU device, so the app could not open a window and no screenshots were taken. Keys, Messages, the status-line legends and the rules above were checked against the code (`shell.rs`'s `handle_payees_key`/`handle_import_key`, `payees_hints`/`import_hints`, `i18n/en-US/payees.ftl`/`import.ftl`), and the pure rules are covered by `cargo test -p bin_desktop` (`payees`, `import`). A live pass (every screen screenshotted against `Payees.html`, via the temporary `dispatch_keystroke` injector) is still owed before #291 closes.
+**Verified live by Ian** (2026-09-28), walking every screen (6a–6e) against `Payees.html` in the running app. Keys, Messages, the status-line legends and the rules above were also checked against the code (`shell.rs`'s `handle_payees_key`/`handle_import_key`, `payees_hints`/`import_hints`, `i18n/en-US/payees.ftl`/`import.ftl`), and the pure rules are covered by `cargo test -p bin_desktop` (`payees`, `import`).
 
 ### Known gaps
 
