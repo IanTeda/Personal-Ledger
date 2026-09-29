@@ -120,6 +120,9 @@ pub struct PrimaryRail {
     payee_count: usize,
     /// The Tags row's count badge: active Tags only (#353).
     tag_count: usize,
+    /// The Bills row's badge: the Needs Attention count (`bills::attention_entries`), not a row
+    /// count, so it takes the Accounts row's accent treatment rather than a plain count's.
+    bill_attention: usize,
 }
 
 impl PrimaryRail {
@@ -141,6 +144,7 @@ impl PrimaryRail {
             account_count: crate::rail::context::account_count(),
             payee_count: 0,
             tag_count: 0,
+            bill_attention: 0,
         }
     }
 
@@ -160,6 +164,22 @@ impl PrimaryRail {
     pub fn tag_count(mut self, count: usize) -> Self {
         self.tag_count = count;
         self
+    }
+
+    /// Sets the Bills row's Needs Attention badge; zero draws none.
+    pub fn bill_attention(mut self, count: usize) -> Self {
+        self.bill_attention = count;
+        self
+    }
+
+    /// The accent badge's number for `noun`: the Accounts count, or the Bills Needs Attention
+    /// count while there is any.
+    fn accent_count(&self, noun: Noun) -> Option<usize> {
+        match noun {
+            Noun::Accounts => Some(self.account_count),
+            Noun::Bills if self.bill_attention > 0 => Some(self.bill_attention),
+            _ => None,
+        }
     }
 }
 
@@ -257,7 +277,7 @@ impl PrimaryRail {
             color::foreground(cx)
         };
 
-        let badge = (row.noun == Noun::Accounts).then(|| {
+        let badge = self.accent_count(row.noun).map(|_| {
             div()
                 .absolute()
                 .top(px(2.0))
@@ -326,7 +346,7 @@ impl PrimaryRail {
             )
         };
 
-        let badge = (row.noun == Noun::Accounts).then(|| {
+        let badge = self.accent_count(row.noun).map(|count| {
             div()
                 .bg(color::accent(cx))
                 .text_color(color::background(cx))
@@ -335,7 +355,7 @@ impl PrimaryRail {
                 .py(px(1.0))
                 .px(px(5.0))
                 .mr(px(4.0))
-                .child(self.account_count.to_string())
+                .child(count.to_string())
         });
         // A plain count, inverted on the active row as the Payees and Tags handoffs draw it.
         let count = match row.noun {

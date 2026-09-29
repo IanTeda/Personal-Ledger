@@ -2,25 +2,43 @@
 //! "View area (Dashboard)" component) -- frame only, per the handoff's own fidelity note:
 //! match the headers, column widths, and rules, not the sample data. Every figure below is
 //! representative content matching the handoff's own mockup, not real `lib_database` data --
-//! wiring a real Ledger's figures in is separate future work (issue #144's "Out of scope").
+//! wiring a real Ledger's figures in is separate future work (issue #144's "Out of scope"). The
+//! exception is Needs Attention's Bill rows, which come from the Bills stub through the one shared
+//! rule (`bills::attention_entries`, #377).
+
+use std::rc::Rc;
 
 use gpui::{App, SharedString, Window, div, prelude::*, px, relative};
 use gpui_component::chart::{LineChart, PieChart};
 
-use crate::{msg, theme::color};
+use crate::{bills::EntryId, msg, theme::color};
 
-#[derive(IntoElement)]
-pub struct Dashboard;
+/// A Bill row's click: hands off to the Bills Schedule tab with that entry selected.
+pub type OnBillClick = Rc<dyn Fn(EntryId, &mut Window, &mut App)>;
 
-impl Dashboard {
-    pub fn new() -> Self {
-        Self
-    }
+/// One Bill Schedule entry in Needs Attention, its text already formatted by the Shell.
+pub struct AttentionBill {
+    pub id: EntryId,
+    pub plan: String,
+    pub overdue: bool,
+    pub due: String,
+    pub amount: String,
 }
 
-impl Default for Dashboard {
-    fn default() -> Self {
-        Self::new()
+#[derive(IntoElement)]
+pub struct Dashboard {
+    bills: Vec<AttentionBill>,
+    flag: &'static str,
+    on_bill_click: OnBillClick,
+}
+
+impl Dashboard {
+    pub fn new(bills: Vec<AttentionBill>, flag: &'static str, on_bill_click: OnBillClick) -> Self {
+        Self {
+            bills,
+            flag,
+            on_bill_click,
+        }
     }
 }
 
@@ -40,7 +58,7 @@ impl RenderOnce for Dashboard {
             .child(div().h(px(1.0)).mt(px(16.0)).bg(color::hairline(cx)))
             .child(lower_band(cx))
             .child(div().h(px(1.0)).mt(px(14.0)).bg(color::hairline(cx)))
-            .child(needs_attention(cx))
+            .child(needs_attention(self, cx))
     }
 }
 
@@ -556,7 +574,7 @@ fn budget_row(row: &BudgetRow, cx: &App) -> impl IntoElement {
         )
 }
 
-fn needs_attention(cx: &App) -> impl IntoElement {
+fn needs_attention(dashboard: Dashboard, cx: &App) -> impl IntoElement {
     let bold = |text: String| div().font_weight(gpui::FontWeight::EXTRA_BOLD).child(text);
 
     div()
@@ -571,6 +589,12 @@ fn needs_attention(cx: &App) -> impl IntoElement {
                 .text_size(px(10.0))
                 .mb(px(3.0))
                 .child(msg::desktop_dashboard_needs_attention()),
+        )
+        .children(
+            dashboard
+                .bills
+                .into_iter()
+                .map(|bill| bill_row(bill, dashboard.flag, &dashboard.on_bill_click, cx)),
         )
         .child(
             div()
@@ -593,6 +617,40 @@ fn needs_attention(cx: &App) -> impl IntoElement {
                 .child(msg::desktop_dashboard_flagged_transactions(3i64))
                 .child(bold(":txn recent".into())),
         )
+}
+
+/// A Bill in Needs Attention: `⚑ Netflix overdue since 18 Sept, 22.99 →`, the flag in the accent
+/// text colour as on the Schedule tab.
+fn bill_row(
+    bill: AttentionBill,
+    flag: &'static str,
+    on_click: &OnBillClick,
+    cx: &App,
+) -> impl IntoElement {
+    let text = if bill.overdue {
+        msg::desktop_dashboard_bill_overdue(&bill.plan, &bill.due, &bill.amount)
+    } else {
+        msg::desktop_dashboard_bill_due(&bill.plan, &bill.due, &bill.amount)
+    };
+    let id = bill.id;
+    let on_click = on_click.clone();
+    div()
+        .id(SharedString::from(format!(
+            "dashboard-bill-{}-{}",
+            id.plan_id, id.due
+        )))
+        .flex()
+        .gap(px(4.0))
+        .cursor_pointer()
+        .hover(|this| this.bg(color::hover(cx)))
+        .on_click(move |_event, window, cx| on_click(id, window, cx))
+        .child(
+            div()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_color(color::accent_text(cx))
+                .child(flag),
+        )
+        .child(text)
 }
 
 #[cfg(test)]

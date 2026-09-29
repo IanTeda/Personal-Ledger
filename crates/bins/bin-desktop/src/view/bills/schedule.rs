@@ -162,7 +162,8 @@ fn total_text(total: &Total, base_unit: Option<&str>) -> Option<String> {
     }
 }
 
-fn with_unit(text: String, unit: &str, base_unit: Option<&str>) -> String {
+/// An amount's text, naming its Unit only when that isn't the base Unit.
+pub(crate) fn with_unit(text: String, unit: &str, base_unit: Option<&str>) -> String {
     if Some(unit) == base_unit {
         text
     } else {

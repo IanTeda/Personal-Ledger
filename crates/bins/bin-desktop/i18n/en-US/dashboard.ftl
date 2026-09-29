@@ -45,3 +45,5 @@ desktop-dashboard-flagged-transactions = { $count ->
     [one] { $count } transaction
    *[other] { $count } transactions
 } flagged for review →
+desktop-dashboard-bill-overdue = { $plan } overdue since { $due }, { $amount } →
+desktop-dashboard-bill-due = { $plan } due { $due }, { $amount } →

@@ -71,7 +71,7 @@ use crate::{
     transactions::{self, Transaction},
     view::{
         accounts as accounts_view, bills as bills_view, categories as categories_view,
-        dashboard::Dashboard,
+        dashboard::{self, Dashboard},
         help as help_view, import as import_view, payees as payees_view,
         settings::{self as settings_view, SettingsBodyProps},
         tags as tags_view, toast_history as toast_history_view, transactions as transactions_view,
@@ -2678,6 +2678,23 @@ impl Shell {
             },
             cx,
         ))
+    }
+
+    /// A Dashboard Needs Attention Bill row's hand-off: the Bills Schedule tab, on the period that
+    /// shows the entry, with it selected.
+    fn open_bill_entry(&mut self, id: bills::EntryId) {
+        let Some(entry) = bills::entry(&self.bill_entries, id) else {
+            return;
+        };
+        self.bills_period = bills::schedule_period(entry, self.today);
+        self.set_bills_tab(bills::BillsTab::Schedule);
+        self.bills_selected = self
+            .bills_schedule_rows()
+            .iter()
+            .position(|row| row.id == id)
+            .unwrap_or(0);
+        self.nav.set_noun(Noun::Bills);
+        self.reset_view_scroll();
     }
 
     /// A Paid Schedule row's hand-off: the Transactions page with its Matched Transaction selected,
@@ -5638,6 +5655,38 @@ impl Render for Shell {
             });
             on_click
         };
+        let on_dashboard_bill_click: dashboard::OnBillClick = {
+            let entity = entity.clone();
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.open_bill_entry(id);
+                    cx.notify();
+                });
+            })
+        };
+        let dashboard = Dashboard::new(
+            bills::attention_entries(&self.bill_plans, &self.bill_entries, self.today)
+                .into_iter()
+                .filter_map(|id| {
+                    let entry = bills::entry(&self.bill_entries, id)?;
+                    let plan = bills::get(&self.bill_plans, id.plan_id)?;
+                    let amount = bills::amount(entry, &self.bill_plans, &self.transactions)?;
+                    Some(dashboard::AttentionBill {
+                        id,
+                        plan: plan.name.clone(),
+                        overdue: bills::status(entry, self.today) == bills::BillStatus::Overdue,
+                        due: format::date(id.due, self.settings_date_style),
+                        amount: bills_view::schedule::with_unit(
+                            format::amount(&amount).1,
+                            &plan.unit,
+                            bills_base_unit,
+                        ),
+                    })
+                })
+                .collect(),
+            format::flag_glyph(self.settings_status_glyphs),
+            on_dashboard_bill_click,
+        );
         let bills_page = bills_view::BillsPageProps {
             tab: self.bills_tab,
             period: self.bills_period,
@@ -6097,7 +6146,15 @@ impl Render for Shell {
                                 )
                                 .account_count(self.accounts.len())
                                 .payee_count(payees::active_count(&self.payees))
-                                .tag_count(tags::active_count(&self.tags)),
+                                .tag_count(tags::active_count(&self.tags))
+                                .bill_attention(
+                                    bills::attention_entries(
+                                        &self.bill_plans,
+                                        &self.bill_entries,
+                                        self.today,
+                                    )
+                                    .len(),
+                                ),
                             )
                             .when(
                                 self.nav.noun().has_context_entities() && self.nav.ledger_open(),
@@ -6116,6 +6173,7 @@ impl Render for Shell {
                                 &self.view_scroll_handle,
                                 on_empty_state_command_click,
                                 PageProps {
+                                    dashboard,
                                     accounts: accounts_page,
                                     categories: categories_page,
                                     payees: payees_page,
@@ -6552,6 +6610,7 @@ impl Render for Shell {
 /// The per-page props `render_view` needs for the pages that own their whole pane: Accounts, and
 /// Transactions (built only while it is the active page, hence the `Option`).
 struct PageProps<'a> {
+    dashboard: Dashboard,
     accounts: accounts_view::AccountsPageProps<'a>,
     categories: categories_view::CategoriesPageProps<'a>,
     payees: payees_view::PayeesPageProps<'a>,
@@ -6713,7 +6772,7 @@ fn render_view(
     }
 
     let content = match noun {
-        Noun::Dashboard if ledger_open => Dashboard::new().into_any_element(),
+        Noun::Dashboard if ledger_open => pages.dashboard.into_any_element(),
         Noun::Dashboard => empty_state(on_empty_state_command_click, cx),
         Noun::Settings | Noun::Accounts => unreachable!("handled above"),
         other => div()

@@ -210,16 +210,31 @@ pub fn needs_attention(entry: &BillScheduleEntry, plan: &BillPlan, today: NaiveD
     entry.is_open() && entry.due <= today + lead
 }
 
-/// How many entries are in Needs Attention: the Bills rail badge.
-pub fn attention_count(
+/// The entries in Needs Attention, by due date: the Dashboard's Bill rows, and (counted) the Bills
+/// rail badge, so both read the one rule.
+pub fn attention_entries(
     plans: &[BillPlan],
     entries: &[BillScheduleEntry],
     today: NaiveDate,
-) -> usize {
-    entries
+) -> Vec<EntryId> {
+    let mut ids: Vec<EntryId> = entries
         .iter()
         .filter(|entry| get(plans, entry.plan_id).is_some_and(|p| needs_attention(entry, p, today)))
-        .count()
+        .map(BillScheduleEntry::id)
+        .collect();
+    ids.sort_by_key(|id| (id.due, id.plan_id));
+    ids
+}
+
+/// The Schedule tab period that shows an entry: the current month for an Overdue entry carried
+/// into it, the entry's own month otherwise.
+pub fn schedule_period(entry: &BillScheduleEntry, today: NaiveDate) -> Period {
+    let current = Period::of(today);
+    if status(entry, today) == BillStatus::Overdue && Period::of(entry.due) < current {
+        current
+    } else {
+        Period::of(entry.due)
+    }
 }
 
 pub fn get(plans: &[BillPlan], id: u32) -> Option<&BillPlan> {
@@ -2007,7 +2022,12 @@ mod tests {
             .map(|(n, d, s, a)| (n.to_string(), *d, *s, *a))
             .collect();
         assert_eq!(shown, expected);
-        assert_eq!(attention_count(&w.plans, &w.entries, today()), 3);
+        let attention: Vec<EntryId> = rows
+            .iter()
+            .filter(|r| r.needs_attention)
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(attention_entries(&w.plans, &w.entries, today()), attention);
     }
 
     #[test]
@@ -2037,6 +2057,33 @@ mod tests {
         assert!(own.iter().any(|r| r.id == august && !r.carried));
         let summary = period_summary(&september, &w.plans, &w.entries, &w.transactions);
         assert_eq!(summary.overdue, 3);
+    }
+
+    #[test]
+    fn a_carried_entry_is_shown_in_the_current_period_and_leads_needs_attention() {
+        let mut w = world();
+        let netflix = plan_id(&w, "Netflix");
+        let august = id(netflix, date(2026, 8, 18));
+        unmatch(&mut w.entries, august).unwrap();
+        let carried = entry(&w.entries, august).unwrap();
+        assert_eq!(schedule_period(carried, today()), Period::of(today()));
+        assert_eq!(attention_entries(&w.plans, &w.entries, today())[0], august);
+        let rent = entry(&w.entries, id(plan_id(&w, "Rent"), date(2026, 10, 1))).unwrap();
+        assert_eq!(schedule_period(rent, today()), Period::of(today()).next());
+    }
+
+    #[test]
+    fn a_lead_reaching_into_next_month_brings_its_entry_into_needs_attention() {
+        let mut w = world();
+        let rent = plan_id(&w, "Rent");
+        let october = id(rent, date(2026, 10, 1));
+        assert!(!attention_entries(&w.plans, &w.entries, today()).contains(&october));
+        w.plans
+            .iter_mut()
+            .find(|p| p.id == rent)
+            .unwrap()
+            .attention_lead = Some(31);
+        assert!(attention_entries(&w.plans, &w.entries, today()).contains(&october));
     }
 
     #[test]
