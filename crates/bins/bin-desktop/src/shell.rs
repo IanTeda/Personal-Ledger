@@ -47,6 +47,7 @@ use crate::{
     key_router::{self, KeyOutcome, Movement, route_key},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
+    pay_form::{self, PayForm},
     payees::{self, Payee},
     rail::{
         self,
@@ -206,6 +207,16 @@ fn import_hints() -> Vec<(&'static str, String)> {
 }
 
 /// The status-line legend while an Add or Edit payee dialog is open (the handoff's 6b).
+/// The status-line legend while the Pay dialog is open.
+fn pay_bill_dialog_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("esc", crate::msg::desktop_hint_cancel()),
+        ("enter", crate::msg::desktop_hint_confirm()),
+        ("j/k", crate::msg::desktop_hint_choose()),
+        ("\u{2190}/\u{2192}", crate::msg::desktop_hint_switch_panel()),
+    ]
+}
+
 fn payee_dialog_hints() -> Vec<(&'static str, String)> {
     vec![
         ("esc", crate::msg::desktop_hint_cancel()),
@@ -2164,7 +2175,10 @@ impl Shell {
             .as_mut()
             .and_then(bills::BillsDialog::plan_form_mut)
         else {
-            // Pay and Skip's keys land with their dialogs (#374, #375).
+            if matches!(self.bills_dialog, Some(bills::BillsDialog::Pay(_))) {
+                return self.handle_pay_bill_key(keystroke);
+            }
+            // Skip's keys land with its dialog (#375).
             return false;
         };
         let modifiers = keystroke.modifiers;
@@ -2342,14 +2356,258 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Pay dialog (8d) lands with #374; until then `p` only reports it. A row with nothing to
-    /// pay says so instead.
+    /// Opens the Pay dialog (8d) on an open Schedule row, with its Match candidates worked out now;
+    /// a row with nothing to pay says so instead.
     fn open_pay_bill_dialog(&mut self, row: bills::ScheduleRow) {
-        self.status_message = Some(if row.is_actionable() {
-            crate::msg::desktop_status_pay_bill_not_yet_built()
-        } else {
-            crate::msg::desktop_status_bill_not_actionable()
-        });
+        let plan = bills::get(&self.bill_plans, row.id.plan_id);
+        let Some(plan) = plan.filter(|_| row.is_actionable()) else {
+            self.status_message = Some(crate::msg::desktop_status_bill_not_actionable());
+            return;
+        };
+        let candidates = bills::match_candidates(
+            &self.bill_plans,
+            &self.bill_entries,
+            &self.transactions,
+            &self.accounts,
+            &self.categories,
+            row.id,
+        );
+        let preselected = bills::preselected_candidate(plan, &candidates, &self.transactions);
+        let form = PayForm::new(
+            row.id,
+            plan,
+            candidates,
+            preselected,
+            self.today,
+            self.settings_date_style,
+        );
+        self.bills_dialog = Some(bills::BillsDialog::Pay(form));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    fn pay_form_mut(&mut self) -> Option<&mut PayForm> {
+        match self.bills_dialog.as_mut() {
+            Some(bills::BillsDialog::Pay(form)) => Some(form),
+            _ => None,
+        }
+    }
+
+    /// Keys while the Pay dialog is open: `left`/`right` switch panel; on Match `j`/`k` choose and
+    /// `enter` confirms (on "None of these", switches panel); on Pay it directly `tab` moves
+    /// between Amount and Date. `Esc` never reaches here.
+    fn handle_pay_bill_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(form) = self.pay_form_mut() else {
+            return false;
+        };
+        let modifiers = keystroke.modifiers;
+        let on_match = form.mode == pay_form::PayMode::Match;
+        match keystroke.key.as_str() {
+            "left" | "right" => form.toggle_mode(),
+            "j" | "down" if on_match => form.step_choice(true),
+            "k" | "up" if on_match => form.step_choice(false),
+            "enter" if on_match && form.choice == Some(pay_form::MatchChoice::NoneOfThese) => {
+                form.choose(pay_form::MatchChoice::NoneOfThese);
+            }
+            "enter" => self.confirm_pay_bill_dialog(),
+            "tab" => form.cycle_focus(),
+            "backspace" => form.backspace(),
+            _ => {
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(ch) = typed_char(keystroke) {
+                    form.push_char(ch);
+                }
+            }
+        }
+        true
+    }
+
+    /// **Create transaction & mark paid** / **Match & mark paid**: settles the entry through
+    /// `bills::pay` or `bills::match_split` and closes the dialog. A no-op while the active panel
+    /// is incomplete; a refused settle keeps the dialog open with the error shown.
+    fn confirm_pay_bill_dialog(&mut self) {
+        let (today, date_style) = (self.today, self.settings_date_style);
+        let Some(bills::BillsDialog::Pay(form)) = self.bills_dialog.as_ref() else {
+            return;
+        };
+        let entry = form.entry;
+        let Some(action) = form.action(today, date_style) else {
+            return;
+        };
+        let result = match action {
+            pay_form::PayAction::Pay { amount, date } => bills::pay(
+                &self.bill_plans,
+                &mut self.bill_entries,
+                &mut self.transactions,
+                entry,
+                &amount,
+                date,
+            )
+            .map(|_| ()),
+            pay_form::PayAction::Match(split) => bills::match_split(
+                &self.bill_plans,
+                &mut self.bill_entries,
+                &self.transactions,
+                &self.accounts,
+                &self.categories,
+                entry,
+                split,
+            ),
+        };
+        match result {
+            Ok(()) => {
+                self.bills_dialog = None;
+                self.nav.exit_mode();
+            }
+            Err(error) => {
+                if let Some(form) = self.pay_form_mut() {
+                    form.error = Some(error);
+                }
+            }
+        }
+    }
+
+    fn handle_pay_bill_mode_click(&mut self, mode: pay_form::PayMode, cx: &mut Context<'_, Self>) {
+        if let Some(form) = self.pay_form_mut() {
+            form.set_mode(mode);
+        }
+        cx.notify();
+    }
+
+    fn handle_pay_bill_choice_click(
+        &mut self,
+        choice: pay_form::MatchChoice,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if let Some(form) = self.pay_form_mut() {
+            form.choose(choice);
+        }
+        cx.notify();
+    }
+
+    fn handle_pay_bill_field_click(
+        &mut self,
+        field: pay_form::PayField,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if let Some(form) = self.pay_form_mut() {
+            form.focus(field);
+        }
+        cx.notify();
+    }
+
+    fn handle_pay_bill_confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.confirm_pay_bill_dialog();
+        cx.notify();
+    }
+
+    /// The Pay dialog (8d) over the Schedule, or nothing once its entry's Plan is gone.
+    fn render_pay_bill_dialog(
+        &self,
+        form: &PayForm,
+        entity: &gpui::Entity<Self>,
+        cx: &gpui::App,
+    ) -> Option<gpui::AnyElement> {
+        let plan = bills::get(&self.bill_plans, form.entry.plan_id)?;
+        let (today, date_style) = (self.today, self.settings_date_style);
+        let on_mode_click: bills_view::pay_dialog::OnModeClick = {
+            let entity = entity.clone();
+            Rc::new(move |mode, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_pay_bill_mode_click(mode, cx));
+            })
+        };
+        let on_choice_click: bills_view::pay_dialog::OnChoiceClick = {
+            let entity = entity.clone();
+            Rc::new(move |choice, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_pay_bill_choice_click(choice, cx)
+                });
+            })
+        };
+        let on_field_click: bills_view::pay_dialog::OnFieldClick = {
+            let entity = entity.clone();
+            Rc::new(move |field, _window, cx| {
+                entity.update(cx, |shell, cx| shell.handle_pay_bill_field_click(field, cx));
+            })
+        };
+        let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        let account = self
+            .accounts
+            .iter()
+            .find(|a| a.id == plan.account_id)
+            .map(|a| a.name.clone())
+            .unwrap_or_default();
+        let payee = plan
+            .payee_id
+            .and_then(|id| payees::get(&self.payees, id))
+            .map_or_else(crate::msg::desktop_bills_pay_no_payee, |p| p.name.clone());
+        let category = categories::path(&self.categories, plan.category_id).unwrap_or_default();
+        Some(bills_view::pay_dialog::render(
+            bills_view::pay_dialog::PayDialogProps {
+                plan_name: &plan.name,
+                due: lib_locale::format::format_month_day(form.entry.due),
+                form,
+                candidates: self.pay_bill_candidate_rows(form),
+                planned: format!("{} {}", format::amount(&plan.planned_amount).1, plan.unit),
+                chips: [category, payee, account],
+                amount_invalid: form.amount_invalid(),
+                date_error: form.date_error(today, date_style),
+                error: form
+                    .error
+                    .as_ref()
+                    .map(|_| crate::msg::desktop_bills_pay_error_gone()),
+                valid: form.action(today, date_style).is_some(),
+                handlers: bills_view::pay_dialog::PayDialogHandlers {
+                    on_mode_click,
+                    on_choice_click,
+                    on_field_click,
+                    on_cancel: plain(Shell::handle_bills_dialog_cancel),
+                    on_confirm: plain(Shell::handle_pay_bill_confirm),
+                },
+            },
+            cx,
+        ))
+    }
+
+    /// The Pay dialog's Match candidates, worded for its radio list.
+    fn pay_bill_candidate_rows(&self, form: &PayForm) -> Vec<bills_view::pay_dialog::CandidateRow> {
+        form.candidates
+            .iter()
+            .filter_map(|split_ref| {
+                let transaction = self
+                    .transactions
+                    .iter()
+                    .find(|t| t.id == split_ref.transaction_id)?;
+                let split = transaction.splits.get(split_ref.split_index)?;
+                let payee = split
+                    .payee_id
+                    .and_then(|id| payees::get(&self.payees, id))
+                    .map(|p| p.name.clone())
+                    .or_else(|| transaction.description.clone())
+                    .unwrap_or_default();
+                let account = self
+                    .accounts
+                    .iter()
+                    .find(|a| a.id == transaction.account_id)
+                    .map(|a| a.name.clone())
+                    .unwrap_or_default();
+                Some(bills_view::pay_dialog::CandidateRow {
+                    summary: format!(
+                        "{payee} \u{b7} {} \u{b7} {}",
+                        lib_locale::format::format_month_day(transaction.date),
+                        format::signed_amount(&split.amount).1,
+                    ),
+                    account,
+                })
+            })
+            .collect()
     }
 
     /// The Skip dialog (8e) lands with #375; as [`Self::open_pay_bill_dialog`].
@@ -5136,8 +5394,11 @@ impl Render for Shell {
                 bills::BillsDialog::Edit(id, form) => {
                     (Some(bills::get(&self.bill_plans, *id)?.name.as_str()), form)
                 }
-                // Pay and Skip draw with their tickets (#374, #375).
-                _ => return None,
+                bills::BillsDialog::Pay(form) => {
+                    return self.render_pay_bill_dialog(form, &entity, cx);
+                }
+                // Skip draws with its ticket (#375).
+                bills::BillsDialog::Skip(_) => return None,
             };
             let options = self.bill_plan_options();
             let (today, date_style) = (self.today, self.settings_date_style);
@@ -5626,6 +5887,14 @@ impl Render for Shell {
                     ),
                 ),
             }),
+            Noun::Bills if matches!(self.bills_dialog, Some(bills::BillsDialog::Pay(_))) => {
+                Some(PageStatus {
+                    hints: pay_bill_dialog_hints(),
+                    right: crate::msg::desktop_bills_status_plans(
+                        i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
+                    ),
+                })
+            }
             Noun::Bills
                 if matches!(
                     self.bills_dialog,

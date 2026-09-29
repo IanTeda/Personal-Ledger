@@ -32,6 +32,7 @@ use crate::{
     accounts::Account,
     bill_form::BillPlanForm,
     categories::{self, Category},
+    pay_form::PayForm,
     payees::{self, Payee},
     transaction_query::Total,
     transactions::{self, Split, Transaction},
@@ -954,13 +955,13 @@ impl BillsTab {
     }
 }
 
-/// The open Bills dialog. Pay and Skip's forms land with their tickets (8d, 8e).
+/// The open Bills dialog. Skip's form lands with its ticket (8e).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BillsDialog {
     Add(BillPlanForm),
     /// Editing the Bill Plan with this [`BillPlan::id`].
     Edit(u32, BillPlanForm),
-    Pay(EntryId),
+    Pay(PayForm),
     Skip(EntryId),
 }
 

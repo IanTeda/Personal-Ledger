@@ -25,6 +25,7 @@ mod key_router;
 mod locale;
 mod nav;
 mod palette;
+mod pay_form;
 mod payees;
 mod persistence;
 mod rail;
