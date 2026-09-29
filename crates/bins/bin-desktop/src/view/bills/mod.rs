@@ -10,6 +10,7 @@ pub mod pay_dialog;
 pub mod plan_dialog;
 pub mod planner;
 pub mod schedule;
+pub mod skip_dialog;
 
 use std::rc::Rc;
 

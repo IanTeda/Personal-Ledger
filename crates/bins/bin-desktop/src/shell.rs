@@ -206,7 +206,6 @@ fn import_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The status-line legend while an Add or Edit payee dialog is open (the handoff's 6b).
 /// The status-line legend while the Pay dialog is open.
 fn pay_bill_dialog_hints() -> Vec<(&'static str, String)> {
     vec![
@@ -217,6 +216,15 @@ fn pay_bill_dialog_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The status-line legend while the Skip dialog is open (the handoff's 8e).
+fn skip_bill_dialog_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("esc", crate::msg::desktop_hint_cancel()),
+        ("enter", crate::msg::desktop_hint_confirm()),
+    ]
+}
+
+/// The status-line legend while an Add or Edit payee dialog is open (the handoff's 6b).
 fn payee_dialog_hints() -> Vec<(&'static str, String)> {
     vec![
         ("esc", crate::msg::desktop_hint_cancel()),
@@ -2178,7 +2186,12 @@ impl Shell {
             if matches!(self.bills_dialog, Some(bills::BillsDialog::Pay(_))) {
                 return self.handle_pay_bill_key(keystroke);
             }
-            // Skip's keys land with its dialog (#375).
+            if matches!(self.bills_dialog, Some(bills::BillsDialog::Skip(_)))
+                && keystroke.key == "enter"
+            {
+                self.confirm_skip_bill_dialog();
+                return true;
+            }
             return false;
         };
         let modifiers = keystroke.modifiers;
@@ -2610,13 +2623,61 @@ impl Shell {
             .collect()
     }
 
-    /// The Skip dialog (8e) lands with #375; as [`Self::open_pay_bill_dialog`].
+    /// Opens the Skip dialog (8e) on an open Schedule row; a row with nothing to skip says so
+    /// instead.
     fn open_skip_bill_dialog(&mut self, row: bills::ScheduleRow) {
-        self.status_message = Some(if row.is_actionable() {
-            crate::msg::desktop_status_skip_bill_not_yet_built()
-        } else {
-            crate::msg::desktop_status_bill_not_actionable()
-        });
+        if !row.is_actionable() || bills::get(&self.bill_plans, row.id.plan_id).is_none() {
+            self.status_message = Some(crate::msg::desktop_status_bill_not_actionable());
+            return;
+        }
+        self.bills_dialog = Some(bills::BillsDialog::Skip(row.id));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// **Skip this cycle**: resolves the entry through `bills::skip` and closes the dialog. The
+    /// dialog carries no form to show an error on, so a refused skip (the entry resolved or
+    /// superseded underneath it) closes with the reason in the status line.
+    fn confirm_skip_bill_dialog(&mut self) {
+        let Some(bills::BillsDialog::Skip(entry)) = self.bills_dialog else {
+            return;
+        };
+        if bills::skip(&self.bill_plans, &mut self.bill_entries, entry).is_err() {
+            self.status_message = Some(crate::msg::desktop_bills_skip_error_gone());
+        }
+        self.bills_dialog = None;
+        self.nav.exit_mode();
+    }
+
+    fn handle_skip_bill_confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.confirm_skip_bill_dialog();
+        cx.notify();
+    }
+
+    /// The Skip dialog (8e) over the Schedule, or nothing once its entry's Plan is gone.
+    fn render_skip_bill_dialog(
+        &self,
+        entry: bills::EntryId,
+        entity: &gpui::Entity<Self>,
+        cx: &gpui::App,
+    ) -> Option<gpui::AnyElement> {
+        let plan = bills::get(&self.bill_plans, entry.plan_id)?;
+        let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        Some(bills_view::skip_dialog::render(
+            bills_view::skip_dialog::SkipDialogProps {
+                plan_name: &plan.name,
+                due: lib_locale::format::format_month_day(entry.due),
+                one_shot: plan.recurrence == bills::Recurrence::OneShot,
+                on_cancel: plain(Shell::handle_bills_dialog_cancel),
+                on_confirm: plain(Shell::handle_skip_bill_confirm),
+            },
+            cx,
+        ))
     }
 
     /// A Paid Schedule row's hand-off: the Transactions page with its Matched Transaction selected,
@@ -5397,8 +5458,9 @@ impl Render for Shell {
                 bills::BillsDialog::Pay(form) => {
                     return self.render_pay_bill_dialog(form, &entity, cx);
                 }
-                // Skip draws with its ticket (#375).
-                bills::BillsDialog::Skip(_) => return None,
+                bills::BillsDialog::Skip(entry) => {
+                    return self.render_skip_bill_dialog(*entry, &entity, cx);
+                }
             };
             let options = self.bill_plan_options();
             let (today, date_style) = (self.today, self.settings_date_style);
@@ -5890,6 +5952,14 @@ impl Render for Shell {
             Noun::Bills if matches!(self.bills_dialog, Some(bills::BillsDialog::Pay(_))) => {
                 Some(PageStatus {
                     hints: pay_bill_dialog_hints(),
+                    right: crate::msg::desktop_bills_status_plans(
+                        i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
+                    ),
+                })
+            }
+            Noun::Bills if matches!(self.bills_dialog, Some(bills::BillsDialog::Skip(_))) => {
+                Some(PageStatus {
+                    hints: skip_bill_dialog_hints(),
                     right: crate::msg::desktop_bills_status_plans(
                         i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
                     ),

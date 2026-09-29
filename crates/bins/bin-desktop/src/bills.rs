@@ -955,13 +955,14 @@ impl BillsTab {
     }
 }
 
-/// The open Bills dialog. Skip's form lands with its ticket (8e).
+/// The open Bills dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BillsDialog {
     Add(BillPlanForm),
     /// Editing the Bill Plan with this [`BillPlan::id`].
     Edit(u32, BillPlanForm),
     Pay(PayForm),
+    /// Confirming a skip of this entry: nothing to edit, so no form.
     Skip(EntryId),
 }
 

@@ -86,7 +86,6 @@ desktop-hint-pay = pay
 desktop-hint-skip = skip
 desktop-hint-switch-view = switch view
 desktop-hint-period = period
-desktop-status-skip-bill-not-yet-built = skip bill — not yet built
 desktop-status-bill-not-actionable = this bill isn't actionable
 
 ## The Add and Edit bill plan dialog (8c). `$name` is the Plan's stored name.
@@ -137,3 +136,12 @@ desktop-bills-pay-submit-match = Match & mark paid
 desktop-bills-pay-error-amount = Enter an amount greater than zero.
 desktop-bills-pay-error-gone = This bill can no longer be paid.
 desktop-hint-switch-panel = switch panel
+
+## The Skip dialog (8e). `$name` is the Bill Plan's name and `$due` the entry's due date, both
+## already formatted.
+
+desktop-bills-skip-title = Skip this cycle — { $name }
+desktop-bills-skip-body = The { $due } entry is marked Skipped, not Paid. It's left out of { $name }'s average entirely — a skipped cycle isn't the same as it costing nothing. The next cycle's entry is generated independently and isn't affected.
+desktop-bills-skip-body-one-shot = The { $due } entry is marked Skipped, not Paid: this one-time bill is cancelled. It's left out of { $name }'s figures entirely rather than counted as costing nothing.
+desktop-bills-skip-submit = Skip this cycle
+desktop-bills-skip-error-gone = This bill can no longer be skipped.
