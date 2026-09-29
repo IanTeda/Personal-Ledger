@@ -71,9 +71,46 @@ desktop-bills-status-plans = { $count ->
    *[other] { $count } bill plans
 }
 
-## The tabs not built yet.
+## The History tab (8f): its meta line, filter row, stat callout, table and footnote. `$name` is
+## the scoped Bill Plan's name; `$from` and `$to` are the Average's financial year as two-digit
+## years (FY25–26).
 
-desktop-bills-tab-not-yet-built = This tab is not yet built.
+desktop-bills-history-meta = Every schedule row ever generated
+desktop-bills-history-meta-scoped = Every schedule row ever generated — filtered to { $name }
+desktop-bills-history-status-paid = Paid
+desktop-bills-history-status-skipped = Skipped
+desktop-bills-history-status-overdue = Overdue
+desktop-bills-history-status-due = Due
+desktop-bills-history-status-upcoming = Upcoming
+desktop-bills-history-range = Range
+desktop-bills-history-all-bills = All bills
+desktop-bills-history-all-categories = All categories
+desktop-bills-history-all-accounts = All accounts
+desktop-bills-range-this-financial-year = This financial year
+desktop-bills-range-last-financial-year = Last financial year
+desktop-bills-range-last-12-months = Last 12 months
+desktop-bills-range-this-calendar-year = This calendar year
+desktop-bills-range-all-time = All time
+desktop-bills-history-last-paid = Last paid
+desktop-bills-history-average = Average FY{ $from }–{ $to }
+desktop-bills-history-no-payments-last-fy = no payments last FY
+desktop-bills-history-same-month = Same month last year
+desktop-bills-history-last-year = Last year
+desktop-bills-history-same-month-payments = Same month last year ({ $count ->
+    [one] { $count } payment
+   *[other] { $count } payments
+})
+desktop-bills-history-no-payments-yet = No payments yet
+desktop-bills-column-actual = Actual
+desktop-bills-column-paid = Paid
+desktop-bills-history-empty = No schedule rows match these filters.
+desktop-bills-history-footnote = Skipped rows keep their planned figure for context but are left out of the average, last-paid and same-period-last-year figures above.
+desktop-bills-status-history-rows = { $shown } of { $count ->
+    [one] { $count } row
+   *[other] { $count } rows
+}
+desktop-hint-status-chips = status
+desktop-hint-filters = filters
 
 ## The status line: the period and its row count; and the messages for keys whose dialog isn't
 ## built yet, or whose row can't take them.

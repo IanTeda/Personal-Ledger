@@ -2,10 +2,11 @@
 //! tab's meta line, **+ Add bill plan**), the Schedule / Planner / History tab row with the
 //! Schedule tab's period nav at its right, a 2px rule, then the active tab's body.
 //!
-//! The Schedule (8a, `schedule`) and Planner (8b, `planner`) tabs are built; History (8f) lands
-//! with its own ticket. Every action is a callback into `Shell`, so the keyboard and the mouse reach
+//! The Schedule (8a, `schedule`), Planner (8b, `planner`) and History (8f, `history`) tabs are
+//! built. Every action is a callback into `Shell`, so the keyboard and the mouse reach
 //! the same handlers.
 
+pub mod history;
 pub mod pay_dialog;
 pub mod plan_dialog;
 pub mod planner;
@@ -33,6 +34,7 @@ pub struct BillsPageProps<'a> {
     pub period: Period,
     pub schedule: schedule::ScheduleProps<'a>,
     pub planner: planner::PlannerProps<'a>,
+    pub history: history::HistoryProps<'a>,
     pub on_add_click: OnPlainClick,
     pub on_tab_click: OnTabClick,
     pub on_period_prev: OnPlainClick,
@@ -48,15 +50,12 @@ pub fn render(
     let meta = match props.tab {
         BillsTab::Schedule => Some(schedule::meta_line(&props.schedule, cx).into_any_element()),
         BillsTab::Planner => Some(planner::meta_line(&props.planner, cx).into_any_element()),
-        BillsTab::History => None,
+        BillsTab::History => Some(history::meta_line(&props.history, cx).into_any_element()),
     };
     let body = match props.tab {
         BillsTab::Schedule => schedule::render(&props.schedule, cx),
         BillsTab::Planner => planner::render(&props.planner, cx),
-        BillsTab::History => div()
-            .text_color(color::muted(cx))
-            .child(crate::msg::desktop_bills_tab_not_yet_built())
-            .into_any_element(),
+        BillsTab::History => history::render(&props.history, cx),
     };
     div()
         .id("bills")
@@ -70,7 +69,11 @@ pub fn render(
         })
         .px(px(28.0))
         .py(px(22.0))
-        .child(page_header(meta, props.on_add_click.clone(), cx))
+        .child(page_header(
+            meta,
+            (props.tab != BillsTab::History).then(|| props.on_add_click.clone()),
+            cx,
+        ))
         .child(tab_row(&props, cx))
         .child(
             div()
@@ -83,7 +86,11 @@ pub fn render(
         .into_any_element()
 }
 
-fn page_header(meta: Option<AnyElement>, on_add_click: OnPlainClick, cx: &App) -> impl IntoElement {
+fn page_header(
+    meta: Option<AnyElement>,
+    on_add_click: Option<OnPlainClick>,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .items_end()
@@ -104,7 +111,7 @@ fn page_header(meta: Option<AnyElement>, on_add_click: OnPlainClick, cx: &App) -
                 )
                 .children(meta),
         )
-        .child(add_button(on_add_click, cx))
+        .children(on_add_click.map(|on_click| add_button(on_click, cx)))
 }
 
 fn add_button(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
