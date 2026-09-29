@@ -4,52 +4,69 @@ End-user documentation: [Bills](../bills.md).
 
 ## Overview
 
-The Bills domain has two entities: a **Bill**, the recurring definition, and a **Bill Schedule** entry, an individual dated instance of it that a Transaction links to once paid. [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md) settled the design; **none of it is built**.
+The Bills domain has two entities: a **Bill Plan**, the recurring definition, and a **Bill Schedule** entry, one dated instance of it that is Matched to a Split once paid. [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md) and its amendments settled the design, and the [Desktop Bills Surface](https://github.com/IanTeda/Personal-Ledger/issues/364) map settled the details (#365 recurrence anchor, #366 statuses, #367 generation and edits, #368 settlement, #369 History figures).
 
-What exists in the codebase today is navigation only: a `Noun::Bills` entry and a command-palette command that navigates to it. There is no table, no `lib-core` type, no `lib-database` module and no screen in either Client.
+The desktop app builds the whole Bills surface (handoff `docs/ux/desktop/Bills/`, screens 8a–8f) on in-memory stubs. There is no `lib-core` type, no migration and no `lib-database` module yet, and the TUI has no Bills screen.
 
 ## Data model
 
-Not yet built. ADR-0019 fixes the parts that are hardest to change later:
+ADR-0019 fixes the parts that are hardest to change later:
 
-- **Bill Schedule entries are persisted rows, not computed on read.** Each carries its own `RowID` (UUIDv7, matching every other entity), generated ahead of its due date by a populate process. The rejected alternative — deriving dated instances virtually from the Bill's Recurrence on every read, the way `budget_period.rs` computes Budget period bounds live — fails because a Transaction needs a stable identifier to link against, and a recomputed instance has no identity that holds still across that link.
-- **A Bill Schedule entry carries its own status**: Upcoming, Due, Overdue, Paid or Skipped.
-- **`transactions.bill_schedule_id`** will be a plain nullable foreign key, the same shape the table already uses for Category, Payee and Account. No special-cased "virtual reference" concept is needed anywhere.
-- **Paid is only ever reached by linking a real Transaction** — either created fresh from the Bill's defaults, or an existing Transaction edited to link. There is deliberately **no standalone "mark as paid" flag**. A ledger-independent checklist was the more obvious naive design and was rejected because it would let Bill Schedule data silently diverge from the Balance and Transaction data that Budget, reports and reconciliation all depend on.
+- **Bill Schedule entries are persisted rows, not computed on read.** A Transaction needs a stable identifier to Match against, and a recomputed instance has no identity that holds still across that link. The id is derived from the Bill Plan and due date (a deterministic UUIDv5 once persisted), so every Client generates the same row.
+- **Paid is only ever reached by a Match to a real Split**, one-to-one: by Pay (a Pending Transaction created from the Plan's defaults, dated today) or by Match (an existing unmatched Expense Split in the Plan's Unit within ±14 days of the due date, Payee matches first). There is deliberately no standalone "mark as paid" flag. Unmatch and Unskip reverse, and deleting a Matched Split Unmatches.
+- **Statuses are derived by calendar month** (Upcoming/Due/Overdue) from `today`, with Paid and Skipped stored as the entry's resolution. Overdue entries from earlier months carry into the current month's Schedule. Needs Attention is a separate date rule: unresolved and due on or before today plus the Attention Lead.
+- **Generation runs through the end of next calendar month**, always keeping at least one unresolved future entry per active Plan, and skips a due date whose Recurrence period already holds a Paid or Skipped entry.
+- **Nothing is deleted.** An edit to Recurrence, First Due or Ends On, or deactivating, marks unresolved entries due today or later as superseded; Overdue, Paid and Skipped entries are never touched.
 
-The cost of this design, which ADR-0019 states plainly as a trade-off rather than a free win: Bill Schedule entries need **active maintenance**. Something must keep enough future entries populated, most likely on Client startup or on Bill create/edit, since Desktop and TUI have no always-on background service. It also means a Bill's Recurrence and `ends_on` are not pure metadata — editing either can require regenerating not-yet-Paid future entries.
+The stub records a Match on the entry as a `SplitRef` rather than as a `bill_schedule_id` on the Split, so the shared Transactions stub keeps its shape. The persisted design is still a nullable `splits.bill_schedule_id`-style foreign key.
 
 ## Domain types
 
-None yet. `lib_core::BudgetPeriod` (`budget_period.rs`) is the closest existing analogue for recurrence handling and is worth reading before designing a Bill's Recurrence, but it is a different concept and is not reused.
+None in `lib-core` yet. The desktop model's types (`BillPlan`, `Recurrence`, `AmountKind`, `BillScheduleEntry`, `EntryId`, `SplitRef`, `Resolution`, `BillStatus`) live in `crates/bins/bin-desktop/src/bills.rs` and are the starting point for real domain types.
 
 ## Persistence
 
-Not yet built. No migration exists in `migrations/client/`, and `lib-database` has no bills module.
+Not yet built. No migration exists in `migrations/client/`, and `lib-database` has no bills module. `bills::default_bills` seeds the stub, with an injectable `today` like `transactions.rs`.
 
 ## UI
 
-No Bills screen exists in either Client.
-
-- **Desktop** — `Noun::Bills` in `nav.rs` (label via `lib_locale::msg::nav_bills()`), and a `bills` command in `command.rs` whose effect is `CommandEffect::Navigate(Noun::Bills)`. `view/` has no `bills` module, so the entry points lead nowhere built. Elsewhere, "bill" appears only in Transactions seed data — memo strings like "quarterly bill" and the "Bill looks high" special row in `transactions.rs` and `transaction_rows.rs`, which are mock content rather than Bills domain code.
-- **TUI** — nothing. No `view/bills.rs`, no fixture module.
-
-A Bill Schedule entry's status is one of the four facts Needs Attention surfaces, so [needs-attention.md](needs-attention.md) depends on this domain being built.
+- **Desktop** — all on in-memory stubs:
+  - `src/bills.rs` — the `gpui`-free model and rules: recurrence stepping, `populate` and `horizon`, `status`, `needs_attention` and `attention_entries`, `insert_plan`/`edit_plan`/`set_active`, `pay`, `match_candidates`/`preselected_candidate`/`match_split`, `skip`, `unmatch`/`unskip`/`unmatch_transaction`, `carries_bill`, `schedule_rows`, `period_summary` and `planner_order`, plus the `BillsTab` and Shell-owned `BillsDialog` enums. Start here; it is unit-tested without a window.
+  - `src/bill_form.rs` (8c), `src/pay_form.rs` (8d) and `src/bill_history.rs` (8f filters, rows and the stat callout's `plan_stats`) — the dialogs' and History tab's pure state.
+  - `src/view/bills/` — `mod.rs` the page chrome and tabs, `schedule.rs` (8a), `planner.rs` (8b), `plan_dialog.rs` (8c), `pay_dialog.rs` (8d), `skip_dialog.rs` (8e), `history.rs` (8f).
+  - `src/shell.rs` — `handle_bills_key` (`n`/`e`/`p`/`s`/`[`/`]`/`f`/`1`–`5`), `handle_bills_tab_key`, `handle_bills_dialog_key`, the `open_*_bill_*_dialog` openers, and `open_bill_transaction`, which hands a Paid row off to its Transaction.
+  - `src/rail/primary.rs` — the Bills badge, the Needs Attention count; `src/view/dashboard.rs` — real Bill rows in Needs Attention from `bills::attention_entries`.
+  - Messages in `i18n/en-US/bills.ftl`.
+- **TUI** — nothing.
 
 ## Traceability
 
-Omitted: nothing is built. Add the table here when `BIL-` requirements are written and something is ticked.
+Desktop locations for the ticked requirements.
+
+| Requirement | Desktop location |
+| --- | --- |
+| BIL-001 | `bills::insert_plan`, `bill_form.rs`, `view/bills/plan_dialog.rs` |
+| BIL-003 | `bills::edit_plan`, `view/bills/plan_dialog.rs` |
+| BIL-004 | `bills::set_active`, `view/bills/planner.rs` |
+| BIL-005 | `bills::populate`, `bills::schedule_rows`, `view/bills/schedule.rs` |
+| BIL-006 | `bills::pay`, `bills::match_split`, `pay_form.rs`, `view/bills/pay_dialog.rs` |
+| BIL-007 | `bills::skip`, `view/bills/skip_dialog.rs` |
+| BIL-011 | `bill_history::plan_stats`, `view/bills/history.rs` |
+| BIL-012 | `bills::needs_attention`, `rail/primary.rs`, `view/dashboard.rs` |
 
 ## Decisions
 
-- [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md) — materialised, Transaction-linked Bill Schedule entries, and why Paid requires a real Transaction.
+- [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md) — materialised, Split-Matched Bill Schedule entries, and why Paid requires a real Transaction.
 - [ADR-0020](../adr/0020-needs-attention-as-derived-view.md) — the contrast: Bill Schedule is materialised because it needs identity, Needs Attention is derived because it does not.
-- `CONTEXT.md` — Bill, Bill Schedule, Recurrence, Transaction, Budget.
+- `CONTEXT.md` — Bill Plan, Bill Schedule, Match, Anticipated Bill, Known Costs (Bills), Needs Attention.
 
 ## Open questions and known gaps
 
-- **Everything.** No schema, no types, no persistence, no screens.
-- **The populate process has no home.** ADR-0019 names Client startup or Bill create/edit as the likely triggers but does not settle it, and neither Client has anywhere that work currently belongs.
-- **Regeneration semantics on edit are unspecified** — exactly which not-yet-Paid entries are regenerated when a Recurrence or `ends_on` changes, and what happens to an entry already linked to a Transaction.
-- **The nav entry and command navigate to a screen that does not exist.**
-- **Budget's Known Costs (Bills) figure** described on the end-user page depends on this domain and is equally unbuilt.
+- **Unmatch and Unskip have no UI.** `bills::unmatch` and `bills::unskip` exist and are tested, but the handoff gives them no key or control.
+- **Deleting a Matched Split doesn't Unmatch yet**, because the desktop can't delete a Transaction. `bills::unmatch_transaction` is ready for that call site.
+- **No "carries a Bill" marker on the Transactions list.** `bills::carries_bill` exists; nothing draws it.
+- **BIL-002 and BIL-010 are partial.** The Planner has no active/recurrence filter, and History has no Payee filter.
+- **The financial year is a constant** (`bill_history::FINANCIAL_YEAR_START_MONTH`, July) until Settings' "Financial year starts" is a real Preference.
+- **The Schedule's period nav is unbounded**; months past the generation horizon show computed previews.
+- **The populate process has no persisted home.** The stub runs it in memory; with real persistence it needs a trigger on Client startup and on Bill Plan create/edit.
+- **Anticipated Bills (BIL-008) and Known Costs (BIL-009)** are later maps.
