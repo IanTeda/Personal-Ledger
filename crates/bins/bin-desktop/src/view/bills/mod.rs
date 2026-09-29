@@ -1,12 +1,12 @@
 //! The Bills page (`docs/ux/desktop/Bills/README.md`'s 8a–8f): a header row (title, the active
-//! tab's meta line, **+ Add bill plan**), the Schedule / Planner / History tab row with the
-//! Schedule tab's period nav at its right, a 2px rule, then the active tab's body.
+//! tab's meta line, **+ Add bill plan**), the Schedule / Planner tab row with the Schedule tab's
+//! period nav at its right, a 2px rule, then the active tab's body.
 //!
-//! The Schedule (8a, `schedule`), Planner (8b, `planner`) and History (8f, `history`) tabs are
-//! built. Every action is a callback into `Shell`, so the keyboard and the mouse reach
-//! the same handlers.
+//! The Schedule (8a, `schedule`, with its `filters`) and Planner (8b, `planner`) tabs are built;
+//! 8f's History tab was folded into the Schedule (#381). Every action is a callback into `Shell`,
+//! so the keyboard and the mouse reach the same handlers.
 
-pub mod history;
+pub mod filters;
 pub mod pay_dialog;
 pub mod plan_dialog;
 pub mod planner;
@@ -32,13 +32,15 @@ pub type OnTabClick = Rc<dyn Fn(BillsTab, &mut Window, &mut App)>;
 pub struct BillsPageProps<'a> {
     pub tab: BillsTab,
     pub period: Period,
+    /// The Schedule shows All rather than `period`.
+    pub all: bool,
     pub schedule: schedule::ScheduleProps<'a>,
     pub planner: planner::PlannerProps<'a>,
-    pub history: history::HistoryProps<'a>,
     pub on_add_click: OnPlainClick,
     pub on_tab_click: OnTabClick,
     pub on_period_prev: OnPlainClick,
     pub on_period_next: OnPlainClick,
+    pub on_all_click: OnPlainClick,
 }
 
 pub fn render(
@@ -50,12 +52,10 @@ pub fn render(
     let meta = match props.tab {
         BillsTab::Schedule => Some(schedule::meta_line(&props.schedule, cx).into_any_element()),
         BillsTab::Planner => Some(planner::meta_line(&props.planner, cx).into_any_element()),
-        BillsTab::History => Some(history::meta_line(&props.history, cx).into_any_element()),
     };
     let body = match props.tab {
         BillsTab::Schedule => schedule::render(&props.schedule, cx),
         BillsTab::Planner => planner::render(&props.planner, cx),
-        BillsTab::History => history::render(&props.history, cx),
     };
     div()
         .id("bills")
@@ -69,11 +69,7 @@ pub fn render(
         })
         .px(px(28.0))
         .py(px(22.0))
-        .child(page_header(
-            meta,
-            (props.tab != BillsTab::History).then(|| props.on_add_click.clone()),
-            cx,
-        ))
+        .child(page_header(meta, props.on_add_click.clone(), cx))
         .child(tab_row(&props, cx))
         .child(
             div()
@@ -86,11 +82,7 @@ pub fn render(
         .into_any_element()
 }
 
-fn page_header(
-    meta: Option<AnyElement>,
-    on_add_click: Option<OnPlainClick>,
-    cx: &App,
-) -> impl IntoElement {
+fn page_header(meta: Option<AnyElement>, on_add_click: OnPlainClick, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_end()
@@ -111,7 +103,7 @@ fn page_header(
                 )
                 .children(meta),
         )
-        .children(on_add_click.map(|on_click| add_button(on_click, cx)))
+        .child(add_button(on_add_click, cx))
 }
 
 fn add_button(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
@@ -135,14 +127,13 @@ fn tab_label(tab: BillsTab) -> String {
     match tab {
         BillsTab::Schedule => crate::msg::desktop_bills_tab_schedule(),
         BillsTab::Planner => crate::msg::desktop_bills_tab_planner(),
-        BillsTab::History => crate::msg::desktop_bills_tab_history(),
     }
 }
 
 /// The handoff's tab switcher: the active tab a dark filled cell, the rest plain text; the period
 /// nav at the right on the Schedule tab only.
 fn tab_row(props: &BillsPageProps<'_>, cx: &App) -> impl IntoElement {
-    let tabs = [BillsTab::Schedule, BillsTab::Planner, BillsTab::History];
+    let tabs = [BillsTab::Schedule, BillsTab::Planner];
     div()
         .flex()
         .items_center()
@@ -173,7 +164,8 @@ fn tab_row(props: &BillsPageProps<'_>, cx: &App) -> impl IntoElement {
         })
 }
 
-/// `‹ Sep 2026 ›`: the arrows step the Schedule a calendar month.
+/// `‹ Sep 2026 ›  All`: the arrows step the Schedule a calendar month (from All, back to the month
+/// last viewed); `All` toggles every row ever generated.
 fn period_nav(props: &BillsPageProps<'_>, cx: &App) -> impl IntoElement {
     let arrow = |id: &'static str, glyph: &'static str, on_click: OnPlainClick| {
         let hover = color::foreground(cx);
@@ -186,6 +178,8 @@ fn period_nav(props: &BillsPageProps<'_>, cx: &App) -> impl IntoElement {
             .on_click(move |_event, window, cx| on_click(window, cx))
             .child(glyph)
     };
+    let on_all_click = props.on_all_click.clone();
+    let hover = color::hover(cx);
     div()
         .flex()
         .items_center()
@@ -199,7 +193,11 @@ fn period_nav(props: &BillsPageProps<'_>, cx: &App) -> impl IntoElement {
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_color(color::foreground(cx))
+                .text_color(if props.all {
+                    color::muted(cx)
+                } else {
+                    color::foreground(cx)
+                })
                 .whitespace_nowrap()
                 .child(period_label(props.period)),
         )
@@ -208,6 +206,28 @@ fn period_nav(props: &BillsPageProps<'_>, cx: &App) -> impl IntoElement {
             "\u{203a}",
             props.on_period_next.clone(),
         ))
+        .child(
+            div()
+                .id("bills-period-all")
+                .cursor_pointer()
+                .ml(px(8.0))
+                .py(px(4.0))
+                .px(px(10.0))
+                .border_1()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .when(props.all, |this| {
+                    this.bg(color::selection_background(cx))
+                        .border_color(color::selection_background(cx))
+                        .text_color(color::selection_text(cx))
+                })
+                .when(!props.all, |this| {
+                    this.border_color(color::border(cx))
+                        .text_color(color::muted(cx))
+                        .hover(move |style| style.bg(hover))
+                })
+                .on_click(move |_event, window, cx| on_all_click(window, cx))
+                .child(crate::msg::desktop_bills_period_all()),
+        )
 }
 
 /// A period as the Locale writes a month and year (`Sept 2026`).

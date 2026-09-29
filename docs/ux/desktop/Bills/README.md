@@ -1,5 +1,7 @@
 # Handoff: Bills — Bill Plan, Bill Schedule, Pay / Skip, History
 
+> **Built differently (#381):** the History tab (8f) was folded into the Schedule tab (8a). The Schedule keeps its month nav plus an **All** toggle (`0`), always carries Overdue and Due rows in, sorts unresolved rows first and resolved rows most recent first, and gains 8f's status chips, Bill/Category/Account selects, stat callout, ACTUAL/PAID columns and "N of M" status count. 8f's date-range presets were dropped. The 8f notes below are kept as the design record.
+
 ## Overview
 This package covers **Personal Ledger's Bills** surface, built to `docs/bills.md` (concept branch) and ADR-0019. Bills split into two concepts: a **Bill Plan** (the recurring definition — "Telstra Internet, ~$89, monthly") and its **Bill Schedule** (one persisted, dated row per due date, generated ahead of time, never deleted). The view is a three-tab surface — Schedule / Planner / History — plus three modals. Six variants (8a–8f).
 

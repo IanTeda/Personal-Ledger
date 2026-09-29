@@ -72,7 +72,7 @@ An unpaid bill shows in Needs Attention on the Dashboard once its due date is wi
 
 ### Bill history
 
-The History tab lists every Bill Schedule entry, newest due date first, and you can filter it by status, Bill Plan, category, account and date range. When you narrow it to one Bill Plan, a summary shows:
+Your bill history lives on the Schedule tab. Press `0` (or click **All**) to switch from one month to every Bill Schedule entry ever generated. Unpaid bills always sit at the top, next due first, and paid and skipped ones follow, most recent first. You can filter by status, Bill Plan, category and account. When you narrow it to one Bill Plan, a summary shows:
 
 - **Last paid:** The payment with the latest transaction date.
 - **Average:** The average payment over the last complete financial year. Skipped entries are left out rather than counted as $0.
@@ -87,15 +87,14 @@ A figure with nothing to go on shows a dash.
 3. Keep an eye on Needs Attention and the Bills badge for bills coming due.
 4. When you pay a bill, select its row on the Schedule tab and press `p`. Either pay it directly or match a transaction you've already recorded.
 5. If you're not paying a cycle, press `s` to skip it.
-6. Use the History tab to look back at what you paid, and how it compares with last year.
+6. On the Schedule tab, press `0` to see every entry and filter to one Bill Plan to look back at what you paid, and how it compares with last year.
 
 ## Screens
 
-The Bills screen has three tabs. Press `tab` to move between them.
+The Bills screen has two tabs. Press `tab` to move between them.
 
-- **Schedule:** One month of due dates, with each bill's account, planned amount, due date and status, and the month's due, overdue and paid counts and planned total. Press `p` to pay the selected bill and `s` to skip it. Press `enter` on a paid row to open its transaction.
+- **Schedule:** One month of due dates (or, with `0`, all of them), with each bill's account, planned and actual amount, due date, paid date and status, and the due, overdue and paid counts and planned total. Overdue and due bills from other months always show too, so nothing unpaid is out of sight. Skipped bills show a dash for the actual amount and paid date. Press `p` to pay the selected bill and `s` to skip it, `[` and `]` to change month, `1` to `5` to toggle the Paid, Skipped, Overdue, Due and Upcoming chips, and `f` to move through the Bill, Category and Account filters. Press `enter` on a paid row to open its transaction.
 - **Planner:** Your Bill Plans, with category, account, planned amount, recurrence, Attention Lead and whether each is active. Press `n` to add one, and `e` or `enter` to edit the selected one.
-- **History:** Every Bill Schedule entry. Press `1` to `5` to toggle the Paid, Skipped, Overdue, Due and Upcoming chips, and `f` to move through the other filters. Press `enter` on a paid row to open its transaction.
 
 Use `j` and `k` to move between rows on every tab.
 
@@ -115,7 +114,7 @@ On 15 March, Electricity shows in Needs Attention, five days ahead of its due da
 
 You've decided to take a break from Netflix this month, so you select it and press `s`. March's Netflix entry is Skipped, and April's is still there as normal.
 
-At the end of March, the Schedule tab shows 2 paid and 1 skipped entry, and you spent $234 on bills: $89 for Telstra and $145 for Electricity. On the History tab, filtered to Electricity, Last paid reads $145.
+At the end of March, the Schedule tab shows 2 paid and 1 skipped entry, and you spent $234 on bills: $89 for Telstra and $145 for Electricity. On the Schedule tab, showing All and filtered to Electricity, Last paid reads $145.
 
 ## Scope
 
@@ -124,7 +123,7 @@ At the end of March, the Schedule tab shows 2 paid and 1 skipped entry, and you 
 - Anticipated Bills in an account's transaction list are future.
 - Known Costs in Budgets are future.
 - The Planner tab lists every Bill Plan, active first. You can't yet filter it by active status or recurrence.
-- The History tab doesn't filter by payee yet.
+- The Schedule tab doesn't filter by payee or by a date range yet.
 - Unmatching a paid bill or unskipping a skipped one isn't on screen yet.
 - Operating system notifications or a background reminder service are future. Opening the app is what shows Needs Attention.
 - Recurrence relative to your last payment (for example "30 days after last paid") is future. Bills use a fixed calendar recurrence.

@@ -146,13 +146,17 @@ fn tags_hints() -> Vec<(&'static str, String)> {
 }
 
 /// The Bills Schedule tab's status-line legend (`docs/ux/desktop/Bills/README.md`'s 8a), with
-/// `[/]` added for the period nav, which the handoff gives no key.
+/// `[/]` and `0` added for the period nav and its All toggle, and 8f's `1–5` and `f` for the
+/// filter row it absorbed (#381).
 fn bills_schedule_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_row()),
         ("p", crate::msg::desktop_hint_pay()),
         ("s", crate::msg::desktop_hint_skip()),
         ("[/]", crate::msg::desktop_hint_period()),
+        ("0", crate::msg::desktop_hint_all()),
+        ("1\u{2013}5", crate::msg::desktop_hint_status_chips()),
+        ("f", crate::msg::desktop_hint_filters()),
         ("tab", crate::msg::desktop_hint_switch_view()),
     ]
 }
@@ -163,16 +167,6 @@ fn bills_planner_hints() -> Vec<(&'static str, String)> {
         ("j/k", crate::msg::desktop_hint_row()),
         ("e", crate::msg::desktop_hint_edit()),
         ("n", crate::msg::desktop_hint_new()),
-        ("tab", crate::msg::desktop_hint_switch_view()),
-    ]
-}
-
-/// The Bills History tab's status-line legend (`docs/ux/desktop/Bills/README.md`'s 8f).
-fn bills_history_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_row()),
-        ("1\u{2013}5", crate::msg::desktop_hint_status_chips()),
-        ("f", crate::msg::desktop_hint_filters()),
         ("tab", crate::msg::desktop_hint_switch_view()),
     ]
 }
@@ -452,14 +446,13 @@ pub struct Shell {
     /// Which Bills tab shows, and the selected row on each (a position in that tab's list).
     bills_tab: bills::BillsTab,
     bills_selected: usize,
-    /// The Schedule tab's calendar month; starts at today's.
+    /// The Schedule tab's calendar month; starts at today's. Kept while `bills_all` shows every
+    /// row, so the arrows return to it.
     bills_period: bills::Period,
-    /// The History tab's filters, and the filter-row select `f` has focused (open or closed).
-    bills_history_filters: bill_history::HistoryFilters,
-    bills_history_focus: Option<(
-        bills_view::history::HistoryField,
-        crate::select::SelectState,
-    )>,
+    bills_all: bool,
+    /// The Schedule tab's filters, and the filter-row select `f` has focused (open or closed).
+    bills_filters: bill_history::BillFilters,
+    bills_filter_focus: Option<(bills_view::filters::FilterField, crate::select::SelectState)>,
     /// The currently open Bills dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
     /// exactly as long as this is `Some`, following the pattern of `tags_dialog`.
     bills_dialog: Option<bills::BillsDialog>,
@@ -559,8 +552,9 @@ impl Shell {
             bills_tab: bills::BillsTab::default(),
             bills_selected: 0,
             bills_period: bills::Period::of(today),
-            bills_history_filters: bill_history::HistoryFilters::default(),
-            bills_history_focus: None,
+            bills_all: false,
+            bills_filters: bill_history::BillFilters::default(),
+            bills_filter_focus: None,
             bills_dialog: None,
             transactions_selected: 0,
             transactions_scroll: UniformListScrollHandle::new(),
@@ -807,13 +801,13 @@ impl Shell {
                 {
                     return true;
                 }
-                // The History tab's filter selects: the first `Esc` closes an open list, the next
+                // The Schedule tab's filter selects: the first `Esc` closes an open list, the next
                 // leaves the filter row.
-                if let Some((_, state)) = self.bills_history_focus.as_mut() {
+                if let Some((_, state)) = self.bills_filter_focus.as_mut() {
                     if state.is_open() {
                         state.cancel();
                     } else {
-                        self.bills_history_focus = None;
+                        self.bills_filter_focus = None;
                     }
                     return true;
                 }
@@ -1991,14 +1985,20 @@ impl Shell {
         true
     }
 
-    /// The Schedule tab's rows for the shown period.
-    fn bills_schedule_rows(&self) -> Vec<bills::ScheduleRow> {
+    /// The Schedule tab's rows for the shown period (or All), before its filters.
+    fn bills_unfiltered_rows(&self) -> Vec<bills::ScheduleRow> {
         bills::schedule_rows(
             &self.bill_plans,
             &self.bill_entries,
-            self.bills_period,
+            (!self.bills_all).then_some(self.bills_period),
             self.today,
         )
+    }
+
+    /// The Schedule tab's rows as shown: the period's (or All's), through its filters.
+    fn bills_schedule_rows(&self) -> Vec<bills::ScheduleRow> {
+        self.bills_filters
+            .apply(&self.bills_unfiltered_rows(), &self.bill_plans)
     }
 
     /// The selected Schedule row, its stored position clamped to the rows now shown.
@@ -2017,17 +2017,16 @@ impl Shell {
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the active Bills tab's row selection; `Enter` on a
-    /// Paid Schedule or History row opens its Transaction, and on a Planner row edits its Bill
-    /// Plan. While `f` has a History filter select focused, they drive the select instead.
+    /// Paid Schedule row opens its Transaction, and on a Planner row edits its Bill Plan. While `f`
+    /// has a Schedule filter select focused, they drive the select instead.
     fn apply_bills_movement(&mut self, movement: Movement) {
-        if self.bills_tab == bills::BillsTab::History && self.bills_history_focus.is_some() {
-            self.apply_bills_history_select_movement(movement);
+        if self.bills_tab == bills::BillsTab::Schedule && self.bills_filter_focus.is_some() {
+            self.apply_bills_filter_select_movement(movement);
             return;
         }
         let len = match self.bills_tab {
             bills::BillsTab::Schedule => self.bills_schedule_rows().len(),
             bills::BillsTab::Planner => self.bill_plans.len(),
-            bills::BillsTab::History => self.bills_history_rows().len(),
         };
         let selected = self.bills_selected.min(len.saturating_sub(1));
         self.bills_selected = match movement {
@@ -2046,12 +2045,6 @@ impl Shell {
                     }
                     bills::BillsTab::Schedule => {
                         if let Some(row) = self.selected_bill_row() {
-                            self.open_bill_transaction(row.id);
-                        }
-                    }
-                    bills::BillsTab::History => {
-                        let rows = self.bills_history_rows();
-                        if let Some(row) = rows.get(selected) {
                             self.open_bill_transaction(row.id);
                         }
                     }
@@ -2088,13 +2081,17 @@ impl Shell {
     fn set_bills_tab(&mut self, tab: bills::BillsTab) {
         self.bills_tab = tab;
         self.bills_selected = 0;
-        self.bills_history_focus = None;
+        self.bills_filter_focus = None;
         self.status_message = None;
         self.reset_view_scroll();
     }
 
-    /// Steps the Schedule tab's period a calendar month.
+    /// Steps the Schedule tab's period a calendar month; from All, returns to the month last viewed.
     fn shift_bills_period(&mut self, forward: bool) {
+        if std::mem::take(&mut self.bills_all) {
+            self.bills_selected = 0;
+            return;
+        }
         self.bills_period = if forward {
             self.bills_period.next()
         } else {
@@ -2103,31 +2100,27 @@ impl Shell {
         self.bills_selected = 0;
     }
 
-    /// The History tab's rows for its filters.
-    fn bills_history_rows(&self) -> Vec<bill_history::HistoryRow> {
-        bill_history::history_rows(
-            &self.bill_plans,
-            &self.bill_entries,
-            &self.bills_history_filters,
-            self.today,
-        )
+    /// `0` toggles the Schedule between its month and All.
+    fn toggle_bills_all(&mut self) {
+        self.bills_all = !self.bills_all;
+        self.bills_selected = 0;
     }
 
-    fn toggle_bills_history_chip(&mut self, index: usize) {
+    fn toggle_bills_filter_chip(&mut self, index: usize) {
         if let Some(status) = bill_history::STATUS_CHIPS.get(index) {
-            self.bills_history_filters.toggle(*status);
+            self.bills_filters.toggle(*status);
             self.bills_selected = 0;
         }
     }
 
-    /// A History filter select's options, and the index of its current value. Category and
+    /// A Schedule filter select's options, and the index of its current value. Category and
     /// Account list only those some Bill Plan uses.
-    fn bills_history_options(
+    fn bills_filter_options(
         &self,
-        field: bills_view::history::HistoryField,
+        field: bills_view::filters::FilterField,
     ) -> (Vec<String>, usize) {
-        use bills_view::history::HistoryField;
-        let filters = &self.bills_history_filters;
+        use bills_view::filters::FilterField;
+        let filters = &self.bills_filters;
         let scoped = |all: String, choices: Vec<(u32, String)>, current: Option<u32>| {
             let index = current
                 .and_then(|id| choices.iter().position(|(choice, _)| *choice == id))
@@ -2138,121 +2131,97 @@ impl Shell {
             (labels, index)
         };
         match field {
-            HistoryField::Plan => scoped(
-                crate::msg::desktop_bills_history_all_bills(),
-                self.bills_history_choices(field),
+            FilterField::Plan => scoped(
+                crate::msg::desktop_bills_filter_all_bills(),
+                self.bills_filter_choices(field),
                 filters.plan_id,
             ),
-            HistoryField::Category => scoped(
-                crate::msg::desktop_bills_history_all_categories(),
-                self.bills_history_choices(field),
+            FilterField::Category => scoped(
+                crate::msg::desktop_bills_filter_all_categories(),
+                self.bills_filter_choices(field),
                 filters.category_id,
             ),
-            HistoryField::Account => scoped(
-                crate::msg::desktop_bills_history_all_accounts(),
-                self.bills_history_choices(field),
+            FilterField::Account => scoped(
+                crate::msg::desktop_bills_filter_all_accounts(),
+                self.bills_filter_choices(field),
                 filters.account_id,
-            ),
-            HistoryField::Range => (
-                bill_history::DateRange::ALL
-                    .into_iter()
-                    .map(bills_view::history::range_label)
-                    .collect(),
-                bill_history::DateRange::ALL
-                    .iter()
-                    .position(|range| *range == filters.range)
-                    .unwrap_or(0),
             ),
         }
     }
 
     /// The Bill Plan, Category or Account choices behind a scope select (after its "All" option),
     /// as `(id, name)`.
-    fn bills_history_choices(
-        &self,
-        field: bills_view::history::HistoryField,
-    ) -> Vec<(u32, String)> {
-        use bills_view::history::HistoryField;
+    fn bills_filter_choices(&self, field: bills_view::filters::FilterField) -> Vec<(u32, String)> {
+        use bills_view::filters::FilterField;
         let mut choices: Vec<(u32, String)> = match field {
-            HistoryField::Plan => {
+            FilterField::Plan => {
                 return bills::planner_order(&self.bill_plans)
                     .into_iter()
                     .map(|plan| (plan.id, plan.name.clone()))
                     .collect();
             }
-            HistoryField::Category => self
+            FilterField::Category => self
                 .categories
                 .iter()
                 .filter(|c| self.bill_plans.iter().any(|p| p.category_id == c.id))
                 .map(|c| (c.id, c.name.clone()))
                 .collect(),
-            HistoryField::Account => self
+            FilterField::Account => self
                 .accounts
                 .iter()
                 .filter(|a| self.bill_plans.iter().any(|p| p.account_id == a.id))
                 .map(|a| (a.id, a.name.clone()))
                 .collect(),
-            HistoryField::Range => Vec::new(),
         };
         choices.sort_by_key(|(_, name)| name.to_lowercase());
         choices
     }
 
-    /// Sets a History filter from its select's option `index`.
-    fn apply_bills_history_option(
-        &mut self,
-        field: bills_view::history::HistoryField,
-        index: usize,
-    ) {
-        use bills_view::history::HistoryField;
+    /// Sets a Schedule filter from its select's option `index`.
+    fn apply_bills_filter_option(&mut self, field: bills_view::filters::FilterField, index: usize) {
+        use bills_view::filters::FilterField;
         let id = index
             .checked_sub(1)
-            .and_then(|i| self.bills_history_choices(field).get(i).map(|(id, _)| *id));
-        let filters = &mut self.bills_history_filters;
+            .and_then(|i| self.bills_filter_choices(field).get(i).map(|(id, _)| *id));
+        let filters = &mut self.bills_filters;
         match field {
-            HistoryField::Plan => filters.plan_id = id,
-            HistoryField::Category => filters.category_id = id,
-            HistoryField::Account => filters.account_id = id,
-            HistoryField::Range => {
-                if let Some(range) = bill_history::DateRange::ALL.get(index) {
-                    filters.range = *range;
-                }
-            }
+            FilterField::Plan => filters.plan_id = id,
+            FilterField::Category => filters.category_id = id,
+            FilterField::Account => filters.account_id = id,
         }
         self.bills_selected = 0;
     }
 
     /// A closed select state on a field's current value.
-    fn bills_history_select_state(
+    fn bills_filter_select_state(
         &self,
-        field: bills_view::history::HistoryField,
+        field: bills_view::filters::FilterField,
     ) -> crate::select::SelectState {
-        let (options, index) = self.bills_history_options(field);
+        let (options, index) = self.bills_filter_options(field);
         crate::select::SelectState::new(options.get(index).cloned())
     }
 
     /// `f` steps focus along the filter row's selects, then off it.
-    fn cycle_bills_history_focus(&mut self) {
-        use bills_view::history::HistoryField;
-        let next = match self.bills_history_focus.as_ref().map(|(field, _)| *field) {
-            None => Some(HistoryField::Plan),
-            Some(field) => HistoryField::ORDER
+    fn cycle_bills_filter_focus(&mut self) {
+        use bills_view::filters::FilterField;
+        let next = match self.bills_filter_focus.as_ref().map(|(field, _)| *field) {
+            None => Some(FilterField::Plan),
+            Some(field) => FilterField::ORDER
                 .iter()
                 .position(|f| *f == field)
-                .and_then(|i| HistoryField::ORDER.get(i + 1))
+                .and_then(|i| FilterField::ORDER.get(i + 1))
                 .copied(),
         };
-        self.bills_history_focus =
-            next.map(|field| (field, self.bills_history_select_state(field)));
+        self.bills_filter_focus = next.map(|field| (field, self.bills_filter_select_state(field)));
     }
 
     /// `j`/`k` on a focused select: step its value while closed (applying it at once), move the
     /// highlight while open; `Enter` opens it, or commits the highlight.
-    fn apply_bills_history_select_movement(&mut self, movement: Movement) {
-        let Some((field, mut state)) = self.bills_history_focus.take() else {
+    fn apply_bills_filter_select_movement(&mut self, movement: Movement) {
+        let Some((field, mut state)) = self.bills_filter_focus.take() else {
             return;
         };
-        let (options, _) = self.bills_history_options(field);
+        let (options, _) = self.bills_filter_options(field);
         let delta = match movement {
             Movement::Next => Some(1),
             Movement::Prev => Some(-1),
@@ -2277,47 +2246,47 @@ impl Shell {
                 .value()
                 .and_then(|value| options.iter().position(|option| option == value))
         {
-            self.apply_bills_history_option(field, index);
+            self.apply_bills_filter_option(field, index);
         }
-        self.bills_history_focus = Some((field, state));
+        self.bills_filter_focus = Some((field, state));
     }
 
-    fn handle_bills_history_chip_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.toggle_bills_history_chip(index);
+    fn handle_bills_filter_chip_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.toggle_bills_filter_chip(index);
         cx.notify();
     }
 
     /// Clicking a select opens its list (closing any other), or closes its own open list.
-    fn handle_bills_history_field_click(
+    fn handle_bills_filter_field_click(
         &mut self,
-        field: bills_view::history::HistoryField,
+        field: bills_view::filters::FilterField,
         cx: &mut Context<'_, Self>,
     ) {
         let open_here = self
-            .bills_history_focus
+            .bills_filter_focus
             .as_ref()
             .is_some_and(|(focused, state)| *focused == field && state.is_open());
-        let mut state = self.bills_history_select_state(field);
+        let mut state = self.bills_filter_select_state(field);
         if !open_here {
-            let (options, _) = self.bills_history_options(field);
+            let (options, _) = self.bills_filter_options(field);
             state.open(&options);
         }
-        self.bills_history_focus = Some((field, state));
+        self.bills_filter_focus = Some((field, state));
         cx.notify();
     }
 
-    fn handle_bills_history_option_click(
+    fn handle_bills_filter_option_click(
         &mut self,
-        field: bills_view::history::HistoryField,
+        field: bills_view::filters::FilterField,
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        self.apply_bills_history_option(field, index);
-        self.bills_history_focus = Some((field, self.bills_history_select_state(field)));
+        self.apply_bills_filter_option(field, index);
+        self.bills_filter_focus = Some((field, self.bills_filter_select_state(field)));
         cx.notify();
     }
 
-    /// The Bills page's own `p`/`s`/`e`/`n`/`[`/`]` (only while it is the active noun and the view has
+    /// The Bills page's own `p`/`s`/`e`/`n`/`f`/`[`/`]`/`0`/`1`–`5` (only while it is the active noun and the view has
     /// focus, in `Normal` mode).
     fn handle_bills_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Bills || self.nav.focus() != FocusZone::View {
@@ -2329,8 +2298,7 @@ impl Shell {
         }
         let schedule = self.bills_tab == bills::BillsTab::Schedule;
         let planner = self.bills_tab == bills::BillsTab::Planner;
-        let history = self.bills_tab == bills::BillsTab::History;
-        if history
+        if schedule
             && let Some(chip) = keystroke
                 .key
                 .parse::<usize>()
@@ -2338,12 +2306,13 @@ impl Shell {
                 .and_then(|digit| digit.checked_sub(1))
                 .filter(|index| *index < bill_history::STATUS_CHIPS.len())
         {
-            self.toggle_bills_history_chip(chip);
+            self.toggle_bills_filter_chip(chip);
             return true;
         }
         match keystroke.key.as_str() {
-            "n" if !history && !modifiers.shift => self.open_add_bill_plan_dialog(),
-            "f" if history && !modifiers.shift => self.cycle_bills_history_focus(),
+            "n" if !modifiers.shift => self.open_add_bill_plan_dialog(),
+            "f" if schedule && !modifiers.shift => self.cycle_bills_filter_focus(),
+            "0" if schedule => self.toggle_bills_all(),
             "e" if planner && !modifiers.shift => {
                 if let Some(id) = self.selected_bill_plan() {
                     self.open_edit_bill_plan_dialog(id);
@@ -2958,6 +2927,9 @@ impl Shell {
             return;
         };
         self.bills_period = bills::schedule_period(entry, self.today);
+        self.bills_all = false;
+        // Reset so no filter hides the entry being handed off to.
+        self.bills_filters = bill_history::BillFilters::default();
         self.set_bills_tab(bills::BillsTab::Schedule);
         self.bills_selected = self
             .bills_schedule_rows()
@@ -3024,6 +2996,11 @@ impl Shell {
 
     fn handle_bills_period_next(&mut self, cx: &mut Context<'_, Self>) {
         self.shift_bills_period(true);
+        cx.notify();
+    }
+
+    fn handle_bills_all_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.toggle_bills_all();
         cx.notify();
     }
 
@@ -5899,7 +5876,10 @@ impl Render for Shell {
             on_edit_click: tag_click(Shell::handle_tags_edit_click),
             on_remove_click: tag_click(Shell::handle_tags_remove_click),
         };
-        let bills_rows = self.bills_schedule_rows();
+        let bills_unfiltered = self.bills_unfiltered_rows();
+        let bills_rows = self
+            .bills_filters
+            .apply(&bills_unfiltered, &self.bill_plans);
         let bills_summary = bills::period_summary(
             &bills_rows,
             &self.bill_plans,
@@ -5907,7 +5887,6 @@ impl Render for Shell {
             &self.transactions,
         );
         let bills_planner_plans = bills::planner_order(&self.bill_plans);
-        let bills_history_rows = self.bills_history_rows();
         let bills_base_unit = self
             .settings_units
             .iter()
@@ -5962,8 +5941,64 @@ impl Render for Shell {
         let bills_page = bills_view::BillsPageProps {
             tab: self.bills_tab,
             period: self.bills_period,
+            all: self.bills_all,
             schedule: bills_view::schedule::ScheduleProps {
                 rows: &bills_rows,
+                total: bills_unfiltered.len(),
+                all: self.bills_all,
+                filters: bills_view::filters::FilterProps {
+                    filters: &self.bills_filters,
+                    selects: bills_view::filters::FilterField::ORDER
+                        .into_iter()
+                        .map(|field| {
+                            let focused = self
+                                .bills_filter_focus
+                                .as_ref()
+                                .filter(|(focused, _)| *focused == field);
+                            bills_view::filters::FilterSelect {
+                                field,
+                                options: self.bills_filter_options(field).0,
+                                state: focused.map_or_else(
+                                    || self.bills_filter_select_state(field),
+                                    |(_, state)| state.clone(),
+                                ),
+                                focused: focused.is_some(),
+                            }
+                        })
+                        .collect(),
+                    stats: self
+                        .bills_filters
+                        .plan_id
+                        .and_then(|id| bills::get(&self.bill_plans, id))
+                        .map(|plan| {
+                            let stats = bill_history::plan_stats(
+                                plan,
+                                &self.bill_plans,
+                                &self.bill_entries,
+                                &self.transactions,
+                                self.today,
+                            );
+                            (plan, stats)
+                        }),
+                    base_unit: bills_base_unit,
+                    on_chip_click: bills_indexed(Shell::handle_bills_filter_chip_click),
+                    on_field_click: {
+                        let entity = entity.clone();
+                        Rc::new(move |field, _window, cx| {
+                            entity.update(cx, |shell, cx| {
+                                shell.handle_bills_filter_field_click(field, cx);
+                            });
+                        })
+                    },
+                    on_option_click: {
+                        let entity = entity.clone();
+                        Rc::new(move |field, index, _window, cx| {
+                            entity.update(cx, |shell, cx| {
+                                shell.handle_bills_filter_option_click(field, index, cx);
+                            });
+                        })
+                    },
+                },
                 summary: &bills_summary,
                 plans: &self.bill_plans,
                 entries: &self.bill_entries,
@@ -5991,67 +6026,6 @@ impl Render for Shell {
                 on_row_click: bills_indexed(Shell::handle_bills_row_click),
                 on_edit_click: bills_indexed(Shell::handle_bills_edit_plan_click),
             },
-            history: bills_view::history::HistoryProps {
-                rows: &bills_history_rows,
-                total: bill_history::total_rows(&self.bill_entries),
-                filters: &self.bills_history_filters,
-                selects: bills_view::history::HistoryField::ORDER
-                    .into_iter()
-                    .map(|field| {
-                        let focused = self
-                            .bills_history_focus
-                            .as_ref()
-                            .filter(|(focused, _)| *focused == field);
-                        bills_view::history::HistorySelect {
-                            field,
-                            options: self.bills_history_options(field).0,
-                            state: focused.map_or_else(
-                                || self.bills_history_select_state(field),
-                                |(_, state)| state.clone(),
-                            ),
-                            focused: focused.is_some(),
-                        }
-                    })
-                    .collect(),
-                stats: self
-                    .bills_history_filters
-                    .plan_id
-                    .and_then(|id| bills::get(&self.bill_plans, id))
-                    .map(|plan| {
-                        let stats = bill_history::plan_stats(
-                            plan,
-                            &self.bill_plans,
-                            &self.bill_entries,
-                            &self.transactions,
-                            self.today,
-                        );
-                        (plan, stats)
-                    }),
-                plans: &self.bill_plans,
-                entries: &self.bill_entries,
-                transactions: &self.transactions,
-                base_unit: bills_base_unit,
-                selected: (!bills_history_rows.is_empty())
-                    .then(|| self.bills_selected.min(bills_history_rows.len() - 1)),
-                on_row_click: bills_indexed(Shell::handle_bills_row_click),
-                on_chip_click: bills_indexed(Shell::handle_bills_history_chip_click),
-                on_field_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |field, _window, cx| {
-                        entity.update(cx, |shell, cx| {
-                            shell.handle_bills_history_field_click(field, cx);
-                        });
-                    })
-                },
-                on_option_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |field, index, _window, cx| {
-                        entity.update(cx, |shell, cx| {
-                            shell.handle_bills_history_option_click(field, index, cx);
-                        });
-                    })
-                },
-            },
             on_add_click: bills_plain(Shell::handle_bills_add_click),
             on_tab_click: {
                 let entity = entity.clone();
@@ -6061,6 +6035,7 @@ impl Render for Shell {
             },
             on_period_prev: bills_plain(Shell::handle_bills_period_prev),
             on_period_next: bills_plain(Shell::handle_bills_period_next),
+            on_all_click: bills_plain(Shell::handle_bills_all_click),
         };
         let import_categories = self.import_category_options();
         let import_page = self.import.as_ref().map(|state| {
@@ -6363,21 +6338,19 @@ impl Render for Shell {
             Noun::Bills if self.bills_tab == bills::BillsTab::Schedule => Some(PageStatus {
                 hints: bills_schedule_hints(),
                 right: crate::msg::desktop_bills_status_period(
-                    &bills_view::period_label(self.bills_period),
-                    i64::try_from(self.bills_schedule_rows().len()).unwrap_or(i64::MAX),
+                    &if self.bills_all {
+                        crate::msg::desktop_bills_period_all()
+                    } else {
+                        bills_view::period_label(self.bills_period)
+                    },
+                    &self.bills_schedule_rows().len().to_string(),
+                    i64::try_from(self.bills_unfiltered_rows().len()).unwrap_or(i64::MAX),
                 ),
             }),
             Noun::Bills if self.bills_tab == bills::BillsTab::Planner => Some(PageStatus {
                 hints: bills_planner_hints(),
                 right: crate::msg::desktop_bills_status_plans(
                     i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
-                ),
-            }),
-            Noun::Bills if self.bills_tab == bills::BillsTab::History => Some(PageStatus {
-                hints: bills_history_hints(),
-                right: crate::msg::desktop_bills_status_history_rows(
-                    &self.bills_history_rows().len().to_string(),
-                    i64::try_from(bill_history::total_rows(&self.bill_entries)).unwrap_or(i64::MAX),
                 ),
             }),
             Noun::Tags => Some(PageStatus {

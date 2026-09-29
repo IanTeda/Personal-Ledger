@@ -1,11 +1,13 @@
-//! The **8a** Schedule tab (`docs/ux/desktop/Bills/README.md`): the period's Bill Schedule rows by
-//! due date in one bordered table (BILL / ACCOUNT / PLANNED / DUE / STATUS / ACTIONS) and a
-//! footnote, with the header's meta line.
+//! The **8a** Schedule tab (`docs/ux/desktop/Bills/README.md`), which absorbed 8f's History tab
+//! (#381): the filter row and stat callout (`filters`), then the rows in one bordered table (BILL /
+//! ACCOUNT / PLANNED / ACTUAL / DUE / PAID / STATUS / ACTIONS) and a footnote, with the header's
+//! meta line.
 //!
-//! Rows come from `bills::schedule_rows` (#366): the period's entries, Overdue entries carried
-//! into the current month, and computed previews past the generation horizon. A row's status,
-//! Needs Attention flag and actions are all derived there; this module only draws them. The
-//! selected row inverts, as in the handoff.
+//! Rows come from `bills::schedule_rows` for the viewed month (or All), through the filters: the
+//! month's entries, Overdue and Due entries carried in from other months, and computed previews
+//! past the generation horizon, unresolved first. A row's status, Needs Attention flag and actions
+//! are all derived there; this module only draws them. The selected row inverts, as in the
+//! handoff. A Skipped row keeps its planned figure but shows `—` for ACTUAL and PAID.
 
 use gpui::{AnyElement, App, Rgba, SharedString, Window, div, prelude::*, px};
 
@@ -23,10 +25,16 @@ use crate::{
     transactions::Transaction,
 };
 
-use super::{OnPlainClick, OnRowClick};
+use super::{OnPlainClick, OnRowClick, filters};
 
 pub struct ScheduleProps<'a> {
+    /// The filtered rows.
     pub rows: &'a [ScheduleRow],
+    /// `rows`' count before filtering: the `M` in the status line's "N of M".
+    pub total: usize,
+    /// Viewing All rather than one month.
+    pub all: bool,
+    pub filters: filters::FilterProps<'a>,
     pub summary: &'a PeriodSummary,
     pub plans: &'a [BillPlan],
     pub entries: &'a [BillScheduleEntry],
@@ -46,7 +54,9 @@ pub struct ScheduleProps<'a> {
 const BILL_MIN_WIDTH: gpui::Pixels = px(160.0);
 const ACCOUNT_WIDTH: gpui::Pixels = px(120.0);
 const PLANNED_WIDTH: gpui::Pixels = px(110.0);
+const ACTUAL_WIDTH: gpui::Pixels = px(100.0);
 const DUE_WIDTH: gpui::Pixels = px(90.0);
+const PAID_WIDTH: gpui::Pixels = px(90.0);
 const STATUS_WIDTH: gpui::Pixels = px(140.0);
 const ACTIONS_WIDTH: gpui::Pixels = px(200.0);
 
@@ -91,9 +101,11 @@ pub fn meta_line(props: &ScheduleProps<'_>, cx: &App) -> impl IntoElement {
     };
     let mut clauses: Vec<AnyElement> = vec![
         div()
-            .child(crate::msg::desktop_bills_schedule_entries(count(
-                props.rows.len(),
-            )))
+            .child(if props.all {
+                crate::msg::desktop_bills_schedule_entries_all(count(props.rows.len()))
+            } else {
+                crate::msg::desktop_bills_schedule_entries(count(props.rows.len()))
+            })
             .into_any_element(),
     ];
     if summary.overdue > 0 {
@@ -171,15 +183,12 @@ pub(crate) fn with_unit(text: String, unit: &str, base_unit: Option<&str>) -> St
     }
 }
 
-/// PLANNED's text: the row's amount (a Paid row's Matched amount), `~`-prefixed for an Estimated
-/// Plan until it is Paid.
+/// PLANNED's text: the Plan's Planned Amount (a Skipped row's snapshot), `~`-prefixed for an
+/// Estimated Plan until it is Paid.
 fn planned_text(row: &ScheduleRow, plan: &BillPlan, props: &ScheduleProps<'_>) -> String {
-    let amount = match bills::entry(props.entries, row.id) {
-        Some(found) => bills::amount(found, props.plans, props.transactions),
-        None => Some(plan.planned_amount.clone()),
-    };
-    let Some(amount) = amount else {
-        return EMPTY_CELL.to_string();
+    let amount = match bills::entry(props.entries, row.id).map(|e| &e.resolution) {
+        Some(bills::Resolution::Skipped { planned }) => planned.clone(),
+        _ => plan.planned_amount.clone(),
     };
     let text = with_unit(
         crate::format::amount(&amount).1,
@@ -193,11 +202,66 @@ fn planned_text(row: &ScheduleRow, plan: &BillPlan, props: &ScheduleProps<'_>) -
     }
 }
 
+/// ACTUAL's text: a Paid row's Matched amount, `—` otherwise.
+fn actual_text(row: &ScheduleRow, plan: &BillPlan, props: &ScheduleProps<'_>) -> String {
+    (row.status == BillStatus::Paid)
+        .then(|| bills::entry(props.entries, row.id))
+        .flatten()
+        .and_then(|e| bills::amount(e, props.plans, props.transactions))
+        .map_or_else(
+            || EMPTY_CELL.to_string(),
+            |amount| {
+                with_unit(
+                    crate::format::amount(&amount).1,
+                    &plan.unit,
+                    props.base_unit,
+                )
+            },
+        )
+}
+
+/// PAID's text: the Matched Transaction's date, `—` otherwise.
+fn paid_text(row: &ScheduleRow, props: &ScheduleProps<'_>) -> String {
+    bills::entry(props.entries, row.id)
+        .and_then(|e| bills::paid_on(e, props.transactions))
+        .map_or_else(|| EMPTY_CELL.to_string(), format_month_day)
+}
+
 pub fn render(props: &ScheduleProps<'_>, cx: &App) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .child(filters::render(&props.filters, cx))
+        .child(table(props, cx))
+        .child(
+            div()
+                .mt(px(10.0))
+                .text_size(px(11.0))
+                .text_color(color::faint_text(cx))
+                .child(crate::msg::desktop_bills_schedule_footnote()),
+        )
+        .when(props.filters.stats.is_some(), |this| {
+            this.child(
+                div()
+                    .mt(px(6.0))
+                    .text_size(px(11.0))
+                    .text_color(color::faint_text(cx))
+                    .child(crate::msg::desktop_bills_history_footnote()),
+            )
+        })
+        .into_any_element()
+}
+
+fn table(props: &ScheduleProps<'_>, cx: &App) -> AnyElement {
     if props.rows.is_empty() {
+        let empty = if props.filters.filters.is_narrowed() {
+            crate::msg::desktop_bills_filter_empty()
+        } else {
+            crate::msg::desktop_bills_schedule_empty()
+        };
         return div()
             .text_color(color::muted(cx))
-            .child(crate::msg::desktop_bills_schedule_empty())
+            .child(empty)
             .into_any_element();
     }
     let last = props.rows.len() - 1;
@@ -223,13 +287,6 @@ pub fn render(props: &ScheduleProps<'_>, cx: &App) -> AnyElement {
                         cx,
                     ))
                 })),
-        )
-        .child(
-            div()
-                .mt(px(10.0))
-                .text_size(px(11.0))
-                .text_color(color::faint_text(cx))
-                .child(crate::msg::desktop_bills_schedule_footnote()),
         )
         .into_any_element()
 }
@@ -266,12 +323,20 @@ fn table_header(cx: &App) -> impl IntoElement {
         )
         .child(
             div()
+                .w(ACTUAL_WIDTH)
+                .flex_none()
+                .text_align(gpui::TextAlign::Right)
+                .child(upper(&crate::msg::desktop_bills_column_actual())),
+        )
+        .child(
+            div()
                 .w(DUE_WIDTH)
                 .flex_none()
                 // The handoff runs DUE flush against PLANNED; a gap keeps them apart.
                 .pl(px(16.0))
                 .child(upper(&crate::msg::desktop_bills_column_due())),
         )
+        .child(cell(PAID_WIDTH, crate::msg::desktop_bills_column_paid()))
         .child(cell(
             STATUS_WIDTH,
             crate::msg::desktop_bills_column_status(),
@@ -402,6 +467,15 @@ fn render_row(
         )
         .child(
             div()
+                .w(ACTUAL_WIDTH)
+                .flex_none()
+                .flex()
+                .justify_end()
+                .whitespace_nowrap()
+                .child(actual_text(row, plan, props)),
+        )
+        .child(
+            div()
                 .w(DUE_WIDTH)
                 .flex_none()
                 .pl(px(16.0))
@@ -411,6 +485,14 @@ fn render_row(
                         .text_color(colours.accent)
                 })
                 .child(format_month_day(row.id.due)),
+        )
+        .child(
+            div()
+                .w(PAID_WIDTH)
+                .flex_none()
+                .whitespace_nowrap()
+                .text_color(colours.secondary)
+                .child(paid_text(row, props)),
         )
         .child(div().w(STATUS_WIDTH).flex_none().flex().child(status_cell(
             row,

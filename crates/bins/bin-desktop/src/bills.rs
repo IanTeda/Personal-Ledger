@@ -812,7 +812,8 @@ pub fn paid_on(entry: &BillScheduleEntry, transactions: &[Transaction]) -> Optio
 pub struct ScheduleRow {
     pub id: EntryId,
     pub status: BillStatus,
-    /// An Overdue entry from an earlier month, carried into the current month.
+    /// An Overdue or Due entry from outside the viewed month, carried into it so an actionable
+    /// row is never out of sight.
     pub carried: bool,
     /// Computed from the Recurrence past the generation horizon: no row exists yet, so it can't be
     /// paid or skipped.
@@ -825,18 +826,25 @@ impl ScheduleRow {
     pub fn is_actionable(&self) -> bool {
         !self.preview && matches!(self.status, BillStatus::Due | BillStatus::Overdue)
     }
+
+    /// Paid or Skipped: nothing left to do.
+    pub fn is_resolved(&self) -> bool {
+        matches!(self.status, BillStatus::Paid | BillStatus::Skipped)
+    }
 }
 
-/// The Schedule tab's rows for `period`, by due date: the period's entries, plus (for the current
-/// month) Overdue entries carried from earlier months, plus computed previews for active Plans in
-/// a period past the horizon.
+/// The Schedule tab's rows for `period` (`None` for All: every entry ever generated), before its
+/// filters (#381). A month shows its own entries, every Overdue and Due entry from other months
+/// carried in, and computed previews for active Plans past the horizon.
+///
+/// Unresolved rows come first, next due first; resolved rows follow, most recent first, so the
+/// oldest settled row sits at the bottom.
 pub fn schedule_rows(
     plans: &[BillPlan],
     entries: &[BillScheduleEntry],
-    period: Period,
+    period: Option<Period>,
     today: NaiveDate,
 ) -> Vec<ScheduleRow> {
-    let current = Period::of(today);
     let attention =
         |e: &BillScheduleEntry| get(plans, e.plan_id).is_some_and(|p| needs_attention(e, p, today));
     let mut rows: Vec<ScheduleRow> = entries
@@ -844,9 +852,9 @@ pub fn schedule_rows(
         .filter(|e| !e.superseded)
         .filter_map(|e| {
             let status = status(e, today);
-            let carried =
-                period == current && Period::of(e.due) < current && status == BillStatus::Overdue;
-            (period.contains(e.due) || carried).then(|| ScheduleRow {
+            let own = period.is_none_or(|period| period.contains(e.due));
+            let carried = !own && matches!(status, BillStatus::Overdue | BillStatus::Due);
+            (own || carried).then(|| ScheduleRow {
                 id: e.id(),
                 status,
                 carried,
@@ -855,7 +863,9 @@ pub fn schedule_rows(
             })
         })
         .collect();
-    if period.first_day() > horizon(today) {
+    if let Some(period) = period
+        && period.first_day() > horizon(today)
+    {
         for plan in plans.iter().filter(|p| p.is_active) {
             let ends_on = plan.ends_on.unwrap_or(NaiveDate::MAX);
             let mut n = 0;
@@ -880,7 +890,16 @@ pub fn schedule_rows(
             }
         }
     }
-    rows.sort_by_key(|row| (row.id.due, row.id.plan_id));
+    rows.sort_by(|a, b| {
+        a.is_resolved().cmp(&b.is_resolved()).then_with(|| {
+            if a.is_resolved() {
+                b.id.due.cmp(&a.id.due)
+            } else {
+                a.id.due.cmp(&b.id.due)
+            }
+            .then_with(|| a.id.plan_id.cmp(&b.id.plan_id))
+        })
+    });
     rows
 }
 
@@ -956,7 +975,6 @@ pub enum BillsTab {
     #[default]
     Schedule,
     Planner,
-    History,
 }
 
 impl BillsTab {
@@ -964,8 +982,7 @@ impl BillsTab {
     pub fn next(self) -> Self {
         match self {
             BillsTab::Schedule => BillsTab::Planner,
-            BillsTab::Planner => BillsTab::History,
-            BillsTab::History => BillsTab::Schedule,
+            BillsTab::Planner => BillsTab::Schedule,
         }
     }
 }
@@ -1999,7 +2016,7 @@ mod tests {
     #[test]
     fn the_september_schedule_matches_8a() {
         let w = world();
-        let rows = schedule_rows(&w.plans, &w.entries, Period::of(today()), today());
+        let rows = schedule_rows(&w.plans, &w.entries, Some(Period::of(today())), today());
         let shown: Vec<(String, u32, BillStatus, bool)> = rows
             .iter()
             .map(|r| {
@@ -2008,14 +2025,15 @@ mod tests {
             })
             .collect();
         use BillStatus::*;
+        // Unresolved first, next due first; then resolved, most recent first.
         let expected = [
-            ("Streaming Bundle", 5, Paid, false),
-            ("Car Wash Membership", 10, Skipped, false),
             ("Gym \u{2014} Fitness First", 15, Overdue, true),
             ("Netflix", 18, Overdue, true),
             ("Telstra Internet", 22, Due, true),
             ("Origin Energy", 24, Due, false),
             ("Car Insurance \u{2014} AAMI", 30, Due, false),
+            ("Car Wash Membership", 10, Skipped, false),
+            ("Streaming Bundle", 5, Paid, false),
         ];
         let expected: Vec<(String, u32, BillStatus, bool)> = expected
             .iter()
@@ -2033,7 +2051,12 @@ mod tests {
     #[test]
     fn rent_and_council_rates_are_upcoming_in_later_months() {
         let w = world();
-        let october = schedule_rows(&w.plans, &w.entries, Period::of(today()).next(), today());
+        let october = schedule_rows(
+            &w.plans,
+            &w.entries,
+            Some(Period::of(today()).next()),
+            today(),
+        );
         let rent = plan_id(&w, "Rent");
         assert!(
             october
@@ -2050,13 +2073,54 @@ mod tests {
         let netflix = plan_id(&w, "Netflix");
         let august = id(netflix, date(2026, 8, 18));
         unmatch(&mut w.entries, august).unwrap();
-        let september = schedule_rows(&w.plans, &w.entries, Period::of(today()), today());
+        let september = schedule_rows(&w.plans, &w.entries, Some(Period::of(today())), today());
         let carried = september.iter().find(|r| r.id == august).unwrap();
         assert!(carried.carried);
-        let own = schedule_rows(&w.plans, &w.entries, Period::of(today()).prev(), today());
+        let own = schedule_rows(
+            &w.plans,
+            &w.entries,
+            Some(Period::of(today()).prev()),
+            today(),
+        );
         assert!(own.iter().any(|r| r.id == august && !r.carried));
         let summary = period_summary(&september, &w.plans, &w.entries, &w.transactions);
         assert_eq!(summary.overdue, 3);
+    }
+
+    #[test]
+    fn unresolved_rows_carry_into_any_other_month_once() {
+        let w = world();
+        let august = schedule_rows(
+            &w.plans,
+            &w.entries,
+            Some(Period::of(today()).prev()),
+            today(),
+        );
+        let actionable: Vec<&ScheduleRow> = august
+            .iter()
+            .filter(|r| matches!(r.status, BillStatus::Overdue | BillStatus::Due))
+            .collect();
+        // September's two Overdue and three Due rows all reach back into August, carried.
+        assert_eq!(actionable.len(), 5);
+        assert!(actionable.iter().all(|r| r.carried));
+        let ids: std::collections::HashSet<EntryId> = august.iter().map(|r| r.id).collect();
+        assert_eq!(ids.len(), august.len());
+    }
+
+    #[test]
+    fn all_shows_every_entry_unresolved_first_then_latest_resolved() {
+        let w = world();
+        let all = schedule_rows(&w.plans, &w.entries, None, today());
+        assert_eq!(
+            all.len(),
+            w.entries.iter().filter(|e| !e.superseded).count()
+        );
+        assert!(all.iter().all(|r| !r.carried && !r.preview));
+        let split = all.iter().position(ScheduleRow::is_resolved).unwrap();
+        let (open, settled) = all.split_at(split);
+        assert!(settled.iter().all(ScheduleRow::is_resolved));
+        assert!(open.windows(2).all(|w| w[0].id.due <= w[1].id.due));
+        assert!(settled.windows(2).all(|w| w[0].id.due >= w[1].id.due));
     }
 
     #[test]
@@ -2093,7 +2157,7 @@ mod tests {
             year: 2027,
             month: 1,
         };
-        let rows = schedule_rows(&w.plans, &w.entries, january, today());
+        let rows = schedule_rows(&w.plans, &w.entries, Some(january), today());
         assert!(rows.iter().any(|r| r.preview));
         let rent = plan_id(&w, "Rent");
         assert!(rows.iter().any(|r| r.id == id(rent, date(2027, 1, 1))));
@@ -2105,7 +2169,7 @@ mod tests {
     #[test]
     fn the_period_summary_counts_and_totals_its_own_rows() {
         let w = world();
-        let rows = schedule_rows(&w.plans, &w.entries, Period::of(today()), today());
+        let rows = schedule_rows(&w.plans, &w.entries, Some(Period::of(today())), today());
         let summary = period_summary(&rows, &w.plans, &w.entries, &w.transactions);
         assert_eq!((summary.due, summary.overdue, summary.paid), (3, 2, 1));
         // 29.99 + 25.00 + 64.00 + 22.99 + 89.00 + 150.00 + 1180.00

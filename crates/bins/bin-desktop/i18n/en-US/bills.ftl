@@ -1,18 +1,21 @@
-## The Bills page (8a–8f): the header, tab row and Schedule tab.
+## The Bills page (8a–8e): the header, tab row and Schedule tab (which absorbed 8f's History).
 
 ## The header. `$glyph` is the Add button's leading plus sign.
 
 desktop-bills-add-button = { $glyph } Add bill plan
 desktop-bills-tab-schedule = Schedule
 desktop-bills-tab-planner = Planner
-desktop-bills-tab-history = History
 
-## The Schedule tab's meta line: the period's row count, then its Overdue (carried rows included),
-## Due and Paid counts, then its planned total (`$total`, already formatted).
+## The Schedule tab's meta line: the period's (or All's) row count, then its Overdue (carried rows
+## included), Due and Paid counts, then its planned total (`$total`, already formatted).
 
 desktop-bills-schedule-entries = { $count ->
     [one] { $count } schedule entry this period
    *[other] { $count } schedule entries this period
+}
+desktop-bills-schedule-entries-all = { $count ->
+    [one] { $count } schedule entry in all
+   *[other] { $count } schedule entries in all
 }
 desktop-bills-schedule-overdue = <strong>{ $count }</strong> overdue
 desktop-bills-schedule-due = <strong>{ $count }</strong> due
@@ -27,6 +30,8 @@ desktop-bills-column-account = Account
 desktop-bills-column-planned = Planned
 desktop-bills-column-due = Due
 desktop-bills-column-status = Status
+desktop-bills-column-actual = Actual
+desktop-bills-column-paid = Paid
 desktop-bills-estimated = estimated
 desktop-bills-status-paid = paid
 desktop-bills-status-skipped = skipped
@@ -65,32 +70,23 @@ desktop-bills-active-yes = yes
 desktop-bills-active-no = no
 desktop-bills-row-edit = edit
 desktop-bills-planner-empty = No bill plans yet.
-desktop-bills-planner-footnote = Editing a plan only changes future Schedule rows. LEAD is the Attention Lead — days before the due date a still-Due (not yet Overdue) row also joins Needs Attention; blank means Overdue-only. An inactive plan generates no new rows, but its history stays intact under History.
+desktop-bills-planner-footnote = Editing a plan only changes future Schedule rows. LEAD is the Attention Lead — days before the due date a still-Due (not yet Overdue) row also joins Needs Attention; blank means Overdue-only. An inactive plan generates no new rows, but its history stays intact on the Schedule.
 desktop-bills-status-plans = { $count ->
     [one] { $count } bill plan
    *[other] { $count } bill plans
 }
 
-## The History tab (8f): its meta line, filter row, stat callout, table and footnote. `$name` is
-## the scoped Bill Plan's name; `$from` and `$to` are the Average's financial year as two-digit
-## years (FY25–26).
+## The Schedule tab's filter row and stat callout (carried over from 8f's History tab). `$from` and
+## `$to` are the Average's financial year as two-digit years (FY25–26).
 
-desktop-bills-history-meta = Every schedule row ever generated
-desktop-bills-history-meta-scoped = Every schedule row ever generated — filtered to { $name }
-desktop-bills-history-status-paid = Paid
-desktop-bills-history-status-skipped = Skipped
-desktop-bills-history-status-overdue = Overdue
-desktop-bills-history-status-due = Due
-desktop-bills-history-status-upcoming = Upcoming
-desktop-bills-history-range = Range
-desktop-bills-history-all-bills = All bills
-desktop-bills-history-all-categories = All categories
-desktop-bills-history-all-accounts = All accounts
-desktop-bills-range-this-financial-year = This financial year
-desktop-bills-range-last-financial-year = Last financial year
-desktop-bills-range-last-12-months = Last 12 months
-desktop-bills-range-this-calendar-year = This calendar year
-desktop-bills-range-all-time = All time
+desktop-bills-filter-status-paid = Paid
+desktop-bills-filter-status-skipped = Skipped
+desktop-bills-filter-status-overdue = Overdue
+desktop-bills-filter-status-due = Due
+desktop-bills-filter-status-upcoming = Upcoming
+desktop-bills-filter-all-bills = All bills
+desktop-bills-filter-all-categories = All categories
+desktop-bills-filter-all-accounts = All accounts
 desktop-bills-history-last-paid = Last paid
 desktop-bills-history-average = Average FY{ $from }–{ $to }
 desktop-bills-history-no-payments-last-fy = no payments last FY
@@ -101,21 +97,17 @@ desktop-bills-history-same-month-payments = Same month last year ({ $count ->
    *[other] { $count } payments
 })
 desktop-bills-history-no-payments-yet = No payments yet
-desktop-bills-column-actual = Actual
-desktop-bills-column-paid = Paid
-desktop-bills-history-empty = No schedule rows match these filters.
+desktop-bills-filter-empty = No schedule rows match these filters.
 desktop-bills-history-footnote = Skipped rows keep their planned figure for context but are left out of the average, last-paid and same-period-last-year figures above.
-desktop-bills-status-history-rows = { $shown } of { $count ->
-    [one] { $count } row
-   *[other] { $count } rows
-}
 desktop-hint-status-chips = status
 desktop-hint-filters = filters
+desktop-hint-all = all
 
-## The status line: the period and its row count; and the messages for keys whose dialog isn't
-## built yet, or whose row can't take them.
+## The status line: the period (or All) and its filtered row count of the unfiltered; and the
+## messages for keys whose row can't take them.
 
-desktop-bills-status-period = { $period } · { $count ->
+desktop-bills-period-all = All
+desktop-bills-status-period = { $period } · { $shown } of { $count ->
     [one] { $count } entry
    *[other] { $count } entries
 }

@@ -1,11 +1,12 @@
-//! The Bills History tab's pure state (`docs/ux/desktop/Bills/README.md`'s 8f): its filters, the
-//! filtered rows and the stat callout's figures -- `gpui`-free and unit-tested, like `bills.rs`.
+//! The Bills Schedule tab's filters and the history figures behind its stat callout
+//! (`docs/ux/desktop/Bills/README.md`'s 8a, which absorbed 8f's History tab in #381) --
+//! `gpui`-free and unit-tested, like `bills.rs`.
 //!
-//! The rules are the Desktop Bills Surface map's History decisions (#369):
+//! The rules are the Desktop Bills Surface map's History decisions (#369), as carried into the
+//! Schedule by #381:
 //!
-//! - Every Bill Schedule entry that isn't superseded is a row, sorted by due date, latest first.
-//!   Status chips are multi-select (Paid and Skipped on by default); Bill Plan, Category and
-//!   Account are single-select scopes; the date range is a preset matched against the due date.
+//! - Status chips are multi-select (all five on by default); Bill Plan, Category and Account are
+//!   single-select scopes over the rows `bills::schedule_rows` gives for the viewed month or All.
 //! - The financial year starts in [`FINANCIAL_YEAR_START_MONTH`] until Settings' "Financial year
 //!   starts" is wired to a real Preference.
 //! - The stat callout reads only its one Bill Plan, never the other filters: Last paid is the Paid
@@ -20,7 +21,7 @@ use lib_core::Money;
 
 use crate::{
     bills::{
-        self, BillPlan, BillScheduleEntry, BillStatus, EntryId, Period, Recurrence, Resolution,
+        self, BillPlan, BillScheduleEntry, BillStatus, Period, Recurrence, Resolution, ScheduleRow,
     },
     transactions::Transaction,
 };
@@ -37,44 +38,6 @@ pub const STATUS_CHIPS: [BillStatus; 5] = [
     BillStatus::Due,
     BillStatus::Upcoming,
 ];
-
-/// The date-range select's presets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DateRange {
-    #[default]
-    ThisFinancialYear,
-    LastFinancialYear,
-    Last12Months,
-    ThisCalendarYear,
-    AllTime,
-}
-
-impl DateRange {
-    pub const ALL: [DateRange; 5] = [
-        Self::ThisFinancialYear,
-        Self::LastFinancialYear,
-        Self::Last12Months,
-        Self::ThisCalendarYear,
-        Self::AllTime,
-    ];
-
-    /// The inclusive due-date bounds on `today`, or `None` for All time.
-    pub fn bounds(self, today: NaiveDate) -> Option<(NaiveDate, NaiveDate)> {
-        match self {
-            Self::ThisFinancialYear => Some(financial_year(financial_year_start(today))),
-            Self::LastFinancialYear => Some(financial_year(financial_year_start(today) - 1)),
-            Self::Last12Months => {
-                let from = today.checked_sub_months(Months::new(12))?.succ_opt()?;
-                Some((from, today))
-            }
-            Self::ThisCalendarYear => Some((
-                NaiveDate::from_ymd_opt(today.year(), 1, 1)?,
-                NaiveDate::from_ymd_opt(today.year(), 12, 31)?,
-            )),
-            Self::AllTime => None,
-        }
-    }
-}
 
 /// The calendar year the financial year holding `date` starts in.
 pub fn financial_year_start(date: NaiveDate) -> i32 {
@@ -99,31 +62,29 @@ pub fn financial_year(start_year: i32) -> (NaiveDate, NaiveDate) {
     (first.first_day(), last.last_day())
 }
 
-/// The History tab's filters.
+/// The Schedule tab's filters.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HistoryFilters {
+pub struct BillFilters {
     /// The toggled-on status chips.
     pub statuses: Vec<BillStatus>,
     /// Scoped to one Bill Plan: the stat callout shows.
     pub plan_id: Option<u32>,
     pub category_id: Option<u32>,
     pub account_id: Option<u32>,
-    pub range: DateRange,
 }
 
-impl Default for HistoryFilters {
+impl Default for BillFilters {
     fn default() -> Self {
         Self {
-            statuses: vec![BillStatus::Paid, BillStatus::Skipped],
+            statuses: STATUS_CHIPS.to_vec(),
             plan_id: None,
             category_id: None,
             account_id: None,
-            range: DateRange::default(),
         }
     }
 }
 
-impl HistoryFilters {
+impl BillFilters {
     /// Turns a status chip on or off.
     pub fn toggle(&mut self, status: BillStatus) {
         if let Some(position) = self.statuses.iter().position(|s| *s == status) {
@@ -136,51 +97,26 @@ impl HistoryFilters {
     pub fn shows(&self, status: BillStatus) -> bool {
         self.statuses.contains(&status)
     }
-}
 
-/// One row of the History table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HistoryRow {
-    pub id: EntryId,
-    pub status: BillStatus,
-}
+    /// Whether any filter narrows the rows.
+    pub fn is_narrowed(&self) -> bool {
+        *self != Self::default()
+    }
 
-/// Every non-superseded entry: the `M` in the status line's "N of M rows".
-pub fn total_rows(entries: &[BillScheduleEntry]) -> usize {
-    entries.iter().filter(|e| !e.superseded).count()
-}
-
-/// The rows `filters` let through, by due date, latest first (then by Plan id, for a stable order).
-pub fn history_rows(
-    plans: &[BillPlan],
-    entries: &[BillScheduleEntry],
-    filters: &HistoryFilters,
-    today: NaiveDate,
-) -> Vec<HistoryRow> {
-    let bounds = filters.range.bounds(today);
-    let mut rows: Vec<HistoryRow> = entries
-        .iter()
-        .filter(|e| !e.superseded)
-        .filter(|e| filters.plan_id.is_none_or(|id| e.plan_id == id))
-        .filter(|e| bounds.is_none_or(|(from, to)| (from..=to).contains(&e.due)))
-        .filter(|e| {
-            bills::get(plans, e.plan_id).is_some_and(|plan| {
-                filters.category_id.is_none_or(|id| plan.category_id == id)
-                    && filters.account_id.is_none_or(|id| plan.account_id == id)
+    /// The `rows` these filters let through, in their order.
+    pub fn apply(&self, rows: &[ScheduleRow], plans: &[BillPlan]) -> Vec<ScheduleRow> {
+        rows.iter()
+            .filter(|row| self.shows(row.status))
+            .filter(|row| {
+                bills::get(plans, row.id.plan_id).is_some_and(|plan| {
+                    self.plan_id.is_none_or(|id| plan.id == id)
+                        && self.category_id.is_none_or(|id| plan.category_id == id)
+                        && self.account_id.is_none_or(|id| plan.account_id == id)
+                })
             })
-        })
-        .map(|e| HistoryRow {
-            id: e.id(),
-            status: bills::status(e, today),
-        })
-        .filter(|row| filters.shows(row.status))
-        .collect();
-    rows.sort_by(|a, b| {
-        b.id.due
-            .cmp(&a.id.due)
-            .then_with(|| a.id.plan_id.cmp(&b.id.plan_id))
-    });
-    rows
+            .copied()
+            .collect()
+    }
 }
 
 /// The stat callout's Same-period-last-year figure.
@@ -351,70 +287,47 @@ mod tests {
     }
 
     #[test]
-    fn presets_bound_the_due_date() {
-        let bounds = |range: DateRange| range.bounds(today());
-        assert_eq!(
-            bounds(DateRange::ThisFinancialYear),
-            Some((date(2026, 7, 1), date(2027, 6, 30)))
-        );
-        assert_eq!(
-            bounds(DateRange::LastFinancialYear),
-            Some((date(2025, 7, 1), date(2026, 6, 30)))
-        );
-        assert_eq!(
-            bounds(DateRange::Last12Months),
-            Some((date(2025, 9, 20), today()))
-        );
-        assert_eq!(
-            bounds(DateRange::ThisCalendarYear),
-            Some((date(2026, 1, 1), date(2026, 12, 31)))
-        );
-        assert_eq!(bounds(DateRange::AllTime), None);
-    }
-
-    #[test]
     fn toggling_a_chip_adds_or_removes_it() {
-        let mut filters = HistoryFilters::default();
-        assert!(filters.shows(BillStatus::Paid) && !filters.shows(BillStatus::Overdue));
-        filters.toggle(BillStatus::Overdue);
+        let mut filters = BillFilters::default();
+        assert!(STATUS_CHIPS.iter().all(|s| filters.shows(*s)));
+        assert!(!filters.is_narrowed());
         filters.toggle(BillStatus::Paid);
-        assert!(!filters.shows(BillStatus::Paid) && filters.shows(BillStatus::Overdue));
+        assert!(!filters.shows(BillStatus::Paid) && filters.is_narrowed());
+        filters.toggle(BillStatus::Paid);
+        assert!(filters.shows(BillStatus::Paid));
     }
 
     #[test]
-    fn rows_are_filtered_and_latest_first() {
+    fn filters_keep_the_row_order_and_scope_by_plan() {
         let world = world();
-        let telstra = plan_named(&world, "Telstra Internet").id;
-        let filters = HistoryFilters {
-            plan_id: Some(telstra),
-            ..HistoryFilters::default()
-        };
-        let rows = history_rows(&world.plans, &world.entries, &filters, today());
-        // This financial year: July and August are Paid; September is still Due, so hidden.
-        let dues: Vec<NaiveDate> = rows.iter().map(|r| r.id.due).collect();
-        assert_eq!(dues, vec![date(2026, 8, 22), date(2026, 7, 22)]);
-        assert!(rows.iter().all(|r| r.status == BillStatus::Paid));
+        let all = bills::schedule_rows(&world.plans, &world.entries, None, today());
+        assert_eq!(BillFilters::default().apply(&all, &world.plans), all);
 
-        let all = HistoryFilters {
-            statuses: STATUS_CHIPS.to_vec(),
-            range: DateRange::AllTime,
-            ..HistoryFilters::default()
+        let telstra = plan_named(&world, "Telstra Internet").id;
+        let filters = BillFilters {
+            plan_id: Some(telstra),
+            statuses: vec![BillStatus::Paid],
+            ..BillFilters::default()
         };
-        let every = history_rows(&world.plans, &world.entries, &all, today());
-        assert_eq!(every.len(), total_rows(&world.entries));
-        assert!(every.windows(2).all(|w| w[0].id.due >= w[1].id.due));
+        let rows = filters.apply(&all, &world.plans);
+        assert!(!rows.is_empty());
+        assert!(
+            rows.iter()
+                .all(|r| r.id.plan_id == telstra && r.status == BillStatus::Paid)
+        );
+        assert!(rows.windows(2).all(|w| w[0].id.due > w[1].id.due));
     }
 
     #[test]
     fn category_and_account_scope_by_plan() {
         let world = world();
+        let all = bills::schedule_rows(&world.plans, &world.entries, None, today());
         let transport = plan_named(&world, "Car Wash Membership").category_id;
-        let filters = HistoryFilters {
+        let filters = BillFilters {
             category_id: Some(transport),
-            range: DateRange::AllTime,
-            ..HistoryFilters::default()
+            ..BillFilters::default()
         };
-        let rows = history_rows(&world.plans, &world.entries, &filters, today());
+        let rows = filters.apply(&all, &world.plans);
         assert!(!rows.is_empty());
         assert!(
             rows.iter().all(|r| {
