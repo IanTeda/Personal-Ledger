@@ -70,7 +70,8 @@ use crate::{
     transaction_rows::{self, DisplayPrefs},
     transactions::{self, Transaction},
     view::{
-        accounts as accounts_view, bills as bills_view, categories as categories_view,
+        accounts as accounts_view, bills as bills_view, budgets as budgets_view,
+        categories as categories_view,
         dashboard::{self, Dashboard},
         help as help_view, import as import_view, payees as payees_view,
         settings::{self as settings_view, SettingsBodyProps},
@@ -157,6 +158,16 @@ fn bills_schedule_hints() -> Vec<(&'static str, String)> {
         ("0", crate::msg::desktop_hint_all()),
         ("1\u{2013}5", crate::msg::desktop_hint_status_chips()),
         ("f", crate::msg::desktop_hint_filters()),
+        ("tab", crate::msg::desktop_hint_switch_view()),
+    ]
+}
+
+/// The Budgets Progress tab's status-line legend (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`'s
+/// 9a); `enter` and `e` join it with the Category detail and Edit budget.
+fn budgets_progress_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("[/]", crate::msg::desktop_hint_period()),
         ("tab", crate::msg::desktop_hint_switch_view()),
     ]
 }
@@ -418,6 +429,8 @@ pub struct Shell {
     budgets_tab: budgets::BudgetsTab,
     /// The Progress tab's calendar month; starts at today's.
     budgets_period: bills::Period,
+    /// The selected Progress row (a position in `PeriodFigures::rows`).
+    budgets_selected: usize,
     /// The open Budgets dialog, if any -- `NavState::mode` is `InputMode::Dialog` for exactly as
     /// long as this is `Some`, following `bills_dialog`.
     budgets_dialog: Option<budgets::BudgetsDialog>,
@@ -552,6 +565,7 @@ impl Shell {
             budgets_current,
             budgets_tab: budgets::BudgetsTab::default(),
             budgets_period: bills::Period::of(today),
+            budgets_selected: 0,
             budgets_dialog: None,
             categories_selected: 0,
             categories_selected_id: None,
@@ -934,6 +948,7 @@ impl Shell {
                     || self.handle_payees_key(keystroke)
                     || self.handle_tags_key(keystroke)
                     || self.handle_bills_key(keystroke)
+                    || self.handle_budgets_key(keystroke)
                     || self.handle_transactions_key(keystroke)
                     || had_status_message
             }
@@ -1150,6 +1165,10 @@ impl Shell {
         }
         if self.nav.noun() == Noun::Bills {
             self.apply_bills_movement(movement);
+            return;
+        }
+        if self.nav.noun() == Noun::Budgets {
+            self.apply_budgets_movement(movement);
             return;
         }
         if self.nav.noun() == Noun::Settings
@@ -2077,6 +2096,152 @@ impl Shell {
                 selected
             }
         };
+    }
+
+    /// The Budget the Budgets surface shows and its figures for `budgets_period`, as of today.
+    fn budgets_figures(&self) -> Option<(&budgets::Budget, budgets::PeriodFigures)> {
+        let budget = self.budgets.get(self.budgets_current)?;
+        let ledger = budgets::Ledger {
+            categories: &self.categories,
+            accounts: &self.accounts,
+            transactions: &self.transactions,
+            plans: &self.bill_plans,
+            entries: &self.bill_entries,
+        };
+        let figures = budgets::period_figures(budget, &ledger, self.budgets_period, self.today);
+        Some((budget, figures))
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Progress rows. Enter's Category detail is 9d
+    /// (#403).
+    fn apply_budgets_movement(&mut self, movement: Movement) {
+        if self.budgets_tab != budgets::BudgetsTab::Progress {
+            return;
+        }
+        let len = self
+            .budgets_figures()
+            .map_or(0, |(_, figures)| figures.rows.len());
+        let selected = self.budgets_selected.min(len.saturating_sub(1));
+        self.budgets_selected = match movement {
+            Movement::Next => accounts::step_selection(selected, len, 1),
+            Movement::Prev => accounts::step_selection(selected, len, -1),
+            Movement::First => 0,
+            Movement::Last => len.saturating_sub(1),
+            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
+            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
+            Movement::Enter => selected,
+        };
+    }
+
+    /// `tab` on the Budgets page switches its tab rather than cycling focus, as on Bills.
+    fn handle_budgets_tab_key(&mut self, keystroke: &Keystroke) -> bool {
+        let pending_g_active = self
+            .pending_g
+            .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
+        let modifiers = &keystroke.modifiers;
+        if keystroke.key != "tab"
+            || modifiers.shift
+            || modifiers.control
+            || modifiers.alt
+            || modifiers.platform
+            || pending_g_active
+            || self.nav.mode() != InputMode::Normal
+            || self.nav.noun() != Noun::Budgets
+            || self.nav.focus() != FocusZone::View
+        {
+            return false;
+        }
+        self.set_budgets_tab(self.budgets_tab.next());
+        true
+    }
+
+    fn set_budgets_tab(&mut self, tab: budgets::BudgetsTab) {
+        self.budgets_tab = tab;
+        self.budgets_selected = 0;
+        self.status_message = None;
+        self.reset_view_scroll();
+    }
+
+    /// Steps the period a calendar month. The Plan and History range navs are their own tickets'.
+    fn shift_budgets_period(&mut self, forward: bool) {
+        self.budgets_period = if forward {
+            self.budgets_period.next()
+        } else {
+            self.budgets_period.prev()
+        };
+        self.budgets_selected = 0;
+    }
+
+    /// `[`/`]` step the period and `1`/`2`/`3` pick the tab; the rest of the keys are later
+    /// tickets'.
+    fn handle_budgets_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.noun() != Noun::Budgets || self.nav.focus() != FocusZone::View {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        if let Some(tab) = keystroke
+            .key
+            .chars()
+            .next()
+            .filter(|_| keystroke.key.chars().count() == 1)
+            .and_then(budgets::BudgetsTab::from_digit)
+        {
+            self.set_budgets_tab(tab);
+            return true;
+        }
+        match keystroke.key.as_str() {
+            "[" if self.budgets_tab == budgets::BudgetsTab::Progress => {
+                self.shift_budgets_period(false);
+            }
+            "]" if self.budgets_tab == budgets::BudgetsTab::Progress => {
+                self.shift_budgets_period(true);
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    /// The KNOWN COSTS stat's link: the Bills Schedule on the period being shown.
+    fn open_budgets_schedule(&mut self) {
+        self.bills_period = self.budgets_period;
+        self.bills_all = false;
+        self.bills_filters = bill_history::BillFilters::default();
+        self.set_bills_tab(bills::BillsTab::Schedule);
+        self.nav.set_noun(Noun::Bills);
+        self.reset_view_scroll();
+    }
+
+    fn handle_budgets_tab_click(&mut self, tab: budgets::BudgetsTab, cx: &mut Context<'_, Self>) {
+        self.set_budgets_tab(tab);
+        cx.notify();
+    }
+
+    fn handle_budgets_period_prev(&mut self, cx: &mut Context<'_, Self>) {
+        self.shift_budgets_period(false);
+        cx.notify();
+    }
+
+    fn handle_budgets_period_next(&mut self, cx: &mut Context<'_, Self>) {
+        self.shift_budgets_period(true);
+        cx.notify();
+    }
+
+    fn handle_budgets_edit_plan_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.set_budgets_tab(budgets::BudgetsTab::Plan);
+        cx.notify();
+    }
+
+    fn handle_budgets_known_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_budgets_schedule();
+        cx.notify();
+    }
+
+    fn handle_budgets_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.budgets_selected = index;
+        cx.notify();
     }
 
     /// `tab` on the Bills page switches its tab (the handoff's `tab switch view`) rather than
@@ -6124,6 +6289,44 @@ impl Render for Shell {
                 on_continue_click: entity_for(Shell::handle_import_continue_click),
             }
         });
+        let budgets_figures = (self.nav.noun() == Noun::Budgets)
+            .then(|| self.budgets_figures())
+            .flatten();
+        let budgets_page = budgets_figures.as_ref().map(|(budget, figures)| {
+            let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+                let entity = entity.clone();
+                let on_click: budgets_view::OnPlainClick = Rc::new(move |_window, cx| {
+                    entity.update(cx, handler);
+                });
+                on_click
+            };
+            budgets_view::BudgetsPageProps {
+                name: &budget.name,
+                method: budget.method,
+                tab: self.budgets_tab,
+                period: self.budgets_period,
+                figures,
+                categories: &self.categories,
+                selected: (!figures.rows.is_empty())
+                    .then(|| self.budgets_selected.min(figures.rows.len() - 1)),
+                on_tab_click: {
+                    let entity = entity.clone();
+                    Rc::new(move |tab, _window, cx| {
+                        entity.update(cx, |shell, cx| shell.handle_budgets_tab_click(tab, cx));
+                    })
+                },
+                on_period_prev: plain(Shell::handle_budgets_period_prev),
+                on_period_next: plain(Shell::handle_budgets_period_next),
+                on_edit_plan_click: plain(Shell::handle_budgets_edit_plan_click),
+                on_row_click: {
+                    let entity = entity.clone();
+                    Rc::new(move |index, _window, cx| {
+                        entity.update(cx, |shell, cx| shell.handle_budgets_row_click(index, cx));
+                    })
+                },
+                on_known_click: plain(Shell::handle_budgets_known_click),
+            }
+        });
         let categories_page = categories_view::CategoriesPageProps {
             categories: &self.categories,
             budgets: &self.budgets,
@@ -6404,6 +6607,17 @@ impl Render for Shell {
                     i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
                 ),
             }),
+            Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Progress => {
+                Some(PageStatus {
+                    hints: budgets_progress_hints(),
+                    right: crate::msg::desktop_budgets_status_period(
+                        &budgets_view::period_label(self.budgets_period),
+                        budgets_figures.as_ref().map_or(0, |(_, figures)| {
+                            i64::try_from(figures.rows.len()).unwrap_or(i64::MAX)
+                        }),
+                    ),
+                })
+            }
             Noun::Tags => Some(PageStatus {
                 hints: match self.tags_dialog {
                     Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
@@ -6472,6 +6686,7 @@ impl Render for Shell {
                 let chosen = settings_view::colour_theme::chosen_index(cx);
                 if this.handle_colour_theme_grid_key(&event.keystroke, chosen)
                     || this.handle_bills_tab_key(&event.keystroke)
+                    || this.handle_budgets_tab_key(&event.keystroke)
                     || this.handle_key_down(event)
                 {
                     cx.notify();
@@ -6543,6 +6758,7 @@ impl Render for Shell {
                                     payees: payees_page,
                                     tags: tags_page,
                                     bills: bills_page,
+                                    budgets: budgets_page,
                                     import: import_page,
                                     transactions: transactions_page,
                                 },
@@ -6976,6 +7192,8 @@ struct PageProps<'a> {
     payees: payees_view::PayeesPageProps<'a>,
     tags: tags_view::TagsPageProps<'a>,
     bills: bills_view::BillsPageProps<'a>,
+    /// `None` when the Budget shown has gone.
+    budgets: Option<budgets_view::BudgetsPageProps<'a>>,
     /// `Some` while 6e shows in place of the Transactions page.
     import: Option<import_view::ImportPageProps<'a>>,
     transactions: Option<transactions_view::TransactionsPageProps>,
@@ -7065,6 +7283,11 @@ fn render_view(
     }
     if noun == Noun::Bills {
         return bills_view::render(focused, scroll_handle, pages.bills, cx);
+    }
+    if noun == Noun::Budgets
+        && let Some(budgets) = pages.budgets
+    {
+        return budgets_view::render(focused, scroll_handle, budgets, cx);
     }
     if noun == Noun::Transactions
         && let Some(import) = pages.import

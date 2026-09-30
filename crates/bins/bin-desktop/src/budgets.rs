@@ -320,19 +320,21 @@ pub fn effective_budget(
     )
 }
 
-/// The open Bill Schedule amounts a leaf carries in `month` on the Budget's Accounts.
+/// The open Bill Schedule amounts a leaf carries in `month` on the Budget's Accounts, and how
+/// many entries make them up.
 fn known_costs(
     budget: &Budget,
     ledger: &Ledger<'_>,
     category_id: u32,
     month: Period,
     today: NaiveDate,
-) -> BigDecimal {
+) -> (BigDecimal, usize) {
     let current = Period::of(today);
     if month < current {
-        return zero();
+        return (zero(), 0);
     }
     let mut total = zero();
+    let mut count = 0;
     for entry in ledger.entries.iter().filter(|entry| entry.is_open()) {
         let Some(plan) = crate::bills::get(ledger.plans, entry.plan_id) else {
             continue;
@@ -349,9 +351,10 @@ fn known_costs(
         };
         if counts {
             total += plan.planned_amount.0.clone();
+            count += 1;
         }
     }
-    total
+    (total, count)
 }
 
 /// One row of the Progress table.
@@ -416,6 +419,8 @@ pub struct PeriodFigures {
     pub carried_in: Money,
     pub spent: Money,
     pub known: Money,
+    /// The unpaid bills behind `known`.
+    pub known_count: usize,
     /// BUDGETED − SPENT − KNOWN over budgeted leaves; negative when the month is over.
     pub left: Money,
     /// Spent on leaves with no Budget Amount this month.
@@ -433,6 +438,7 @@ struct LeafFigures {
     effective: Option<Effective>,
     spent: BigDecimal,
     known: BigDecimal,
+    known_count: usize,
 }
 
 impl LeafFigures {
@@ -470,10 +476,12 @@ pub fn period_figures(
     let leaves: BTreeMap<u32, LeafFigures> = expense_leaves(ledger.categories)
         .into_iter()
         .map(|id| {
+            let (known, known_count) = known_costs(budget, ledger, id, month, today);
             let figures = LeafFigures {
                 effective: effective(budget, &index, id, month, today),
                 spent: index.spent(id, month),
-                known: known_costs(budget, ledger, id, month, today),
+                known,
+                known_count,
             };
             (id, figures)
         })
@@ -516,6 +524,7 @@ pub fn period_figures(
             .filter_map(|l| l.effective.as_ref().map(|e| e.carried_in.0.clone())));
     let spent = sum(&mut budgeted_leaves().map(|l| l.spent.clone()));
     let known = sum(&mut budgeted_leaves().map(|l| l.known.clone()));
+    let known_count = budgeted_leaves().map(|l| l.known_count).sum();
     let unbudgeted = || leaves.values().filter(|l| l.effective.is_none());
     let unbudgeted_spent = sum(&mut unbudgeted().map(|l| l.spent.clone()));
     let unbudgeted_known = sum(&mut unbudgeted().map(|l| l.known.clone()));
@@ -536,6 +545,7 @@ pub fn period_figures(
         carried_in: Money(carried_in),
         spent: Money(spent),
         known: Money(known),
+        known_count,
         left: Money(left),
         unbudgeted_spent: Money(unbudgeted_spent),
         unbudgeted_known: Money(unbudgeted_known),
@@ -2239,6 +2249,8 @@ mod tests {
             Some(money("105.00"))
         );
         assert_eq!(now.left, money("95.00"));
+        // The four unpaid bills on the Budget's Account: two this month, one carried, none off-budget.
+        assert_eq!(now.known_count, 3);
 
         let next = period_figures(&budget, &world.ledger(), sep().next(), today());
         assert_eq!(

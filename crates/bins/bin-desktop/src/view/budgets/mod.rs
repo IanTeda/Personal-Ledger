@@ -1,0 +1,240 @@
+//! The Budgets page (`docs/ux/desktop/Budgets_v2/`): the shared header (the Budget's name as the
+//! switcher's title with its method tag, the meta line, the primary action), the tab strip with
+//! its legend and the `‹ month ›` period nav, a 2px rule, then the active tab's body.
+//!
+//! Only the Progress tab (9a, `progress`) is built; Plan and History are placeholders until their
+//! tickets. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
+//! handlers.
+
+pub mod progress;
+
+use std::rc::Rc;
+
+use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*, px};
+use lib_locale::format::upper;
+
+use crate::{
+    bills::Period,
+    budgets::{BudgetsTab, Method, PeriodFigures},
+    categories::Category,
+    theme::color,
+};
+
+pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+/// Called with a row's position in the Progress table.
+pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+pub type OnTabClick = Rc<dyn Fn(BudgetsTab, &mut Window, &mut App)>;
+
+pub struct BudgetsPageProps<'a> {
+    pub name: &'a str,
+    pub method: Method,
+    pub tab: BudgetsTab,
+    pub period: Period,
+    pub figures: &'a PeriodFigures,
+    pub categories: &'a [Category],
+    /// Index into `figures.rows` of the selected row.
+    pub selected: Option<usize>,
+    pub on_tab_click: OnTabClick,
+    pub on_period_prev: OnPlainClick,
+    pub on_period_next: OnPlainClick,
+    pub on_edit_plan_click: OnPlainClick,
+    pub on_row_click: OnRowClick,
+    /// The KNOWN COSTS stat's link to the Bills Schedule.
+    pub on_known_click: OnPlainClick,
+}
+
+pub fn render(
+    focused: bool,
+    scroll_handle: &ScrollHandle,
+    props: BudgetsPageProps<'_>,
+    cx: &App,
+) -> AnyElement {
+    let body = match props.tab {
+        BudgetsTab::Progress => progress::render(&props, cx),
+        BudgetsTab::Plan | BudgetsTab::History => div()
+            .text_color(color::muted(cx))
+            .child(crate::msg::desktop_budgets_tab_later())
+            .into_any_element(),
+    };
+    div()
+        .id("budgets")
+        .flex_1()
+        .min_w(px(0.0))
+        .h_full()
+        .overflow_y_scroll()
+        .track_scroll(scroll_handle)
+        .when(focused, |this| {
+            this.border_l(px(2.0)).border_color(color::foreground(cx))
+        })
+        .px(px(28.0))
+        .py(px(22.0))
+        .child(page_header(&props, cx))
+        .child(tab_row(&props, cx))
+        .child(
+            div()
+                .h(px(2.0))
+                .flex_none()
+                .bg(color::structural_rule(cx))
+                .mb(px(24.0)),
+        )
+        .child(body)
+        .into_any_element()
+}
+
+fn method_label(method: Method) -> String {
+    match method {
+        Method::Limits => crate::msg::desktop_budgets_method_limits(),
+    }
+}
+
+/// The title as the switcher (name, chevron, method tag) with the meta line below it, and the
+/// `Edit plan` action at the right.
+fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
+    let on_edit_plan = props.on_edit_plan_click.clone();
+    let hover = color::muted(cx);
+    div()
+        .flex()
+        .items_end()
+        .justify_between()
+        .gap(px(16.0))
+        .mb(px(16.0))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(6.0))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(10.0))
+                        .child(
+                            div()
+                                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                                .text_size(px(28.0))
+                                .text_color(color::foreground(cx))
+                                .child(props.name.to_string()),
+                        )
+                        .child(
+                            div()
+                                .text_size(px(14.0))
+                                .text_color(color::muted(cx))
+                                .child("\u{25be}"),
+                        )
+                        .child(method_tag(props.method, cx)),
+                )
+                .child(progress::meta_line(props, cx)),
+        )
+        .child(
+            div()
+                .id("budgets-edit-plan")
+                .cursor_pointer()
+                .flex_none()
+                .py(px(10.0))
+                .px(px(16.0))
+                .bg(color::foreground(cx))
+                .text_color(color::selection_text(cx))
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .whitespace_nowrap()
+                .hover(move |style| style.bg(hover))
+                .on_click(move |_event, window, cx| on_edit_plan(window, cx))
+                .child(crate::msg::desktop_budgets_edit_plan()),
+        )
+}
+
+/// The method's solid tag: 10px, extra bold, tracked out.
+fn method_tag(method: Method, cx: &App) -> impl IntoElement {
+    div()
+        .py(px(4.0))
+        .px(px(7.0))
+        .bg(color::foreground(cx))
+        .text_color(color::selection_text(cx))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .text_size(px(10.0))
+        .child(upper(&method_label(method)))
+}
+
+fn tab_label(tab: BudgetsTab) -> String {
+    match tab {
+        BudgetsTab::Progress => crate::msg::desktop_budgets_tab_progress(),
+        BudgetsTab::Plan => crate::msg::desktop_budgets_tab_plan(),
+        BudgetsTab::History => crate::msg::desktop_budgets_tab_history(),
+    }
+}
+
+/// The active tab a dark filled cell, the rest plain text; the Progress legend and the period nav
+/// at the right.
+fn tab_row(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
+    let tabs = [BudgetsTab::Progress, BudgetsTab::Plan, BudgetsTab::History];
+    div()
+        .flex()
+        .items_center()
+        .children(tabs.into_iter().map(|tab| {
+            let active = tab == props.tab;
+            let on_click = props.on_tab_click.clone();
+            let hover = color::hover(cx);
+            div()
+                .id(SharedString::from(format!("budgets-tab-{tab:?}")))
+                .cursor_pointer()
+                .py(px(8.0))
+                .px(px(16.0))
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .when(active, |this| {
+                    this.bg(color::selection_background(cx))
+                        .text_color(color::selection_text(cx))
+                })
+                .when(!active, |this| {
+                    this.text_color(color::muted(cx))
+                        .hover(move |style| style.bg(hover))
+                })
+                .on_click(move |_event, window, cx| on_click(tab, window, cx))
+                .child(tab_label(tab))
+        }))
+        .when(props.tab == BudgetsTab::Progress, |this| {
+            this.child(progress::legend(cx))
+        })
+        .child(div().flex_1())
+        .child(period_nav(props, cx))
+}
+
+/// `‹ September 2026 ›`.
+fn period_nav(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
+    let arrow = |id: &'static str, glyph: &'static str, on_click: OnPlainClick| {
+        let hover = color::foreground(cx);
+        div()
+            .id(id)
+            .cursor_pointer()
+            .px(px(8.0))
+            .text_color(color::muted(cx))
+            .hover(move |style| style.text_color(hover))
+            .on_click(move |_event, window, cx| on_click(window, cx))
+            .child(glyph)
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap(px(4.0))
+        .text_size(px(12.0))
+        .child(arrow(
+            "budgets-period-prev",
+            "\u{2039}",
+            props.on_period_prev.clone(),
+        ))
+        .child(
+            div()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_color(color::foreground(cx))
+                .whitespace_nowrap()
+                .child(period_label(props.period)),
+        )
+        .child(arrow(
+            "budgets-period-next",
+            "\u{203a}",
+            props.on_period_next.clone(),
+        ))
+}
+
+/// A period as the Locale writes a month and year (`September 2026`).
+pub fn period_label(period: Period) -> String {
+    lib_locale::format::format_year_month(period.year, period.month)
+}
