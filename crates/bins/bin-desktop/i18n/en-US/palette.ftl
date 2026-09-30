@@ -16,6 +16,7 @@ desktop-command-accounts-edit-description = edit an account by name, or the sele
 desktop-command-accounts-delete-description = delete an account by name, or the selected row
 desktop-command-bills-description = recurring and upcoming bills
 desktop-command-budgets-description = category limits and actuals
+desktop-command-budgets-switch-description = switch to another budget
 desktop-command-categories-description = the category tree
 desktop-command-open-description = load a ledger file
 desktop-command-new-description = start a new ledger

@@ -40,7 +40,7 @@ use crate::{
     bill_form, bill_history, bills, budgets,
     categories::{self, Category},
     colours::ColourChange,
-    command::{self, AccountsVerb, Command, CommandEffect},
+    command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
     explorer::{self, ExplorerMode, FileExplorer},
     format,
     import::{self, ImportState, RowSelect},
@@ -163,6 +163,10 @@ fn bills_schedule_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// Where the Switcher's card starts below the window's top: under the top bar, the page's top
+/// padding and the title line.
+const BUDGETS_SWITCHER_TOP: gpui::Pixels = px(122.0);
+
 /// The file name the History export's save dialog suggests.
 const BUDGET_HISTORY_FILE: &str = "budget-history.csv";
 
@@ -173,8 +177,9 @@ fn budgets_progress_hints() -> Vec<(&'static str, String)> {
         ("j/k", crate::msg::desktop_hint_row()),
         ("enter", crate::msg::desktop_hint_open()),
         ("e", crate::msg::desktop_hint_edit_budget()),
-        ("n", crate::msg::desktop_hint_budget_category()),
+        ("c", crate::msg::desktop_hint_budget_category()),
         ("s", crate::msg::desktop_hint_stop_budgeting()),
+        ("B", crate::msg::desktop_hint_switch_budget()),
         ("[/]", crate::msg::desktop_hint_period()),
         ("tab", crate::msg::desktop_hint_switch_view()),
     ]
@@ -188,7 +193,7 @@ fn budgets_plan_hints() -> Vec<(&'static str, String)> {
         ("r", crate::msg::desktop_hint_rollover()),
         ("x", crate::msg::desktop_hint_clear()),
         ("f", crate::msg::desktop_hint_fill()),
-        ("n", crate::msg::desktop_hint_budget_category()),
+        ("c", crate::msg::desktop_hint_budget_category()),
         ("[/]", crate::msg::desktop_hint_range()),
         ("tab", crate::msg::desktop_hint_switch_view()),
     ]
@@ -233,6 +238,17 @@ fn budgets_history_hints() -> Vec<(&'static str, String)> {
         ("x", crate::msg::desktop_hint_export()),
         ("[/]", crate::msg::desktop_hint_range()),
         ("tab", crate::msg::desktop_hint_switch_view()),
+    ]
+}
+
+/// The status-line legend while the Switcher (11b) is open.
+fn budgets_switcher_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("enter", crate::msg::desktop_hint_open()),
+        ("/", crate::msg::desktop_hint_search()),
+        ("n", crate::msg::desktop_hint_new_budget()),
+        ("esc", crate::msg::desktop_hint_close()),
     ]
 }
 
@@ -940,6 +956,14 @@ impl Shell {
                     .and_then(bills::BillsDialog::plan_form_mut)
                     && form.close_open_select()
                 {
+                    return true;
+                }
+                // The Switcher's search gives the keys back to the list before the popover closes.
+                if let Some(budgets::BudgetsDialog::Switcher(switcher)) =
+                    self.budgets_dialog.as_mut()
+                    && switcher.searching
+                {
+                    switcher.searching = false;
                     return true;
                 }
                 let closed_budgets_list = match self.budgets_dialog.as_mut() {
@@ -3015,6 +3039,203 @@ impl Shell {
         true
     }
 
+    /// The Budgets page's status-line legend: the open dialog's keys, else the tab's.
+    fn budgets_hints(&self) -> Vec<(&'static str, String)> {
+        use budgets::{BudgetsDialog, BudgetsTab};
+        match (&self.budgets_dialog, self.budgets_tab) {
+            (Some(BudgetsDialog::Switcher(_)), _) => budgets_switcher_hints(),
+            (Some(BudgetsDialog::EditLimit(_)), _) => budgets_limit_hints(),
+            (Some(BudgetsDialog::Stop(_)), _) => budgets_stop_hints(),
+            (Some(BudgetsDialog::Fill { .. }), _) => budgets_fill_hints(),
+            (Some(_), _) => budgets_detail_hints(),
+            (None, BudgetsTab::Progress) => budgets_progress_hints(),
+            (None, BudgetsTab::Plan) if self.budgets_plan_edit.is_some() => {
+                budgets_plan_insert_hints()
+            }
+            (None, BudgetsTab::Plan) => budgets_plan_hints(),
+            (None, BudgetsTab::History) => budgets_history_hints(),
+        }
+    }
+
+    /// `B` or a click on the title: opens 11b with the Budget on show highlighted.
+    fn open_budgets_switcher(&mut self) {
+        self.budgets_dialog = Some(budgets::BudgetsDialog::Switcher(budgets::Switcher::new(
+            &self.budgets,
+            self.budgets_current,
+        )));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Shows Budget `id` on the surface, keeping the active tab (every method built has all
+    /// three) and putting each tab's cursor and range back at its start.
+    fn switch_budget(&mut self, id: u32) {
+        if self.budgets.get(id).is_none() {
+            return;
+        }
+        self.budgets_current = id;
+        self.budgets_selected = 0;
+        self.budgets_plan_cursor = (0, 0);
+        self.budgets_plan_edit = None;
+        self.budgets_plan_start = budgets::default_plan_start(self.today);
+        self.budgets_history_cursor = (0, 0);
+        self.budgets_history_end = bills::Period::of(self.today);
+        self.reset_view_scroll();
+    }
+
+    /// `enter` or a click on a Switcher row: switches to it and closes the popover.
+    fn choose_budgets_switcher(&mut self, id: u32) {
+        self.budgets_dialog = None;
+        self.nav.exit_mode();
+        self.switch_budget(id);
+    }
+
+    /// `n` on the Budgets page and the Switcher's `+ New budget`: 11c.
+    fn open_budgets_new(&mut self) {
+        self.budgets_dialog = None;
+        self.nav.exit_mode();
+        self.status_message = Some(crate::msg::desktop_budgets_status_later());
+    }
+
+    /// The Switcher's `Manage budgets…`: 11f.
+    fn open_budgets_manage(&mut self) {
+        self.budgets_dialog = None;
+        self.nav.exit_mode();
+        self.status_message = Some(crate::msg::desktop_budgets_status_later());
+    }
+
+    /// Keys while the Switcher (11b) is open. With the list focused `j`/`k` move, `enter` opens,
+    /// `n` starts a new Budget and `/` hands the keys to the search field; while searching, every
+    /// character narrows the list and only the arrows move. `Esc` never reaches here.
+    fn handle_budgets_switcher_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(budgets::BudgetsDialog::Switcher(switcher)) = self.budgets_dialog.as_mut() else {
+            return false;
+        };
+        let searching = switcher.searching;
+        match keystroke.key.as_str() {
+            "down" => switcher.step(&self.budgets, true),
+            "up" => switcher.step(&self.budgets, false),
+            "enter" => {
+                if let Some(id) = switcher.chosen(&self.budgets) {
+                    self.choose_budgets_switcher(id);
+                }
+            }
+            "backspace" if searching => switcher.backspace(),
+            "j" if !searching => switcher.step(&self.budgets, true),
+            "k" if !searching => switcher.step(&self.budgets, false),
+            "/" if !searching => switcher.searching = true,
+            "n" if !searching => self.open_budgets_new(),
+            _ if searching => {
+                if let Some(ch) = typed_char(keystroke) {
+                    switcher.type_char(ch);
+                }
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    fn handle_budgets_title_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_budgets_switcher();
+        cx.notify();
+    }
+
+    fn handle_budgets_switcher_search_click(&mut self, cx: &mut Context<'_, Self>) {
+        if let Some(budgets::BudgetsDialog::Switcher(switcher)) = self.budgets_dialog.as_mut() {
+            switcher.searching = true;
+        }
+        cx.notify();
+    }
+
+    fn handle_budgets_new_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_budgets_new();
+        cx.notify();
+    }
+
+    fn handle_budgets_manage_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_budgets_manage();
+        cx.notify();
+    }
+
+    /// A Budget's one-line summary in the Switcher: its health this month, or when it was
+    /// archived.
+    fn budgets_summary(&self, budget: &budgets::Budget) -> String {
+        if let Some(date) = budget.archived_at {
+            return crate::msg::desktop_budgets_switcher_archived_on(&format::date(
+                date,
+                self.settings_date_style,
+            ));
+        }
+        let health = budgets::health(budget, &self.budgets_ledger(), self.today);
+        let left = format::amount(&health.left).1;
+        if health.at_risk > 0 {
+            crate::msg::desktop_budgets_switcher_health_at_risk(
+                &health.over.to_string(),
+                &left,
+                &health.at_risk.to_string(),
+            )
+        } else {
+            crate::msg::desktop_budgets_switcher_health(&health.over.to_string(), &left)
+        }
+    }
+
+    /// The Switcher popover (11b), anchored under the page title.
+    fn render_budgets_switcher(
+        &self,
+        entity: &gpui::Entity<Self>,
+        cx: &gpui::App,
+    ) -> Option<gpui::AnyElement> {
+        let Some(budgets::BudgetsDialog::Switcher(switcher)) = self.budgets_dialog.as_ref() else {
+            return None;
+        };
+        let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        let rows = budgets::switcher_ids(&self.budgets, &switcher.query)
+            .into_iter()
+            .filter_map(|id| self.budgets.get(id))
+            .map(|budget| budgets_view::switcher::SwitcherRow {
+                id: budget.id,
+                name: budget.name.clone(),
+                is_default: budget.is_default,
+                is_current: budget.id == self.budgets_current,
+                archived: budget.is_archived(),
+                summary: self.budgets_summary(budget),
+                method: budget.method,
+            })
+            .collect();
+        // The page's left edge: past the primary rail and the context rail, inside its gutter.
+        let rail = match self.nav.primary_rail() {
+            crate::nav::RailMode::Expanded => rail::primary::WIDTH,
+            crate::nav::RailMode::Collapsed => rail::primary::COLLAPSED_WIDTH,
+        };
+        Some(budgets_view::switcher::render(
+            budgets_view::switcher::SwitcherProps {
+                state: switcher,
+                rows,
+                left: rail + rail::context::WIDTH + px(28.0),
+                top: BUDGETS_SWITCHER_TOP,
+                on_search_click: plain(Shell::handle_budgets_switcher_search_click),
+                on_budget_click: {
+                    let entity = entity.clone();
+                    Rc::new(move |id, _window, cx| {
+                        entity.update(cx, |shell, cx| {
+                            shell.choose_budgets_switcher(id);
+                            cx.notify();
+                        });
+                    })
+                },
+                on_new: plain(Shell::handle_budgets_new_click),
+                on_manage: plain(Shell::handle_budgets_manage_click),
+                on_cancel: plain(Shell::handle_budgets_dialog_cancel),
+            },
+            cx,
+        ))
+    }
+
     /// The month Fill would target from the Plan cursor: the first open month at or after its
     /// column.
     fn budgets_fill_target(&self) -> bills::Period {
@@ -3185,6 +3406,9 @@ impl Shell {
             }
             Some(budgets::BudgetsDialog::Fill { .. }) => {
                 return self.handle_budgets_fill_key(keystroke);
+            }
+            Some(budgets::BudgetsDialog::Switcher(_)) => {
+                return self.handle_budgets_switcher_key(keystroke);
             }
             _ => {}
         }
@@ -3573,14 +3797,22 @@ impl Shell {
         self.budgets_selected = 0;
     }
 
-    /// `[`/`]` step the period and `1`/`2`/`3` pick the tab; `n` budgets a Category, and on
-    /// Progress `e` edits the row's budget and `s` stops it. The rest are later tickets'.
+    /// `B` opens the Switcher and `n` New budget; `[`/`]` step the period and `1`/`2`/`3` pick the
+    /// tab; `c` budgets a Category, and on Progress `e` edits the row's budget and `s` stops it.
     fn handle_budgets_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Budgets || self.nav.focus() != FocusZone::View {
             return false;
         }
         let modifiers = &keystroke.modifiers;
-        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+        if modifiers.control || modifiers.alt || modifiers.platform {
+            return false;
+        }
+        // Bare `b` stays the rail toggle, so the Switcher takes the shifted key (#400).
+        if modifiers.shift {
+            if keystroke.key.eq_ignore_ascii_case("b") {
+                self.open_budgets_switcher();
+                return true;
+            }
             return false;
         }
         if let Some(tab) = keystroke
@@ -3594,8 +3826,12 @@ impl Shell {
             return true;
         }
         match keystroke.key.as_str() {
-            "n" if self.budgets_tab != budgets::BudgetsTab::History => {
+            "c" if self.budgets_tab != budgets::BudgetsTab::History => {
                 self.open_budgets_limit_picker();
+                return true;
+            }
+            "n" => {
+                self.open_budgets_new();
                 return true;
             }
             "e" | "s" if self.budgets_tab == budgets::BudgetsTab::Progress => {
@@ -6533,6 +6769,17 @@ impl Shell {
                 self.nav.exit_mode();
                 self.open_import();
             }
+            CommandEffect::Budgets(verb) => {
+                self.nav.exit_mode();
+                let noun_before = self.nav.noun();
+                self.nav.set_noun(Noun::Budgets);
+                if noun_before != Noun::Budgets {
+                    self.reset_view_scroll();
+                }
+                match verb {
+                    BudgetsVerb::Switch => self.open_budgets_switcher(),
+                }
+            }
             CommandEffect::NotYetBuilt => {
                 self.nav.exit_mode();
                 self.status_message = Some(crate::msg::desktop_status_command_not_yet_built(
@@ -7819,6 +8066,7 @@ impl Render for Shell {
                         entity.update(cx, |shell, cx| shell.handle_budgets_tab_click(tab, cx));
                     })
                 },
+                on_title_click: plain(Shell::handle_budgets_title_click),
                 on_period_prev: plain(Shell::handle_budgets_period_prev),
                 on_period_next: plain(Shell::handle_budgets_period_next),
                 on_edit_plan_click: plain(Shell::handle_budgets_edit_plan_click),
@@ -8126,12 +8374,7 @@ impl Render for Shell {
             }),
             Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Progress => {
                 Some(PageStatus {
-                    hints: match self.budgets_dialog {
-                        Some(budgets::BudgetsDialog::EditLimit(_)) => budgets_limit_hints(),
-                        Some(budgets::BudgetsDialog::Stop(_)) => budgets_stop_hints(),
-                        Some(_) => budgets_detail_hints(),
-                        None => budgets_progress_hints(),
-                    },
+                    hints: self.budgets_hints(),
                     right: crate::msg::desktop_budgets_status_period(
                         &budgets_view::period_label(self.budgets_period),
                         budgets_figures.as_ref().map_or(0, |(_, figures)| {
@@ -8141,18 +8384,7 @@ impl Render for Shell {
                 })
             }
             Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Plan => Some(PageStatus {
-                hints: if matches!(
-                    self.budgets_dialog,
-                    Some(budgets::BudgetsDialog::Fill { .. })
-                ) {
-                    budgets_fill_hints()
-                } else if self.budgets_dialog.is_some() {
-                    budgets_limit_hints()
-                } else if self.budgets_plan_edit.is_some() {
-                    budgets_plan_insert_hints()
-                } else {
-                    budgets_plan_hints()
-                },
+                hints: self.budgets_hints(),
                 right: budgets_plan.as_ref().map_or_else(String::new, |plan| {
                     crate::msg::desktop_budgets_status_plan(
                         &budgets_view::plan::range_label(plan),
@@ -8161,12 +8393,7 @@ impl Render for Shell {
                 }),
             }),
             Noun::Budgets => Some(PageStatus {
-                hints: match self.budgets_dialog {
-                    Some(budgets::BudgetsDialog::EditLimit(_)) => budgets_limit_hints(),
-                    Some(budgets::BudgetsDialog::Stop(_)) => budgets_stop_hints(),
-                    Some(_) => budgets_detail_hints(),
-                    None => budgets_history_hints(),
-                },
+                hints: self.budgets_hints(),
                 right: budgets_history
                     .as_ref()
                     .map_or_else(String::new, |history| {
@@ -8444,6 +8671,7 @@ impl Render for Shell {
             .children(self.render_budgets_detail(&entity, cx))
             .children(self.render_budgets_limit_dialog(&entity, cx))
             .children(self.render_budgets_fill_dialog(&entity, cx))
+            .children(self.render_budgets_switcher(&entity, cx))
             .children(match self.payees_dialog.as_ref() {
                 Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
                     payees_view::add_dialog::PayeeDialogMode::Add,

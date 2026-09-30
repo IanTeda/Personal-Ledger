@@ -225,3 +225,19 @@ desktop-budgets-fill-note = Fill writes this month only, for categories budgeted
 desktop-budgets-fill-submit = Fill { $month }
 desktop-hint-fill = fill
 desktop-hint-source = source
+
+## The Switcher popover (11b): the search field, a row's default marker and health line, the
+## archived section and the footer. `$date` is already formatted.
+
+desktop-budgets-switcher-search = find a budget
+desktop-budgets-switcher-default = default
+desktop-budgets-switcher-health = { $over } over · { $left } left to spend
+desktop-budgets-switcher-health-at-risk = { $over } over · { $left } left to spend · { $risk } at risk
+desktop-budgets-switcher-archived = Archived
+desktop-budgets-switcher-archived-on = archived { $date }
+desktop-budgets-switcher-none = No budget matches.
+desktop-budgets-switcher-new = + New budget
+desktop-budgets-switcher-manage = Manage budgets…
+desktop-budgets-status-later = That screen is built in a later ticket.
+desktop-hint-switch-budget = switch budget
+desktop-hint-new-budget = new budget

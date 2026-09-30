@@ -58,6 +58,9 @@ pub enum CommandEffect {
     /// `:tags merge`: jumps to the Tags page and opens the 7e Merge dialog with neither select
     /// chosen (#354).
     MergeTags,
+    /// A `budgets <verb>` command: `Shell::run_command` jumps to the Budgets page and runs the
+    /// verb on the Budget on show.
+    Budgets(BudgetsVerb),
     /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
     Import,
     /// No real behaviour behind this command yet (`docs/ux/tui/README.md`'s commitment: "a
@@ -77,6 +80,14 @@ pub enum AccountsVerb {
     Edit,
     /// `accounts delete [<account name>]`: the Delete dialog for the named (or selected) account.
     Delete,
+}
+
+/// The Budgets verbs the palette understands (#400): the same actions the page's keys and the
+/// Switcher reach, through the same handlers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetsVerb {
+    /// `budgets switch`: the Switcher popover (11b).
+    Switch,
 }
 
 /// The palette's resting-state group a command sits under: one per noun, plus `Ledger` for the
@@ -226,6 +237,13 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_budgets_description,
         binding: Some("g b"),
         effect: CommandEffect::Navigate(Noun::Budgets),
+    },
+    Command {
+        name: "budgets switch",
+        domain: Domain::Budgets,
+        description: crate::msg::desktop_command_budgets_switch_description,
+        binding: Some("B"),
+        effect: CommandEffect::Budgets(BudgetsVerb::Switch),
     },
     Command {
         name: "categories",
@@ -438,6 +456,15 @@ mod tests {
         let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
         assert_eq!(effect("toasts on"), Some(CommandEffect::SetToasts(true)));
         assert_eq!(effect("toasts off"), Some(CommandEffect::SetToasts(false)));
+    }
+
+    #[test]
+    fn the_budgets_verbs_carry_their_effects() {
+        let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
+        assert_eq!(
+            effect("budgets switch"),
+            Some(CommandEffect::Budgets(BudgetsVerb::Switch))
+        );
     }
 
     #[test]

@@ -2146,11 +2146,75 @@ impl BudgetsTab {
     }
 }
 
+/// The Switcher popover's state (11b). The list takes `j`/`k`/`n` until `/` hands the keys to the
+/// search field.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Switcher {
+    pub query: String,
+    pub searching: bool,
+    /// Index into [`switcher_ids`] for the query.
+    pub selected: usize,
+}
+
+impl Switcher {
+    /// Opens with `current` highlighted.
+    pub fn new(budgets: &Budgets, current: u32) -> Self {
+        Self {
+            selected: switcher_ids(budgets, "")
+                .iter()
+                .position(|id| *id == current)
+                .unwrap_or(0),
+            ..Self::default()
+        }
+    }
+
+    /// Moves the highlight, stopping at either end of the matching rows.
+    pub fn step(&mut self, budgets: &Budgets, forward: bool) {
+        let last = switcher_ids(budgets, &self.query).len().saturating_sub(1);
+        self.selected = if forward {
+            (self.selected + 1).min(last)
+        } else {
+            self.selected.min(last).saturating_sub(1)
+        };
+    }
+
+    /// The highlighted Budget, if any row matches.
+    pub fn chosen(&self, budgets: &Budgets) -> Option<u32> {
+        let ids = switcher_ids(budgets, &self.query);
+        ids.get(self.selected.min(ids.len().saturating_sub(1)))
+            .copied()
+    }
+
+    pub fn type_char(&mut self, c: char) {
+        if !c.is_control() {
+            self.query.push(c);
+            self.selected = 0;
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        self.query.pop();
+        self.selected = 0;
+    }
+}
+
+/// The Switcher's rows: active Budgets in creation order, then archived ones, keeping those whose
+/// name contains `query` whatever its case.
+pub fn switcher_ids(budgets: &Budgets, query: &str) -> Vec<u32> {
+    let query = query.trim().to_lowercase();
+    budgets
+        .active()
+        .chain(budgets.archived())
+        .filter(|budget| query.is_empty() || budget.name.to_lowercase().contains(&query))
+        .map(|budget| budget.id)
+        .collect()
+}
+
 /// The open Budgets dialog. Each screen's ticket adds its form to its variant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BudgetsDialog {
     /// 11b, the popover under the title.
-    Switcher,
+    Switcher(Switcher),
     /// 11c creating a Budget.
     New,
     /// 11c's edit mode on this Budget.
@@ -3266,6 +3330,59 @@ mod tests {
             three_month_average(&budget, &ledger, world.category("Groceries"), sep()),
             money("0.00")
         );
+    }
+
+    // -- the Switcher -------------------------------------------------------------------------------
+
+    #[test]
+    fn the_switcher_lists_active_budgets_then_archived_and_filters_by_name() {
+        let world = World::new();
+        let mut budgets = default_budgets(&world.accounts, &world.categories, today());
+        let ids: Vec<u32> = budgets.all().iter().map(|b| b.id).collect();
+        assert!(ids.len() >= 2, "the seed has more than one Budget");
+        assert_eq!(switcher_ids(&budgets, ""), ids);
+
+        // Archiving moves a Budget below the active ones.
+        let other = ids
+            .iter()
+            .copied()
+            .find(|id| *id != PERSONAL_SPENDING_ID)
+            .unwrap_or_default();
+        assert_eq!(budgets.archive(other, today()), Ok(()));
+        assert_eq!(switcher_ids(&budgets, "").last(), Some(&other));
+
+        assert_eq!(
+            switcher_ids(&budgets, "  PERSONAL "),
+            vec![PERSONAL_SPENDING_ID]
+        );
+        assert!(switcher_ids(&budgets, "no such budget").is_empty());
+    }
+
+    #[test]
+    fn the_switcher_opens_on_the_current_budget_and_steps_inside_its_rows() {
+        let world = World::new();
+        let budgets = default_budgets(&world.accounts, &world.categories, today());
+        let ids = switcher_ids(&budgets, "");
+        let last = *ids.last().unwrap_or(&0);
+        let mut switcher = Switcher::new(&budgets, last);
+        assert_eq!(switcher.chosen(&budgets), Some(last));
+        switcher.step(&budgets, true);
+        assert_eq!(switcher.chosen(&budgets), Some(last), "stops at the end");
+        for _ in 0..ids.len() {
+            switcher.step(&budgets, false);
+        }
+        assert_eq!(switcher.chosen(&budgets), ids.first().copied());
+
+        // Typing narrows the rows and puts the highlight back on the first.
+        switcher.step(&budgets, true);
+        for c in "personal".chars() {
+            switcher.type_char(c);
+        }
+        assert_eq!(switcher.chosen(&budgets), Some(PERSONAL_SPENDING_ID));
+        switcher.type_char('z');
+        assert_eq!(switcher.chosen(&budgets), None);
+        switcher.backspace();
+        assert_eq!(switcher.chosen(&budgets), Some(PERSONAL_SPENDING_ID));
     }
 
     // -- Fill ---------------------------------------------------------------------------------------

@@ -3,7 +3,8 @@
 //! its legend and the `‹ month ›` period nav, a 2px rule, then the active tab's body.
 //!
 //! The Progress (9a, `progress`), Plan (9b, `plan`) and History (9c, `history`) tabs, with the
-//! Category detail (9d), Edit budget (9e), Fill (9f) and Stop budgeting (9g) dialogs. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
+//! Category detail (9d), Edit budget (9e), Fill (9f) and Stop budgeting (9g) dialogs and the
+//! Switcher popover (11b, `switcher`). Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
 //! handlers.
 
 pub mod detail_dialog;
@@ -13,6 +14,7 @@ pub mod limit_dialog;
 pub mod plan;
 pub mod progress;
 pub mod stop_dialog;
+pub mod switcher;
 
 use std::rc::Rc;
 
@@ -49,6 +51,8 @@ pub struct BudgetsPageProps<'a> {
     /// Index into `figures.rows` of the selected row.
     pub selected: Option<usize>,
     pub on_tab_click: OnTabClick,
+    /// The title is the switcher: a click opens 11b.
+    pub on_title_click: OnPlainClick,
     pub on_period_prev: OnPlainClick,
     pub on_period_next: OnPlainClick,
     pub on_edit_plan_click: OnPlainClick,
@@ -109,7 +113,7 @@ pub fn render(
         .into_any_element()
 }
 
-fn method_label(method: Method) -> String {
+pub(super) fn method_label(method: Method) -> String {
     match method {
         Method::Limits => crate::msg::desktop_budgets_method_limits(),
     }
@@ -146,6 +150,12 @@ fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
                 .gap(px(6.0))
                 .child(
                     div()
+                        .id("budgets-title")
+                        .cursor_pointer()
+                        .on_click({
+                            let on_title = props.on_title_click.clone();
+                            move |_event, window, cx| on_title(window, cx)
+                        })
                         .flex()
                         .items_center()
                         .gap(px(10.0))
