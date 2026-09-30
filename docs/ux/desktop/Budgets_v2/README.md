@@ -199,3 +199,11 @@ project
 ## Files
 - `Ledger Desktop Shell.dc.html` — the prototype (Turn 11, options 11a–11f)
 - `README.md` — this document
+
+## Settled for the Category limits build (#400)
+
+- **11c:** all four method cards are shown, with Envelope, Split and Project disabled ("coming later") and not focusable, so Category limits is the only selectable method. **Start from** offers `Empty`, `Copy categories from <budget>` (the source's effective current-month amounts plus Rollover) and `Last 3 months' spending` (#386's Fill average on the chosen Accounts, with 0 averages left Unbudgeted, unlike Fill's 0.00). Each writes Onward Budget Amounts from the current month, with Rollover None except for Copy. **Accounts** offers open Accounts in the chosen Unit, all preselected, and changing the Unit re-selects. An **edit** mode of 11c, with Unit and Method locked, is the one place to rename a Budget or change its Accounts.
+- **11b health (Limits):** "N over · X left to spend" for the current month. N is the count of over-budget leaves from `period_figures`, and X is the effective budget minus Spent minus Known Costs over budgeted leaves, which can be negative. "· M at risk" is appended when Known Costs alone push a leaf over. Archived rows show "archived <date>".
+- **11f:** actions are `open`, `edit`, `duplicate`, `set default` and `archive`/`restore`. `duplicate` names the copy "<name> copy" (numbered when that name is taken), copies Unit, Method, Accounts, full Budget Amount chains and Rollover, is never the default, and opens edit mode. The default can't be archived, so an active Budget always exists and there is no empty state. `set default` applies only to active Budgets.
+- **Keys:** bare `b` stays the rail toggle and `tab` stays focus cycling. On Budgets, `B` or a click on the title opens 11b, `n` opens 11c, `[ ]` change the period and `1`/`2`/`3` pick the tab. In 11f, `e` edits, `d` duplicates, `*` sets the default and `x` archives or restores. Palette commands: `budgets switch`, `budgets new`, `budgets manage`, `budgets edit`, `budgets duplicate`, `budgets set-default`, `budgets archive`, `budgets restore`.
+- **Switching** keeps the active tab if the new method has it, and otherwise opens its first tab (trivial with one method, recorded for later maps). The last opened Budget is a Client-scoped Preference.
