@@ -3,6 +3,7 @@
 - [Home](../README.md)
 - [Accounts](accounts.md)
 - [Bills](bills.md)
+- [Budgets](budgets.md)
 - [Categories](categories.md)
 - [Getting around](getting-around.md)
 - [Localisation](localisation.md)
@@ -22,6 +23,7 @@
 
 - [Accounts](development/accounts.md)
 - [Bills](development/bills.md)
+- [Budgets](development/budgets.md)
 - [Categories](development/categories.md)
 - [File Structure](directories-files.md)
 - [Getting started: deploying the Sync Server](development/getting-started.md)

@@ -51,6 +51,7 @@ Desktop locations for the ticked requirements.
 | BIL-005 | `bills::populate`, `bills::schedule_rows`, `view/bills/schedule.rs` |
 | BIL-006 | `bills::pay`, `bills::match_split`, `pay_form.rs`, `view/bills/pay_dialog.rs` |
 | BIL-007 | `bills::skip`, `view/bills/skip_dialog.rs` |
+| BIL-009 | `budgets::period_figures` (Known Costs), `view/budgets/progress.rs` |
 | BIL-011 | `bill_history::plan_stats`, `view/bills/filters.rs` |
 | BIL-012 | `bills::needs_attention`, `rail/primary.rs`, `view/dashboard.rs` |
 
@@ -69,4 +70,4 @@ Desktop locations for the ticked requirements.
 - **The financial year is a constant** (`bill_history::FINANCIAL_YEAR_START_MONTH`, July) until Settings' "Financial year starts" is a real Preference.
 - **The Schedule's period nav is unbounded**; months past the generation horizon show computed previews.
 - **The populate process has no persisted home.** The stub runs it in memory; with real persistence it needs a trigger on Client startup and on Bill Plan create/edit.
-- **Anticipated Bills (BIL-008) and Known Costs (BIL-009)** are later maps.
+- **Anticipated Bills (BIL-008)** is a later map. Known Costs (BIL-009) is built on the Budgets surface.

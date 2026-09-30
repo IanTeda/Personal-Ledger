@@ -2,7 +2,7 @@
 
 Bills are the payments you know are coming, like rent, subscriptions and utilities. You write each one down once as a Bill Plan, and Personal Ledger lays out every due date for you. That way you can see what's coming, what's overdue and what you've already paid, and every payment is tied to a real transaction.
 
-> **Heads up:** Bills are built in the desktop app only, and for now they run on sample data that isn't saved between sessions. Anticipated Bills in an account's transaction list and Known Costs in Budgets are still to come. The terminal app has no Bills screen yet.
+> **Heads up:** Bills are built in the desktop app only, and for now they run on sample data that isn't saved between sessions. Anticipated Bills in an account's transaction list are still to come. The terminal app has no Bills screen yet.
 
 ## What you can do
 
@@ -20,7 +20,7 @@ Bills are the payments you know are coming, like rent, subscriptions and utiliti
 - **Bill Schedule:** The individual due dates Personal Ledger lays out from each Bill Plan, one entry per due date.
 - **Match:** Tying a Bill Schedule entry to the transaction that paid it. An entry matches one transaction, and a transaction settles one entry.
 - **Anticipated Bill:** A preview row showing where an unpaid bill will land in its account's transaction list. Not built yet.
-- **Known Costs:** The total of unpaid bills in a budget, shown next to actual spending. Not built yet.
+- **Known Costs:** The total of unpaid bills in a budget, shown next to actual spending. See [Budgets](budgets.md).
 
 ## Bills concept
 
@@ -121,7 +121,6 @@ At the end of March, the Schedule tab shows 2 paid and 1 skipped entry, and you 
 - The terminal app has no Bills screen yet.
 - Bills run on sample data in the desktop app and aren't saved yet.
 - Anticipated Bills in an account's transaction list are future.
-- Known Costs in Budgets are future.
 - The Planner tab lists every Bill Plan, active first. You can't yet filter it by active status or recurrence.
 - The Schedule tab doesn't filter by payee or by a date range yet.
 - Unmatching a paid bill or unskipping a skipped one isn't on screen yet.
@@ -133,7 +132,7 @@ At the end of March, the Schedule tab shows 2 paid and 1 skipped entry, and you 
 - **Accounts:** each Bill Plan is paid from one account.
 - **Categories:** each Bill Plan has one expense category.
 - **Transactions:** the matched transactions are the actual payments, and a paid bill opens its transaction.
-- **Budgets:** bills will show as Known Costs in a budget's period.
+- **[Budgets](budgets.md):** unpaid bills show as Known Costs in a budget's month.
 - **[Needs Attention](needs-attention.md):** unpaid bills show here from their due date minus their Attention Lead.
 
 ## Getting around
@@ -156,7 +155,7 @@ Intended features for Bills. Ticked means built in at least one app; the tag say
 - [x] BIL-006 (desktop): Mark a Bill Schedule entry as Paid by linking or creating a transaction
 - [x] BIL-007 (desktop): Mark a Bill Schedule entry as Skipped
 - [ ] BIL-008: View Anticipated Bills (previews) in account transaction lists
-- [ ] BIL-009: Show Known Costs (unpaid bills) within a budget's period
+- [x] BIL-009 (desktop): Show Known Costs (unpaid bills) within a budget's period
 - [ ] BIL-010: Filter and view bill history with status, date range, category, payee, or account filters
 - [x] BIL-011 (desktop): Calculate and display bill history (last paid, average, same period last year)
 - [x] BIL-012 (desktop): Set Attention Lead per bill to flag upcoming bills in Needs Attention

@@ -62,7 +62,7 @@ desktop-budgets-progress-empty = Nothing is budgeted or spent this period.
 
 ## The Plan tab (9b): the meta line, the range nav, the grid's columns and footers.
 
-desktop-budgets-plan-meta = Monthly amounts per category · past months are read-only · bold = differs from the category default
+desktop-budgets-plan-meta = Monthly amounts per category · past months are read-only · bold = amount set this month
 desktop-budgets-plan-range = { $from } – { $to } { $year }
 desktop-budgets-plan-range-years = { $from } { $from_year } – { $to } { $to_year }
 desktop-budgets-plan-now = now

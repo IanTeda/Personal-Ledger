@@ -29,9 +29,9 @@ When you create a hierarchy like Housing > Utilities > Electricity, you file tra
 
 ## Approach
 
-To add a category, press `n` (or choose Add category) and fill in the name and type (Expense or Income). Optionally set a parent category to nest it, or leave it top-level. You can also set a monthly budget limit if you want to track spending against a target.
+To add a category, press `n` (or choose Add category) and fill in the name and type (Expense or Income). Optionally set a parent category to nest it, or leave it top-level. You can also set a monthly budget if you want to track spending against a target. It becomes that category's amount in the Personal spending budget, from the current month onward (see [Budgets](budgets.md)).
 
-To edit a category, press `e` to rename it, move it to a different parent, or change its budget. The system updates your transactions and rollup totals automatically when you rename. Moving a category after you have transactions is allowed but changes how your past totals add up — think twice.
+To edit a category, press `e` to rename it, move it to a different parent, or change its budget. The Monthly budget field shows this month's amount in the Personal spending budget. Changing it applies from this month onward, and clearing it stops budgeting the category from this month. Earlier months keep their amounts. On a category with sub-categories the field is read-only and shows the sum of its children, and it is read-only for every category while Personal spending is archived. The system updates your transactions and rollup totals automatically when you rename. Moving a category after you have transactions is allowed but changes how your past totals add up — think twice.
 
 To delete, press `d` and confirm by typing the category name. Your transactions stay but no longer roll up into a deleted parent. If a budget referred to it, you'll see that in the confirmation.
 
@@ -58,7 +58,7 @@ The Categories screen lists everything as a tree, with expenses in one section a
 
 ## Related
 
-- **Budgets:** set a limit on a category to track spending.
+- **[Budgets](budgets.md):** set a monthly amount on a category to track spending against it.
 - **Transactions:** each transaction needs exactly one category.
 - **Reports:** view spending totals across categories over time.
 - **Tags:** for cross-cutting themes that don't fit as a category hierarchy.
