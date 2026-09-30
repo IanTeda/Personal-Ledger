@@ -2039,23 +2039,44 @@ impl Shell {
         }
     }
 
+    /// Why the Categories dialogs' Monthly budget field is read-only for `category_id` (`None`
+    /// for a Category being added): the Personal spending Budget it reads and writes is archived,
+    /// or the Category is a parent and so only rolls up.
+    fn categories_budget_lock(&self, category_id: Option<u32>) -> Option<categories::BudgetLock> {
+        if category_id.is_some_and(|id| !categories::is_leaf(&self.categories, id)) {
+            return Some(categories::BudgetLock::Parent);
+        }
+        self.budgets
+            .get(budgets::PERSONAL_SPENDING_ID)
+            .filter(|budget| budget.is_archived())
+            .map(|budget| categories::BudgetLock::Archived(budget.name.clone()))
+    }
+
     /// Opens the Add categories dialog pre-scoped to parent_id (None for top-level).
     fn open_add_categories_dialog(&mut self, parent_id: Option<u32>) {
-        let parent_type = parent_id
-            .and_then(|id| self.categories.iter().find(|c| c.id == id))
-            .map(|c| c.category_type.clone());
+        // A child takes its parent's type, locked in the form; a top-level one starts as Expense.
+        let category_type = match parent_id {
+            Some(id) => self
+                .categories
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| c.category_type.clone()),
+            None => Some(CategoryTypes::Expense),
+        };
         let form = categories::CategoryForm {
             name: String::new(),
             parent_id,
-            category_type: parent_type,
+            category_type,
             budget: String::new(),
+            budget_lock: self.categories_budget_lock(None),
             focused: categories::CategoryField::Name,
         };
         self.categories_dialog = Some(categories::CategoriesDialog::Add { parent_id, form });
         self.nav.enter_mode(InputMode::Dialog);
     }
 
-    /// Opens the Edit categories dialog on `id`, pre-filled.
+    /// Opens the Edit categories dialog on `id`, pre-filled. Monthly budget shows the current
+    /// month's amount in the Personal spending Budget (a parent's is its children's sum).
     fn open_edit_categories_dialog(&mut self, category_id: u32) {
         if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
             let budget_str = self
@@ -2073,11 +2094,45 @@ impl Shell {
                 parent_id: category.parent,
                 category_type: Some(category.category_type.clone()),
                 budget: budget_str,
+                budget_lock: self.categories_budget_lock(Some(category_id)),
                 focused: categories::CategoryField::Name,
             };
             self.categories_dialog = Some(categories::CategoriesDialog::Edit(category_id, form));
             self.nav.enter_mode(InputMode::Dialog);
         }
+    }
+
+    /// Categories 5c's write on a saved dialog: the Monthly budget text as an Onward amount from
+    /// the current month in the Personal spending Budget, or a Stop when `clears` and it is
+    /// blank. A locked field (a parent's rollup, an archived Budget) writes nothing.
+    fn save_category_budget(
+        &mut self,
+        category_id: u32,
+        form: &categories::CategoryForm,
+        clears: bool,
+    ) {
+        if form.budget_lock.is_some() {
+            return;
+        }
+        let amount = if form.budget.trim().is_empty() {
+            if !clears {
+                return;
+            }
+            None
+        } else {
+            match form.budget.parse::<lib_core::Money>() {
+                Ok(amount) => Some(amount),
+                Err(_) => return,
+            }
+        };
+        // A Category that can't hold a Budget Amount (an Income one) is left without one.
+        let _ = self.budgets.set_monthly_limit(
+            budgets::PERSONAL_SPENDING_ID,
+            &self.categories,
+            category_id,
+            amount,
+            self.today,
+        );
     }
 
     /// Opens Transactions pre-filtered to the account `id`: fresh defaults plus that account, the
@@ -3052,6 +3107,45 @@ impl Shell {
         };
         self.with_budgets_stop_form(|form, options| form.handle_select_key(key, options));
         true
+    }
+
+    /// The Dashboard's budget list, worded from the default Budget's current-month figures.
+    fn dashboard_budget_list(&self, figures: &budgets::PeriodFigures) -> dashboard::BudgetList {
+        use bigdecimal::{ToPrimitive, Zero};
+        let bars = budgets::dashboard_bars(figures, &self.categories)
+            .into_iter()
+            .map(|bar| dashboard::BudgetBar {
+                category: self
+                    .categories
+                    .iter()
+                    .find(|category| category.id == bar.category_id)
+                    .map(|category| category.name.clone())
+                    .unwrap_or_default(),
+                figures: crate::msg::desktop_budgets_history_pair(
+                    &format::amount(&bar.spent).1,
+                    &format::amount(&bar.budget).1,
+                ),
+                // A 0.00 budget is full as soon as anything is spent against it.
+                fraction: if bar.budget.0.is_zero() {
+                    if bar.over { 1.0 } else { 0.0 }
+                } else {
+                    (bar.spent.0.clone() / bar.budget.0.clone())
+                        .to_f32()
+                        .unwrap_or(0.0)
+                },
+                over: bar.over,
+            })
+            .collect();
+        dashboard::BudgetList {
+            period: crate::msg::desktop_dashboard_budgets_period(
+                &budgets_view::period_label(figures.month),
+                &figures.elapsed.day.to_string(),
+                &figures.elapsed.days_in_month.to_string(),
+                &figures.elapsed.percent.to_string(),
+            ),
+            elapsed: figures.elapsed.percent as f32 / 100.0,
+            bars,
+        }
     }
 
     /// The Budgets page's status-line legend: the open dialog's keys, else the tab's.
@@ -6394,18 +6488,7 @@ impl Shell {
                                 form.parent_id,
                                 category_type,
                             ) {
-                                // Handle budget creation if budget is not empty
-                                if !form.budget.trim().is_empty()
-                                    && let Ok(amount) = form.budget.parse::<lib_core::Money>()
-                                {
-                                    let _ = self.budgets.set_monthly_limit(
-                                        budgets::PERSONAL_SPENDING_ID,
-                                        &self.categories,
-                                        category_id,
-                                        Some(amount),
-                                        self.today,
-                                    );
-                                }
+                                self.save_category_budget(category_id, &form, false);
                             }
                             self.nav.exit_mode();
                         }
@@ -6422,24 +6505,7 @@ impl Shell {
                                     Some(new_parent),
                                 );
                             }
-                            // Handle budget changes
-                            if form.budget.trim().is_empty() {
-                                let _ = self.budgets.set_monthly_limit(
-                                    budgets::PERSONAL_SPENDING_ID,
-                                    &self.categories,
-                                    id,
-                                    None,
-                                    self.today,
-                                );
-                            } else if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
-                                let _ = self.budgets.set_monthly_limit(
-                                    budgets::PERSONAL_SPENDING_ID,
-                                    &self.categories,
-                                    id,
-                                    Some(amount),
-                                    self.today,
-                                );
-                            }
+                            self.save_category_budget(id, &form, true);
                             self.nav.exit_mode();
                         }
                         _ => {
@@ -6715,57 +6781,20 @@ impl Shell {
     }
 
     fn handle_categories_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        let form = categories::CategoryForm {
-            name: String::new(),
-            parent_id: None,
-            category_type: Some(CategoryTypes::Expense),
-            budget: String::new(),
-            focused: categories::CategoryField::Name,
-        };
-        self.categories_dialog = Some(categories::CategoriesDialog::Add {
-            parent_id: None,
-            form,
-        });
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_add_categories_dialog(None);
         cx.notify();
     }
 
     fn handle_categories_add_sub_click(&mut self, parent_id: u32, cx: &mut Context<'_, Self>) {
         self.categories_selected_id = Some(parent_id);
-        // Get the parent's category type to lock it in the form
-        let category_type = self
-            .categories
-            .iter()
-            .find(|c| c.id == parent_id)
-            .map(|c| c.category_type.clone());
-
-        let form = categories::CategoryForm {
-            name: String::new(),
-            parent_id: Some(parent_id),
-            category_type,
-            budget: String::new(),
-            focused: categories::CategoryField::Name,
-        };
-        self.categories_dialog = Some(categories::CategoriesDialog::Add {
-            parent_id: Some(parent_id),
-            form,
-        });
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_add_categories_dialog(Some(parent_id));
         cx.notify();
     }
 
     fn handle_categories_edit_click(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
-        if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
+        if self.categories.iter().any(|c| c.id == category_id) {
             self.categories_selected_id = Some(category_id);
-            let form = categories::CategoryForm {
-                name: category.name.clone(),
-                parent_id: category.parent,
-                category_type: Some(category.category_type.clone()),
-                budget: String::new(), // TODO: Load from budget if exists
-                focused: categories::CategoryField::Name,
-            };
-            self.categories_dialog = Some(categories::CategoriesDialog::Edit(category_id, form));
-            self.nav.enter_mode(InputMode::Dialog);
+            self.open_edit_categories_dialog(category_id);
             cx.notify();
         }
     }
@@ -6863,18 +6892,7 @@ impl Shell {
                             category_type,
                         ) {
                             Ok(category_id) => {
-                                // Handle budget creation if budget is not empty
-                                if !form.budget.trim().is_empty()
-                                    && let Ok(amount) = form.budget.parse::<lib_core::Money>()
-                                {
-                                    let _ = self.budgets.set_monthly_limit(
-                                        budgets::PERSONAL_SPENDING_ID,
-                                        &self.categories,
-                                        category_id,
-                                        Some(amount),
-                                        self.today,
-                                    );
-                                }
+                                self.save_category_budget(category_id, &form, false);
                                 self.nav.exit_mode();
                                 cx.notify();
                             }
@@ -6903,24 +6921,7 @@ impl Shell {
                             // If parent was cleared, move to top-level
                             let _ = categories::move_category(&mut self.categories, id, None);
                         }
-                        // Handle budget changes
-                        if form.budget.trim().is_empty() {
-                            let _ = self.budgets.set_monthly_limit(
-                                budgets::PERSONAL_SPENDING_ID,
-                                &self.categories,
-                                id,
-                                None,
-                                self.today,
-                            );
-                        } else if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
-                            let _ = self.budgets.set_monthly_limit(
-                                budgets::PERSONAL_SPENDING_ID,
-                                &self.categories,
-                                id,
-                                Some(amount),
-                                self.today,
-                            );
-                        }
+                        self.save_category_budget(id, &form, true);
                         self.nav.exit_mode();
                         cx.notify();
                     }
@@ -8272,6 +8273,15 @@ impl Render for Shell {
                 });
             })
         };
+        // The default Budget's current month: the rail badge and the Dashboard's budget list.
+        let default_budget_figures = self.budgets.default_budget().map(|budget| {
+            budgets::period_figures(
+                budget,
+                &self.budgets_ledger(),
+                bills::Period::of(self.today),
+                self.today,
+            )
+        });
         let dashboard = Dashboard::new(
             bills::attention_entries(&self.bill_plans, &self.bill_entries, self.today)
                 .into_iter()
@@ -8294,6 +8304,12 @@ impl Render for Shell {
                 .collect(),
             format::flag_glyph(self.settings_status_glyphs),
             on_dashboard_bill_click,
+        )
+        .budgets(
+            default_budget_figures
+                .as_ref()
+                .map(|figures| self.dashboard_budget_list(figures))
+                .unwrap_or_default(),
         );
         let bills_page = bills_view::BillsPageProps {
             tab: self.bills_tab,
@@ -8953,6 +8969,11 @@ impl Render for Shell {
                                         self.today,
                                     )
                                     .len(),
+                                )
+                                .budget_over(
+                                    default_budget_figures
+                                        .as_ref()
+                                        .map_or(0, |figures| figures.over_count),
                                 ),
                             )
                             .when(

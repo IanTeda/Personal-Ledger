@@ -24,6 +24,8 @@ desktop-categories-notice-default = Picking a parent will lock the type control 
 ## Edit dialog notices.
 
 desktop-categories-parent-budget-rollup = Shows rollup of children's budgets
+desktop-categories-parent-budget-rollup-sum = { $amount } · rollup of children's budgets
+desktop-categories-budget-archived = { $amount } · { $budget } is archived, so its amounts are read-only
 desktop-categories-edit-parent-notice = This is a parent category — its budget shows the sum of its children's budgets.
 desktop-categories-edit-notice = Changes apply when you save.
 

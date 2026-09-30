@@ -123,6 +123,8 @@ pub struct PrimaryRail {
     /// The Bills row's badge: the Needs Attention count (`bills::attention_entries`), not a row
     /// count, so it takes the Accounts row's accent treatment rather than a plain count's.
     bill_attention: usize,
+    /// The Budgets row's badge: the default Budget's over-budget count this month.
+    budget_over: usize,
 }
 
 impl PrimaryRail {
@@ -145,6 +147,7 @@ impl PrimaryRail {
             payee_count: 0,
             tag_count: 0,
             bill_attention: 0,
+            budget_over: 0,
         }
     }
 
@@ -172,12 +175,19 @@ impl PrimaryRail {
         self
     }
 
+    /// Sets the Budgets row's over-budget badge; zero draws none.
+    pub fn budget_over(mut self, count: usize) -> Self {
+        self.budget_over = count;
+        self
+    }
+
     /// The accent badge's number for `noun`: the Accounts count, or the Bills Needs Attention
-    /// count while there is any.
+    /// count or the Budgets over-budget count while there is any.
     fn accent_count(&self, noun: Noun) -> Option<usize> {
         match noun {
             Noun::Accounts => Some(self.account_count),
             Noun::Bills if self.bill_attention > 0 => Some(self.bill_attention),
+            Noun::Budgets if self.budget_over > 0 => Some(self.budget_over),
             _ => None,
         }
     }

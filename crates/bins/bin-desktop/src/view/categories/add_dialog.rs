@@ -83,6 +83,7 @@ pub fn render(
             budget_field(
                 &form.budget,
                 form.focused == CategoryField::Budget,
+                form.budget_lock.as_ref(),
                 on_field_click.clone(),
                 cx,
             ),
@@ -268,7 +269,40 @@ fn parent_field(
         .into_any_element()
 }
 
-fn budget_field(value: &str, focused: bool, on_field_click: OnFieldClick, cx: &App) -> AnyElement {
+/// The Monthly budget field. While the Personal spending Budget is archived it takes no input
+/// and says why.
+fn budget_field(
+    value: &str,
+    focused: bool,
+    lock: Option<&categories::BudgetLock>,
+    on_field_click: OnFieldClick,
+    cx: &App,
+) -> AnyElement {
+    if let Some(categories::BudgetLock::Archived(budget)) = lock {
+        return div()
+            .child(suffixed_label(
+                crate::msg::desktop_categories_field_monthly_budget(),
+                crate::msg::desktop_field_optional(),
+                cx,
+            ))
+            .child(
+                div()
+                    .w_full()
+                    .py(px(8.0))
+                    .px(px(10.0))
+                    .border_1()
+                    .border_color(color::border(cx))
+                    .bg(color::chrome(cx))
+                    .text_size(px(13.0))
+                    .text_color(color::muted(cx))
+                    .opacity(0.6)
+                    .child(crate::msg::desktop_categories_budget_archived(
+                        crate::transaction_rows::EMPTY_CELL,
+                        budget,
+                    )),
+            )
+            .into_any_element();
+    }
     div()
         .child(suffixed_label(
             crate::msg::desktop_categories_field_monthly_budget(),

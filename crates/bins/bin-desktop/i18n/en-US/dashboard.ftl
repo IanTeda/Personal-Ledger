@@ -47,3 +47,4 @@ desktop-dashboard-flagged-transactions = { $count ->
 } flagged for review →
 desktop-dashboard-bill-overdue = { $plan } overdue since { $due }, { $amount } →
 desktop-dashboard-bill-due = { $plan } due { $due }, { $amount } →
+desktop-dashboard-budgets-none = No budget amounts this month.

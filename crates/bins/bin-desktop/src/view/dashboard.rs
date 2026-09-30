@@ -3,8 +3,9 @@
 //! match the headers, column widths, and rules, not the sample data. Every figure below is
 //! representative content matching the handoff's own mockup, not real `lib_database` data --
 //! wiring a real Ledger's figures in is separate future work (issue #144's "Out of scope"). The
-//! exception is Needs Attention's Bill rows, which come from the Bills stub through the one shared
-//! rule (`bills::attention_entries`, #377).
+//! exceptions are Needs Attention's Bill rows, which come from the Bills stub through the one
+//! shared rule (`bills::attention_entries`, #377), and the budget list, which reads the default
+//! Budget through `budgets::period_figures` (#411).
 
 use std::rc::Rc;
 
@@ -25,11 +26,32 @@ pub struct AttentionBill {
     pub amount: String,
 }
 
+/// One bar of the budget list, its text already formatted by the Shell.
+pub struct BudgetBar {
+    pub category: String,
+    /// "640.00 / 1,000.00".
+    pub figures: String,
+    /// Spent as a share of the budget, 0 to 1.
+    pub fraction: f32,
+    pub over: bool,
+}
+
+/// The default Budget's list for the current month.
+#[derive(Default)]
+pub struct BudgetList {
+    /// "September 2026 · day 21/30 · 70% elapsed".
+    pub period: String,
+    /// The month's elapsed share, 0 to 1: the tick on every bar.
+    pub elapsed: f32,
+    pub bars: Vec<BudgetBar>,
+}
+
 #[derive(IntoElement)]
 pub struct Dashboard {
     bills: Vec<AttentionBill>,
     flag: &'static str,
     on_bill_click: OnBillClick,
+    budgets: BudgetList,
 }
 
 impl Dashboard {
@@ -38,7 +60,14 @@ impl Dashboard {
             bills,
             flag,
             on_bill_click,
+            budgets: BudgetList::default(),
         }
+    }
+
+    /// Sets the budget list from the default Budget's period figures.
+    pub fn budgets(mut self, budgets: BudgetList) -> Self {
+        self.budgets = budgets;
+        self
     }
 }
 
@@ -56,7 +85,7 @@ impl RenderOnce for Dashboard {
             .child(div().h(px(2.0)).mt(px(16.0)).bg(color::structural_rule(cx)))
             .child(chart_band(cx))
             .child(div().h(px(1.0)).mt(px(16.0)).bg(color::hairline(cx)))
-            .child(lower_band(cx))
+            .child(lower_band(&self.budgets, cx))
             .child(div().h(px(1.0)).mt(px(14.0)).bg(color::hairline(cx)))
             .child(needs_attention(self, cx))
     }
@@ -385,13 +414,13 @@ const SEGMENTS: &[Segment] = &[
     },
 ];
 
-fn lower_band(cx: &App) -> impl IntoElement {
+fn lower_band(budgets: &BudgetList, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .gap(px(24.0))
         .pt(px(14.0))
         .child(donut(cx))
-        .child(budget_list(cx))
+        .child(budget_list(budgets, cx))
 }
 
 fn donut(cx: &App) -> impl IntoElement {
@@ -452,40 +481,7 @@ fn legend_row(segment: &Segment, colour: gpui::Rgba) -> impl IntoElement {
         .child(format!("{}%", segment.pct))
 }
 
-struct BudgetRow {
-    category: &'static str,
-    spent: u32,
-    limit: u32,
-}
-
-const BUDGET_ROWS: &[BudgetRow] = &[
-    BudgetRow {
-        category: "groceries",
-        spent: 640,
-        limit: 1_000,
-    },
-    BudgetRow {
-        category: "dining",
-        spent: 412,
-        limit: 300,
-    },
-    BudgetRow {
-        category: "transport",
-        spent: 208,
-        limit: 400,
-    },
-    BudgetRow {
-        category: "utilities",
-        spent: 445,
-        limit: 550,
-    },
-];
-
-/// The period's own elapsed fraction ("sep · day 21/30 · 70% elapsed") -- the same marker
-/// position on every row, since it marks a point in time, not a per-category value.
-const PERIOD_ELAPSED: f32 = 0.70;
-
-fn budget_list(cx: &App) -> impl IntoElement {
+fn budget_list(budgets: &BudgetList, cx: &App) -> impl IntoElement {
     div()
         .flex_1()
         .min_w(px(0.0))
@@ -505,7 +501,7 @@ fn budget_list(cx: &App) -> impl IntoElement {
                     div()
                         .text_size(px(11.0))
                         .text_color(color::faint_text(cx))
-                        .child("sep · day 21/30 · 70% elapsed"),
+                        .child(budgets.period.clone()),
                 ),
         )
         .child(
@@ -514,7 +510,19 @@ fn budget_list(cx: &App) -> impl IntoElement {
                 .flex_col()
                 .gap(px(7.0))
                 .text_size(px(11.5))
-                .children(BUDGET_ROWS.iter().map(|row| budget_row(row, cx)))
+                .children(
+                    budgets
+                        .bars
+                        .iter()
+                        .map(|bar| budget_row(bar, budgets.elapsed, cx)),
+                )
+                .when(budgets.bars.is_empty(), |this| {
+                    this.child(
+                        div()
+                            .text_color(color::muted(cx))
+                            .child(msg::desktop_dashboard_budgets_none()),
+                    )
+                })
                 .child(
                     div()
                         .text_size(px(11.0))
@@ -525,9 +533,9 @@ fn budget_list(cx: &App) -> impl IntoElement {
         )
 }
 
-fn budget_row(row: &BudgetRow, cx: &App) -> impl IntoElement {
-    let over_budget = row.spent > row.limit;
-    let fraction = (row.spent as f32 / row.limit as f32).min(1.0);
+fn budget_row(bar: &BudgetBar, elapsed: f32, cx: &App) -> impl IntoElement {
+    let over_budget = bar.over;
+    let fraction = bar.fraction.clamp(0.0, 1.0);
     let fill_color = if over_budget {
         color::negative(cx)
     } else {
@@ -538,7 +546,7 @@ fn budget_row(row: &BudgetRow, cx: &App) -> impl IntoElement {
         .flex()
         .items_center()
         .gap(px(12.0))
-        .child(div().w(px(78.0)).child(row.category))
+        .child(div().w(px(78.0)).truncate().child(bar.category.clone()))
         .child(
             div()
                 .flex_1()
@@ -557,7 +565,7 @@ fn budget_row(row: &BudgetRow, cx: &App) -> impl IntoElement {
                         .absolute()
                         .top(px(-2.0))
                         .bottom(px(-2.0))
-                        .left(relative(PERIOD_ELAPSED))
+                        .left(relative(elapsed.clamp(0.0, 1.0)))
                         .w(px(2.0))
                         .bg(color::foreground(cx)),
                 ),
@@ -570,7 +578,7 @@ fn budget_row(row: &BudgetRow, cx: &App) -> impl IntoElement {
                     this.text_color(color::negative_text(cx))
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 })
-                .child(format!("{} / {}", row.spent, row.limit)),
+                .child(bar.figures.clone()),
         )
 }
 

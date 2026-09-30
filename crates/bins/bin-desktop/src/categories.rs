@@ -231,6 +231,15 @@ impl CategoryField {
     }
 }
 
+/// Why the Monthly budget field can't be typed into.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BudgetLock {
+    /// A parent only rolls up its children: the field shows their sum.
+    Parent,
+    /// The Budget the field reads and writes (named here) is archived, and so read-only.
+    Archived(String),
+}
+
 /// A form for adding or editing a category: name, parent, type, and monthly budget.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CategoryForm {
@@ -238,6 +247,8 @@ pub struct CategoryForm {
     pub parent_id: Option<u32>,
     pub category_type: Option<CategoryTypes>,
     pub budget: String,
+    /// `Some` makes the Monthly budget field read-only; saving then leaves the Budget alone.
+    pub budget_lock: Option<BudgetLock>,
     pub focused: CategoryField,
 }
 
@@ -248,6 +259,7 @@ impl Default for CategoryForm {
             parent_id: None,
             category_type: Some(CategoryTypes::Expense),
             budget: String::new(),
+            budget_lock: None,
             focused: CategoryField::Name,
         }
     }
@@ -258,7 +270,7 @@ impl CategoryForm {
         match self.focused {
             CategoryField::Name => self.name.push(ch),
             CategoryField::Budget => {
-                if ch.is_numeric() || ch == '.' {
+                if self.budget_lock.is_none() && (ch.is_numeric() || ch == '.') {
                     self.budget.push(ch);
                 }
             }
@@ -272,7 +284,9 @@ impl CategoryForm {
                 self.name.pop();
             }
             CategoryField::Budget => {
-                self.budget.pop();
+                if self.budget_lock.is_none() {
+                    self.budget.pop();
+                }
             }
             CategoryField::Parent | CategoryField::Type => {}
         }

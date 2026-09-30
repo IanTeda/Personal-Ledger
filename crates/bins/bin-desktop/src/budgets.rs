@@ -638,6 +638,44 @@ pub fn health(budget: &Budget, ledger: &Ledger<'_>, today: NaiveDate) -> Health 
     }
 }
 
+/// How many bars the Dashboard's budget list shows.
+pub const DASHBOARD_BARS: usize = 4;
+
+/// One bar of the Dashboard's budget list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DashboardBar {
+    pub category_id: u32,
+    pub budget: Money,
+    pub spent: Money,
+    pub over: bool,
+}
+
+/// The Dashboard's budget list: the budgeted top-level rows (a leaf, or a parent's rollup) that
+/// have used the largest share of their budget, [`DASHBOARD_BARS`] at most.
+pub fn dashboard_bars(figures: &PeriodFigures, categories: &[Category]) -> Vec<DashboardBar> {
+    let mut bars: Vec<DashboardBar> = figures
+        .rows
+        .iter()
+        .filter(|row| categories::depth(categories, row.category_id) == 0)
+        .filter_map(|row| {
+            let budget = row.budget.clone()?;
+            Some(DashboardBar {
+                category_id: row.category_id,
+                over: row.spent.0 > budget.0,
+                spent: row.spent.clone(),
+                budget,
+            })
+        })
+        .collect();
+    // Shares compared by cross-multiplying, so a 0.00 budget needs no division. The sort is
+    // stable: equal shares keep their tree order.
+    bars.sort_by(|a, b| {
+        (b.spent.0.clone() * a.budget.0.clone()).cmp(&(a.spent.0.clone() * b.budget.0.clone()))
+    });
+    bars.truncate(DASHBOARD_BARS);
+    bars
+}
+
 // ---------------------------------------------------------------------------------------------
 // Category detail (9d)
 // ---------------------------------------------------------------------------------------------
@@ -3332,6 +3370,69 @@ mod tests {
             three_month_average(&budget, &ledger, world.category("Groceries"), sep()),
             money("0.00")
         );
+    }
+
+    // -- the Dashboard's bars -------------------------------------------------------------------
+
+    #[test]
+    fn dashboard_bars_take_the_fullest_budgeted_top_level_rows() {
+        let mut world = World::new();
+        world.post("ANZ Everyday", "Dining", date(2026, 9, 4), "-300.00");
+        world.post("ANZ Everyday", "Groceries", date(2026, 9, 5), "-100.00");
+        world.post("ANZ Everyday", "Rent", date(2026, 9, 1), "-900.00");
+        world.post("ANZ Everyday", "Transport", date(2026, 9, 2), "-30.00");
+        world.post("ANZ Everyday", "Household", date(2026, 9, 3), "-10.00");
+        let (mut budgets, id) = world.budgets();
+        for (name, amount) in [
+            ("Dining", "200.00"),
+            ("Groceries", "600.00"),
+            ("Rent", "1000.00"),
+            ("Transport", "600.00"),
+            ("Water", "50.00"),
+        ] {
+            let set = budgets.set_amount(
+                id,
+                &world.categories,
+                world.category(name),
+                sep(),
+                Span::Onward,
+                money(amount),
+                None,
+                today(),
+            );
+            assert_eq!(set, Ok(()), "{name}");
+        }
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        let figures = period_figures(&budget, &world.ledger(), sep(), today());
+        let bars = dashboard_bars(&figures, &world.categories);
+        assert!(bars.len() <= DASHBOARD_BARS);
+        for bar in &bars {
+            assert_eq!(categories::depth(&world.categories, bar.category_id), 0);
+        }
+        // Rent (90%) leads, as its top-level parent's rollup; Household is unbudgeted and so is
+        // never shown.
+        let top_of = |name: &str| {
+            let id = world.category(name);
+            world
+                .categories
+                .iter()
+                .find(|category| category.id == id)
+                .and_then(|category| category.parent)
+                .unwrap_or(id)
+        };
+        assert_eq!(
+            bars.first().map(|bar| bar.category_id),
+            Some(top_of("Rent"))
+        );
+        assert!(
+            bars.iter()
+                .all(|bar| bar.category_id != top_of("Household"))
+        );
+        // Food rolls Dining (over) and Groceries up to 400 of 800: not over as a whole.
+        let food = top_of("Dining");
+        let food_bar = bars.iter().find(|bar| bar.category_id == food);
+        assert_eq!(food_bar.map(|bar| bar.spent.clone()), Some(money("400.00")));
+        assert_eq!(food_bar.map(|bar| bar.over), Some(false));
     }
 
     // -- the Switcher -------------------------------------------------------------------------------

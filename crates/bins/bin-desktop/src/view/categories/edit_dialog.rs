@@ -93,7 +93,7 @@ pub fn render(
             budget_field(
                 &form.budget,
                 form.focused == CategoryField::Budget,
-                is_parent,
+                form.budget_lock.as_ref(),
                 on_field_click.clone(),
                 cx,
             ),
@@ -279,13 +279,35 @@ fn parent_field(
         .into_any_element()
 }
 
+/// The Monthly budget field: the current month's amount in the Personal spending Budget. A
+/// parent's is its children's sum and an archived Budget's is read-only, both drawn disabled.
 fn budget_field(
     value: &str,
     focused: bool,
-    is_parent: bool,
+    lock: Option<&categories::BudgetLock>,
     on_field_click: OnFieldClick,
     cx: &App,
 ) -> AnyElement {
+    let is_parent = lock.is_some();
+    let locked_text = match lock {
+        Some(categories::BudgetLock::Parent) if value.is_empty() => {
+            crate::msg::desktop_categories_parent_budget_rollup()
+        }
+        Some(categories::BudgetLock::Parent) => {
+            crate::msg::desktop_categories_parent_budget_rollup_sum(value)
+        }
+        Some(categories::BudgetLock::Archived(budget)) => {
+            crate::msg::desktop_categories_budget_archived(
+                if value.is_empty() {
+                    crate::transaction_rows::EMPTY_CELL
+                } else {
+                    value
+                },
+                budget,
+            )
+        }
+        None => String::new(),
+    };
     div()
         .child(suffixed_label(
             crate::msg::desktop_categories_field_monthly_budget(),
@@ -331,7 +353,7 @@ fn budget_field(
                         .text_size(px(13.0))
                         .text_color(color::muted(cx))
                         .opacity(0.6)
-                        .child(crate::msg::desktop_categories_parent_budget_rollup())
+                        .child(locked_text)
                 }),
         )
         .into_any_element()
