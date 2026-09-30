@@ -181,3 +181,25 @@ desktop-hint-edit-budget = edit budget
 desktop-hint-budget-category = budget a category
 desktop-hint-stop-budgeting = stop budgeting
 desktop-hint-save = save
+
+## The Fill dialog (9f): the Plan tab's button, the two sources with the total each gives, the
+## diff against the plan and the footer. `$month` is already formatted.
+
+desktop-budgets-fill-button = Fill { $month } from…
+desktop-budgets-fill-title = Fill { $month } from…
+desktop-budgets-fill-source-previous = { $month } as budgeted
+desktop-budgets-fill-source-previous-detail = an exact copy, without carries
+desktop-budgets-fill-source-average = 3-month average spent
+desktop-budgets-fill-source-average-detail = { $from } – { $to }, rounded to the nearest 10
+desktop-budgets-fill-changes = Changes from the plan
+desktop-budgets-fill-no-changes = Nothing would change.
+desktop-budgets-fill-change = { $before } → { $after }
+desktop-budgets-fill-kept = kept (edited)
+desktop-budgets-fill-unchanged = { $count ->
+    [one] { $count } other category unchanged
+   *[other] { $count } other categories unchanged
+}
+desktop-budgets-fill-note = Fill writes this month only, for categories budgeted the month before, and never overwrites a cell that already has its own amount.
+desktop-budgets-fill-submit = Fill { $month }
+desktop-hint-fill = fill
+desktop-hint-source = source

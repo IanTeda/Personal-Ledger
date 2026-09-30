@@ -3,11 +3,12 @@
 //! its legend and the `‹ month ›` period nav, a 2px rule, then the active tab's body.
 //!
 //! The Progress (9a, `progress`) and Plan (9b, `plan`) tabs are built, with the Category detail
-//! (9d), Edit budget (9e) and Stop budgeting (9g) dialogs; History is a placeholder until its
+//! (9d), Edit budget (9e), Fill (9f) and Stop budgeting (9g) dialogs; History is a placeholder until its
 //! ticket. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
 //! handlers.
 
 pub mod detail_dialog;
+pub mod fill_dialog;
 pub mod limit_dialog;
 pub mod plan;
 pub mod progress;
@@ -49,6 +50,9 @@ pub struct BudgetsPageProps<'a> {
     pub on_edit_plan_click: OnPlainClick,
     /// The Plan tab's `+ Budget a category`.
     pub on_add_click: OnPlainClick,
+    /// The Plan tab's `Fill October from…`, worded for the month Fill would target.
+    pub fill_label: String,
+    pub on_fill_click: OnPlainClick,
     /// A Progress row's `edit` or `set` action.
     pub on_action_click: OnRowClick,
     pub on_row_click: OnRowClick,
@@ -159,6 +163,25 @@ fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
                     _ => progress::meta_line(props, cx).into_any_element(),
                 }),
         )
+        .when(props.tab == BudgetsTab::Plan, |this| {
+            let on_fill = props.on_fill_click.clone();
+            let hover = color::hover(cx);
+            this.child(div().flex_1()).child(
+                div()
+                    .id("budgets-fill")
+                    .cursor_pointer()
+                    .flex_none()
+                    .py(px(9.0))
+                    .px(px(16.0))
+                    .border_1()
+                    .border_color(color::border(cx))
+                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    .whitespace_nowrap()
+                    .hover(move |style| style.bg(hover))
+                    .on_click(move |_event, window, cx| on_fill(window, cx))
+                    .child(props.fill_label.clone()),
+            )
+        })
         .child(
             div()
                 .id("budgets-edit-plan")

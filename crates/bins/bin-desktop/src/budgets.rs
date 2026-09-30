@@ -1109,6 +1109,107 @@ pub fn three_month_averages(
         .collect()
 }
 
+/// Where Fill (9f) takes a month's amounts from. "The plan" is not a source: it is what the month
+/// already resolves to, and so the baseline the preview diffs against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FillSource {
+    /// The month before, as budgeted: its Budget Amounts, never its carry.
+    #[default]
+    PreviousMonth,
+    /// The 3-month average Spent before the target.
+    Average,
+}
+
+impl FillSource {
+    pub const ALL: [FillSource; 2] = [FillSource::PreviousMonth, FillSource::Average];
+}
+
+/// One Category Fill would change: what the plan gives the month now, and what Fill writes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FillLine {
+    pub category_id: u32,
+    /// `None` when the plan leaves the month Unbudgeted.
+    pub before: Option<Money>,
+    pub after: Money,
+}
+
+/// What one source would do to the target month.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FillPreview {
+    pub target: Period,
+    pub source: FillSource,
+    /// The Categories whose amount changes, tree order.
+    pub changes: Vec<FillLine>,
+    /// Categories with their own record in the target month: never overwritten.
+    pub kept: Vec<u32>,
+    /// Eligible Categories the source leaves at the plan's amount.
+    pub unchanged: usize,
+    /// The target month's Total budgeted once filled.
+    pub total: Money,
+}
+
+/// Fill's target: the first open month at or after `cursor`, which is next month when the cursor
+/// sits on a closed month (or on no month at all).
+pub fn fill_target(cursor: Option<Period>, today: NaiveDate) -> Period {
+    let current = Period::of(today);
+    match cursor {
+        Some(month) if month >= current => month,
+        _ => current.next(),
+    }
+}
+
+/// What filling `target` from `source` would write: a Month-only amount for each leaf budgeted in
+/// the month before, skipping any with its own record in `target` and any the source leaves
+/// where the plan already has it.
+pub fn fill_preview(
+    budget: &Budget,
+    ledger: &Ledger<'_>,
+    target: Period,
+    source: FillSource,
+) -> FillPreview {
+    let index = SpentIndex::build(budget, ledger);
+    let previous = target.prev();
+    let mut preview = FillPreview {
+        target,
+        source,
+        changes: Vec::new(),
+        kept: Vec::new(),
+        unchanged: 0,
+        total: Money(zero()),
+    };
+    for id in expense_leaves(ledger.categories) {
+        let chain = budget.chain(id);
+        let planned = applied(chain, target).map(|found| found.amount);
+        let filled = applied(chain, previous).and_then(|last| {
+            if chain.iter().any(|record| record.month == target) {
+                preview.kept.push(id);
+                return None;
+            }
+            let after = match source {
+                FillSource::PreviousMonth => last.amount,
+                FillSource::Average => average_of(&index, id, target),
+            };
+            if planned.as_ref() == Some(&after) {
+                preview.unchanged += 1;
+                return None;
+            }
+            Some(after)
+        });
+        let ends_at = filled.clone().or_else(|| planned.clone());
+        if let Some(amount) = ends_at {
+            preview.total.0 += amount.0;
+        }
+        if let Some(after) = filled {
+            preview.changes.push(FillLine {
+                category_id: id,
+                before: planned,
+                after,
+            });
+        }
+    }
+    preview
+}
+
 /// The average signed Income Splits on the Budget's Accounts over the last 3 closed months.
 pub fn average_income(budget: &Budget, ledger: &Ledger<'_>, today: NaiveDate) -> Money {
     let last_three: Vec<Period> = months_before(Period::of(today)).collect();
@@ -1762,6 +1863,36 @@ impl Budgets {
         Ok(true)
     }
 
+    /// Fill (9f): writes `source`'s Month-only amounts into `target`, as [`fill_preview`] lists
+    /// them. Returns how many Categories it wrote.
+    pub fn fill(
+        &mut self,
+        id: u32,
+        ledger: &Ledger<'_>,
+        target: Period,
+        source: FillSource,
+        today: NaiveDate,
+    ) -> Result<usize, BudgetError> {
+        check_open_month(target, today)?;
+        let budget = self.editable_mut(id)?;
+        let preview = fill_preview(budget, ledger, target, source);
+        for line in &preview.changes {
+            let chain = budget.limits.entry(line.category_id).or_default();
+            let rollover = inherited_rollover(chain, target);
+            put(
+                chain,
+                LimitRecord {
+                    month: target,
+                    limit: Limit::MonthOnly {
+                        amount: line.after.clone(),
+                        rollover,
+                    },
+                },
+            );
+        }
+        Ok(preview.changes.len())
+    }
+
     /// Categories 5c's write: a changed value is an Onward from the current month, clearing is a
     /// Stop from it, and an unchanged value writes nothing. Returns whether it wrote.
     pub fn set_monthly_limit(
@@ -1950,8 +2081,8 @@ pub enum BudgetsDialog {
     CategoryDetail { category_id: u32, month: Period },
     /// 9e: editing a Category's amount, or picking an unbudgeted Category to budget.
     EditLimit(LimitForm),
-    /// 9f, filling this month.
-    Fill { month: Period },
+    /// 9f, filling this month from the chosen source.
+    Fill { month: Period, source: FillSource },
     /// 9g for a Category.
     Stop(StopForm),
 }
@@ -2980,6 +3111,138 @@ mod tests {
         assert_eq!(
             three_month_average(&budget, &ledger, world.category("Groceries"), sep()),
             money("0.00")
+        );
+    }
+
+    // -- Fill ---------------------------------------------------------------------------------------
+
+    #[test]
+    fn fill_targets_the_first_open_month_at_or_after_the_cursor() {
+        assert_eq!(fill_target(Some(sep()), today()), sep());
+        assert_eq!(
+            fill_target(Some(sep().next().next()), today()),
+            sep().next().next()
+        );
+        assert_eq!(fill_target(Some(sep().prev()), today()), sep().next());
+        assert_eq!(fill_target(None, today()), sep().next());
+    }
+
+    /// Dining 250 Onward with a Month-only 400 in September, Groceries 500 Onward, Rent 1000 with
+    /// its own October record, Transport budgeted from October only.
+    fn fill_world() -> (World, Budgets, u32) {
+        let mut world = World::new();
+        for month in [6, 7, 8] {
+            world.post("ANZ Everyday", "Dining", date(2026, month, 4), "-312.00");
+            world.post("ANZ Everyday", "Groceries", date(2026, month, 4), "-500.00");
+        }
+        let (mut budgets, id) = world.budgets();
+        let categories = world.categories.clone();
+        let jun = Period::of(date(2026, 6, 1));
+        let mut set = |name: &str, month: Period, span: Span, amount: &str| {
+            budgets
+                .set_amount(
+                    id,
+                    &categories,
+                    category_id(&categories, name),
+                    month,
+                    span,
+                    money(amount),
+                    Some(Rollover::CarryUnspent),
+                    // Seeding history: every month is open as of June.
+                    date(2026, 6, 1),
+                )
+                .expect("a seeded amount");
+        };
+        set("Dining", jun, Span::Onward, "250.00");
+        set("Dining", sep(), Span::MonthOnly, "400.00");
+        set("Groceries", jun, Span::Onward, "500.00");
+        set("Rent", jun, Span::Onward, "1000.00");
+        set("Rent", sep().next(), Span::Onward, "1100.00");
+        set("Transport", sep().next(), Span::Onward, "60.00");
+        (world, budgets, id)
+    }
+
+    #[test]
+    fn fill_from_the_previous_month_copies_amounts_and_keeps_edited_cells() {
+        let (world, mut budgets, id) = fill_world();
+        let october = sep().next();
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        let preview = fill_preview(&budget, &world.ledger(), october, FillSource::PreviousMonth);
+        // Dining's September Month-only differs from the plan; Groceries matches it; Rent has its
+        // own October record; Transport wasn't budgeted in September.
+        assert_eq!(
+            preview.changes,
+            vec![FillLine {
+                category_id: world.category("Dining"),
+                before: Some(money("250.00")),
+                after: money("400.00"),
+            }]
+        );
+        assert_eq!(preview.kept, vec![world.category("Rent")]);
+        assert_eq!(preview.unchanged, 1);
+        assert_eq!(preview.total, money("2060.00"));
+
+        let wrote = budgets.fill(
+            id,
+            &world.ledger(),
+            october,
+            FillSource::PreviousMonth,
+            today(),
+        );
+        assert_eq!(wrote, Ok(1));
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        let dining = budget.chain(world.category("Dining"));
+        let filled = applied(dining, october).unwrap_or_else(|| unreachable!("filled"));
+        assert_eq!(filled.amount, money("400.00"));
+        assert_eq!(filled.rollover, Rollover::CarryUnspent);
+        // Month-only: November falls back to the Onward amount.
+        assert_eq!(
+            applied(dining, october.next()).map(|found| found.amount),
+            Some(money("250.00"))
+        );
+        assert_eq!(
+            total_budgeted(&budget, &world.categories, october),
+            preview.total
+        );
+        // A second Fill finds every Category kept or unchanged.
+        assert_eq!(
+            budgets.fill(
+                id,
+                &world.ledger(),
+                october,
+                FillSource::PreviousMonth,
+                today()
+            ),
+            Ok(0)
+        );
+    }
+
+    #[test]
+    fn fill_from_the_average_rounds_spent_and_refuses_a_closed_month() {
+        let (world, mut budgets, id) = fill_world();
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        // The current month: the three months before it are June to August.
+        let preview = fill_preview(&budget, &world.ledger(), sep(), FillSource::Average);
+        // Dining has its own September record and Rent has no spend: 1000.00 becomes 0.00.
+        assert_eq!(preview.kept, vec![world.category("Dining")]);
+        assert_eq!(
+            preview.changes,
+            vec![FillLine {
+                category_id: world.category("Rent"),
+                before: Some(money("1000.00")),
+                after: money("0.00"),
+            }]
+        );
+        assert_eq!(preview.unchanged, 1, "Groceries averages its 500.00");
+        assert_eq!(
+            budgets.fill(
+                id,
+                &world.ledger(),
+                sep().prev(),
+                FillSource::Average,
+                today()
+            ),
+            Err(BudgetError::ClosedMonth)
         );
     }
 

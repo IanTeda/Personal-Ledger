@@ -184,6 +184,7 @@ fn budgets_plan_hints() -> Vec<(&'static str, String)> {
         ("enter", crate::msg::desktop_hint_edit()),
         ("r", crate::msg::desktop_hint_rollover()),
         ("x", crate::msg::desktop_hint_clear()),
+        ("f", crate::msg::desktop_hint_fill()),
         ("n", crate::msg::desktop_hint_budget_category()),
         ("[/]", crate::msg::desktop_hint_range()),
         ("tab", crate::msg::desktop_hint_switch_view()),
@@ -216,6 +217,15 @@ fn budgets_limit_hints() -> Vec<(&'static str, String)> {
         ("tab", crate::msg::desktop_hint_next_field()),
         ("\u{2190}/\u{2192}", crate::msg::desktop_hint_choose()),
         ("enter", crate::msg::desktop_hint_save()),
+        ("esc", crate::msg::desktop_hint_cancel()),
+    ]
+}
+
+/// The status-line legend while Fill (9f) is open.
+fn budgets_fill_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_source()),
+        ("enter", crate::msg::desktop_hint_fill()),
         ("esc", crate::msg::desktop_hint_cancel()),
     ]
 }
@@ -2413,6 +2423,7 @@ impl Shell {
                     );
                 }
             }
+            "f" => self.open_budgets_fill(),
             "x" | "backspace" => self.write_budgets_plan_cell(""),
             "0" => self.write_budgets_plan_cell("0"),
             "[" => {
@@ -2816,6 +2827,163 @@ impl Shell {
         true
     }
 
+    /// The month Fill would target from the Plan cursor: the first open month at or after its
+    /// column.
+    fn budgets_fill_target(&self) -> bills::Period {
+        let cursor = self.budgets_plan_data().and_then(|plan| {
+            let column = self.budgets_plan_cursor_in(&plan).1;
+            plan.months.get(column).copied()
+        });
+        budgets::fill_target(cursor, self.today)
+    }
+
+    /// **Fill … from…** and `f` on the Plan tab: opens 9f on the cursor's target month.
+    fn open_budgets_fill(&mut self) {
+        if self.budgets_editable().is_none() {
+            return;
+        }
+        self.budgets_dialog = Some(budgets::BudgetsDialog::Fill {
+            month: self.budgets_fill_target(),
+            source: budgets::FillSource::default(),
+        });
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// **Fill** and `enter`: writes the chosen source's Month-only amounts and closes. A Fill that
+    /// would change nothing stays open, as its disabled button says.
+    fn confirm_budgets_fill(&mut self) {
+        let Some(budgets::BudgetsDialog::Fill { month, source }) = self.budgets_dialog else {
+            return;
+        };
+        let ledger = budgets::Ledger {
+            categories: &self.categories,
+            accounts: &self.accounts,
+            transactions: &self.transactions,
+            plans: &self.bill_plans,
+            entries: &self.bill_entries,
+        };
+        let wrote = self
+            .budgets
+            .fill(self.budgets_current, &ledger, month, source, self.today);
+        if matches!(wrote, Ok(count) if count > 0) {
+            self.budgets_dialog = None;
+            self.nav.exit_mode();
+        }
+    }
+
+    fn set_budgets_fill_source(&mut self, chosen: budgets::FillSource) {
+        if let Some(budgets::BudgetsDialog::Fill { source, .. }) = self.budgets_dialog.as_mut() {
+            *source = chosen;
+        }
+    }
+
+    /// Keys while Fill (9f) is open: `j`/`k` pick the source and `enter` fills.
+    fn handle_budgets_fill_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(budgets::BudgetsDialog::Fill { source, .. }) = self.budgets_dialog else {
+            return false;
+        };
+        let all = budgets::FillSource::ALL;
+        let at = all.iter().position(|s| *s == source).unwrap_or(0);
+        match keystroke.key.as_str() {
+            "j" | "down" => self.set_budgets_fill_source(all[(at + 1).min(all.len() - 1)]),
+            "k" | "up" => self.set_budgets_fill_source(all[at.saturating_sub(1)]),
+            "enter" => self.confirm_budgets_fill(),
+            _ => return false,
+        }
+        true
+    }
+
+    fn handle_budgets_fill_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_budgets_fill();
+        cx.notify();
+    }
+
+    fn handle_budgets_fill_confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.confirm_budgets_fill();
+        cx.notify();
+    }
+
+    /// Fill (9f), with each source's total and the chosen one's diff against the plan.
+    fn render_budgets_fill_dialog(
+        &self,
+        entity: &gpui::Entity<Self>,
+        cx: &gpui::App,
+    ) -> Option<gpui::AnyElement> {
+        let Some(budgets::BudgetsDialog::Fill { month, source }) = self.budgets_dialog else {
+            return None;
+        };
+        let budget = self.budgets.get(self.budgets_current)?;
+        let ledger = self.budgets_ledger();
+        let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        let previews = budgets::FillSource::ALL
+            .map(|each| budgets::fill_preview(budget, &ledger, month, each));
+        let chosen = previews.iter().find(|preview| preview.source == source)?;
+        let name = |category_id: &u32| {
+            self.categories
+                .iter()
+                .find(|category| category.id == *category_id)
+                .map(|category| category.name.clone())
+                .unwrap_or_default()
+        };
+        let sources = previews
+            .iter()
+            .map(|preview| {
+                let (title, detail) = match preview.source {
+                    budgets::FillSource::PreviousMonth => (
+                        crate::msg::desktop_budgets_fill_source_previous(
+                            &lib_locale::format::format_month(month.prev().month),
+                        ),
+                        crate::msg::desktop_budgets_fill_source_previous_detail(),
+                    ),
+                    budgets::FillSource::Average => (
+                        crate::msg::desktop_budgets_fill_source_average(),
+                        crate::msg::desktop_budgets_fill_source_average_detail(
+                            &lib_locale::format::format_month(month.prev().prev().prev().month),
+                            &lib_locale::format::format_month(month.prev().month),
+                        ),
+                    ),
+                };
+                budgets_view::fill_dialog::SourceRow {
+                    source: preview.source,
+                    title,
+                    detail,
+                    total: format::amount(&preview.total).1,
+                }
+            })
+            .collect();
+        Some(budgets_view::fill_dialog::render(
+            budgets_view::fill_dialog::FillDialogProps {
+                month: budgets_view::period_label(month),
+                sources,
+                preview: chosen,
+                change_names: chosen
+                    .changes
+                    .iter()
+                    .map(|line| name(&line.category_id))
+                    .collect(),
+                kept_names: chosen.kept.iter().map(name).collect(),
+                on_source_click: {
+                    let entity = entity.clone();
+                    Rc::new(move |source, _window, cx| {
+                        entity.update(cx, |shell, cx| {
+                            shell.set_budgets_fill_source(source);
+                            cx.notify();
+                        });
+                    })
+                },
+                on_cancel: plain(Shell::handle_budgets_dialog_cancel),
+                on_confirm: plain(Shell::handle_budgets_fill_confirm),
+            },
+            cx,
+        ))
+    }
+
     /// Keys while a Budgets dialog is open. On the Category detail `j`/`k` move the Transaction
     /// cursor, `t` or `enter` hand off to Transactions and `e` opens Edit budget. `Esc` never
     /// reaches here.
@@ -2826,6 +2994,9 @@ impl Shell {
             }
             Some(budgets::BudgetsDialog::Stop(_)) => {
                 return self.handle_budgets_stop_key(keystroke);
+            }
+            Some(budgets::BudgetsDialog::Fill { .. }) => {
+                return self.handle_budgets_fill_key(keystroke);
             }
             _ => {}
         }
@@ -7434,6 +7605,10 @@ impl Render for Shell {
                 on_period_next: plain(Shell::handle_budgets_period_next),
                 on_edit_plan_click: plain(Shell::handle_budgets_edit_plan_click),
                 on_add_click: plain(Shell::handle_budgets_add_click),
+                fill_label: crate::msg::desktop_budgets_fill_button(
+                    &lib_locale::format::format_month(self.budgets_fill_target().month),
+                ),
+                on_fill_click: plain(Shell::handle_budgets_fill_click),
                 on_action_click: {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
@@ -7748,7 +7923,12 @@ impl Render for Shell {
                 })
             }
             Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Plan => Some(PageStatus {
-                hints: if self.budgets_dialog.is_some() {
+                hints: if matches!(
+                    self.budgets_dialog,
+                    Some(budgets::BudgetsDialog::Fill { .. })
+                ) {
+                    budgets_fill_hints()
+                } else if self.budgets_dialog.is_some() {
                     budgets_limit_hints()
                 } else if self.budgets_plan_edit.is_some() {
                     budgets_plan_insert_hints()
@@ -8026,6 +8206,7 @@ impl Render for Shell {
             .children(bills_dialog_element)
             .children(self.render_budgets_detail(&entity, cx))
             .children(self.render_budgets_limit_dialog(&entity, cx))
+            .children(self.render_budgets_fill_dialog(&entity, cx))
             .children(match self.payees_dialog.as_ref() {
                 Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
                     payees_view::add_dialog::PayeeDialogMode::Add,
