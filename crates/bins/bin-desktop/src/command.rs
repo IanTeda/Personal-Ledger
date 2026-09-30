@@ -92,6 +92,16 @@ pub enum BudgetsVerb {
     New,
     /// `budgets edit`: 11c's edit mode on the Budget on show.
     Edit,
+    /// `budgets manage`: Manage budgets (11f).
+    Manage,
+    /// `budgets duplicate`: copies the Budget on show and opens the copy in edit mode.
+    Duplicate,
+    /// `budgets set-default`: makes the Budget on show the default.
+    SetDefault,
+    /// `budgets archive`: archives the Budget on show.
+    Archive,
+    /// `budgets restore`: restores the Budget on show.
+    Restore,
 }
 
 /// The palette's resting-state group a command sits under: one per noun, plus `Ledger` for the
@@ -262,6 +272,41 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_budgets_edit_description,
         binding: None,
         effect: CommandEffect::Budgets(BudgetsVerb::Edit),
+    },
+    Command {
+        name: "budgets manage",
+        domain: Domain::Budgets,
+        description: crate::msg::desktop_command_budgets_manage_description,
+        binding: None,
+        effect: CommandEffect::Budgets(BudgetsVerb::Manage),
+    },
+    Command {
+        name: "budgets duplicate",
+        domain: Domain::Budgets,
+        description: crate::msg::desktop_command_budgets_duplicate_description,
+        binding: None,
+        effect: CommandEffect::Budgets(BudgetsVerb::Duplicate),
+    },
+    Command {
+        name: "budgets set-default",
+        domain: Domain::Budgets,
+        description: crate::msg::desktop_command_budgets_set_default_description,
+        binding: None,
+        effect: CommandEffect::Budgets(BudgetsVerb::SetDefault),
+    },
+    Command {
+        name: "budgets archive",
+        domain: Domain::Budgets,
+        description: crate::msg::desktop_command_budgets_archive_description,
+        binding: None,
+        effect: CommandEffect::Budgets(BudgetsVerb::Archive),
+    },
+    Command {
+        name: "budgets restore",
+        domain: Domain::Budgets,
+        description: crate::msg::desktop_command_budgets_restore_description,
+        binding: None,
+        effect: CommandEffect::Budgets(BudgetsVerb::Restore),
     },
     Command {
         name: "categories",
@@ -483,6 +528,11 @@ mod tests {
             ("budgets switch", BudgetsVerb::Switch),
             ("budgets new", BudgetsVerb::New),
             ("budgets edit", BudgetsVerb::Edit),
+            ("budgets manage", BudgetsVerb::Manage),
+            ("budgets duplicate", BudgetsVerb::Duplicate),
+            ("budgets set-default", BudgetsVerb::SetDefault),
+            ("budgets archive", BudgetsVerb::Archive),
+            ("budgets restore", BudgetsVerb::Restore),
         ] {
             assert_eq!(effect(name), Some(CommandEffect::Budgets(verb)), "{name}");
         }

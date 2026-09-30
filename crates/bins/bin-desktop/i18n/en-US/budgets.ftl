@@ -238,7 +238,6 @@ desktop-budgets-switcher-archived-on = archived { $date }
 desktop-budgets-switcher-none = No budget matches.
 desktop-budgets-switcher-new = + New budget
 desktop-budgets-switcher-manage = Manage budgets…
-desktop-budgets-status-later = That screen is built in a later ticket.
 desktop-hint-switch-budget = switch budget
 desktop-hint-new-budget = new budget
 
@@ -275,3 +274,40 @@ desktop-budgets-new-start-help = Each writes its amounts onward from this month.
 desktop-budgets-new-error-name = Another budget already has that name.
 desktop-budgets-new-submit = Create budget
 desktop-budgets-new-submit-edit = Save
+
+## Manage budgets (11f): the header counts, the table, its row actions and the three notes.
+## `$budget` is the default Budget's name.
+
+desktop-budgets-manage-title = Manage budgets
+desktop-budgets-manage-counts = { $active } active · { $archived } archived · opens to <strong>{ $budget }</strong>
+desktop-budgets-manage-column-budget = Budget
+desktop-budgets-manage-column-method = Method
+desktop-budgets-manage-column-period = Period
+desktop-budgets-manage-column-accounts = Accounts
+desktop-budgets-manage-column-scope = Scope
+desktop-budgets-manage-column-actions = Actions
+desktop-budgets-manage-period-monthly = Monthly
+desktop-budgets-manage-accounts = { $count ->
+    [one] { $count } account
+   *[other] { $count } accounts
+}
+desktop-budgets-manage-scope = { $count ->
+    [one] { $count } category
+   *[other] { $count } categories
+}
+desktop-budgets-manage-action-open = open
+desktop-budgets-manage-action-edit = edit
+desktop-budgets-manage-action-duplicate = duplicate
+desktop-budgets-manage-action-default = set default
+desktop-budgets-manage-action-archive = archive
+desktop-budgets-manage-action-restore = restore
+desktop-budgets-manage-error-default = The default budget can't be archived. Set another default first.
+desktop-budgets-manage-note-views-title = Budgets are views
+desktop-budgets-manage-note-views = A budget never owns or copies transactions. A transaction counts in every budget whose accounts and categories cover it.
+desktop-budgets-manage-note-switching-title = Switching
+desktop-budgets-manage-note-switching = Switching keeps the tab you are on, and the last budget opened is remembered.
+desktop-budgets-manage-note-archive-title = Archive, not delete
+desktop-budgets-manage-note-archive = Archiving affects only the budget, never the ledger. Its history is kept and it can be restored.
+desktop-hint-duplicate = duplicate
+desktop-hint-set-default = set default
+desktop-hint-archive = archive

@@ -2218,8 +2218,11 @@ pub enum BudgetsDialog {
     Switcher(Switcher),
     /// 11c creating a Budget, or its edit mode (the form names the Budget).
     Budget(BudgetForm),
-    /// 11f.
-    Manage,
+    /// 11f: the row cursor over [`switcher_ids`], and the last refused action.
+    Manage {
+        selected: usize,
+        error: Option<BudgetError>,
+    },
     /// 9d for a Category (a leaf or a parent's rollup) and month.
     CategoryDetail { category_id: u32, month: Period },
     /// 9e: editing a Category's amount, or picking an unbudgeted Category to budget.

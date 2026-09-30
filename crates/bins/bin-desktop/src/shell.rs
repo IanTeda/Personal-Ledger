@@ -71,7 +71,8 @@ use crate::{
     transaction_rows::{self, DisplayPrefs},
     transactions::{self, Transaction},
     view::{
-        accounts as accounts_view, bills as bills_view, budgets as budgets_view,
+        accounts as accounts_view, bills as bills_view,
+        budgets::{self as budgets_view, manage_dialog::ManageAction},
         categories as categories_view,
         dashboard::{self, Dashboard},
         help as help_view, import as import_view, payees as payees_view,
@@ -249,6 +250,19 @@ fn budgets_switcher_hints() -> Vec<(&'static str, String)> {
         ("/", crate::msg::desktop_hint_search()),
         ("n", crate::msg::desktop_hint_new_budget()),
         ("esc", crate::msg::desktop_hint_close()),
+    ]
+}
+
+/// The status-line legend while Manage budgets (11f) is open.
+fn budgets_manage_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("enter", crate::msg::desktop_hint_open()),
+        ("n", crate::msg::desktop_hint_new_budget()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("d", crate::msg::desktop_hint_duplicate()),
+        ("*", crate::msg::desktop_hint_set_default()),
+        ("x", crate::msg::desktop_hint_archive()),
     ]
 }
 
@@ -3049,6 +3063,7 @@ impl Shell {
                 budgets_limit_hints()
             }
             (Some(BudgetsDialog::Stop(_)), _) => budgets_stop_hints(),
+            (Some(BudgetsDialog::Manage { .. }), _) => budgets_manage_hints(),
             (Some(BudgetsDialog::Fill { .. }), _) => budgets_fill_hints(),
             (Some(_), _) => budgets_detail_hints(),
             (None, BudgetsTab::Progress) => budgets_progress_hints(),
@@ -3309,11 +3324,188 @@ impl Shell {
         ))
     }
 
-    /// The Switcher's `Manage budgets…`: 11f.
+    /// The Switcher's `Manage budgets…`: 11f, with the Budget on show under the cursor.
     fn open_budgets_manage(&mut self) {
-        self.budgets_dialog = None;
-        self.nav.exit_mode();
-        self.status_message = Some(crate::msg::desktop_budgets_status_later());
+        self.budgets_dialog = Some(budgets::BudgetsDialog::Manage {
+            selected: budgets::switcher_ids(&self.budgets, "")
+                .iter()
+                .position(|id| *id == self.budgets_current)
+                .unwrap_or(0),
+            error: None,
+        });
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Runs one of 11f's actions on Budget `id`. Open and Edit leave Manage budgets; Duplicate
+    /// opens the copy in edit mode; the rest stay, showing a refusal when there is one. Run from
+    /// the palette with Manage closed, a refusal goes to the status line instead.
+    fn run_budgets_manage_action(&mut self, id: u32, action: ManageAction) {
+        let outcome = match action {
+            ManageAction::Open => {
+                self.choose_budgets_switcher(id);
+                return;
+            }
+            ManageAction::Edit => {
+                self.open_budgets_edit(id);
+                return;
+            }
+            ManageAction::Duplicate => self.budgets.duplicate(id).map(|copy| {
+                self.switch_budget(copy);
+                self.open_budgets_edit(copy);
+            }),
+            ManageAction::SetDefault => self.budgets.set_default(id),
+            ManageAction::Archive => self.budgets.archive(id, self.today),
+            ManageAction::Restore => self.budgets.restore(id),
+        };
+        let refused = outcome.err();
+        match self.budgets_dialog.as_mut() {
+            Some(budgets::BudgetsDialog::Manage { selected, error }) => {
+                // Archiving or restoring moves the row between the two sections: follow it.
+                *selected = budgets::switcher_ids(&self.budgets, "")
+                    .iter()
+                    .position(|each| *each == id)
+                    .unwrap_or(0);
+                *error = refused;
+            }
+            _ => {
+                if let Some(error) = refused {
+                    self.status_message = Some(match error {
+                        budgets::BudgetError::DefaultCannotBeArchived => {
+                            crate::msg::desktop_budgets_manage_error_default()
+                        }
+                        other => budgets_view::limit_dialog::error_text(&other),
+                    });
+                }
+            }
+        }
+    }
+
+    /// Keys while Manage budgets (11f) is open: `j`/`k` move, `enter` opens, `n` starts a new
+    /// Budget, `e` edits, `d` duplicates, `*` sets the default and `x` archives or restores.
+    fn handle_budgets_manage_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(budgets::BudgetsDialog::Manage { selected, .. }) = self.budgets_dialog.as_mut()
+        else {
+            return false;
+        };
+        let ids = budgets::switcher_ids(&self.budgets, "");
+        let at = (*selected).min(ids.len().saturating_sub(1));
+        let Some(id) = ids.get(at).copied() else {
+            return false;
+        };
+        let archived = self
+            .budgets
+            .get(id)
+            .is_some_and(budgets::Budget::is_archived);
+        let shift = keystroke.modifiers.shift;
+        let action = match keystroke.key.as_str() {
+            "j" | "down" => {
+                *selected = (at + 1).min(ids.len() - 1);
+                return true;
+            }
+            "k" | "up" => {
+                *selected = at.saturating_sub(1);
+                return true;
+            }
+            "n" => {
+                self.open_budgets_new();
+                return true;
+            }
+            "enter" => ManageAction::Open,
+            "e" => ManageAction::Edit,
+            "d" => ManageAction::Duplicate,
+            // `*` arrives as itself or as a shifted `8`, depending on the platform.
+            "*" => ManageAction::SetDefault,
+            "8" if shift => ManageAction::SetDefault,
+            "x" if archived => ManageAction::Restore,
+            "x" => ManageAction::Archive,
+            _ => return false,
+        };
+        self.run_budgets_manage_action(id, action);
+        true
+    }
+
+    /// Manage budgets (11f).
+    fn render_budgets_manage_dialog(
+        &self,
+        entity: &gpui::Entity<Self>,
+        cx: &gpui::App,
+    ) -> Option<gpui::AnyElement> {
+        let Some(budgets::BudgetsDialog::Manage { selected, error }) = self.budgets_dialog.as_ref()
+        else {
+            return None;
+        };
+        let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        let current = bills::Period::of(self.today);
+        let rows = budgets::switcher_ids(&self.budgets, "")
+            .into_iter()
+            .filter_map(|id| self.budgets.get(id))
+            .map(|budget| budgets_view::manage_dialog::ManageRow {
+                id: budget.id,
+                name: budget.name.clone(),
+                method: budget.method,
+                accounts: crate::msg::desktop_budgets_manage_accounts(
+                    i64::try_from(budget.account_ids.len()).unwrap_or(i64::MAX),
+                ),
+                scope: crate::msg::desktop_budgets_manage_scope(
+                    i64::try_from(
+                        budget
+                            .category_ids()
+                            .filter(|id| budgets::applied(budget.chain(*id), current).is_some())
+                            .count(),
+                    )
+                    .unwrap_or(i64::MAX),
+                ),
+                is_default: budget.is_default,
+                archived: budget.is_archived(),
+            })
+            .collect();
+        Some(budgets_view::manage_dialog::render(
+            budgets_view::manage_dialog::ManageDialogProps {
+                counts: crate::msg::desktop_budgets_manage_counts(
+                    &self.budgets.active().count().to_string(),
+                    &self.budgets.archived().count().to_string(),
+                    &self
+                        .budgets
+                        .default_budget()
+                        .map(|budget| budget.name.clone())
+                        .unwrap_or_default(),
+                ),
+                rows,
+                selected: *selected,
+                error: error.clone(),
+                on_row_click: {
+                    let entity = entity.clone();
+                    Rc::new(move |index, _window, cx| {
+                        entity.update(cx, |shell, cx| {
+                            if let Some(budgets::BudgetsDialog::Manage { selected, .. }) =
+                                shell.budgets_dialog.as_mut()
+                            {
+                                *selected = index;
+                            }
+                            cx.notify();
+                        });
+                    })
+                },
+                on_action_click: {
+                    let entity = entity.clone();
+                    Rc::new(move |id, action, _window, cx| {
+                        entity.update(cx, |shell, cx| {
+                            shell.run_budgets_manage_action(id, action);
+                            cx.notify();
+                        });
+                    })
+                },
+                on_new: plain(Shell::handle_budgets_new_click),
+                on_close: plain(Shell::handle_budgets_dialog_cancel),
+            },
+            cx,
+        ))
     }
 
     /// Keys while the Switcher (11b) is open. With the list focused `j`/`k` move, `enter` opens,
@@ -3625,6 +3817,9 @@ impl Shell {
             }
             Some(budgets::BudgetsDialog::Budget(_)) => {
                 return self.handle_budgets_form_key(keystroke);
+            }
+            Some(budgets::BudgetsDialog::Manage { .. }) => {
+                return self.handle_budgets_manage_key(keystroke);
             }
             _ => {}
         }
@@ -6996,6 +7191,25 @@ impl Shell {
                     BudgetsVerb::Switch => self.open_budgets_switcher(),
                     BudgetsVerb::New => self.open_budgets_new(),
                     BudgetsVerb::Edit => self.open_budgets_edit(self.budgets_current),
+                    BudgetsVerb::Manage => self.open_budgets_manage(),
+                    BudgetsVerb::Duplicate => {
+                        self.run_budgets_manage_action(
+                            self.budgets_current,
+                            ManageAction::Duplicate,
+                        );
+                    }
+                    BudgetsVerb::SetDefault => {
+                        self.run_budgets_manage_action(
+                            self.budgets_current,
+                            ManageAction::SetDefault,
+                        );
+                    }
+                    BudgetsVerb::Archive => {
+                        self.run_budgets_manage_action(self.budgets_current, ManageAction::Archive);
+                    }
+                    BudgetsVerb::Restore => {
+                        self.run_budgets_manage_action(self.budgets_current, ManageAction::Restore);
+                    }
                 }
             }
             CommandEffect::NotYetBuilt => {
@@ -8891,6 +9105,7 @@ impl Render for Shell {
             .children(self.render_budgets_fill_dialog(&entity, cx))
             .children(self.render_budgets_switcher(&entity, cx))
             .children(self.render_budgets_form_dialog(&entity, cx))
+            .children(self.render_budgets_manage_dialog(&entity, cx))
             .children(match self.payees_dialog.as_ref() {
                 Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
                     payees_view::add_dialog::PayeeDialogMode::Add,
