@@ -408,9 +408,19 @@ pub struct Shell {
     /// The shared stub Categories tree, Payees and Tags. Owned here so the Categories, Payees and
     /// Tags views the later maps build can read and grow the same data the Transactions view uses.
     categories: Vec<Category>,
-    /// The shared stub Budgets, seeded from `budgets::default_budgets()`. A real, mutable `Vec`
-    /// that survives leaving and re-entering the Categories view.
-    budgets: Vec<budgets::Budget>,
+    /// The shared stub Budgets, seeded from `budgets::default_budgets()`. Owned here so the
+    /// Budgets surface and Categories 5c read and write the same Category Limits, and so they
+    /// survive leaving and re-entering either view.
+    budgets: budgets::Budgets,
+    /// The Budget the Budgets surface shows. The last one opened is a Client-scoped Preference, so
+    /// this starts on the default Budget; the stub doesn't persist it.
+    budgets_current: u32,
+    budgets_tab: budgets::BudgetsTab,
+    /// The Progress tab's calendar month; starts at today's.
+    budgets_period: bills::Period,
+    /// The open Budgets dialog, if any -- `NavState::mode` is `InputMode::Dialog` for exactly as
+    /// long as this is `Some`, following `bills_dialog`.
+    budgets_dialog: Option<budgets::BudgetsDialog>,
     /// The selected category row in the tree view (the position in a depth-first enumeration).
     categories_selected: usize,
     /// The selected category ID for keyboard navigation, if any.
@@ -497,6 +507,10 @@ impl Shell {
             &mut transactions,
             today,
         );
+        let seeded_budgets = budgets::default_budgets(&seeded_accounts, &categories, today);
+        let budgets_current = seeded_budgets
+            .default_budget()
+            .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id);
         Self {
             nav,
             focus_handle,
@@ -534,7 +548,11 @@ impl Shell {
             accounts_dialog: None,
             today,
             categories,
-            budgets: budgets::default_budgets(),
+            budgets: seeded_budgets,
+            budgets_current,
+            budgets_tab: budgets::BudgetsTab::default(),
+            budgets_period: bills::Period::of(today),
+            budgets_dialog: None,
             categories_selected: 0,
             categories_selected_id: None,
             categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
@@ -1856,8 +1874,15 @@ impl Shell {
     /// Opens the Edit categories dialog on `id`, pre-filled.
     fn open_edit_categories_dialog(&mut self, category_id: u32) {
         if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
-            let budget_str = budgets::find_by_category_and_unit(&self.budgets, category_id, 1)
-                .map(|b| b.monthly_amount.0.to_string())
+            let budget_str = self
+                .budgets
+                .monthly_limit(
+                    budgets::PERSONAL_SPENDING_ID,
+                    &self.categories,
+                    category_id,
+                    self.today,
+                )
+                .map(|amount| amount.0.to_string())
                 .unwrap_or_default();
             let form = categories::CategoryForm {
                 name: category.name.clone(),
@@ -4099,11 +4124,12 @@ impl Shell {
                                 if !form.budget.trim().is_empty()
                                     && let Ok(amount) = form.budget.parse::<lib_core::Money>()
                                 {
-                                    budgets::create_budget(
-                                        &mut self.budgets,
+                                    let _ = self.budgets.set_monthly_limit(
+                                        budgets::PERSONAL_SPENDING_ID,
+                                        &self.categories,
                                         category_id,
-                                        1,
-                                        amount,
+                                        Some(amount),
+                                        self.today,
                                     );
                                 }
                             }
@@ -4124,9 +4150,21 @@ impl Shell {
                             }
                             // Handle budget changes
                             if form.budget.trim().is_empty() {
-                                budgets::delete_budget(&mut self.budgets, id, 1);
+                                let _ = self.budgets.set_monthly_limit(
+                                    budgets::PERSONAL_SPENDING_ID,
+                                    &self.categories,
+                                    id,
+                                    None,
+                                    self.today,
+                                );
                             } else if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
-                                budgets::upsert_budget(&mut self.budgets, id, 1, amount);
+                                let _ = self.budgets.set_monthly_limit(
+                                    budgets::PERSONAL_SPENDING_ID,
+                                    &self.categories,
+                                    id,
+                                    Some(amount),
+                                    self.today,
+                                );
                             }
                             self.nav.exit_mode();
                         }
@@ -4555,11 +4593,12 @@ impl Shell {
                                 if !form.budget.trim().is_empty()
                                     && let Ok(amount) = form.budget.parse::<lib_core::Money>()
                                 {
-                                    budgets::create_budget(
-                                        &mut self.budgets,
+                                    let _ = self.budgets.set_monthly_limit(
+                                        budgets::PERSONAL_SPENDING_ID,
+                                        &self.categories,
                                         category_id,
-                                        1,
-                                        amount,
+                                        Some(amount),
+                                        self.today,
                                     );
                                 }
                                 self.nav.exit_mode();
@@ -4592,9 +4631,21 @@ impl Shell {
                         }
                         // Handle budget changes
                         if form.budget.trim().is_empty() {
-                            budgets::delete_budget(&mut self.budgets, id, 1);
+                            let _ = self.budgets.set_monthly_limit(
+                                budgets::PERSONAL_SPENDING_ID,
+                                &self.categories,
+                                id,
+                                None,
+                                self.today,
+                            );
                         } else if let Ok(amount) = form.budget.parse::<lib_core::Money>() {
-                            budgets::upsert_budget(&mut self.budgets, id, 1, amount);
+                            let _ = self.budgets.set_monthly_limit(
+                                budgets::PERSONAL_SPENDING_ID,
+                                &self.categories,
+                                id,
+                                Some(amount),
+                                self.today,
+                            );
                         }
                         self.nav.exit_mode();
                         cx.notify();
@@ -6851,11 +6902,7 @@ impl Render for Shell {
                                 .count();
 
                         // Count budgets attached to this category
-                        let budget_count = self
-                            .budgets
-                            .iter()
-                            .filter(|b| b.category_id == *category_id)
-                            .count();
+                        let budget_count = self.budgets.limit_count(*category_id);
 
                         categories_view::delete_dialog::render(
                             &category,
@@ -7210,7 +7257,7 @@ fn delete_account(
 fn delete_category(
     categories: &mut Vec<Category>,
     transactions: &mut [Transaction],
-    budgets: &mut Vec<budgets::Budget>,
+    budgets: &mut budgets::Budgets,
     id: u32,
 ) -> (ToastKind, String) {
     let refused = |error: categories::CategoryError| {
@@ -7238,7 +7285,7 @@ fn delete_category(
             moved += 1;
         }
     }
-    budgets::delete_budget(budgets, id, 1);
+    budgets.remove_category(id);
     match categories::delete_category(categories, id) {
         Ok(()) => (
             ToastKind::Success,
@@ -7287,7 +7334,7 @@ mod tests {
     fn a_refused_category_delete_raises_an_error_toast_and_changes_nothing() {
         crate::locale::init_for_tests();
         let (_, mut categories, mut transactions) = seeded_ledger();
-        let mut budgets = budgets::default_budgets();
+        let mut budgets = budgets::Budgets::default();
         let food = categories::find_by_name(&categories, "Food").expect("seeded");
         let before = categories.len();
         let (kind, text) = delete_category(&mut categories, &mut transactions, &mut budgets, food);
@@ -7303,7 +7350,7 @@ mod tests {
     fn deleting_a_leaf_category_raises_a_success_toast() {
         crate::locale::init_for_tests();
         let (_, mut categories, mut transactions) = seeded_ledger();
-        let mut budgets = budgets::default_budgets();
+        let mut budgets = budgets::Budgets::default();
         let rent = categories::find_by_name(&categories, "Rent").expect("seeded");
         let (kind, text) = delete_category(&mut categories, &mut transactions, &mut budgets, rent);
         assert_eq!(kind, ToastKind::Success);

@@ -42,7 +42,7 @@ pub struct DialogHandlers {
 
 pub struct CategoriesPageProps<'a> {
     pub categories: &'a [categories::Category],
-    pub budgets: &'a [budgets::Budget],
+    pub budgets: &'a budgets::Budgets,
     pub transactions: &'a [Transaction],
     pub selected_index: Option<usize>,
     pub expanded: &'a [u32],
@@ -68,7 +68,6 @@ pub fn render(
         props.categories,
         props.budgets,
         props.transactions,
-        props.base_unit_id,
         props.today,
     );
 
@@ -303,8 +302,12 @@ fn table_row(
         row.id,
         props.today,
     );
-    let budget = budgets::find_by_category_and_unit(props.budgets, row.id, props.base_unit_id)
-        .map(|b| b.monthly_amount.clone());
+    let budget = props.budgets.monthly_limit(
+        budgets::PERSONAL_SPENDING_ID,
+        props.categories,
+        row.id,
+        props.today,
+    );
     let is_over = budget
         .as_ref()
         .map(|b| budgets::is_over_budget(&spent, b))
@@ -525,23 +528,23 @@ fn progress_bar(
         )
 }
 
+/// Leaf Expense Categories whose month-to-date spend exceeds their Personal spending limit; a
+/// parent's rollup is shown but never counted (ADR-0028).
 fn count_over_budget(
     categories: &[categories::Category],
-    budgets: &[budgets::Budget],
+    budgets: &budgets::Budgets,
     transactions: &[Transaction],
-    base_unit_id: u32,
     today: chrono::NaiveDate,
 ) -> usize {
     categories
         .iter()
         .filter(|c| c.category_type == CategoryTypes::Expense)
+        .filter(|c| categories::is_leaf(categories, c.id))
         .filter(|c| {
             let spent = categories::month_to_date_spent(categories, transactions, &[], c.id, today);
-            if let Some(budget) = budgets::find_by_category_and_unit(budgets, c.id, base_unit_id) {
-                budgets::is_over_budget(&spent, &budget.monthly_amount)
-            } else {
-                false
-            }
+            budgets
+                .monthly_limit(budgets::PERSONAL_SPENDING_ID, categories, c.id, today)
+                .is_some_and(|limit| budgets::is_over_budget(&spent, &limit))
         })
         .count()
 }
