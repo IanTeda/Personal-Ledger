@@ -37,7 +37,7 @@ use crate::{
         self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
         DeleteAccountForm, NameLookup, SelectKey,
     },
-    bill_form, bill_history, bills, budgets,
+    bill_form, bill_history, bills, budget_form, budgets,
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
@@ -968,6 +968,7 @@ impl Shell {
                 }
                 let closed_budgets_list = match self.budgets_dialog.as_mut() {
                     Some(budgets::BudgetsDialog::EditLimit(form)) => form.close_open_select(),
+                    Some(budgets::BudgetsDialog::Budget(form)) => form.close_open_select(),
                     Some(budgets::BudgetsDialog::Stop(form)) => {
                         let open = form.from.is_open();
                         form.from.cancel();
@@ -3044,7 +3045,9 @@ impl Shell {
         use budgets::{BudgetsDialog, BudgetsTab};
         match (&self.budgets_dialog, self.budgets_tab) {
             (Some(BudgetsDialog::Switcher(_)), _) => budgets_switcher_hints(),
-            (Some(BudgetsDialog::EditLimit(_)), _) => budgets_limit_hints(),
+            (Some(BudgetsDialog::EditLimit(_) | BudgetsDialog::Budget(_)), _) => {
+                budgets_limit_hints()
+            }
             (Some(BudgetsDialog::Stop(_)), _) => budgets_stop_hints(),
             (Some(BudgetsDialog::Fill { .. }), _) => budgets_fill_hints(),
             (Some(_), _) => budgets_detail_hints(),
@@ -3089,11 +3092,221 @@ impl Shell {
         self.switch_budget(id);
     }
 
-    /// `n` on the Budgets page and the Switcher's `+ New budget`: 11c.
+    /// `n` on the Budgets page and the Switcher's `+ New budget`: 11c, with the Budget on show as
+    /// what "Copy categories from" names.
     fn open_budgets_new(&mut self) {
-        self.budgets_dialog = None;
-        self.nav.exit_mode();
-        self.status_message = Some(crate::msg::desktop_budgets_status_later());
+        let form =
+            budget_form::BudgetForm::new(&self.accounts, self.budgets.get(self.budgets_current));
+        self.budgets_dialog = Some(budgets::BudgetsDialog::Budget(form));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// 11c's edit mode on Budget `id`: rename it or change its Accounts. An archived Budget is
+    /// read-only, so it opens nothing.
+    fn open_budgets_edit(&mut self, id: u32) {
+        let Some(budget) = self.budgets.get(id).filter(|budget| !budget.is_archived()) else {
+            return;
+        };
+        self.budgets_dialog = Some(budgets::BudgetsDialog::Budget(
+            budget_form::BudgetForm::from_budget(budget),
+        ));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Runs `change` on the open New budget form with the options for its Unit, then keeps its
+    /// Accounts inside the Unit it ends up in.
+    fn with_budgets_form(
+        &mut self,
+        change: impl FnOnce(&mut budget_form::BudgetForm, &budget_form::BudgetOptions),
+    ) {
+        let Some(budgets::BudgetsDialog::Budget(form)) = self.budgets_dialog.as_mut() else {
+            return;
+        };
+        let options = budget_form::BudgetOptions::new(&self.accounts, form.unit_code());
+        change(form, &options);
+        let options = budget_form::BudgetOptions::new(&self.accounts, form.unit_code());
+        form.sync_unit(&options);
+    }
+
+    /// **Create budget** / **Save** and `enter`: creates the Budget and switches to it, or saves
+    /// the rename and Accounts. A no-op while the form is incomplete; a refused save keeps the
+    /// dialog open with the error shown.
+    fn confirm_budgets_form(&mut self) {
+        let Some(budgets::BudgetsDialog::Budget(form)) = self.budgets_dialog.as_ref() else {
+            return;
+        };
+        let Some(draft) = form.draft() else {
+            return;
+        };
+        let saved = match draft {
+            budget_form::BudgetDraft::Create(new) => {
+                let ledger = budgets::Ledger {
+                    categories: &self.categories,
+                    accounts: &self.accounts,
+                    transactions: &self.transactions,
+                    plans: &self.bill_plans,
+                    entries: &self.bill_entries,
+                };
+                self.budgets.create(&new, &ledger, self.today).map(Some)
+            }
+            budget_form::BudgetDraft::Edit {
+                id,
+                name,
+                account_ids,
+            } => self
+                .budgets
+                .edit(id, &name, account_ids, &self.accounts)
+                .map(|()| None),
+        };
+        match saved {
+            Ok(created) => {
+                self.budgets_dialog = None;
+                self.nav.exit_mode();
+                if let Some(id) = created {
+                    self.switch_budget(id);
+                }
+            }
+            Err(error) => {
+                if let Some(budgets::BudgetsDialog::Budget(form)) = self.budgets_dialog.as_mut() {
+                    form.error = Some(error);
+                }
+            }
+        }
+    }
+
+    /// Keys while New budget (11c) is open. `Esc` never reaches here.
+    fn handle_budgets_form_key(&mut self, keystroke: &Keystroke) -> bool {
+        let modifiers = keystroke.modifiers;
+        let Some(budgets::BudgetsDialog::Budget(form)) = self.budgets_dialog.as_ref() else {
+            return false;
+        };
+        let focused = form.focused;
+        let on_unit = focused == budget_form::BudgetField::Unit;
+        let on_name = focused == budget_form::BudgetField::Name;
+        let list_open = form.unit.is_open();
+        match keystroke.key.as_str() {
+            "tab" => self.with_budgets_form(|form, _| form.cycle_focus(modifiers.shift)),
+            "up" | "down" if on_unit => {
+                let key = if keystroke.key == "up" {
+                    SelectKey::Up
+                } else {
+                    SelectKey::Down
+                };
+                self.with_budgets_form(|form, options| {
+                    form.handle_select_key(key, options);
+                });
+            }
+            "space" if on_unit => self.with_budgets_form(|form, options| {
+                form.handle_select_key(SelectKey::Activate, options);
+            }),
+            "enter" if list_open => self.with_budgets_form(|form, options| {
+                form.handle_select_key(SelectKey::Activate, options);
+            }),
+            "space" if focused == budget_form::BudgetField::Accounts => {
+                self.with_budgets_form(|form, options| form.toggle_cursor_account(options));
+            }
+            "left" | "right" if !on_name => {
+                let forward = keystroke.key == "right";
+                self.with_budgets_form(|form, options| {
+                    form.step(forward, options);
+                });
+            }
+            "enter" => self.confirm_budgets_form(),
+            "backspace" => self.with_budgets_form(|form, _| form.backspace()),
+            _ => {
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(ch) = typed_char(keystroke) {
+                    self.with_budgets_form(|form, _| form.push_char(ch));
+                }
+            }
+        }
+        true
+    }
+
+    fn handle_budgets_form_confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.confirm_budgets_form();
+        cx.notify();
+    }
+
+    /// New budget (11c), or its edit mode.
+    fn render_budgets_form_dialog(
+        &self,
+        entity: &gpui::Entity<Self>,
+        cx: &gpui::App,
+    ) -> Option<gpui::AnyElement> {
+        let Some(budgets::BudgetsDialog::Budget(form)) = self.budgets_dialog.as_ref() else {
+            return None;
+        };
+        let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        let options = budget_form::BudgetOptions::new(&self.accounts, form.unit_code());
+        let named = form
+            .editing
+            .or_else(|| form.copy_source.as_ref().map(|(id, _)| *id));
+        let handlers = budgets_view::budget_dialog::BudgetDialogHandlers {
+            on_field_click: {
+                let entity = entity.clone();
+                Rc::new(move |field, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.with_budgets_form(|form, options| {
+                            if field == budget_form::BudgetField::Unit {
+                                form.click_unit(options);
+                            } else {
+                                form.focus(field);
+                            }
+                        });
+                        cx.notify();
+                    });
+                })
+            },
+            on_unit_option_click: {
+                let entity = entity.clone();
+                Rc::new(move |index, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.with_budgets_form(|form, options| form.choose_unit(index, options));
+                        cx.notify();
+                    });
+                })
+            },
+            on_account_click: {
+                let entity = entity.clone();
+                Rc::new(move |id, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.with_budgets_form(|form, options| form.toggle_account(id, options));
+                        cx.notify();
+                    });
+                })
+            },
+            on_start_click: {
+                let entity = entity.clone();
+                Rc::new(move |choice, _window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.with_budgets_form(|form, _| form.set_start_from(choice));
+                        cx.notify();
+                    });
+                })
+            },
+            on_cancel: plain(Shell::handle_budgets_dialog_cancel),
+            on_confirm: plain(Shell::handle_budgets_form_confirm),
+        };
+        Some(budgets_view::budget_dialog::render(
+            budgets_view::budget_dialog::BudgetDialogProps {
+                form,
+                options: &options,
+                budget_name: named
+                    .and_then(|id| self.budgets.get(id))
+                    .map(|budget| budget.name.clone()),
+                handlers,
+            },
+            cx,
+        ))
     }
 
     /// The Switcher's `Manage budgets…`: 11f.
@@ -3409,6 +3622,9 @@ impl Shell {
             }
             Some(budgets::BudgetsDialog::Switcher(_)) => {
                 return self.handle_budgets_switcher_key(keystroke);
+            }
+            Some(budgets::BudgetsDialog::Budget(_)) => {
+                return self.handle_budgets_form_key(keystroke);
             }
             _ => {}
         }
@@ -6778,6 +6994,8 @@ impl Shell {
                 }
                 match verb {
                     BudgetsVerb::Switch => self.open_budgets_switcher(),
+                    BudgetsVerb::New => self.open_budgets_new(),
+                    BudgetsVerb::Edit => self.open_budgets_edit(self.budgets_current),
                 }
             }
             CommandEffect::NotYetBuilt => {
@@ -8672,6 +8890,7 @@ impl Render for Shell {
             .children(self.render_budgets_limit_dialog(&entity, cx))
             .children(self.render_budgets_fill_dialog(&entity, cx))
             .children(self.render_budgets_switcher(&entity, cx))
+            .children(self.render_budgets_form_dialog(&entity, cx))
             .children(match self.payees_dialog.as_ref() {
                 Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
                     payees_view::add_dialog::PayeeDialogMode::Add,

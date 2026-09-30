@@ -88,6 +88,10 @@ pub enum AccountsVerb {
 pub enum BudgetsVerb {
     /// `budgets switch`: the Switcher popover (11b).
     Switch,
+    /// `budgets new`: the New budget dialog (11c).
+    New,
+    /// `budgets edit`: 11c's edit mode on the Budget on show.
+    Edit,
 }
 
 /// The palette's resting-state group a command sits under: one per noun, plus `Ledger` for the
@@ -244,6 +248,20 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_budgets_switch_description,
         binding: Some("B"),
         effect: CommandEffect::Budgets(BudgetsVerb::Switch),
+    },
+    Command {
+        name: "budgets new",
+        domain: Domain::Budgets,
+        description: crate::msg::desktop_command_budgets_new_description,
+        binding: Some("n"),
+        effect: CommandEffect::Budgets(BudgetsVerb::New),
+    },
+    Command {
+        name: "budgets edit",
+        domain: Domain::Budgets,
+        description: crate::msg::desktop_command_budgets_edit_description,
+        binding: None,
+        effect: CommandEffect::Budgets(BudgetsVerb::Edit),
     },
     Command {
         name: "categories",
@@ -461,10 +479,13 @@ mod tests {
     #[test]
     fn the_budgets_verbs_carry_their_effects() {
         let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
-        assert_eq!(
-            effect("budgets switch"),
-            Some(CommandEffect::Budgets(BudgetsVerb::Switch))
-        );
+        for (name, verb) in [
+            ("budgets switch", BudgetsVerb::Switch),
+            ("budgets new", BudgetsVerb::New),
+            ("budgets edit", BudgetsVerb::Edit),
+        ] {
+            assert_eq!(effect(name), Some(CommandEffect::Budgets(verb)), "{name}");
+        }
     }
 
     #[test]

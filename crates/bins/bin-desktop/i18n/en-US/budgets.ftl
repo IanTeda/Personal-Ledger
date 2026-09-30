@@ -241,3 +241,37 @@ desktop-budgets-switcher-manage = Manage budgets…
 desktop-budgets-status-later = That screen is built in a later ticket.
 desktop-hint-switch-budget = switch budget
 desktop-hint-new-budget = new budget
+
+## The New budget dialog (11c) and its edit mode: the fields, the four method cards (only
+## Category limits can be chosen), the Account chips, Start from and the footer. `$budget` is the
+## Budget on show.
+
+desktop-budgets-new-title = New budget
+desktop-budgets-new-title-edit = Edit budget — { $budget }
+desktop-budgets-new-field-name = Name
+desktop-budgets-new-name-placeholder = Holiday
+desktop-budgets-new-field-method = Method
+desktop-budgets-new-field-accounts = Accounts on budget
+desktop-budgets-new-field-start = Start from
+desktop-budgets-new-method-envelope = Envelope
+desktop-budgets-new-method-envelope-tag = Zero-based
+desktop-budgets-new-method-envelope-detail = Every dollar received is assigned to a category.
+desktop-budgets-new-method-limits = Category limits
+desktop-budgets-new-method-limits-tag = Caps
+desktop-budgets-new-method-limits-detail = A monthly cap per category, measured against spending.
+desktop-budgets-new-method-split = Percentage split
+desktop-budgets-new-method-split-tag = 50/30/20
+desktop-budgets-new-method-split-detail = Buckets measured against the income received.
+desktop-budgets-new-method-project = Project
+desktop-budgets-new-method-project-tag = One-off
+desktop-budgets-new-method-project-detail = One total over a date range, split into lines.
+desktop-budgets-new-method-later = coming later
+desktop-budgets-new-accounts-help = Spending on these accounts counts in this budget. Accounts left off still count toward net worth.
+desktop-budgets-new-accounts-none = No account takes transactions in this unit.
+desktop-budgets-new-start-empty = Empty
+desktop-budgets-new-start-copy = Copy categories from { $budget }
+desktop-budgets-new-start-average = Last 3 months' spending
+desktop-budgets-new-start-help = Each writes its amounts onward from this month. A category with no spending stays unbudgeted.
+desktop-budgets-new-error-name = Another budget already has that name.
+desktop-budgets-new-submit = Create budget
+desktop-budgets-new-submit-edit = Save

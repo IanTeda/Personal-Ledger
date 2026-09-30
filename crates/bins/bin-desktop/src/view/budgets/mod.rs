@@ -4,9 +4,10 @@
 //!
 //! The Progress (9a, `progress`), Plan (9b, `plan`) and History (9c, `history`) tabs, with the
 //! Category detail (9d), Edit budget (9e), Fill (9f) and Stop budgeting (9g) dialogs and the
-//! Switcher popover (11b, `switcher`). Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
+//! Switcher popover (11b, `switcher`) and the New budget dialog (11c, `budget_dialog`). Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
 //! handlers.
 
+pub mod budget_dialog;
 pub mod detail_dialog;
 pub mod fill_dialog;
 pub mod history;

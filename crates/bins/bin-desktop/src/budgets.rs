@@ -31,6 +31,7 @@ use lib_core::{CategoryTypes, Money};
 use crate::{
     accounts::Account,
     bills::{BillPlan, BillScheduleEntry, Period},
+    budget_form::BudgetForm,
     categories::{self, Category},
     limit_form::{LimitForm, StopForm},
     transactions::{self, Transaction},
@@ -2215,10 +2216,8 @@ pub fn switcher_ids(budgets: &Budgets, query: &str) -> Vec<u32> {
 pub enum BudgetsDialog {
     /// 11b, the popover under the title.
     Switcher(Switcher),
-    /// 11c creating a Budget.
-    New,
-    /// 11c's edit mode on this Budget.
-    EditBudget(u32),
+    /// 11c creating a Budget, or its edit mode (the form names the Budget).
+    Budget(BudgetForm),
     /// 11f.
     Manage,
     /// 9d for a Category (a leaf or a parent's rollup) and month.

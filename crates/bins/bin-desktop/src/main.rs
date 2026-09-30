@@ -10,6 +10,7 @@ mod assets;
 mod bill_form;
 mod bill_history;
 mod bills;
+mod budget_form;
 mod budgets;
 mod categories;
 mod colours;

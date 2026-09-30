@@ -94,7 +94,7 @@ pub fn error_line(text: String, cx: &App) -> AnyElement {
 
 /// A labelled `.seg`: the chosen cell filled dark, an accent border while focused. Each cell is
 /// its text, whether it is the chosen one, and its click.
-fn segmented(
+pub(super) fn segmented(
     id: &'static str,
     title: String,
     focused: bool,
