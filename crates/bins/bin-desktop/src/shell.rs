@@ -163,6 +163,9 @@ fn bills_schedule_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The file name the History export's save dialog suggests.
+const BUDGET_HISTORY_FILE: &str = "budget-history.csv";
+
 /// The Budgets Progress tab's status-line legend (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`'s
 /// 9a).
 fn budgets_progress_hints() -> Vec<(&'static str, String)> {
@@ -218,6 +221,18 @@ fn budgets_limit_hints() -> Vec<(&'static str, String)> {
         ("\u{2190}/\u{2192}", crate::msg::desktop_hint_choose()),
         ("enter", crate::msg::desktop_hint_save()),
         ("esc", crate::msg::desktop_hint_cancel()),
+    ]
+}
+
+/// The Budgets History tab's status-line legend (9c).
+fn budgets_history_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("h/l", crate::msg::desktop_hint_month()),
+        ("enter", crate::msg::desktop_hint_open()),
+        ("x", crate::msg::desktop_hint_export()),
+        ("[/]", crate::msg::desktop_hint_range()),
+        ("tab", crate::msg::desktop_hint_switch_view()),
     ]
 }
 
@@ -509,6 +524,13 @@ pub struct Shell {
     budgets_plan_cursor: (usize, usize),
     /// The Plan cell being typed into; `InputMode::Insert` is on for exactly as long as this is set.
     budgets_plan_edit: Option<budgets::PlanEdit>,
+    /// The last month of the History tab's range (9c).
+    budgets_history_end: bills::Period,
+    /// The History cursor: a row and a month column.
+    budgets_history_cursor: (usize, usize),
+    /// `x` on the History tab asked for the export; the key-down listener runs it, since the save
+    /// dialog needs the `Context` a key handler doesn't have.
+    pending_budgets_export: bool,
     /// The selected category row in the tree view (the position in a depth-first enumeration).
     categories_selected: usize,
     /// The selected category ID for keyboard navigation, if any.
@@ -646,6 +668,9 @@ impl Shell {
             budgets_plan_start: budgets::default_plan_start(today),
             budgets_plan_cursor: (0, 0),
             budgets_plan_edit: None,
+            budgets_history_end: bills::Period::of(today),
+            budgets_history_cursor: (0, 0),
+            pending_budgets_export: false,
             categories_selected: 0,
             categories_selected_id: None,
             categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
@@ -2464,7 +2489,28 @@ impl Shell {
             };
             return;
         }
-        if self.budgets_tab != budgets::BudgetsTab::Progress {
+        if self.budgets_tab == budgets::BudgetsTab::History {
+            let Some(history) = self.budgets_history_data() else {
+                return;
+            };
+            let len = history.rows.len();
+            let selected = self.budgets_history_cursor_in(&history).0;
+            self.budgets_history_cursor.0 = match movement {
+                Movement::Next => accounts::step_selection(selected, len, 1),
+                Movement::Prev => accounts::step_selection(selected, len, -1),
+                Movement::First => 0,
+                Movement::Last => len.saturating_sub(1),
+                Movement::HalfPageDown => {
+                    accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE)
+                }
+                Movement::HalfPageUp => {
+                    accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE)
+                }
+                Movement::Enter => {
+                    self.open_budgets_history_detail();
+                    selected
+                }
+            };
             return;
         }
         let len = self
@@ -2483,6 +2529,148 @@ impl Shell {
                 selected
             }
         };
+    }
+
+    /// The History tab's chart and table for the range in view.
+    fn budgets_history_data(&self) -> Option<budgets::History> {
+        let budget = self.budgets.get(self.budgets_current)?;
+        let (first, last) = budgets::history_range(budget, self.budgets_history_end, self.today)?;
+        Some(budgets::history(
+            budget,
+            &self.budgets_ledger(),
+            first,
+            last,
+            self.today,
+        ))
+    }
+
+    /// The cursor held inside the table, so a shorter range can't leave it dangling.
+    fn budgets_history_cursor_in(&self, history: &budgets::History) -> (usize, usize) {
+        (
+            self.budgets_history_cursor
+                .0
+                .min(history.rows.len().saturating_sub(1)),
+            self.budgets_history_cursor
+                .1
+                .min(history.months.len().saturating_sub(1)),
+        )
+    }
+
+    /// Steps the History range a month, inside the Budget's bounds.
+    fn shift_budgets_history_range(&mut self, forward: bool) {
+        let Some(budget) = self.budgets.get(self.budgets_current) else {
+            return;
+        };
+        // Step from where the range really ends, not from a stale out-of-bounds end.
+        let Some((_, last)) = budgets::history_range(budget, self.budgets_history_end, self.today)
+        else {
+            return;
+        };
+        let target = if forward { last.next() } else { last.prev() };
+        if let Some((_, held)) = budgets::history_range(budget, target, self.today) {
+            self.budgets_history_end = held;
+        }
+    }
+
+    /// `h`/`l` on the History tab: the month cursor, stopping at either end of the range.
+    fn step_budgets_history_month(&mut self, forward: bool) {
+        let Some(history) = self.budgets_history_data() else {
+            return;
+        };
+        let (row, column) = self.budgets_history_cursor_in(&history);
+        let column = if forward {
+            (column + 1).min(history.months.len().saturating_sub(1))
+        } else {
+            column.saturating_sub(1)
+        };
+        self.budgets_history_cursor = (row, column);
+    }
+
+    /// `enter` on a History cell: 9d for that Category and month (a parent shows its rollup).
+    fn open_budgets_history_detail(&mut self) {
+        let Some(history) = self.budgets_history_data() else {
+            return;
+        };
+        let (row, column) = self.budgets_history_cursor_in(&history);
+        let (Some(row), Some(month)) = (history.rows.get(row), history.months.get(column)) else {
+            return;
+        };
+        self.budgets_detail_selected = 0;
+        self.budgets_dialog = Some(budgets::BudgetsDialog::CategoryDetail {
+            category_id: row.category_id,
+            month: month.month,
+        });
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// **Export CSV**: asks where to save through the platform's save dialog, writes the visible
+    /// History table there and raises a Toast naming the path. A cancelled dialog does nothing.
+    fn export_budgets_history(&mut self, cx: &mut Context<'_, Self>) {
+        let Some(history) = self.budgets_history_data() else {
+            return;
+        };
+        let labels = budgets::HistoryCsvLabels {
+            category: lib_locale::msg::column_category(),
+            budget: crate::msg::desktop_budgets_column_budget(),
+            spent: crate::msg::desktop_budgets_column_spent(),
+            average: crate::msg::desktop_budgets_history_column_avg(),
+            over: crate::msg::desktop_budgets_history_column_over(),
+        };
+        let csv = budgets::history_csv(
+            &history,
+            &self.categories,
+            &labels,
+            budgets_view::period_label,
+        );
+        let directory = dirs::download_dir()
+            .or_else(dirs::home_dir)
+            .unwrap_or_default();
+        let chosen = cx.prompt_for_new_path(&directory, Some(BUDGET_HISTORY_FILE));
+        cx.spawn(async move |this, cx| {
+            let outcome = match chosen.await {
+                Ok(Ok(Some(path))) => std::fs::write(&path, csv)
+                    .map(|()| path.display().to_string())
+                    .map_err(|error| error.to_string()),
+                Ok(Err(error)) => Err(error.to_string()),
+                // Cancelled, or the dialog went away.
+                Ok(Ok(None)) | Err(_) => return,
+            };
+            this.update(cx, |shell, cx| {
+                match outcome {
+                    Ok(path) => shell.raise_toast(
+                        ToastKind::Success,
+                        crate::msg::desktop_budgets_history_exported(&path),
+                    ),
+                    Err(error) => shell.raise_toast(
+                        ToastKind::Error,
+                        crate::msg::desktop_budgets_history_export_failed(&error),
+                    ),
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
+    }
+
+    fn handle_budgets_export_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.export_budgets_history(cx);
+        cx.notify();
+    }
+
+    /// A click on a History cell moves the cursor there; a second click opens its detail.
+    fn handle_budgets_history_cell_click(
+        &mut self,
+        row: usize,
+        column: usize,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let was_here = self.budgets_history_cursor == (row, column);
+        self.budgets_history_cursor = (row, column);
+        if was_here {
+            self.open_budgets_history_detail();
+        }
+        cx.notify();
     }
 
     /// Opens 9d on the Progress row at `index`, for the month being shown.
@@ -3425,13 +3613,15 @@ impl Shell {
         if self.budgets_tab == budgets::BudgetsTab::Plan {
             return self.handle_budgets_plan_key(keystroke.key.as_str());
         }
+        let history = self.budgets_tab == budgets::BudgetsTab::History;
         match keystroke.key.as_str() {
-            "[" if self.budgets_tab == budgets::BudgetsTab::Progress => {
-                self.shift_budgets_period(false);
-            }
-            "]" if self.budgets_tab == budgets::BudgetsTab::Progress => {
-                self.shift_budgets_period(true);
-            }
+            "[" if history => self.shift_budgets_history_range(false),
+            "]" if history => self.shift_budgets_history_range(true),
+            "h" | "left" if history => self.step_budgets_history_month(false),
+            "l" | "right" if history => self.step_budgets_history_month(true),
+            "x" if history => self.pending_budgets_export = true,
+            "[" => self.shift_budgets_period(false),
+            "]" => self.shift_budgets_period(true),
             _ => return false,
         }
         true
@@ -3468,12 +3658,20 @@ impl Shell {
     }
 
     fn handle_budgets_range_prev(&mut self, cx: &mut Context<'_, Self>) {
-        self.shift_budgets_plan_range(false);
+        if self.budgets_tab == budgets::BudgetsTab::History {
+            self.shift_budgets_history_range(false);
+        } else {
+            self.shift_budgets_plan_range(false);
+        }
         cx.notify();
     }
 
     fn handle_budgets_range_next(&mut self, cx: &mut Context<'_, Self>) {
-        self.shift_budgets_plan_range(true);
+        if self.budgets_tab == budgets::BudgetsTab::History {
+            self.shift_budgets_history_range(true);
+        } else {
+            self.shift_budgets_plan_range(true);
+        }
         cx.notify();
     }
 
@@ -7560,6 +7758,10 @@ impl Render for Shell {
             && self.budgets_tab == budgets::BudgetsTab::Plan)
             .then(|| self.budgets_plan_data())
             .flatten();
+        let budgets_history = (self.nav.noun() == Noun::Budgets
+            && self.budgets_tab == budgets::BudgetsTab::History)
+            .then(|| self.budgets_history_data())
+            .flatten();
         let budgets_page = budgets_figures.as_ref().map(|(budget, figures)| {
             let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
                 let entity = entity.clone();
@@ -7590,6 +7792,22 @@ impl Render for Shell {
                             })
                         },
                     }),
+                history: budgets_history.as_ref().map(|history| {
+                    budgets_view::history::HistoryProps {
+                        history,
+                        categories: &self.categories,
+                        cursor: self.budgets_history_cursor_in(history),
+                        on_cell_click: {
+                            let entity = entity.clone();
+                            Rc::new(move |row, column, _window, cx| {
+                                entity.update(cx, |shell, cx| {
+                                    shell.handle_budgets_history_cell_click(row, column, cx);
+                                });
+                            })
+                        },
+                    }
+                }),
+                on_export_click: plain(Shell::handle_budgets_export_click),
                 on_range_prev: plain(Shell::handle_budgets_range_prev),
                 on_range_next: plain(Shell::handle_budgets_range_next),
                 categories: &self.categories,
@@ -7942,6 +8160,22 @@ impl Render for Shell {
                     )
                 }),
             }),
+            Noun::Budgets => Some(PageStatus {
+                hints: match self.budgets_dialog {
+                    Some(budgets::BudgetsDialog::EditLimit(_)) => budgets_limit_hints(),
+                    Some(budgets::BudgetsDialog::Stop(_)) => budgets_stop_hints(),
+                    Some(_) => budgets_detail_hints(),
+                    None => budgets_history_hints(),
+                },
+                right: budgets_history
+                    .as_ref()
+                    .map_or_else(String::new, |history| {
+                        crate::msg::desktop_budgets_status_history(
+                            i64::try_from(history.leaves_ever_budgeted).unwrap_or(i64::MAX),
+                            &history.leaves_shown.to_string(),
+                        )
+                    }),
+            }),
             Noun::Tags => Some(PageStatus {
                 hints: match self.tags_dialog {
                     Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
@@ -8014,6 +8248,9 @@ impl Render for Shell {
                     || this.handle_key_down(event)
                 {
                     cx.notify();
+                }
+                if std::mem::take(&mut this.pending_budgets_export) {
+                    this.export_budgets_history(cx);
                 }
                 if let Some(change) = this.pending_colour_change.take() {
                     change.apply(cx);

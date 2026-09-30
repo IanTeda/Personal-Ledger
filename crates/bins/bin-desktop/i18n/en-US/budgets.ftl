@@ -88,9 +88,31 @@ desktop-hint-save-cell = save cell
 desktop-hint-next-month = next month
 desktop-hint-this-month-only = this month only
 
-## The tabs still to be built.
+## The History tab (9c): the meta line, the export action, the chart's pairs and caption, the
+## table's AVG and OVER columns and the export's Toasts. `$path` is the file written.
 
-desktop-budgets-tab-later = This tab is built in a later ticket.
+desktop-budgets-history-meta = Budget vs spent by month · the average and OVER count use closed months only
+desktop-budgets-history-export = Export CSV
+desktop-budgets-history-empty = No category has a budget amount yet.
+desktop-budgets-history-pair = { $spent } / { $budget }
+desktop-budgets-history-to-date = to date
+desktop-budgets-history-over-mark = over
+desktop-budgets-history-caption = { $months ->
+    [one] over in { $over } of the last closed month
+   *[other] over in { $over } of the last { $months } closed months
+}
+desktop-budgets-history-caption-none = no closed months in this range
+desktop-budgets-history-column-avg = Avg
+desktop-budgets-history-column-over = Over
+desktop-budgets-history-over-count = { $over }/{ $months }
+desktop-budgets-history-exported = Exported the budget history to { $path }
+desktop-budgets-history-export-failed = Couldn't export the budget history: { $error }
+desktop-budgets-status-history = { $count ->
+    [one] { $shown } of { $count } category shown
+   *[other] { $shown } of { $count } categories shown
+}
+desktop-hint-month = month
+desktop-hint-export = export
 
 ## The status line's right-hand side.
 

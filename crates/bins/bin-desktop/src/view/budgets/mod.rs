@@ -2,13 +2,13 @@
 //! switcher's title with its method tag, the meta line, the primary action), the tab strip with
 //! its legend and the `‹ month ›` period nav, a 2px rule, then the active tab's body.
 //!
-//! The Progress (9a, `progress`) and Plan (9b, `plan`) tabs are built, with the Category detail
-//! (9d), Edit budget (9e), Fill (9f) and Stop budgeting (9g) dialogs; History is a placeholder until its
-//! ticket. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
+//! The Progress (9a, `progress`), Plan (9b, `plan`) and History (9c, `history`) tabs, with the
+//! Category detail (9d), Edit budget (9e), Fill (9f) and Stop budgeting (9g) dialogs. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
 //! handlers.
 
 pub mod detail_dialog;
 pub mod fill_dialog;
+pub mod history;
 pub mod limit_dialog;
 pub mod plan;
 pub mod progress;
@@ -39,6 +39,10 @@ pub struct BudgetsPageProps<'a> {
     pub figures: &'a PeriodFigures,
     /// The Plan tab's grid, built only while that tab shows.
     pub plan: Option<plan::PlanProps<'a>>,
+    /// The History tab's chart and table, built only while that tab shows.
+    pub history: Option<history::HistoryProps<'a>>,
+    /// The History tab's `Export CSV`.
+    pub on_export_click: OnPlainClick,
     pub on_range_prev: OnPlainClick,
     pub on_range_next: OnPlainClick,
     pub categories: &'a [Category],
@@ -72,10 +76,13 @@ pub fn render(
             Some(plan_props) => plan::render(plan_props, cx),
             None => div().into_any_element(),
         },
-        BudgetsTab::History => div()
-            .text_color(color::muted(cx))
-            .child(crate::msg::desktop_budgets_tab_later())
-            .into_any_element(),
+        BudgetsTab::History => match &props.history {
+            Some(history_props) => history::render(history_props, cx),
+            None => div()
+                .text_color(color::muted(cx))
+                .child(crate::msg::desktop_budgets_history_empty())
+                .into_any_element(),
+        },
     };
     div()
         .id("budgets")
@@ -111,16 +118,19 @@ fn method_label(method: Method) -> String {
 /// The title as the switcher (name, chevron, method tag) with the meta line below it, and the
 /// primary action at the right: `Edit plan`, or `+ Budget a category` on the Plan tab itself.
 fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
-    let (on_action, action_label) = if props.tab == BudgetsTab::Plan {
-        (
+    let (on_action, action_label) = match props.tab {
+        BudgetsTab::Plan => (
             props.on_add_click.clone(),
             crate::msg::desktop_budgets_plan_add(),
-        )
-    } else {
-        (
+        ),
+        BudgetsTab::History => (
+            props.on_export_click.clone(),
+            crate::msg::desktop_budgets_history_export(),
+        ),
+        BudgetsTab::Progress => (
             props.on_edit_plan_click.clone(),
             crate::msg::desktop_budgets_edit_plan(),
-        )
+        ),
     };
     let hover = color::muted(cx);
     div()
@@ -160,7 +170,12 @@ fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
                         .text_color(color::muted(cx))
                         .child(crate::msg::desktop_budgets_plan_meta())
                         .into_any_element(),
-                    _ => progress::meta_line(props, cx).into_any_element(),
+                    BudgetsTab::History => div()
+                        .text_size(px(12.0))
+                        .text_color(color::muted(cx))
+                        .child(crate::msg::desktop_budgets_history_meta())
+                        .into_any_element(),
+                    BudgetsTab::Progress => progress::meta_line(props, cx).into_any_element(),
                 }),
         )
         .when(props.tab == BudgetsTab::Plan, |this| {
@@ -251,9 +266,15 @@ fn tab_row(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
             this.child(progress::legend(cx))
         })
         .child(div().flex_1())
-        .child(match (props.tab, &props.plan) {
-            (BudgetsTab::Plan, Some(plan_props)) => period_nav(
+        .child(match (props.tab, &props.plan, &props.history) {
+            (BudgetsTab::Plan, Some(plan_props), _) => period_nav(
                 plan::range_label(plan_props.plan),
+                props.on_range_prev.clone(),
+                props.on_range_next.clone(),
+                cx,
+            ),
+            (BudgetsTab::History, _, Some(history_props)) => period_nav(
+                history::range_label(history_props.history),
                 props.on_range_prev.clone(),
                 props.on_range_next.clone(),
                 cx,

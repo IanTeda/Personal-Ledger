@@ -1049,6 +1049,86 @@ fn history_row(
     }
 }
 
+/// How many months the History tab shows at once.
+pub const HISTORY_MONTHS: usize = 6;
+
+/// The History window ending at `end`: up to [`HISTORY_MONTHS`] months, held inside
+/// [`history_bounds`], or `None` while the Budget has no Budget Amount yet.
+pub fn history_range(budget: &Budget, end: Period, today: NaiveDate) -> Option<(Period, Period)> {
+    let (earliest, latest) = history_bounds(budget, today)?;
+    // A window never ends before it could be full, unless the Budget is younger than that.
+    let first_full = (1..HISTORY_MONTHS).fold(earliest, |month, _| month.next());
+    let last = end.max(first_full).min(latest);
+    let first = (1..HISTORY_MONTHS)
+        .fold(last, |month, _| month.prev())
+        .max(earliest);
+    Some((first, last))
+}
+
+/// The History table's column headings for the export, already worded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryCsvLabels {
+    pub category: String,
+    pub budget: String,
+    pub spent: String,
+    pub average: String,
+    pub over: String,
+}
+
+fn csv_field(text: &str) -> String {
+    if text.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", text.replace('"', "\"\""))
+    } else {
+        text.to_string()
+    }
+}
+
+/// The visible History table as CSV: a row per Category (by path), a budget and a spent column
+/// per month, then AVG and OVER. Plain numbers, an unbudgeted month left empty.
+pub fn history_csv(
+    history: &History,
+    categories: &[Category],
+    labels: &HistoryCsvLabels,
+    month_label: impl Fn(Period) -> String,
+) -> String {
+    let mut lines = Vec::with_capacity(history.rows.len() + 1);
+    let mut header = vec![csv_field(&labels.category)];
+    for month in &history.months {
+        let month = month_label(month.month);
+        header.push(csv_field(&format!("{month} {}", labels.budget)));
+        header.push(csv_field(&format!("{month} {}", labels.spent)));
+    }
+    header.push(csv_field(&labels.average));
+    header.push(csv_field(&labels.over));
+    lines.push(header.join(","));
+    for row in &history.rows {
+        let name = categories::path(categories, row.category_id).unwrap_or_default();
+        let mut fields = vec![csv_field(&name)];
+        for cell in &row.cells {
+            match cell {
+                Some(cell) => {
+                    fields.push(cell.budget.0.with_scale(2).to_string());
+                    fields.push(cell.spent.0.with_scale(2).to_string());
+                }
+                None => fields.extend([String::new(), String::new()]),
+            }
+        }
+        fields.push(
+            row.average
+                .as_ref()
+                .map(|average| average.0.with_scale(2).to_string())
+                .unwrap_or_default(),
+        );
+        fields.push(if row.closed_months == 0 {
+            String::new()
+        } else {
+            format!("{}/{}", row.over_months, row.closed_months)
+        });
+        lines.push(fields.join(","));
+    }
+    lines.join("\n") + "\n"
+}
+
 // ---------------------------------------------------------------------------------------------
 // Plan figures
 // ---------------------------------------------------------------------------------------------
@@ -3087,6 +3167,80 @@ mod tests {
             Some((Period::of(date(2026, 6, 1)), sep()))
         );
         assert_eq!(history_bounds(&unreachable_budget(), today()), None);
+    }
+
+    #[test]
+    fn the_history_range_is_six_months_inside_the_bounds() {
+        let (_, budget) = history_world();
+        let jun = Period::of(date(2026, 6, 1));
+        // The Budget starts in June, so only four months exist yet.
+        assert_eq!(history_range(&budget, sep(), today()), Some((jun, sep())));
+        assert_eq!(
+            history_range(&budget, sep().next(), today()),
+            Some((jun, sep())),
+            "never past the current month"
+        );
+        assert_eq!(
+            history_range(&budget, jun, today()),
+            Some((jun, sep())),
+            "never a shorter window than the Budget allows"
+        );
+        // A later today gives a full window that can step back.
+        let later = date(2027, 3, 10);
+        let mar = Period::of(later);
+        assert_eq!(
+            history_range(&budget, mar, later),
+            Some((Period::of(date(2026, 10, 1)), mar))
+        );
+        assert_eq!(
+            history_range(&budget, Period::of(date(2026, 12, 1)), later),
+            Some((Period::of(date(2026, 7, 1)), Period::of(date(2026, 12, 1))))
+        );
+        assert_eq!(history_range(&unreachable_budget(), sep(), today()), None);
+    }
+
+    #[test]
+    fn the_history_csv_writes_plain_numbers_and_quotes_awkward_names() {
+        let (mut world, budget) = history_world();
+        let dining = world.category("Dining");
+        if let Some(category) = world.categories.iter_mut().find(|c| c.id == dining) {
+            category.name = "Dining, \"out\"".to_string();
+        }
+        let jun = Period::of(date(2026, 6, 1));
+        let shown = history(&budget, &world.ledger(), jun, sep(), today());
+        let labels = HistoryCsvLabels {
+            category: "Category".into(),
+            budget: "budget".into(),
+            spent: "spent".into(),
+            average: "Avg".into(),
+            over: "Over".into(),
+        };
+        let csv = history_csv(&shown, &world.categories, &labels, |month| {
+            format!("{}-{:02}", month.year, month.month)
+        });
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(lines.len(), shown.rows.len() + 1);
+        assert!(lines[0].starts_with("Category,2026-06 budget,2026-06 spent,"));
+        assert!(lines[0].ends_with(",2026-09 budget,2026-09 spent,Avg,Over"));
+        let row = shown
+            .rows
+            .iter()
+            .position(|row| row.category_id == dining)
+            .unwrap_or_else(|| unreachable!("Dining is budgeted"));
+        let line = lines[row + 1];
+        assert!(
+            line.contains("Dining, \"\"out\"\"\",300.00,100.00,300.00,350.00,"),
+            "{line}"
+        );
+        assert!(line.starts_with('"'));
+        assert!(!line.contains('\u{25b2}'));
+        let dining_row = &shown.rows[row];
+        assert!(line.ends_with(&format!(
+            ",{}/{}",
+            dining_row.over_months, dining_row.closed_months
+        )));
+        // Every line has the same number of unquoted separators as the header has columns.
+        assert_eq!(lines[0].split(',').count(), 1 + shown.months.len() * 2 + 2);
     }
 
     // -- averages and Unallocated --------------------------------------------------------------------
