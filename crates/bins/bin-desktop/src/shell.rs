@@ -163,12 +163,22 @@ fn bills_schedule_hints() -> Vec<(&'static str, String)> {
 }
 
 /// The Budgets Progress tab's status-line legend (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`'s
-/// 9a); `enter` and `e` join it with the Category detail and Edit budget.
+/// 9a); `e` joins it with Edit budget (#405).
 fn budgets_progress_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_row()),
+        ("enter", crate::msg::desktop_hint_open()),
         ("[/]", crate::msg::desktop_hint_period()),
         ("tab", crate::msg::desktop_hint_switch_view()),
+    ]
+}
+
+/// The status-line legend while the Category detail dialog (9d) is open.
+fn budgets_detail_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("esc", crate::msg::desktop_hint_close()),
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("t", crate::msg::desktop_hint_transactions()),
     ]
 }
 
@@ -434,6 +444,8 @@ pub struct Shell {
     /// The open Budgets dialog, if any -- `NavState::mode` is `InputMode::Dialog` for exactly as
     /// long as this is `Some`, following `bills_dialog`.
     budgets_dialog: Option<budgets::BudgetsDialog>,
+    /// The `j`/`k` cursor over the Category detail's listed Transactions.
+    budgets_detail_selected: usize,
     /// The selected category row in the tree view (the position in a depth-first enumeration).
     categories_selected: usize,
     /// The selected category ID for keyboard navigation, if any.
@@ -567,6 +579,7 @@ impl Shell {
             budgets_period: bills::Period::of(today),
             budgets_selected: 0,
             budgets_dialog: None,
+            budgets_detail_selected: 0,
             categories_selected: 0,
             categories_selected_id: None,
             categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
@@ -860,6 +873,7 @@ impl Shell {
                 self.payees_dialog = None;
                 self.tags_dialog = None;
                 self.bills_dialog = None;
+                self.budgets_dialog = None;
                 self.toast_history_open = false;
                 // README's "Interactions" > "Navigation": `esc` clears the settings index
                 // rail's own filter, the same as it closes the palette/file explorer above.
@@ -1313,6 +1327,9 @@ impl Shell {
         }
         if self.bills_dialog.is_some() {
             return self.handle_bills_dialog_key(keystroke);
+        }
+        if self.budgets_dialog.is_some() {
+            return self.handle_budgets_dialog_key(keystroke);
         }
         let Some(dialog) = self.settings_dialog.as_mut() else {
             return false;
@@ -2112,8 +2129,7 @@ impl Shell {
         Some((budget, figures))
     }
 
-    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Progress rows. Enter's Category detail is 9d
-    /// (#403).
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Progress rows. `enter` opens the Category detail (9d).
     fn apply_budgets_movement(&mut self, movement: Movement) {
         if self.budgets_tab != budgets::BudgetsTab::Progress {
             return;
@@ -2129,8 +2145,208 @@ impl Shell {
             Movement::Last => len.saturating_sub(1),
             Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
             Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
-            Movement::Enter => selected,
+            Movement::Enter => {
+                self.open_budgets_detail_at(selected);
+                selected
+            }
         };
+    }
+
+    /// Opens 9d on the Progress row at `index`, for the month being shown.
+    fn open_budgets_detail_at(&mut self, index: usize) {
+        let Some(category_id) = self
+            .budgets_figures()
+            .and_then(|(_, figures)| figures.rows.get(index).map(|row| row.category_id))
+        else {
+            return;
+        };
+        self.budgets_detail_selected = 0;
+        self.budgets_dialog = Some(budgets::BudgetsDialog::CategoryDetail {
+            category_id,
+            month: self.budgets_period,
+        });
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// The open Category detail's figures, or `None` once its Budget or Category is gone.
+    fn budgets_detail(&self) -> Option<budgets::CategoryDetail> {
+        let Some(budgets::BudgetsDialog::CategoryDetail { category_id, month }) =
+            self.budgets_dialog
+        else {
+            return None;
+        };
+        let budget = self.budgets.get(self.budgets_current)?;
+        let ledger = budgets::Ledger {
+            categories: &self.categories,
+            accounts: &self.accounts,
+            transactions: &self.transactions,
+            plans: &self.bill_plans,
+            entries: &self.bill_entries,
+        };
+        budgets::category_detail(budget, &ledger, category_id, month, self.today)
+    }
+
+    /// 9d's `open in Transactions →`: Transactions filtered to the Category, the month and the
+    /// Budget's on-budget Accounts, following [`Self::open_payee_transactions`].
+    fn open_budgets_detail_transactions(&mut self) {
+        let Some(budgets::BudgetsDialog::CategoryDetail { category_id, month }) =
+            self.budgets_dialog.take()
+        else {
+            return;
+        };
+        self.nav.exit_mode();
+        let account_ids = self
+            .budgets
+            .get(self.budgets_current)
+            .map(|budget| budget.account_ids.clone())
+            .unwrap_or_default();
+        self.transactions_filters =
+            TransactionFilters::for_budget_category(category_id, month, &account_ids);
+        self.transactions_search.clear();
+        self.transactions_filter_form = None;
+        self.reset_transactions_selection();
+        self.nav.set_noun(Noun::Transactions);
+        self.reset_view_scroll();
+    }
+
+    /// Keys while the Category detail is open: `j`/`k` move the Transaction cursor and `t` or
+    /// `enter` hand off to Transactions. `Esc` never reaches here.
+    fn handle_budgets_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        let listed = self.budgets_detail().map_or(0, |detail| {
+            detail.lines.len().min(budgets_view::detail_dialog::LISTED)
+        });
+        match keystroke.key.as_str() {
+            "j" | "down" => {
+                self.budgets_detail_selected =
+                    accounts::step_selection(self.budgets_detail_selected, listed, 1);
+            }
+            "k" | "up" => {
+                self.budgets_detail_selected =
+                    accounts::step_selection(self.budgets_detail_selected, listed, -1);
+            }
+            "t" | "enter" => self.open_budgets_detail_transactions(),
+            _ => return false,
+        }
+        true
+    }
+
+    fn handle_budgets_detail_close(&mut self, cx: &mut Context<'_, Self>) {
+        self.budgets_dialog = None;
+        self.nav.exit_mode();
+        cx.notify();
+    }
+
+    fn handle_budgets_detail_transactions(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_budgets_detail_transactions();
+        cx.notify();
+    }
+
+    /// The Category detail (9d) over the Progress tab, or nothing once its figures are gone.
+    fn render_budgets_detail(
+        &self,
+        entity: &gpui::Entity<Self>,
+        cx: &gpui::App,
+    ) -> Option<gpui::AnyElement> {
+        let detail = self.budgets_detail()?;
+        let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        let category = categories::path(&self.categories, detail.category_id).unwrap_or_default();
+        let name = category
+            .rsplit(" / ")
+            .next()
+            .unwrap_or(&category)
+            .to_string();
+        let listed = budgets_view::detail_dialog::LISTED;
+        let lines: Vec<budgets_view::detail_dialog::LineRow> = detail
+            .lines
+            .iter()
+            .take(listed)
+            .map(|line| budgets_view::detail_dialog::LineRow {
+                date: lib_locale::format::format_month_day(line.date),
+                payee: line
+                    .payee_id
+                    .and_then(|id| payees::get(&self.payees, id))
+                    .map_or_else(crate::msg::desktop_budgets_detail_no_payee, |payee| {
+                        payee.name.clone()
+                    }),
+                account: self
+                    .accounts
+                    .iter()
+                    .find(|account| account.id == line.account_id)
+                    .map(|account| account.name.clone())
+                    .unwrap_or_default(),
+                amount: format::amount(&line.amount).1,
+            })
+            .collect();
+        let hidden = detail
+            .lines
+            .iter()
+            .skip(listed)
+            .fold(bigdecimal::BigDecimal::from(0), |sum, line| {
+                sum + line.amount.0.clone()
+            });
+        let more = (detail.lines.len() > listed).then(|| {
+            crate::msg::desktop_budgets_detail_more(
+                &(detail.lines.len() - listed).to_string(),
+                &format::amount(&lib_core::Money(hidden)).1,
+            )
+        });
+        let track = detail.track.as_ref().map_or_else(
+            crate::msg::desktop_budgets_detail_track_none,
+            |track| {
+                crate::msg::desktop_budgets_detail_track(
+                    &track.over_months.to_string(),
+                    i64::from(track.months),
+                    &format::amount(&track.average).1,
+                )
+            },
+        );
+        let next = budgets_view::period_label(detail.month.next());
+        let rollover_note = detail
+            .figures
+            .over
+            .then_some(detail.rollover)
+            .flatten()
+            .map(|rollover| match rollover {
+                budgets::Rollover::None => crate::msg::desktop_budgets_detail_rollover_off(&next),
+                budgets::Rollover::CarryUnspent => {
+                    crate::msg::desktop_budgets_detail_rollover_unspent(&next)
+                }
+                budgets::Rollover::CarryBoth => {
+                    crate::msg::desktop_budgets_detail_rollover_both(&next)
+                }
+            });
+        let bills = match i64::try_from(detail.bill_plans).unwrap_or(i64::MAX) {
+            0 => crate::msg::desktop_budgets_detail_no_bills(),
+            count => crate::msg::desktop_budgets_detail_bills(count),
+        };
+        Some(budgets_view::detail_dialog::render(
+            budgets_view::detail_dialog::DetailDialogProps {
+                title: crate::msg::desktop_budgets_detail_title(
+                    &name,
+                    &budgets_view::period_label(detail.month),
+                ),
+                detail: &detail,
+                lines,
+                more,
+                selected: self.budgets_detail_selected,
+                track,
+                rollover_note,
+                bills,
+                on_close: plain(Shell::handle_budgets_detail_close),
+                on_open_transactions: plain(Shell::handle_budgets_detail_transactions),
+            },
+            cx,
+        ))
     }
 
     /// `tab` on the Budgets page switches its tab rather than cycling focus, as on Bills.
@@ -2239,8 +2455,13 @@ impl Shell {
         cx.notify();
     }
 
+    /// A click selects a row; clicking the selected row opens its detail.
     fn handle_budgets_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        let was_selected = self.budgets_selected == index;
         self.budgets_selected = index;
+        if was_selected {
+            self.open_budgets_detail_at(index);
+        }
         cx.notify();
     }
 
@@ -6609,7 +6830,11 @@ impl Render for Shell {
             }),
             Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Progress => {
                 Some(PageStatus {
-                    hints: budgets_progress_hints(),
+                    hints: if self.budgets_dialog.is_some() {
+                        budgets_detail_hints()
+                    } else {
+                        budgets_progress_hints()
+                    },
                     right: crate::msg::desktop_budgets_status_period(
                         &budgets_view::period_label(self.budgets_period),
                         budgets_figures.as_ref().map_or(0, |(_, figures)| {
@@ -6880,6 +7105,7 @@ impl Render for Shell {
                 }
             }))
             .children(bills_dialog_element)
+            .children(self.render_budgets_detail(&entity, cx))
             .children(match self.payees_dialog.as_ref() {
                 Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
                     payees_view::add_dialog::PayeeDialogMode::Add,

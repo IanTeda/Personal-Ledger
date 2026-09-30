@@ -78,6 +78,9 @@ impl StatusFilter {
 pub struct TransactionFilters {
     /// An [`Account::id`].
     pub account: Option<u32>,
+    /// Exactly these [`Account::id`]s; empty is "any". A Budget's on-budget Accounts, which the
+    /// single-Account filter can't say.
+    pub account_ids: Vec<u32>,
     /// A [`Category::id`]; a parent matches its descendants.
     pub category: Option<u32>,
     pub payee: String,
@@ -105,6 +108,7 @@ impl TransactionFilters {
         let (from, to) = this_year(today);
         Self {
             account: None,
+            account_ids: Vec::new(),
             category: None,
             payee: String::new(),
             payee_id: None,
@@ -129,6 +133,22 @@ impl TransactionFilters {
         Self {
             category: Some(category),
             ..Self::defaults(today)
+        }
+    }
+
+    /// One Category over one month on a Budget's on-budget Accounts: what the Budgets Category
+    /// detail's "open in Transactions" hands over.
+    pub fn for_budget_category(
+        category: u32,
+        month: crate::bills::Period,
+        account_ids: &[u32],
+    ) -> Self {
+        Self {
+            category: Some(category),
+            account_ids: account_ids.to_vec(),
+            from: Some(month.first_day()),
+            to: Some(month.last_day()),
+            ..Self::defaults(month.first_day())
         }
     }
 
@@ -312,6 +332,9 @@ fn transaction_level_matches(transaction: &Transaction, filters: &TransactionFil
         .account
         .is_some_and(|id| transaction.account_id != id)
     {
+        return false;
+    }
+    if !filters.account_ids.is_empty() && !filters.account_ids.contains(&transaction.account_id) {
         return false;
     }
     if !filters.status.matches(&transaction.status) {
@@ -1035,5 +1058,28 @@ mod tests {
         assert_eq!(filters.to, Some(today()));
         assert!(filters.payee.is_empty() && filters.tag.is_empty());
         assert_eq!(filters.status, StatusFilter::All);
+    }
+    #[test]
+    fn a_budget_category_filter_bounds_the_month_and_the_budgets_accounts() {
+        let world = World::seeded();
+        let dining = world
+            .categories
+            .iter()
+            .find(|c| c.name == "Dining")
+            .map(|c| c.id)
+            .unwrap();
+        let anz = world.account("ANZ Everyday");
+        let month = crate::bills::Period::of(today());
+        let filters = TransactionFilters::for_budget_category(dining, month, &[anz]);
+        assert_eq!(filters.category, Some(dining));
+        assert_eq!(filters.from, Some(month.first_day()));
+        assert_eq!(filters.to, Some(month.last_day()));
+        let visible = world.run(&filters, "");
+        assert!(
+            visible
+                .rows
+                .iter()
+                .all(|r| { r.transaction.account_id == anz && month.contains(r.transaction.date) })
+        );
     }
 }

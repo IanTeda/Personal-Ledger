@@ -377,7 +377,12 @@ fn table_header(cx: &App) -> impl IntoElement {
 
 /// The row's bar: Spent solid, Known Costs after it, both as shares of the budget (capped at the
 /// full width), and the elapsed tick.
-fn bar(row: &CategoryFigures, elapsed_percent: u32, selected: bool, cx: &App) -> AnyElement {
+pub(super) fn bar(
+    row: &CategoryFigures,
+    elapsed_percent: u32,
+    selected: bool,
+    cx: &App,
+) -> AnyElement {
     let Some(budget) = row.budget.as_ref().filter(|b| b.0.is_positive()) else {
         return div().into_any_element();
     };

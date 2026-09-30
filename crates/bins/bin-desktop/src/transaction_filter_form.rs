@@ -332,6 +332,7 @@ impl FilterForm {
                 .account
                 .value()
                 .and_then(|label| options.account_id(label)),
+            account_ids: Vec::new(),
             category: self
                 .category
                 .value()

@@ -70,3 +70,39 @@ desktop-budgets-status-period = { $month } · { $count ->
     [one] { $count } category
    *[other] { $count } categories
 }
+
+## The Category detail dialog (9d): the title, four stats, the bar's caption, the largest
+## Transactions, the track record and the footer.
+
+desktop-budgets-detail-title = { $category } — { $month }
+desktop-budgets-detail-stat-over = Over
+desktop-budgets-detail-stat-left = Left
+desktop-budgets-detail-caption = { $spent }% spent · { $elapsed }% elapsed
+desktop-budgets-detail-caption-unbudgeted = Unbudgeted · { $elapsed }% elapsed
+desktop-budgets-detail-transactions = { $count ->
+    [one] { $count } transaction · largest first
+   *[other] { $count } transactions · largest first
+}
+desktop-budgets-detail-transactions-none = No transactions this month
+desktop-budgets-detail-more = + { $count } more · { $amount }
+desktop-budgets-detail-no-payee = —
+desktop-budgets-detail-no-bills = no bill plans in this category
+desktop-budgets-detail-bills = { $count ->
+    [one] { $count } bill plan in this category
+   *[other] { $count } bill plans in this category
+}
+desktop-budgets-detail-track = Over in { $over } of the last { $months ->
+    [one] { $months } month
+   *[other] { $months } months
+} · average { $average }.
+desktop-budgets-detail-track-none = No earlier months to compare.
+desktop-budgets-detail-rollover-off = Rollover is off, so this overspend doesn't reduce { $next }.
+desktop-budgets-detail-rollover-unspent = Rollover carries unspent only, so this overspend doesn't reduce { $next }.
+desktop-budgets-detail-rollover-both = Rollover carries overspend, so this reduces { $next }.
+desktop-budgets-detail-open-transactions = open in Transactions →
+desktop-budgets-detail-close = Close
+
+## The status-line legend while the Category detail dialog is open.
+
+desktop-hint-close = close
+desktop-hint-transactions = transactions
