@@ -130,7 +130,7 @@ Mirrors §2.2.2, built in parallel with the TUI cycle rather than sequenced afte
 - __CC-DESKTOP-007:__ Build out the payee functionality.
 - __CC-DESKTOP-008:__ Build out the accounts functionality.
 - __CC-DESKTOP-009:__ Build out the transaction functionality.
-- __CC-DESKTOP-010:__ Build out the budgeting functionality (line-item only — see CC-TUI-010).
+- __CC-DESKTOP-010:__ Build out the budgeting functionality: multiple named Budgets, with Category limits as the only Method built (see ADR-0029).
 - __CC-DESKTOP-011:__ Build out the reporting functionality.
 - __CC-DESKTOP-012:__ Build out the CSV import/export functionality.
 
@@ -186,7 +186,7 @@ The requirements below describe the product's ultimate end state across all deve
 
 ### Budgets
 
-- __FR.22:__ The system shall support line item budgeting (see CC-TUI-010/CC-DESKTOP-010 for the concept cycle's scoping of this to line-item only). Envelope and reverse budgeting are future considerations (§7).
+- __FR.22:__ The system shall support multiple named Budgets, each with one Method, one Unit, a set of on-budget Accounts and exactly one default, which may overlap as views over one Ledger (ADR-0029). The Category limits Method (a monthly Category Limit per Expense Category) is built in V1. The Envelope, Percentage split and Project Methods, and reverse budgeting, are future considerations (§7).
 - __FR.23:__ The system shall allow creating a budget with exactly one Category, a limit amount, a Unit it's denominated in, and a recurring period (weekly, monthly, quarterly, or yearly).
 - __FR.24:__ The system shall allow retrieving a budget by ID.
 - __FR.25:__ The system shall allow listing budgets with pagination and filtering by Category and/or active status.
@@ -267,7 +267,7 @@ The requirements below describe the product's ultimate end state across all deve
 - __Desktop & TUI UI:__ The concrete UI/UX for each client app (§1.4) is not yet detailed as Functional Requirements; deferred until each respective cycle is scoped.
 - __Multi-device sync protocol:__ End-state Functional Requirements for the sync server's protocol beyond FR.39a's placeholder are deferred until a sync-focused cycle is scoped (see FR.39a, §2.1 Sync).
 - __Change Set log retention:__ Every Change Set is kept indefinitely for this cycle — deliberately not decided, since a feasibility demo on one self-hoster's own small device fleet doesn't yet produce the usage/volume data a pruning policy would need to design against (see [ADR-0009](docs/adr/0009-lww-sqlite-change-set-log.md)); revisit once a later cycle has that data.
-- __Envelope & reverse budgeting:__ Personal Ledger's concept cycle (§2.2) scopes Budgets to line-item only (see CC-TUI-010, CC-DESKTOP-010, FR.22); envelope budgeting (allocating every dollar of income across categories) and reverse budgeting are deferred past V1.
+- __Further Budget Methods & reverse budgeting:__ V1 builds multiple Budgets with the Category limits Method only (see CC-DESKTOP-010, FR.22, ADR-0029). The Envelope Method (allocating every dollar of income across Categories), Percentage split, Project and reverse budgeting are deferred past V1, each to its own map.
 - __Personal Investors:__ Tracking buy-in costs, capital gains, returns, and tax implications for investments (see §1.4) is a future consideration with no Functional Requirements defined yet.
 - __Personal Loan:__ Tracking progress paying down a loan (see §1.4) is a future consideration with no Functional Requirements defined yet.
 - __Personal Inventory:__ Tracking assets and household inventory (see §1.4) is a future consideration with no Functional Requirements defined yet.
