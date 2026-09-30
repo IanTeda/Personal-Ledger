@@ -2,8 +2,6 @@
 //! the shared `crate::dialog` chrome at the handoff's 600px: four stats, the Progress row's bar
 //! with its caption, the largest Transactions behind Spent, the track record, and a footer that
 //! hands off to Transactions already filtered.
-//!
-//! The Edit budget button and `e` key belong to 9e (#405).
 
 use bigdecimal::{BigDecimal, Signed, ToPrimitive, Zero};
 use gpui::{AnyElement, App, div, prelude::*, px};
@@ -38,6 +36,8 @@ pub struct DetailDialogProps<'a> {
     pub bills: String,
     pub on_close: dialog::OnClick,
     pub on_open_transactions: dialog::OnClick,
+    /// `Edit budget`, on a leaf in an editable Budget; a parent's rollup has none.
+    pub on_edit: Option<dialog::OnClick>,
 }
 
 fn text(money: &Money) -> String {
@@ -88,6 +88,7 @@ pub fn render(props: DetailDialogProps<'_>, cx: &App) -> AnyElement {
         bills,
         on_close,
         on_open_transactions,
+        on_edit,
     } = props;
     let figures = &detail.figures;
     let budget = figures
@@ -233,6 +234,60 @@ pub fn render(props: DetailDialogProps<'_>, cx: &App) -> AnyElement {
         .child(track)
         .children(rollover_note.map(|note| div().text_color(color::muted(cx)).child(note)));
 
+    let mut buttons = vec![
+        div()
+            .id("budgets-detail-transactions")
+            .cursor_pointer()
+            .py(px(8.0))
+            .px(px(16.0))
+            .mr_auto()
+            .font_weight(gpui::FontWeight::EXTRA_BOLD)
+            .text_color(color::foreground(cx))
+            .on_click(move |_event, window, cx| on_open_transactions(window, cx))
+            .child(crate::msg::desktop_budgets_detail_open_transactions())
+            .into_any_element(),
+    ];
+    // With Edit budget beside it, Close steps back to the outlined secondary button.
+    match on_edit {
+        Some(on_edit) => {
+            buttons.push(
+                div()
+                    .id("budgets-detail-close")
+                    .cursor_pointer()
+                    .py(px(8.0))
+                    .px(px(16.0))
+                    .border_1()
+                    .border_color(color::border(cx))
+                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    .on_click(move |_event, window, cx| on_close(window, cx))
+                    .child(crate::msg::desktop_budgets_detail_close())
+                    .into_any_element(),
+            );
+            buttons.push(
+                dialog::confirm_button(
+                    "budgets-detail-edit",
+                    crate::msg::desktop_budgets_detail_edit(),
+                    true,
+                    false,
+                    on_edit,
+                    cx,
+                )
+                .into_any_element(),
+            );
+        }
+        None => buttons.push(
+            dialog::confirm_button(
+                "budgets-detail-close",
+                crate::msg::desktop_budgets_detail_close(),
+                true,
+                false,
+                on_close,
+                cx,
+            )
+            .into_any_element(),
+        ),
+    }
+
     let card = div()
         .flex()
         .flex_col()
@@ -243,30 +298,6 @@ pub fn render(props: DetailDialogProps<'_>, cx: &App) -> AnyElement {
             list.into_any_element(),
             track.into_any_element(),
         ]))
-        .child(dialog::action_row(
-            [
-                div()
-                    .id("budgets-detail-transactions")
-                    .cursor_pointer()
-                    .py(px(8.0))
-                    .px(px(16.0))
-                    .mr_auto()
-                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                    .text_color(color::foreground(cx))
-                    .on_click(move |_event, window, cx| on_open_transactions(window, cx))
-                    .child(crate::msg::desktop_budgets_detail_open_transactions())
-                    .into_any_element(),
-                dialog::confirm_button(
-                    "budgets-detail-close",
-                    crate::msg::desktop_budgets_detail_close(),
-                    true,
-                    false,
-                    on_close,
-                    cx,
-                )
-                .into_any_element(),
-            ],
-            cx,
-        ));
+        .child(dialog::action_row(buttons, cx));
     dialog::overlay(WIDTH, false, card, cx)
 }

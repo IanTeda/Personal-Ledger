@@ -45,6 +45,7 @@ use crate::{
     format,
     import::{self, ImportState, RowSelect},
     key_router::{self, KeyOutcome, Movement, route_key},
+    limit_form,
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
     pay_form::{self, PayForm},
@@ -163,11 +164,14 @@ fn bills_schedule_hints() -> Vec<(&'static str, String)> {
 }
 
 /// The Budgets Progress tab's status-line legend (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`'s
-/// 9a); `e` joins it with Edit budget (#405).
+/// 9a).
 fn budgets_progress_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_row()),
         ("enter", crate::msg::desktop_hint_open()),
+        ("e", crate::msg::desktop_hint_edit_budget()),
+        ("n", crate::msg::desktop_hint_budget_category()),
+        ("s", crate::msg::desktop_hint_stop_budgeting()),
         ("[/]", crate::msg::desktop_hint_period()),
         ("tab", crate::msg::desktop_hint_switch_view()),
     ]
@@ -180,6 +184,7 @@ fn budgets_plan_hints() -> Vec<(&'static str, String)> {
         ("enter", crate::msg::desktop_hint_edit()),
         ("r", crate::msg::desktop_hint_rollover()),
         ("x", crate::msg::desktop_hint_clear()),
+        ("n", crate::msg::desktop_hint_budget_category()),
         ("[/]", crate::msg::desktop_hint_range()),
         ("tab", crate::msg::desktop_hint_switch_view()),
     ]
@@ -200,7 +205,27 @@ fn budgets_detail_hints() -> Vec<(&'static str, String)> {
     vec![
         ("esc", crate::msg::desktop_hint_close()),
         ("j/k", crate::msg::desktop_hint_row()),
+        ("e", crate::msg::desktop_hint_edit_budget()),
         ("t", crate::msg::desktop_hint_transactions()),
+    ]
+}
+
+/// The status-line legend while Edit budget (9e) is open.
+fn budgets_limit_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("tab", crate::msg::desktop_hint_next_field()),
+        ("\u{2190}/\u{2192}", crate::msg::desktop_hint_choose()),
+        ("enter", crate::msg::desktop_hint_save()),
+        ("esc", crate::msg::desktop_hint_cancel()),
+    ]
+}
+
+/// The status-line legend while Stop budgeting (9g) is open.
+fn budgets_stop_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("\u{2191}/\u{2193}", crate::msg::desktop_hint_choose()),
+        ("enter", crate::msg::desktop_hint_confirm()),
+        ("esc", crate::msg::desktop_hint_cancel()),
     ]
 }
 
@@ -880,6 +905,18 @@ impl Shell {
                     .and_then(bills::BillsDialog::plan_form_mut)
                     && form.close_open_select()
                 {
+                    return true;
+                }
+                let closed_budgets_list = match self.budgets_dialog.as_mut() {
+                    Some(budgets::BudgetsDialog::EditLimit(form)) => form.close_open_select(),
+                    Some(budgets::BudgetsDialog::Stop(form)) => {
+                        let open = form.from.is_open();
+                        form.from.cancel();
+                        open
+                    }
+                    _ => false,
+                };
+                if closed_budgets_list {
                     return true;
                 }
                 // The Schedule tab's filter selects: the first `Esc` closes an open list, the next
@@ -2494,9 +2531,304 @@ impl Shell {
         self.reset_view_scroll();
     }
 
-    /// Keys while the Category detail is open: `j`/`k` move the Transaction cursor and `t` or
-    /// `enter` hand off to Transactions. `Esc` never reaches here.
+    /// The Starting / From options for the Budget on show: `count` months from the current one.
+    fn budgets_limit_options(&self, count: usize) -> Option<limit_form::LimitOptions> {
+        let budget = self.budgets.get(self.budgets_current)?;
+        Some(limit_form::LimitOptions::new(
+            budget,
+            &self.categories,
+            bills::Period::of(self.today),
+            count,
+            |month, current| {
+                let label = budgets_view::period_label(month);
+                if current {
+                    crate::msg::desktop_budgets_limit_month_current(&label)
+                } else {
+                    label
+                }
+            },
+        ))
+    }
+
+    /// The Budget on show when it takes edits: an archived one is read-only.
+    fn budgets_editable(&self) -> Option<&budgets::Budget> {
+        self.budgets
+            .get(self.budgets_current)
+            .filter(|budget| !budget.is_archived())
+    }
+
+    /// Opens 9e on a leaf Category, starting in `month` when that is offered. A Category with no
+    /// Budget Amount this month opens the picker with it preselected (9a's `set`); a parent only
+    /// rolls up, so it opens nothing.
+    fn open_budgets_limit(&mut self, category_id: u32, month: bills::Period) {
+        let (Some(budget), Some(options)) = (
+            self.budgets_editable(),
+            self.budgets_limit_options(limit_form::START_MONTHS),
+        ) else {
+            return;
+        };
+        let current = bills::Period::of(self.today);
+        let form = if budgets::applied(budget.chain(category_id), current).is_some() {
+            if !categories::is_leaf(&self.categories, category_id) {
+                return;
+            }
+            limit_form::LimitForm::edit(budget, category_id, month, &options)
+        } else if budgets::unbudgeted_leaves(budget, &self.categories, current)
+            .contains(&category_id)
+        {
+            limit_form::LimitForm::pick(Some(category_id), &options)
+        } else {
+            return;
+        };
+        self.budgets_dialog = Some(budgets::BudgetsDialog::EditLimit(form));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// **+ Budget a category**: 9e with its Category picker.
+    fn open_budgets_limit_picker(&mut self) {
+        if self.budgets_editable().is_none() {
+            return;
+        }
+        let Some(options) = self.budgets_limit_options(limit_form::START_MONTHS) else {
+            return;
+        };
+        self.budgets_dialog = Some(budgets::BudgetsDialog::EditLimit(
+            limit_form::LimitForm::pick(None, &options),
+        ));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Opens 9g on a leaf Category that has a Budget Amount this month or in `month`.
+    fn open_budgets_stop(&mut self, category_id: u32, month: bills::Period) {
+        let (Some(budget), Some(options)) = (
+            self.budgets_editable(),
+            self.budgets_limit_options(limit_form::STOP_MONTHS),
+        ) else {
+            return;
+        };
+        let chain = budget.chain(category_id);
+        let current = bills::Period::of(self.today);
+        if budgets::applied(chain, current).is_none() && budgets::applied(chain, month).is_none() {
+            return;
+        }
+        self.budgets_dialog = Some(budgets::BudgetsDialog::Stop(limit_form::StopForm::new(
+            category_id,
+            month,
+            &options,
+        )));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// The Category under the cursor on Progress or Plan, with the month its dialog starts in.
+    fn budgets_cursor_category(&self) -> Option<(u32, bills::Period)> {
+        match self.budgets_tab {
+            budgets::BudgetsTab::Progress => {
+                let (_, figures) = self.budgets_figures()?;
+                let row = figures.rows.get(self.budgets_selected)?;
+                (!row.is_parent).then_some((row.category_id, self.budgets_period))
+            }
+            budgets::BudgetsTab::Plan => {
+                let plan = self.budgets_plan_data()?;
+                let (row_index, column) = self.budgets_plan_cursor_in(&plan);
+                let month = plan
+                    .months
+                    .get(column)
+                    .copied()
+                    .unwrap_or_else(|| bills::Period::of(self.today));
+                Some((plan.row(row_index)?.category_id, month))
+            }
+            budgets::BudgetsTab::History => None,
+        }
+    }
+
+    /// Runs `change` on the open Edit budget form with its options.
+    fn with_budgets_limit_form(
+        &mut self,
+        change: impl FnOnce(&mut limit_form::LimitForm, &limit_form::LimitOptions),
+    ) {
+        let Some(options) = self.budgets_limit_options(limit_form::START_MONTHS) else {
+            return;
+        };
+        if let Some(budgets::BudgetsDialog::EditLimit(form)) = self.budgets_dialog.as_mut() {
+            change(form, &options);
+        }
+    }
+
+    /// Runs `change` on the open Stop budgeting form with its options.
+    fn with_budgets_stop_form(
+        &mut self,
+        change: impl FnOnce(&mut limit_form::StopForm, &limit_form::LimitOptions),
+    ) {
+        let Some(options) = self.budgets_limit_options(limit_form::STOP_MONTHS) else {
+            return;
+        };
+        if let Some(budgets::BudgetsDialog::Stop(form)) = self.budgets_dialog.as_mut() {
+            change(form, &options);
+        }
+    }
+
+    /// **Save budget** and `enter`: writes the record and closes the dialog. A no-op while the
+    /// form is incomplete; a refused save keeps the dialog open with the error shown.
+    fn confirm_budgets_limit(&mut self) {
+        let Some(options) = self.budgets_limit_options(limit_form::START_MONTHS) else {
+            return;
+        };
+        let Some(budgets::BudgetsDialog::EditLimit(form)) = self.budgets_dialog.as_ref() else {
+            return;
+        };
+        let Some(draft) = form.draft(&options) else {
+            return;
+        };
+        let saved = limit_form::save(
+            &mut self.budgets,
+            self.budgets_current,
+            &self.categories,
+            &draft,
+            self.today,
+        );
+        match saved {
+            Ok(()) => {
+                self.budgets_dialog = None;
+                self.nav.exit_mode();
+            }
+            Err(error) => {
+                if let Some(budgets::BudgetsDialog::EditLimit(form)) = self.budgets_dialog.as_mut()
+                {
+                    form.error = Some(error);
+                }
+            }
+        }
+    }
+
+    /// **Stop budgeting** and `enter`: writes the Stop from the chosen month and closes.
+    fn confirm_budgets_stop(&mut self) {
+        let Some(options) = self.budgets_limit_options(limit_form::STOP_MONTHS) else {
+            return;
+        };
+        let Some(budgets::BudgetsDialog::Stop(form)) = self.budgets_dialog.as_ref() else {
+            return;
+        };
+        let Some(month) = form.month(&options) else {
+            return;
+        };
+        let stopped = self.budgets.stop(
+            self.budgets_current,
+            &self.categories,
+            form.category_id,
+            month,
+            self.today,
+        );
+        match stopped {
+            Ok(()) => {
+                self.budgets_dialog = None;
+                self.nav.exit_mode();
+            }
+            Err(error) => {
+                if let Some(budgets::BudgetsDialog::Stop(form)) = self.budgets_dialog.as_mut() {
+                    form.error = Some(error);
+                }
+            }
+        }
+    }
+
+    /// 9e's footer link: swaps Edit budget for Stop budgeting on the same Category and month.
+    fn open_budgets_stop_from_limit(&mut self) {
+        let Some(options) = self.budgets_limit_options(limit_form::START_MONTHS) else {
+            return;
+        };
+        let Some(budgets::BudgetsDialog::EditLimit(form)) = self.budgets_dialog.as_ref() else {
+            return;
+        };
+        let (Some(category_id), Some(month)) = (form.fixed_category, form.month(&options)) else {
+            return;
+        };
+        self.open_budgets_stop(category_id, month);
+    }
+
+    /// Keys while Edit budget (9e) is open. `Esc` never reaches here.
+    fn handle_budgets_limit_key(&mut self, keystroke: &Keystroke) -> bool {
+        let modifiers = keystroke.modifiers;
+        let Some(budgets::BudgetsDialog::EditLimit(form)) = self.budgets_dialog.as_ref() else {
+            return false;
+        };
+        let on_select = matches!(
+            form.focused,
+            limit_form::LimitField::Category | limit_form::LimitField::Starting
+        );
+        let list_open = form.category.is_open() || form.starting.is_open();
+        match keystroke.key.as_str() {
+            "tab" => self.with_budgets_limit_form(|form, _| form.cycle_focus(modifiers.shift)),
+            "up" | "down" if on_select => {
+                let key = if keystroke.key == "up" {
+                    SelectKey::Up
+                } else {
+                    SelectKey::Down
+                };
+                self.with_budgets_limit_form(|form, options| {
+                    form.handle_select_key(key, options);
+                });
+            }
+            "space" if on_select => self.with_budgets_limit_form(|form, options| {
+                form.handle_select_key(SelectKey::Activate, options);
+            }),
+            "enter" if list_open => self.with_budgets_limit_form(|form, options| {
+                form.handle_select_key(SelectKey::Activate, options);
+            }),
+            "left" | "right" => {
+                let forward = keystroke.key == "right";
+                self.with_budgets_limit_form(|form, _| {
+                    form.step_segment(forward);
+                });
+            }
+            "enter" => self.confirm_budgets_limit(),
+            "backspace" => self.with_budgets_limit_form(|form, _| form.backspace()),
+            _ => {
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                if let Some(ch) = typed_char(keystroke) {
+                    self.with_budgets_limit_form(|form, _| form.push_char(ch));
+                }
+            }
+        }
+        true
+    }
+
+    /// Keys while Stop budgeting (9g) is open: `up`/`down` pick the month, `space` opens its
+    /// list and `enter` confirms.
+    fn handle_budgets_stop_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(budgets::BudgetsDialog::Stop(form)) = self.budgets_dialog.as_ref() else {
+            return false;
+        };
+        let list_open = form.from.is_open();
+        let key = match keystroke.key.as_str() {
+            "up" | "k" => SelectKey::Up,
+            "down" | "j" => SelectKey::Down,
+            "space" => SelectKey::Activate,
+            "enter" if list_open => SelectKey::Activate,
+            "enter" => {
+                self.confirm_budgets_stop();
+                return true;
+            }
+            _ => return false,
+        };
+        self.with_budgets_stop_form(|form, options| form.handle_select_key(key, options));
+        true
+    }
+
+    /// Keys while a Budgets dialog is open. On the Category detail `j`/`k` move the Transaction
+    /// cursor, `t` or `enter` hand off to Transactions and `e` opens Edit budget. `Esc` never
+    /// reaches here.
     fn handle_budgets_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        match self.budgets_dialog {
+            Some(budgets::BudgetsDialog::EditLimit(_)) => {
+                return self.handle_budgets_limit_key(keystroke);
+            }
+            Some(budgets::BudgetsDialog::Stop(_)) => {
+                return self.handle_budgets_stop_key(keystroke);
+            }
+            _ => {}
+        }
         let modifiers = &keystroke.modifiers;
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
             return false;
@@ -2514,9 +2846,215 @@ impl Shell {
                     accounts::step_selection(self.budgets_detail_selected, listed, -1);
             }
             "t" | "enter" => self.open_budgets_detail_transactions(),
+            "e" => self.open_budgets_detail_limit(),
             _ => return false,
         }
         true
+    }
+
+    /// 9d's **Edit budget**: 9e on the detail's Category and month. A parent's rollup has none.
+    fn open_budgets_detail_limit(&mut self) {
+        if let Some(budgets::BudgetsDialog::CategoryDetail { category_id, month }) =
+            self.budgets_dialog
+        {
+            self.open_budgets_limit(category_id, month);
+        }
+    }
+
+    /// Whether 9d offers Edit budget: a leaf Expense Category in a Budget that takes edits.
+    fn budgets_detail_editable(&self, category_id: u32) -> bool {
+        self.budgets_editable().is_some()
+            && categories::is_leaf(&self.categories, category_id)
+            && self.categories.iter().any(|category| {
+                category.id == category_id && category.category_type == CategoryTypes::Expense
+            })
+    }
+
+    fn handle_budgets_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
+        self.budgets_dialog = None;
+        self.nav.exit_mode();
+        cx.notify();
+    }
+
+    fn handle_budgets_limit_confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.confirm_budgets_limit();
+        cx.notify();
+    }
+
+    fn handle_budgets_limit_stop(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_budgets_stop_from_limit();
+        cx.notify();
+    }
+
+    fn handle_budgets_stop_confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.confirm_budgets_stop();
+        cx.notify();
+    }
+
+    fn handle_budgets_stop_field_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.with_budgets_stop_form(|form, options| form.click_select(options));
+        cx.notify();
+    }
+
+    fn handle_budgets_detail_edit(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_budgets_detail_limit();
+        cx.notify();
+    }
+
+    fn handle_budgets_add_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.open_budgets_limit_picker();
+        cx.notify();
+    }
+
+    /// A Progress row's `edit` or `set`.
+    fn handle_budgets_action_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        self.budgets_selected = index;
+        if let Some((category_id, month)) = self.budgets_cursor_category() {
+            self.open_budgets_limit(category_id, month);
+        }
+        cx.notify();
+    }
+
+    /// Edit budget (9e) or Stop budgeting (9g), whichever is open.
+    fn render_budgets_limit_dialog(
+        &self,
+        entity: &gpui::Entity<Self>,
+        cx: &gpui::App,
+    ) -> Option<gpui::AnyElement> {
+        let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
+                entity.update(cx, handler);
+            });
+            on_click
+        };
+        let leaf_name = |category_id: u32| {
+            self.categories
+                .iter()
+                .find(|category| category.id == category_id)
+                .map(|category| category.name.clone())
+        };
+        match self.budgets_dialog.as_ref()? {
+            budgets::BudgetsDialog::EditLimit(form) => {
+                let options = self.budgets_limit_options(limit_form::START_MONTHS)?;
+                let draft = form.draft(&options);
+                let preview = draft.as_ref().and_then(|draft| {
+                    limit_form::preview(
+                        &self.budgets,
+                        self.budgets_current,
+                        &self.categories,
+                        draft,
+                        self.today,
+                    )
+                });
+                let handlers = budgets_view::limit_dialog::LimitDialogHandlers {
+                    on_field_click: {
+                        let entity = entity.clone();
+                        Rc::new(move |field, _window, cx| {
+                            entity.update(cx, |shell, cx| {
+                                shell.with_budgets_limit_form(|form, options| match field {
+                                    limit_form::LimitField::Category
+                                    | limit_form::LimitField::Starting => {
+                                        form.click_select(field, options);
+                                    }
+                                    _ => form.focus(field),
+                                });
+                                cx.notify();
+                            });
+                        })
+                    },
+                    on_option_click: {
+                        let entity = entity.clone();
+                        Rc::new(move |field, index, _window, cx| {
+                            entity.update(cx, |shell, cx| {
+                                shell.with_budgets_limit_form(|form, options| {
+                                    form.choose(field, index, options);
+                                });
+                                cx.notify();
+                            });
+                        })
+                    },
+                    on_span_click: {
+                        let entity = entity.clone();
+                        Rc::new(move |span, _window, cx| {
+                            entity.update(cx, |shell, cx| {
+                                shell.with_budgets_limit_form(|form, _| form.set_span(span));
+                                cx.notify();
+                            });
+                        })
+                    },
+                    on_rollover_click: {
+                        let entity = entity.clone();
+                        Rc::new(move |rollover, _window, cx| {
+                            entity.update(cx, |shell, cx| {
+                                shell.with_budgets_limit_form(|form, _| {
+                                    form.set_rollover(rollover);
+                                });
+                                cx.notify();
+                            });
+                        })
+                    },
+                    on_stop: (!form.is_pick()).then(|| plain(Shell::handle_budgets_limit_stop)),
+                    on_cancel: plain(Shell::handle_budgets_dialog_cancel),
+                    on_confirm: plain(Shell::handle_budgets_limit_confirm),
+                };
+                Some(budgets_view::limit_dialog::render(
+                    budgets_view::limit_dialog::LimitDialogProps {
+                        category: form.fixed_category.and_then(leaf_name),
+                        form,
+                        options: &options,
+                        preview: preview.as_ref(),
+                        unchanged_month: preview
+                            .as_ref()
+                            .and_then(|preview| preview.unchanged.as_ref())
+                            .map(|(month, _)| budgets_view::period_label(*month)),
+                        month: preview
+                            .as_ref()
+                            .map(|preview| budgets_view::period_label(preview.month))
+                            .unwrap_or_default(),
+                        mirrors_category_field: self.budgets_current
+                            == budgets::PERSONAL_SPENDING_ID,
+                        valid: draft.is_some(),
+                        handlers,
+                    },
+                    cx,
+                ))
+            }
+            budgets::BudgetsDialog::Stop(form) => {
+                let options = self.budgets_limit_options(limit_form::STOP_MONTHS)?;
+                let category = leaf_name(form.category_id)?;
+                let on_option_click: accounts_view::select_field::OnOptionClick = {
+                    let entity = entity.clone();
+                    Rc::new(move |index, _window, cx| {
+                        entity.update(cx, |shell, cx| {
+                            shell.with_budgets_stop_form(|form, options| {
+                                form.choose(index, options);
+                            });
+                            cx.notify();
+                        });
+                    })
+                };
+                Some(budgets_view::stop_dialog::render(
+                    budgets_view::stop_dialog::StopDialogProps {
+                        category: &category,
+                        form,
+                        options: &options,
+                        bill_plans: self
+                            .bill_plans
+                            .iter()
+                            .filter(|plan| plan.category_id == form.category_id && plan.is_active)
+                            .map(|plan| plan.name.clone())
+                            .collect(),
+                        on_field_click: plain(Shell::handle_budgets_stop_field_click),
+                        on_option_click,
+                        on_cancel: plain(Shell::handle_budgets_dialog_cancel),
+                        on_confirm: plain(Shell::handle_budgets_stop_confirm),
+                    },
+                    cx,
+                ))
+            }
+            _ => None,
+        }
     }
 
     fn handle_budgets_detail_close(&mut self, cx: &mut Context<'_, Self>) {
@@ -2629,6 +3167,9 @@ impl Shell {
                 bills,
                 on_close: plain(Shell::handle_budgets_detail_close),
                 on_open_transactions: plain(Shell::handle_budgets_detail_transactions),
+                on_edit: self
+                    .budgets_detail_editable(detail.category_id)
+                    .then(|| plain(Shell::handle_budgets_detail_edit)),
             },
             cx,
         ))
@@ -2673,8 +3214,8 @@ impl Shell {
         self.budgets_selected = 0;
     }
 
-    /// `[`/`]` step the period and `1`/`2`/`3` pick the tab; the rest of the keys are later
-    /// tickets'.
+    /// `[`/`]` step the period and `1`/`2`/`3` pick the tab; `n` budgets a Category, and on
+    /// Progress `e` edits the row's budget and `s` stops it. The rest are later tickets'.
     fn handle_budgets_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() != Noun::Budgets || self.nav.focus() != FocusZone::View {
             return false;
@@ -2692,6 +3233,23 @@ impl Shell {
         {
             self.set_budgets_tab(tab);
             return true;
+        }
+        match keystroke.key.as_str() {
+            "n" if self.budgets_tab != budgets::BudgetsTab::History => {
+                self.open_budgets_limit_picker();
+                return true;
+            }
+            "e" | "s" if self.budgets_tab == budgets::BudgetsTab::Progress => {
+                if let Some((category_id, month)) = self.budgets_cursor_category() {
+                    if keystroke.key == "e" {
+                        self.open_budgets_limit(category_id, month);
+                    } else {
+                        self.open_budgets_stop(category_id, month);
+                    }
+                }
+                return true;
+            }
+            _ => {}
         }
         if self.budgets_tab == budgets::BudgetsTab::Plan {
             return self.handle_budgets_plan_key(keystroke.key.as_str());
@@ -6875,6 +7433,15 @@ impl Render for Shell {
                 on_period_prev: plain(Shell::handle_budgets_period_prev),
                 on_period_next: plain(Shell::handle_budgets_period_next),
                 on_edit_plan_click: plain(Shell::handle_budgets_edit_plan_click),
+                on_add_click: plain(Shell::handle_budgets_add_click),
+                on_action_click: {
+                    let entity = entity.clone();
+                    Rc::new(move |index, _window, cx| {
+                        entity.update(cx, |shell, cx| {
+                            shell.handle_budgets_action_click(index, cx);
+                        });
+                    })
+                },
                 on_row_click: {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
@@ -7166,10 +7733,11 @@ impl Render for Shell {
             }),
             Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Progress => {
                 Some(PageStatus {
-                    hints: if self.budgets_dialog.is_some() {
-                        budgets_detail_hints()
-                    } else {
-                        budgets_progress_hints()
+                    hints: match self.budgets_dialog {
+                        Some(budgets::BudgetsDialog::EditLimit(_)) => budgets_limit_hints(),
+                        Some(budgets::BudgetsDialog::Stop(_)) => budgets_stop_hints(),
+                        Some(_) => budgets_detail_hints(),
+                        None => budgets_progress_hints(),
                     },
                     right: crate::msg::desktop_budgets_status_period(
                         &budgets_view::period_label(self.budgets_period),
@@ -7180,7 +7748,9 @@ impl Render for Shell {
                 })
             }
             Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Plan => Some(PageStatus {
-                hints: if self.budgets_plan_edit.is_some() {
+                hints: if self.budgets_dialog.is_some() {
+                    budgets_limit_hints()
+                } else if self.budgets_plan_edit.is_some() {
                     budgets_plan_insert_hints()
                 } else {
                     budgets_plan_hints()
@@ -7455,6 +8025,7 @@ impl Render for Shell {
             }))
             .children(bills_dialog_element)
             .children(self.render_budgets_detail(&entity, cx))
+            .children(self.render_budgets_limit_dialog(&entity, cx))
             .children(match self.payees_dialog.as_ref() {
                 Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
                     payees_view::add_dialog::PayeeDialogMode::Add,

@@ -32,6 +32,7 @@ use crate::{
     accounts::Account,
     bills::{BillPlan, BillScheduleEntry, Period},
     categories::{self, Category},
+    limit_form::{LimitForm, StopForm},
     transactions::{self, Transaction},
 };
 
@@ -462,6 +463,15 @@ fn expense_leaves(categories: &[Category]) -> Vec<u32> {
             c.category_type == CategoryTypes::Expense && categories::is_leaf(categories, c.id)
         })
         .map(|c| c.id)
+        .collect()
+}
+
+/// The leaf Expense Categories with no Budget Amount in `month` (never budgeted, or Stopped):
+/// what 9e's Category picker offers.
+pub fn unbudgeted_leaves(budget: &Budget, categories: &[Category], month: Period) -> Vec<u32> {
+    expense_leaves(categories)
+        .into_iter()
+        .filter(|id| applied(budget.chain(*id), month).is_none())
         .collect()
 }
 
@@ -1938,12 +1948,12 @@ pub enum BudgetsDialog {
     Manage,
     /// 9d for a Category (a leaf or a parent's rollup) and month.
     CategoryDetail { category_id: u32, month: Period },
-    /// 9e for a Category.
-    EditLimit { category_id: u32 },
+    /// 9e: editing a Category's amount, or picking an unbudgeted Category to budget.
+    EditLimit(LimitForm),
     /// 9f, filling this month.
     Fill { month: Period },
     /// 9g for a Category.
-    Stop { category_id: u32 },
+    Stop(StopForm),
 }
 
 // ---------------------------------------------------------------------------------------------

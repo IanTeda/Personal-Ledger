@@ -134,3 +134,50 @@ desktop-budgets-detail-close = Close
 
 desktop-hint-close = close
 desktop-hint-transactions = transactions
+
+## The Edit budget dialog (9e): the title on a budgeted Category or on the picker, the fields, the
+## before/after summary, the note and the footer. `$month` is already formatted.
+
+desktop-budgets-plan-add = + Budget a category
+desktop-budgets-detail-edit = Edit budget
+desktop-budgets-limit-title = Edit budget — { $category }
+desktop-budgets-limit-title-new = Budget a category
+desktop-budgets-limit-field-category = Category
+desktop-budgets-limit-field-amount = Amount per month
+desktop-budgets-limit-field-starting = Starting
+desktop-budgets-limit-field-span = Applies to
+desktop-budgets-limit-field-rollover = Rollover
+desktop-budgets-limit-month-current = { $month } (current)
+desktop-budgets-limit-span-month-only = That month only
+desktop-budgets-limit-span-onward = That month onward
+desktop-budgets-limit-rollover-none = None
+desktop-budgets-limit-rollover-unspent = Carry unspent
+desktop-budgets-limit-rollover-both = Carry unspent & overspend
+desktop-budgets-limit-error-amount = Enter an amount of 0.00 or more.
+desktop-budgets-limit-error-archived = An archived budget is read-only.
+desktop-budgets-limit-error-refused = That change couldn't be saved.
+desktop-budgets-limit-no-categories = Every expense category already has a budget amount this month.
+desktop-budgets-limit-preview-unchanged = unchanged
+desktop-budgets-limit-preview-onward = { $month } → onward
+desktop-budgets-limit-preview-month-only = { $month } only
+desktop-budgets-limit-preview-total = Total budgeted, { $month }
+desktop-budgets-limit-preview-change = { $before } → { $after }
+desktop-budgets-limit-note = This is the same figure as Monthly budget on the category, so editing either updates both. Past months keep their amount.
+desktop-budgets-limit-note-other = Past months keep their amount.
+desktop-budgets-limit-stop = Stop budgeting…
+desktop-budgets-limit-submit = Save budget
+
+## The Stop budgeting dialog (9g). `$plans` is the Category's Bill Plan names, already joined.
+
+desktop-budgets-stop-title = Stop budgeting { $category }
+desktop-budgets-stop-field-from = From
+desktop-budgets-stop-body = { $category } keeps its transactions. From that month its spending appears on Progress as unbudgeted. Past months keep their budget in History. Nothing is deleted.
+desktop-budgets-stop-body-bills = Its bill plans ({ $plans }) still count as known costs.
+desktop-budgets-stop-submit = Stop budgeting
+
+## The status-line legend for Edit budget, Budget a category and Stop budgeting.
+
+desktop-hint-edit-budget = edit budget
+desktop-hint-budget-category = budget a category
+desktop-hint-stop-budgeting = stop budgeting
+desktop-hint-save = save

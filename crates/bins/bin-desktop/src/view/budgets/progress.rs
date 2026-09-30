@@ -469,6 +469,7 @@ fn render_row(
     };
     let hover = color::hover(cx);
     let on_row_click = props.on_row_click.clone();
+    let on_action_click = props.on_action_click.clone();
     let name = props
         .categories
         .iter()
@@ -591,11 +592,22 @@ fn render_row(
         )))
         .child(
             div()
+                .id(SharedString::from(format!(
+                    "budgets-row-action-{}",
+                    row.category_id
+                )))
                 .w(ACTIONS_WIDTH)
                 .flex_none()
                 .text_align(gpui::TextAlign::Right)
                 .text_size(px(11.0))
                 .text_color(secondary)
+                .when(!row.is_parent, |this| {
+                    this.on_click(move |_event, window, cx| {
+                        // The row's own click would open the detail underneath.
+                        cx.stop_propagation();
+                        on_action_click(index, window, cx);
+                    })
+                })
                 .child(if row.is_parent {
                     String::new()
                 } else if row.budget.is_some() {

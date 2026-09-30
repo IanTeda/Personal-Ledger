@@ -2,13 +2,16 @@
 //! switcher's title with its method tag, the meta line, the primary action), the tab strip with
 //! its legend and the `‹ month ›` period nav, a 2px rule, then the active tab's body.
 //!
-//! The Progress (9a, `progress`) and Plan (9b, `plan`) tabs are built; History is a placeholder
-//! until its ticket. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
+//! The Progress (9a, `progress`) and Plan (9b, `plan`) tabs are built, with the Category detail
+//! (9d), Edit budget (9e) and Stop budgeting (9g) dialogs; History is a placeholder until its
+//! ticket. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
 //! handlers.
 
 pub mod detail_dialog;
+pub mod limit_dialog;
 pub mod plan;
 pub mod progress;
+pub mod stop_dialog;
 
 use std::rc::Rc;
 
@@ -44,6 +47,10 @@ pub struct BudgetsPageProps<'a> {
     pub on_period_prev: OnPlainClick,
     pub on_period_next: OnPlainClick,
     pub on_edit_plan_click: OnPlainClick,
+    /// The Plan tab's `+ Budget a category`.
+    pub on_add_click: OnPlainClick,
+    /// A Progress row's `edit` or `set` action.
+    pub on_action_click: OnRowClick,
     pub on_row_click: OnRowClick,
     /// The KNOWN COSTS stat's link to the Bills Schedule.
     pub on_known_click: OnPlainClick,
@@ -98,9 +105,19 @@ fn method_label(method: Method) -> String {
 }
 
 /// The title as the switcher (name, chevron, method tag) with the meta line below it, and the
-/// `Edit plan` action at the right.
+/// primary action at the right: `Edit plan`, or `+ Budget a category` on the Plan tab itself.
 fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
-    let on_edit_plan = props.on_edit_plan_click.clone();
+    let (on_action, action_label) = if props.tab == BudgetsTab::Plan {
+        (
+            props.on_add_click.clone(),
+            crate::msg::desktop_budgets_plan_add(),
+        )
+    } else {
+        (
+            props.on_edit_plan_click.clone(),
+            crate::msg::desktop_budgets_edit_plan(),
+        )
+    };
     let hover = color::muted(cx);
     div()
         .flex()
@@ -154,8 +171,8 @@ fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .whitespace_nowrap()
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_edit_plan(window, cx))
-                .child(crate::msg::desktop_budgets_edit_plan()),
+                .on_click(move |_event, window, cx| on_action(window, cx))
+                .child(action_label),
         )
 }
 
