@@ -158,4 +158,4 @@ fillModal
 ## Files
 - `Ledger Desktop Shell.dc.html` — the prototype (Turn 9, options 9a–9g)
 - `README.md` — this document
-- `screenshots/` — one PNG per screen (9a–9g)
+- `screenshots/` — one PNG per screen (9a–9g); not carried into `Budgets_v2/`, see Turn 9 of the prototype instead
