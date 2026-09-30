@@ -21,7 +21,7 @@ Every variant is drawn at **1280 × 800**. The shell is the same as in the other
 - **Spent** — signed expense transactions in the category (and its children, for a parent) during the period.
 - **Known costs** — unpaid **Due/Overdue** Bill Schedule rows in this period that match the budget's Category and Unit. A Paid row stops counting as a known cost once its linked transaction lands in Spent, so nothing is counted twice. Budget vs Actual in Reports (10d) leaves known costs out.
 - **Left** = budget − spent − known costs. It can be negative, which means over budget.
-- **Rollover**, per category: `None` | `Carry unspent` | `Carry unspent & overspend`. The carried amount is added to the next month's budget (for example, Electricity's September budget is 90.00 plus 90.00 carried).
+- **Rollover**, per category: `None` | `Carry unspent` | `Carry unspent & overspend`. The carried amount is added to the next month's budget (for example, Electricity's September budget is 90.00 plus 90.00 carried). Settled in #384: the carry is a closed month's effective budget minus Spent (Known Costs excluded); it compounds uncapped, may go negative with overspend, is reset by a Stop or unbudgeted month, is held per Budget Amount record, and rolls up into parents and BUDGETED.
 - **Unbudgeted** — spending in a category with no budget. It is always listed and never hidden.
 - **Parents roll up** — a parent row sums its children, following the Categories hierarchy (5a).
 
@@ -51,7 +51,7 @@ Every variant is drawn at **1280 × 800**. The shell is the same as in the other
 - **Past months** (Jul, Aug) are muted and read-only. The current month has a highlighted header.
 - A **cell override** is shown in bold. Editing a cell carries the new value forward until the next override; in the sample, Dining changes to 300.00 from October. The cell being edited shows as an inline input with an accent border.
 - Insurance is budgeted only in Sep and Dec, the months its quarterly bill falls due.
-- ROLLOVER is a per-row toggle ("carry unspent" or "—").
+- ROLLOVER is a per-row control cycling `—` / carry unspent / carry both. It shows the current month's value; changing it writes an Onward record from the current month with the same amount and the new Rollover (#384).
 - Footer rows: **Total budgeted** per month, and **Unallocated of 5,850.00 avg. income**, so over-allocation shows before the month starts.
 - Status bar: `INSERT` · `enter save cell · esc cancel · tab next month · shift+enter this month only`.
 
@@ -84,7 +84,7 @@ Opened with `enter` on a Progress row.
 
 ### 9f — Fill October from… (modal, 560px)
 - Three radio sources, each with its resulting total:
-  - **The plan** (defaults + overrides + carried rollovers) — 3,739.97
+  - **The plan** (defaults + overrides; carries are applied on read once the month closes, never filled, #384) — 3,739.97
   - **September as budgeted** (an exact copy) — 4,130.00
   - **3-month average spent** (Jul–Sep, rounded to the nearest 10) — 3,702.40
 - "CHANGES FROM SEPTEMBER" diff: Dining 250.00 → 300.00 (+50.00); Insurance 420.00 → — (−420.00, no bill due); Electricity 180.00 → 159.97 (−20.03). Then "7 other categories unchanged".
@@ -138,7 +138,7 @@ budgetAmount            // effective-dated
   effectiveFrom: YearMonth
   scope: MonthOnly | Onward
 budgetCategory
-  categoryId, rollover: None | CarryUnspent | CarryBoth, active: bool
+  categoryId  // rollover lives on each Budget Amount record (#384); `active` superseded by Stop (#383)
 budgetPeriodRow        // derived per render
   budget, carriedIn, spent, knownCosts, left, elapsedShare, overBudget: bool
 planGrid

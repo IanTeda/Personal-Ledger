@@ -8,4 +8,5 @@ A Budget's amount is held as a chain of effective-dated records per Category —
 - "No Budget Amount" (Unbudgeted) and an explicit 0.00 are different states.
 - Only leaf Categories hold records; a parent is always a rollup. A leaf that gains a child gets an automatic Stop from the current month.
 - ~~A Category has at most one Budget, in one Unit; the Unit is stored on the record, not part of its key.~~ Superseded by [ADR-0029](0029-budgets-are-named-overlapping-views-over-one-ledger.md): a chain is kept per (Budget, Category), that is per Category Limit, and the Unit belongs to the Budget.
+- Rollover (#384) is held on each record too, so changing it never rewrites a closed month's carry; carries are computed on read from closed months' Spent, never stored, and a Stop or unbudgeted month resets them.
 - The `lib-database` `budgets` table is reshaped to match when Budgets persistence is wired; until then the desktop's stub model follows this ADR.
