@@ -173,6 +173,28 @@ fn budgets_progress_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The Budgets Plan tab's status-line legend in Normal mode (9b).
+fn budgets_plan_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("h/j/k/l", crate::msg::desktop_hint_cell()),
+        ("enter", crate::msg::desktop_hint_edit()),
+        ("r", crate::msg::desktop_hint_rollover()),
+        ("x", crate::msg::desktop_hint_clear()),
+        ("[/]", crate::msg::desktop_hint_range()),
+        ("tab", crate::msg::desktop_hint_switch_view()),
+    ]
+}
+
+/// The Plan grid's legend while a cell is being typed into.
+fn budgets_plan_insert_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("enter", crate::msg::desktop_hint_save_cell()),
+        ("esc", crate::msg::desktop_hint_cancel()),
+        ("tab", crate::msg::desktop_hint_next_month()),
+        ("shift+enter", crate::msg::desktop_hint_this_month_only()),
+    ]
+}
+
 /// The status-line legend while the Category detail dialog (9d) is open.
 fn budgets_detail_hints() -> Vec<(&'static str, String)> {
     vec![
@@ -446,6 +468,12 @@ pub struct Shell {
     budgets_dialog: Option<budgets::BudgetsDialog>,
     /// The `j`/`k` cursor over the Category detail's listed Transactions.
     budgets_detail_selected: usize,
+    /// The Plan grid's first month; it shows six from here.
+    budgets_plan_start: bills::Period,
+    /// The Plan grid's cursor: a row across sections, and a column (the last is ROLLOVER).
+    budgets_plan_cursor: (usize, usize),
+    /// The Plan cell being typed into; `InputMode::Insert` is on for exactly as long as this is set.
+    budgets_plan_edit: Option<budgets::PlanEdit>,
     /// The selected category row in the tree view (the position in a depth-first enumeration).
     categories_selected: usize,
     /// The selected category ID for keyboard navigation, if any.
@@ -580,6 +608,9 @@ impl Shell {
             budgets_selected: 0,
             budgets_dialog: None,
             budgets_detail_selected: 0,
+            budgets_plan_start: budgets::default_plan_start(today),
+            budgets_plan_cursor: (0, 0),
+            budgets_plan_edit: None,
             categories_selected: 0,
             categories_selected_id: None,
             categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
@@ -802,6 +833,11 @@ impl Shell {
             return true;
         }
 
+        if !pending_g_active && self.handle_budgets_plan_edit_key(keystroke) {
+            self.status_message = None;
+            return true;
+        }
+
         if !pending_g_active && self.handle_import_key(keystroke) {
             self.status_message = None;
             return true;
@@ -874,6 +910,7 @@ impl Shell {
                 self.tags_dialog = None;
                 self.bills_dialog = None;
                 self.budgets_dialog = None;
+                self.budgets_plan_edit = None;
                 self.toast_history_open = false;
                 // README's "Interactions" > "Navigation": `esc` clears the settings index
                 // rail's own filter, the same as it closes the palette/file explorer above.
@@ -2118,19 +2155,267 @@ impl Shell {
     /// The Budget the Budgets surface shows and its figures for `budgets_period`, as of today.
     fn budgets_figures(&self) -> Option<(&budgets::Budget, budgets::PeriodFigures)> {
         let budget = self.budgets.get(self.budgets_current)?;
-        let ledger = budgets::Ledger {
+        let figures = budgets::period_figures(
+            budget,
+            &self.budgets_ledger(),
+            self.budgets_period,
+            self.today,
+        );
+        Some((budget, figures))
+    }
+
+    fn budgets_ledger(&self) -> budgets::Ledger<'_> {
+        budgets::Ledger {
             categories: &self.categories,
             accounts: &self.accounts,
             transactions: &self.transactions,
             plans: &self.bill_plans,
             entries: &self.bill_entries,
+        }
+    }
+
+    /// The Plan tab's grid for the range in view.
+    fn budgets_plan_data(&self) -> Option<budgets::Plan> {
+        let budget = self.budgets.get(self.budgets_current)?;
+        Some(budgets::plan(
+            budget,
+            &self.budgets_ledger(),
+            self.budgets_plan_start,
+            self.today,
+        ))
+    }
+
+    /// The cursor held inside the grid, so a row that vanished can't leave it dangling.
+    fn budgets_plan_cursor_in(&self, plan: &budgets::Plan) -> (usize, usize) {
+        (
+            self.budgets_plan_cursor
+                .0
+                .min(plan.row_count().saturating_sub(1)),
+            self.budgets_plan_cursor
+                .1
+                .min(budgets::PLAN_ROLLOVER_COLUMN),
+        )
+    }
+
+    /// Steps the Plan range a month, inside the Budget's bounds.
+    fn shift_budgets_plan_range(&mut self, forward: bool) -> bool {
+        let Some(budget) = self.budgets.get(self.budgets_current) else {
+            return false;
         };
-        let figures = budgets::period_figures(budget, &ledger, self.budgets_period, self.today);
-        Some((budget, figures))
+        let (earliest, latest) = budgets::plan_start_bounds(budget, self.today);
+        let target = if forward {
+            self.budgets_plan_start.next()
+        } else {
+            self.budgets_plan_start.prev()
+        };
+        if target < earliest || target > latest {
+            return false;
+        }
+        self.budgets_plan_start = target;
+        true
+    }
+
+    /// `enter`/`i`/a click on the cursor cell: types into an open month, or cycles Rollover.
+    fn start_budgets_plan_edit(&mut self) {
+        let Some(plan) = self.budgets_plan_data() else {
+            return;
+        };
+        let (row_index, column) = self.budgets_plan_cursor_in(&plan);
+        let Some(row) = plan.row(row_index) else {
+            return;
+        };
+        if column == budgets::PLAN_ROLLOVER_COLUMN {
+            let _ = self
+                .budgets
+                .cycle_rollover(self.budgets_current, row.category_id, self.today);
+            return;
+        }
+        let Some(cell) = row.cells.get(column) else {
+            return;
+        };
+        let archived = self
+            .budgets
+            .get(self.budgets_current)
+            .is_none_or(budgets::Budget::is_archived);
+        if cell.closed || archived {
+            return;
+        }
+        self.budgets_plan_edit = Some(budgets::PlanEdit::new(
+            row.category_id,
+            cell.month,
+            cell.amount.as_ref(),
+        ));
+        self.nav.enter_mode(InputMode::Insert);
+    }
+
+    /// Saves the typed cell and leaves Insert; `step` moves on to the next (1) or previous (-1)
+    /// month's cell and edits it, as `tab`/`shift+tab` do. Text that isn't an amount keeps the
+    /// cell open.
+    fn commit_budgets_plan_edit(&mut self, span: budgets::Span, step: i32) {
+        let Some(edit) = self.budgets_plan_edit.take() else {
+            return;
+        };
+        let saved = self.budgets.save_cell(
+            self.budgets_current,
+            &self.categories,
+            edit.category_id,
+            edit.month,
+            span,
+            &edit.text,
+            self.today,
+        );
+        if saved == Err(budgets::BudgetError::InvalidAmount) {
+            self.budgets_plan_edit = Some(edit);
+            return;
+        }
+        self.nav.exit_mode();
+        if step == 0 {
+            return;
+        }
+        let column = self.budgets_plan_cursor.1;
+        if step > 0 {
+            if column + 1 < budgets::PLAN_MONTHS {
+                self.budgets_plan_cursor.1 += 1;
+            } else if !self.shift_budgets_plan_range(true) {
+                return;
+            }
+        } else if column > 0 {
+            self.budgets_plan_cursor.1 -= 1;
+        } else if !self.shift_budgets_plan_range(false) {
+            return;
+        }
+        self.start_budgets_plan_edit();
+    }
+
+    /// Writes straight to the cursor's month cell in Normal mode: `x`/`backspace` clear it (a
+    /// Stop from that month) and `0` writes an explicit 0.00 onward.
+    fn write_budgets_plan_cell(&mut self, text: &str) {
+        let Some(plan) = self.budgets_plan_data() else {
+            return;
+        };
+        let (row_index, column) = self.budgets_plan_cursor_in(&plan);
+        let Some(row) = plan.row(row_index) else {
+            return;
+        };
+        let Some(cell) = row.cells.get(column).filter(|cell| !cell.closed) else {
+            return;
+        };
+        let _ = self.budgets.save_cell(
+            self.budgets_current,
+            &self.categories,
+            row.category_id,
+            cell.month,
+            budgets::Span::Onward,
+            text,
+            self.today,
+        );
+    }
+
+    /// Keys typed into a Plan cell (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`'s 9b, Insert
+    /// mode). `esc` is left to the router, which cancels the edit and leaves the mode.
+    fn handle_budgets_plan_edit_key(&mut self, keystroke: &Keystroke) -> bool {
+        if self.nav.mode() != InputMode::Insert
+            || self.nav.noun() != Noun::Budgets
+            || self.budgets_plan_edit.is_none()
+        {
+            return false;
+        }
+        let shift = keystroke.modifiers.shift;
+        match keystroke.key.as_str() {
+            "escape" => return false,
+            "enter" => self.commit_budgets_plan_edit(
+                if shift {
+                    budgets::Span::MonthOnly
+                } else {
+                    budgets::Span::Onward
+                },
+                0,
+            ),
+            "tab" => {
+                self.commit_budgets_plan_edit(budgets::Span::Onward, if shift { -1 } else { 1 })
+            }
+            "backspace" => {
+                if let Some(edit) = self.budgets_plan_edit.as_mut() {
+                    edit.backspace();
+                }
+            }
+            _ => {
+                if let (Some(edit), Some(text), false) = (
+                    self.budgets_plan_edit.as_mut(),
+                    keystroke.key_char.as_deref(),
+                    keystroke.modifiers.control,
+                ) {
+                    for c in text.chars() {
+                        edit.type_char(c);
+                    }
+                }
+            }
+        }
+        true
+    }
+
+    /// The Plan grid's Normal-mode keys. `false` for any it doesn't take.
+    fn handle_budgets_plan_key(&mut self, key: &str) -> bool {
+        match key {
+            "h" | "left" => {
+                self.budgets_plan_cursor.1 = self.budgets_plan_cursor.1.saturating_sub(1);
+            }
+            "l" | "right" => {
+                self.budgets_plan_cursor.1 =
+                    (self.budgets_plan_cursor.1 + 1).min(budgets::PLAN_ROLLOVER_COLUMN);
+            }
+            "i" => self.start_budgets_plan_edit(),
+            "r" => {
+                if let Some(plan) = self.budgets_plan_data()
+                    && let Some(row) = plan.row(self.budgets_plan_cursor_in(&plan).0)
+                {
+                    let _ = self.budgets.cycle_rollover(
+                        self.budgets_current,
+                        row.category_id,
+                        self.today,
+                    );
+                }
+            }
+            "x" | "backspace" => self.write_budgets_plan_cell(""),
+            "0" => self.write_budgets_plan_cell("0"),
+            "[" => {
+                self.shift_budgets_plan_range(false);
+            }
+            "]" => {
+                self.shift_budgets_plan_range(true);
+            }
+            _ => return false,
+        }
+        true
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Progress rows. `enter` opens the Category detail (9d).
     fn apply_budgets_movement(&mut self, movement: Movement) {
+        if self.budgets_tab == budgets::BudgetsTab::Plan {
+            let Some(plan) = self.budgets_plan_data() else {
+                return;
+            };
+            let len = plan.row_count();
+            let selected = self.budgets_plan_cursor_in(&plan).0;
+            self.budgets_plan_cursor.0 = match movement {
+                Movement::Next => accounts::step_selection(selected, len, 1),
+                Movement::Prev => accounts::step_selection(selected, len, -1),
+                Movement::First => 0,
+                Movement::Last => len.saturating_sub(1),
+                Movement::HalfPageDown => {
+                    accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE)
+                }
+                Movement::HalfPageUp => {
+                    accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE)
+                }
+                Movement::Enter => {
+                    self.budgets_plan_cursor.0 = selected;
+                    self.start_budgets_plan_edit();
+                    selected
+                }
+            };
+            return;
+        }
         if self.budgets_tab != budgets::BudgetsTab::Progress {
             return;
         }
@@ -2408,6 +2693,9 @@ impl Shell {
             self.set_budgets_tab(tab);
             return true;
         }
+        if self.budgets_tab == budgets::BudgetsTab::Plan {
+            return self.handle_budgets_plan_key(keystroke.key.as_str());
+        }
         match keystroke.key.as_str() {
             "[" if self.budgets_tab == budgets::BudgetsTab::Progress => {
                 self.shift_budgets_period(false);
@@ -2447,6 +2735,32 @@ impl Shell {
 
     fn handle_budgets_edit_plan_click(&mut self, cx: &mut Context<'_, Self>) {
         self.set_budgets_tab(budgets::BudgetsTab::Plan);
+        cx.notify();
+    }
+
+    fn handle_budgets_range_prev(&mut self, cx: &mut Context<'_, Self>) {
+        self.shift_budgets_plan_range(false);
+        cx.notify();
+    }
+
+    fn handle_budgets_range_next(&mut self, cx: &mut Context<'_, Self>) {
+        self.shift_budgets_plan_range(true);
+        cx.notify();
+    }
+
+    /// A click puts the cursor on the cell; on an open month it also starts typing, and on the
+    /// ROLLOVER cell it cycles the mode. A click elsewhere abandons an edit in progress.
+    fn handle_budgets_plan_cell_click(
+        &mut self,
+        row: usize,
+        column: usize,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if self.budgets_plan_edit.take().is_some() {
+            self.nav.exit_mode();
+        }
+        self.budgets_plan_cursor = (row, column);
+        self.start_budgets_plan_edit();
         cx.notify();
     }
 
@@ -6513,6 +6827,10 @@ impl Render for Shell {
         let budgets_figures = (self.nav.noun() == Noun::Budgets)
             .then(|| self.budgets_figures())
             .flatten();
+        let budgets_plan = (self.nav.noun() == Noun::Budgets
+            && self.budgets_tab == budgets::BudgetsTab::Plan)
+            .then(|| self.budgets_plan_data())
+            .flatten();
         let budgets_page = budgets_figures.as_ref().map(|(budget, figures)| {
             let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
                 let entity = entity.clone();
@@ -6527,6 +6845,24 @@ impl Render for Shell {
                 tab: self.budgets_tab,
                 period: self.budgets_period,
                 figures,
+                plan: budgets_plan
+                    .as_ref()
+                    .map(|plan| budgets_view::plan::PlanProps {
+                        plan,
+                        current: bills::Period::of(self.today),
+                        cursor: self.budgets_plan_cursor_in(plan),
+                        edit: self.budgets_plan_edit.as_ref(),
+                        on_cell_click: {
+                            let entity = entity.clone();
+                            Rc::new(move |row, column, _window, cx| {
+                                entity.update(cx, |shell, cx| {
+                                    shell.handle_budgets_plan_cell_click(row, column, cx);
+                                });
+                            })
+                        },
+                    }),
+                on_range_prev: plain(Shell::handle_budgets_range_prev),
+                on_range_next: plain(Shell::handle_budgets_range_next),
                 categories: &self.categories,
                 selected: (!figures.rows.is_empty())
                     .then(|| self.budgets_selected.min(figures.rows.len() - 1)),
@@ -6843,6 +7179,19 @@ impl Render for Shell {
                     ),
                 })
             }
+            Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Plan => Some(PageStatus {
+                hints: if self.budgets_plan_edit.is_some() {
+                    budgets_plan_insert_hints()
+                } else {
+                    budgets_plan_hints()
+                },
+                right: budgets_plan.as_ref().map_or_else(String::new, |plan| {
+                    crate::msg::desktop_budgets_status_plan(
+                        &budgets_view::plan::range_label(plan),
+                        i64::try_from(plan.row_count()).unwrap_or(i64::MAX),
+                    )
+                }),
+            }),
             Noun::Tags => Some(PageStatus {
                 hints: match self.tags_dialog {
                     Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),

@@ -60,6 +60,34 @@ desktop-budgets-row-edit = edit
 desktop-budgets-row-set = set
 desktop-budgets-progress-empty = Nothing is budgeted or spent this period.
 
+## The Plan tab (9b): the meta line, the range nav, the grid's columns and footers.
+
+desktop-budgets-plan-meta = Monthly amounts per category · past months are read-only · bold = differs from the category default
+desktop-budgets-plan-range = { $from } – { $to } { $year }
+desktop-budgets-plan-range-years = { $from } { $from_year } – { $to } { $to_year }
+desktop-budgets-plan-now = now
+desktop-budgets-plan-column-rollover = Rollover
+desktop-budgets-plan-rollover-unspent = carry unspent
+desktop-budgets-plan-rollover-both = carry both
+desktop-budgets-plan-other = Other
+desktop-budgets-plan-empty = No category has a budget amount in these months.
+desktop-budgets-plan-total = Total budgeted
+desktop-budgets-plan-unallocated = Unallocated of { $average } avg. income
+desktop-budgets-status-plan = { $range } · { $count ->
+    [one] { $count } category
+   *[other] { $count } categories
+}
+
+## The status-line legend on the Plan tab, in Normal and Insert modes.
+
+desktop-hint-cell = cell
+desktop-hint-rollover = rollover
+desktop-hint-range = range
+desktop-hint-clear = clear
+desktop-hint-save-cell = save cell
+desktop-hint-next-month = next month
+desktop-hint-this-month-only = this month only
+
 ## The tabs still to be built.
 
 desktop-budgets-tab-later = This tab is built in a later ticket.

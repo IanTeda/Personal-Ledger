@@ -2,11 +2,12 @@
 //! switcher's title with its method tag, the meta line, the primary action), the tab strip with
 //! its legend and the `‹ month ›` period nav, a 2px rule, then the active tab's body.
 //!
-//! Only the Progress tab (9a, `progress`) is built; Plan and History are placeholders until their
-//! tickets. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
+//! The Progress (9a, `progress`) and Plan (9b, `plan`) tabs are built; History is a placeholder
+//! until its ticket. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
 //! handlers.
 
 pub mod detail_dialog;
+pub mod plan;
 pub mod progress;
 
 use std::rc::Rc;
@@ -32,6 +33,10 @@ pub struct BudgetsPageProps<'a> {
     pub tab: BudgetsTab,
     pub period: Period,
     pub figures: &'a PeriodFigures,
+    /// The Plan tab's grid, built only while that tab shows.
+    pub plan: Option<plan::PlanProps<'a>>,
+    pub on_range_prev: OnPlainClick,
+    pub on_range_next: OnPlainClick,
     pub categories: &'a [Category],
     /// Index into `figures.rows` of the selected row.
     pub selected: Option<usize>,
@@ -52,7 +57,11 @@ pub fn render(
 ) -> AnyElement {
     let body = match props.tab {
         BudgetsTab::Progress => progress::render(&props, cx),
-        BudgetsTab::Plan | BudgetsTab::History => div()
+        BudgetsTab::Plan => match &props.plan {
+            Some(plan_props) => plan::render(plan_props, cx),
+            None => div().into_any_element(),
+        },
+        BudgetsTab::History => div()
             .text_color(color::muted(cx))
             .child(crate::msg::desktop_budgets_tab_later())
             .into_any_element(),
@@ -124,7 +133,14 @@ fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
                         )
                         .child(method_tag(props.method, cx)),
                 )
-                .child(progress::meta_line(props, cx)),
+                .child(match props.tab {
+                    BudgetsTab::Plan => div()
+                        .text_size(px(12.0))
+                        .text_color(color::muted(cx))
+                        .child(crate::msg::desktop_budgets_plan_meta())
+                        .into_any_element(),
+                    _ => progress::meta_line(props, cx).into_any_element(),
+                }),
         )
         .child(
             div()
@@ -195,11 +211,24 @@ fn tab_row(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
             this.child(progress::legend(cx))
         })
         .child(div().flex_1())
-        .child(period_nav(props, cx))
+        .child(match (props.tab, &props.plan) {
+            (BudgetsTab::Plan, Some(plan_props)) => period_nav(
+                plan::range_label(plan_props.plan),
+                props.on_range_prev.clone(),
+                props.on_range_next.clone(),
+                cx,
+            ),
+            _ => period_nav(
+                period_label(props.period),
+                props.on_period_prev.clone(),
+                props.on_period_next.clone(),
+                cx,
+            ),
+        })
 }
 
-/// `‹ September 2026 ›`.
-fn period_nav(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
+/// `‹ September 2026 ›`, or the Plan's `‹ Jul – Dec 2026 ›`.
+fn period_nav(label: String, on_prev: OnPlainClick, on_next: OnPlainClick, cx: &App) -> AnyElement {
     let arrow = |id: &'static str, glyph: &'static str, on_click: OnPlainClick| {
         let hover = color::foreground(cx);
         div()
@@ -216,23 +245,16 @@ fn period_nav(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
         .items_center()
         .gap(px(4.0))
         .text_size(px(12.0))
-        .child(arrow(
-            "budgets-period-prev",
-            "\u{2039}",
-            props.on_period_prev.clone(),
-        ))
+        .child(arrow("budgets-period-prev", "\u{2039}", on_prev))
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_color(color::foreground(cx))
                 .whitespace_nowrap()
-                .child(period_label(props.period)),
+                .child(label),
         )
-        .child(arrow(
-            "budgets-period-next",
-            "\u{203a}",
-            props.on_period_next.clone(),
-        ))
+        .child(arrow("budgets-period-next", "\u{203a}", on_next))
+        .into_any_element()
 }
 
 /// A period as the Locale writes a month and year (`September 2026`).

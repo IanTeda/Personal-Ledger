@@ -1136,6 +1136,206 @@ pub fn unallocated(budget: &Budget, ledger: &Ledger<'_>, month: Period, today: N
 }
 
 // ---------------------------------------------------------------------------------------------
+// The Plan grid (9b)
+// ---------------------------------------------------------------------------------------------
+
+/// The months the Plan grid shows at once.
+pub const PLAN_MONTHS: usize = 6;
+
+/// The cursor column past the last month: the ROLLOVER cell.
+pub const PLAN_ROLLOVER_COLUMN: usize = PLAN_MONTHS;
+
+/// How far ahead of the current month the Plan range can start.
+const PLAN_MAX_LEAD: i32 = 12;
+
+/// One month of a Category's row.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanCell {
+    pub month: Period,
+    /// `None` is Unbudgeted (never budgeted, or Stopped).
+    pub amount: Option<Money>,
+    /// A record starts in this month: shown bold.
+    pub own_record: bool,
+    /// Before the current month: read-only.
+    pub closed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanRow {
+    pub category_id: u32,
+    pub name: String,
+    pub cells: Vec<PlanCell>,
+    /// The current month's Rollover, `None` while that month is Unbudgeted.
+    pub rollover: Option<Rollover>,
+}
+
+/// Rows under their Category's direct parent, or under no label for a top-level leaf.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlanSection {
+    pub parent: Option<String>,
+    pub rows: Vec<PlanRow>,
+}
+
+/// Everything the Plan tab draws for one range.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Plan {
+    pub months: Vec<Period>,
+    pub sections: Vec<PlanSection>,
+    /// Total budgeted per month: Budget Amounts only, no carry.
+    pub totals: Vec<Money>,
+    /// Average income minus each month's total; negative is over-allocated.
+    pub unallocated: Vec<Money>,
+    pub average_income: Money,
+}
+
+impl Plan {
+    pub fn row_count(&self) -> usize {
+        self.sections.iter().map(|section| section.rows.len()).sum()
+    }
+
+    /// The row at a position counted across sections.
+    pub fn row(&self, index: usize) -> Option<&PlanRow> {
+        self.sections
+            .iter()
+            .flat_map(|section| section.rows.iter())
+            .nth(index)
+    }
+}
+
+/// The range the Plan opens on: two months of history, the current month, then three ahead.
+pub fn default_plan_start(today: NaiveDate) -> Period {
+    Period::of(today).prev().prev()
+}
+
+/// The earliest and latest range start: the Budget's first Budget Amount (else the default start)
+/// to a year ahead of the current month.
+pub fn plan_start_bounds(budget: &Budget, today: NaiveDate) -> (Period, Period) {
+    let earliest = budget.first_amount_month().map_or_else(
+        || default_plan_start(today),
+        |first| first.min(default_plan_start(today)),
+    );
+    let latest = (0..PLAN_MAX_LEAD).fold(default_plan_start(today), |month, _| month.next());
+    (earliest, latest)
+}
+
+/// The Plan grid's figures for the six months from `start`. A row is any leaf with an amount or
+/// a record in those months, so a cell just cleared keeps its row.
+pub fn plan(budget: &Budget, ledger: &Ledger<'_>, start: Period, today: NaiveDate) -> Plan {
+    let current = Period::of(today);
+    let months: Vec<Period> = std::iter::successors(Some(start), |month| Some(month.next()))
+        .take(PLAN_MONTHS)
+        .collect();
+    let mut sections: Vec<PlanSection> = Vec::new();
+    for (id, _) in categories::paths_in_tree_order(ledger.categories) {
+        if !expense_leaves(ledger.categories).contains(&id) {
+            continue;
+        }
+        let chain = budget.chain(id);
+        let cells: Vec<PlanCell> = months
+            .iter()
+            .map(|month| {
+                let found = applied(chain, *month);
+                PlanCell {
+                    month: *month,
+                    own_record: found.as_ref().is_some_and(|f| f.own_record),
+                    amount: found.map(|f| f.amount),
+                    closed: *month < current,
+                }
+            })
+            .collect();
+        let shown = months.iter().zip(&cells).any(|(month, cell)| {
+            cell.amount.is_some() || chain.iter().any(|record| record.month == *month)
+        });
+        let Some(category) = ledger.categories.iter().find(|c| c.id == id) else {
+            continue;
+        };
+        if !shown {
+            continue;
+        }
+        let parent = category
+            .parent
+            .and_then(|parent| ledger.categories.iter().find(|c| c.id == parent))
+            .map(|parent| parent.name.clone());
+        let row = PlanRow {
+            category_id: id,
+            name: category.name.clone(),
+            cells,
+            rollover: applied(chain, current).map(|found| found.rollover),
+        };
+        match sections.iter_mut().find(|section| section.parent == parent) {
+            Some(section) => section.rows.push(row),
+            None => sections.push(PlanSection {
+                parent,
+                rows: vec![row],
+            }),
+        }
+    }
+    // Top-level leaves have no label, so they close the grid as its "Other" group.
+    sections.sort_by_key(|section| section.parent.is_none());
+    let average_income = average_income(budget, ledger, today);
+    let totals: Vec<Money> = months
+        .iter()
+        .map(|month| total_budgeted(budget, ledger.categories, *month))
+        .collect();
+    let unallocated = totals
+        .iter()
+        .map(|total| Money(average_income.0.clone() - total.0.clone()))
+        .collect();
+    Plan {
+        months,
+        sections,
+        totals,
+        unallocated,
+        average_income,
+    }
+}
+
+/// The cell being typed into. The first key replaces the prefilled amount, as in a spreadsheet;
+/// after that keys edit it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlanEdit {
+    pub category_id: u32,
+    pub month: Period,
+    pub text: String,
+    fresh: bool,
+}
+
+impl PlanEdit {
+    pub fn new(category_id: u32, month: Period, current: Option<&Money>) -> Self {
+        Self {
+            category_id,
+            month,
+            text: current.map(|money| money.0.to_string()).unwrap_or_default(),
+            fresh: true,
+        }
+    }
+
+    /// Digits and one decimal point; anything else is ignored.
+    pub fn type_char(&mut self, c: char) {
+        if !(c.is_ascii_digit() || c == '.') {
+            return;
+        }
+        if self.fresh {
+            self.text.clear();
+            self.fresh = false;
+        }
+        if c == '.' && self.text.contains('.') {
+            return;
+        }
+        self.text.push(c);
+    }
+
+    pub fn backspace(&mut self) {
+        if self.fresh {
+            self.text.clear();
+            self.fresh = false;
+        } else {
+            self.text.pop();
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // The store and its operations
 // ---------------------------------------------------------------------------------------------
 
@@ -1164,6 +1364,8 @@ pub enum BudgetError {
     AccountNotInUnit,
     #[error("that category has no budget amount this month")]
     NotBudgeted,
+    #[error("that isn't an amount")]
+    InvalidAmount,
 }
 
 /// Where a new Budget's Category Limits come from (11c's Start from).
@@ -1494,6 +1696,60 @@ impl Budgets {
             },
         );
         Ok(next)
+    }
+
+    /// Saves what was typed into a Plan cell. An amount writes an Onward or Month-only record
+    /// (`0` is a real 0.00). Empty text clears: Onward writes a Stop from `month`, Month-only
+    /// removes that month's own Month-only record. Returns whether anything changed.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "one call per Plan-grid cell save"
+    )]
+    pub fn save_cell(
+        &mut self,
+        id: u32,
+        categories: &[Category],
+        category_id: u32,
+        month: Period,
+        span: Span,
+        text: &str,
+        today: NaiveDate,
+    ) -> Result<bool, BudgetError> {
+        let text = text.trim();
+        if text.is_empty() {
+            return match span {
+                Span::Onward => {
+                    let before = self.get(id).ok_or(BudgetError::NotFound)?.clone();
+                    self.stop(id, categories, category_id, month, today)?;
+                    Ok(self.get(id) != Some(&before))
+                }
+                Span::MonthOnly => self.clear_month_only(id, category_id, month, today),
+            };
+        }
+        let amount: Money = text.parse().map_err(|_| BudgetError::InvalidAmount)?;
+        let amount = Money(amount.0.with_scale_round(2, RoundingMode::HalfUp));
+        let chain = self
+            .get(id)
+            .ok_or(BudgetError::NotFound)?
+            .chain(category_id);
+        let unchanged = applied(chain, month).is_some_and(|found| found.amount == amount)
+            && !chain
+                .iter()
+                .any(|r| r.month == month && matches!(r.limit, Limit::MonthOnly { .. }));
+        if span == Span::Onward && unchanged {
+            return Ok(false);
+        }
+        self.set_amount(
+            id,
+            categories,
+            category_id,
+            month,
+            span,
+            amount,
+            None,
+            today,
+        )?;
+        Ok(true)
     }
 
     /// Categories 5c's write: a changed value is an Onward from the current month, clearing is a
@@ -3724,5 +3980,400 @@ mod tests {
             category_detail(budget, &world.ledger(), income, sep(), today()),
             None
         );
+    }
+
+    // The Plan grid (9b)
+
+    fn save(
+        budgets: &mut Budgets,
+        world: &World,
+        id: u32,
+        category: &str,
+        month: Period,
+        span: Span,
+        text: &str,
+    ) -> Result<bool, BudgetError> {
+        budgets.save_cell(
+            id,
+            &world.categories,
+            world.category(category),
+            month,
+            span,
+            text,
+            today(),
+        )
+    }
+
+    fn chain_of(budgets: &Budgets, world: &World, id: u32, category: &str) -> Vec<LimitRecord> {
+        budgets
+            .get(id)
+            .map(|budget| budget.chain(world.category(category)).to_vec())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn saving_a_cell_onward_runs_until_the_next_record() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        assert_eq!(
+            save(
+                &mut budgets,
+                &world,
+                id,
+                "Dining",
+                sep(),
+                Span::Onward,
+                "250"
+            ),
+            Ok(true)
+        );
+        assert_eq!(
+            save(
+                &mut budgets,
+                &world,
+                id,
+                "Dining",
+                sep().next(),
+                Span::Onward,
+                "300"
+            ),
+            Ok(true)
+        );
+        let chain = chain_of(&budgets, &world, id, "Dining");
+        assert_eq!(amount_in(&chain, sep()), Some(money("250.00")));
+        assert_eq!(
+            amount_in(&chain, sep().next().next()),
+            Some(money("300.00"))
+        );
+    }
+
+    #[test]
+    fn saving_a_cell_month_only_leaves_the_next_month_on_the_onward_value() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Dining",
+            sep(),
+            Span::Onward,
+            "250",
+        )
+        .ok();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Dining",
+            sep().next(),
+            Span::MonthOnly,
+            "400",
+        )
+        .ok();
+        let chain = chain_of(&budgets, &world, id, "Dining");
+        assert_eq!(amount_in(&chain, sep().next()), Some(money("400.00")));
+        assert_eq!(
+            amount_in(&chain, sep().next().next()),
+            Some(money("250.00"))
+        );
+    }
+
+    #[test]
+    fn typing_zero_writes_a_real_zero_and_not_unbudgeted() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        save(&mut budgets, &world, id, "Dining", sep(), Span::Onward, "0").ok();
+        let chain = chain_of(&budgets, &world, id, "Dining");
+        assert_eq!(amount_in(&chain, sep()), Some(money("0.00")));
+    }
+
+    #[test]
+    fn clearing_a_cell_onward_writes_a_stop_from_that_month() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Dining",
+            sep(),
+            Span::Onward,
+            "250",
+        )
+        .ok();
+        assert_eq!(
+            save(
+                &mut budgets,
+                &world,
+                id,
+                "Dining",
+                sep().next(),
+                Span::Onward,
+                ""
+            ),
+            Ok(true)
+        );
+        let chain = chain_of(&budgets, &world, id, "Dining");
+        assert_eq!(amount_in(&chain, sep()), Some(money("250.00")));
+        assert_eq!(amount_in(&chain, sep().next()), None);
+        assert_eq!(amount_in(&chain, sep().next().next()), None);
+    }
+
+    #[test]
+    fn clearing_a_cell_month_only_removes_that_months_own_month_only_record() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Dining",
+            sep(),
+            Span::Onward,
+            "250",
+        )
+        .ok();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Dining",
+            sep().next(),
+            Span::MonthOnly,
+            "400",
+        )
+        .ok();
+        assert_eq!(
+            save(
+                &mut budgets,
+                &world,
+                id,
+                "Dining",
+                sep().next(),
+                Span::MonthOnly,
+                ""
+            ),
+            Ok(true)
+        );
+        let chain = chain_of(&budgets, &world, id, "Dining");
+        assert_eq!(amount_in(&chain, sep().next()), Some(money("250.00")));
+        // With no Month-only record there, a second clear has nothing to remove.
+        assert_eq!(
+            save(
+                &mut budgets,
+                &world,
+                id,
+                "Dining",
+                sep().next(),
+                Span::MonthOnly,
+                ""
+            ),
+            Ok(false)
+        );
+    }
+
+    #[test]
+    fn saving_an_unchanged_amount_onward_writes_nothing() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Dining",
+            sep(),
+            Span::Onward,
+            "250",
+        )
+        .ok();
+        let before = chain_of(&budgets, &world, id, "Dining");
+        assert_eq!(
+            save(
+                &mut budgets,
+                &world,
+                id,
+                "Dining",
+                sep().next(),
+                Span::Onward,
+                "250.00"
+            ),
+            Ok(false)
+        );
+        assert_eq!(chain_of(&budgets, &world, id, "Dining"), before);
+    }
+
+    #[test]
+    fn a_closed_month_or_a_bad_amount_is_refused() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        assert_eq!(
+            save(
+                &mut budgets,
+                &world,
+                id,
+                "Dining",
+                sep().prev(),
+                Span::Onward,
+                "250"
+            ),
+            Err(BudgetError::ClosedMonth)
+        );
+        assert_eq!(
+            save(
+                &mut budgets,
+                &world,
+                id,
+                "Dining",
+                sep(),
+                Span::Onward,
+                "12x"
+            ),
+            Err(BudgetError::InvalidAmount)
+        );
+    }
+
+    #[test]
+    fn the_first_key_replaces_the_prefilled_amount_and_later_keys_edit_it() {
+        let mut edit = PlanEdit::new(1, sep(), Some(&money("250.00")));
+        assert_eq!(edit.text, "250.00");
+        edit.type_char('3');
+        edit.type_char('x');
+        edit.type_char('0');
+        edit.type_char('.');
+        edit.type_char('.');
+        edit.type_char('5');
+        assert_eq!(edit.text, "30.5");
+        edit.backspace();
+        assert_eq!(edit.text, "30.");
+    }
+
+    #[test]
+    fn backspace_on_a_prefilled_cell_clears_it_at_once() {
+        let mut edit = PlanEdit::new(1, sep(), Some(&money("250.00")));
+        edit.backspace();
+        assert_eq!(edit.text, "");
+    }
+
+    #[test]
+    fn the_plan_groups_leaves_under_their_parent_and_totals_each_month() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Rent",
+            sep(),
+            Span::Onward,
+            "1000",
+        )
+        .ok();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Electricity",
+            sep(),
+            Span::Onward,
+            "90",
+        )
+        .ok();
+        save(&mut budgets, &world, id, "Water", sep(), Span::Onward, "60").ok();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Transport",
+            sep().next(),
+            Span::Onward,
+            "40",
+        )
+        .ok();
+        let Some(budget) = budgets.get(id) else {
+            panic!("the Budget was created");
+        };
+        let start = default_plan_start(today());
+        let grid = plan(budget, &world.ledger(), start, today());
+        assert_eq!(grid.months.len(), PLAN_MONTHS);
+        assert_eq!(grid.months.get(2), Some(&sep()));
+        let labels: Vec<Option<&str>> = grid
+            .sections
+            .iter()
+            .map(|section| section.parent.as_deref())
+            .collect();
+        // A top-level leaf (Transport) closes the grid as the unlabelled group.
+        assert_eq!(labels, vec![Some("Housing"), Some("Utilities"), None]);
+        assert_eq!(grid.row_count(), 4);
+        // Sep is the third month; Oct the fourth.
+        assert_eq!(grid.totals.get(2), Some(&money("1150.00")));
+        assert_eq!(grid.totals.get(3), Some(&money("1190.00")));
+        assert_eq!(grid.totals.first(), Some(&money("0")));
+        let cell = grid
+            .row(0)
+            .and_then(|row| row.cells.get(2))
+            .expect("Rent's September cell");
+        assert!(cell.own_record && !cell.closed);
+        assert!(
+            grid.row(0)
+                .is_some_and(|row| row.cells.first().is_some_and(|c| c.closed))
+        );
+        // Unallocated is average income less the month's total.
+        assert_eq!(
+            grid.unallocated.get(2).map(|left| left.0.clone()),
+            Some(grid.average_income.0.clone() - money("1150.00").0)
+        );
+    }
+
+    #[test]
+    fn a_cleared_row_stays_in_the_grid_while_a_record_starts_in_the_range() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Rent",
+            sep().next(),
+            Span::Onward,
+            "1000",
+        )
+        .ok();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Rent",
+            sep().next(),
+            Span::Onward,
+            "",
+        )
+        .ok();
+        let Some(budget) = budgets.get(id) else {
+            panic!("the Budget was created");
+        };
+        let grid = plan(
+            budget,
+            &world.ledger(),
+            default_plan_start(today()),
+            today(),
+        );
+        assert_eq!(grid.row_count(), 1);
+        assert!(
+            grid.row(0)
+                .is_some_and(|row| row.cells.iter().all(|c| c.amount.is_none()))
+        );
+    }
+
+    #[test]
+    fn the_plan_range_is_bounded_by_the_first_amount_and_a_year_ahead() {
+        let world = World::new();
+        let (budgets, id) = world.budgets();
+        let Some(budget) = budgets.get(id) else {
+            panic!("the Budget was created");
+        };
+        let (earliest, latest) = plan_start_bounds(budget, today());
+        assert_eq!(earliest, default_plan_start(today()));
+        assert_eq!(latest, (0..12).fold(earliest, |month, _| month.next()));
     }
 }
