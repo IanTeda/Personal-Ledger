@@ -54,6 +54,7 @@ Every variant is drawn at **1280 × 800**. The shell is the same as in the other
 - ROLLOVER is a per-row control cycling `—` / carry unspent / carry both. It shows the current month's value; changing it writes an Onward record from the current month with the same amount and the new Rollover (#384).
 - Footer rows: **Total budgeted** per month, and **Unallocated of 5,850.00 avg. income**, so over-allocation shows before the month starts.
 - Status bar: `INSERT` · `enter save cell · esc cancel · tab next month · shift+enter this month only`.
+- Settled in #386: the grid has **Normal** mode (`h/j/k/l` cell cursor, past cells selectable but not editable; `enter`/`i` edit; `r` cycle Rollover; `[ ]` shift the 6-month range; `tab` switch view; `f` Fill; `backspace`/`x` clear) and **Insert** mode (`enter` save Onward, `shift+enter` save Month-only, `tab`/`shift+tab` save Onward and move to next/previous month, `esc` cancel); clicking a future cell enters Insert. `0` writes an explicit 0.00; clearing a cell with `enter` (or `backspace`/`x`) writes a **Stop** from that month, with `shift+enter` it removes that month's own Month-only record. ROLLOVER cycles `—` → carry unspent → carry both; unbudgeted rows have none. **+ Budget a category** opens 9e with a Category picker offering leaf Expense Categories with no Budget Amount in the current month (never budgeted or Stopped), defaulting to current month, Onward, Rollover None; `set` on an unbudgeted Progress row opens it preselected. **Unallocated** = average signed Income Splits (transfers excluded) on the on-budget Accounts in the Budget's Unit over the last 3 closed months, minus each month's Total budgeted (Budget Amounts only, no carry); negative shows in accent as over-allocated.
 
 ### 9c — History tab
 - Meta: "Budget vs spent by month · the average and OVER count use closed months only". Action: `Export CSV`. Range nav `‹ Apr – Sep 2026 ›`.
@@ -89,6 +90,7 @@ Opened with `enter` on a Progress row.
   - **3-month average spent** (Jul–Sep, rounded to the nearest 10) — 3,702.40
 - "CHANGES FROM SEPTEMBER" diff: Dining 250.00 → 300.00 (+50.00); Insurance 420.00 → — (−420.00, no bill due); Electricity 180.00 → 159.97 (−20.03). Then "7 other categories unchanged".
 - Rule: fill **never overwrites** cells the user has already edited.
+- Settled in #386: the target is the first open month at or after the grid cursor's column (next month when the cursor is on a past month), and the button label follows it. **The plan** is dropped as a source; it becomes the diff baseline. Fill writes **Month-only** records for the target month only, for leaf Categories budgeted in the month before it; a Category with its own record in the target month (Onward, Month-only or Stop) is skipped by both sources and listed as "kept (edited)". The 3-month average uses the three closed months before the target (Spent from `period_figures`, Known Costs excluded), rounded to the nearest 10 half away from zero, floored at 0.00, and is shared with 11c's "Last 3 months' spending" (#400).
 - Footer: `Cancel` + `Fill October`.
 
 ### 9g — Stop budgeting (modal, 420px)
