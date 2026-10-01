@@ -41,7 +41,7 @@ use crate::{
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
-    explorer::{self, ExplorerMode, FileExplorer},
+    explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
     format,
     import::{self, ImportState, RowSelect},
     key_router::{self, KeyOutcome, Movement, route_key},
@@ -507,6 +507,9 @@ pub struct Shell {
     /// The same section's "Start Sidebar minimised" toggle -- persisted across restarts (see
     /// `persistence::PersistedState`) and applied to the primary rail at launch.
     settings_start_sidebar_minimised: bool,
+    /// The `:open` explorer's footer checkboxes, kept here so they outlive each dialog and reach
+    /// `persistence::PersistedState` at quit.
+    explorer_filters: ExplorerFilters,
     /// The Units section's own table rows (issue #177), seeded from `settings::default_units()`.
     /// A real, mutable `Vec` so the Add/Edit/Delete unit dialogs (issues #184-#186) can
     /// push/update/remove rows once they land -- unlike
@@ -703,6 +706,7 @@ impl Shell {
             pending_colour_change: None,
             settings_status_glyphs: StatusGlyphs::default(),
             settings_start_sidebar_minimised: false,
+            explorer_filters: ExplorerFilters::default(),
             settings_units: settings::default_units(),
             settings_price_sources: settings::default_price_sources(),
             settings_dialog: None,
@@ -767,6 +771,14 @@ impl Shell {
 
     pub fn set_settings_page(&mut self, section: SettingsSection) {
         self.settings_selected_section = section;
+    }
+
+    pub fn explorer_filters(&self) -> ExplorerFilters {
+        self.explorer_filters
+    }
+
+    pub fn set_explorer_filters(&mut self, filters: ExplorerFilters) {
+        self.explorer_filters = filters;
     }
 
     pub fn start_sidebar_minimised(&self) -> bool {
@@ -7371,7 +7383,11 @@ impl Shell {
         }
         match command.effect {
             CommandEffect::OpenDialog(mode) => {
-                self.file_explorer = Some(FileExplorer::open_at(mode, explorer_start_dir()));
+                self.file_explorer = Some(FileExplorer::open_at(
+                    mode,
+                    explorer_start_dir(),
+                    self.explorer_filters,
+                ));
             }
             CommandEffect::Navigate(noun) => {
                 self.nav.exit_mode();
@@ -7764,6 +7780,20 @@ impl Shell {
         }
     }
 
+    /// A footer checkbox click (`explorer::OnFilterToggle`): re-filters the open dialog and keeps
+    /// the new state for the next one and for the quit-time save.
+    fn handle_explorer_filter_toggle(
+        &mut self,
+        filter: ExplorerFilter,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if let Some(explorer) = self.file_explorer.as_mut() {
+            explorer.toggle_filter(filter);
+            self.explorer_filters = explorer.filters();
+            cx.notify();
+        }
+    }
+
     /// The explorer dialog's own Cancel button: closes without opening anything, leaving
     /// Command mode the same way the palette's own `esc` does.
     fn handle_explorer_cancel(&mut self, cx: &mut Context<'_, Self>) {
@@ -7911,6 +7941,14 @@ impl Render for Shell {
             Rc::new(move |path, _window, cx| {
                 entity.update(cx, |shell, cx| {
                     shell.handle_explorer_breadcrumb_click(path, cx)
+                });
+            })
+        };
+        let on_explorer_filter_toggle: explorer::OnFilterToggle = {
+            let entity = entity.clone();
+            Rc::new(move |filter, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_explorer_filter_toggle(filter, cx)
                 });
             })
         };
@@ -9269,6 +9307,7 @@ impl Render for Shell {
                 explorer.render(
                     on_explorer_entry_click,
                     on_explorer_breadcrumb_click,
+                    on_explorer_filter_toggle,
                     on_explorer_cancel,
                     on_explorer_open,
                     cx,

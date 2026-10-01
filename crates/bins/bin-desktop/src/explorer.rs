@@ -68,6 +68,33 @@ pub enum ExplorerMode {
     New,
 }
 
+/// The two footer checkboxes (frame 1e). Persisted by `crate::persistence` so the choice
+/// survives a restart, hence `Serialize`/`Deserialize` and a hand-written `Default`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct ExplorerFilters {
+    /// Show only folders and real `.pldb` files. Folders stay so navigation still works.
+    pub pldb_only: bool,
+    /// Hide entries whose name begins with `.`.
+    pub hide_hidden: bool,
+}
+
+impl Default for ExplorerFilters {
+    fn default() -> Self {
+        Self {
+            pldb_only: true,
+            hide_hidden: true,
+        }
+    }
+}
+
+/// Which footer checkbox a click toggled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExplorerFilter {
+    PldbOnly,
+    HideHidden,
+}
+
 /// State for the floating file explorer: the directory currently being browsed, its entries,
 /// and the current `.pldb` selection (if any). Re-reads the filesystem on every navigation
 /// (`reload`) rather than caching -- a directory listing is cheap enough that staleness isn't
@@ -75,7 +102,12 @@ pub enum ExplorerMode {
 pub struct FileExplorer {
     mode: ExplorerMode,
     current_path: PathBuf,
+    /// Everything `read_dir` returned for `current_path`, unfiltered, so toggling a filter
+    /// re-filters live without touching the filesystem again.
+    listing: Vec<DirEntry>,
+    /// `listing` after `filters`: what the rows and the item count show.
     entries: Vec<DirEntry>,
+    filters: ExplorerFilters,
     selected: Option<PathBuf>,
     /// The row list's own scroll, unlike `Palette`'s fixed, small registry -- a real directory
     /// (the mockup's own illustrative 6 rows aside) can hold far more entries than fit the
@@ -87,11 +119,13 @@ pub struct FileExplorer {
 impl FileExplorer {
     /// Opens browsing `start` -- callers pass `dirs::home_dir()` (falling back to the current
     /// directory), since the handoff names no default starting directory of its own.
-    pub fn open_at(mode: ExplorerMode, start: PathBuf) -> Self {
+    pub fn open_at(mode: ExplorerMode, start: PathBuf, filters: ExplorerFilters) -> Self {
         let mut explorer = Self {
             mode,
             current_path: start,
+            listing: Vec::new(),
             entries: Vec::new(),
+            filters,
             selected: None,
             scroll_handle: gpui::ScrollHandle::new(),
         };
@@ -109,6 +143,36 @@ impl FileExplorer {
 
     pub fn entries(&self) -> &[DirEntry] {
         &self.entries
+    }
+
+    pub fn filters(&self) -> ExplorerFilters {
+        self.filters
+    }
+
+    /// Flips one footer checkbox and re-filters the loaded listing. A selection the new filters
+    /// hide is dropped, so Open can never act on a row the user can no longer see.
+    pub fn toggle_filter(&mut self, filter: ExplorerFilter) {
+        match filter {
+            ExplorerFilter::PldbOnly => self.filters.pldb_only = !self.filters.pldb_only,
+            ExplorerFilter::HideHidden => self.filters.hide_hidden = !self.filters.hide_hidden,
+        }
+        self.apply_filters();
+        if let Some(selected) = &self.selected
+            && !self.entries.iter().any(|entry| &entry.path == selected)
+        {
+            self.selected = None;
+        }
+    }
+
+    fn apply_filters(&mut self) {
+        let filters = self.filters;
+        self.entries = self
+            .listing
+            .iter()
+            .filter(|entry| !(filters.hide_hidden && entry.name.starts_with('.')))
+            .filter(|entry| !(filters.pldb_only && entry.kind == EntryKind::Other))
+            .cloned()
+            .collect();
     }
 
     pub fn selected(&self) -> Option<&Path> {
@@ -160,7 +224,8 @@ impl FileExplorer {
                 .cmp(&a_is_folder)
                 .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
         });
-        self.entries = entries;
+        self.listing = entries;
+        self.apply_filters();
     }
 
     /// A row click (README: "Row click selects it; only `.pldb` rows are selectable as the open
@@ -279,6 +344,7 @@ fn format_modified(modified: SystemTime, now: SystemTime) -> String {
 /// immediately"), mirroring `rail::primary::OnRowClick`'s own `Rc`-shared-closure shape.
 pub type OnEntryClick = Rc<dyn Fn(PathBuf, usize, &mut Window, &mut App)>;
 pub type OnBreadcrumbClick = Rc<dyn Fn(PathBuf, &mut Window, &mut App)>;
+pub type OnFilterToggle = Rc<dyn Fn(ExplorerFilter, &mut Window, &mut App)>;
 pub type OnCancel = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type OnOpen = Rc<dyn Fn(&mut Window, &mut App)>;
 
@@ -292,6 +358,7 @@ impl FileExplorer {
         &self,
         on_entry_click: OnEntryClick,
         on_breadcrumb_click: OnBreadcrumbClick,
+        on_filter_toggle: OnFilterToggle,
         on_cancel: OnCancel,
         on_open: OnOpen,
         cx: &App,
@@ -338,7 +405,15 @@ impl FileExplorer {
                                 row(entry, index, selected, is_last, on_entry_click.clone(), cx)
                             })),
                     )
-                    .child(footer(self.mode, self.can_open(), on_cancel, on_open, cx)),
+                    .child(footer(
+                        self.mode,
+                        self.filters,
+                        self.can_open(),
+                        on_filter_toggle,
+                        on_cancel,
+                        on_open,
+                        cx,
+                    )),
             )
             .into_any_element()
     }
@@ -515,7 +590,9 @@ fn row(
 
 fn footer(
     mode: ExplorerMode,
+    filters: ExplorerFilters,
     can_open: bool,
+    on_filter_toggle: OnFilterToggle,
     on_cancel: OnCancel,
     on_open: OnOpen,
     cx: &App,
@@ -537,14 +614,32 @@ fn footer(
         .child(
             div()
                 .flex()
-                .child(msg::desktop_explorer_file_type_info_prefix())
-                .child(
+                .flex_col()
+                .gap(px(8.0))
+                .child(filter_checkbox(
+                    "explorer-filter-pldb-only",
+                    filters.pldb_only,
+                    div().child(msg::desktop_explorer_filter_pldb_only()),
+                    ExplorerFilter::PldbOnly,
+                    on_filter_toggle.clone(),
+                    cx,
+                ))
+                .child(filter_checkbox(
+                    "explorer-filter-hide-hidden",
+                    filters.hide_hidden,
                     div()
-                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .text_color(color::foreground(cx))
-                        .child(".pldb"),
-                )
-                .child(msg::desktop_explorer_file_type_info_suffix()),
+                        .flex()
+                        .gap(px(4.0))
+                        .child(msg::desktop_explorer_filter_hide_hidden())
+                        .child(
+                            div()
+                                .text_color(color::muted(cx))
+                                .child(msg::desktop_explorer_filter_hide_hidden_detail()),
+                        ),
+                    ExplorerFilter::HideHidden,
+                    on_filter_toggle,
+                    cx,
+                )),
         )
         .child(div().flex_1())
         .child(
@@ -584,9 +679,50 @@ fn footer(
         )
 }
 
+/// A 14×14 square checkbox, ink-filled when checked and without a radius (frame 1e).
+fn filter_checkbox(
+    id: &'static str,
+    checked: bool,
+    label: impl IntoElement,
+    filter: ExplorerFilter,
+    on_toggle: OnFilterToggle,
+    cx: &App,
+) -> impl IntoElement {
+    div()
+        .id(id)
+        .cursor_pointer()
+        .flex()
+        .items_center()
+        .gap(px(8.0))
+        .text_color(color::foreground(cx))
+        .on_click(move |_event, window, cx| on_toggle(filter, window, cx))
+        .child(
+            div()
+                .w(px(14.0))
+                .h(px(14.0))
+                .flex_none()
+                .border_1()
+                .border_color(color::foreground(cx))
+                .bg(if checked {
+                    color::foreground(cx)
+                } else {
+                    color::background(cx)
+                }),
+        )
+        .child(label)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every file kind visible, so tests of listing, sorting and clicking see all fixtures.
+    fn all_files() -> ExplorerFilters {
+        ExplorerFilters {
+            pldb_only: false,
+            hide_hidden: true,
+        }
+    }
 
     fn touch(path: &Path) {
         std::fs::write(path, b"stub").expect("write should succeed");
@@ -596,7 +732,8 @@ mod tests {
     fn open_at_records_its_mode() {
         let dir = tempfile::tempdir().expect("tempdir should be creatable");
 
-        let explorer = FileExplorer::open_at(ExplorerMode::New, dir.path().to_path_buf());
+        let explorer =
+            FileExplorer::open_at(ExplorerMode::New, dir.path().to_path_buf(), all_files());
 
         assert_eq!(explorer.mode(), ExplorerMode::New);
     }
@@ -609,7 +746,8 @@ mod tests {
         touch(&dir.path().join("beta.pldb"));
         touch(&dir.path().join("Alpha.csv"));
 
-        let explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
+        let explorer =
+            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
 
         let names: Vec<_> = explorer.entries().iter().map(|e| e.name.as_str()).collect();
         assert_eq!(names, vec!["archive", "Zeta", "Alpha.csv", "beta.pldb"]);
@@ -627,7 +765,8 @@ mod tests {
         touch(&dir.path().join("decoy.pldb.bak"));
         touch(&dir.path().join("plain.csv"));
 
-        let explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
+        let explorer =
+            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
 
         let kind_of = |name: &str| {
             explorer
@@ -651,6 +790,82 @@ mod tests {
         assert_eq!(kind_of("plain.csv"), EntryKind::Other);
     }
 
+    fn names(explorer: &FileExplorer) -> Vec<&str> {
+        explorer.entries().iter().map(|e| e.name.as_str()).collect()
+    }
+
+    fn filtered_fixture() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+        std::fs::create_dir(dir.path().join("archive")).unwrap();
+        std::fs::create_dir(dir.path().join(".cache")).unwrap();
+        touch(&dir.path().join("teda.pldb"));
+        touch(&dir.path().join(".hidden.pldb"));
+        touch(&dir.path().join("old-ledger.pldb.bak"));
+        touch(&dir.path().join("expenses.csv"));
+        dir
+    }
+
+    #[test]
+    fn default_filters_hide_dot_entries_but_show_every_other_file() {
+        let dir = filtered_fixture();
+
+        let explorer =
+            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
+
+        assert_eq!(
+            names(&explorer),
+            vec![
+                "archive",
+                "expenses.csv",
+                "old-ledger.pldb.bak",
+                "teda.pldb"
+            ]
+        );
+    }
+
+    #[test]
+    fn pldb_only_keeps_folders_and_real_pldb_files_but_not_the_bak_decoy() {
+        let dir = filtered_fixture();
+        let mut explorer =
+            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
+
+        explorer.toggle_filter(ExplorerFilter::PldbOnly);
+
+        assert_eq!(names(&explorer), vec!["archive", "teda.pldb"]);
+    }
+
+    #[test]
+    fn showing_hidden_files_reveals_dot_entries_and_counts_them() {
+        let dir = filtered_fixture();
+        let mut explorer =
+            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
+
+        explorer.toggle_filter(ExplorerFilter::HideHidden);
+
+        assert_eq!(explorer.entries().len(), 6);
+        assert!(names(&explorer).contains(&".cache"));
+    }
+
+    #[test]
+    fn a_filter_that_hides_the_selection_clears_it() {
+        let dir = filtered_fixture();
+        let hidden = dir.path().join(".hidden.pldb");
+        let mut explorer = FileExplorer::open_at(
+            ExplorerMode::Open,
+            dir.path().to_path_buf(),
+            ExplorerFilters {
+                pldb_only: false,
+                hide_hidden: false,
+            },
+        );
+        explorer.click_entry(&hidden);
+        assert!(explorer.can_open());
+
+        explorer.toggle_filter(ExplorerFilter::HideHidden);
+
+        assert!(!explorer.can_open());
+    }
+
     #[test]
     fn clicking_a_folder_navigates_into_it() {
         let dir = tempfile::tempdir().expect("tempdir should be creatable");
@@ -658,7 +873,8 @@ mod tests {
         std::fs::create_dir(&sub).unwrap();
         touch(&sub.join("inner.pldb"));
 
-        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
+        let mut explorer =
+            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
         explorer.click_entry(&sub);
 
         assert_eq!(explorer.current_path(), sub);
@@ -672,7 +888,8 @@ mod tests {
         let pldb = dir.path().join("real.pldb");
         touch(&pldb);
 
-        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
+        let mut explorer =
+            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
         assert!(!explorer.can_open());
 
         explorer.click_entry(&pldb);
@@ -687,7 +904,8 @@ mod tests {
         let csv = dir.path().join("plain.csv");
         touch(&csv);
 
-        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
+        let mut explorer =
+            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
         explorer.click_entry(&csv);
 
         assert_eq!(explorer.selected(), None);
@@ -702,7 +920,8 @@ mod tests {
         let sub = dir.path().join("ledgers");
         std::fs::create_dir(&sub).unwrap();
 
-        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf());
+        let mut explorer =
+            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
         explorer.click_entry(&pldb);
         assert!(explorer.can_open());
 
@@ -717,7 +936,7 @@ mod tests {
         let sub = dir.path().join("ledgers");
         std::fs::create_dir(&sub).unwrap();
 
-        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, sub.clone());
+        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, sub.clone(), all_files());
         explorer.navigate_to(dir.path().to_path_buf());
 
         assert_eq!(explorer.current_path(), dir.path());

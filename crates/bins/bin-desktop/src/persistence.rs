@@ -11,7 +11,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::nav::{Noun, RailMode};
+use crate::{
+    explorer::ExplorerFilters,
+    nav::{Noun, RailMode},
+};
 
 /// Directory name under the platform's state directory, mirroring `lib_config`'s own
 /// `APPLICATION_NAME` convention (`crates/libs/lib-config/src/ledger.rs`).
@@ -45,6 +48,9 @@ pub struct PersistedState {
     /// unknown id loads as the default page.
     #[serde(default)]
     pub settings_page: Option<String>,
+    /// The `:open` file explorer's two footer checkboxes.
+    #[serde(default)]
+    pub explorer_filters: ExplorerFilters,
     pub window: Option<WindowGeometry>,
 }
 
@@ -161,6 +167,10 @@ mod tests {
             primary_rail: RailMode::Collapsed,
             start_sidebar_minimised: true,
             settings_page: Some("tags".to_string()),
+            explorer_filters: ExplorerFilters {
+                pldb_only: true,
+                hide_hidden: false,
+            },
             window: Some(WindowGeometry {
                 x: 10.0,
                 y: 20.0,
@@ -184,6 +194,7 @@ mod tests {
             primary_rail: RailMode::Expanded,
             start_sidebar_minimised: false,
             settings_page: None,
+            explorer_filters: ExplorerFilters::default(),
             window: None,
         };
 
@@ -191,6 +202,22 @@ mod tests {
         let loaded = load_from(&path);
 
         assert_eq!(loaded, state);
+    }
+
+    #[test]
+    fn a_state_file_without_explorer_filters_loads_the_defaults() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+        let path = dir.path().join(STATE_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"{"noun":"Dashboard","primary_rail":"Expanded","window":null}"#,
+        )
+        .expect("write should succeed");
+
+        let loaded = load_from(&path);
+
+        assert!(loaded.explorer_filters.pldb_only);
+        assert!(loaded.explorer_filters.hide_hidden);
     }
 
     #[test]

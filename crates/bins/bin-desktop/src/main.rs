@@ -141,6 +141,7 @@ async fn main() -> Result<()> {
                 persisted.primary_rail
             });
             let start_sidebar_minimised = persisted.start_sidebar_minimised;
+            let explorer_filters = persisted.explorer_filters;
             let settings_page = persisted
                 .settings_page
                 .as_deref()
@@ -193,6 +194,7 @@ async fn main() -> Result<()> {
                         let mut shell = Shell::new(nav, focus_handle);
                         shell.set_start_sidebar_minimised(start_sidebar_minimised);
                         shell.set_settings_page(settings_page);
+                        shell.set_explorer_filters(explorer_filters);
                         shell.set_dismiss_toasts_binding(dismiss_toasts_binding);
                         shell.set_toast_history_binding(toast_history_binding);
                         shell.start_toast_clock(cx);
@@ -224,6 +226,7 @@ async fn main() -> Result<()> {
                         primary_rail: shell.nav().primary_rail(),
                         start_sidebar_minimised: shell.start_sidebar_minimised(),
                         settings_page: Some(shell.settings_page().id().to_string()),
+                        explorer_filters: shell.explorer_filters(),
                         window: Some(WindowGeometry {
                             x: f32::from(bounds.origin.x),
                             y: f32::from(bounds.origin.y),

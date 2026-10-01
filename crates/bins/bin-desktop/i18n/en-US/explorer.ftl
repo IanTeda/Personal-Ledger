@@ -48,10 +48,11 @@ desktop-explorer-modified-years = { $value ->
    *[other] { $value } years ago
 }
 
-## The footer instructions: only `.pldb` files are selectable.
+## The footer filter checkboxes. The second has a dimmer trailing clause.
 
-desktop-explorer-file-type-info-prefix = only
-desktop-explorer-file-type-info-suffix = files can be opened
+desktop-explorer-filter-pldb-only = show only .pldb files
+desktop-explorer-filter-hide-hidden = hide hidden files
+desktop-explorer-filter-hide-hidden-detail = — dot files and folders
 
 ## The footer buttons.
 
