@@ -1387,7 +1387,7 @@ impl Shell {
     }
 
     fn apply_view_movement(&mut self, movement: Movement) {
-        if self.nav.noun() == Noun::Accounts {
+        if self.accounts_page_has_focus() {
             self.apply_accounts_movement(movement);
             return;
         }
@@ -1978,6 +1978,20 @@ impl Shell {
         cx.notify();
     }
 
+    /// Whether the Accounts rows own the keyboard: the standalone page, or Settings' Accounts
+    /// page with focus in the page rather than on the index.
+    fn accounts_page_has_focus(&self) -> bool {
+        match self.nav.noun() {
+            Noun::Accounts => self.nav.focus() == FocusZone::View,
+            Noun::Settings => {
+                self.nav.focus() == FocusZone::View
+                    && self.settings_focus == SettingsFocus::Page
+                    && self.settings_selected_section == SettingsSection::Accounts
+            }
+            _ => false,
+        }
+    }
+
     /// The selected account's index in [`Self::accounts`], `None` when there are none. The stored
     /// position is clamped, so removing accounts can never leave it pointing past the end.
     fn selected_account_index(&self) -> Option<usize> {
@@ -2016,6 +2030,11 @@ impl Shell {
     /// Scrolls the selected account's group block into view (`ScrollHandle::scroll_to_item`
     /// addresses the page's direct children; see `view::accounts::GROUP_CHILD_OFFSET`).
     fn scroll_selected_account_into_view(&self) {
+        // Settings' body wraps the tables in its own heading blocks, so the group offset below
+        // only holds for the standalone page.
+        if self.nav.noun() != Noun::Accounts {
+            return;
+        }
         if let Some(position) = self
             .selected_account_index()
             .and_then(|index| accounts::group_position(&self.accounts, index))
@@ -2029,7 +2048,7 @@ impl Shell {
     /// focus, in `Normal` mode -- `route_key` hands back `NoOp` for these bare keys). Each goes
     /// through the same handler its button does.
     fn handle_accounts_key(&mut self, keystroke: &Keystroke) -> bool {
-        if self.nav.noun() != Noun::Accounts || self.nav.focus() != FocusZone::View {
+        if !self.accounts_page_has_focus() {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -8835,6 +8854,12 @@ impl Render for Shell {
             }
         });
         let page_status = match self.nav.noun() {
+            Noun::Settings if self.accounts_page_has_focus() => Some(PageStatus {
+                hints: accounts_hints(),
+                right: crate::msg::desktop_accounts_count(
+                    i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
+                ),
+            }),
             Noun::Accounts => Some(PageStatus {
                 hints: accounts_hints(),
                 right: crate::msg::desktop_accounts_count(
@@ -9658,6 +9683,16 @@ fn render_view(
                 scroll_handle,
                 SettingsBodyProps {
                     selected: settings.selected,
+                    page_focused: focused && settings.focus == SettingsFocus::Page,
+                    accounts: settings_view::accounts::AccountsPageProps {
+                        accounts: pages.accounts.accounts,
+                        units: pages.accounts.units,
+                        selected: pages.accounts.selected,
+                        on_add_click: pages.accounts.on_add_click,
+                        on_row_click: pages.accounts.on_row_click,
+                        on_edit_click: pages.accounts.on_edit_click,
+                        on_delete_click: pages.accounts.on_delete_click,
+                    },
                     date_style: settings.date_style,
                     row_density: settings.row_density,
                     status_glyphs: settings.status_glyphs,
