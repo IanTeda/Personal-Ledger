@@ -326,6 +326,46 @@ _Avoid_: To-Do, Reminder — Task is this glossary's canonical term. Attention I
 The always-current list of everything wanting a user's action right now, computed fresh on every view rather than stored anywhere — every open Task (see above), every currently Flagged Transaction, every Transaction that's Cleared but not yet Reconciled, and every unresolved (not Paid or Skipped) Bill Schedule entry whose due date is on or before today plus that Bill Plan's own Attention Lead (see Bill Plan, above) — a date rule, not a status one, so an Upcoming entry due early next month still counts once inside its lead, and one with no lead counts from its due day. Beyond Task, nothing here is a separately stored fact: each is read directly off the Transaction Status, Flagged marker, or Bill Schedule status a row already carries, so an entry disappears the moment its underlying state resolves (a Transaction gets Reconciled, a Bill Schedule entry gets Paid) with nothing to separately dismiss. See `docs/needs-attention.md` and [ADR-0020](docs/adr/0020-needs-attention-as-derived-view.md).
 _Avoid_: Attention Item, To-Do List — Needs Attention names the computed list as a whole; Task (see above) is the only thing actually stored inside it.
 
+**Inventory Item**:
+A physical possession recorded for its value and as something a Document can prove ownership of (e.g. a camera, a ring, a household's contents). Defined here so a Document Link has a target; the Inventory surface will sharpen it.
+_Avoid_: Asset — too broad, and it collides with the Assets Category Type.
+
+**Document**:
+A reference to one file kept beside the Ledger, plus its metadata: a Title (defaulting to the file name without its extension, editable), exactly one Document Type, a document date, an optional Key Date and any number of Document Links. The file itself is never renamed or moved; the Ledger holds only the reference. A Document is either **Unfiled** (in the Inbox, carrying the Extracted Facts read from it and the source it arrived from) or **Filed**; it becomes Filed only by the user filing it, never by gaining a Link, so a Filed Document with no Links ("not linked") is valid.
+_Avoid_: Attachment, File (for the Ledger record rather than the bytes on disk), Inbox Item — an Inbox entry is just an Unfiled Document, not a separate thing.
+
+**Document Type**:
+The fixed kind of a Document, exactly one per Document: Receipt, Statement, Tax, Insurance, Warranty & manual, Contract, Identity or Bill. Not user-editable and with no subtypes; any finer distinction ("policy", "PDS") belongs in the Title.
+_Avoid_: Category — Category classifies Splits, not Documents.
+
+**Financial Year**:
+The twelve-month year a date falls in, beginning on the month set as the Financial year start (1 July by default, the Australian financial year), labelled by both calendar years it spans (e.g. FY 2025–26). A Document's Financial Year is always derived from its document date, never stored, so every Document has one.
+_Avoid_: Tax year — the same period under another name; Financial Year is canonical.
+
+**Key Date**:
+The one forward-dated obligation a Document may carry (zero or one per Document): a kind — Renews, Ends (also used for a warranty's end), Expires or Revalue — a date, and whether a reminder is wanted. Drives the Documents surface's Expiring sort and need-review count; it is not part of Needs Attention.
+_Avoid_: Due date — that belongs to a Bill Schedule entry. Reminder — the reminder is a flag on the Key Date, not the date itself.
+
+**Document Link**:
+A Document's reference to one record it proves: a Transaction (the whole Transaction, never a single Split), an Inventory Item, an Account, a Payee or a Bill Plan (never a Bill Schedule entry; proof for one paid instance links to the Transaction that paid it). Many-to-many: a Document has any number of Document Links and a record may be linked from any number of Documents.
+_Avoid_: Attachment, Match — Match is the Bills term for settling a Bill Schedule entry against a Split.
+
+**Inbox**:
+The list of every Unfiled Document, waiting to be filed. Its count is derived, never stored.
+_Avoid_: Queue, Unsorted.
+
+**Extracted Facts**:
+What was read from an Unfiled Document's file — merchant, date, total and Document Type, any of which may be absent — and which the user may correct before filing. A Document from which no amount could be read is **Unreadable** and is never given a Suggested Link.
+_Avoid_: Metadata — a Document's metadata is what it carries once Filed; Extracted Facts are the raw reading.
+
+**Suggested Link**:
+The best candidate Document Link for an Unfiled Document, derived from its Extracted Facts each time it is shown and never stored. Its **Signals** are which of amount, date and payee agree with the candidate, and its **Signal Strength** is how many agree: Strong (3 of 3), Likely (2) or Weak (1).
+_Avoid_: Match, Match Strength — Match belongs to Bills.
+
+**File** (verb):
+To move a Document from Unfiled to Filed, setting its Document Type and any Document Links. **Accept** is filing with the Suggested Link as offered; filing by hand or linking elsewhere is still filing. **Skip** leaves a Document Unfiled.
+_Avoid_: Import — Import brings a file into the Inbox; filing is what happens after.
+
 **Search**:
 Narrowing a list by **free text** the user types (a query matched against names or labels). Distinct from a Filter: Search takes one typed string and has no structured fields.
 _Avoid_: Filter (for free-text matching), Find.
