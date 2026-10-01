@@ -21,7 +21,7 @@ use crate::{
 pub const WIDTH: gpui::Pixels = px(206.0);
 
 /// The collapsed ("1c") rail's own fixed width and per-row icon box, from the handoff's own
-/// collapsed-rail markup (`docs/ux/desktop/Shell & Navigation/Ledger Desktop Shell.dc.html`,
+/// collapsed-rail markup (`docs/ux/desktop/Shell & Navigation/Shell and Settings.dc.html`,
 /// card `1c`) -- the README's own "1a-1d" prose is silent on these pixels, so the canvas
 /// itself is the literal source here.
 pub const COLLAPSED_WIDTH: gpui::Pixels = px(52.0);

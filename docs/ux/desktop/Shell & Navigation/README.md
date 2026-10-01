@@ -1,229 +1,209 @@
-# Handoff: Desktop Shell & Navigation
+# Handoff: Desktop Shell, Navigation & Settings
 
 ## Overview
-This package contains the design for **Personal Ledger's application shell** — the window chrome, the primary navigation rail, the secondary (contextual) rail, the command palette, the file-open explorer, and the no-ledger-open empty state. The shell explores a **hybrid model**: a conventional graphical rail for discovery, paired with vim-style keybindings (`g`-jumps, `:` command palette, `/` filter) for speed. Five variants (1a–1e) present different answers to the same question — how much structure the rails should carry, and how each overlay (palette, file explorer) floats over it.
+Personal Ledger's **application shell** (window chrome, primary rail, contextual rail, status bar, the `:` command palette, the `:open` file explorer, Help & About) and its **Settings** destination: one page per section, with the modal dialogs for unit and institution management.
 
-## About the Design Files
-`Ledger Desktop Shell.dc.html` is a **high-fidelity HTML prototype** showing intended look, layout, and interaction model. It is a **design reference, not production code**. Recreate these designs in the target codebase (Rust + GPUI) using established patterns, informed by the mockup's layout, typography, color, and behavior.
+This package replaces `design_handoff_shell_navigation/` and `design_handoff_settings/`. Where they disagree, this README wins. The changes since those packages:
+- **Nav regrouped.** Accounts and Payees left the primary rail and moved into Settings. Documents moved into LEDGER. NET WORTH gained **Cash** (`g c`) and now reads Cash, Inventory, Loans, Credit cards, Investments.
+- **Settings is paged.** Settings is no longer one long scroll. Each index entry opens its own pane.
+- **New Settings pages.** Accounts, Categories, Tags and Payees are now Settings pages. They are reference data: set up once and rarely touched.
+- **File explorer filters.** It gained two checkboxes: *show only .pldb files* and *hide hidden files*.
+
+## About the design files
+`Shell and Settings.dc.html` is a **high-fidelity HTML design reference**. It shows the intended look, layout and behaviour. It is not production code. Recreate it in the target codebase (**Rust + GPUI**) using that codebase's own patterns. Do not port the markup.
+
+To view it, open the file in a browser from this folder. It loads `support.js`, `styles.css` and `_ds_bundle.js` alongside it. Fonts come from Google Fonts (Archivo). Frames are grouped into sections: section 1 is the shell (1a–1f), section 2 is Settings.
 
 ## Fidelity
-**High-fidelity.** Final colors, typography, exact spacing, and interaction states. Recreate faithfully; translate HTML structure into GPUI idioms.
+**High fidelity.** Colours, typography, spacing, rules and states are final. Recreate them faithfully.
 
 ## Frame
-All four variants are drawn at **1280 × 800** — the reference desktop window size. The shell is a vertical stack: header (48px) / body (flex:1) / status bar (28px).
+Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px. Inside the mockup, overlay frames dim the shell behind with opacity. In the app, render the shell at full opacity under a dimmer (`rgba(32,30,29,.30)`).
 
 ---
 
-## Screens
+## 1 · Shell
 
-### 1a — Grouped primary rail, no ledger open
-**Purpose**: The shell's structural baseline, shown in its **cold-start state**. The primary rail groups the domain nouns under headings and carries each item's `g`-jump binding in a right-hand column. No second rail: the landing view has no entity to scope to.
+### Primary rail (206px): canonical order
+```
+LEDGER      Dashboard g d · Transactions g l · Documents g f
+NET WORTH   Cash g c · Inventory g o · Loans g n · Credit cards g k · Investments g i
+PLAN        Bills g w · Budgets g b · Reports g r
+──(2px rule, pinned bottom)──
+            Settings g s
+```
+- **Removed bindings:** `g a` (Accounts), `g p` (Payees) and `g t` (Tags) no longer exist. Those entities are reached through Settings or the command palette.
+- **`g c` reassigned.** It now jumps to **Cash**. It used to open Categories, which is now a Settings page.
+- **Source of truth:** the order above is canonical and matches frames 1a and 1b. The Settings frames in section 2 still draw Inventory before Cash; follow 1a/1b.
+- **Cash page:** a separate design (turn 18 in the main file) that isn't part of this package yet.
+- **Order rules:** Reports is always the last PLAN item. Settings is always pinned below the spacer.
+- **Shared nav:** the same rail appears in every Settings frame (2a, 2f–2o), with Settings active.
 
-**Layout**:
-- **Header** (48px): app glyph, "Personal Ledger" wordmark, `:` run-a-command affordance, sync indicator, three window controls. No file/unit label — there is no ledger loaded.
-- **Primary rail** (206px): grouped nav
-  - `LEDGER` — Dashboard `g d`, Transactions `g l`, Accounts `g a` (+ red count badge), Categories `g c`, Payees `g p`, Tags `g t`
-  - `PLAN` — Bills `g w`, Budgets `g b`, Reports `g r`
-  - Spacer, 2px rule, then Settings `g s` pinned to the bottom
-- **Main pane** (flex:1): the empty state — vertically and horizontally centered
-  - Title: "No ledger open" (800 26px/1.1, letter-spacing −.01em)
-  - Body: "Run `:open` to load a ledger file, or `:new` to start one." (13px, #605d5d, max-width 380px, `text-wrap: pretty`) — the two command names are set 800 weight in #201e1d
-  - Stack gap: 14px, `text-align: center`, pane padding 24px
-- **Status bar** (28px): `NORMAL` mode chip, binding legend, right-aligned context label
+### Frames
+| Frame | What it shows |
+| --- | --- |
+| **1a** | Cold start, no ledger open. Full grouped rail and no context rail. The main pane shows the centred empty state: "No ledger open" (800 26px/1.1, −.01em), then "Run `:open` to load a ledger file, or `:new` to start one." (13px #605d5d, max 380px). Status bar shows the `NORMAL` mode chip. |
+| **1b** | The active dashboard: net worth, cash / investments / liabilities, and today's actions. The second rail is an "accounts at a glance" quick-jump panel. Dashboard has no records of its own, but account jumps earn their place here. |
+| **1c** | Primary rail collapsed to icons (~48px; `b` toggles it; hover reveals label + binding). The second rail becomes the screen's table of contents. Its settings index is superseded by section 2 — use the index below. |
+| **1d** | `:` command palette (820px wide, `top:96px`, centred horizontally) over the dimmed shell. It contains the input row with a red 8×17 block cursor, results with bindings, an argument-preview row and a key hint footer. |
+| **1e** | `:open` file explorer (640px, `top:80px`) over the 1a shell. Details below. |
+| **1f** | Help & About (`?`): app identity, links and a shortcut cheat-sheet. Uses the same overlay treatment as 1d and 1e. Build its cheat-sheet from the command registry so it lists the bindings above, including `g c` Cash. The drawn frame predates Cash. |
 
-**Why it matters**: The rail stays fully populated and legible with no ledger loaded — navigation is app structure, not document content. Only the main pane and the header's file label are empty.
+### 1e: file explorer
+- **Dialog chrome:** `border:2px solid #201e1d; box-shadow:0 16px 48px rgba(32,30,29,.40)`.
+- **Header:** "Open ledger file" (800 16px), `padding:16px 20px`, 2px bottom rule.
+- **Path bar:** folder icon + `~ / documents / ledgers`. The current segment is 800 #201e1d. The item count sits on the right.
+- **Columns:** NAME / SIZE (90px) / MODIFIED (120px).
+- **Rows**, `padding:9px 20px`:
+  - folders `archive` and `backups` (#9b9797)
+  - `expenses-2024.csv` (#605d5d)
+  - decoy `old-ledger.pldb.bak`
+  - **selected** `teda.pldb` (`background:#201e1d; color:#f3f2f2`)
+  - `personal-2023.pldb`
+- **Footer**, `padding:16px 20px; border-top:1px solid #d7d3d3`: on the left, two stacked checkboxes (`gap:8px`, 12px). On the right, Cancel (outline) + Open (dark).
+  - ☐ **show only `.pldb` files**: default **off**. When on, hide every entry that isn't a folder or a real `.pldb` file. Folders stay visible so you can still navigate.
+  - ☑ **hide hidden files — dot files and folders**: default **on**. Hides entries whose name begins with `.`. The em-dash clause is #605d5d.
+  - Checkboxes are square, 14×14, ink-filled when checked, with no radius.
+- **Behaviour:**
+  - Only `.pldb` rows can be the open target. Folders navigate in; other files are inert.
+  - Open is disabled until a `.pldb` row is selected. Double-clicking a `.pldb` row opens it.
+  - `esc` and Cancel close the explorer. Path segments are clickable.
+  - Eligibility is decided by the **real extension**, not a substring. The `.pldb.bak` decoy is there to catch `.includes(".pldb")`.
+  - Both checkbox states persist as client configuration and re-filter the list live. The item count reflects the filtered list.
 
-### 1b — Flat primary rail + records rail (list–detail)
-**Purpose**: List–detail. The second rail holds the **records of the current noun**, so an account's ledger is one selection away. Rail one is flat (no group headings); the noun's own actions sit in the view header, not the rail.
+---
 
-**Layout**:
-- Header breadcrumb: `accounts › ANZ Everyday`
-- Primary rail (206px): flat list, Dashboard active
-- Secondary rail: filterable account list — `/ filter accounts` box at top, account rows with name + balance, selected row in the dark treatment
-- Main pane: the selected account's transaction ledger
+## 2 · Settings
 
-**Alignment note**: the rule under the `/ filter accounts` box lines up with the rule under the view header — the two rails share one horizontal datum.
+### Model
+- **Settings is a destination, not a mode.** The primary rail stays expanded with Settings active.
+- **The second rail (214px) is the index.** Clicking an entry **swaps the pane**. Each page stands alone — there is no long scroll.
+- **Configuration vs Preferences stays visible.** Each page header carries a scope note on the right.
 
-### 1c — Collapsed icon rail + section index
-**Purpose**: Rail one collapsed to icons (`b` toggles; hover reveals label + binding). The second rail becomes the screen's own table of contents — here, the settings index.
+### Index (canonical order)
+`General · Display · Units · Institutions · Accounts · Categories · Tags · Payees · Sync server · Data & backup · Tracing (Logs) · About`
 
-**Layout**:
-- Primary rail: icon-only, ~48px wide
-- Secondary rail (214px): filter box, `SETTINGS` label, then the settings pages — General, Ledger & units, Units, Institutions, Display, Sync server, Data & backup, Tracing (Logs), About
-- Main pane: the selected settings pane (Display shown)
+- **Rail chrome:** the filter box `/ filter` has wrapper padding `22px 12px 25.4px` plus a 2px rule. That padding aligns its rule with the page-heading rule.
+- **Index rows:** the `SETTINGS` label sits above the entries. Entries are `padding:8px 14px`; the active one is `background:#201e1d; color:#f3f2f2; 800`.
+- **Rail footer:** "preferences sync · configuration local".
 
-### 1d — Command palette
-**Purpose**: The keyboard half of the hybrid. `:` floats the palette over the dimmed shell; one command registry drives results, bindings, and argument help.
+### Page anatomy (all pages)
+- **Body:** `flex:1; min-width:0; padding:22px 28px; overflow:auto`.
+- **Page heading:** `h2` "Settings" (28px/800) with a scope note right-aligned on the baseline (11.5px #9b9797), then a 2px rule (`margin-bottom:24px`).
+- **Section heading:** `h4` with the page name (20px) and its own right-aligned meta, then a 2px rule (`margin:14px 0 18px`).
+- **List pages:** a kicker row comes next — a label on the left (`800 10px/1, .11em, #9b9797`) and a primary `+ Add …` button (`.btn.btn-primary`, 32px) on the right.
+- **Breadcrumb:** the header reads `settings › <page>`.
 
-**Layout**:
-- Dimmer: `rgba(32,30,29,.30)` over the whole shell, z-index 10
-- Palette: 820px wide, centered horizontally, `top: 96px`
-  - Input row: `>` prompt, typed query (`bud`), 8px × 17px `#ec3013` block cursor, result count "7 of 62" right-aligned
-  - 2px `#201e1d` rule
-  - Result rows: selected row in dark treatment (description `#d7d3d3`, binding `#bab6b6`); unselected (description `#605d5d`, binding `#9b9797`)
-  - Argument help row: current arg value, limit, actual, variance
-  - Footer hint: `↑↓ select · tab complete · enter run · ^r history · esc close`
-- Palette chrome: `background #f3f2f2; border: 2px solid #201e1d; box-shadow: 0 12px 32px rgba(45,43,43,.30)`
+### Pages
+| Frame | Page | Scope note / meta | Content |
+| --- | --- | --- | --- |
+| **2a** | General | preferences · synced / ledger identity | Ledger name, Owner, Financial year starts, Base unit (320px field column) beside a THIS LEDGER summary (accounts 7 · transactions 680 · units 3 · institutions 7). |
+| **2f** | Display | configuration · local / client-scoped · never synced | Date format, separators and row density (segmented), plus status glyphs (radio), beside a live PREVIEW of three ledger rows. |
+| **2g** | Units | ledger data · synced / 3 units · synced | UNITS table: CODE 100 · NAME 180 · FLAGS flex · SOURCE 130 · TYPE 80 · ACTIONS 120. `aud` carries the `base` (`.tag-accent`) and `default` (`.tag-outline`) flags. Then **+ Add unit**. PRICE SOURCES table: NAME 130 · SOURCE flex · LAST UPDATED 130 · ACTIONS 170 (test · edit · delete), then **+ Add price source**. |
+| **2h** | Institutions | ledger data · synced / 7 institutions | INSTITUTION flex · ACCOUNT TYPE 140 · ACTIONS 120, then **+ Add institution** (opens 2e). |
+| **2o** | Accounts | ledger data · synced / 7 accounts · net worth 83,995.87 aud | Kicker BY TYPE + **+ Add account**. Grouped tables (BANK, CREDIT CARD, LOAN, INVESTMENT), each with NAME flex · INSTITUTION 130 · UNIT 90 · BALANCE 120 (right, tabular) · ACTIONS 150 (edit · delete). Rows are `padding:8px 16px`. Add and edit reuse the account form from section 3 (3b/3c). Status bar: `j/k row · enter open ledger · e edit · d delete · n new`. |
+| **2i** | Categories | ledger data · synced / 12 categories · 3 levels deep | Kicker EXPENSE · 10 + **+ Add category**. A nested tree: ▾ disclosure, parent rows in 800 with an "n subcategories" note, row actions `+ sub · edit · delete`. No budget or spend columns. Keys: `j/k`, `→/←` expand/collapse, `e`, `d`, `n`. |
+| **2j** | Tags | ledger data · synced / 18 tags · **2** likely duplicates (#ae1800) | Kicker A–Z + **+ Add tag**. Each row has a colour swatch (10×10) and the tag name in 800, with edit · remove. Likely-duplicate rows carry a warning and a direct **merge**; the merge flow is unchanged from 7e. No transaction, total or last-used columns. Keys: `j/k`, `e`, `x`, `m`, `n`. |
+| — | Payees | ledger data · synced | **Indexed but not yet drawn.** Build it to the same pattern as 2j: a kicker A–Z + **+ Add payee**, then name · default category · match rules · actions (edit · delete), reusing the Payees management view from turn 6 (6a) with its count and spend columns dropped. |
+| **2k** | Sync server | this device | Server URL, Status (green dot `#2ecc71` + "connected"), Last sync, **Sync now**. |
+| **2l** | Data & backup | this device | Store location, Last backup, **Backup now**, **Export ledger (CSV)**. |
+| **2m** | Tracing (Logs) | this device | Level radios (error / warn / info / debug), a monospace log viewport (120px, scrolls), **Clear logs**. |
+| **2n** | About | this device | Version 2.1.4, released 08 sep 2026, build stack. |
 
-### 1e — File explorer (`:open`)
-**Purpose**: The popup behind `:open` — browsing the filesystem to load a `.pldb` ledger. Floats over the same empty shell as 1a, using the same dimming pattern as the command palette (1d): header/rails/footer at reduced opacity, dialog at full opacity and elevated.
+### Dialogs
+All dialogs are 420px, `border:2px solid #201e1d`, with the shadow `0 16px 48px rgba(32,30,29,.40)`. The shell behind is dimmed.
 
-**Layout**:
-- Shell behind: identical to 1a (empty state, `:open` shown active in the header), dimmed to `opacity:.30` (rails) / `.38` (header)
-- Dialog: 640px wide, centered horizontally, `top: 80px`, `border: 2px solid #201e1d`, `box-shadow: 0 16px 48px rgba(32,30,29,.40)`
-  - Header: "Open ledger file" (800 16px)
-  - Path bar: folder icon + breadcrumb `~ / documents / **ledgers**` (current segment bold), item count right-aligned
-  - Column header: NAME / SIZE / MODIFIED (800 10px, letter-spacing .11em, `#9b9797`)
-  - Rows, in order: two folders (dimmed `#9b9797`, folder icon), a non-openable file (`expenses-2024.csv`, `#605d5d`, still selectable-looking but not the target type), a decoy near-match (`old-ledger.pldb.bak` — deliberately NOT a real `.pldb`), the **selected** `.pldb` row (dark treatment: `background:#201e1d; color:#f3f2f2`), and one more unselected `.pldb` row
-  - Footer: helper text "only **.pldb** files can be opened" left, Cancel (secondary) + Open (primary, dark) right
+| Frame | Dialog | Notes |
+| --- | --- | --- |
+| — | Add unit | Not drawn separately. It is 2c's form, empty, with **Add** as the confirm. Fields: Code, Name, Type (currency / cryptocurrency / custom). |
+| **2c** | Edit unit | Pre-filled `aud`. Usage notice (`#eae9e9`, 2px left rule `#ec3013`, 11.5px): "Used by 4 accounts · 604 transactions. Renaming is safe; changing the code rewrites references." Cancel / Save. |
+| **2d** | Delete unit | Red treatment: border and header rule `#ec3013`, title `#ae1800`. Names every reference. Has a "Type btc to confirm" field; **Delete unit** stays disabled until the text matches exactly. |
+| **2e** | Add institution | Name, Account types as **multi-select chips** (savings / credit card / offset / loan / investment), Default unit. Cancel / Add institution. |
 
-**Why it matters**: `.pldb` is the only openable extension — everything else in the list (folders, `.csv`, `.pldb.bak`) is present specifically to test that the row-type distinction reads correctly at a glance, and that Open is meaningfully gated on selecting a real `.pldb` row.
+- Opening a dialog moves focus to its first field and traps focus while open. Closing returns focus to the trigger.
+- `esc` cancels. `enter` submits when the confirm button is enabled.
+- Plain fields **save on change** — there is no page Save button. Creating and deleting always go through a dialog.
 
 ---
 
 ## Components
-
 | Part | Spec |
 | --- | --- |
-| Header | 48px, `background #eae9e9`, `border-bottom: 2px solid rgba(32,30,29,.38)`, padding `0 10px 0 12px`, gap 12px |
-| Wordmark | 800 13.5px, letter-spacing −.01em |
-| Breadcrumb | 12px, `#9b9797` |
-| Command affordance | `padding: 4px 9px; border: 1px solid rgba(32,30,29,.30)`, `:` in 800 #201e1d |
-| Window controls | three 26px squares, `background rgba(32,30,29,.08)`, gap 2px |
-| Primary rail | 206px (48px collapsed), `background #eae9e9`, `border-right: 2px solid rgba(32,30,29,.38)`, padding `14px 0 10px` |
-| Group heading | `font: 800 10px/1 'Archivo'; letter-spacing: .11em; color: #9b9797; padding: 0 14px 8px` (16px top for later groups) |
-| Nav item | `display:flex; align-items:center; gap:9px; padding:7px 14px`, icon 14×14, label `flex:1`, binding 11px `#9b9797` |
-| Nav item (active) | `background:#201e1d; color:#f3f2f2`, label 800, binding `#bab6b6`, icon stroke `#f3f2f2` |
-| Count badge | `background:#ec3013; color:#f3f2f2; font:800 10px; padding:1px 5px; margin-right:4px` |
-| Rail footer rule | `height:2px; background:rgba(32,30,29,.20); margin:8px 0` |
-| Secondary rail | 214–250px, `border-right: 2px solid rgba(32,30,29,.38)` |
-| Filter box | `height:30px; font-size:12.5px; padding:8px 10px; border:1px solid rgba(32,30,29,.30)` |
-| Status bar | 28px, `background #eae9e9`, `border-top: 2px solid rgba(32,30,29,.38)`, 11.5px `#605d5d`, gap 14px |
-| Mode chip | `background:#201e1d; color:#f3f2f2; font:800 10px; letter-spacing:.1em; padding:2px 7px` |
-| Section rule | `height:2px; background:rgba(32,30,29,.38)` — always `flex:none` inside a flex column |
-| Row rule | `height:1px; background:#d7d3d3` |
-| File explorer dialog | 640px, `border:2px solid #201e1d`, `top:80px`, centered; header `padding:16px 20px; border-bottom:2px solid rgba(32,30,29,.30)` |
-| Path bar | `padding:12px 20px; border-bottom:1px solid #d7d3d3; font-size:12px; color:#605d5d`, current segment `color:#201e1d; font-weight:800` |
-| File row | `padding:9px 20px`, 1px bottom rule between rows (last omits it); folder/non-target rows `color:#9b9797`/`#605d5d`; selected row `background:#201e1d; color:#f3f2f2` |
-| File row icon | 14×14, `margin-right:9px; flex:none`, stroke matches row text color |
-| Explorer footer | `padding:16px 20px; border-top:1px solid #d7d3d3`, helper text left, Cancel + Open right, `gap:10px` |
+| Header | 48px, `#eae9e9`, `border-bottom:2px solid rgba(32,30,29,.38)`, `padding:0 10px 0 12px`, gap 12. Wordmark 800 13.5px; breadcrumb 12px #9b9797; `:` command affordance `padding:4px 9px; border:1px solid rgba(32,30,29,.30)`; three 26px window controls `rgba(32,30,29,.08)`. |
+| Rail group label | `800 10px/1 Archivo; letter-spacing:.11em; #9b9797; padding:0 14px 8px` (16px top padding for later groups). |
+| Nav item | `flex; gap:9px; padding:7px 14px`; 14×14 Lucide icon (1.5 stroke); label `flex:1`; binding 11px #9b9797. Active: `#201e1d` ground, `#f3f2f2` text and icon, label 800, binding `#bab6b6`. |
+| Status bar | 28px, `#eae9e9`, 2px top rule, 11.5px #605d5d. Mode chip `#201e1d/#f3f2f2 800 10px .1em padding:2px 7px`; COMMAND mode uses `#ec3013`. |
+| Table header | `padding:12px 16px` (6–10px on dense lists), `#eae9e9`, `800 10px .11em #605d5d`, 1px bottom rule. |
+| Table row | `padding:12px 16px` (8px on Accounts); `border-bottom:1px solid #d7d3d3`, omitted on the last row; primary cell 800. |
+| Row action | `padding:4px 10px; 11px; border:1px solid rgba(32,30,29,.30); transparent`. |
+| Section rule | `height:2px; flex:none; rgba(32,30,29,.38)` — `flex:none` is mandatory. |
+| Info panel | `#eae9e9`, `border-left:2px solid #ec3013`, 11.5px #605d5d. |
 
-## Design Tokens
-
-### Color
-| Role | Value |
-| --- | --- |
-| Ground | `#f3f2f2` |
-| Chrome / rail | `#eae9e9` |
-| Canvas (outside the window) | `#e2e0df` |
-| Ink | `#201e1d` |
-| Ink secondary | `#605d5d` |
-| Ink tertiary | `#9b9797` |
-| Ink on dark | `#f3f2f2` / `#bab6b6` (dimmed) |
-| Accent | `#ec3013` |
-| Accent (text-safe) | `#ae1800` |
-| Rule (strong) | `rgba(32,30,29,.38)` |
-| Rule (medium) | `#d7d3d3` |
-| Border | `rgba(32,30,29,.30)` |
-| Dimmer | `rgba(32,30,29,.30)` |
-
-### Type
-- Family: **Archivo** throughout (headings and body); monospace only for log output and inline command tokens
-- Weights: 400, 800 — nothing between
-- Sizes: 10px (labels), 11px (bindings), 11.5px (status/meta), 12px (breadcrumb), 13px (body), 13.5px (wordmark), 15px (palette input), 19–20px (view headings), 26px (empty-state title)
-- Letter-spacing: `.11em` (all-caps labels), `−.01em` (display sizes), `.1em` (mode chip)
-- Numbers: `font-variant-numeric: tabular-nums` on every figure
-
-### Spacing
-7, 8, 9, 10, 12, 14, 16, 20, 24, 28px. Rail items 7px vertical / 14px horizontal; pane padding 20–24px.
-
-### Radius & elevation
-- **Radius 0 everywhere.** No rounded corners.
-- Palette shadow: `0 12px 32px rgba(45,43,43,.30)`
-- Window card shadow (mockup only): `0 14px 40px rgba(32,30,29,.30)`
-
----
-
-## Interactions
-
-### Pointer
-- Nav item click → activate that section; the clicked item takes the dark treatment
-- Secondary rail row click → select that record / scroll to that section
-- Filter box → live substring filter over the rail below it
-- Hover on collapsed icon rail → reveal label + binding
-
-### Keyboard
-| Key | Action |
-| --- | --- |
-| `j` / `k` | move selection down / up |
-| `g` + letter | jump to section — `d` Dashboard, `l` Transactions, `a` Accounts, `c` Categories, `p` Payees, `t` Tags, `w` Bills, `b` Budgets, `r` Reports, `s` Settings |
-| `b` | toggle the primary rail between full and icon-only |
-| `:` | open the command palette |
-| `/` | focus the contextual filter |
-| `a` | add transaction |
-| `?` | help |
-| `esc` | close palette / file explorer / clear filter |
-
-### File explorer (`:open`)
-- Row click selects it; only `.pldb` rows are selectable as the open target — folders navigate in, other extensions are inert
-- Open is disabled until a `.pldb` row is selected; double-click a `.pldb` row opens immediately
-- `esc` or Cancel closes without opening
-- Breadcrumb segments are clickable to jump up the path
-
-### Command palette
-- `:` opens; typing filters the registry (fuzzy, substring-weighted)
-- `↑` `↓` move selection, `tab` completes, `enter` runs, `^r` history
-- Argument help updates per selected command — shows current value, limit, actual, variance
-- One registry is the single source of truth for palette entries, rail bindings, and the status-bar legend
-
-### Empty state
-- The no-ledger state is reached on cold start and after `:close`
-- Only the main pane and the header's file label empty out — rail and status bar stay fully rendered
-- `:open` and `:new` are the only two paths forward; both are named in the body copy
-
----
+## Design tokens
+- **Colour:**
+  - Ground `#f3f2f2`. Chrome / panel `#eae9e9`.
+  - Ink `#201e1d` · secondary `#605d5d` · tertiary `#9b9797` · on dark `#f3f2f2` / `#bab6b6`.
+  - Accent `#ec3013`; text-safe accent `#ae1800`. Positive `#2ecc71`.
+  - Rules: strong `rgba(32,30,29,.38)`, medium `#d7d3d3`. Border `rgba(32,30,29,.30)`. Dimmer `rgba(32,30,29,.30)`.
+  - The full ramps are in `styles.css` (Modernist).
+- **Type:**
+  - Archivo only (monospace for logs and paths), weights 400 and 800.
+  - Sizes 10 / 11 / 11.5 / 12 / 12.5 / 13 / 13.5 / 16 / 20 / 26 / 28px.
+  - Caps labels `.11em`. Tabular numerals on every figure.
+- **Spacing:** 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 22, 24, 28, 32, 40, 48px.
+- **Radius:** **0 everywhere.**
+- **Shadows:**
+  - Dialog `0 16px 48px rgba(32,30,29,.40)`.
+  - Palette `0 12px 32px rgba(45,43,43,.30)`.
+- **Focus:** `outline:2px solid #ec3013; outline-offset:2px`. Disabled controls render at 45% opacity.
 
 ## State
-
 ```
 shell
-  ledgerOpen: bool            // false → 1a empty state
-  activeSection: Section      // Dashboard | Transactions | Accounts | …
-  railCollapsed: bool         // b toggles
-  secondaryRail: none | records | index
-  selectedRecord: Option<Id>
-  filterQuery: String
+  ledgerOpen: bool
+  activeSection: Dashboard | Transactions | Documents | Cash | Inventory | Loans | CreditCards
+               | Investments | Bills | Budgets | Reports | Settings
+  railCollapsed: bool
   mode: Normal | Insert | Command
-palette
-  open: bool
-  query: String
-  results: Vec<Command>
-  selectedIndex: usize
-  history: Vec<String>
+  overlay: None | Palette | FileExplorer | Help
 fileExplorer
-  open: bool
-  currentPath: PathBuf
-  entries: Vec<DirEntry>       // folders + files, unfiltered
-  selected: Option<PathBuf>    // only settable to a .pldb file
-  extensionFilter: "pldb"
+  currentPath, entries[], selected: Option<PathBuf /* .pldb only */>
+  onlyPldb: bool = false          // client config, persisted
+  hideHidden: bool = true         // client config, persisted
+settings
+  page: General | Display | Units | Institutions | Accounts | Categories | Tags | Payees
+      | SyncServer | DataBackup | Tracing | About
+  filterQuery: String             // filters the index only
+  dialog: None | AddUnit | EditUnit(id) | DeleteUnit(id) | AddInstitution
+        | AddAccount | EditAccount(id) | AddCategory(parent?) | AddTag | MergeTags(a,b) | AddPayee
+  confirmInput: String
 ```
 
----
+## Keyboard
+| Key | Action |
+| --- | --- |
+| `g` + `d l f c o n k i w b r s` | Jump to a section. |
+| `j` / `k` | Move to the next / previous row or field. |
+| `b` | Collapse / expand the rail. |
+| `:` | Command palette. |
+| `/` | Filter. |
+| `?` | Help. |
+| `esc` | Close an overlay or clear the filter. |
+| `e` / `d` / `n` | Edit / delete / new on list pages. |
+| `m` | Merge (Tags). |
+
+Settings pages are reachable from the palette (`:settings accounts`, etc.). One command registry drives the palette, the bindings, the status-bar legend and the 1f cheat-sheet.
 
 ## Implementation notes (GPUI)
-
-1. **HTML is a reference.** Translate to GPUI's element tree; do not port markup.
-2. **Rails are chrome, not content.** They render identically whether or not a ledger is open — only the main pane branches on `ledgerOpen`.
-3. **One command registry.** Palette entries, `g`-jump bindings, and the status-bar legend must read from the same table, or they will drift.
-4. **Zero radius.** Every corner is square — this is load-bearing to the look.
-5. **Rules are 2px for section boundaries, 1px for row separators.** Do not soften either into a hairline.
-6. **Tabular numerals** on every figure so columns align.
-7. **Palette layering.** Dimmer and palette share a stacking context above the shell; the palette is horizontally centered with a fixed 96px top offset, not vertically centered.
-8. **Flush left.** Labels — including labels inside wide buttons — start at the left padding edge. Never center them.
-9. **Icons**: Lucide, 14×14 at rail size, 1.5px stroke, `fill: none`.
-10. **File explorer reuses the palette's dimming pattern**, not a separate dimmer treatment — keep both overlays visually consistent (same opacity values, same shell-behind).
-11. **Row eligibility is type-driven, not name-driven.** Gate selectability on the actual file extension read from the filesystem — the mockup's `old-ledger.pldb.bak` decoy exists to catch a naive substring-match bug (`.includes(".pldb")` would wrongly accept it).
+1. **Rails are chrome.** They render identically whether or not a ledger is open.
+2. **Settings pages swap; they don't scroll to anchors.** Remember the last-visited page per session.
+3. **The 2px rules need `flex:none`.** Without it they collapse to hairlines.
+4. **Delete confirms are typed.** Never substitute an "are you sure?" prompt.
+5. **File eligibility comes from the real extension.** Folders stay visible under *only .pldb*.
+6. **Zero radius, flush-left labels.** Labels stay flush left even inside wide buttons. Icons are Lucide at 14px with a 1.5px stroke.
 
 ## Files
-- `Ledger Desktop Shell.dc.html` — the prototype (1a–1e plus the settings surface in section 2)
-- `README.md` — this document
+- `Shell and Settings.dc.html` — design reference. Section 1 = 1a–1f; section 2 = 2a, 2f, 2g, 2h, 2o, 2i, 2j, 2k–2n, then dialogs 2c–2e.
+- `styles.css`, `_ds_bundle.js` — Modernist tokens and components the reference loads.
+- `support.js` — runtime for viewing the reference.
+- `README.md` — this document.
