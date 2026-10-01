@@ -14,6 +14,17 @@ This is the gpui-facing spec for the Personal Ledger desktop client's applicatio
 
 `docs/ux/desktop/Tags/` is a sixth, companion handoff bundle — the `Noun::Tags` flat list of Tags with usage figures and likely-duplicate flags (7a), and its Add, Edit, Remove and Merge dialogs (7b–7e). Like the others it stayed the living spec in place; the [Desktop Tags Surface](https://github.com/IanTeda/Personal-Ledger/issues/351) map has landed against `crates/bins/bin-desktop/src/view/tags/` on stubbed in-memory data, closed out by that map's own acceptance pass — see its `README.md`'s "Acceptance pass" section, which also lists the deliberate departures from the mockup.
 
+Seven further bundles are design reference only — each a high-fidelity HTML mockup (`<Name>.dc.html`) plus a `README.md` handoff spec, not yet built against `bin-desktop`, and deferring to this shell spec for header and rail behaviour. The first six are the remaining destinations under NET WORTH and LEDGER:
+
+- `docs/ux/desktop/Cash/` — Cash (`g c`): free-to-spend, low point, runway and offset saving, with the Transfer… (6b) and Set buffer (6c) dialogs.
+- `docs/ux/desktop/Credit Cards/` — Credit cards (`g k`): interest-free status, statement due against spending since, and the Pay card… dialog (9a–9b).
+- `docs/ux/desktop/Inventory/` — Inventory (`g o`): a home-contents register built for insurance, with cover against sum insured and the Export for insurer dialog (7a–7b).
+- `docs/ux/desktop/Investments/` — Investments (`g i`): portfolio value against money in, allocation against target, holdings, and per-lot cost base with the CGT discount, plus Record trade (10a–10b).
+- `docs/ux/desktop/Loans/` — Loans (`g n`): balance, interest and principal split over the term, payoff date, the What if… extra-repayment panel and the loan switcher (8a–8c).
+- `docs/ux/desktop/Notifications/` — Notifications (`g m`): the single inbox and the rules that raise alerts (5a–5b).
+
+`docs/ux/desktop/Settings_v3/` is the paged revision of the Settings handoff (frames 15a–15o): one page per settings section, a single "Settings – <Page>" heading, no index filter, and Accounts, Categories, Tags and Payees moved into Settings. It supersedes the older `Settings/` bundle's single-scroll layout as a design reference, but `Settings/` remains the spec the built surface was accepted against.
+
 The desktop and TUI clients are visual siblings by deliberate design (see the handoff's own "governing constraint"): both speak `g`-jumps, a `:` command palette, and a modal status line, so a user moving between them re-uses muscle memory. [`docs/getting-around.md`](../../navigation.md) is now the cross-client layer that grammar lives in — read it first for anything keyboard-shaped. Where it doesn't cover something, `docs/ux/tui/navigation.md` — the TUI's own living reference, playing the same role this document plays here — is the older, decided contract to fall back to.
 
 The full build-out trail for this document lives on the [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) Wayfinder map and its children (issues #145–#154).
