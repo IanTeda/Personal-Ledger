@@ -359,11 +359,11 @@ What was read from an Unfiled Document's file — merchant, date, total and Docu
 _Avoid_: Metadata — a Document's metadata is what it carries once Filed; Extracted Facts are the raw reading.
 
 **Suggested Link**:
-The best candidate Document Link for an Unfiled Document, derived from its Extracted Facts each time it is shown and never stored. Its **Signals** are which of amount, date and payee agree with the candidate, and its **Signal Strength** is how many agree: Strong (3 of 3), Likely (2) or Weak (1).
+The best candidate Document Link for an Unfiled Document, derived from its Extracted Facts each time it is shown and never stored. Only a Transaction can be a candidate, and only one that agrees on amount or payee. Its **Signals** are which of amount, date and payee agree with the candidate, and its **Signal Strength** is how many agree: Strong (3 of 3), Likely (2) or Weak (1). A readable Document with no candidate has no Suggested Link and is filed by hand.
 _Avoid_: Match, Match Strength — Match belongs to Bills.
 
 **File** (verb):
-To move a Document from Unfiled to Filed, setting its Document Type and any Document Links. **Accept** is filing with the Suggested Link as offered; filing by hand or linking elsewhere is still filing. **Skip** leaves a Document Unfiled.
+To move a Document from Unfiled to Filed, setting its Document Type and any Document Links. **Accept** is filing with the Suggested Link as offered; filing by hand or linking elsewhere is still filing. **Skip** leaves a Document Unfiled, set aside to the bottom of the Inbox for the session.
 _Avoid_: Import — Import brings a file into the Inbox; filing is what happens after.
 
 **Search**:
