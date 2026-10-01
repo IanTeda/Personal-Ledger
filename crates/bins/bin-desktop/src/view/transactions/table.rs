@@ -17,6 +17,7 @@ use gpui::{
     AnyElement, App, Pixels, SharedString, UniformListScrollHandle, Window, div, prelude::*, px,
     uniform_list,
 };
+use gpui_component::scroll::Scrollbar;
 
 use crate::{
     theme::color,
@@ -120,7 +121,7 @@ pub fn rows(
     }
 
     let count = rows.len();
-    uniform_list(
+    let list = uniform_list(
         "transactions-rows",
         count,
         // Called for the visible range, and once for row 0 to measure: a pure function of the
@@ -140,10 +141,27 @@ pub fn rows(
                 .collect::<Vec<_>>()
         },
     )
-    .track_scroll(scroll)
-    .flex_1()
-    .min_h(px(0.0))
-    .into_any_element()
+    .track_scroll(scroll.clone())
+    .size_full();
+
+    // The list is virtualised, so the bar is driven by its scroll handle; it overlays the right
+    // edge rather than taking width, which keeps the cells aligned with the column header.
+    div()
+        .relative()
+        .flex_1()
+        .min_h(px(0.0))
+        .child(list)
+        .child(
+            div()
+                .occlude()
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .w(px(12.0))
+                .child(Scrollbar::vertical(&scroll)),
+        )
+        .into_any_element()
 }
 
 fn row(
