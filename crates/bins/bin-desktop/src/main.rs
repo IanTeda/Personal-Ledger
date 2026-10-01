@@ -141,6 +141,11 @@ async fn main() -> Result<()> {
                 persisted.primary_rail
             });
             let start_sidebar_minimised = persisted.start_sidebar_minimised;
+            let settings_page = persisted
+                .settings_page
+                .as_deref()
+                .map(settings::SettingsSection::from_id)
+                .unwrap_or_default();
 
             // Restore the last saved window geometry; otherwise 1280x800 centered, the handoff's
             // own window size (`docs/ux/desktop/Shell & Navigation/README.md`, option 1a).
@@ -187,6 +192,7 @@ async fn main() -> Result<()> {
                     cx.new(|cx| {
                         let mut shell = Shell::new(nav, focus_handle);
                         shell.set_start_sidebar_minimised(start_sidebar_minimised);
+                        shell.set_settings_page(settings_page);
                         shell.set_dismiss_toasts_binding(dismiss_toasts_binding);
                         shell.set_toast_history_binding(toast_history_binding);
                         shell.start_toast_clock(cx);
@@ -217,6 +223,7 @@ async fn main() -> Result<()> {
                         noun: shell.nav().noun(),
                         primary_rail: shell.nav().primary_rail(),
                         start_sidebar_minimised: shell.start_sidebar_minimised(),
+                        settings_page: Some(shell.settings_page().id().to_string()),
                         window: Some(WindowGeometry {
                             x: f32::from(bounds.origin.x),
                             y: f32::from(bounds.origin.y),

@@ -1,15 +1,8 @@
-//! The Settings body (`docs/ux/desktop/Settings/README.md`'s "2a resting state", "Body"): one
-//! continuous scroll, not a pane switcher -- every section stays mounted, and the settings index
-//! rail (`rail::settings_index`) scrolls to a heading rather than swapping views. The shell
-//! scaffold (issue #173) laid out every section as a placeholder; each section's real content
-//! landed as its own submodule here, one ticket at a time, with issue #179 (Display) the last
-//! (`crate::settings::SettingsSection::placeholder_issue` still names each section's own
-//! building ticket, for reference).
-//!
-//! Direct children of the scrollable container, in order: the page heading block (child `0`),
-//! then each of the eight sections (children `1..=8`) -- `SettingsSection::body_child_index`
-//! documents this offset, since `gpui::ScrollHandle::scroll_to_top_of_item` addresses direct
-//! children by index.
+//! The Settings body (`docs/ux/desktop/Settings/README.md`'s "2a resting state", "Body"): one page
+//! at a time, not a continuous scroll. The settings index rail (`rail::settings_index`) swaps the
+//! page, and only the selected page is mounted. Each page keeps the same anatomy: the "Settings"
+//! heading and scope note over a 2px rule, then the page's own heading with its right-aligned
+//! meta over another, then the page's content.
 
 mod about;
 pub mod add_institution_dialog;
@@ -43,6 +36,8 @@ use crate::{
 /// reason for existing). Every section function takes `&SettingsBodyProps` and reads whatever
 /// subset it needs.
 pub struct SettingsBodyProps<'a> {
+    /// The page on show.
+    pub selected: SettingsSection,
     pub date_style: Option<DateStyle>,
     pub row_density: RowDensity,
     pub status_glyphs: StatusGlyphs,
@@ -99,11 +94,7 @@ pub fn render(
         .flex()
         .flex_col()
         .child(page_heading(cx))
-        .children(
-            SettingsSection::ALL
-                .into_iter()
-                .map(|section| section_block(section, &props, cx)),
-        )
+        .child(section_block(props.selected, &props, cx))
         .into_any_element()
 }
 
@@ -139,10 +130,9 @@ fn page_heading(cx: &App) -> impl IntoElement {
         )
 }
 
-/// One section wrapper: heading + right-aligned scope note, a 2px rule, placeholder content,
-/// then a **48px** bottom gap -- every section, no exceptions (README's implementation note 4:
-/// mixed top/bottom margin ownership is how this gap goes missing, so it's carried on a single
-/// edge, here).
+/// One page: heading + right-aligned scope note, a 2px rule, the page's content, then a **48px**
+/// bottom gap -- every page, no exceptions (README's implementation note 4: mixed top/bottom
+/// margin ownership is how this gap goes missing, so it's carried on a single edge, here).
 fn section_block(
     section: SettingsSection,
     props: &SettingsBodyProps<'_>,
@@ -202,9 +192,8 @@ fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String
     }
 }
 
-/// Each section's real content -- issue #179 (Display) was the last section still on the
-/// placeholder `section_block` originally rendered for all nine; every `SettingsSection` variant
-/// now has a real arm here, so there is no longer a catch-all fallback.
+/// Each page's content. Accounts, Categories, Tags and Payees render a placeholder until their own
+/// tickets rebuild them as Settings pages.
 fn section_content(
     section: SettingsSection,
     props: &SettingsBodyProps<'_>,
@@ -246,6 +235,10 @@ fn section_content(
             props.on_add_institution_click.clone(),
             cx,
         ),
+        SettingsSection::Accounts
+        | SettingsSection::Categories
+        | SettingsSection::Tags
+        | SettingsSection::Payees => placeholder(cx),
         SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone(), cx),
         SettingsSection::DataBackup => data_backup::render(
             props.on_backup_now_click.clone(),
@@ -261,6 +254,14 @@ fn section_content(
         ),
         SettingsSection::About => about::render(cx),
     }
+}
+
+/// A page that isn't rebuilt yet.
+fn placeholder(cx: &App) -> AnyElement {
+    div()
+        .text_color(color::faint_text(cx))
+        .child(crate::msg::desktop_settings_page_placeholder())
+        .into_any_element()
 }
 
 /// A field label: `display:block; font-weight:800; font-size:12px; margin-bottom:6px`

@@ -1,17 +1,14 @@
 //! Pure Settings-surface domain types (`docs/ux/desktop/Settings/README.md`'s "2a resting
-//! state" -- "Sections, in scroll order" table) -- `gpui`-free, the same "pure state, chrome
-//! renders it" split `nav.rs` uses between `NavState` and `Shell`'s render tree.
-//! `rail::settings_index::SettingsIndexRail` and `view::settings` are the chrome; this module
-//! only knows what sections exist, their scroll order, and their label/scope-note/filter text.
+//! state" -- "Sections" table) -- `gpui`-free, the same "pure state, chrome renders it" split
+//! `nav.rs` uses between `NavState` and `Shell`'s render tree. `rail::settings_index::SettingsIndexRail`
+//! and `view::settings` are the chrome; this module only knows what pages exist, their index
+//! order, and their label/scope-note/filter text.
 
 use lib_core::DateStyle;
 
-/// The eight sections of the Settings body, in scroll order -- also the settings index rail's
-/// own row order (`docs/ux/desktop/Settings/README.md`'s "Sections, in scroll order" table).
-/// Nine down to eight as of issue #189: "Ledger & units" no longer exists as its own section --
-/// budget period moved to a per-budget setting outside Settings entirely, and its other control
-/// (Default unit for new entries) merged into Units, which #189 also moved Display ahead of so
-/// Configuration surfaces early (see [`Self::ALL`]'s own order).
+/// The twelve pages of Settings, in the settings index rail's own row order. Settings is paged,
+/// not one continuous scroll: each entry swaps the body to its own page. Accounts, Categories,
+/// Tags and Payees joined the original eight when they left the primary rail.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsSection {
     #[default]
@@ -19,21 +16,38 @@ pub enum SettingsSection {
     Display,
     Units,
     Institutions,
+    Accounts,
+    Categories,
+    Tags,
+    Payees,
     SyncServer,
     DataBackup,
     Tracing,
     About,
 }
 
+/// Where keyboard focus sits within Settings: the index rail, or the page it has open. Only
+/// meaningful while the View zone has focus on the Settings noun.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SettingsFocus {
+    #[default]
+    Index,
+    Page,
+}
+
 impl SettingsSection {
-    /// Every section, in scroll/index-rail order -- Display sits directly after General (issue
-    /// #189's own reorder), not after Institutions the way the original nine-section layout had
-    /// it.
-    pub const ALL: [SettingsSection; 8] = [
+    /// Every page, in index-rail order (the handoff's canonical `General · Display · Units ·
+    /// Institutions · Accounts · Categories · Tags · Payees · Sync server · Data & backup ·
+    /// Tracing (Logs) · About`).
+    pub const ALL: [SettingsSection; 12] = [
         SettingsSection::General,
         SettingsSection::Display,
         SettingsSection::Units,
         SettingsSection::Institutions,
+        SettingsSection::Accounts,
+        SettingsSection::Categories,
+        SettingsSection::Tags,
+        SettingsSection::Payees,
         SettingsSection::SyncServer,
         SettingsSection::DataBackup,
         SettingsSection::Tracing,
@@ -47,6 +61,10 @@ impl SettingsSection {
             Self::Display => crate::msg::desktop_settings_section_display(),
             Self::Units => crate::msg::desktop_settings_section_units(),
             Self::Institutions => crate::msg::desktop_settings_section_institutions(),
+            Self::Accounts => lib_locale::msg::nav_accounts(),
+            Self::Categories => lib_locale::msg::nav_categories(),
+            Self::Tags => lib_locale::msg::nav_tags(),
+            Self::Payees => lib_locale::msg::nav_payees(),
             Self::SyncServer => crate::msg::desktop_settings_section_sync_server(),
             Self::DataBackup => crate::msg::desktop_settings_section_data_backup(),
             Self::Tracing => crate::msg::desktop_settings_section_tracing(),
@@ -61,6 +79,9 @@ impl SettingsSection {
             Self::General => crate::msg::desktop_settings_scope_general(),
             Self::Units | Self::Institutions => {
                 crate::msg::desktop_settings_scope_synced_change_sets()
+            }
+            Self::Accounts | Self::Categories | Self::Tags | Self::Payees => {
+                crate::msg::desktop_settings_scope_ledger_data()
             }
             Self::Display => crate::msg::desktop_settings_scope_display(),
             Self::SyncServer => crate::msg::desktop_settings_scope_sync_server(30),
@@ -79,6 +100,10 @@ impl SettingsSection {
             Self::General => 175,
             Self::Units => 177,
             Self::Institutions => 178,
+            Self::Accounts => 416,
+            Self::Categories => 417,
+            Self::Tags => 418,
+            Self::Payees => 419,
             Self::Display => 179,
             Self::SyncServer => 180,
             Self::DataBackup => 181,
@@ -99,11 +124,38 @@ impl SettingsSection {
             .expect("SettingsSection::ALL must list every SettingsSection")
     }
 
-    /// The scroll body's own child index for this section (`gpui::ScrollHandle::scroll_to_top_of_item`
-    /// operates on direct children): the page heading block occupies child `0`, so every
-    /// section sits one past its [`Self::index`] -- see `view::settings::render`.
-    pub fn body_child_index(self) -> usize {
-        self.index() + 1
+    /// A stable id for persistence, never translated and never reused: a renamed label must not
+    /// orphan a saved last-visited page.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::General => "general",
+            Self::Display => "display",
+            Self::Units => "units",
+            Self::Institutions => "institutions",
+            Self::Accounts => "accounts",
+            Self::Categories => "categories",
+            Self::Tags => "tags",
+            Self::Payees => "payees",
+            Self::SyncServer => "sync-server",
+            Self::DataBackup => "data-backup",
+            Self::Tracing => "tracing",
+            Self::About => "about",
+        }
+    }
+
+    /// The page for a persisted id. An unknown id (a page since removed, a hand-edited file)
+    /// falls back to the default page rather than failing the load.
+    pub fn from_id(id: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|section| section.id() == id)
+            .unwrap_or_default()
+    }
+
+    /// Whether this page holds anything the keyboard can move into. `l`/`enter` on the index is a
+    /// quiet no-op for a page with nothing to focus (the keyboard-model decision).
+    pub fn has_controls(self) -> bool {
+        !matches!(self, Self::About)
     }
 
     /// Whether this section's label contains `needle`, case-insensitively -- the index rail's
@@ -727,13 +779,45 @@ mod tests {
     }
 
     #[test]
-    fn every_section_has_a_unique_body_child_index_after_the_heading() {
-        let mut indices: Vec<_> = SettingsSection::ALL
+    fn every_section_id_round_trips_and_is_unique() {
+        let ids: std::collections::HashSet<_> = SettingsSection::ALL
             .iter()
-            .map(|section| section.body_child_index())
+            .map(|section| section.id())
             .collect();
-        indices.sort_unstable();
-        assert_eq!(indices, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+        assert_eq!(ids.len(), SettingsSection::ALL.len());
+        for section in SettingsSection::ALL {
+            assert_eq!(SettingsSection::from_id(section.id()), section);
+        }
+    }
+
+    #[test]
+    fn an_unknown_id_falls_back_to_general() {
+        assert_eq!(SettingsSection::from_id("nope"), SettingsSection::General);
+    }
+
+    #[test]
+    fn the_index_runs_in_the_handoffs_canonical_order() {
+        let ids: Vec<_> = SettingsSection::ALL
+            .iter()
+            .map(|section| section.id())
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                "general",
+                "display",
+                "units",
+                "institutions",
+                "accounts",
+                "categories",
+                "tags",
+                "payees",
+                "sync-server",
+                "data-backup",
+                "tracing",
+                "about",
+            ]
+        );
     }
 
     #[test]

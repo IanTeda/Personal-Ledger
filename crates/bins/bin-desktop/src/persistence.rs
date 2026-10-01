@@ -41,6 +41,10 @@ pub struct PersistedState {
     /// the primary rail collapsed regardless of [`Self::primary_rail`].
     #[serde(default)]
     pub start_sidebar_minimised: bool,
+    /// The Settings page last visited, as [`crate::settings::SettingsSection::id`]. A stale or
+    /// unknown id loads as the default page.
+    #[serde(default)]
+    pub settings_page: Option<String>,
     pub window: Option<WindowGeometry>,
 }
 
@@ -126,6 +130,7 @@ mod tests {
             noun: Noun::Accounts,
             primary_rail: RailMode::Collapsed,
             start_sidebar_minimised: true,
+            settings_page: Some("tags".to_string()),
             window: Some(WindowGeometry {
                 x: 10.0,
                 y: 20.0,
@@ -148,6 +153,7 @@ mod tests {
             noun: Noun::Settings,
             primary_rail: RailMode::Expanded,
             start_sidebar_minimised: false,
+            settings_page: None,
             window: None,
         };
 

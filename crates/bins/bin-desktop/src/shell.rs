@@ -58,8 +58,8 @@ use crate::{
     },
     settings::{
         self, AccountType, AddInstitutionForm, AddUnitField, DeleteUnitForm, InstitutionRow,
-        PriceSourceRow, RowDensity, SettingsDialog, SettingsSection, StatusGlyphs, TracingLevel,
-        UnitForm, UnitKind, UnitRow,
+        PriceSourceRow, RowDensity, SettingsDialog, SettingsFocus, SettingsSection, StatusGlyphs,
+        TracingLevel, UnitForm, UnitKind, UnitRow,
     },
     statusline::{self, HintAction, PageStatus, StatusLine},
     tags::{self, Tag},
@@ -466,11 +466,15 @@ pub struct Shell {
     /// ([`Self::reset_view_scroll`]) or `Esc` leaves the mode, so a stale filter never survives
     /// past the session that typed it.
     settings_filter: String,
-    /// The settings index rail's own active/highlighted entry -- updated only by an explicit
-    /// row click ([`Self::handle_settings_index_click`]), not by scroll position (no scrollspy
-    /// yet). Reset to `SettingsSection::default()` alongside the view scroll whenever a fresh
-    /// noun is entered, so re-opening Settings always starts on General again.
+    /// The Settings page on show, and the index rail's highlighted entry. Changed by a row click,
+    /// `j`/`k` on the index, or `:settings <page>`. Deliberately *not* reset when a noun is
+    /// entered: it is the last-visited page, which `g s` reopens and persistence keeps.
     settings_selected_section: SettingsSection,
+    /// Whether keyboard focus is on the index rail or the page, while the View zone has it.
+    settings_focus: SettingsFocus,
+    /// Set when focus has just moved onto the Display page, so the next key handler (which has
+    /// an `App` to read the chosen Colour Theme from) puts the grid's focus on that card.
+    settings_grid_entry_pending: bool,
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored
     /// preference, not reset on noun change (same reasoning as [`Self::settings_tracing_level`]).
     settings_date_style: Option<DateStyle>,
@@ -671,6 +675,8 @@ impl Shell {
             file_explorer: None,
             settings_filter: String::new(),
             settings_selected_section: SettingsSection::default(),
+            settings_focus: SettingsFocus::default(),
+            settings_grid_entry_pending: false,
             settings_date_style: None,
             settings_row_density: RowDensity::default(),
             colour_theme_focus: None,
@@ -730,6 +736,15 @@ impl Shell {
             transactions_filter_anchor: FilterField::Account,
             transactions_chip_bounds: Default::default(),
         }
+    }
+
+    /// The last-visited Settings page, for persistence.
+    pub fn settings_page(&self) -> SettingsSection {
+        self.settings_selected_section
+    }
+
+    pub fn set_settings_page(&mut self, section: SettingsSection) {
+        self.settings_selected_section = section;
     }
 
     pub fn start_sidebar_minimised(&self) -> bool {
@@ -1122,11 +1137,11 @@ impl Shell {
         }
     }
 
-    /// Settings' Colour Theme grid (`docs/colour-themes-design.md` "Settings"): `Tab` from the
-    /// View zone moves onto the grid at the chosen card, arrows or `h`/`j`/`k`/`l` move focus,
+    /// Settings' Colour Theme grid (`docs/colour-themes-design.md` "Settings"): Focus arrives from
+    /// the Display page (`l`/`enter` on the index) at the chosen card; arrows or `h`/`j`/`k`/`l` move focus,
     /// `Enter` selects, and `Esc` or `Tab` leaves it (`Tab` going on to the next zone). Moving
     /// focus never previews. `false` for any key the grid does not take.
-    fn handle_colour_theme_grid_key(&mut self, keystroke: &Keystroke, chosen: usize) -> bool {
+    fn handle_colour_theme_grid_key(&mut self, keystroke: &Keystroke) -> bool {
         let key = keystroke.key.as_str();
         let pending_g_active = self
             .pending_g
@@ -1134,6 +1149,8 @@ impl Shell {
         if self.nav.mode() != InputMode::Normal
             || self.nav.noun() != Noun::Settings
             || self.nav.focus() != FocusZone::View
+            || self.settings_focus != SettingsFocus::Page
+            || self.settings_selected_section != SettingsSection::Display
             || keystroke.modifiers.control
             || pending_g_active
         {
@@ -1141,20 +1158,12 @@ impl Shell {
             return false;
         }
         let Some(index) = self.colour_theme_focus else {
-            if key == "tab" && !keystroke.modifiers.shift {
-                self.status_message = None;
-                self.colour_theme_focus = Some(chosen);
-                self.settings_selected_section = SettingsSection::Display;
-                self.view_scroll_handle
-                    .scroll_to_top_of_item(SettingsSection::Display.body_child_index());
-                return true;
-            }
             return false;
         };
         match key {
             "escape" => {
                 self.status_message = None;
-                self.colour_theme_focus = None;
+                self.focus_settings_index();
                 true
             }
             "tab" => {
@@ -1172,6 +1181,11 @@ impl Shell {
                     self.view_scroll_handle.bounds().size.width,
                 ));
                 let len = lib_colour_theme::ColourTheme::built_in().len();
+                // `h` at the first column steps back out to the index.
+                if matches!(key, "h" | "left") && index % columns.max(1) == 0 {
+                    self.focus_settings_index();
+                    return true;
+                }
                 match settings_view::colour_theme::grid_move(index, len, columns, key) {
                     Some(next) => {
                         self.colour_theme_focus = Some(next);
@@ -1226,13 +1240,80 @@ impl Shell {
 
     /// A new noun's view is a different (usually much shorter) length -- carrying over the
     /// old scroll offset could leave it scrolled past all its content, rendering blank. Every
-    /// fresh noun starts scrolled to the top. Also resets the Settings index rail's own
-    /// highlight and filter (harmless for every other noun, and means re-entering Settings
-    /// always starts back on General with a clean filter, matching the fresh scroll position).
+    /// fresh noun starts scrolled to the top. Also clears the Settings index filter and puts
+    /// Settings' focus back on the index (`g s` "lands on the index"); the page on show is the
+    /// last-visited one and stays.
     fn reset_view_scroll(&mut self) {
         self.view_scroll_handle.set_offset(gpui::Point::default());
-        self.settings_selected_section = SettingsSection::default();
+        self.settings_focus = SettingsFocus::default();
+        self.colour_theme_focus = None;
         self.settings_filter.clear();
+    }
+
+    /// Swaps the Settings page on show. Each page starts at its top.
+    fn select_settings_page(&mut self, section: SettingsSection) {
+        if self.settings_selected_section != section {
+            self.view_scroll_handle.set_offset(gpui::Point::default());
+        }
+        self.settings_selected_section = section;
+        self.colour_theme_focus = None;
+    }
+
+    /// Moves focus from the index rail into the open page (`l`/`enter`, `:settings <page>`). A
+    /// page with nothing to focus keeps focus on the index, as a quiet no-op.
+    fn focus_settings_page(&mut self) {
+        if !self.settings_selected_section.has_controls() {
+            return;
+        }
+        self.settings_focus = SettingsFocus::Page;
+        self.settings_grid_entry_pending =
+            self.settings_selected_section == SettingsSection::Display;
+    }
+
+    fn focus_settings_index(&mut self) {
+        self.settings_focus = SettingsFocus::Index;
+        self.colour_theme_focus = None;
+    }
+
+    /// Settings' own focus keys, ahead of the Colour Theme grid and the global keymap: `l`/`right`
+    /// /`enter` on the index step into the page, `h`/`left`/`esc` on the page step back out.
+    /// `false` for any key it does not take.
+    fn handle_settings_focus_key(&mut self, keystroke: &Keystroke, chosen: usize) -> bool {
+        if std::mem::take(&mut self.settings_grid_entry_pending) {
+            self.colour_theme_focus = Some(chosen);
+        }
+        let pending_g_active = self
+            .pending_g
+            .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
+        if self.nav.mode() != InputMode::Normal
+            || self.nav.noun() != Noun::Settings
+            || self.nav.focus() != FocusZone::View
+            || keystroke.modifiers.control
+            || keystroke.modifiers.shift
+            || pending_g_active
+        {
+            return false;
+        }
+        match (self.settings_focus, keystroke.key.as_str()) {
+            (SettingsFocus::Index, "l" | "right" | "enter") => {
+                self.status_message = None;
+                self.focus_settings_page();
+                if std::mem::take(&mut self.settings_grid_entry_pending) {
+                    self.colour_theme_focus = Some(chosen);
+                }
+                true
+            }
+            (SettingsFocus::Page, "h" | "left") if self.colour_theme_focus.is_none() => {
+                self.status_message = None;
+                self.focus_settings_index();
+                true
+            }
+            (SettingsFocus::Page, "escape") if self.colour_theme_focus.is_none() => {
+                self.focus_settings_index();
+                true
+            }
+            _ => false,
+        }
     }
 
     fn apply_primary_rail_movement(&mut self, movement: Movement) {
@@ -1282,8 +1363,8 @@ impl Shell {
         self.nav.set_context(Some(next));
     }
 
-    /// `j`/`k`/`g g`/`G` on Settings step the index rail's highlight through the sections the
-    /// `/ filter` leaves visible and scroll the body to the new section, like an index click.
+    /// `j`/`k`/`g g`/`G` on the Settings index step the highlight through the pages the `/ filter`
+    /// leaves visible and swap the page live, like an index click.
     fn apply_settings_section_movement(&mut self, movement: Movement) {
         let visible: Vec<SettingsSection> = SettingsSection::ALL
             .into_iter()
@@ -1302,10 +1383,7 @@ impl Shell {
             Movement::First => 0,
             _ => last,
         };
-        let section = visible[next];
-        self.settings_selected_section = section;
-        self.view_scroll_handle
-            .scroll_to_top_of_item(section.body_child_index());
+        self.select_settings_page(visible[next]);
     }
 
     fn apply_view_movement(&mut self, movement: Movement) {
@@ -1334,6 +1412,7 @@ impl Shell {
             return;
         }
         if self.nav.noun() == Noun::Settings
+            && self.settings_focus == SettingsFocus::Index
             && matches!(
                 movement,
                 Movement::Next | Movement::Prev | Movement::First | Movement::Last
@@ -7140,6 +7219,16 @@ impl Shell {
                     self.reset_view_scroll();
                 }
             }
+            CommandEffect::OpenSettingsPage(section) => {
+                self.nav.exit_mode();
+                let noun_before = self.nav.noun();
+                self.nav.set_noun(Noun::Settings);
+                if self.nav.noun() != noun_before {
+                    self.reset_view_scroll();
+                }
+                self.select_settings_page(section);
+                self.focus_settings_page();
+            }
             CommandEffect::CloseLedger => {
                 self.nav.exit_mode();
                 self.nav.close_ledger();
@@ -7327,20 +7416,15 @@ impl Shell {
     }
 
     /// The settings index rail's own row click (`rail::settings_index::OnEntryClick`):
-    /// highlights the clicked section and scrolls the settings body so its heading becomes the
-    /// top visible child (`docs/ux/desktop/Settings/README.md`'s "Navigation" bullet: "Index
-    /// entry click -> scroll the body to that section's heading; the entry takes the active
-    /// dark treatment"). `scroll_to_top_of_item` addresses the body's *direct* children, so this
-    /// goes through `SettingsSection::body_child_index`, not `SettingsSection::index`, to
-    /// account for the page heading occupying child `0` (see `view::settings::render`).
+    /// swaps the settings body to the clicked page and takes the active dark treatment
+    /// (`docs/ux/desktop/Settings/README.md`'s "Navigation" bullet).
     fn handle_settings_index_click(
         &mut self,
         section: SettingsSection,
         cx: &mut Context<'_, Self>,
     ) {
-        self.settings_selected_section = section;
-        self.view_scroll_handle
-            .scroll_to_top_of_item(section.body_child_index());
+        self.select_settings_page(section);
+        self.settings_focus = SettingsFocus::Index;
         cx.notify();
     }
 
@@ -8917,11 +9001,16 @@ impl Render for Shell {
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 let chosen = settings_view::colour_theme::chosen_index(cx);
-                if this.handle_colour_theme_grid_key(&event.keystroke, chosen)
+                if this.handle_settings_focus_key(&event.keystroke, chosen)
+                    || this.handle_colour_theme_grid_key(&event.keystroke)
                     || this.handle_bills_tab_key(&event.keystroke)
                     || this.handle_budgets_tab_key(&event.keystroke)
                     || this.handle_key_down(event)
                 {
+                    cx.notify();
+                }
+                if std::mem::take(&mut this.settings_grid_entry_pending) {
+                    this.colour_theme_focus = Some(chosen);
                     cx.notify();
                 }
                 if std::mem::take(&mut this.pending_budgets_export) {
@@ -8938,13 +9027,15 @@ impl Render for Shell {
                     .flex()
                     .flex_col()
                     .opacity(content_opacity)
-                    .child(
-                        TopBar::new(on_rail_toggle, self.nav.noun()).context(
-                            self.import.as_ref().map(|_| {
-                                crate::msg::desktop_import_context(import::STATEMENT_FILE)
-                            }),
-                        ),
-                    )
+                    .child(TopBar::new(on_rail_toggle, self.nav.noun()).context(
+                        if self.nav.noun() == Noun::Settings {
+                            Some(self.settings_selected_section.label())
+                        } else {
+                            self.import
+                                .as_ref()
+                                .map(|_| crate::msg::desktop_import_context(import::STATEMENT_FILE))
+                        },
+                    ))
                     .child(
                         div()
                             .flex_1()
@@ -9006,6 +9097,7 @@ impl Render for Shell {
                                 SettingsPanelProps {
                                     filter: &self.settings_filter,
                                     selected: self.settings_selected_section,
+                                    focus: self.settings_focus,
                                     on_index_click: on_settings_index_click,
                                     date_style: self.settings_date_style,
                                     row_density: self.settings_row_density,
@@ -9454,6 +9546,7 @@ struct PageProps<'a> {
 struct SettingsPanelProps<'a> {
     filter: &'a str,
     selected: SettingsSection,
+    focus: SettingsFocus,
     on_index_click: settings_index::OnEntryClick,
     date_style: Option<DateStyle>,
     row_density: RowDensity,
@@ -9557,12 +9650,14 @@ fn render_view(
             .child(SettingsIndexRail::new(
                 settings.selected,
                 settings.filter.to_string(),
+                focused && settings.focus == SettingsFocus::Index,
                 settings.on_index_click,
             ))
             .child(settings_view::render(
-                focused,
+                focused && settings.focus == SettingsFocus::Page,
                 scroll_handle,
                 SettingsBodyProps {
+                    selected: settings.selected,
                     date_style: settings.date_style,
                     row_density: settings.row_density,
                     status_glyphs: settings.status_glyphs,

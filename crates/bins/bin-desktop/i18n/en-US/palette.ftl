@@ -32,6 +32,7 @@ desktop-command-payees-description = payees and default categories
 desktop-command-import-description = import a bank statement (sample statement for now)
 desktop-command-reports-description = net worth and variance reports
 desktop-command-settings-description = ledger preferences
+desktop-command-settings-page-description = open a Settings page
 desktop-command-tags-description = the tags every transaction can carry any number of
 desktop-command-tags-merge-description = fold one tag into another, retagging its transactions
 desktop-command-transactions-description = the transaction ledger

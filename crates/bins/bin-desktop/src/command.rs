@@ -26,7 +26,7 @@
 
 use lib_colour_theme::ColourAppearance;
 
-use crate::{colours::ColourChange, explorer::ExplorerMode, nav::Noun};
+use crate::{colours::ColourChange, explorer::ExplorerMode, nav::Noun, settings::SettingsSection};
 
 /// What running a command does -- the palette's, and `Shell::run_command`'s, one source of
 /// truth. Every variant is a real effect: there's no `None`/`Option` case standing in for "not
@@ -37,6 +37,8 @@ pub enum CommandEffect {
     /// Jump the primary rail to this noun -- `Shell::run_command` calls `NavState::set_noun`
     /// directly; there's no per-noun `fn(&mut NavState)` to indirect through any more.
     Navigate(Noun),
+    /// `:settings <page>`: opens that Settings page with focus in it.
+    OpenSettingsPage(SettingsSection),
     /// Open the real "1e" file explorer dialog in this mode (`:open`/`:new`, issues #165/#167).
     OpenDialog(ExplorerMode),
     /// `:close`: returns to the "1a" empty state, same as cold start.
@@ -357,6 +359,18 @@ pub const COMMANDS: &[Command] = &[
         binding: Some("g s"),
         effect: CommandEffect::Navigate(Noun::Settings),
     },
+    settings_page_command("settings general", SettingsSection::General),
+    settings_page_command("settings display", SettingsSection::Display),
+    settings_page_command("settings units", SettingsSection::Units),
+    settings_page_command("settings institutions", SettingsSection::Institutions),
+    settings_page_command("settings accounts", SettingsSection::Accounts),
+    settings_page_command("settings categories", SettingsSection::Categories),
+    settings_page_command("settings tags", SettingsSection::Tags),
+    settings_page_command("settings payees", SettingsSection::Payees),
+    settings_page_command("settings sync-server", SettingsSection::SyncServer),
+    settings_page_command("settings data-backup", SettingsSection::DataBackup),
+    settings_page_command("settings tracing", SettingsSection::Tracing),
+    settings_page_command("settings about", SettingsSection::About),
     colour_theme_command("theme modernist", "modernist", || {
         colour_theme_description(lib_locale::msg::colour_theme_modernist())
     }),
@@ -455,6 +469,22 @@ pub const COMMANDS: &[Command] = &[
     },
 ];
 
+const fn settings_page_command(name: &'static str, section: SettingsSection) -> Command {
+    Command {
+        name,
+        domain: Domain::Settings,
+        // A fn pointer cannot capture `section`, so the description is the same sentence for
+        // every page, naming it by the command itself.
+        description: settings_page_description,
+        binding: None,
+        effect: CommandEffect::OpenSettingsPage(section),
+    }
+}
+
+fn settings_page_description() -> String {
+    crate::msg::desktop_command_settings_page_description()
+}
+
 const fn colour_theme_command(
     name: &'static str,
     id: &'static str,
@@ -511,6 +541,19 @@ mod tests {
         for command in COMMANDS {
             assert!(!command.name.is_empty());
             assert!(!(command.description)().is_empty());
+        }
+    }
+
+    #[test]
+    fn every_settings_page_has_a_command() {
+        for section in SettingsSection::ALL {
+            let name = format!("settings {}", section.id());
+            let effect = all().find(|c| c.name == name).map(|c| c.effect);
+            assert_eq!(
+                effect,
+                Some(CommandEffect::OpenSettingsPage(section)),
+                "{name}"
+            );
         }
     }
 

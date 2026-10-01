@@ -33,6 +33,7 @@ desktop-settings-section-about = About
 
 desktop-settings-scope-general = ledger identity
 desktop-settings-scope-synced-change-sets = synced · change sets
+desktop-settings-scope-ledger-data = ledger data · synced
 desktop-settings-scope-display = client-scoped · never synced
 desktop-settings-scope-sync-server = synced · every { $seconds ->
     [one] { $seconds } second
@@ -175,3 +176,7 @@ desktop-settings-tracing-clear = Clear logs
 
 desktop-settings-about-version = Personal Ledger v{ $version }
 desktop-settings-about-built-with = Built with Rust + GPUI + SQLite
+
+## The pages that moved in from the primary rail, until each is rebuilt to the handoff.
+
+desktop-settings-page-placeholder = Not yet rebuilt as a Settings page.
