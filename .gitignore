@@ -169,3 +169,6 @@ dist-ssr
 # Personal tool-version / env overrides layered on top of mise.toml
 mise.local.toml
 .mise.local.toml
+
+# graphify knowledge graph (derived output)
+graphify-out/
