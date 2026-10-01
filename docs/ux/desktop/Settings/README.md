@@ -31,14 +31,13 @@ Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px.
 ### Index (canonical order)
 `General · Display · Units · Institutions · Accounts · Categories · Tags · Payees · Sync server · Data & backup · Tracing (Logs) · About`
 
-- **Rail chrome:** the search box `/ search` has wrapper padding `22px 12px 25.4px` plus a 2px rule. That padding aligns its rule with the page-heading rule.
+- **Rail chrome:** the index has no search box (removed); it opens straight on the "Settings" label.
 - **Index rows:** the `SETTINGS` label sits above the entries. Entries are `padding:8px 14px`; the active one is `background:#201e1d; color:#f3f2f2; 800`.
 - **Rail footer:** "preferences sync · configuration local".
 
 ### Page anatomy (all pages)
 - **Body:** `flex:1; min-width:0; padding:22px 28px; overflow:auto`.
-- **Page heading:** `h2` "Settings" (28px/800) with a scope note right-aligned on the baseline (11.5px #9b9797), then a 2px rule (`margin-bottom:24px`).
-- **Section heading:** `h4` with the page name (20px) and its own right-aligned meta, then a 2px rule (`margin:14px 0 18px`).
+- **Heading:** one heading, "Settings - <page>" (28px/800), with the page's own meta right-aligned on the baseline (11.5px #9b9797), then a 2px rule (`margin:14px 0 18px`). There is no separate "Settings" heading above it.
 - **List pages:** a kicker row comes next — a label on the left (`800 10px/1, .11em, #9b9797`) and a primary `+ Add …` button (`.btn.btn-primary`, 32px) on the right.
 - **Breadcrumb:** the header reads `settings › <page>`.
 
@@ -80,12 +79,11 @@ All dialogs are 420px, `border:2px solid #201e1d`, with the shadow `0 16px 48px 
 | --- | --- |
 | `g s` | Open Settings on the last-visited page (General on first visit). |
 | `j` / `k` | Move to the next / previous row on list pages or field on form pages. |
-| `/` | Focus the index Search. It narrows index entries only. |
 | `e` / `d` / `n` | Edit / delete / new on list pages. |
 | `x` | Remove (Tags). |
 | `m` | Merge (Tags). |
 | `→` / `←` | Expand / collapse (Categories). |
-| `esc` | Close a dialog or clear the search. |
+| `esc` | Close a dialog. |
 | `enter` | Submit a dialog when its confirm is enabled. On Accounts, opens the account's ledger. |
 
 Palette commands: `:settings <page>` jumps straight to a page, e.g. `:settings accounts`.
@@ -127,7 +125,6 @@ Palette commands: `:settings <page>` jumps straight to a page, e.g. `:settings a
 settings
   page: General | Display | Units | Institutions | Accounts | Categories | Tags | Payees
       | SyncServer | DataBackup | Tracing | About
-  searchQuery: String             // narrows the index only
   dialog: None | AddUnit | EditUnit(id) | DeleteUnit(id) | AddInstitution
         | AddAccount | EditAccount(id) | AddCategory(parent?) | AddTag | MergeTags(a,b) | AddPayee
   confirmInput: String
@@ -153,7 +150,6 @@ configuration // client-scoped, read from personal-ledger.conf
 5. **Data-driven flags.** `base` / `default` tags render only on the units that hold them.
 6. **Price sources name units by name, not code.** This is deliberate; every other table keys on code.
 7. **2px rules need `flex:none`.** Without it they collapse to hairlines.
-8. **The search rule aligns with the page-heading rule.** Keep the search wrapper's `25.4px` bottom padding, or recompute it if the heading metrics change.
 9. **Scope radio-group names per instance**, so two rendered copies of a section don't share selection.
 10. **No keybinding editor.** Bindings are static configuration.
 11. **Zero radius, flush-left labels.** Labels stay flush left even inside wide buttons. Icons are Lucide at 14px with a 1.5px stroke.

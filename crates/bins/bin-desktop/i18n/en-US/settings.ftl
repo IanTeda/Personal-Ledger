@@ -1,7 +1,7 @@
 ## Settings, Display: the date style control and the read-only Locale.
 
 desktop-display-date-style-label = Date format
-desktop-display-date-style-default = Locale default
+desktop-display-date-style-default = Locale
 desktop-display-date-style-short = Short
 desktop-display-date-style-medium = Medium
 desktop-display-date-style-long = Long

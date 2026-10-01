@@ -300,12 +300,11 @@ fn bills_planner_hints() -> Vec<(&'static str, String)> {
 }
 
 /// The Settings index rail's keys (the keyboard model's index scope): `j`/`k` swap the page live,
-/// `l`/`enter` step into it, `/` searches the entries.
+/// `l`/`enter` step into it.
 fn settings_index_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_page()),
         ("l/enter", crate::msg::desktop_hint_open()),
-        ("/", crate::msg::desktop_hint_search()),
     ]
 }
 
@@ -515,12 +514,6 @@ pub struct Shell {
     /// this is `Some` (see [`Self::run_command`]'s own doc), so the two together -- rather than
     /// a third `InputMode` variant -- are what "the file explorer is open" means.
     file_explorer: Option<FileExplorer>,
-    /// The Settings index rail's own `/ search` query (issue #173) -- live while
-    /// `NavState::mode` is `InputMode::Search` and the active noun is `Settings` (see
-    /// [`Self::handle_search_key`]). Cleared whenever a fresh noun is entered
-    /// ([`Self::reset_view_scroll`]) or `Esc` leaves the mode, so a stale search never survives
-    /// past the session that typed it.
-    settings_search: String,
     /// The Settings page on show, and the index rail's highlighted entry. Changed by a row click,
     /// `j`/`k` on the index, or `:settings <page>`. Deliberately *not* reset when a noun is
     /// entered: it is the last-visited page, which `g s` reopens and persistence keeps.
@@ -554,7 +547,7 @@ pub struct Shell {
     /// The Units section's own table rows (issue #177), seeded from `settings::default_units()`.
     /// A real, mutable `Vec` so the Add/Edit/Delete unit dialogs (issues #184-#186) can
     /// push/update/remove rows once they land -- unlike
-    /// [`Self::settings_search`]/[`Self::settings_selected_section`], not reset by
+    /// [`Self::settings_selected_section`], not reset by
     /// [`Self::reset_view_scroll`]: it represents saved-in-memory state, not navigational UI
     /// state, so it must survive leaving and re-entering Settings the way real saved data would.
     settings_units: Vec<UnitRow>,
@@ -737,7 +730,6 @@ impl Shell {
             collapsed_rail_tooltip: None,
             hover_generation: 0,
             file_explorer: None,
-            settings_search: String::new(),
             settings_selected_section: SettingsSection::default(),
             settings_focus: SettingsFocus::default(),
             settings_display_field: None,
@@ -1113,9 +1105,6 @@ impl Shell {
                 self.budgets_dialog = None;
                 self.budgets_plan_edit = None;
                 self.toast_history_open = false;
-                // README's "Interactions" > "Navigation": `esc` clears the settings index
-                // rail's own Search, the same as it closes the palette/file explorer above.
-                self.settings_search.clear();
                 // `Esc` while searching Transactions clears the search text as well as leaving the
                 // mode (the map's decision: search is cleared by `Esc` or by emptying the box).
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Transactions {
@@ -1155,7 +1144,10 @@ impl Shell {
                 true
             }
             KeyOutcome::EnterSearch => {
-                self.nav.enter_mode(InputMode::Search);
+                // Settings has no Search: `/` is inert there rather than opening a mode with no box.
+                if self.nav.noun() != Noun::Settings {
+                    self.nav.enter_mode(InputMode::Search);
+                }
                 true
             }
             KeyOutcome::EnterHelp => {
@@ -1367,14 +1359,13 @@ impl Shell {
 
     /// A new noun's view is a different (usually much shorter) length -- carrying over the
     /// old scroll offset could leave it scrolled past all its content, rendering blank. Every
-    /// fresh noun starts scrolled to the top. Also clears the Settings index search and puts
+    /// fresh noun starts scrolled to the top. Also puts
     /// Settings' focus back on the index (`g s` "lands on the index"); the page on show is the
     /// last-visited one and stays.
     fn reset_view_scroll(&mut self) {
         self.view_scroll_handle.set_offset(gpui::Point::default());
         self.settings_focus = SettingsFocus::default();
         self.colour_theme_focus = None;
-        self.settings_search.clear();
     }
 
     /// Swaps the Settings page on show. Each page starts at its top.
@@ -1390,17 +1381,6 @@ impl Shell {
         }
         self.select_settings_page(section);
         self.focus_settings_page();
-    }
-
-    /// `:settings search`: lands on the Settings index with the Search box live, the state `/`
-    /// reaches from the index.
-    fn open_settings_search(&mut self) {
-        let noun_before = self.nav.noun();
-        self.nav.set_noun(Noun::Settings);
-        if noun_before != Noun::Settings {
-            self.reset_view_scroll();
-        }
-        self.nav.enter_mode(InputMode::Search);
     }
 
     fn select_settings_page(&mut self, section: SettingsSection) {
@@ -1591,13 +1571,10 @@ impl Shell {
         self.nav.set_context(Some(next));
     }
 
-    /// `j`/`k`/`g g`/`G` on the Settings index step the highlight through the pages the `/ search`
-    /// leaves visible and swap the page live, like an index click.
+    /// `j`/`k`/`g g`/`G` on the Settings index step the highlight through the pages
+    /// and swap the page live, like an index click.
     fn apply_settings_section_movement(&mut self, movement: Movement) {
-        let visible: Vec<SettingsSection> = SettingsSection::ALL
-            .into_iter()
-            .filter(|section| section.matches_search(&self.settings_search))
-            .collect();
+        let visible: Vec<SettingsSection> = SettingsSection::ALL.into_iter().collect();
         let Some(last) = visible.len().checked_sub(1) else {
             return;
         };
@@ -1731,32 +1708,13 @@ impl Shell {
     }
 
     /// Routes a keystroke while `InputMode::Search` is active (tier 2, mirroring
-    /// [`Self::handle_palette_key`]'s shape): only meaningful on the Settings noun today, where
-    /// it drives the settings index rail's own `/ search`
-    /// (`docs/ux/desktop/Settings/README.md`'s "Navigation" bullet). A no-op everywhere else --
-    /// Search mode still has no other real input surface (`key_router::KeyOutcome::DelegateToSearch`'s
-    /// own doc).
+    /// [`Self::handle_palette_key`]'s shape): only Transactions has a Search box today. A no-op
+    /// everywhere else.
     fn handle_search_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.noun() == Noun::Transactions {
             return self.handle_transactions_search_key(keystroke);
         }
-        if self.nav.noun() != Noun::Settings {
-            return false;
-        }
-
-        match keystroke.key.as_str() {
-            "backspace" => {
-                self.settings_search.pop();
-                true
-            }
-            _ => match typed_char(keystroke) {
-                Some(ch) => {
-                    self.settings_search.push(ch);
-                    true
-                }
-                None => false,
-            },
-        }
+        false
     }
 
     /// Routes a keystroke while `InputMode::Dialog` is active (tier 2, mirroring
@@ -7606,10 +7564,6 @@ impl Shell {
                 self.open_settings_page(SettingsSection::Tags);
                 self.open_merge_tags_dialog(None);
             }
-            CommandEffect::SearchSettings => {
-                self.nav.exit_mode();
-                self.open_settings_search();
-            }
             CommandEffect::Import => {
                 self.nav.exit_mode();
                 self.open_import();
@@ -9419,7 +9373,6 @@ impl Render for Shell {
                                     transactions: transactions_page,
                                 },
                                 SettingsPanelProps {
-                                    search: &self.settings_search,
                                     selected: self.settings_selected_section,
                                     focus: self.settings_focus,
                                     on_index_click: on_settings_index_click,
@@ -9874,7 +9827,6 @@ struct PageProps<'a> {
 /// (`view::settings::SettingsBodyProps`); `render_view` splits it back apart when it builds
 /// each half's own component.
 struct SettingsPanelProps<'a> {
-    search: &'a str,
     selected: SettingsSection,
     focus: SettingsFocus,
     on_index_click: settings_index::OnEntryClick,
@@ -9968,7 +9920,6 @@ fn render_view(
             .flex()
             .child(SettingsIndexRail::new(
                 settings.selected,
-                settings.search.to_string(),
                 focused && settings.focus == SettingsFocus::Index,
                 settings.on_index_click,
             ))
@@ -10234,7 +10185,7 @@ mod tests {
         let keys = |hints: Vec<(&'static str, String)>| -> Vec<&'static str> {
             hints.into_iter().map(|(key, _)| key).collect()
         };
-        assert_eq!(keys(settings_index_hints()), ["j/k", "l/enter", "/"]);
+        assert_eq!(keys(settings_index_hints()), ["j/k", "l/enter"]);
         assert_eq!(
             keys(settings_display_hints()),
             ["j/k", "h/l", "enter", "esc"]

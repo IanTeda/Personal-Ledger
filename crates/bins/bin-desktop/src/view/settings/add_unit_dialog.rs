@@ -191,8 +191,29 @@ pub(crate) fn segmented_control<T: Copy + PartialEq + 'static, L: Into<SharedStr
     on_click: OnSegmentClick<T>,
     cx: &App,
 ) -> impl IntoElement {
+    segmented_control_sized(id_prefix, options, current, label, on_click, None, cx)
+}
+
+/// The shared option width of the Display page's uniform segmented controls.
+pub(crate) const UNIFORM_OPTION_WIDTH: f32 = 88.0;
+
+/// [`segmented_control`] with every option the same fixed width (its label centred), for short
+/// parallel labels that read better as a uniform row.
+pub(crate) fn segmented_control_sized<T: Copy + PartialEq + 'static, L: Into<SharedString>>(
+    id_prefix: &'static str,
+    options: &'static [T],
+    current: T,
+    label: fn(T) -> L,
+    on_click: OnSegmentClick<T>,
+    option_width: Option<gpui::Pixels>,
+    cx: &App,
+) -> impl IntoElement {
+    // A block-level flex row would stretch to the column and leave an empty trailing "button" of
+    // bar, so a uniform control is exactly as wide as its options (plus the 1px border each side).
+    let bar_width = option_width.map(|width| width * options.len() as f32 + px(2.0));
     div()
         .flex()
+        .when_some(bar_width, |this, width| this.w(width))
         .border_1()
         .border_color(color::divider(cx))
         .children(options.iter().enumerate().map(|(index, &option)| {
@@ -204,6 +225,9 @@ pub(crate) fn segmented_control<T: Copy + PartialEq + 'static, L: Into<SharedStr
                 .py(px(7.0))
                 .px(px(12.0))
                 .text_size(px(13.0))
+                .when_some(option_width, |this, width| {
+                    this.w(width).flex().justify_center()
+                })
                 .when(index > 0, |this| {
                     this.border_l(px(1.0)).border_color(color::divider(cx))
                 })

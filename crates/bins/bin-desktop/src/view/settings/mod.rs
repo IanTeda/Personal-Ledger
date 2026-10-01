@@ -1,8 +1,7 @@
 //! The Settings body (`docs/ux/desktop/Settings/README.md`'s "2a resting state", "Body"): one page
 //! at a time, not a continuous scroll. The settings index rail (`rail::settings_index`) swaps the
-//! page, and only the selected page is mounted. Each page keeps the same anatomy: the "Settings"
-//! heading and scope note over a 2px rule, then the page's own heading with its right-aligned
-//! meta over another, then the page's content.
+//! page, and only the selected page is mounted. Each page keeps the same anatomy: one heading
+//! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
 
 mod about;
 pub mod accounts;
@@ -105,41 +104,8 @@ pub fn render(
         .px(px(28.0))
         .flex()
         .flex_col()
-        .child(page_heading(cx))
         .child(section_block(props.selected, &props, cx))
         .into_any_element()
-}
-
-fn page_heading(cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .flex_col()
-        .child(
-            div()
-                .flex()
-                .items_baseline()
-                .justify_between()
-                .child(
-                    div()
-                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .text_size(px(28.0))
-                        .text_color(color::foreground(cx))
-                        .child(Noun::Settings.label()),
-                )
-                .child(
-                    div()
-                        .text_size(px(11.5))
-                        .text_color(color::faint_text(cx))
-                        .child(crate::msg::desktop_settings_scope_preferences()),
-                ),
-        )
-        .child(
-            div()
-                .h(px(2.0))
-                .bg(color::structural_rule(cx))
-                .mt(px(14.0))
-                .mb(px(18.0)),
-        )
 }
 
 /// One page: heading + right-aligned scope note, a 2px rule, the page's content, then a **48px**
@@ -162,9 +128,9 @@ fn section_block(
                 .child(
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                        .text_size(px(20.0))
+                        .text_size(px(28.0))
                         .text_color(color::foreground(cx))
-                        .child(section.label()),
+                        .child(format!("{} - {}", Noun::Settings.label(), section.label())),
                 )
                 .child(
                     div()

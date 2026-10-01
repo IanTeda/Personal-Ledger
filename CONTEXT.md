@@ -325,3 +325,11 @@ _Avoid_: To-Do, Reminder — Task is this glossary's canonical term. Attention I
 **Needs Attention**:
 The always-current list of everything wanting a user's action right now, computed fresh on every view rather than stored anywhere — every open Task (see above), every currently Flagged Transaction, every Transaction that's Cleared but not yet Reconciled, and every unresolved (not Paid or Skipped) Bill Schedule entry whose due date is on or before today plus that Bill Plan's own Attention Lead (see Bill Plan, above) — a date rule, not a status one, so an Upcoming entry due early next month still counts once inside its lead, and one with no lead counts from its due day. Beyond Task, nothing here is a separately stored fact: each is read directly off the Transaction Status, Flagged marker, or Bill Schedule status a row already carries, so an entry disappears the moment its underlying state resolves (a Transaction gets Reconciled, a Bill Schedule entry gets Paid) with nothing to separately dismiss. See `docs/needs-attention.md` and [ADR-0020](docs/adr/0020-needs-attention-as-derived-view.md).
 _Avoid_: Attention Item, To-Do List — Needs Attention names the computed list as a whole; Task (see above) is the only thing actually stored inside it.
+
+**Search**:
+Narrowing a list by **free text** the user types (a query matched against names or labels). Distinct from a Filter: Search takes one typed string and has no structured fields.
+_Avoid_: Filter (for free-text matching), Find.
+
+**Filter**:
+Narrowing a list by **structured criteria** chosen from known values (e.g. a Transactions view limited to an Account, Payee, Tag or date range), not by a typed string. Distinct from Search.
+_Avoid_: Search (for structured criteria).

@@ -29,7 +29,11 @@ use crate::{
     theme::color,
 };
 
-use super::{add_unit_dialog::segmented_control, colour_theme, tracing::radio_dot};
+use super::{
+    add_unit_dialog::{UNIFORM_OPTION_WIDTH, segmented_control_sized},
+    colour_theme,
+    tracing::radio_dot,
+};
 
 pub type OnDateStyleClick = Rc<dyn Fn(Option<DateStyle>, &mut Window, &mut App)>;
 pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
@@ -127,12 +131,13 @@ fn field_column(
                     crate::msg::desktop_display_date_style_label(),
                     cx,
                 ))
-                .child(segmented_control(
+                .child(segmented_control_sized(
                     "display-date-style",
                     &DATE_STYLE_CHOICES,
                     date_style,
                     date_style_label,
                     on_date_style_click,
+                    Some(px(UNIFORM_OPTION_WIDTH)),
                     cx,
                 )),
         )
@@ -142,12 +147,13 @@ fn field_column(
                     crate::msg::desktop_settings_display_row_density(),
                     cx,
                 ))
-                .child(segmented_control(
+                .child(segmented_control_sized(
                     "display-row-density",
                     &RowDensity::ALL,
                     row_density,
                     RowDensity::label,
                     on_row_density_click,
+                    Some(px(UNIFORM_OPTION_WIDTH)),
                     cx,
                 )),
         )
@@ -202,12 +208,13 @@ fn toasts_field(
         .mt(px(24.0))
         .w(FIELD_COLUMN_WIDTH)
         .child(field_label(lib_locale::msg::toast_setting_label(), cx))
-        .child(segmented_control(
+        .child(segmented_control_sized(
             "display-toasts",
             &[true, false],
             toasts_on,
             label,
             on_click,
+            Some(px(UNIFORM_OPTION_WIDTH)),
             cx,
         ))
         .child(

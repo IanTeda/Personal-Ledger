@@ -1,6 +1,6 @@
 //! The **Accounts** page (`docs/ux/desktop/Settings/README.md`'s 2o): a kicker (BY TYPE) with
 //! **+ Add account** over one bordered table per account type in `accounts::GROUP_ORDER`
-//! (NAME / INSTITUTION / UNIT / BALANCE / ACTIONS). It reuses the Accounts model and dialogs;
+//! (NAME / INSTITUTION / UNIT / ACTIONS). It reuses the Accounts model and dialogs;
 //! only the table is reduced to the handoff's columns and `padding:8px 16px` rows.
 //!
 //! Every action (row click, edit, delete, add) is a callback into `Shell`, so the keyboard
@@ -119,9 +119,10 @@ fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
 /// The NAME column's floor: without one, the fixed columns beside it can squeeze it to nothing
 /// in a narrow window, and the other cells shrink (and truncate) instead.
 const NAME_MIN_WIDTH: gpui::Pixels = px(140.0);
-const INSTITUTION_WIDTH: gpui::Pixels = px(130.0);
+/// Includes [`INSTITUTION_GAP`], so the text keeps its 130px and the Unit column starts clear of it.
+const INSTITUTION_WIDTH: gpui::Pixels = px(154.0);
+const INSTITUTION_GAP: gpui::Pixels = px(24.0);
 const UNIT_WIDTH: gpui::Pixels = px(90.0);
-const BALANCE_WIDTH: gpui::Pixels = px(120.0);
 const ACTIONS_WIDTH: gpui::Pixels = px(150.0);
 
 fn group_block(
@@ -192,18 +193,13 @@ fn table_header(cx: &App) -> impl IntoElement {
         .child(
             div()
                 .w(INSTITUTION_WIDTH)
+                .pr(INSTITUTION_GAP)
                 .child(upper(&lib_locale::msg::column_institution())),
         )
         .child(
             div()
                 .w(UNIT_WIDTH)
                 .child(upper(&lib_locale::msg::column_unit())),
-        )
-        .child(
-            div()
-                .w(BALANCE_WIDTH)
-                .text_align(gpui::TextAlign::Right)
-                .child(upper(&lib_locale::msg::column_balance())),
         )
         .child(
             div()
@@ -223,18 +219,6 @@ fn row(
 ) -> impl IntoElement {
     let hover = color::hover(cx);
     let id = account.id;
-    let (negative, amount) = crate::format::amount(&account.balance);
-    let is_currency = props
-        .units
-        .iter()
-        .find(|unit| unit.code == account.unit)
-        .is_none_or(|unit| unit.kind == "currency");
-    let balance = if is_currency {
-        amount
-    } else {
-        format!("{amount} u")
-    };
-
     let on_row_click = props.on_row_click.clone();
     let on_edit_click = props.on_edit_click.clone();
     let on_delete_click = props.on_delete_click.clone();
@@ -273,6 +257,7 @@ fn row(
         .child(
             div()
                 .w(INSTITUTION_WIDTH)
+                .pr(INSTITUTION_GAP)
                 .truncate()
                 .text_color(color::muted(cx))
                 .child(accounts::institution_label(&account.institution)),
@@ -282,19 +267,6 @@ fn row(
                 .w(UNIT_WIDTH)
                 .text_color(color::muted(cx))
                 .child(account.unit.clone()),
-        )
-        .child(
-            div()
-                .w(BALANCE_WIDTH)
-                .flex()
-                .justify_end()
-                .whitespace_nowrap()
-                .text_color(if negative {
-                    color::negative_text(cx)
-                } else {
-                    color::foreground(cx)
-                })
-                .child(balance),
         )
         .child(
             div()

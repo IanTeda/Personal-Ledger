@@ -17,7 +17,7 @@ use crate::{
     theme::color,
 };
 
-use super::add_unit_dialog::segmented_control;
+use super::add_unit_dialog::{UNIFORM_OPTION_WIDTH, segmented_control_sized};
 
 /// A click on a card, curried with its Colour Theme id.
 pub type OnColourThemeClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;
@@ -123,12 +123,13 @@ pub fn render(focused: Option<usize>, on_theme_click: OnColourThemeClick, cx: &A
             crate::msg::desktop_settings_display_colour_appearance(),
             cx,
         ))
-        .child(segmented_control(
+        .child(segmented_control_sized(
             "display-colour-appearance",
             &APPEARANCES,
             appearance,
             appearance_label,
             on_appearance_click,
+            Some(px(UNIFORM_OPTION_WIDTH)),
             cx,
         ))
         .child(note(system_hint(state.system()), cx))

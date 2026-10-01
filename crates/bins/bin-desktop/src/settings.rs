@@ -175,14 +175,6 @@ impl SettingsSection {
     pub fn has_controls(self) -> bool {
         !matches!(self, Self::About)
     }
-
-    /// Whether this section's label contains `needle`, case-insensitively -- the index rail's
-    /// own `/ search` (`docs/ux/desktop/Settings/README.md`'s "Navigation" bullet: "live
-    /// substring search over the index entries only"). An empty needle matches everything, the
-    /// resting (unsearched) state.
-    pub fn matches_search(self, needle: &str) -> bool {
-        needle.is_empty() || self.label().to_lowercase().contains(&needle.to_lowercase())
-    }
 }
 
 /// The **Display** section's "Date format" segmented control: the nullable date style
@@ -847,21 +839,6 @@ mod tests {
     }
 
     #[test]
-    fn empty_search_matches_every_section() {
-        for section in SettingsSection::ALL {
-            assert!(section.matches_search(""));
-        }
-    }
-
-    #[test]
-    fn search_matches_case_insensitively_and_by_substring() {
-        crate::locale::init_for_tests();
-        assert!(SettingsSection::SyncServer.matches_search("sync"));
-        assert!(SettingsSection::SyncServer.matches_search("SYNC"));
-        assert!(!SettingsSection::SyncServer.matches_search("units"));
-    }
-
-    #[test]
     fn default_section_is_general() {
         assert_eq!(SettingsSection::default(), SettingsSection::General);
     }
@@ -1069,7 +1046,7 @@ mod tests {
             .into_iter()
             .map(date_style_label)
             .collect();
-        assert_eq!(labels, ["Locale default", "Short", "Medium", "Long", "ISO"]);
+        assert_eq!(labels, ["Locale", "Short", "Medium", "Long", "ISO"]);
     }
 
     #[test]
