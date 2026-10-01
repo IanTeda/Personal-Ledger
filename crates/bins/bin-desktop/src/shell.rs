@@ -57,9 +57,10 @@ use crate::{
         settings_index::{self, SettingsIndexRail},
     },
     settings::{
-        self, AccountType, AddInstitutionForm, AddUnitField, DeleteUnitForm, InstitutionRow,
-        PriceSourceRow, RowDensity, SettingsDialog, SettingsFocus, SettingsSection, StatusGlyphs,
-        TracingLevel, UnitForm, UnitKind, UnitRow,
+        self, AccountType, AddInstitutionForm, AddUnitField, DATE_STYLE_CHOICES,
+        DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, DeleteUnitForm, InstitutionRow, PriceSourceRow,
+        RowDensity, SettingsDialog, SettingsFocus, SettingsSection, StatusGlyphs, TracingLevel,
+        UnitForm, UnitKind, UnitRow, step_choice,
     },
     statusline::{self, HintAction, PageStatus, StatusLine},
     tags::{self, Tag},
@@ -298,6 +299,44 @@ fn bills_planner_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The Settings index rail's keys (the keyboard model's index scope): `j`/`k` swap the page live,
+/// `l`/`enter` step into it, `/` filters the entries.
+fn settings_index_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_page()),
+        ("l/enter", crate::msg::desktop_hint_open()),
+        ("/", crate::msg::desktop_hint_filter()),
+    ]
+}
+
+/// The Display page's keys while a control above the Colour Theme grid has focus.
+fn settings_display_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_field()),
+        ("h/l", crate::msg::desktop_hint_change()),
+        ("enter", crate::msg::desktop_hint_toggle()),
+        ("esc", crate::msg::desktop_hint_index()),
+    ]
+}
+
+/// The Display page's keys while the Colour Theme grid has focus.
+fn settings_colour_grid_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("h/j/k/l", crate::msg::desktop_hint_colour()),
+        ("enter", crate::msg::desktop_hint_choose()),
+        ("esc", crate::msg::desktop_hint_field()),
+    ]
+}
+
+/// The keys of a Settings page with no row or field cursor of its own (the info pages, General,
+/// and the Units and Institutions tables, which are mouse-driven for now).
+fn settings_plain_page_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_scroll()),
+        ("h", crate::msg::desktop_hint_index()),
+    ]
+}
+
 /// The status-line legend while the 7e Merge dialog is open.
 fn merge_tags_dialog_hints() -> Vec<(&'static str, String)> {
     vec![
@@ -490,7 +529,9 @@ pub struct Shell {
     settings_focus: SettingsFocus,
     /// Set when focus has just moved onto the Display page, so the next key handler (which has
     /// an `App` to read the chosen Colour Theme from) puts the grid's focus on that card.
-    settings_grid_entry_pending: bool,
+    /// The Display page's focused control (`DISPLAY_FIELD_COUNT` of them, above the Colour Theme
+    /// grid); `None` off that page or while the grid has focus.
+    settings_display_field: Option<usize>,
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored
     /// preference, not reset on noun change (same reasoning as [`Self::settings_tracing_level`]).
     settings_date_style: Option<DateStyle>,
@@ -699,7 +740,7 @@ impl Shell {
             settings_filter: String::new(),
             settings_selected_section: SettingsSection::default(),
             settings_focus: SettingsFocus::default(),
-            settings_grid_entry_pending: false,
+            settings_display_field: None,
             settings_date_style: None,
             settings_row_density: RowDensity::default(),
             colour_theme_focus: None,
@@ -1197,7 +1238,7 @@ impl Shell {
         match key {
             "escape" => {
                 self.status_message = None;
-                self.focus_settings_index();
+                self.leave_colour_theme_grid();
                 true
             }
             "tab" => {
@@ -1215,6 +1256,11 @@ impl Shell {
                     self.view_scroll_handle.bounds().size.width,
                 ));
                 let len = lib_colour_theme::ColourTheme::built_in().len();
+                // `k` on the top row climbs back to the last control above the grid.
+                if matches!(key, "k" | "up") && index < columns {
+                    self.leave_colour_theme_grid();
+                    return true;
+                }
                 // `h` at the first column steps back out to the index.
                 if matches!(key, "h" | "left") && index % columns.max(1) == 0 {
                     self.focus_settings_index();
@@ -1233,6 +1279,53 @@ impl Shell {
                 }
             }
         }
+    }
+
+    /// The status-line legend for Settings' current focus: the index rail's keys, or the open
+    /// page's. The four list pages are handled before this (they own dialogs too), so it covers
+    /// the index and the form and plain pages.
+    fn settings_hints(&self) -> Vec<(&'static str, String)> {
+        if self.settings_focus == SettingsFocus::Index {
+            return settings_index_hints();
+        }
+        match self.settings_selected_section {
+            SettingsSection::Display if self.colour_theme_focus.is_some() => {
+                settings_colour_grid_hints()
+            }
+            SettingsSection::Display => settings_display_hints(),
+            _ => settings_plain_page_hints(),
+        }
+    }
+
+    /// The `?` cheat-sheet's Settings group as `(action, keys)`: the index keys, then the open
+    /// page's. Empty off the Settings noun, so the group is left out.
+    fn settings_cheat_sheet(&self) -> Vec<(String, &'static str)> {
+        if self.nav.noun() != Noun::Settings {
+            return Vec::new();
+        }
+        let page = match self.settings_selected_section {
+            SettingsSection::Accounts => accounts_hints(),
+            SettingsSection::Categories => settings_categories_hints(),
+            SettingsSection::Tags => settings_tags_hints(),
+            SettingsSection::Payees => settings_payees_hints(),
+            SettingsSection::Display => {
+                let mut keys = settings_display_hints();
+                keys.extend(settings_colour_grid_hints().into_iter().take(2));
+                keys
+            }
+            _ => settings_plain_page_hints(),
+        };
+        settings_index_hints()
+            .into_iter()
+            .chain(page)
+            .map(|(keys, action)| (action, keys))
+            .collect()
+    }
+
+    /// Steps from the Colour Theme grid back up to the Display page's last control.
+    fn leave_colour_theme_grid(&mut self) {
+        self.colour_theme_focus = None;
+        self.settings_display_field = Some(DISPLAY_FIELD_COUNT - 1);
     }
 
     fn open_palette(&mut self) {
@@ -1305,6 +1398,7 @@ impl Shell {
         }
         self.settings_selected_section = section;
         self.colour_theme_focus = None;
+        self.settings_display_field = None;
     }
 
     /// Moves focus from the index rail into the open page (`l`/`enter`, `:settings <page>`). A
@@ -1314,22 +1408,92 @@ impl Shell {
             return;
         }
         self.settings_focus = SettingsFocus::Page;
-        self.settings_grid_entry_pending =
-            self.settings_selected_section == SettingsSection::Display;
+        self.settings_display_field =
+            (self.settings_selected_section == SettingsSection::Display).then_some(0);
     }
 
     fn focus_settings_index(&mut self) {
         self.settings_focus = SettingsFocus::Index;
         self.colour_theme_focus = None;
+        self.settings_display_field = None;
+    }
+
+    /// The Display page's form keys, ahead of Settings' focus keys: `j`/`k` walk the controls and
+    /// on past the last into the Colour Theme grid, `h`/`l` change a segmented or radio control
+    /// (or clear/tick the checkbox) in place, `enter`/`space` toggles the checkbox. `esc` is left
+    /// to the focus keys, which step back to the index. `false` for any key it does not take.
+    fn handle_settings_form_key(&mut self, keystroke: &Keystroke, chosen: usize) -> bool {
+        let pending_g_active = self
+            .pending_g
+            .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
+        let Some(field) = self.settings_display_field else {
+            return false;
+        };
+        if self.nav.mode() != InputMode::Normal
+            || self.nav.noun() != Noun::Settings
+            || self.nav.focus() != FocusZone::View
+            || self.settings_focus != SettingsFocus::Page
+            || self.settings_selected_section != SettingsSection::Display
+            || keystroke.modifiers.control
+            || keystroke.modifiers.shift
+            || pending_g_active
+        {
+            return false;
+        }
+        let delta = match keystroke.key.as_str() {
+            "h" | "left" => -1,
+            "l" | "right" => 1,
+            _ => 0,
+        };
+        match keystroke.key.as_str() {
+            "j" | "down" => {
+                self.status_message = None;
+                if field + 1 >= DISPLAY_FIELD_COUNT {
+                    self.settings_display_field = None;
+                    self.colour_theme_focus = Some(chosen);
+                } else {
+                    self.settings_display_field = Some(field + 1);
+                }
+                true
+            }
+            "k" | "up" => {
+                self.settings_display_field = Some(field.saturating_sub(1));
+                true
+            }
+            "h" | "left" | "l" | "right" => {
+                self.status_message = None;
+                match field {
+                    0 => {
+                        self.settings_date_style =
+                            step_choice(&DATE_STYLE_CHOICES, self.settings_date_style, delta);
+                    }
+                    1 => {
+                        self.settings_row_density =
+                            step_choice(&RowDensity::ALL, self.settings_row_density, delta);
+                    }
+                    2 => {
+                        self.settings_status_glyphs =
+                            step_choice(&StatusGlyphs::ALL, self.settings_status_glyphs, delta);
+                    }
+                    DISPLAY_FIELD_SIDEBAR => self.settings_start_sidebar_minimised = delta > 0,
+                    _ => self.set_toasts_on(delta < 0),
+                }
+                true
+            }
+            "enter" | "space" => {
+                if field == DISPLAY_FIELD_SIDEBAR {
+                    self.settings_start_sidebar_minimised = !self.settings_start_sidebar_minimised;
+                }
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Settings' own focus keys, ahead of the Colour Theme grid and the global keymap: `l`/`right`
     /// /`enter` on the index step into the page, `h`/`left`/`esc` on the page step back out.
     /// `false` for any key it does not take.
-    fn handle_settings_focus_key(&mut self, keystroke: &Keystroke, chosen: usize) -> bool {
-        if std::mem::take(&mut self.settings_grid_entry_pending) {
-            self.colour_theme_focus = Some(chosen);
-        }
+    fn handle_settings_focus_key(&mut self, keystroke: &Keystroke) -> bool {
         let pending_g_active = self
             .pending_g
             .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
@@ -1346,9 +1510,6 @@ impl Shell {
             (SettingsFocus::Index, "l" | "right" | "enter") => {
                 self.status_message = None;
                 self.focus_settings_page();
-                if std::mem::take(&mut self.settings_grid_entry_pending) {
-                    self.colour_theme_focus = Some(chosen);
-                }
                 true
             }
             // `left` on the Categories tree collapses or climbs first; only a top-level row with
@@ -9035,6 +9196,10 @@ impl Render for Shell {
                 hints: settings_categories_hints(),
                 right: settings_view::categories::scope_note(&self.categories),
             }),
+            Noun::Settings if self.nav.focus() == FocusZone::View => Some(PageStatus {
+                hints: self.settings_hints(),
+                right: self.settings_selected_section.scope_note(),
+            }),
             Noun::Bills if matches!(self.bills_dialog, Some(bills::BillsDialog::Pay(_))) => {
                 Some(PageStatus {
                     hints: pay_bill_dialog_hints(),
@@ -9151,16 +9316,13 @@ impl Render for Shell {
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 let chosen = settings_view::colour_theme::chosen_index(cx);
-                if this.handle_settings_focus_key(&event.keystroke, chosen)
+                if this.handle_settings_form_key(&event.keystroke, chosen)
+                    || this.handle_settings_focus_key(&event.keystroke)
                     || this.handle_colour_theme_grid_key(&event.keystroke)
                     || this.handle_bills_tab_key(&event.keystroke)
                     || this.handle_budgets_tab_key(&event.keystroke)
                     || this.handle_key_down(event)
                 {
-                    cx.notify();
-                }
-                if std::mem::take(&mut this.settings_grid_entry_pending) {
-                    this.colour_theme_focus = Some(chosen);
                     cx.notify();
                 }
                 if std::mem::take(&mut this.pending_budgets_export) {
@@ -9257,6 +9419,7 @@ impl Render for Shell {
                                     toasts_on: self.toasts.display().toasts_on,
                                     on_toasts_click,
                                     colour_theme_focus: self.colour_theme_focus,
+                                    display_field: self.settings_display_field,
                                     on_colour_theme_click,
                                     units: &self.settings_units,
                                     on_unit_edit_click,
@@ -9315,7 +9478,8 @@ impl Render for Shell {
             }))
             .children(filter_popover)
             .children(
-                (self.nav.mode() == InputMode::Help).then(|| help_view::render(on_help_close, cx)),
+                (self.nav.mode() == InputMode::Help)
+                    .then(|| help_view::render(on_help_close, self.settings_cheat_sheet(), cx)),
             )
             .children(self.toast_history_open.then(|| {
                 toast_history_view::render(self.toasts.history(), on_toast_history_close, cx)
@@ -9710,6 +9874,7 @@ struct SettingsPanelProps<'a> {
     toasts_on: bool,
     on_toasts_click: settings_view::display::OnToastsClick,
     colour_theme_focus: Option<usize>,
+    display_field: Option<usize>,
     on_colour_theme_click: settings_view::colour_theme::OnColourThemeClick,
     units: &'a [UnitRow],
     on_unit_edit_click: settings_view::units::OnRowIndexClick,
@@ -9821,6 +9986,7 @@ fn render_view(
                     toasts_on: settings.toasts_on,
                     on_toasts_click: settings.on_toasts_click,
                     colour_theme_focus: settings.colour_theme_focus,
+                    display_field: settings.display_field,
                     on_colour_theme_click: settings.on_colour_theme_click,
                     units: settings.units,
                     on_unit_edit_click: settings.on_unit_edit_click,
@@ -10045,6 +10211,26 @@ mod tests {
             Local::now().date_naive(),
         );
         (accounts, categories, transactions)
+    }
+
+    #[test]
+    fn each_settings_focus_has_its_own_legend() {
+        crate::locale::init_for_tests();
+        let keys = |hints: Vec<(&'static str, String)>| -> Vec<&'static str> {
+            hints.into_iter().map(|(key, _)| key).collect()
+        };
+        assert_eq!(keys(settings_index_hints()), ["j/k", "l/enter", "/"]);
+        assert_eq!(
+            keys(settings_display_hints()),
+            ["j/k", "h/l", "enter", "esc"]
+        );
+        assert_eq!(keys(settings_colour_grid_hints())[1], "enter");
+        assert_eq!(keys(settings_plain_page_hints()), ["j/k", "h"]);
+        assert!(
+            settings_display_hints()
+                .iter()
+                .all(|(_, action)| !action.is_empty())
+        );
     }
 
     #[test]

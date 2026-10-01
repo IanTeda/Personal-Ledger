@@ -60,6 +60,8 @@ pub struct SettingsBodyProps<'a> {
     pub on_toasts_click: display::OnToastsClick,
     /// The Colour Theme card the keyboard is on, when the grid has focus.
     pub colour_theme_focus: Option<usize>,
+    /// The Display page's keyboard-focused control, when the page has focus and not the grid.
+    pub display_field: Option<usize>,
     pub on_colour_theme_click: colour_theme::OnColourThemeClick,
     pub units: &'a [UnitRow],
     pub on_unit_edit_click: units::OnRowIndexClick,
@@ -236,6 +238,7 @@ fn section_content(
             props.toasts_on,
             props.on_toasts_click.clone(),
             props.colour_theme_focus,
+            props.display_field,
             props.on_colour_theme_click.clone(),
             cx,
         ),

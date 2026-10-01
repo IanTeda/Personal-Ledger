@@ -13,7 +13,7 @@ const KEY_WIDTH: gpui::Pixels = px(44.0);
 
 pub type OnClose = dialog::OnClick;
 
-pub fn render(on_close: OnClose, cx: &App) -> AnyElement {
+pub fn render(on_close: OnClose, settings: Vec<(String, &'static str)>, cx: &App) -> AnyElement {
     let overlay = dialog::overlay(
         WIDTH,
         false,
@@ -25,7 +25,7 @@ pub fn render(on_close: OnClose, cx: &App) -> AnyElement {
                 div()
                     .flex()
                     .child(facts_column(cx))
-                    .child(shortcuts_column(cx)),
+                    .child(shortcuts_column(settings, cx)),
             )
             .child(footer(on_close, cx)),
         cx,
@@ -232,7 +232,7 @@ fn two_columns(cells: Vec<AnyElement>) -> impl IntoElement {
     div().flex().flex_col().gap(px(10.0)).children(rows)
 }
 
-fn shortcuts_column(cx: &App) -> impl IntoElement {
+fn shortcuts_column(settings: Vec<(String, &'static str)>, cx: &App) -> impl IntoElement {
     div()
         .flex_1()
         .min_w_0()
@@ -257,6 +257,16 @@ fn shortcuts_column(cx: &App) -> impl IntoElement {
                 .map(|(label, keys)| shortcut(label, keys, cx))
                 .collect(),
         ))
+        .when(!settings.is_empty(), |this| {
+            this.child(rule(cx))
+                .child(kicker(crate::msg::desktop_help_settings_label(), cx))
+                .child(two_columns(
+                    settings
+                        .into_iter()
+                        .map(|(label, keys)| shortcut(label, keys, cx))
+                        .collect(),
+                ))
+        })
 }
 
 fn footer(on_close: OnClose, cx: &App) -> impl IntoElement {

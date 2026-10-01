@@ -22,8 +22,9 @@ use lib_core::DateStyle;
 
 use crate::{
     settings::{
-        DATE_STYLE_CHOICES, DEFAULT_DISPLAY_PREVIEW_ROWS, DisplayPreviewRow, PreviewStatus,
-        RowDensity, StatusGlyphs, date_style_label, format_preview_amount, format_preview_date,
+        DATE_STYLE_CHOICES, DEFAULT_DISPLAY_PREVIEW_ROWS, DISPLAY_FIELD_SIDEBAR, DisplayPreviewRow,
+        PreviewStatus, RowDensity, StatusGlyphs, date_style_label, format_preview_amount,
+        format_preview_date,
     },
     theme::color,
 };
@@ -59,6 +60,7 @@ pub fn render(
     toasts_on: bool,
     on_toasts_click: OnToastsClick,
     colour_theme_focus: Option<usize>,
+    field_focus: Option<usize>,
     on_colour_theme_click: colour_theme::OnColourThemeClick,
     cx: &App,
 ) -> AnyElement {
@@ -74,6 +76,7 @@ pub fn render(
             on_date_style_click,
             on_row_density_click,
             on_status_glyphs_click,
+            field_focus,
             cx,
         ))
         .child(preview_column(date_style, row_density, status_glyphs, cx));
@@ -81,7 +84,12 @@ pub fn render(
         .flex()
         .flex_col()
         .child(columns)
-        .child(toasts_field(toasts_on, on_toasts_click, cx))
+        .child(toasts_field(
+            toasts_on,
+            on_toasts_click,
+            field_focus == Some(4),
+            cx,
+        ))
         .child(colour_theme::render(
             colour_theme_focus,
             on_colour_theme_click,
@@ -103,6 +111,7 @@ fn field_column(
     on_date_style_click: OnDateStyleClick,
     on_row_density_click: OnRowDensityClick,
     on_status_glyphs_click: OnStatusGlyphsClick,
+    field_focus: Option<usize>,
     cx: &App,
 ) -> impl IntoElement {
     div()
@@ -113,7 +122,7 @@ fn field_column(
         .gap(px(18.0))
         .child(locale_field(cx))
         .child(
-            div()
+            focus_mark(field_focus == Some(0), cx)
                 .child(field_label(
                     crate::msg::desktop_display_date_style_label(),
                     cx,
@@ -128,7 +137,7 @@ fn field_column(
                 )),
         )
         .child(
-            div()
+            focus_mark(field_focus == Some(1), cx)
                 .child(field_label(
                     crate::msg::desktop_settings_display_row_density(),
                     cx,
@@ -145,18 +154,42 @@ fn field_column(
         .child(status_glyphs_field(
             status_glyphs,
             on_status_glyphs_click,
+            field_focus == Some(2),
             cx,
         ))
-        .child(start_sidebar_minimised_toggle(
-            start_sidebar_minimised,
-            on_start_sidebar_minimised_click,
-            cx,
-        ))
+        .child(
+            focus_mark(field_focus == Some(DISPLAY_FIELD_SIDEBAR), cx).child(
+                start_sidebar_minimised_toggle(
+                    start_sidebar_minimised,
+                    on_start_sidebar_minimised_click,
+                    cx,
+                ),
+            ),
+        )
+}
+
+/// The keyboard-focus mark for one control: an accent rule down its left edge, drawn on every
+/// control so the column does not shift as focus moves.
+fn focus_mark(focused: bool, cx: &App) -> gpui::Div {
+    div()
+        .pl(px(8.0))
+        .ml(px(-10.0))
+        .border_l(px(2.0))
+        .border_color(if focused {
+            gpui::Hsla::from(color::accent(cx))
+        } else {
+            gpui::transparent_black()
+        })
 }
 
 /// The "Toasts" On/Off row (ADR-0027), above the Colour Theme group, noting that Errors still
 /// show when off.
-fn toasts_field(toasts_on: bool, on_click: OnToastsClick, cx: &App) -> impl IntoElement {
+fn toasts_field(
+    toasts_on: bool,
+    on_click: OnToastsClick,
+    focused: bool,
+    cx: &App,
+) -> impl IntoElement {
     fn label(on: bool) -> String {
         if on {
             lib_locale::msg::toast_setting_on()
@@ -164,7 +197,7 @@ fn toasts_field(toasts_on: bool, on_click: OnToastsClick, cx: &App) -> impl Into
             lib_locale::msg::toast_setting_off()
         }
     }
-    div()
+    focus_mark(focused, cx)
         .id("display-toasts")
         .mt(px(24.0))
         .w(FIELD_COLUMN_WIDTH)
@@ -256,9 +289,10 @@ fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
 fn status_glyphs_field(
     selected: StatusGlyphs,
     on_click: OnStatusGlyphsClick,
+    focused: bool,
     cx: &App,
 ) -> impl IntoElement {
-    div()
+    focus_mark(focused, cx)
         .child(field_label(
             crate::msg::desktop_settings_display_status_glyphs(),
             cx,
