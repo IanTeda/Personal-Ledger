@@ -63,7 +63,7 @@ const TOTAL_WIDTH: gpui::Pixels = px(120.0);
 const LAST_USED_WIDTH: gpui::Pixels = px(110.0);
 const ACTIONS_WIDTH: gpui::Pixels = px(150.0);
 /// The table swatch: `10×10`, `gap 8px` before the name.
-const SWATCH_SIZE: gpui::Pixels = px(10.0);
+pub const SWATCH_SIZE: gpui::Pixels = px(10.0);
 
 /// A Tag colour as a `gpui` colour. It is the user's data, not a Colour Theme role, so it is drawn
 /// as stored under every Colour Variant (#352).

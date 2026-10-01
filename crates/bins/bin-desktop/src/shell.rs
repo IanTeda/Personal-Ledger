@@ -125,6 +125,8 @@ const VIEW_LINE_STEP: f32 = 40.0;
 const ACCOUNTS_HALF_PAGE: isize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Categories page: rows per half page.
 const CATEGORIES_HALF_PAGE: usize = 5;
+/// `Ctrl-d`/`Ctrl-u` on the Settings Tags page: rows per half page.
+const SETTINGS_TAGS_HALF_PAGE: isize = 5;
 
 /// The Payees page's status-line legend (`docs/ux/desktop/Payees/README.md`'s 6a), as `(key, action)`.
 fn payees_hints() -> Vec<(&'static str, String)> {
@@ -143,6 +145,17 @@ fn tags_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_row()),
         ("enter", crate::msg::desktop_hint_view_transactions()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("x", crate::msg::desktop_hint_remove()),
+        ("m", crate::msg::desktop_hint_merge()),
+        ("n", crate::msg::desktop_hint_new()),
+    ]
+}
+
+/// The Settings Tags page's status-line legend (2j's keys), as `(key, action)`.
+fn settings_tags_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
         ("e", crate::msg::desktop_hint_edit()),
         ("x", crate::msg::desktop_hint_remove()),
         ("m", crate::msg::desktop_hint_merge()),
@@ -600,6 +613,8 @@ pub struct Shell {
     tags: Vec<Tag>,
     /// The selected row on the Tags page, a position in `tags::sorted_by_usage`'s order.
     tags_selected: usize,
+    /// The selected row on Settings' Tags page, by Tag id: that page lists A–Z, not by usage.
+    settings_tags_selected: Option<u32>,
     /// The currently open Tags dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
     /// exactly as long as this is `Some`, following the pattern of `payees_dialog`.
     tags_dialog: Option<tags::TagsDialog>,
@@ -731,6 +746,7 @@ impl Shell {
             import: None,
             tags,
             tags_selected: 0,
+            settings_tags_selected: None,
             tags_dialog: None,
             transactions,
             bill_plans: bills_seed.plans,
@@ -1417,6 +1433,10 @@ impl Shell {
             self.apply_settings_categories_movement(movement);
             return;
         }
+        if self.settings_tags_page_has_focus() {
+            self.apply_settings_tags_movement(movement);
+            return;
+        }
         if self.nav.noun() == Noun::Transactions {
             self.apply_transactions_movement(movement);
             return;
@@ -2018,6 +2038,47 @@ impl Shell {
         }
     }
 
+    /// Whether Settings' Tags list owns the keyboard: the page, not the index, has focus.
+    fn settings_tags_page_has_focus(&self) -> bool {
+        self.nav.noun() == Noun::Settings
+            && self.nav.focus() == FocusZone::View
+            && self.settings_focus == SettingsFocus::Page
+            && self.settings_selected_section == SettingsSection::Tags
+    }
+
+    /// The Settings Tags page's selected Tag: the stored id while it still exists, else the first
+    /// row, so a removed or merged-away Tag never leaves the page with nothing under the cursor.
+    fn settings_tags_selected_id(&self) -> Option<u32> {
+        let sorted = tags::sorted_by_name(&self.tags);
+        self.settings_tags_selected
+            .filter(|id| sorted.iter().any(|tag| tag.id == *id))
+            .or_else(|| sorted.first().map(|tag| tag.id))
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the Tags list A–Z. `enter` has no hand-off here.
+    fn apply_settings_tags_movement(&mut self, movement: Movement) {
+        let sorted = tags::sorted_by_name(&self.tags);
+        let len = sorted.len();
+        let current = self
+            .settings_tags_selected_id()
+            .and_then(|id| sorted.iter().position(|tag| tag.id == id))
+            .unwrap_or(0);
+        let next = match movement {
+            Movement::Next => accounts::step_selection(current, len, 1),
+            Movement::Prev => accounts::step_selection(current, len, -1),
+            Movement::First => 0,
+            Movement::Last => len.saturating_sub(1),
+            Movement::HalfPageDown => {
+                accounts::step_selection(current, len, SETTINGS_TAGS_HALF_PAGE)
+            }
+            Movement::HalfPageUp => {
+                accounts::step_selection(current, len, -SETTINGS_TAGS_HALF_PAGE)
+            }
+            Movement::Enter => return,
+        };
+        self.settings_tags_selected = sorted.get(next).map(|tag| tag.id);
+    }
+
     /// Whether Settings' Categories tree owns the keyboard: the page, not the index, has focus.
     fn settings_categories_page_has_focus(&self) -> bool {
         self.nav.noun() == Noun::Settings
@@ -2412,6 +2473,9 @@ impl Shell {
 
     /// The selected Tag: `tags_selected` indexes the page's usage order, not `self.tags`.
     fn selected_tag_id(&self) -> Option<u32> {
+        if self.settings_tags_page_has_focus() {
+            return self.settings_tags_selected_id();
+        }
         let sorted = tags::sorted_by_usage(&self.tags, &self.transactions);
         sorted
             .get(self.tags_selected.min(sorted.len().saturating_sub(1)))
@@ -2420,6 +2484,7 @@ impl Shell {
 
     /// Selects the Tag with `id`, if it still exists.
     fn select_tag(&mut self, id: u32) {
+        self.settings_tags_selected = Some(id);
         if let Some(index) = tags::sorted_by_usage(&self.tags, &self.transactions)
             .iter()
             .position(|tag| tag.id == id)
@@ -2431,7 +2496,9 @@ impl Shell {
     /// The Tags page's own `n`/`e`/`x`/`m` (only while it is the active noun and the view has
     /// focus, in `Normal` mode).
     fn handle_tags_key(&mut self, keystroke: &Keystroke) -> bool {
-        if self.nav.noun() != Noun::Tags || self.nav.focus() != FocusZone::View {
+        if !self.settings_tags_page_has_focus()
+            && (self.nav.noun() != Noun::Tags || self.nav.focus() != FocusZone::View)
+        {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -5971,6 +6038,13 @@ impl Shell {
         cx.notify();
     }
 
+    /// A click on a row of Settings' Tags list: selects it and moves focus into the page.
+    fn handle_settings_tags_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_tag(id);
+        self.focus_settings_page();
+        cx.notify();
+    }
+
     fn handle_tags_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_tag(id);
         self.open_tag_transactions(id);
@@ -8457,6 +8531,17 @@ impl Render for Shell {
             on_edit_click: tag_click(Shell::handle_tags_edit_click),
             on_remove_click: tag_click(Shell::handle_tags_remove_click),
         };
+        let tag_groups = tags::duplicate_groups(&self.tags, &self.transactions);
+        let settings_tags_page = settings_view::tags::TagsPageProps {
+            tags: &self.tags,
+            selected: self.settings_tags_selected_id(),
+            groups: &tag_groups,
+            on_add_click: tag_plain(Shell::handle_tags_add_click),
+            on_row_click: tag_click(Shell::handle_settings_tags_row_click),
+            on_merge_click: tag_click(Shell::handle_tags_duplicate_click),
+            on_edit_click: tag_click(Shell::handle_tags_edit_click),
+            on_remove_click: tag_click(Shell::handle_tags_remove_click),
+        };
         let bills_unfiltered = self.bills_unfiltered_rows();
         let bills_rows = self
             .bills_filters
@@ -8999,6 +9084,19 @@ impl Render for Shell {
                     i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
                 ),
             }),
+            Noun::Settings if self.settings_tags_page_has_focus() => Some(PageStatus {
+                hints: match self.tags_dialog {
+                    Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
+                    Some(tags::TagsDialog::Edit(..)) => tag_dialog_hints(true),
+                    Some(tags::TagsDialog::Remove(..)) => delete_payee_dialog_hints(),
+                    Some(tags::TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
+                    None => settings_tags_hints(),
+                },
+                right: settings_view::tags::scope_text(
+                    &self.tags,
+                    &tags::duplicate_groups(&self.tags, &self.transactions),
+                ),
+            }),
             Noun::Settings if self.settings_categories_page_has_focus() => Some(PageStatus {
                 hints: settings_categories_hints(),
                 right: settings_view::categories::scope_note(&self.categories),
@@ -9256,6 +9354,7 @@ impl Render for Shell {
                                     accounts: accounts_page,
                                     categories: categories_page,
                                     settings_categories: settings_categories_page,
+                                    settings_tags: settings_tags_page,
                                     payees: payees_page,
                                     tags: tags_page,
                                     bills: bills_page,
@@ -9699,6 +9798,8 @@ struct PageProps<'a> {
     categories: categories_view::CategoriesPageProps<'a>,
     /// Settings' own Categories page (2i), mounted only while Settings shows it.
     settings_categories: settings_view::categories::CategoriesPageProps<'a>,
+    /// Settings' own Tags page (2j), mounted only while Settings shows it.
+    settings_tags: settings_view::tags::TagsPageProps<'a>,
     payees: payees_view::PayeesPageProps<'a>,
     tags: tags_view::TagsPageProps<'a>,
     bills: bills_view::BillsPageProps<'a>,
@@ -9840,6 +9941,7 @@ fn render_view(
                         on_delete_click: pages.accounts.on_delete_click,
                     },
                     categories: pages.settings_categories,
+                    tags: pages.settings_tags,
                     date_style: settings.date_style,
                     row_density: settings.row_density,
                     status_glyphs: settings.status_glyphs,

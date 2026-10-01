@@ -17,6 +17,7 @@ pub mod edit_unit_dialog;
 mod general;
 pub mod institutions;
 pub mod sync_server;
+pub mod tags;
 pub mod tracing;
 pub mod units;
 
@@ -44,6 +45,7 @@ pub struct SettingsBodyProps<'a> {
     pub page_focused: bool,
     pub accounts: accounts::AccountsPageProps<'a>,
     pub categories: categories::CategoriesPageProps<'a>,
+    pub tags: tags::TagsPageProps<'a>,
     pub date_style: Option<DateStyle>,
     pub row_density: RowDensity,
     pub status_glyphs: StatusGlyphs,
@@ -164,7 +166,7 @@ fn section_block(
                     div()
                         .text_size(px(11.5))
                         .text_color(color::faint_text(cx))
-                        .child(scope_note(section, props)),
+                        .child(scope_meta(section, props, cx)),
                 ),
         )
         .child(
@@ -202,8 +204,16 @@ fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String
     }
 }
 
-/// Each page's content. Tags and Payees render a placeholder until their own
-/// tickets rebuild them as Settings pages.
+/// The heading's meta element: the plain scope note, except Tags, whose duplicate count is drawn
+/// in the accent text colour.
+fn scope_meta(section: SettingsSection, props: &SettingsBodyProps<'_>, cx: &App) -> AnyElement {
+    match section {
+        SettingsSection::Tags => tags::scope_note(props.tags.tags, props.tags.groups, cx),
+        other => scope_note(other, props).into_any_element(),
+    }
+}
+
+/// Each page's content. Payees renders a placeholder until its own ticket rebuilds it.
 fn section_content(
     section: SettingsSection,
     props: &SettingsBodyProps<'_>,
@@ -249,7 +259,8 @@ fn section_content(
         SettingsSection::Categories => {
             categories::render(&props.categories, props.page_focused, cx)
         }
-        SettingsSection::Tags | SettingsSection::Payees => placeholder(cx),
+        SettingsSection::Tags => tags::render(&props.tags, props.page_focused, cx),
+        SettingsSection::Payees => placeholder(cx),
         SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone(), cx),
         SettingsSection::DataBackup => data_backup::render(
             props.on_backup_now_click.clone(),

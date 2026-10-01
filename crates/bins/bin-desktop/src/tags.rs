@@ -333,6 +333,18 @@ pub fn sorted_by_usage<'a>(tags: &'a [Tag], transactions: &[Transaction]) -> Vec
     sorted
 }
 
+/// Tags A–Z, ignoring case: the Settings page's order (2j has no usage columns to rank by).
+pub fn sorted_by_name(tags: &[Tag]) -> Vec<&Tag> {
+    let mut sorted: Vec<&Tag> = tags.iter().collect();
+    sorted.sort_by(|a, b| {
+        a.name
+            .to_lowercase()
+            .cmp(&b.name.to_lowercase())
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    sorted
+}
+
 fn counts(tags: &[Tag], transactions: &[Transaction]) -> HashMap<u32, usize> {
     tags.iter()
         .map(|tag| (tag.id, transaction_count(transactions, tag.id)))
@@ -792,6 +804,18 @@ impl MergeTagsForm {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sorted_by_name_ignores_case() {
+        let tags = default_tags();
+        let names: Vec<String> = sorted_by_name(&tags)
+            .iter()
+            .map(|tag| tag.name.to_lowercase())
+            .collect();
+        let mut expected = names.clone();
+        expected.sort();
+        assert_eq!(names, expected);
+    }
+
     use lib_core::TransactionStatus;
 
     use super::*;

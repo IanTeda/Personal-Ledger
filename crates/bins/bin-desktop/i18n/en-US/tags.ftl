@@ -95,3 +95,9 @@ desktop-tags-merge-callout-no-colour = All <strong>{ $count ->
 desktop-tags-merge-choose = Choose the tag to merge and the tag to keep.
 desktop-tags-merge-submit = Merge into "{ $target }"
 desktop-tags-merge-submit-empty = Merge
+
+## The Settings page (2j): its kicker over the A–Z list and the row's direct merge action. The
+## heading's meta, Add button, row actions and footnote are the Tags page's own messages.
+
+desktop-settings-tags-kicker = a–z
+desktop-settings-tags-row-merge = merge
