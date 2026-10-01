@@ -83,7 +83,7 @@ PLAN        Bills g w · Budgets g b · Reports g r
 ### Index (canonical order)
 `General · Display · Units · Institutions · Accounts · Categories · Tags · Payees · Sync server · Data & backup · Tracing (Logs) · About`
 
-- **Rail chrome:** the filter box `/ filter` has wrapper padding `22px 12px 25.4px` plus a 2px rule. That padding aligns its rule with the page-heading rule.
+- **Rail chrome:** the search box `/ search` has wrapper padding `22px 12px 25.4px` plus a 2px rule. That padding aligns its rule with the page-heading rule.
 - **Index rows:** the `SETTINGS` label sits above the entries. Entries are `padding:8px 14px`; the active one is `background:#201e1d; color:#f3f2f2; 800`.
 - **Rail footer:** "preferences sync · configuration local".
 
@@ -173,7 +173,7 @@ fileExplorer
 settings
   page: General | Display | Units | Institutions | Accounts | Categories | Tags | Payees
       | SyncServer | DataBackup | Tracing | About
-  filterQuery: String             // filters the index only
+  searchQuery: String             // narrows the index only
   dialog: None | AddUnit | EditUnit(id) | DeleteUnit(id) | AddInstitution
         | AddAccount | EditAccount(id) | AddCategory(parent?) | AddTag | MergeTags(a,b) | AddPayee
   confirmInput: String
@@ -186,9 +186,9 @@ settings
 | `j` / `k` | Move to the next / previous row or field. |
 | `b` | Collapse / expand the rail. |
 | `:` | Command palette. |
-| `/` | Filter. |
+| `/` | Search. |
 | `?` | Help. |
-| `esc` | Close an overlay or clear the filter. |
+| `esc` | Close an overlay or clear the search. |
 | `e` / `d` / `n` | Edit / delete / new on list pages. |
 | `m` | Merge (Tags). |
 

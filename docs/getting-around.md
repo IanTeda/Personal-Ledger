@@ -54,7 +54,7 @@ Some commands are listed but aren't finished yet. If you run one, Personal Ledge
 
 ### 3. Find things with `/`
 
-Press `/` to start searching or filtering. In the terminal app this works on the Accounts, Payees and Tags screens. In the desktop app, the search box on the Transactions screen is the place to look, and more of it is on the way.
+Press `/` to start searching or filtering. In the terminal app this works on the Accounts, Payees and Tags screens. In the desktop app, Search narrows the Settings index (also `:settings search`) and the search box on the Transactions screen narrows its rows.
 
 ## Always know where you are
 

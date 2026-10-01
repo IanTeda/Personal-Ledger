@@ -51,7 +51,7 @@ pub enum KeyOutcome {
     /// `InputMode::Command` owns every keystroke -- hand off to `Shell::handle_palette_key`.
     DelegateToPalette,
     /// `InputMode::Search` owns every keystroke -- hand off to `Shell::handle_search_key`. Only
-    /// meaningful on the Settings noun today (its index rail's own `/ filter`,
+    /// meaningful on the Settings noun today (its index rail's own `/ search`,
     /// `docs/ux/desktop/Settings/README.md`'s "Navigation" bullet); `Shell::handle_search_key`
     /// is a no-op everywhere else, the same way `Swallowed` used to be for this mode outright.
     DelegateToSearch,

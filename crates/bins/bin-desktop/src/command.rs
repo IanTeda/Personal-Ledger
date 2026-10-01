@@ -41,6 +41,9 @@ pub enum CommandEffect {
     OpenSettingsPage(SettingsSection),
     /// Open the real "1e" file explorer dialog in this mode (`:open`/`:new`, issues #165/#167).
     OpenDialog(ExplorerMode),
+    /// `:settings search`: jumps to Settings and starts typing in the index Search box, the same
+    /// as `/` on the Settings index.
+    SearchSettings,
     /// `:close`: returns to the "1a" empty state, same as cold start.
     CloseLedger,
     /// An `accounts <verb> [<account name>]` command: `Shell::run_command` jumps to the Accounts
@@ -422,6 +425,13 @@ pub const COMMANDS: &[Command] = &[
         binding: Some("g s"),
         effect: CommandEffect::Navigate(Noun::Settings),
     },
+    Command {
+        name: "settings search",
+        domain: Domain::Settings,
+        description: crate::msg::desktop_command_settings_search_description,
+        binding: Some("/"),
+        effect: CommandEffect::SearchSettings,
+    },
     settings_page_command("settings general", SettingsSection::General),
     settings_page_command("settings display", SettingsSection::Display),
     settings_page_command("settings units", SettingsSection::Units),
@@ -648,6 +658,10 @@ mod tests {
     fn tags_merge_opens_the_merge_dialog() {
         let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
         assert_eq!(effect("tags merge"), Some(CommandEffect::MergeTags));
+        assert_eq!(
+            effect("settings search"),
+            Some(CommandEffect::SearchSettings)
+        );
     }
 
     #[test]

@@ -226,9 +226,9 @@ Settings in the Desktop app is paged: a list of pages down the left (the index) 
 
 Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work.
 
-- Press `g` `s` to open Settings with the index focused. `j` and `k` move through the index and the page follows. `/` filters the index.
+- Press `g` `s` to open Settings with the index focused. `j` and `k` move through the index and the page follows. `/` searches the index.
 - Press `l` to move into the open page and `h` to come back to the index. Page keys such as `e` (edit), `d` (delete), `n` (new), `x` (remove) and `m` (merge) only act while the page has focus.
-- `Esc` backs out one step at a time: a dialog or filter first, then the page back to the index.
+- `Esc` backs out one step at a time: a dialog or search first, then the page back to the index.
 - The page you last had open is remembered, so Settings reopens where you left it.
 
 ## Toasts

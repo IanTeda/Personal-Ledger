@@ -1,5 +1,5 @@
 //! The Settings index rail (`docs/ux/desktop/Settings/README.md`'s "2a resting state", "Settings
-//! index rail" component): a live-filtered list of the Settings pages, each entry swapping the
+//! index rail" component): a live-searched list of the Settings pages, each entry swapping the
 //! body to its own page. Deliberately **not** a reuse of `rail::context::ContextRail`'s "1c"
 //! pattern -- that rail is a flat record list with no page-index mode, so this is a separate
 //! mechanism (see issue #173's own ticket body).
@@ -19,9 +19,9 @@ pub type OnEntryClick = Rc<dyn Fn(SettingsSection, &mut Window, &mut App)>;
 #[derive(IntoElement)]
 pub struct SettingsIndexRail {
     selected: SettingsSection,
-    /// The live `/ filter` query -- filters entries only, the body's own sections stay mounted
+    /// The live `/ search` query -- narrows entries only, the body's own sections stay mounted
     /// regardless (README's "Navigation" bullet).
-    filter: String,
+    search: String,
     /// Whether keyboard focus is on the index rather than the page.
     focused: bool,
     on_click: OnEntryClick,
@@ -30,13 +30,13 @@ pub struct SettingsIndexRail {
 impl SettingsIndexRail {
     pub fn new(
         selected: SettingsSection,
-        filter: String,
+        search: String,
         focused: bool,
         on_click: OnEntryClick,
     ) -> Self {
         Self {
             selected,
-            filter,
+            search,
             focused,
             on_click,
         }
@@ -57,7 +57,7 @@ impl RenderOnce for SettingsIndexRail {
             .when(self.focused, |this| {
                 this.border_l(px(2.0)).border_color(color::foreground(cx))
             })
-            .child(filter_box(&self.filter, cx))
+            .child(search_box(&self.search, cx))
             .child(
                 div()
                     .flex_1()
@@ -71,7 +71,7 @@ impl RenderOnce for SettingsIndexRail {
                     .children(
                         SettingsSection::ALL
                             .into_iter()
-                            .filter(|section| section.matches_filter(&self.filter))
+                            .filter(|section| section.matches_search(&self.search))
                             .map(|section| {
                                 entry_row(
                                     section,
@@ -87,11 +87,11 @@ impl RenderOnce for SettingsIndexRail {
     }
 }
 
-/// `/ filter` box: `height:30px; min-height:30px; font-size:12.5px`, wrapper padding
+/// `/ search` box: `height:30px; min-height:30px; font-size:12.5px`, wrapper padding
 /// `22px 12px 25.4px` closed by a 2px rule -- tuned so that rule aligns with the one under the
 /// body's own "Settings" page heading (`docs/ux/desktop/Settings/README.md`'s "Layout" bullet
 /// and implementation note 5).
-fn filter_box(filter: &str, cx: &App) -> impl IntoElement {
+fn search_box(search: &str, cx: &App) -> impl IntoElement {
     div()
         .pt(px(22.0))
         .px(px(12.0))
@@ -109,15 +109,15 @@ fn filter_box(filter: &str, cx: &App) -> impl IntoElement {
                 .border_color(color::structural_rule(cx))
                 .text_size(px(12.5))
                 .child(div().text_color(color::faint_text(cx)).child("/ "))
-                .child(if filter.is_empty() {
+                .child(if search.is_empty() {
                     div()
                         .text_color(color::faint_text(cx))
-                        .child(crate::msg::desktop_hint_filter())
+                        .child(crate::msg::desktop_hint_search())
                         .into_any_element()
                 } else {
                     div()
                         .text_color(color::foreground(cx))
-                        .child(filter.to_string())
+                        .child(search.to_string())
                         .into_any_element()
                 }),
         )

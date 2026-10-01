@@ -2,7 +2,7 @@
 //! state" -- "Sections" table) -- `gpui`-free, the same "pure state, chrome renders it" split
 //! `nav.rs` uses between `NavState` and `Shell`'s render tree. `rail::settings_index::SettingsIndexRail`
 //! and `view::settings` are the chrome; this module only knows what pages exist, their index
-//! order, and their label/scope-note/filter text.
+//! order, and their label/scope-note/search text.
 
 use lib_core::DateStyle;
 
@@ -177,10 +177,10 @@ impl SettingsSection {
     }
 
     /// Whether this section's label contains `needle`, case-insensitively -- the index rail's
-    /// own `/ filter` (`docs/ux/desktop/Settings/README.md`'s "Navigation" bullet: "live
-    /// substring filter over the index entries only"). An empty needle matches everything, the
-    /// resting (unfiltered) state.
-    pub fn matches_filter(self, needle: &str) -> bool {
+    /// own `/ search` (`docs/ux/desktop/Settings/README.md`'s "Navigation" bullet: "live
+    /// substring search over the index entries only"). An empty needle matches everything, the
+    /// resting (unsearched) state.
+    pub fn matches_search(self, needle: &str) -> bool {
         needle.is_empty() || self.label().to_lowercase().contains(&needle.to_lowercase())
     }
 }
@@ -847,18 +847,18 @@ mod tests {
     }
 
     #[test]
-    fn empty_filter_matches_every_section() {
+    fn empty_search_matches_every_section() {
         for section in SettingsSection::ALL {
-            assert!(section.matches_filter(""));
+            assert!(section.matches_search(""));
         }
     }
 
     #[test]
-    fn filter_matches_case_insensitively_and_by_substring() {
+    fn search_matches_case_insensitively_and_by_substring() {
         crate::locale::init_for_tests();
-        assert!(SettingsSection::SyncServer.matches_filter("sync"));
-        assert!(SettingsSection::SyncServer.matches_filter("SYNC"));
-        assert!(!SettingsSection::SyncServer.matches_filter("units"));
+        assert!(SettingsSection::SyncServer.matches_search("sync"));
+        assert!(SettingsSection::SyncServer.matches_search("SYNC"));
+        assert!(!SettingsSection::SyncServer.matches_search("units"));
     }
 
     #[test]
