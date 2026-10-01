@@ -207,3 +207,29 @@ Settings pages are reachable from the palette (`:settings accounts`, etc.). One 
 - `styles.css`, `_ds_bundle.js` — Modernist tokens and components the reference loads.
 - `support.js` — runtime for viewing the reference.
 - `README.md` — this document.
+
+## Acceptance pass
+
+The closing walk of the [Desktop Shell Navigation and Paged Settings](https://github.com/IanTeda/Personal-Ledger/issues/413) map (#423), against frames 1a–1f, 2a, 2f–2o and dialogs 2c–2e, now that the regrouped rail (#420), the paged Settings surface (#415), the Accounts, Categories, Tags and Payees pages (#416–#419), the explorer filters (#421) and the per-focus legends (#424) have landed in `crates/bins/bin-desktop`. All data is stubbed and in-memory.
+
+### Verified by code review and tests
+
+This pass was **not** verified live: the sandbox it ran in has no GPU, so no frame was screenshotted. What it did check, against the code:
+
+- **Rail order and bindings** (`rail/primary.rs`, `nav.rs`): LEDGER, NET WORTH and PLAN list the canonical rows with the canonical `g` keys, Settings `g s` is pinned below the rule, and `g p`/`g t` no longer exist. `g c` is Cash.
+- **Settings index** (`settings.rs`): twelve entries in the canonical order, one page mounted at a time, scope notes per page, `:settings <page>` plus the `:accounts`/`:categories`/`:payees`/`:tags` aliases (`command.rs`), and a legacy persisted `Accounts` noun mapped to its Settings page (`persistence.rs`).
+- **Explorer filters** (`explorer.rs`): *only .pldb* defaults off and *hide hidden* defaults on, both persist, and both re-filter the list.
+- `cargo test -p bin_desktop` (671 tests) and `mise run lint` pass.
+
+### Deliberate departures from the handoff
+
+- **Notifications** is a fourth LEDGER row after Documents, bound `g a`. The handoff retires `g a`, but the map settled that a durable-notifications noun lands as a placeholder here (surface and model are a later map).
+- **Display** keeps Colour Theme, Toasts and "start with sidebar minimised", which 2f doesn't draw.
+- **Rail badges and context rails** for the moved nouns are gone; each Settings page's section-heading meta carries the count. The Dashboard's 1b "accounts at a glance" rail is kept, its jump target now Settings › Accounts.
+- **Payees** has no drawn frame; it follows the 2j pattern with name, default category, match rules and actions.
+- Letter-spacing, tabular figures and the `outline: 2px` focus ring are not reproduced (`gpui` 0.2 has no hook; the shell has one keyboard focus), as on the other desktop surfaces.
+
+### Still to do
+
+- A live walk of every frame (1a–1f, 2a, 2f–2o, 2c–2e) on a machine with a GPU, with the temporary keystroke injector and `grim`. Pages #415–#419 and #424 were each built and linted but not seen on screen.
+- The Dashboard 1b rail's contents, now that Accounts has no noun of its own, are still undecided.
