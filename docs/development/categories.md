@@ -68,6 +68,8 @@ Neither Client reads Categories from `lib-database` yet. Both render their own s
 
 The two stubs are independent and do not share a model. Desktop differs from TUI in depth (3 vs. unlimited), structure (flat keys vs. semantic roots), and data (12 fixed vs. dynamic fixture).
 
+> **Desktop navigation:** `Categories` is no longer a rail noun and has no `g` binding. The page is `view/settings/categories.rs`, mounted by the paged Settings surface (`SettingsSection::Categories`); the dialogs and models stay in `view/categories/`. It is reached from the Settings index, `:settings categories` or the `:categories` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
+
 ## Traceability
 
 Omitted: [categories.md](../categories.md) carries no requirement checklist yet, so there is nothing ticked to trace. Add the table here when `CAT-` requirements are written.

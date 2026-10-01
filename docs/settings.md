@@ -220,6 +220,17 @@ Example:
 log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 ```
 
+## The Settings screen in the Desktop app
+
+Settings in the Desktop app is paged: a list of pages down the left (the index) and one page open beside it. Choosing an entry swaps the page; nothing scrolls from one section into the next. The pages are General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Sync server, Data and backup, Tracing and About.
+
+Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work.
+
+- Press `g` `s` to open Settings with the index focused. `j` and `k` move through the index and the page follows. `/` filters the index.
+- Press `l` to move into the open page and `h` to come back to the index. Page keys such as `e` (edit), `d` (delete), `n` (new), `x` (remove) and `m` (merge) only act while the page has focus.
+- `Esc` backs out one step at a time: a dialog or filter first, then the page back to the index.
+- The page you last had open is remembered, so Settings reopens where you left it.
+
 ## Toasts
 
 A Toast is a short message in the bottom-right corner that tells you how something turned out, for example "Deleted tag Food". You can turn Toasts off from Settings: go to Display, where the Toasts row sits above the Colour Theme settings. In the Desktop app it's an On / Off switch; in the TUI, move to the row and press `Enter` to flip it. From the command box you can also run `toasts on` or `toasts off`.
@@ -326,7 +337,7 @@ The built-in defaults are:
 
 Individual bindings can be overridden by environment variable with the `PERSONAL_LEDGER_KEYBINDINGS__` prefix, e.g. `PERSONAL_LEDGER_KEYBINDINGS__BACK=ctrl+h` or `PERSONAL_LEDGER_KEYBINDINGS__SUPER_KEY=alt`.
 
-Note that the `g`-leader navigation grammar described in [navigation-design.md](navigation-design.md) (`g d` for the dashboard, `g a` for accounts, and so on) is the intended design, but neither Client reads its bindings from this section yet — `lib-config` parses and validates the section, and the bins still use their own hardcoded shortcuts.
+Note that the `g`-leader navigation grammar described in [navigation-design.md](navigation-design.md) (`g d` for the dashboard, `g b` for budgets, and so on) is the intended design, but neither Client reads its bindings from this section yet — `lib-config` parses and validates the section, and the bins still use their own hardcoded shortcuts.
 
 Example:
 

@@ -41,7 +41,7 @@ You start tracking finances with a new Personal Ledger. You create top-level cat
 
 ## Screens
 
-The Categories screen lists everything as a tree, with expenses in one section and income in another. Next to each category you see the monthly budget (or "no budget") and how much you've spent or received so far. If you've set a budget, a bar fills as you spend; going over turns it red. In the terminal app, press `g` then `c` to jump there. In the desktop app, use the menu or press `g` then `c`.
+The Categories screen lists everything as a tree, with expenses in one section and income in another. Next to each category you see the monthly budget (or "no budget") and how much you've spent or received so far. If you've set a budget, a bar fills as you spend; going over turns it red. In the terminal app, press `g` then `c` to jump there. In the desktop app, Categories is a page in Settings: press `g` then `s` and pick Categories, or run `:categories`. There the tree shows names and actions only; the monthly budget is set in the edit dialog.
 
 ## Tips
 
@@ -67,7 +67,7 @@ The Categories screen lists everything as a tree, with expenses in one section a
 
 | Go to | Terminal app | Desktop app |
 | --- | --- | --- |
-| Categories | `g` `c` | `g` `c` |
+| Categories | `g` `c` | Settings › Categories (`:categories`) |
 
 For the full set of keys, see [Getting around](getting-around.md).
 

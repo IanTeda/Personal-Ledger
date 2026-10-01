@@ -1,5 +1,8 @@
 # Handoff: Tags (screens 7a–7e)
 
+> **Superseded navigation (#413):** Tags is no longer a primary-rail noun, has no `g` binding, context rail or rail badge, and is not drawn as a full-width landing page. It is now a page in paged Settings, rebuilt as a reduced table (2j) in `view/settings/tags.rs`; this bundle's dialogs and models still apply. See the Settings handoff and "Where this differs from the handoff" in `docs/ux/desktop/README.md`. Any rail, badge, `g` key or wide-table description below is historical.
+
+
 ## Overview
 Tag management for the Personal Ledger desktop app. Tags are free-form, cross-cutting labels (no hierarchy, no budget) with a colour swatch. Screens: list, Add, Edit, Remove, and Merge (for folding typo-duplicates like `Shared` into `shared`).
 

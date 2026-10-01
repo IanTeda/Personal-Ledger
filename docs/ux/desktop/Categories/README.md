@@ -1,5 +1,8 @@
 # Handoff: Categories — Management View, Add / Edit / Delete
 
+> **Superseded navigation (#413):** Categories is no longer a primary-rail noun, has no `g` binding, context rail or rail badge, and is not drawn as a full-width landing page. It is now a page in paged Settings, rebuilt as a reduced table (2i) in `view/settings/categories.rs`; this bundle's dialogs and models still apply. See the Settings handoff and "Where this differs from the handoff" in `docs/ux/desktop/README.md`. Any rail, badge, `g` key or wide-table description below is historical.
+
+
 ## Overview
 This package covers **Personal Ledger's Categories** surface: the landing management table (a hierarchical tree, up to 3 levels deep, grouped by Expense/Income) and its Add, Edit and Delete modals. Four variants (5a–5d).
 

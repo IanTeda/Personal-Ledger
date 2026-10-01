@@ -37,7 +37,7 @@ You can only delete a payee that no transaction uses. Once a payee has transacti
 
 When recording a transaction, type the payee name and Personal Ledger creates it if it's new. To find transactions by payee, press `/` to search (the list narrows as you type) or press `f` to filter by payee. A chip at the top shows the filter is active; click its `✕` to clear it. The totals update to show spending with that payee over your current date range. To rename a payee, go to the Payees screen and edit it — your transactions all update to the new name automatically, and the old name is kept as an alias.
 
-In the desktop app, press `g` `p` to open the Payees screen. Move up and down the list with `j` and `k`, and press `enter` to see the selected payee's transactions. Press `n` to add a payee, `e` to edit the selected one, or `d` to delete or deactivate it. In the add and edit dialogs, type a match rule and press `enter` to add it (that adds the rule, it doesn't save the dialog), or click a rule's `✕` to remove it. Deleting asks you to type the payee's name first, so you can't delete one by accident.
+In the desktop app, open the Payees page in Settings (press `g` `s` and pick Payees, or run `:payees`). Move up and down the list with `j` and `k`, and press `enter` to see the selected payee's transactions. Press `n` to add a payee, `e` to edit the selected one, or `d` to delete or deactivate it. In the add and edit dialogs, type a match rule and press `enter` to add it (that adds the rule, it doesn't save the dialog), or click a rule's `✕` to remove it. Deleting asks you to type the payee's name first, so you can't delete one by accident.
 
 To import, type `:import` in the command box. Each statement line is shown with the payee and category it will get. Lines a match rule recognised are ready to go. For the rest, Personal Ledger suggests a tidied-up name as a new payee. Move to a line with `j` and `k`, press `p` to choose its payee or `c` to choose its category, or `n` to create the suggested payee. Lines still missing a payee or category are marked "needs review", and you can't continue until there are none. Press `r` to turn "remember new payees' rules for next time" on or off, `enter` to continue, or `esc` to go back to Transactions.
 
@@ -70,7 +70,7 @@ On the Transactions screen, the payee appears in its own column. The selected ro
 
 | Go to | Terminal app | Desktop app |
 | --- | --- | --- |
-| Payees | `g` `p` | `g` `p` |
+| Payees | `g` `p` | Settings › Payees (`:payees`) |
 
 For the full set of keys, see [Getting around](getting-around.md).
 

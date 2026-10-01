@@ -20,18 +20,27 @@ Here are the jump letters for each app:
 
 | Go to | Terminal app | Desktop app |
 | --- | --- | --- |
-| Accounts | `g` `a` | `g` `a` |
+| Accounts | `g` `a` | Settings › Accounts (`:accounts`) |
 | Budgets | `g` `b` | `g` `b` |
-| Categories | `g` `c` | `g` `c` |
+| Categories | `g` `c` | Settings › Categories (`:categories`) |
 | Dashboard | `g` `d` | `g` `d` |
-| Payees | `g` `p` | `g` `p` |
+| Payees | `g` `p` | Settings › Payees (`:payees`) |
 | Reports | `g` `r` | `g` `r` |
 | Settings | `g` `s` | `g` `s` |
-| Tags | `g` `g` | `g` `t` |
+| Tags | `g` `g` | Settings › Tags (`:tags`) |
 | Transactions | `g` `t` | `g` `l` |
-| Units | `g` `u` | not in the desktop app yet |
+| Units | `g` `u` | Settings › Units (`:settings units`) |
 | Balance checks | `g` `k` | not in the desktop app yet |
 | Bills | not in the terminal app yet | `g` `w` |
+| Documents | not in the terminal app yet | `g` `f` (not yet built) |
+| Notifications | not in the terminal app yet | `g` `a` (not yet built) |
+| Cash | not in the terminal app yet | `g` `c` (not yet built) |
+| Inventory | not in the terminal app yet | `g` `o` (not yet built) |
+| Loans | not in the terminal app yet | `g` `n` (not yet built) |
+| Credit cards | not in the terminal app yet | `g` `k` (not yet built) |
+| Investments | not in the terminal app yet | `g` `i` (not yet built) |
+
+In the desktop app, Accounts, Categories, Payees and Tags no longer have a screen of their own or a `g` key: they are pages inside Settings. Typing `:accounts`, `:categories`, `:payees` or `:tags` still takes you to the right page, and `:settings` followed by a page name (such as `:settings tags`) opens any Settings page directly. The screens marked "not yet built" respond to their key and tell you so.
 
 The two apps don't share every screen yet, and Tags and Transactions use different letters in each one. We'd like them to match eventually.
 

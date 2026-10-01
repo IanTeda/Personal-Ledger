@@ -81,6 +81,8 @@ Neither Client reads Payees from `lib-database`.
   - `src/shell.rs` — `handle_payees_key` (`n`/`e`/`d`), `handle_import_key`, and `enter` on a Payee row opening Transactions filtered by Payee id (mirrors `open_category_transactions`).
   - Messages in `i18n/en-US/payees.ftl` and `import.ftl`.
 
+> **Desktop navigation:** `Payees` is no longer a rail noun and has no `g` binding. The page is `view/settings/payees.rs`, mounted by the paged Settings surface (`SettingsSection::Payees`); the dialogs and models stay in `view/payees/`. It is reached from the Settings index, `:settings payees` or the `:payees` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
+
 ## Traceability
 
 Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live in `crates/bins/bin-tui/src/view/payees.rs` and `src/payee/`.

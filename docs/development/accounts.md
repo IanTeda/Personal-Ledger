@@ -165,3 +165,6 @@ This document captures the entity and mechanism *shape* agreed so far — it is 
 - Cost basis, realised/unrealised capital gains, market value, and dividends for Investment Account — all blocked on a pricing mechanism Personal Ledger doesn't have yet.
 - Trade's exact fields (fees, partial fills, dividend reinvestment).
 - Any dedicated screens/views for Loan Account, Investment Account, or Credit Card Account in the TUI or desktop app.
+
+> **Desktop navigation:** `Accounts` is no longer a rail noun and has no `g` binding. The page is `view/settings/accounts.rs`, mounted by the paged Settings surface (`SettingsSection::Accounts`); the dialogs and models stay in `view/accounts/`. It is reached from the Settings index, `:settings accounts` or the `:accounts` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
+

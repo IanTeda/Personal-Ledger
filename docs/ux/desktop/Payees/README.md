@@ -1,5 +1,8 @@
 # Handoff: Payees (screens 6a–6e)
 
+> **Superseded navigation (#413):** Payees is no longer a primary-rail noun, has no `g` binding, context rail or rail badge, and is not drawn as a full-width landing page. It is now a page in paged Settings, rebuilt as a reduced table (2j pattern) in `view/settings/payees.rs`; this bundle's dialogs and models still apply. See the Settings handoff and "Where this differs from the handoff" in `docs/ux/desktop/README.md`. Any rail, badge, `g` key or wide-table description below is historical.
+
+
 ## Overview
 Payee management for the Personal Ledger desktop app: a flat list of payees, Add / Edit / Delete dialogs, and the payee-matching step of bank-statement import. Each payee has an optional **default category** (auto-fills new transactions) and a set of **match rules** (raw statement strings that map to this payee on import).
 

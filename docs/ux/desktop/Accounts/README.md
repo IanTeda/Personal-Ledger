@@ -1,5 +1,8 @@
 # Handoff: Accounts Surface
 
+> **Superseded navigation (#413):** Accounts is no longer a primary-rail noun, has no `g` binding, context rail or rail badge, and is not drawn as a full-width landing page. It is now a page in paged Settings, rebuilt as a reduced table (2o) in `view/settings/accounts.rs`; this bundle's dialogs and models still apply. See the Settings handoff and "Where this differs from the handoff" in `docs/ux/desktop/README.md`. Any rail, badge, `g` key or wide-table description below is historical.
+
+
 ## Overview
 This package contains the design for **Personal Ledger's Accounts management surface** — the full-width landing page for the Accounts section, and the three dialogs that create, edit, and retire accounts. Four variants (3a–3d) cover the resting state and each dialog.
 

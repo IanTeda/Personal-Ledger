@@ -65,7 +65,7 @@ You open Personal Ledger on the 15th of September and decide to set up your acco
 
 ## Screens
 
-Personal Ledger shows accounts on a list with their balances, filterable by kind (Transaction, Credit Card, Loan, Investment) and active status. In the terminal app, press `g` then `a` to jump there. In the desktop app, use the menu or press `g` then `a`. The two apps show the same data but may have different layouts for editing and viewing details.
+Personal Ledger shows accounts on a list with their balances, filterable by kind (Transaction, Credit Card, Loan, Investment) and active status. In the terminal app, press `g` then `a` to jump there. In the desktop app, Accounts is a page in Settings: press `g` then `s` and pick Accounts, or run `:accounts`. The desktop page groups accounts by type in a compact table; press `enter` on an account to open its transactions. The two apps show the same data but may have different layouts for editing and viewing details.
 
 ## Rules to know
 
@@ -91,7 +91,7 @@ Personal Ledger shows accounts on a list with their balances, filterable by kind
 
 | Go to | Terminal app | Desktop app |
 | --- | --- | --- |
-| Accounts | `g` `a` | `g` `a` |
+| Accounts | `g` `a` | Settings › Accounts (`:accounts`) |
 
 For the full set of keys, see [Getting around](getting-around.md).
 

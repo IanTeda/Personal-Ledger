@@ -48,8 +48,9 @@ struct NavState {
     mode: InputMode,             // Normal | Insert | Command | Search
 }
 
-enum Noun { Dashboard, Transactions, Accounts, Categories, Payees,
-            Tags, Bills, Budgets, Reports, Settings }
+enum Noun { Dashboard, Transactions, Documents, Notifications,
+            Cash, Inventory, Loans, CreditCards, Investments,
+            Bills, Budgets, Reports, Settings }
 
 enum FocusZone { PrimaryRail, ContextRail, View }
 ```
@@ -72,7 +73,7 @@ Transition rules, restated from the handoff's numbered list:
 Checked in this order, a key that means something at a higher tier always wins:
 
 1. Mode transitions are global and pre-empt everything below: `:` opens the command palette (`Command` mode), `/` searches the active view (`Search` mode), `a` opens the transaction-entry dialog (`Insert` mode), `?` opens the help overlay, `Esc` leaves the current mode, dismisses an overlay, or clears a pending `g` prefix (in that precedence).
-2. `g` then a letter jumps directly to a noun: `g d` Dashboard, `g l` Transactions, `g a` Accounts, `g c` Categories, `g p` Payees, `g t` Tags, `g w` Bills, `g b` Budgets, `g r` Reports, `g s` Settings. Transactions moved off `g t` onto `g l` to free `t` for the newer Tags noun (see "Where this differs from the handoff"). An unbound completion is a silent no-op that clears the pending prefix and flashes the hint strip. The pending-prefix window is 1000ms.
+2. `g` then a letter jumps directly to a noun: LEDGER `g d` Dashboard, `g l` Transactions, `g f` Documents, `g a` Notifications; NET WORTH `g c` Cash, `g o` Inventory, `g n` Loans, `g k` Credit cards, `g i` Investments; PLAN `g w` Bills, `g b` Budgets, `g r` Reports; and `g s` Settings, pinned below the groups. Accounts, Categories, Payees and Tags have no `g` key: they are Settings pages (their `:accounts`, `:categories`, `:payees` and `:tags` commands remain as aliases, and `:settings <page>` opens any page). An unbound completion is a silent no-op that clears the pending prefix and flashes the hint strip. The pending-prefix window is 1000ms.
 3. `b` toggles the primary rail between Expanded and Collapsed, preserving focus and selection either way.
 4. `Tab` / `Shift-Tab` cycle `FocusZone` forward/back, skipping empty zones.
 5. Within the focused zone: `j`/`k` or `Down`/`Up` move one row, `gg`/`G` jump to first/last, `Ctrl-d`/`Ctrl-u` move a half-page, `Enter` activates (on the primary rail this also moves focus to `View`; on the context rail it doesn't move focus).
@@ -136,3 +137,9 @@ Restated from the handoff, unchanged — these are what "the shell is built" mea
 ### Not yet built
 
 `?`'s help overlay (issue #169) is built: a read-only `InputMode::Help` overlay on `dialog.rs`'s chrome laid out as an About card: project facts and links on the left, the `g` jumps and global shortcuts on the right, a Close button in the footer (`help.rs` holds the content). Every noun besides `Dashboard`, `Settings`, `Accounts`, `Categories` and `Transactions` still renders `render_view`'s generic `"{noun:?} -- not yet built"` placeholder and `ContextRail`'s own placeholder frame — each noun's real view interior is separate future work, per-noun, out of this map's scope (issue #144's "Out of scope"). The `docs/ux/desktop/Settings/` handoff bundle (the `Settings` noun's own eight-section surface and four modals) has since fully landed against `crates/bins/bin-desktop/src/view/settings/` — see that bundle's own `README.md` and its "Acceptance pass" section (issue #172's map, closed out by issue #188). The `docs/ux/desktop/Accounts/` handoff (the `Accounts` noun's grouped management page and its Add, Edit and Delete dialogs) has likewise landed against `crates/bins/bin-desktop/src/view/accounts/` on stubbed in-memory data (issue #190's map) — see that bundle's own `README.md`. The `docs/ux/desktop/Transactions/` handoff (the cross-account table, its filter chips and popover) has landed the same way (issue #199's map, closed out by its own acceptance pass), and the Accounts page's `enter` / row click now opens it filtered to that account. The `docs/ux/desktop/Categories/` handoff (the Categories noun's hierarchical management table and its Add, Edit and Delete dialogs) has likewise landed on stubbed in-memory data (issue #269's map, closed out by its own acceptance pass).
+
+- **The rail was regrouped and paged Settings added (map #413).** The handoff was refreshed again: the primary rail is now LEDGER (Dashboard, Transactions, Documents, Notifications), NET WORTH (Cash, Inventory, Loans, Credit cards, Investments) and PLAN (Bills, Budgets, Reports), with Settings pinned below. The new nouns are "not yet built" placeholders with live `g` bindings. Accounts, Categories, Payees and Tags left the rail (with their `g` keys, context rails and count badges) and became Settings pages built as reduced tables; where a persisted state names a removed noun it loads as its Settings page. Only Dashboard, Bills, Budgets and Reports now have context entities (`Noun::has_context_entities`), so the earlier "Accounts has no context rail" departure no longer applies.
+- **Settings is paged.** Each of its 12 index entries mounts its own page (no scroll between sections); `h`/`l` move focus between the index and the page, `j`/`k` on the index swap pages, and the last-visited page persists. See `docs/ux/desktop/Settings/README.md` and `docs/settings.md`.
+- **The `:open` file explorer (1e)** has *only .pldb* and *hide hidden* filters.
+- **Display keeps extra Preferences** (Colour Theme, Toasts, "start with sidebar minimised") beyond what frame 2f draws.
+- **Notifications** means durable notifications, not the Toast history; only its placeholder exists.

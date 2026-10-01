@@ -26,7 +26,7 @@ Every transaction has exactly one category, but real life is messier. A trip to 
 
 Add tags to a transaction as you record it, or edit them later. Type the tag name and Personal Ledger creates it if it's new — it remembers tags you've used before so you can reuse them without retyping. To find transactions by tag, press `f` to open the filter box and type into the Tag field. A chip at the top shows the filter is active. Combine tags with other filters (account, category, date range) in one go. The totals update to show spending for that tag over your current date range.
 
-In the desktop app, the Tags screen (`g` `t`) is where you look after the tags themselves. Press `n` to add one, `e` to edit the selected tag, `x` to remove it and `m` to merge it into another. Press `enter` to see the transactions that carry it. Renaming or recolouring a tag changes it everywhere at once, because transactions refer to the tag rather than copying its name. If two tags look like duplicates (which can happen when data comes in from elsewhere), the screen flags them and offers to merge them.
+In the desktop app, the Tags page in Settings (press `g` `s` and pick Tags, or run `:tags`) is where you look after the tags themselves. Press `n` to add one, `e` to edit the selected tag, `x` to remove it and `m` to merge it into another. Press `enter` to see the transactions that carry it. Renaming or recolouring a tag changes it everywhere at once, because transactions refer to the tag rather than copying its name. If two tags look like duplicates (which can happen when data comes in from elsewhere), the screen flags them and offers to merge them.
 
 ## Worked example
 
@@ -75,7 +75,7 @@ The Add and Edit dialogs ask for a name and an optional colour: pick none, one o
 
 | Go to | Terminal app | Desktop app |
 | --- | --- | --- |
-| Tags | `g` `g` | `g` `t` |
+| Tags | `g` `g` | Settings › Tags (`:tags`) |
 
 For the full set of keys, see [Getting around](getting-around.md).
 
