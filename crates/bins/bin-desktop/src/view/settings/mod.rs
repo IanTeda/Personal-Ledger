@@ -8,6 +8,7 @@ mod about;
 pub mod accounts;
 pub mod add_institution_dialog;
 pub mod add_unit_dialog;
+pub mod categories;
 pub mod colour_theme;
 pub mod data_backup;
 pub mod delete_unit_dialog;
@@ -42,6 +43,7 @@ pub struct SettingsBodyProps<'a> {
     /// Whether the page (not the index) holds keyboard focus.
     pub page_focused: bool,
     pub accounts: accounts::AccountsPageProps<'a>,
+    pub categories: categories::CategoriesPageProps<'a>,
     pub date_style: Option<DateStyle>,
     pub row_density: RowDensity,
     pub status_glyphs: StatusGlyphs,
@@ -195,11 +197,12 @@ fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String
         SettingsSection::Accounts => {
             accounts::scope_note(props.accounts.accounts, props.accounts.units)
         }
+        SettingsSection::Categories => categories::scope_note(props.categories.categories),
         other => other.scope_note(),
     }
 }
 
-/// Each page's content. Categories, Tags and Payees render a placeholder until their own
+/// Each page's content. Tags and Payees render a placeholder until their own
 /// tickets rebuild them as Settings pages.
 fn section_content(
     section: SettingsSection,
@@ -243,9 +246,10 @@ fn section_content(
             cx,
         ),
         SettingsSection::Accounts => accounts::render(&props.accounts, props.page_focused, cx),
-        SettingsSection::Categories | SettingsSection::Tags | SettingsSection::Payees => {
-            placeholder(cx)
+        SettingsSection::Categories => {
+            categories::render(&props.categories, props.page_focused, cx)
         }
+        SettingsSection::Tags | SettingsSection::Payees => placeholder(cx),
         SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone(), cx),
         SettingsSection::DataBackup => data_backup::render(
             props.on_backup_now_click.clone(),

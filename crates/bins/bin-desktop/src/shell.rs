@@ -123,6 +123,8 @@ const VIEW_LINE_STEP: f32 = 40.0;
 
 /// `Ctrl-d`/`Ctrl-u` on the Accounts page: half of a typical screenful of rows.
 const ACCOUNTS_HALF_PAGE: isize = 5;
+/// `Ctrl-d`/`Ctrl-u` on the Settings Categories page: rows per half page.
+const CATEGORIES_HALF_PAGE: usize = 5;
 
 /// The Payees page's status-line legend (`docs/ux/desktop/Payees/README.md`'s 6a), as `(key, action)`.
 fn payees_hints() -> Vec<(&'static str, String)> {
@@ -378,6 +380,18 @@ fn accounts_hints() -> Vec<(&'static str, String)> {
         ("e", crate::msg::desktop_hint_edit()),
         ("d", crate::msg::desktop_hint_delete()),
         ("n", crate::msg::desktop_hint_new()),
+    ]
+}
+
+/// The Settings Categories page's status-line legend (2i's keys), as `(key, action)`.
+fn settings_categories_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("\u{2192}/\u{2190}", crate::msg::desktop_hint_expand()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("d", crate::msg::desktop_hint_delete()),
+        ("n", crate::msg::desktop_hint_new()),
+        ("N", crate::msg::desktop_hint_sub()),
     ]
 }
 
@@ -1303,6 +1317,14 @@ impl Shell {
                 }
                 true
             }
+            // `left` on the Categories tree collapses or climbs first; only a top-level row with
+            // nothing to fold hands it back to the index. `h` always leaves.
+            (SettingsFocus::Page, "left")
+                if self.settings_categories_page_has_focus()
+                    && self.settings_categories_left_is_local() =>
+            {
+                false
+            }
             (SettingsFocus::Page, "h" | "left") if self.colour_theme_focus.is_none() => {
                 self.status_message = None;
                 self.focus_settings_index();
@@ -1389,6 +1411,10 @@ impl Shell {
     fn apply_view_movement(&mut self, movement: Movement) {
         if self.accounts_page_has_focus() {
             self.apply_accounts_movement(movement);
+            return;
+        }
+        if self.settings_categories_page_has_focus() {
+            self.apply_settings_categories_movement(movement);
             return;
         }
         if self.nav.noun() == Noun::Transactions {
@@ -1992,6 +2018,85 @@ impl Shell {
         }
     }
 
+    /// Whether Settings' Categories tree owns the keyboard: the page, not the index, has focus.
+    fn settings_categories_page_has_focus(&self) -> bool {
+        self.nav.noun() == Noun::Settings
+            && self.nav.focus() == FocusZone::View
+            && self.settings_focus == SettingsFocus::Page
+            && self.settings_selected_section == SettingsSection::Categories
+    }
+
+    /// Whether `left` has something to do inside the Categories tree: fold an open parent, or
+    /// climb from a nested row to its parent.
+    fn settings_categories_left_is_local(&self) -> bool {
+        let Some(id) = self.categories_selected_id else {
+            return false;
+        };
+        let open_parent =
+            self.categories_expanded.contains(&id) && !categories::is_leaf(&self.categories, id);
+        open_parent
+            || self
+                .categories
+                .iter()
+                .any(|category| category.id == id && category.parent.is_some())
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the Categories tree's visible rows, Expense then
+    /// Income. With no row selected (or the selected one folded away) the first press lands on
+    /// the first row.
+    fn apply_settings_categories_movement(&mut self, movement: Movement) {
+        let rows = categories::settings_rows(&self.categories, &self.categories_expanded);
+        let Some(last) = rows.len().checked_sub(1) else {
+            return;
+        };
+        let current = self
+            .categories_selected_id
+            .and_then(|id| rows.iter().position(|row| row.id == id));
+        let next = match movement {
+            Movement::Next => current.map_or(0, |index| (index + 1).min(last)),
+            Movement::Prev => current.map_or(0, |index| index.saturating_sub(1)),
+            Movement::First => 0,
+            Movement::Last => last,
+            Movement::HalfPageDown => {
+                current.map_or(0, |index| (index + CATEGORIES_HALF_PAGE).min(last))
+            }
+            Movement::HalfPageUp => {
+                current.map_or(0, |index| index.saturating_sub(CATEGORIES_HALF_PAGE))
+            }
+            Movement::Enter => return,
+        };
+        self.categories_selected_id = rows.get(next).map(|row| row.id);
+    }
+
+    /// `right`: opens a folded parent, or steps into an open one's first child. `left`: folds an
+    /// open parent, or climbs to the parent of a nested row.
+    fn step_settings_categories_fold(&mut self, forward: bool) {
+        let Some(id) = self.categories_selected_id else {
+            return;
+        };
+        let is_parent = !categories::is_leaf(&self.categories, id);
+        let open = self.categories_expanded.contains(&id);
+        if forward {
+            if !is_parent {
+                return;
+            }
+            if open {
+                self.apply_settings_categories_movement(Movement::Next);
+            } else {
+                self.categories_expanded.push(id);
+            }
+        } else if is_parent && open {
+            self.categories_expanded.retain(|&other| other != id);
+        } else if let Some(parent) = self
+            .categories
+            .iter()
+            .find(|category| category.id == id)
+            .and_then(|category| category.parent)
+        {
+            self.categories_selected_id = Some(parent);
+        }
+    }
+
     /// The selected account's index in [`Self::accounts`], `None` when there are none. The stored
     /// position is clamped, so removing accounts can never leave it pointing past the end.
     fn selected_account_index(&self) -> Option<usize> {
@@ -2080,7 +2185,10 @@ impl Shell {
     /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it,
     /// `enter` opens Transactions filtered to the selected category.
     fn handle_categories_key(&mut self, keystroke: &Keystroke) -> bool {
-        if self.nav.noun() != Noun::Categories || self.nav.focus() != FocusZone::View {
+        let on_settings_page = self.settings_categories_page_has_focus();
+        if !on_settings_page
+            && (self.nav.noun() != Noun::Categories || self.nav.focus() != FocusZone::View)
+        {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -2127,10 +2235,15 @@ impl Shell {
                 }
                 true
             }
-            "enter" => {
+            // Settings' tree has no ledger hand-off: `enter` is the standalone page's only.
+            "enter" if !on_settings_page => {
                 if let Some(category) = selected_category {
                     self.open_category_transactions(category.id);
                 }
+                true
+            }
+            "right" | "left" if on_settings_page => {
+                self.step_settings_categories_fold(keystroke.key == "right");
                 true
             }
             _ => false,
@@ -7040,6 +7153,13 @@ impl Shell {
         cx.notify();
     }
 
+    /// A click on a row of Settings' Categories tree: selects it and moves focus into the page.
+    fn handle_settings_categories_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.categories_selected_id = Some(id);
+        self.focus_settings_page();
+        cx.notify();
+    }
+
     /// A click on a category row: selects it and opens Transactions filtered to that category.
     fn handle_categories_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.categories_selected_id = Some(id);
@@ -8643,6 +8763,25 @@ impl Render for Shell {
                 on_known_click: plain(Shell::handle_budgets_known_click),
             }
         });
+        let on_settings_categories_row_click: categories_view::OnRowClick = {
+            let entity = entity.clone();
+            Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_settings_categories_row_click(id, cx)
+                });
+            })
+        };
+        let settings_categories_page = settings_view::categories::CategoriesPageProps {
+            categories: &self.categories,
+            expanded: &self.categories_expanded,
+            selected: self.categories_selected_id,
+            on_add_click: on_categories_add_click.clone(),
+            on_add_sub_click: on_categories_add_sub_click.clone(),
+            on_edit_click: on_categories_edit_click.clone(),
+            on_delete_click: on_categories_delete_click.clone(),
+            on_disclosure_click: on_categories_disclosure_click.clone(),
+            on_row_click: on_settings_categories_row_click,
+        };
         let categories_page = categories_view::CategoriesPageProps {
             categories: &self.categories,
             budgets: &self.budgets,
@@ -8859,6 +8998,10 @@ impl Render for Shell {
                 right: crate::msg::desktop_accounts_count(
                     i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
                 ),
+            }),
+            Noun::Settings if self.settings_categories_page_has_focus() => Some(PageStatus {
+                hints: settings_categories_hints(),
+                right: settings_view::categories::scope_note(&self.categories),
             }),
             Noun::Accounts => Some(PageStatus {
                 hints: accounts_hints(),
@@ -9112,6 +9255,7 @@ impl Render for Shell {
                                     dashboard,
                                     accounts: accounts_page,
                                     categories: categories_page,
+                                    settings_categories: settings_categories_page,
                                     payees: payees_page,
                                     tags: tags_page,
                                     bills: bills_page,
@@ -9553,6 +9697,8 @@ struct PageProps<'a> {
     dashboard: Dashboard,
     accounts: accounts_view::AccountsPageProps<'a>,
     categories: categories_view::CategoriesPageProps<'a>,
+    /// Settings' own Categories page (2i), mounted only while Settings shows it.
+    settings_categories: settings_view::categories::CategoriesPageProps<'a>,
     payees: payees_view::PayeesPageProps<'a>,
     tags: tags_view::TagsPageProps<'a>,
     bills: bills_view::BillsPageProps<'a>,
@@ -9693,6 +9839,7 @@ fn render_view(
                         on_edit_click: pages.accounts.on_edit_click,
                         on_delete_click: pages.accounts.on_delete_click,
                     },
+                    categories: pages.settings_categories,
                     date_style: settings.date_style,
                     row_density: settings.row_density,
                     status_glyphs: settings.status_glyphs,

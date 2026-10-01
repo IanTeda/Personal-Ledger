@@ -589,6 +589,32 @@ pub fn toggle_expanded(expanded: &mut Vec<u32>, id: u32, is_leaf: bool) {
     }
 }
 
+/// The Settings page's visible rows, top to bottom: the Expense tree, then the Income tree, each
+/// in tree order and respecting `expanded`. `j`/`k` walk exactly this list.
+pub fn settings_rows(categories: &[Category], expanded: &[u32]) -> Vec<TreeNode> {
+    let rows = tree_rows(categories, expanded);
+    let is_expense = |row: &TreeNode| {
+        get(categories, row.id).is_some_and(|c| c.category_type == CategoryTypes::Expense)
+    };
+    let mut ordered: Vec<TreeNode> = rows.iter().filter(|r| is_expense(r)).cloned().collect();
+    ordered.extend(rows.iter().filter(|r| !is_expense(r)).cloned());
+    ordered
+}
+
+/// How many levels the tree runs to: a lone top-level Category is one level.
+pub fn levels_deep(categories: &[Category]) -> u32 {
+    categories
+        .iter()
+        .map(|c| depth(categories, c.id) + 1)
+        .max()
+        .unwrap_or(0)
+}
+
+/// How many Categories sit directly under `id`.
+pub fn child_count(categories: &[Category], id: u32) -> usize {
+    categories.iter().filter(|c| c.parent == Some(id)).count()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -932,5 +958,51 @@ mod tests {
             !expanded.contains(&groceries),
             "leaves should not be expanded"
         );
+    }
+
+    #[test]
+    fn settings_rows_list_expense_before_income_and_skip_collapsed_children() {
+        let categories = default_categories();
+        let names = |expanded: &[u32]| -> Vec<String> {
+            settings_rows(&categories, expanded)
+                .into_iter()
+                .map(|row| row.name)
+                .collect()
+        };
+        assert_eq!(
+            names(&[]),
+            [
+                "Housing",
+                "Food",
+                "Transport",
+                "Household",
+                "Salary",
+                "Interest"
+            ]
+        );
+        assert_eq!(
+            names(&[1, 3]),
+            [
+                "Housing",
+                "Rent",
+                "Utilities",
+                "Electricity",
+                "Water",
+                "Food",
+                "Transport",
+                "Household",
+                "Salary",
+                "Interest"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_seed_is_three_levels_deep_and_housing_has_two_children() {
+        let categories = default_categories();
+        assert_eq!(levels_deep(&categories), 3);
+        assert_eq!(levels_deep(&[]), 0);
+        assert_eq!(child_count(&categories, 1), 2);
+        assert_eq!(child_count(&categories, 2), 0);
     }
 }
