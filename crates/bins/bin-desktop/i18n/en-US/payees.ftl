@@ -87,3 +87,8 @@ desktop-payees-reactivate-warning = This payee is inactive and used by <strong>{
 }</strong>.
 desktop-payees-reactivate-callout = Reactivating counts it again and its match rules match on import again.
 desktop-payees-delete-confirm-label = Type { $name } to confirm
+
+## The Settings page: its kicker over the A–Z list. The heading's meta, Add button, row actions and
+## footnote are the Payees page's own messages.
+
+desktop-settings-payees-kicker = a–z

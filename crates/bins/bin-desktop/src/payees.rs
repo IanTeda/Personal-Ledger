@@ -336,6 +336,18 @@ pub fn usage(
 }
 
 /// Active Payees: the sidebar badge and the "N payees" figure.
+/// Payees A–Z, ignoring case: the Settings page's order (it has no usage columns to rank by).
+pub fn sorted_by_name(payees: &[Payee]) -> Vec<&Payee> {
+    let mut sorted: Vec<&Payee> = payees.iter().collect();
+    sorted.sort_by(|a, b| {
+        a.name
+            .to_lowercase()
+            .cmp(&b.name.to_lowercase())
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    sorted
+}
+
 pub fn active_count(payees: &[Payee]) -> usize {
     payees.iter().filter(|p| p.is_active).count()
 }

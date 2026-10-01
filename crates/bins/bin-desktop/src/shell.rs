@@ -127,6 +127,8 @@ const ACCOUNTS_HALF_PAGE: isize = 5;
 const CATEGORIES_HALF_PAGE: usize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Tags page: rows per half page.
 const SETTINGS_TAGS_HALF_PAGE: isize = 5;
+/// `Ctrl-d`/`Ctrl-u` on the Settings Payees page: rows per half page.
+const SETTINGS_PAYEES_HALF_PAGE: isize = 5;
 
 /// The Payees page's status-line legend (`docs/ux/desktop/Payees/README.md`'s 6a), as `(key, action)`.
 fn payees_hints() -> Vec<(&'static str, String)> {
@@ -148,6 +150,17 @@ fn tags_hints() -> Vec<(&'static str, String)> {
         ("e", crate::msg::desktop_hint_edit()),
         ("x", crate::msg::desktop_hint_remove()),
         ("m", crate::msg::desktop_hint_merge()),
+        ("n", crate::msg::desktop_hint_new()),
+    ]
+}
+
+/// The Settings Payees page's status-line legend: the Payees page's keys without the Transactions
+/// hand-off, which stays on the old page.
+fn settings_payees_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("d", crate::msg::desktop_hint_delete()),
         ("n", crate::msg::desktop_hint_new()),
     ]
 }
@@ -604,6 +617,8 @@ pub struct Shell {
     payees: Vec<Payee>,
     /// The selected row on the Payees page.
     payees_selected: usize,
+    /// The selected row on Settings' Payees page, by Payee id: that page lists A–Z.
+    settings_payees_selected: Option<u32>,
     /// The currently open Payees dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
     /// exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
     payees_dialog: Option<payees::PayeesDialog>,
@@ -742,6 +757,7 @@ impl Shell {
             categories_dialog: None,
             payees,
             payees_selected: 0,
+            settings_payees_selected: None,
             payees_dialog: None,
             import: None,
             tags,
@@ -1437,6 +1453,10 @@ impl Shell {
             self.apply_settings_tags_movement(movement);
             return;
         }
+        if self.settings_payees_page_has_focus() {
+            self.apply_settings_payees_movement(movement);
+            return;
+        }
         if self.nav.noun() == Noun::Transactions {
             self.apply_transactions_movement(movement);
             return;
@@ -2077,6 +2097,47 @@ impl Shell {
             Movement::Enter => return,
         };
         self.settings_tags_selected = sorted.get(next).map(|tag| tag.id);
+    }
+
+    /// Whether Settings' Payees list owns the keyboard: the page, not the index, has focus.
+    fn settings_payees_page_has_focus(&self) -> bool {
+        self.nav.noun() == Noun::Settings
+            && self.nav.focus() == FocusZone::View
+            && self.settings_focus == SettingsFocus::Page
+            && self.settings_selected_section == SettingsSection::Payees
+    }
+
+    /// The Settings Payees page's selected Payee: the stored id while it still exists, else the
+    /// first row, so a deleted Payee never leaves the page with nothing under the cursor.
+    fn settings_payees_selected_id(&self) -> Option<u32> {
+        let sorted = payees::sorted_by_name(&self.payees);
+        self.settings_payees_selected
+            .filter(|id| sorted.iter().any(|payee| payee.id == *id))
+            .or_else(|| sorted.first().map(|payee| payee.id))
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the Payees list A–Z. `enter` has no hand-off here.
+    fn apply_settings_payees_movement(&mut self, movement: Movement) {
+        let sorted = payees::sorted_by_name(&self.payees);
+        let len = sorted.len();
+        let current = self
+            .settings_payees_selected_id()
+            .and_then(|id| sorted.iter().position(|payee| payee.id == id))
+            .unwrap_or(0);
+        let next = match movement {
+            Movement::Next => accounts::step_selection(current, len, 1),
+            Movement::Prev => accounts::step_selection(current, len, -1),
+            Movement::First => 0,
+            Movement::Last => len.saturating_sub(1),
+            Movement::HalfPageDown => {
+                accounts::step_selection(current, len, SETTINGS_PAYEES_HALF_PAGE)
+            }
+            Movement::HalfPageUp => {
+                accounts::step_selection(current, len, -SETTINGS_PAYEES_HALF_PAGE)
+            }
+            Movement::Enter => return,
+        };
+        self.settings_payees_selected = sorted.get(next).map(|payee| payee.id);
     }
 
     /// Whether Settings' Categories tree owns the keyboard: the page, not the index, has focus.
@@ -6091,6 +6152,9 @@ impl Shell {
     }
 
     fn selected_payee_id(&self) -> Option<u32> {
+        if self.settings_payees_page_has_focus() {
+            return self.settings_payees_selected_id();
+        }
         self.payees
             .get(
                 self.payees_selected
@@ -6101,6 +6165,7 @@ impl Shell {
 
     /// Selects the Payee with `id`, if it still exists.
     fn select_payee(&mut self, id: u32) {
+        self.settings_payees_selected = Some(id);
         if let Some(index) = self.payees.iter().position(|payee| payee.id == id) {
             self.payees_selected = index;
         }
@@ -6109,7 +6174,9 @@ impl Shell {
     /// The Payees page's own `n`/`e`/`d` (only while it is the active noun and the view has focus,
     /// in `Normal` mode): the Add, Edit and Delete dialogs.
     fn handle_payees_key(&mut self, keystroke: &Keystroke) -> bool {
-        if self.nav.noun() != Noun::Payees || self.nav.focus() != FocusZone::View {
+        if !self.settings_payees_page_has_focus()
+            && (self.nav.noun() != Noun::Payees || self.nav.focus() != FocusZone::View)
+        {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -6598,6 +6665,13 @@ impl Shell {
 
     fn handle_payees_add_click(&mut self, cx: &mut Context<'_, Self>) {
         self.open_add_payee_dialog();
+        cx.notify();
+    }
+
+    /// A click on a row of Settings' Payees list: selects it and moves focus into the page.
+    fn handle_settings_payees_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.select_payee(id);
+        self.focus_settings_page();
         cx.notify();
     }
 
@@ -8472,8 +8546,17 @@ impl Render for Shell {
                 .map(|unit| unit.code.as_str()),
             selected: (!self.payees.is_empty())
                 .then(|| self.payees_selected.min(self.payees.len() - 1)),
-            on_add_click: on_payees_add_click,
+            on_add_click: on_payees_add_click.clone(),
             on_row_click: payee_click(Shell::handle_payees_row_click),
+            on_edit_click: payee_click(Shell::handle_payees_edit_click),
+            on_delete_click: payee_click(Shell::handle_payees_delete_click),
+        };
+        let settings_payees_page = settings_view::payees::PayeesPageProps {
+            payees: &self.payees,
+            categories: &self.categories,
+            selected: self.settings_payees_selected_id(),
+            on_add_click: on_payees_add_click,
+            on_row_click: payee_click(Shell::handle_settings_payees_row_click),
             on_edit_click: payee_click(Shell::handle_payees_edit_click),
             on_delete_click: payee_click(Shell::handle_payees_delete_click),
         };
@@ -9097,6 +9180,14 @@ impl Render for Shell {
                     &tags::duplicate_groups(&self.tags, &self.transactions),
                 ),
             }),
+            Noun::Settings if self.settings_payees_page_has_focus() => Some(PageStatus {
+                hints: match self.payees_dialog {
+                    Some(payees::PayeesDialog::Delete(..)) => delete_payee_dialog_hints(),
+                    Some(_) => payee_dialog_hints(),
+                    None => settings_payees_hints(),
+                },
+                right: settings_view::payees::scope_text(&self.payees),
+            }),
             Noun::Settings if self.settings_categories_page_has_focus() => Some(PageStatus {
                 hints: settings_categories_hints(),
                 right: settings_view::categories::scope_note(&self.categories),
@@ -9355,6 +9446,7 @@ impl Render for Shell {
                                     categories: categories_page,
                                     settings_categories: settings_categories_page,
                                     settings_tags: settings_tags_page,
+                                    settings_payees: settings_payees_page,
                                     payees: payees_page,
                                     tags: tags_page,
                                     bills: bills_page,
@@ -9800,6 +9892,8 @@ struct PageProps<'a> {
     settings_categories: settings_view::categories::CategoriesPageProps<'a>,
     /// Settings' own Tags page (2j), mounted only while Settings shows it.
     settings_tags: settings_view::tags::TagsPageProps<'a>,
+    /// Settings' own Payees page, mounted only while Settings shows it.
+    settings_payees: settings_view::payees::PayeesPageProps<'a>,
     payees: payees_view::PayeesPageProps<'a>,
     tags: tags_view::TagsPageProps<'a>,
     bills: bills_view::BillsPageProps<'a>,
@@ -9942,6 +10036,7 @@ fn render_view(
                     },
                     categories: pages.settings_categories,
                     tags: pages.settings_tags,
+                    payees: pages.settings_payees,
                     date_style: settings.date_style,
                     row_density: settings.row_density,
                     status_glyphs: settings.status_glyphs,

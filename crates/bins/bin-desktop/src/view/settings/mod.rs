@@ -16,6 +16,7 @@ pub mod display;
 pub mod edit_unit_dialog;
 mod general;
 pub mod institutions;
+pub mod payees;
 pub mod sync_server;
 pub mod tags;
 pub mod tracing;
@@ -46,6 +47,7 @@ pub struct SettingsBodyProps<'a> {
     pub accounts: accounts::AccountsPageProps<'a>,
     pub categories: categories::CategoriesPageProps<'a>,
     pub tags: tags::TagsPageProps<'a>,
+    pub payees: payees::PayeesPageProps<'a>,
     pub date_style: Option<DateStyle>,
     pub row_density: RowDensity,
     pub status_glyphs: StatusGlyphs,
@@ -209,11 +211,12 @@ fn scope_note(section: SettingsSection, props: &SettingsBodyProps<'_>) -> String
 fn scope_meta(section: SettingsSection, props: &SettingsBodyProps<'_>, cx: &App) -> AnyElement {
     match section {
         SettingsSection::Tags => tags::scope_note(props.tags.tags, props.tags.groups, cx),
+        SettingsSection::Payees => payees::scope_note(props.payees.payees, cx),
         other => scope_note(other, props).into_any_element(),
     }
 }
 
-/// Each page's content. Payees renders a placeholder until its own ticket rebuilds it.
+/// Each page's content. Every moved noun now has its page.
 fn section_content(
     section: SettingsSection,
     props: &SettingsBodyProps<'_>,
@@ -260,7 +263,7 @@ fn section_content(
             categories::render(&props.categories, props.page_focused, cx)
         }
         SettingsSection::Tags => tags::render(&props.tags, props.page_focused, cx),
-        SettingsSection::Payees => placeholder(cx),
+        SettingsSection::Payees => payees::render(&props.payees, props.page_focused, cx),
         SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone(), cx),
         SettingsSection::DataBackup => data_backup::render(
             props.on_backup_now_click.clone(),
