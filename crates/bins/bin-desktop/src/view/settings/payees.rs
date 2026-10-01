@@ -18,7 +18,7 @@ use crate::{
 };
 
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-type OnPayeeClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
+pub type OnPayeeClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
 
 pub struct PayeesPageProps<'a> {
     pub payees: &'a [Payee],

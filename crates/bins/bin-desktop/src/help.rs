@@ -84,7 +84,8 @@ mod tests {
         assert_eq!(shortcuts.len(), JUMPS.len());
         assert_eq!(shortcuts[0], ("Dashboard".to_string(), "g d".to_string()));
         assert!(shortcuts.contains(&("Transactions".to_string(), "g l".to_string())));
-        assert!(shortcuts.contains(&("Tags".to_string(), "g t".to_string())));
+        assert!(shortcuts.contains(&("Notifications".to_string(), "g a".to_string())));
+        assert!(shortcuts.contains(&("Credit cards".to_string(), "g k".to_string())));
     }
 
     #[test]

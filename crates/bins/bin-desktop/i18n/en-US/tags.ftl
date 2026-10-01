@@ -14,7 +14,6 @@ desktop-tags-likely-duplicates = <strong>{ $count }</strong> likely { $count ->
     [one] duplicate
    *[other] duplicates
 } —
-desktop-tags-merge-link = merge them
 desktop-tags-status-duplicates = { $count ->
     [one] { $count } likely duplicate
    *[other] { $count } likely duplicates
@@ -26,9 +25,6 @@ desktop-tags-status-duplicates = { $count ->
 desktop-tags-add-button = { $glyph } Add tag
 desktop-tags-empty = No tags yet. Press { $key } to add one.
 desktop-tags-column-tag = Tag
-desktop-tags-column-transactions = Transactions
-desktop-tags-column-total = Total
-desktop-tags-column-last-used = Last used
 desktop-tags-inactive = inactive
 desktop-tags-duplicate-of = looks like a duplicate of "{ $name }"
 desktop-tags-row-edit = edit

@@ -130,30 +130,6 @@ const SETTINGS_TAGS_HALF_PAGE: isize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Payees page: rows per half page.
 const SETTINGS_PAYEES_HALF_PAGE: isize = 5;
 
-/// The Payees page's status-line legend (`docs/ux/desktop/Payees/README.md`'s 6a), as `(key, action)`.
-fn payees_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_row()),
-        ("enter", crate::msg::desktop_hint_view_transactions()),
-        ("e", crate::msg::desktop_hint_edit()),
-        ("d", crate::msg::desktop_hint_delete()),
-        ("n", crate::msg::desktop_hint_new()),
-    ]
-}
-
-/// The Tags page's status-line legend (`docs/ux/desktop/Tags/README.md`'s 7a), with `m merge`
-/// added for the merge entry point (#354).
-fn tags_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_row()),
-        ("enter", crate::msg::desktop_hint_view_transactions()),
-        ("e", crate::msg::desktop_hint_edit()),
-        ("x", crate::msg::desktop_hint_remove()),
-        ("m", crate::msg::desktop_hint_merge()),
-        ("n", crate::msg::desktop_hint_new()),
-    ]
-}
-
 /// The Settings Payees page's status-line legend: the Payees page's keys without the Transactions
 /// hand-off, which stays on the old page.
 fn settings_payees_hints() -> Vec<(&'static str, String)> {
@@ -1297,6 +1273,20 @@ impl Shell {
     }
 
     /// Swaps the Settings page on show. Each page starts at its top.
+    /// Opens a Settings page with focus in it -- what `:settings <page>`, the old `:accounts` /
+    /// `:categories` / `:payees` / `:tags` aliases and every hand-off to a moved noun land on
+    /// (the keyboard model's "commands and hand-offs land in the page"). Leaves the view's scroll
+    /// alone when the page is already showing.
+    fn open_settings_page(&mut self, section: SettingsSection) {
+        let noun_before = self.nav.noun();
+        self.nav.set_noun(Noun::Settings);
+        if noun_before != Noun::Settings {
+            self.reset_view_scroll();
+        }
+        self.select_settings_page(section);
+        self.focus_settings_page();
+    }
+
     fn select_settings_page(&mut self, section: SettingsSection) {
         if self.settings_selected_section != section {
             self.view_scroll_handle.set_offset(gpui::Point::default());
@@ -1459,14 +1449,6 @@ impl Shell {
         }
         if self.nav.noun() == Noun::Transactions {
             self.apply_transactions_movement(movement);
-            return;
-        }
-        if self.nav.noun() == Noun::Payees {
-            self.apply_payees_movement(movement);
-            return;
-        }
-        if self.nav.noun() == Noun::Tags {
-            self.apply_tags_movement(movement);
             return;
         }
         if self.nav.noun() == Noun::Bills {
@@ -2044,18 +2026,13 @@ impl Shell {
         cx.notify();
     }
 
-    /// Whether the Accounts rows own the keyboard: the standalone page, or Settings' Accounts
-    /// page with focus in the page rather than on the index.
+    /// Whether the Accounts rows own the keyboard: Settings' Accounts page with focus in the page
+    /// rather than on the index.
     fn accounts_page_has_focus(&self) -> bool {
-        match self.nav.noun() {
-            Noun::Accounts => self.nav.focus() == FocusZone::View,
-            Noun::Settings => {
-                self.nav.focus() == FocusZone::View
-                    && self.settings_focus == SettingsFocus::Page
-                    && self.settings_selected_section == SettingsSection::Accounts
-            }
-            _ => false,
-        }
+        self.nav.noun() == Noun::Settings
+            && self.nav.focus() == FocusZone::View
+            && self.settings_focus == SettingsFocus::Page
+            && self.settings_selected_section == SettingsSection::Accounts
     }
 
     /// Whether Settings' Tags list owns the keyboard: the page, not the index, has focus.
@@ -2251,24 +2228,6 @@ impl Shell {
                 selected
             }
         };
-        self.scroll_selected_account_into_view();
-    }
-
-    /// Scrolls the selected account's group block into view (`ScrollHandle::scroll_to_item`
-    /// addresses the page's direct children; see `view::accounts::GROUP_CHILD_OFFSET`).
-    fn scroll_selected_account_into_view(&self) {
-        // Settings' body wraps the tables in its own heading blocks, so the group offset below
-        // only holds for the standalone page.
-        if self.nav.noun() != Noun::Accounts {
-            return;
-        }
-        if let Some(position) = self
-            .selected_account_index()
-            .and_then(|index| accounts::group_position(&self.accounts, index))
-        {
-            self.view_scroll_handle
-                .scroll_to_item(accounts_view::GROUP_CHILD_OFFSET + position);
-        }
     }
 
     /// The Accounts page's own `n`/`e`/`d` (only while it is the active noun and the view has
@@ -2308,9 +2267,7 @@ impl Shell {
     /// `enter` opens Transactions filtered to the selected category.
     fn handle_categories_key(&mut self, keystroke: &Keystroke) -> bool {
         let on_settings_page = self.settings_categories_page_has_focus();
-        if !on_settings_page
-            && (self.nav.noun() != Noun::Categories || self.nav.focus() != FocusZone::View)
-        {
+        if !on_settings_page {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -2511,27 +2468,6 @@ impl Shell {
         self.reset_view_scroll();
     }
 
-    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Tags page's row selection (in usage order);
-    /// `Enter` opens Transactions filtered to the selected Tag.
-    fn apply_tags_movement(&mut self, movement: Movement) {
-        let len = self.tags.len();
-        let selected = self.tags_selected.min(len.saturating_sub(1));
-        self.tags_selected = match movement {
-            Movement::Next => accounts::step_selection(selected, len, 1),
-            Movement::Prev => accounts::step_selection(selected, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
-            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
-            Movement::Enter => {
-                if let Some(id) = self.selected_tag_id() {
-                    self.open_tag_transactions(id);
-                }
-                selected
-            }
-        };
-    }
-
     /// The selected Tag: `tags_selected` indexes the page's usage order, not `self.tags`.
     fn selected_tag_id(&self) -> Option<u32> {
         if self.settings_tags_page_has_focus() {
@@ -2557,9 +2493,7 @@ impl Shell {
     /// The Tags page's own `n`/`e`/`x`/`m` (only while it is the active noun and the view has
     /// focus, in `Normal` mode).
     fn handle_tags_key(&mut self, keystroke: &Keystroke) -> bool {
-        if !self.settings_tags_page_has_focus()
-            && (self.nav.noun() != Noun::Tags || self.nav.focus() != FocusZone::View)
-        {
+        if !self.settings_tags_page_has_focus() {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -6079,23 +6013,8 @@ impl Shell {
         cx.notify();
     }
 
-    /// The subline's "merge them" link: the first flagged Tag in usage order as the source.
-    fn first_flagged_tag(&self) -> Option<u32> {
-        let groups = tags::duplicate_groups(&self.tags, &self.transactions);
-        tags::sorted_by_usage(&self.tags, &self.transactions)
-            .iter()
-            .map(|tag| tag.id)
-            .find(|id| tags::duplicate_of(&groups, *id).is_some())
-    }
-
     fn handle_tags_add_click(&mut self, cx: &mut Context<'_, Self>) {
         self.open_add_tag_dialog();
-        cx.notify();
-    }
-
-    fn handle_tags_merge_link_click(&mut self, cx: &mut Context<'_, Self>) {
-        let source = self.first_flagged_tag();
-        self.open_merge_tags_dialog(source);
         cx.notify();
     }
 
@@ -6103,12 +6022,6 @@ impl Shell {
     fn handle_settings_tags_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_tag(id);
         self.focus_settings_page();
-        cx.notify();
-    }
-
-    fn handle_tags_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_tag(id);
-        self.open_tag_transactions(id);
         cx.notify();
     }
 
@@ -6128,27 +6041,6 @@ impl Shell {
         self.select_tag(id);
         self.open_remove_tag_dialog(id);
         cx.notify();
-    }
-
-    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Payees page's row selection; `Enter` opens
-    /// Transactions filtered to the selected Payee.
-    fn apply_payees_movement(&mut self, movement: Movement) {
-        let len = self.payees.len();
-        let selected = self.payees_selected.min(len.saturating_sub(1));
-        self.payees_selected = match movement {
-            Movement::Next => accounts::step_selection(selected, len, 1),
-            Movement::Prev => accounts::step_selection(selected, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
-            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
-            Movement::Enter => {
-                if let Some(id) = self.selected_payee_id() {
-                    self.open_payee_transactions(id);
-                }
-                selected
-            }
-        };
     }
 
     fn selected_payee_id(&self) -> Option<u32> {
@@ -6174,9 +6066,7 @@ impl Shell {
     /// The Payees page's own `n`/`e`/`d` (only while it is the active noun and the view has focus,
     /// in `Normal` mode): the Add, Edit and Delete dialogs.
     fn handle_payees_key(&mut self, keystroke: &Keystroke) -> bool {
-        if !self.settings_payees_page_has_focus()
-            && (self.nav.noun() != Noun::Payees || self.nav.focus() != FocusZone::View)
-        {
+        if !self.settings_payees_page_has_focus() {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -6675,12 +6565,6 @@ impl Shell {
         cx.notify();
     }
 
-    fn handle_payees_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_payee(id);
-        self.open_payee_transactions(id);
-        cx.notify();
-    }
-
     fn handle_payees_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_payee(id);
         self.open_edit_payee_dialog(id);
@@ -7096,13 +6980,11 @@ impl Shell {
                 self.accounts_selected = self
                     .accounts_selected
                     .min(self.accounts.len().saturating_sub(1));
-                self.scroll_selected_account_into_view();
                 None
             }
         };
         if let Some(id) = changed_id {
             self.select_account(id);
-            self.scroll_selected_account_into_view();
         }
         self.nav.exit_mode();
     }
@@ -7308,13 +7190,6 @@ impl Shell {
         cx.notify();
     }
 
-    /// A click on a category row: selects it and opens Transactions filtered to that category.
-    fn handle_categories_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.categories_selected_id = Some(id);
-        self.open_category_transactions(id);
-        cx.notify();
-    }
-
     /// The Units section's own "+ Add unit" button (issue #184, replacing the stub #177 left
     /// behind): opens the Add unit dialog rather than flashing a status message.
     fn handle_add_unit_click(&mut self, cx: &mut Context<'_, Self>) {
@@ -7508,13 +7383,7 @@ impl Shell {
             }
             CommandEffect::OpenSettingsPage(section) => {
                 self.nav.exit_mode();
-                let noun_before = self.nav.noun();
-                self.nav.set_noun(Noun::Settings);
-                if self.nav.noun() != noun_before {
-                    self.reset_view_scroll();
-                }
-                self.select_settings_page(section);
-                self.focus_settings_page();
+                self.open_settings_page(section);
             }
             CommandEffect::CloseLedger => {
                 self.nav.exit_mode();
@@ -7546,11 +7415,7 @@ impl Shell {
             }
             CommandEffect::MergeTags => {
                 self.nav.exit_mode();
-                let noun_before = self.nav.noun();
-                self.nav.set_noun(Noun::Tags);
-                if noun_before != Noun::Tags {
-                    self.reset_view_scroll();
-                }
+                self.open_settings_page(SettingsSection::Tags);
                 self.open_merge_tags_dialog(None);
             }
             CommandEffect::Import => {
@@ -7604,10 +7469,7 @@ impl Shell {
     /// selected row when none is given; a name that fits nothing or several accounts flashes a
     /// status-line message naming the problem rather than guessing.
     fn run_accounts_command(&mut self, command_name: &str, verb: AccountsVerb, argument: &str) {
-        if self.nav.noun() != Noun::Accounts {
-            self.nav.set_noun(Noun::Accounts);
-            self.reset_view_scroll();
-        }
+        self.open_settings_page(SettingsSection::Accounts);
         if verb == AccountsVerb::New {
             self.open_add_account_dialog(argument);
             return;
@@ -7645,7 +7507,6 @@ impl Shell {
         };
         let id = self.accounts[index].id;
         self.select_account(id);
-        self.scroll_selected_account_into_view();
         match verb {
             AccountsVerb::Edit => self.open_edit_account_dialog(id),
             AccountsVerb::Delete => self.open_delete_account_dialog(id),
@@ -8417,20 +8278,14 @@ impl Render for Shell {
                 });
             })
         };
-        let on_categories_row_click: categories_view::OnRowClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_categories_row_click(id, cx));
-            })
-        };
         let payee_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
-            let on_click: payees_view::OnPayeeClick = Rc::new(move |id, _window, cx| {
+            let on_click: settings_view::payees::OnPayeeClick = Rc::new(move |id, _window, cx| {
                 entity.update(cx, |shell, cx| handler(shell, id, cx));
             });
             on_click
         };
-        let on_payees_add_click: payees_view::OnAddClick = {
+        let on_payees_add_click: crate::dialog::OnClick = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_payees_add_click(cx));
@@ -8534,23 +8389,6 @@ impl Render for Shell {
                 on_confirm: plain(Shell::handle_payees_dialog_confirm),
             }
         };
-        let payees_page = payees_view::PayeesPageProps {
-            payees: &self.payees,
-            categories: &self.categories,
-            transactions: &self.transactions,
-            accounts: &self.accounts,
-            base_unit: self
-                .settings_units
-                .iter()
-                .find(|unit| unit.is_base)
-                .map(|unit| unit.code.as_str()),
-            selected: (!self.payees.is_empty())
-                .then(|| self.payees_selected.min(self.payees.len() - 1)),
-            on_add_click: on_payees_add_click.clone(),
-            on_row_click: payee_click(Shell::handle_payees_row_click),
-            on_edit_click: payee_click(Shell::handle_payees_edit_click),
-            on_delete_click: payee_click(Shell::handle_payees_delete_click),
-        };
         let settings_payees_page = settings_view::payees::PayeesPageProps {
             payees: &self.payees,
             categories: &self.categories,
@@ -8595,24 +8433,6 @@ impl Render for Shell {
                 on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
                 on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
             }
-        };
-        let tags_page = tags_view::TagsPageProps {
-            tags: &self.tags,
-            transactions: &self.transactions,
-            accounts: &self.accounts,
-            base_unit: self
-                .settings_units
-                .iter()
-                .find(|unit| unit.is_base)
-                .map(|unit| unit.code.as_str()),
-            date_style: self.settings_date_style,
-            selected: (!self.tags.is_empty()).then(|| self.tags_selected.min(self.tags.len() - 1)),
-            on_add_click: tag_plain(Shell::handle_tags_add_click),
-            on_merge_link_click: tag_plain(Shell::handle_tags_merge_link_click),
-            on_row_click: tag_click(Shell::handle_tags_row_click),
-            on_duplicate_click: tag_click(Shell::handle_tags_duplicate_click),
-            on_edit_click: tag_click(Shell::handle_tags_edit_click),
-            on_remove_click: tag_click(Shell::handle_tags_remove_click),
         };
         let tag_groups = tags::duplicate_groups(&self.tags, &self.transactions);
         let settings_tags_page = settings_view::tags::TagsPageProps {
@@ -8950,21 +8770,6 @@ impl Render for Shell {
             on_disclosure_click: on_categories_disclosure_click.clone(),
             on_row_click: on_settings_categories_row_click,
         };
-        let categories_page = categories_view::CategoriesPageProps {
-            categories: &self.categories,
-            budgets: &self.budgets,
-            transactions: &self.transactions,
-            selected_index: Some(self.categories_selected),
-            expanded: &self.categories_expanded,
-            base_unit_id: 1,
-            today: self.today,
-            on_add_click: on_categories_add_click,
-            on_add_sub_click: on_categories_add_sub_click,
-            on_edit_click: on_categories_edit_click,
-            on_delete_click: on_categories_delete_click,
-            on_disclosure_click: on_categories_disclosure_click,
-            on_row_click: on_categories_row_click,
-        };
 
         // Categories dialog closures
         let on_categories_dialog_field_click: categories_view::add_dialog::OnFieldClick = {
@@ -9192,28 +8997,6 @@ impl Render for Shell {
                 hints: settings_categories_hints(),
                 right: settings_view::categories::scope_note(&self.categories),
             }),
-            Noun::Accounts => Some(PageStatus {
-                hints: accounts_hints(),
-                right: crate::msg::desktop_accounts_count(
-                    i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
-                ),
-            }),
-            Noun::Payees => Some(PageStatus {
-                hints: match self.payees_dialog {
-                    Some(payees::PayeesDialog::Delete(..)) => delete_payee_dialog_hints(),
-                    Some(_) => payee_dialog_hints(),
-                    None => payees_hints(),
-                },
-                right: format!(
-                    "{} \u{b7} {}",
-                    crate::msg::desktop_payees_count(
-                        i64::try_from(payees::active_count(&self.payees)).unwrap_or(i64::MAX)
-                    ),
-                    crate::msg::desktop_payees_status_without_default(
-                        &payees::without_default_category_count(&self.payees).to_string()
-                    ),
-                ),
-            }),
             Noun::Bills if matches!(self.bills_dialog, Some(bills::BillsDialog::Pay(_))) => {
                 Some(PageStatus {
                     hints: pay_bill_dialog_hints(),
@@ -9291,34 +9074,6 @@ impl Render for Shell {
                             &history.leaves_shown.to_string(),
                         )
                     }),
-            }),
-            Noun::Tags => Some(PageStatus {
-                hints: match self.tags_dialog {
-                    Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
-                    Some(tags::TagsDialog::Edit(..)) => tag_dialog_hints(true),
-                    Some(tags::TagsDialog::Remove(..)) => delete_payee_dialog_hints(),
-                    Some(tags::TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
-                    _ => tags_hints(),
-                },
-                right: {
-                    let count = crate::msg::desktop_tags_count(
-                        i64::try_from(tags::active_count(&self.tags)).unwrap_or(i64::MAX),
-                    );
-                    let duplicates = tags_view::likely_duplicate_count(&tags::duplicate_groups(
-                        &self.tags,
-                        &self.transactions,
-                    ));
-                    if duplicates == 0 {
-                        count
-                    } else {
-                        format!(
-                            "{count} \u{b7} {}",
-                            crate::msg::desktop_tags_status_duplicates(
-                                i64::try_from(duplicates).unwrap_or(i64::MAX)
-                            )
-                        )
-                    }
-                },
             }),
             Noun::Transactions if self.import.is_some() => {
                 let pending = self
@@ -9407,9 +9162,6 @@ impl Render for Shell {
                                     on_row_hover,
                                     on_row_click,
                                 )
-                                .account_count(self.accounts.len())
-                                .payee_count(payees::active_count(&self.payees))
-                                .tag_count(tags::active_count(&self.tags))
                                 .bill_attention(
                                     bills::attention_entries(
                                         &self.bill_plans,
@@ -9443,12 +9195,9 @@ impl Render for Shell {
                                 PageProps {
                                     dashboard,
                                     accounts: accounts_page,
-                                    categories: categories_page,
                                     settings_categories: settings_categories_page,
                                     settings_tags: settings_tags_page,
                                     settings_payees: settings_payees_page,
-                                    payees: payees_page,
-                                    tags: tags_page,
                                     bills: bills_page,
                                     budgets: budgets_page,
                                     import: import_page,
@@ -9887,15 +9636,12 @@ impl Render for Shell {
 struct PageProps<'a> {
     dashboard: Dashboard,
     accounts: accounts_view::AccountsPageProps<'a>,
-    categories: categories_view::CategoriesPageProps<'a>,
     /// Settings' own Categories page (2i), mounted only while Settings shows it.
     settings_categories: settings_view::categories::CategoriesPageProps<'a>,
     /// Settings' own Tags page (2j), mounted only while Settings shows it.
     settings_tags: settings_view::tags::TagsPageProps<'a>,
     /// Settings' own Payees page, mounted only while Settings shows it.
     settings_payees: settings_view::payees::PayeesPageProps<'a>,
-    payees: payees_view::PayeesPageProps<'a>,
-    tags: tags_view::TagsPageProps<'a>,
     bills: bills_view::BillsPageProps<'a>,
     /// `None` when the Budget shown has gone.
     budgets: Option<budgets_view::BudgetsPageProps<'a>>,
@@ -9975,18 +9721,6 @@ fn render_view(
     settings: SettingsPanelProps<'_>,
     cx: &gpui::App,
 ) -> gpui::AnyElement {
-    if noun == Noun::Accounts {
-        return accounts_view::render(focused, scroll_handle, pages.accounts, cx);
-    }
-    if noun == Noun::Categories {
-        return categories_view::render(focused, scroll_handle, pages.categories, cx);
-    }
-    if noun == Noun::Payees {
-        return payees_view::render(focused, scroll_handle, pages.payees, cx);
-    }
-    if noun == Noun::Tags {
-        return tags_view::render(focused, scroll_handle, pages.tags, cx);
-    }
     if noun == Noun::Bills {
         return bills_view::render(focused, scroll_handle, pages.bills, cx);
     }
@@ -10078,12 +9812,8 @@ fn render_view(
     let content = match noun {
         Noun::Dashboard if ledger_open => pages.dashboard.into_any_element(),
         Noun::Dashboard => empty_state(on_empty_state_command_click, cx),
-        Noun::Settings | Noun::Accounts => unreachable!("handled above"),
-        other => div()
-            .p(px(24.0))
-            .text_color(color::faint_text(cx))
-            .child(format!("{other:?} -- not yet built (see issue #153)"))
-            .into_any_element(),
+        Noun::Settings => unreachable!("handled above"),
+        other => placeholder_view(other, cx),
     };
 
     div()
@@ -10097,6 +9827,28 @@ fn render_view(
             this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .child(content)
+        .into_any_element()
+}
+
+/// The "not yet built" view of a noun whose surface is a later map's work (#420): its name and
+/// one line saying so. The rail row and `g` binding are live; the surface is not.
+fn placeholder_view(noun: Noun, cx: &gpui::App) -> gpui::AnyElement {
+    div()
+        .p(px(24.0))
+        .flex()
+        .flex_col()
+        .gap(px(6.0))
+        .child(
+            div()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_size(px(18.0))
+                .child(crate::msg::desktop_placeholder_title(&noun.label())),
+        )
+        .child(
+            div()
+                .text_color(color::faint_text(cx))
+                .child(crate::msg::desktop_placeholder_body()),
+        )
         .into_any_element()
 }
 

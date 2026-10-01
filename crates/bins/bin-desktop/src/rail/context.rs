@@ -132,7 +132,7 @@ impl RenderOnce for ContextRail {
         match self.noun {
             Noun::Dashboard => frame
                 .child(header(
-                    &lib_locale::format::upper(&Noun::Accounts.label()),
+                    &lib_locale::format::upper(&crate::settings::SettingsSection::Accounts.label()),
                     &crate::msg::desktop_context_active_count(&ACCOUNTS.len().to_string()),
                     cx,
                 ))

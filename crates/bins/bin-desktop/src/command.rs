@@ -115,8 +115,15 @@ pub enum Domain {
     Accounts,
     Bills,
     Budgets,
+    Cash,
     Categories,
+    CreditCards,
+    Documents,
+    Inventory,
+    Investments,
     Ledger,
+    Loans,
+    Notifications,
     Payees,
     Reports,
     Settings,
@@ -130,15 +137,22 @@ impl Domain {
     pub fn label(self) -> String {
         match self {
             Domain::Dashboard => Noun::Dashboard.label(),
-            Domain::Accounts => Noun::Accounts.label(),
+            Domain::Accounts => SettingsSection::Accounts.label(),
             Domain::Bills => Noun::Bills.label(),
             Domain::Budgets => Noun::Budgets.label(),
-            Domain::Categories => Noun::Categories.label(),
+            Domain::Cash => Noun::Cash.label(),
+            Domain::Categories => SettingsSection::Categories.label(),
+            Domain::CreditCards => Noun::CreditCards.label(),
+            Domain::Documents => Noun::Documents.label(),
+            Domain::Inventory => Noun::Inventory.label(),
+            Domain::Investments => Noun::Investments.label(),
             Domain::Ledger => crate::msg::desktop_command_domain_ledger(),
-            Domain::Payees => Noun::Payees.label(),
+            Domain::Loans => Noun::Loans.label(),
+            Domain::Notifications => Noun::Notifications.label(),
+            Domain::Payees => SettingsSection::Payees.label(),
             Domain::Reports => Noun::Reports.label(),
             Domain::Settings => Noun::Settings.label(),
-            Domain::Tags => Noun::Tags.label(),
+            Domain::Tags => SettingsSection::Tags.label(),
             Domain::Toasts => crate::msg::desktop_command_domain_toasts(),
             Domain::Transactions => Noun::Transactions.label(),
         }
@@ -216,8 +230,8 @@ pub const COMMANDS: &[Command] = &[
         name: "accounts",
         domain: Domain::Accounts,
         description: crate::msg::desktop_command_accounts_description,
-        binding: Some("g a"),
-        effect: CommandEffect::Navigate(Noun::Accounts),
+        binding: None,
+        effect: CommandEffect::OpenSettingsPage(SettingsSection::Accounts),
     },
     Command {
         name: "accounts new",
@@ -311,11 +325,46 @@ pub const COMMANDS: &[Command] = &[
         effect: CommandEffect::Budgets(BudgetsVerb::Restore),
     },
     Command {
+        name: "cash",
+        domain: Domain::Cash,
+        description: crate::msg::desktop_command_cash_description,
+        binding: Some("g c"),
+        effect: CommandEffect::Navigate(Noun::Cash),
+    },
+    Command {
         name: "categories",
         domain: Domain::Categories,
         description: crate::msg::desktop_command_categories_description,
-        binding: Some("g c"),
-        effect: CommandEffect::Navigate(Noun::Categories),
+        binding: None,
+        effect: CommandEffect::OpenSettingsPage(SettingsSection::Categories),
+    },
+    Command {
+        name: "credit-cards",
+        domain: Domain::CreditCards,
+        description: crate::msg::desktop_command_credit_cards_description,
+        binding: Some("g k"),
+        effect: CommandEffect::Navigate(Noun::CreditCards),
+    },
+    Command {
+        name: "documents",
+        domain: Domain::Documents,
+        description: crate::msg::desktop_command_documents_description,
+        binding: Some("g f"),
+        effect: CommandEffect::Navigate(Noun::Documents),
+    },
+    Command {
+        name: "inventory",
+        domain: Domain::Inventory,
+        description: crate::msg::desktop_command_inventory_description,
+        binding: Some("g o"),
+        effect: CommandEffect::Navigate(Noun::Inventory),
+    },
+    Command {
+        name: "investments",
+        domain: Domain::Investments,
+        description: crate::msg::desktop_command_investments_description,
+        binding: Some("g i"),
+        effect: CommandEffect::Navigate(Noun::Investments),
     },
     Command {
         name: "open",
@@ -339,11 +388,25 @@ pub const COMMANDS: &[Command] = &[
         effect: CommandEffect::CloseLedger,
     },
     Command {
+        name: "loans",
+        domain: Domain::Loans,
+        description: crate::msg::desktop_command_loans_description,
+        binding: Some("g n"),
+        effect: CommandEffect::Navigate(Noun::Loans),
+    },
+    Command {
+        name: "notifications",
+        domain: Domain::Notifications,
+        description: crate::msg::desktop_command_notifications_description,
+        binding: Some("g a"),
+        effect: CommandEffect::Navigate(Noun::Notifications),
+    },
+    Command {
         name: "payees",
         domain: Domain::Payees,
         description: crate::msg::desktop_command_payees_description,
-        binding: Some("g p"),
-        effect: CommandEffect::Navigate(Noun::Payees),
+        binding: None,
+        effect: CommandEffect::OpenSettingsPage(SettingsSection::Payees),
     },
     Command {
         name: "reports",
@@ -399,8 +462,8 @@ pub const COMMANDS: &[Command] = &[
         name: "tags",
         domain: Domain::Tags,
         description: crate::msg::desktop_command_tags_description,
-        binding: Some("g t"),
-        effect: CommandEffect::Navigate(Noun::Tags),
+        binding: None,
+        effect: CommandEffect::OpenSettingsPage(SettingsSection::Tags),
     },
     Command {
         name: "tags merge",
@@ -585,6 +648,20 @@ mod tests {
     fn tags_merge_opens_the_merge_dialog() {
         let effect = |name| all().find(|c| c.name == name).map(|c| c.effect);
         assert_eq!(effect("tags merge"), Some(CommandEffect::MergeTags));
+    }
+
+    #[test]
+    fn the_moved_noun_commands_alias_their_settings_page_with_no_binding() {
+        for (name, section) in [
+            ("accounts", SettingsSection::Accounts),
+            ("categories", SettingsSection::Categories),
+            ("payees", SettingsSection::Payees),
+            ("tags", SettingsSection::Tags),
+        ] {
+            let command = COMMANDS.iter().find(|c| c.name == name).unwrap();
+            assert_eq!(command.effect, CommandEffect::OpenSettingsPage(section));
+            assert_eq!(command.binding, None, "{name} lost its g binding");
+        }
     }
 
     #[test]

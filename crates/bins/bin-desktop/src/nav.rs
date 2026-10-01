@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The ten places the primary rail can select. `Noun::default()` is `Dashboard`, the app's
+/// The thirteen places the primary rail can select. `Noun::default()` is `Dashboard`, the app's
 /// one home noun. Serializable -- `noun` is one of the three fields that survive restart
 /// (see `crate::persistence`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -17,10 +17,13 @@ pub enum Noun {
     #[default]
     Dashboard,
     Transactions,
-    Accounts,
-    Categories,
-    Payees,
-    Tags,
+    Documents,
+    Notifications,
+    Cash,
+    Inventory,
+    Loans,
+    CreditCards,
+    Investments,
     Bills,
     Budgets,
     Reports,
@@ -30,13 +33,16 @@ pub enum Noun {
 impl Noun {
     /// Every noun, in the primary rail's own row order (top to bottom, skipping group
     /// headings and the divider, which aren't selectable rows).
-    pub const ALL: [Noun; 10] = [
+    pub const ALL: [Noun; 13] = [
         Noun::Dashboard,
         Noun::Transactions,
-        Noun::Accounts,
-        Noun::Categories,
-        Noun::Payees,
-        Noun::Tags,
+        Noun::Documents,
+        Noun::Notifications,
+        Noun::Cash,
+        Noun::Inventory,
+        Noun::Loans,
+        Noun::CreditCards,
+        Noun::Investments,
         Noun::Bills,
         Noun::Budgets,
         Noun::Reports,
@@ -48,10 +54,13 @@ impl Noun {
         match self {
             Noun::Dashboard => lib_locale::msg::nav_dashboard(),
             Noun::Transactions => lib_locale::msg::nav_transactions(),
-            Noun::Accounts => lib_locale::msg::nav_accounts(),
-            Noun::Categories => lib_locale::msg::nav_categories(),
-            Noun::Payees => lib_locale::msg::nav_payees(),
-            Noun::Tags => lib_locale::msg::nav_tags(),
+            Noun::Documents => crate::msg::desktop_nav_documents(),
+            Noun::Notifications => crate::msg::desktop_nav_notifications(),
+            Noun::Cash => crate::msg::desktop_nav_cash(),
+            Noun::Inventory => crate::msg::desktop_nav_inventory(),
+            Noun::Loans => crate::msg::desktop_nav_loans(),
+            Noun::CreditCards => crate::msg::desktop_nav_credit_cards(),
+            Noun::Investments => crate::msg::desktop_nav_investments(),
             Noun::Bills => lib_locale::msg::nav_bills(),
             Noun::Budgets => lib_locale::msg::nav_budgets(),
             Noun::Reports => lib_locale::msg::nav_reports(),
@@ -90,7 +99,8 @@ impl Noun {
         Self::ALL[Self::ALL.len() - 1]
     }
 
-    /// Whether this noun's context rail has any entities at all. Only `Settings` doesn't.
+    /// Whether this noun's context rail has any entities at all. Only `Dashboard`, `Bills`,
+    /// `Budgets` and `Reports` keep one.
     ///
     /// The handoff's own state-machine section (rule 1's parenthetical) lists `Dashboard`
     /// alongside `Settings` as having none, but its "Context rail" component spec and its
@@ -101,15 +111,30 @@ impl Noun {
     /// other noun with entities. See `docs/ux/desktop/README.md`'s "Where this differs from
     /// the handoff".
     ///
-    /// `Transactions` has none either (its table fills the pane, as its mockup shows), and neither
-    /// does `Accounts`: its page (`docs/ux/desktop/Accounts/README.md`'s 3a) is a
-    /// full-width management table with no rail beside it, the same shape as `Settings`.
-    ///
-    /// Every other noun besides `Dashboard` has its own screen still unbuilt (a placeholder-views
-    /// ticket, #153), so this says whether a context rail *could* exist, not that one renders
-    /// real data today.
+    /// `Transactions` has none (its table fills the pane, as its mockup shows), `Settings` has
+    /// its own index rail instead, and the "not yet built" placeholder nouns have nothing to
+    /// list. Accounts, Categories, Payees and Tags left the rail for Settings pages (#413), and
+    /// took their context rails with them.
     pub fn has_context_entities(self) -> bool {
-        !matches!(self, Noun::Settings | Noun::Accounts | Noun::Transactions)
+        matches!(
+            self,
+            Noun::Dashboard | Noun::Bills | Noun::Budgets | Noun::Reports
+        )
+    }
+
+    /// Whether this noun is a "not yet built" placeholder view (#420): the rail row and its `g`
+    /// binding are live, but the surface itself is a later map's work.
+    pub fn is_placeholder(self) -> bool {
+        matches!(
+            self,
+            Noun::Documents
+                | Noun::Notifications
+                | Noun::Cash
+                | Noun::Inventory
+                | Noun::Loans
+                | Noun::CreditCards
+                | Noun::Investments
+        )
     }
 }
 
@@ -438,9 +463,9 @@ mod tests {
         let mut nav = NavState::new();
         nav.set_focus(FocusZone::PrimaryRail);
 
-        nav.set_noun(Noun::Categories);
+        nav.set_noun(Noun::Budgets);
 
-        assert_eq!(nav.noun(), Noun::Categories);
+        assert_eq!(nav.noun(), Noun::Budgets);
         assert_eq!(nav.context(), Some(0));
         assert_eq!(nav.focus(), FocusZone::View);
     }
@@ -448,7 +473,7 @@ mod tests {
     #[test]
     fn set_noun_to_a_noun_with_no_entities_clears_context() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Categories);
+        nav.set_noun(Noun::Budgets);
         assert_eq!(nav.context(), Some(0));
 
         nav.set_noun(Noun::Settings);
@@ -460,13 +485,13 @@ mod tests {
     #[test]
     fn set_context_does_not_change_noun_or_focus() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Categories);
+        nav.set_noun(Noun::Budgets);
         nav.set_focus(FocusZone::ContextRail);
 
         nav.set_context(Some(3));
 
         assert_eq!(nav.context(), Some(3));
-        assert_eq!(nav.noun(), Noun::Categories);
+        assert_eq!(nav.noun(), Noun::Budgets);
         assert_eq!(nav.focus(), FocusZone::ContextRail);
     }
 
@@ -474,7 +499,7 @@ mod tests {
     #[test]
     fn focus_cycles_through_all_three_zones_when_context_exists() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Categories); // has_context_entities() == true
+        nav.set_noun(Noun::Budgets); // has_context_entities() == true
         nav.open_ledger(); // the context rail also needs a ledger open (issue #166)
         nav.set_focus(FocusZone::PrimaryRail);
 
@@ -490,7 +515,7 @@ mod tests {
     #[test]
     fn focus_skips_context_rail_when_no_ledger_is_open_even_with_entities() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Categories); // has_context_entities() == true, but...
+        nav.set_noun(Noun::Budgets); // has_context_entities() == true, but...
         assert!(!nav.ledger_open()); // ...no ledger is open by default.
         nav.set_focus(FocusZone::PrimaryRail);
 
@@ -503,7 +528,7 @@ mod tests {
     #[test]
     fn closing_the_ledger_moves_focus_off_the_context_rail() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Categories);
+        nav.set_noun(Noun::Budgets);
         nav.open_ledger();
         nav.set_focus(FocusZone::ContextRail);
 
@@ -515,7 +540,7 @@ mod tests {
     #[test]
     fn closing_the_ledger_leaves_other_focus_zones_alone() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Categories);
+        nav.set_noun(Noun::Budgets);
         nav.open_ledger();
         nav.set_focus(FocusZone::PrimaryRail);
 
@@ -525,11 +550,11 @@ mod tests {
     }
 
     #[test]
-    fn accounts_has_no_context_rail_so_focus_skips_it() {
+    fn placeholder_nouns_have_no_context_rail_so_focus_skips_it() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Accounts);
+        nav.set_noun(Noun::Cash);
         nav.open_ledger();
-        assert!(!Noun::Accounts.has_context_entities());
+        assert!(!Noun::Cash.has_context_entities());
         assert_eq!(nav.context(), None);
         nav.set_focus(FocusZone::PrimaryRail);
 
@@ -563,20 +588,13 @@ mod tests {
 
     // Rule 4
     #[test]
-    fn only_settings_accounts_and_transactions_have_no_context_entities() {
-        assert!(!Noun::Settings.has_context_entities());
-        assert!(!Noun::Accounts.has_context_entities());
-        assert!(!Noun::Transactions.has_context_entities());
-        for noun in [
-            Noun::Dashboard,
-            Noun::Categories,
-            Noun::Payees,
-            Noun::Tags,
-            Noun::Bills,
-            Noun::Budgets,
-            Noun::Reports,
-        ] {
-            assert!(noun.has_context_entities(), "{noun:?} should have some");
+    fn only_dashboard_bills_budgets_and_reports_have_context_entities() {
+        for noun in Noun::ALL {
+            let expected = matches!(
+                noun,
+                Noun::Dashboard | Noun::Bills | Noun::Budgets | Noun::Reports
+            );
+            assert_eq!(noun.has_context_entities(), expected, "{noun:?}");
         }
     }
 
@@ -584,7 +602,7 @@ mod tests {
     #[test]
     fn toggling_primary_rail_preserves_focus_and_context() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Categories);
+        nav.set_noun(Noun::Budgets);
         nav.set_focus(FocusZone::ContextRail);
         nav.set_context(Some(2));
 
@@ -661,14 +679,14 @@ mod tests {
         nav.move_primary_highlight_next();
         nav.move_primary_highlight_next();
 
-        assert_eq!(nav.primary_highlight(), Noun::Accounts);
+        assert_eq!(nav.primary_highlight(), Noun::Documents);
         // Browsing never touches the committed noun or moves focus away.
         assert_eq!(nav.noun(), Noun::Dashboard);
         assert_eq!(nav.focus(), FocusZone::PrimaryRail);
 
         nav.commit_primary_highlight();
 
-        assert_eq!(nav.noun(), Noun::Accounts);
+        assert_eq!(nav.noun(), Noun::Documents);
         assert_eq!(nav.focus(), FocusZone::View);
     }
 

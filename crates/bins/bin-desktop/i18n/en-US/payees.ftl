@@ -18,8 +18,6 @@ desktop-payees-add-button = { $glyph } Add payee
 desktop-payees-empty = No payees yet. Press { $key } to add one.
 desktop-payees-column-default-category = Default category
 desktop-payees-column-match-rules = Match rules
-desktop-payees-column-transactions = Transactions
-desktop-payees-column-total = Total
 desktop-payees-no-default-category = no default category
 desktop-payees-inactive = inactive
 desktop-payees-rule-count = { $count ->
@@ -32,7 +30,6 @@ desktop-payees-footnote = Payees without a default category need one picked each
 
 ## The hint strip.
 
-desktop-hint-view-transactions = view transactions
 
 ## The Add and Edit payee dialogs. `$glyph` is the add button's leading plus sign.
 

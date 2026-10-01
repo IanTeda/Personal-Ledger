@@ -36,10 +36,6 @@ struct Row {
     jump_key: Option<&'static str>,
 }
 
-/// LEDGER now folds what used to be a separate RECORDS group (Categories, Payees) in with it,
-/// plus the new `Tags` noun -- the handoff dropped the RECORDS heading entirely rather than
-/// keep a group of two once Units moved out (see `Noun`'s own doc). `Transactions` moves off
-/// `g t` to free it for `Tags`, onto `g l` instead.
 const LEDGER_GROUP: &[Row] = &[
     Row {
         noun: Noun::Dashboard,
@@ -50,20 +46,35 @@ const LEDGER_GROUP: &[Row] = &[
         jump_key: Some("g l"),
     },
     Row {
-        noun: Noun::Accounts,
-        jump_key: Some("g a"),
+        noun: Noun::Documents,
+        jump_key: Some("g f"),
     },
     Row {
-        noun: Noun::Categories,
+        noun: Noun::Notifications,
+        jump_key: Some("g a"),
+    },
+];
+
+const NET_WORTH_GROUP: &[Row] = &[
+    Row {
+        noun: Noun::Cash,
         jump_key: Some("g c"),
     },
     Row {
-        noun: Noun::Payees,
-        jump_key: Some("g p"),
+        noun: Noun::Inventory,
+        jump_key: Some("g o"),
     },
     Row {
-        noun: Noun::Tags,
-        jump_key: Some("g t"),
+        noun: Noun::Loans,
+        jump_key: Some("g n"),
+    },
+    Row {
+        noun: Noun::CreditCards,
+        jump_key: Some("g k"),
+    },
+    Row {
+        noun: Noun::Investments,
+        jump_key: Some("g i"),
     },
 ];
 
@@ -114,12 +125,6 @@ pub struct PrimaryRail {
     tooltip_target: Option<Noun>,
     on_row_hover: OnRowHover,
     on_row_click: OnRowClick,
-    /// The Accounts row's count badge -- the live number of accounts, not a fixed stub.
-    account_count: usize,
-    /// The Payees row's count badge: active Payees only (#283).
-    payee_count: usize,
-    /// The Tags row's count badge: active Tags only (#353).
-    tag_count: usize,
     /// The Bills row's badge: the Needs Attention count (`bills::attention_entries`), not a row
     /// count, so it takes the Accounts row's accent treatment rather than a plain count's.
     bill_attention: usize,
@@ -143,30 +148,9 @@ impl PrimaryRail {
             tooltip_target,
             on_row_click,
             on_row_hover,
-            account_count: crate::rail::context::account_count(),
-            payee_count: 0,
-            tag_count: 0,
             bill_attention: 0,
             budget_over: 0,
         }
-    }
-
-    /// Overrides the Accounts row's badge with the real account count.
-    pub fn account_count(mut self, count: usize) -> Self {
-        self.account_count = count;
-        self
-    }
-
-    /// Sets the Payees row's count badge.
-    pub fn payee_count(mut self, count: usize) -> Self {
-        self.payee_count = count;
-        self
-    }
-
-    /// Sets the Tags row's count badge.
-    pub fn tag_count(mut self, count: usize) -> Self {
-        self.tag_count = count;
-        self
     }
 
     /// Sets the Bills row's Needs Attention badge; zero draws none.
@@ -181,11 +165,11 @@ impl PrimaryRail {
         self
     }
 
-    /// The accent badge's number for `noun`: the Accounts count, or the Bills Needs Attention
-    /// count or the Budgets over-budget count while there is any.
+    /// The accent badge's number for `noun`: the Bills Needs Attention count or the Budgets
+    /// over-budget count while there is any. The moved nouns' count badges went with them (#420):
+    /// each Settings page carries its count in its heading meta instead.
     fn accent_count(&self, noun: Noun) -> Option<usize> {
         match noun {
-            Noun::Accounts => Some(self.account_count),
             Noun::Bills if self.bill_attention > 0 => Some(self.bill_attention),
             Noun::Budgets if self.budget_over > 0 => Some(self.budget_over),
             _ => None,
@@ -226,6 +210,12 @@ impl PrimaryRail {
             ))
             .children(LEDGER_GROUP.iter().map(|row| self.render_row(row, cx)))
             .child(group_heading(
+                crate::msg::desktop_rail_group_net_worth(),
+                false,
+                cx,
+            ))
+            .children(NET_WORTH_GROUP.iter().map(|row| self.render_row(row, cx)))
+            .child(group_heading(
                 crate::msg::desktop_rail_group_plan(),
                 false,
                 cx,
@@ -265,6 +255,12 @@ impl PrimaryRail {
             })
             .children(
                 LEDGER_GROUP
+                    .iter()
+                    .map(|row| self.render_collapsed_row(row, cx)),
+            )
+            .child(collapsed_divider(cx))
+            .children(
+                NET_WORTH_GROUP
                     .iter()
                     .map(|row| self.render_collapsed_row(row, cx)),
             )
@@ -367,27 +363,6 @@ impl PrimaryRail {
                 .mr(px(4.0))
                 .child(count.to_string())
         });
-        // A plain count, inverted on the active row as the Payees and Tags handoffs draw it.
-        let count = match row.noun {
-            Noun::Payees => Some(self.payee_count),
-            Noun::Tags => Some(self.tag_count),
-            _ => None,
-        };
-        let count_badge = count.map(|count| {
-            div()
-                .when(selected, |this| {
-                    this.bg(color::selection_text(cx))
-                        .text_color(color::selection_background(cx))
-                })
-                .when(!selected, |this| this.text_color(color::faint_text(cx)))
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(10.0))
-                .py(px(1.0))
-                .px(px(5.0))
-                .mr(px(4.0))
-                .child(count.to_string())
-        });
-
         let noun = row.noun;
         let on_click = self.on_row_click.clone();
 
@@ -418,7 +393,6 @@ impl PrimaryRail {
                     .child(row.noun.label()),
             )
             .children(badge)
-            .children(count_badge)
             .when_some(row.jump_key, |this, key| {
                 this.child(div().text_size(px(11.0)).text_color(jump_color).child(key))
             })

@@ -87,14 +87,17 @@ pub enum KeyOutcome {
 
 /// Every `g`-prefix jump: the completion key and its noun (whose display label is [`Noun::label`]).
 /// One table so [`jump_noun_for_key`] and the `?` help overlay can never drift apart. Every noun has
-/// one -- `Transactions` moved off `g t` onto `g l` to free `t` for the newer `Tags` noun.
-pub const JUMPS: [(&str, Noun); 10] = [
+/// one -- `The Settings pages (Accounts, Categories, Payees, Tags) are reached by `g s` and the index, not a jump of their own.
+pub const JUMPS: [(&str, Noun); 13] = [
     ("d", Noun::Dashboard),
     ("l", Noun::Transactions),
-    ("a", Noun::Accounts),
-    ("c", Noun::Categories),
-    ("p", Noun::Payees),
-    ("t", Noun::Tags),
+    ("f", Noun::Documents),
+    ("a", Noun::Notifications),
+    ("c", Noun::Cash),
+    ("o", Noun::Inventory),
+    ("n", Noun::Loans),
+    ("k", Noun::CreditCards),
+    ("i", Noun::Investments),
     ("w", Noun::Bills),
     ("b", Noun::Budgets),
     ("r", Noun::Reports),
@@ -117,7 +120,7 @@ fn is_help_key(key: &str, shift: bool) -> bool {
 /// encode as nine sequential, order-dependent `if`/`match` blocks -- `Esc` first (works in any
 /// mode, clears a pending `g` before leaving the current mode), then -- while a non-`Normal`
 /// mode is active -- nothing else, then a pending `g`'s own completion/abort (before anything
-/// else can claim the key, so `g a` reaches Accounts rather than bare `a`'s mode entry), then
+/// else can claim the key, so `g a` reaches Notifications rather than bare `a`'s mode entry), then
 /// the global mode-entry keys, `Tab` cycling, arming a fresh `g`, and finally a [`Movement`].
 ///
 /// Deliberately deterministic: `pending_g_active` is a plain `bool`, not the `Instant` `Shell`
@@ -190,7 +193,7 @@ pub fn route_key(
     match key {
         ":" => return KeyOutcome::EnterCommand,
         "/" => return KeyOutcome::EnterSearch,
-        // `g a` (above) jumps to Accounts instead -- the pending-`g` branch always runs first
+        // `g a` (above) jumps to Notifications instead -- the pending-`g` branch always runs first
         // and returns before this match is reached, so the two never collide.
         "a" if !ctrl && !shift => return KeyOutcome::EnterInsert,
         "b" if !ctrl && !shift => return KeyOutcome::ToggleRail,
@@ -570,7 +573,7 @@ mod tests {
     fn pending_g_then_a_bound_key_jumps_to_its_noun() {
         assert_eq!(
             route_key(InputMode::Normal, true, "a", false, false),
-            KeyOutcome::JumpToNoun(Noun::Accounts)
+            KeyOutcome::JumpToNoun(Noun::Notifications)
         );
     }
 
@@ -585,11 +588,11 @@ mod tests {
 
     #[test]
     fn pending_g_beats_mode_entry_keys_the_ordering_bug_this_replaces() {
-        // The exact regression #150 fixed: `g a` must reach Accounts, not bare `a`'s
+        // The exact regression #150 fixed: `g a` must reach Notifications, not bare `a`'s
         // Insert-mode arm -- this is only true if the pending-`g` tier is checked first.
         assert_eq!(
             route_key(InputMode::Normal, true, "a", false, false),
-            KeyOutcome::JumpToNoun(Noun::Accounts)
+            KeyOutcome::JumpToNoun(Noun::Notifications)
         );
         assert_eq!(
             route_key(InputMode::Normal, false, "a", false, false),

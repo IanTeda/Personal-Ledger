@@ -65,8 +65,38 @@ pub fn state_file_path() -> Option<PathBuf> {
 pub fn load_from(path: &Path) -> PersistedState {
     std::fs::read_to_string(path)
         .ok()
-        .and_then(|contents| serde_json::from_str(&contents).ok())
+        .and_then(|contents| serde_json::from_str::<serde_json::Value>(&contents).ok())
+        .map(migrate_removed_noun)
+        .and_then(|value| serde_json::from_value(value).ok())
         .unwrap_or_default()
+}
+
+/// The `noun`s that left the primary rail for Settings pages (#420), with the page each became.
+/// A state file written before then still names one of them.
+const REMOVED_NOUNS: [(&str, &str); 4] = [
+    ("Accounts", "accounts"),
+    ("Categories", "categories"),
+    ("Payees", "payees"),
+    ("Tags", "tags"),
+];
+
+/// Rewrites a persisted removed `noun` to `Settings` on its matching page, so an old state file
+/// still restores the rest of the session (window geometry, rail mode) instead of resetting to
+/// the default. A state that already names a Settings page keeps it.
+fn migrate_removed_noun(mut state: serde_json::Value) -> serde_json::Value {
+    let Some(object) = state.as_object_mut() else {
+        return state;
+    };
+    let page = object
+        .get("noun")
+        .and_then(serde_json::Value::as_str)
+        .and_then(|noun| REMOVED_NOUNS.iter().find(|(old, _)| *old == noun))
+        .map(|(_, page)| *page);
+    if let Some(page) = page {
+        object.insert("noun".to_string(), "Settings".into());
+        object.insert("settings_page".to_string(), page.into());
+    }
+    state
 }
 
 /// Loads from the real platform state file (see [`state_file_path`]), or the default state if
@@ -127,7 +157,7 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir should be creatable");
         let path = dir.path().join("nested").join(STATE_FILE_NAME);
         let state = PersistedState {
-            noun: Noun::Accounts,
+            noun: Noun::Cash,
             primary_rail: RailMode::Collapsed,
             start_sidebar_minimised: true,
             settings_page: Some("tags".to_string()),
@@ -161,5 +191,23 @@ mod tests {
         let loaded = load_from(&path);
 
         assert_eq!(loaded, state);
+    }
+
+    #[test]
+    fn a_removed_noun_loads_as_its_settings_page_and_keeps_the_window() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+        let path = dir.path().join(STATE_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"{"noun":"Payees","primary_rail":"Collapsed","window":{"x":1.0,"y":2.0,"width":3.0,"height":4.0}}"#,
+        )
+        .expect("write should succeed");
+
+        let loaded = load_from(&path);
+
+        assert_eq!(loaded.noun, Noun::Settings);
+        assert_eq!(loaded.settings_page.as_deref(), Some("payees"));
+        assert_eq!(loaded.primary_rail, RailMode::Collapsed);
+        assert!(loaded.window.is_some());
     }
 }
