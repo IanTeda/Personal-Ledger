@@ -982,6 +982,13 @@ impl Shell {
             )
     }
 
+    /// Stands in for opening a ledger, so a test can reach the context rail without the file
+    /// explorer's filesystem walk.
+    #[doc(hidden)]
+    pub fn open_ledger_for_test(&mut self) {
+        self.nav.open_ledger();
+    }
+
     pub fn nav(&self) -> &NavState {
         &self.nav
     }

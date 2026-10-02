@@ -312,6 +312,7 @@ impl PrimaryRail {
             .id(gpui::SharedString::from(format!(
                 "primary-rail-collapsed-{noun:?}"
             )))
+            .debug_selector(|| format!("primary-rail-collapsed-{noun:?}"))
             .w(ROW_BOX)
             .h(ROW_HEIGHT)
             .flex_none()

@@ -28,7 +28,8 @@ mod format;
 mod help;
 mod icon;
 mod import;
-mod key_router;
+#[doc(hidden)]
+pub mod key_router;
 mod limit_form;
 pub mod locale;
 pub mod nav;

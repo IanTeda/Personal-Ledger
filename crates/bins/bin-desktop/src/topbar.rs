@@ -76,6 +76,7 @@ impl RenderOnce for TopBar {
 fn rail_toggle(on_rail_toggle: OnRailToggle, cx: &App) -> impl IntoElement {
     div()
         .id("topbar-rail-toggle")
+        .debug_selector(|| "topbar-rail-toggle".to_string())
         .w(px(28.0))
         .h(px(28.0))
         .flex()
