@@ -1,0 +1,83 @@
+//! Headless harness for the Desktop UI: repeats `lib::run`'s app-level setup, builds `Shell`
+//! through the lib's `build_shell` with a fixed date and the deterministic stub seed, and offers
+//! key presses, selector clicks and read helpers. Nothing here opens a real window or touches
+//! `persistence`, so it runs in a sandbox with no GPU.
+
+#![expect(
+    clippy::expect_used,
+    clippy::panic,
+    reason = "test support: a failed lookup or invalid fixed date should fail the test loudly"
+)]
+
+use bin_desktop::{
+    ShellBindings, build_shell, colours, locale::init_for_tests, nav::Noun,
+    persistence::PersistedState, shell::Shell,
+};
+use chrono::NaiveDate;
+use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
+use lib_colour_theme::ThemeOverrides;
+
+/// The date every test is anchored to, so scopes and seeded relative dates never drift.
+pub fn today() -> NaiveDate {
+    NaiveDate::from_ymd_opt(2026, 6, 15).expect("fixed test date is valid")
+}
+
+/// A `Shell` in a headless window, with helpers to drive and read it.
+pub struct Harness<'a> {
+    pub shell: Entity<Shell>,
+    pub cx: &'a mut VisualTestContext,
+}
+
+impl<'a> Harness<'a> {
+    /// Boots the app-level globals and a `Shell` with default (nothing persisted) state.
+    pub fn new(app: &'a mut TestAppContext) -> Self {
+        // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
+        // never depends on the host; `main` is never run in a test.
+        init_for_tests();
+        app.update(|cx| {
+            gpui_component::init(cx);
+            colours::init(ThemeOverrides::default(), cx);
+        });
+        let (shell, cx) = app.add_window_view(|window, cx| {
+            let focus_handle = cx.focus_handle();
+            window.focus(&focus_handle);
+            build_shell(
+                PersistedState::default(),
+                ShellBindings {
+                    dismiss_toasts: "escape".to_string(),
+                    toast_history: None,
+                },
+                today(),
+                focus_handle,
+                cx,
+            )
+        });
+        Self { shell, cx }
+    }
+
+    /// Presses a space-separated keystroke sequence, e.g. `press("g f")`.
+    pub fn press(&mut self, keys: &str) {
+        self.cx.simulate_keystrokes(keys);
+        self.cx.run_until_parked();
+    }
+
+    /// Clicks the centre of the element tagged `debug_selector(selector)`.
+    pub fn click(&mut self, selector: &'static str) {
+        let bounds = self
+            .cx
+            .debug_bounds(selector)
+            .unwrap_or_else(|| panic!("no element tagged `{selector}` was drawn"));
+        self.cx.simulate_click(bounds.center(), Modifiers::none());
+        self.cx.run_until_parked();
+    }
+
+    /// The Noun the Shell is showing.
+    pub fn noun(&mut self) -> Noun {
+        self.read(|shell| shell.nav().noun())
+    }
+
+    /// Reads from the Shell without mutating it.
+    pub fn read<T>(&mut self, f: impl FnOnce(&Shell) -> T) -> T {
+        self.shell.read_with(self.cx, |shell, _| f(shell))
+    }
+}

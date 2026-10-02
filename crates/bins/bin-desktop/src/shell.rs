@@ -717,7 +717,12 @@ pub struct Shell {
 
 impl Shell {
     pub fn new(nav: NavState, focus_handle: FocusHandle) -> Self {
-        let today = Local::now().date_naive();
+        Self::with_today(nav, focus_handle, Local::now().date_naive())
+    }
+
+    /// As [`Self::new`], with the date the seeded stub data is anchored to supplied, so tests
+    /// are not at the mercy of the wall clock.
+    pub fn with_today(nav: NavState, focus_handle: FocusHandle, today: chrono::NaiveDate) -> Self {
         let seeded_accounts = accounts::default_accounts();
         let categories = categories::default_categories();
         let payees = payees::default_payees();

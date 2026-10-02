@@ -378,6 +378,7 @@ impl PrimaryRail {
 
         div()
             .id(gpui::SharedString::from(format!("primary-rail-{noun:?}")))
+            .debug_selector(|| format!("primary-rail-{noun:?}"))
             .cursor_pointer()
             .when(selected, |this| this.bg(color::selection_background(cx)))
             .when(!selected, |this| {

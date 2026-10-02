@@ -33,8 +33,9 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
 }
 
 /// Loads this bin's Message layer for a unit test, since tests never run `main`. Safe to call from
-/// any test: an explicit `init` replaces the lazily built default loader.
-#[cfg(test)]
+/// any test: an explicit `init` replaces the lazily built default loader. Also the integration
+/// harness's entry (`test-support`), which never runs `main` either.
+#[cfg(any(test, feature = "test-support"))]
 pub fn init_for_tests() {
     lib_locale::init_with_layers("en-US", &[crate::msg::LAYER]);
 }

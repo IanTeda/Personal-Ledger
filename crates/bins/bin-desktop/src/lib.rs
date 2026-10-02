@@ -15,7 +15,7 @@ mod bills;
 mod budget_form;
 mod budgets;
 mod categories;
-mod colours;
+pub mod colours;
 mod command;
 mod dialog;
 mod documents;
@@ -30,8 +30,8 @@ mod icon;
 mod import;
 mod key_router;
 mod limit_form;
-mod locale;
-mod nav;
+pub mod locale;
+pub mod nav;
 mod palette;
 mod pay_form;
 mod payees;
@@ -39,7 +39,7 @@ pub mod persistence;
 mod rail;
 mod select;
 mod settings;
-mod shell;
+pub mod shell;
 mod statusline;
 mod tags;
 mod theme;
@@ -87,9 +87,11 @@ pub struct ShellBindings {
 }
 
 /// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
+/// `today` is a parameter so tests can pin the date the seeded stub data and scopes hang off.
 pub fn build_shell(
     persisted: PersistedState,
     bindings: ShellBindings,
+    today: chrono::NaiveDate,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
 ) -> Shell {
@@ -100,7 +102,6 @@ pub fn build_shell(
     } else {
         persisted.primary_rail
     });
-    let today = chrono::Local::now().date_naive();
     let documents_state = (
         documents::DocumentsMode::from_id(persisted.documents_mode.as_deref()),
         documents::LibraryScope::from_id(
@@ -115,7 +116,7 @@ pub fn build_shell(
         .map(settings::SettingsSection::from_id)
         .unwrap_or_default();
 
-    let mut shell = Shell::new(nav, focus_handle);
+    let mut shell = Shell::with_today(nav, focus_handle, today);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised);
     shell.set_settings_page(settings_page);
     shell.set_explorer_filters(persisted.explorer_filters);
@@ -218,6 +219,7 @@ pub fn run(config: &lib_config::Config) {
                                 dismiss_toasts: dismiss_toasts_binding,
                                 toast_history: toast_history_binding,
                             },
+                            chrono::Local::now().date_naive(),
                             focus_handle,
                             cx,
                         )

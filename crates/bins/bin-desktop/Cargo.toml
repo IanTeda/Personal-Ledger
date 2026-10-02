@@ -15,6 +15,11 @@ doctest = false
 name = "desktop"
 path = "src/main.rs"
 
+[features]
+# Turns on gpui's in-process test support and the `debug_selector` tags the integration tests
+# click. Only the self dev-dependency below enables it, so shipped builds never compile it.
+test-support = ["gpui/test-support"]
+
 [dependencies]
 ## -- Internal Dependencies --
 lib_colour_theme = { path = "../../libs/lib-colour-theme" }
@@ -45,6 +50,7 @@ gpui-component = { version = "0.5.1" }
 lib_locale_build = { path = "../../libs/lib-locale-build" }
 
 [dev-dependencies]
+bin_desktop = { path = ".", features = ["test-support"] }
 tempfile = { workspace = true }
 
 [lints]
