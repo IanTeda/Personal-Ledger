@@ -34,6 +34,19 @@ pub struct SettingsSnapshot {
     pub merge_pair: Option<(String, String)>,
     /// Unit codes in table order.
     pub unit_codes: Vec<String>,
+    /// Institution `(name, account type)` rows in table order.
+    pub institutions: Vec<(String, String)>,
+    /// Unit `(code, name, kind)` rows in table order.
+    pub unit_rows: Vec<(String, String, String)>,
+    /// The Add/Edit unit dialog's Name draft, Type (`UnitKind` variant name) and focused field
+    /// (`Code` or `Name`).
+    pub unit_dialog_name: Option<String>,
+    pub unit_dialog_kind: Option<String>,
+    pub unit_dialog_field: Option<String>,
+    /// The Add institution dialog's checked Account types (`AccountType` variant names) and
+    /// chosen Default unit code.
+    pub institution_dialog_types: Option<Vec<String>>,
+    pub institution_dialog_unit: Option<String>,
     /// The open dialog (`AddAccount`, `EditPayee`, `DeleteUnit` and so on); only one page's
     /// dialog is ever open.
     pub dialog: Option<String>,
@@ -84,6 +97,8 @@ impl Shell {
         let mut dialog = None;
         let mut dialog_name = None;
         let mut dialog_confirm = None;
+        let mut unit_form = None;
+        let mut institution_form = None;
         if let Some(open) = self.accounts_dialog.as_ref() {
             let (label, name, confirm) = match open {
                 AccountsDialog::Add(form) => ("AddAccount", Some(form.name.clone()), None),
@@ -142,12 +157,21 @@ impl Shell {
             dialog_confirm = confirm;
         } else if let Some(open) = self.settings_dialog.as_ref() {
             let (label, name, confirm) = match open {
-                SettingsDialog::AddUnit(form) => ("AddUnit", Some(form.code.clone()), None),
-                SettingsDialog::EditUnit(_, form) => ("EditUnit", Some(form.code.clone()), None),
+                SettingsDialog::AddUnit(form) => {
+                    unit_form = Some(form);
+                    ("AddUnit", Some(form.code.clone()), None)
+                }
+                SettingsDialog::EditUnit(_, form) => {
+                    unit_form = Some(form);
+                    ("EditUnit", Some(form.code.clone()), None)
+                }
                 SettingsDialog::DeleteUnit(_, form) => {
                     ("DeleteUnit", None, Some(form.confirm_input.clone()))
                 }
-                SettingsDialog::AddInstitution(_) => ("AddInstitution", None, None),
+                SettingsDialog::AddInstitution(form) => {
+                    institution_form = Some(form);
+                    ("AddInstitution", Some(form.name.clone()), None)
+                }
             };
             dialog = Some(label);
             dialog_name = name;
@@ -181,6 +205,27 @@ impl Shell {
                 .iter()
                 .map(|unit| unit.code.clone())
                 .collect(),
+            institutions: self
+                .settings_institutions
+                .iter()
+                .map(|row| (row.name.clone(), row.account_type.clone()))
+                .collect(),
+            unit_rows: self
+                .settings_units
+                .iter()
+                .map(|unit| (unit.code.clone(), unit.name.clone(), unit.kind.clone()))
+                .collect(),
+            unit_dialog_name: unit_form.map(|form| form.name.clone()),
+            unit_dialog_kind: unit_form.map(|form| format!("{:?}", form.kind)),
+            unit_dialog_field: unit_form.map(|form| format!("{:?}", form.focused_field)),
+            institution_dialog_types: institution_form.map(|form| {
+                form.account_types
+                    .iter()
+                    .map(|account_type| format!("{account_type:?}"))
+                    .collect()
+            }),
+            institution_dialog_unit: institution_form
+                .and_then(|form| form.default_unit_code.clone()),
             dialog: dialog.map(str::to_string),
             dialog_name,
             dialog_confirm,

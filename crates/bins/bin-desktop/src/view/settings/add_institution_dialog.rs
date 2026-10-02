@@ -121,11 +121,16 @@ fn chip(
     on_click: OnAccountTypeClick,
     cx: &App,
 ) -> impl IntoElement {
+    let id = SharedString::from(format!(
+        "add-institution-chip-{}",
+        format!("{account_type:?}").to_lowercase()
+    ));
     div()
-        .id(SharedString::from(format!(
-            "add-institution-chip-{}",
-            format!("{account_type:?}").to_lowercase()
-        )))
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
+        .id(id)
         .cursor_pointer()
         .flex()
         .items_center()
@@ -174,6 +179,7 @@ fn default_unit_field(
                     let code = unit.code.clone();
                     div()
                         .id(SharedString::from(format!("add-institution-unit-{index}")))
+                        .debug_selector(move || format!("add-institution-unit-{index}"))
                         .cursor_pointer()
                         .py(px(7.0))
                         .px(px(12.0))
