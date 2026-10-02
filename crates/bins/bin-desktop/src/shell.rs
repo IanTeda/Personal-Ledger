@@ -10185,6 +10185,7 @@ fn render_view(
 /// one line saying so. The rail row and `g` binding are live; the surface is not.
 fn placeholder_view(noun: Noun, cx: &gpui::App) -> gpui::AnyElement {
     div()
+        .debug_selector(|| "placeholder-view".to_string())
         .p(px(24.0))
         .flex()
         .flex_col()
