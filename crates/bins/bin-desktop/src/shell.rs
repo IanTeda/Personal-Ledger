@@ -20,6 +20,8 @@
 //! keystrokes at all.
 
 mod documents_ui;
+#[doc(hidden)]
+pub use documents_ui::DocumentsSnapshot;
 
 use std::path::PathBuf;
 use std::rc::Rc;

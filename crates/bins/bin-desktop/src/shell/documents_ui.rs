@@ -114,7 +114,64 @@ fn exists_on_disk(path: &Path) -> bool {
     path.exists()
 }
 
+/// What the integration tests read back of the Documents page: ids and plain values, so the
+/// private `documents` types need not become public for them.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DocumentsSnapshot {
+    /// `library` or `inbox`.
+    pub mode: &'static str,
+    /// The Library scope's stable id, e.g. `all` or `type:receipt`.
+    pub scope: String,
+    /// `newest` or `expiring`.
+    pub sort: &'static str,
+    pub index_focused: bool,
+    pub query: String,
+    /// The file name of the Document the selection is on.
+    pub selected_file: Option<String>,
+    /// Which dialog is open: `add`, `edit`, `import`, `facts`, `accept-all`, or
+    /// `picker-link`, `picker-file`, `picker-follow`.
+    pub dialog: Option<&'static str>,
+    pub library_rows: usize,
+    pub inbox_rows: usize,
+    pub toasts: Vec<String>,
+    pub status: Option<String>,
+}
+
 impl Shell {
+    #[doc(hidden)]
+    pub fn documents_snapshot(&self) -> DocumentsSnapshot {
+        DocumentsSnapshot {
+            mode: self.documents_mode.id(),
+            scope: self.documents_scope.id(),
+            sort: self.documents_sort.id(),
+            index_focused: self.documents_focus == DocumentsFocus::Index,
+            query: self.documents_query.clone(),
+            selected_file: self.documents_selected_document().map(Document::file_name),
+            dialog: self.documents_dialog.as_ref().map(|dialog| match dialog {
+                DocumentsDialog::Add(_) => "add",
+                DocumentsDialog::Edit(..) => "edit",
+                DocumentsDialog::Import(..) => "import",
+                DocumentsDialog::Facts(..) => "facts",
+                DocumentsDialog::AcceptAll(_) => "accept-all",
+                DocumentsDialog::Picker(state) => match state.purpose {
+                    Purpose::Link(_) => "picker-link",
+                    Purpose::File(_) => "picker-file",
+                    Purpose::Follow(_) => "picker-follow",
+                },
+            }),
+            library_rows: self.documents_library_rows().len(),
+            inbox_rows: self.documents_inbox_rows().len(),
+            toasts: self
+                .toasts
+                .visible()
+                .iter()
+                .map(|toast| toast.text().to_string())
+                .collect(),
+            status: self.status_message.clone(),
+        }
+    }
+
     pub(super) fn documents_lookups(&self) -> Lookups<'_> {
         Lookups {
             accounts: &self.accounts,

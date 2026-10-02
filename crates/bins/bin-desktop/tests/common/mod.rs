@@ -10,8 +10,11 @@
 )]
 
 use bin_desktop::{
-    ShellBindings, build_shell, colours, locale::init_for_tests, nav::Noun,
-    persistence::PersistedState, shell::Shell,
+    ShellBindings, build_shell, colours,
+    locale::init_for_tests,
+    nav::Noun,
+    persistence::PersistedState,
+    shell::{DocumentsSnapshot, Shell},
 };
 use chrono::NaiveDate;
 use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
@@ -44,7 +47,7 @@ impl<'a> Harness<'a> {
             build_shell(
                 PersistedState::default(),
                 ShellBindings {
-                    dismiss_toasts: "escape".to_string(),
+                    dismiss_toasts: "ctrl+l".to_string(),
                     toast_history: None,
                 },
                 today(),
@@ -74,6 +77,11 @@ impl<'a> Harness<'a> {
     /// The Noun the Shell is showing.
     pub fn noun(&mut self) -> Noun {
         self.read(|shell| shell.nav().noun())
+    }
+
+    /// The Documents page's state, read back for assertions.
+    pub fn documents(&mut self) -> DocumentsSnapshot {
+        self.read(Shell::documents_snapshot)
     }
 
     /// Reads from the Shell without mutating it.
