@@ -40,7 +40,7 @@ env:
 jobs:
   # Gate: no desktop build or packaging unless the headless UI tests pass (ADR-0030).
   test-ui:
-    uses: ./.github/workflows/test-ui-main-push.yaml
+    uses: ./.github/workflows/end-to-end-desktop.yaml
 
   build-test:
     needs: test-ui

@@ -1,4 +1,4 @@
-name: Desktop UI Tests on Main Push or Pull
+name: Desktop UI End-to-End
 
 on:
   push:
