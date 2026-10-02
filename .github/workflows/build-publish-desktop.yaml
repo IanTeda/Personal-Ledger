@@ -49,7 +49,10 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # A cold Windows run (gpui debug + release builds, then cargo-packager compiled from source)
+    # needs well over 30 minutes; the caches below only save on success, so the first green run
+    # has to fit, and later runs are much faster.
+    timeout-minutes: 60
     steps:
       # https://github.com/actions/checkout
       - name: Checkout repository
