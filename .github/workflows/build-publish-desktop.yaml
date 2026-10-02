@@ -38,7 +38,12 @@ env:
   CARGO_PACKAGER_VERSION: "0.11.8"
 
 jobs:
+  # Gate: no desktop build or packaging unless the headless UI tests pass (ADR-0030).
+  test-ui:
+    uses: ./.github/workflows/test-ui-main-push.yaml
+
   build-test:
+    needs: test-ui
     strategy:
       fail-fast: false
       matrix:

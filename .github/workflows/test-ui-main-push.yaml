@@ -5,6 +5,8 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Reused by build-publish-desktop.yaml so a release or manual build is gated on these tests.
+  workflow_call:
 
 jobs:
   test-ui:
