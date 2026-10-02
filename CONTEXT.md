@@ -335,16 +335,16 @@ A reference to one file kept beside the Ledger, plus its metadata: a Title (defa
 _Avoid_: Attachment, File (for the Ledger record rather than the bytes on disk), Inbox Item — an Inbox entry is just an Unfiled Document, not a separate thing.
 
 **Document Type**:
-The fixed kind of a Document, exactly one per Document: Receipt, Statement, Tax, Insurance, Warranty & manual, Contract, Identity or Bill. Not user-editable and with no subtypes; any finer distinction ("policy", "PDS") belongs in the Title.
-_Avoid_: Category — Category classifies Splits, not Documents.
+A user-managed kind of Document, kept as Ledger data in an order the user sets; every Filed Document has exactly one. A new Ledger is seeded with Receipts, Statements, Tax, Insurance, Warranties & manuals, Contracts, Identity and Bills, which carry no special status afterwards. There are no subtypes; any finer distinction ("policy", "PDS") belongs in the Title.
+_Avoid_: Category — Category classifies Splits, not Documents. Tag — a Document Type is exactly one per Document, not a free label.
 
 **Financial Year**:
-The twelve-month year a date falls in, beginning on the month set as the Financial year start (1 July by default, the Australian financial year), labelled by both calendar years it spans (e.g. FY 2025–26). A Document's Financial Year is always derived from its document date, never stored, so every Document has one.
-_Avoid_: Tax year — the same period under another name; Financial Year is canonical.
+The twelve-month year a date falls in, beginning on the month set as the Financial year start (1 July by default, the Australian financial year), labelled by both calendar years it spans (e.g. FY 2025–26). A Document's Financial Year is always derived from its document date, never stored, so every Document has one, whatever its Document Type. A Document Type's **Financial year** flag decides whether the type is treated as year-bound in the UI: the Financial year filter matches only flag-on types, the detail pane shows the Financial Year fact only for them, and the Inbox names a year only when the extracted type has the flag. Toggling the flag changes what is shown, never the derived value.
+_Avoid_: Tax year — the same period under another name; Financial Year is canonical, including for the Document Type flag, the Documents filter and the Settings column.
 
 **Key Date**:
-The one forward-dated obligation a Document may carry (zero or one per Document): a kind — Renews, Ends (also used for a warranty's end), Expires or Revalue — a date, and whether a reminder is wanted. The reminder flag records intent only; it does not change whether the Key Date needs review. Drives the Documents surface's Expiring sort and Need Review count; it is not part of Needs Attention.
-_Avoid_: Due date — that belongs to a Bill Schedule entry. Reminder — the reminder is a flag on the Key Date, not the date itself.
+The one forward-dated obligation a Document may carry (zero or one per Document): a date. Its kind — Renews, Ends (also used for a warranty's end), Expires or Revalue — is set by the Document's Document Type (its **Tracks date**), never by the Document; a type that tracks no date gives its Documents no Key Date. The date is optional even where the type tracks one. If the type later changes kind or stops tracking a date, existing dates are kept: the kind relabels, or the date goes inert (no Expiring sort, no Need Review) until the type tracks a date again. Whether it is reminded is also set by the type, not the Document: the type's **Remind** lead time (none, 7, 14, 30 or 60 days, 3 or 6 months) gives a derived, never-stored **Reminder due on** date (Key Date minus lead time) that a future Notifications model reads. Remind is inert when the type tracks no date, and a lead time changed later applies to every Document of the type; a reminder date already passed is treated as missed, not fired. Remind does not change Need Review. Drives the Documents surface's Expiring sort and Need Review count; it is not part of Needs Attention.
+_Avoid_: Due date — that belongs to a Bill Schedule entry. Reminder flag on the Document — the lead time belongs to the Document Type.
 
 **Need Review**:
 A Filed Document whose Key Date falls within 60 days either side of today, inclusive: soon due, or recently lapsed. A Key Date further ahead is **Upcoming**; one lapsed for longer is **Stale**, and neither needs review. Derived each time it is shown, never stored or dismissed, and local to the Documents surface.
@@ -359,7 +359,7 @@ The list of every Unfiled Document, waiting to be filed. Its count is derived, n
 _Avoid_: Queue, Unsorted.
 
 **Extracted Facts**:
-What was read from an Unfiled Document's file — merchant, date, total and Document Type, any of which may be absent — and which the user may correct before filing. A Document from which no amount could be read is **Unreadable** and is never given a Suggested Link.
+What was read from an Unfiled Document's file — merchant, date, total and Document Type (only ever one of the Ledger's own Document Types, matched by name), any of which may be absent — and which the user may correct before filing. A Document from which no amount could be read is **Unreadable** and is never given a Suggested Link.
 _Avoid_: Metadata — a Document's metadata is what it carries once Filed; Extracted Facts are the raw reading.
 
 **Suggested Link**:

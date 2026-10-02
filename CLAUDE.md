@@ -70,6 +70,7 @@ Planned-but-not-yet-present crates/binaries mentioned in `docs/directories-files
 **Resolve lints before pushing:** the Lint workflow (`.github/workflows/lint.yaml`) fails on any rustfmt diff or clippy warning, but it runs only for `main` (pushes and PRs), so on `concept` a lint break otherwise surfaces late, at the PR into `main`. Run `mise run lint` (exactly what it runs: `cargo fmt --check` then `SQLX_OFFLINE=true cargo clippy --workspace --all-targets -- -D warnings`) and get it clean before every `git push`. The `.githooks/pre-push` hook enforces this once `mise run install-hooks` has been run. `SQLX_OFFLINE=true` matters: CI has no `DATABASE_URL`, so it checks `lib-database`'s query macros against the checked-in `.sqlx` cache, while a local build silently uses the live dev DB from `.env` and hides a stale cache. If clippy reports "no cached data for this query", regenerate the cache with `mise run db-prepare-generate` and commit the `.sqlx` changes. Fix lints at the source (`mise run lint-fix` for the mechanical ones, then by hand); where a lint is deliberately left, silence it locally with `#[expect(clippy::<lint>, reason = "...")]`, never by relaxing the workspace config or dropping `-D warnings`.
 
 - Commit style: `<area>: <short description>` (e.g. `email-verification: add updated_at to model and migration`).
+- **Desktop Views need end-to-end UI tests:** every `bin-desktop` View (each screen under `crates/bins/bin-desktop/src/view/`, and each Settings page) has matching headless keyboard and mouse tests in `crates/bins/bin-desktop/tests/`. When adding a new View, or changing or reviewing Desktop UI code, check that its tests exist and cover the change, and add the missing ones by default without waiting to be asked: invoke `/ui-tests`, then run `mise run end-to-end-ui`. A View without tests is incomplete; when reviewing, report the gap as a finding. If a View is deliberately left untested, say so and why in the PR or commit message.
 - Tests: unit tests live alongside the code (`#[cfg(test)] mod tests`); integration/DB tests use `sqlx::test`; use the `fake` crate with deterministic seeds for generated test data. No doctests: usage is specified by unit tests, doc comments explain why rather than carrying `# Examples`, and every library crate sets `[lib] doctest = false`.
 
 ## Agent work on independent tickets
@@ -88,25 +89,14 @@ Wayfinder tickets (like localization migration tickets #247-#252) typically bene
 
 ## Model selection strategy
 
-Use higher-capacity models (Opus/Sonnet) for ambiguous or architectural work that requires broad context and deep reasoning. Use lower-capacity models (Haiku) for well-scoped, actionable work with clear direction. This optimises for both quality and token efficiency.
+Think harder where the decision is, spend less where the scope is already fixed. Two defaults:
 
-**Use Opus/Sonnet for:**
-- Planning and architecture (Wayfinder maps, design decisions, multi-ticket coordination)
-- Writing or reviewing documentation (design docs, ADRs, user guides)
-- Open-ended exploration or code review
-- Situations where unclear requirements or unexpected findings need synthesis
+- **Opus 5.5, medium effort**: research and decisions. Wayfinder charting and decision tickets (grilling, domain-modeling, prototype, research), ADRs and design docs, architecture, code review, and anything with unclear requirements or findings that need synthesis.
+- **Sonnet 5.5, low effort**: implementation against a defined scope. Tickets with explicit acceptance criteria, work to a fixed design or spec, tests, lint fixes, routine refactors, and adding to an established pattern (e.g. a new CRUD entity following the existing split).
 
-**Use Haiku for:**
-- Tickets with explicit acceptance criteria and defined scope
-- Implementation against a fixed design/spec
-- Routine refactors, test additions, or maintenance
-- Adding a feature to an established pattern (e.g. a new CRUD entity following existing structure)
+Raise a level only when needed: Opus high for hard-to-diagnose bugs and cross-cutting design; Sonnet medium for end-user docs written to the `/end-user-docs` template. Haiku is reserved for purely mechanical work (e.g. `graphify update`).
 
-When starting a ticket:
-- If the ticket body is clear, explicit, and self-contained → Haiku
-- If the ticket requires understanding prior changes, weighing tradeoffs, or designing an approach → Opus/Sonnet
-
-If Haiku encounters ambiguity, unexpected findings, or a decision point, it should pause and escalate to the user rather than guess.
+When starting a ticket: if the body is clear, explicit and self-contained, use Sonnet low; if it needs prior context, tradeoffs or an approach designed, use Opus medium. If Sonnet low hits ambiguity, an unexpected finding or a decision point, it should stop and escalate to the user (and a switch to Opus medium) rather than guess.
 
 ## Agent skills
 

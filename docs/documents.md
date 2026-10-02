@@ -20,7 +20,7 @@ Documents is your library of proof: receipts, statements, insurance policies, wa
 ## Terminology
 
 - **Document:** A reference to one file kept beside your ledger, plus its details: a title, a type, a date, an optional key date and any number of links.
-- **Document type:** What kind of document it is. Exactly one of Receipt, Statement, Tax, Insurance, Warranty & manual, Contract, Identity or Bill.
+- **Document type:** What kind of document it is. You manage the list in Settings › Documents; a new ledger starts with Receipts, Statements, Tax, Insurance, Warranties & manuals, Contracts, Identity and Bills.
 - **Filed / Unfiled:** A filed document is in the Library. An unfiled one is waiting in the Inbox. Only you file a document; adding a link doesn't.
 - **Link:** A document's reference to one record it proves: a Transaction, an Inventory item, an Account, a Payee or a Bill plan.
 - **Financial year:** The twelve months a document's date falls in, starting 1 July, such as FY 2025–26. It is worked out from the document date.
