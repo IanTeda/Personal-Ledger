@@ -197,6 +197,7 @@ fn card(
     let preview = colours::colours(cx).preview(id);
     // The focus ring sits outside the chosen border so the two never hide each other.
     div()
+        .debug_selector(move || format!("display-colour-theme-{index}"))
         .id(SharedString::from(format!("display-colour-theme-{index}")))
         .cursor_pointer()
         .w(px(CARD_WIDTH + 4.0))

@@ -251,6 +251,7 @@ fn start_sidebar_minimised_toggle(
     cx: &App,
 ) -> impl IntoElement {
     div()
+        .debug_selector(|| "display-start-sidebar-minimised".to_string())
         .id("display-start-sidebar-minimised")
         .cursor_pointer()
         .flex()
@@ -334,6 +335,7 @@ fn status_glyphs_option(
     cx: &App,
 ) -> impl IntoElement {
     div()
+        .debug_selector(move || format!("display-status-glyphs-{index}"))
         .id(SharedString::from(format!("display-status-glyphs-{index}")))
         .cursor_pointer()
         .flex()

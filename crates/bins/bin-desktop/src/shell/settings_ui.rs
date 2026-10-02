@@ -40,6 +40,15 @@ pub struct SettingsSnapshot {
     /// The dialog's name (or Unit code) draft, and its typed-back confirmation for a Delete.
     pub dialog_name: Option<String>,
     pub dialog_confirm: Option<String>,
+    /// The Display page: the focused control above the Colour Theme grid and the focused card,
+    /// then each control's value (enum variant names; `date_style` is `None` for the default).
+    pub display_field: Option<usize>,
+    pub colour_theme_focus: Option<usize>,
+    pub date_style: Option<String>,
+    pub row_density: String,
+    pub status_glyphs: String,
+    pub start_sidebar_minimised: bool,
+    pub toasts_on: bool,
 }
 
 impl Shell {
@@ -175,6 +184,13 @@ impl Shell {
             dialog: dialog.map(str::to_string),
             dialog_name,
             dialog_confirm,
+            display_field: self.settings_display_field,
+            colour_theme_focus: self.colour_theme_focus,
+            date_style: self.settings_date_style.map(|style| format!("{style:?}")),
+            row_density: format!("{:?}", self.settings_row_density),
+            status_glyphs: format!("{:?}", self.settings_status_glyphs),
+            start_sidebar_minimised: self.settings_start_sidebar_minimised,
+            toasts_on: self.toasts.display().toasts_on,
         }
     }
 }

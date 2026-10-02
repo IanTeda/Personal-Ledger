@@ -105,6 +105,17 @@ impl<'a> Harness<'a> {
         self.read(Shell::settings_snapshot)
     }
 
+    /// The Colour Theme id and Appearance now chosen, read from the colours Global.
+    pub fn colour_choice(&mut self) -> (Option<String>, Option<String>) {
+        self.cx.read(|cx| {
+            let state = colours::colours(cx);
+            (
+                state.colour_theme().map(str::to_string),
+                state.colour_appearance().map(|a| format!("{a:?}")),
+            )
+        })
+    }
+
     /// The Transactions page's state, read back for assertions.
     pub fn transactions(&mut self) -> TransactionsSnapshot {
         self.read(Shell::transactions_snapshot)
