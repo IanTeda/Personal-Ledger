@@ -85,6 +85,7 @@ fn entry_row(
     cx: &App,
 ) -> impl IntoElement {
     div()
+        .debug_selector(move || format!("settings-index-{section:?}"))
         .id(SharedString::from(format!("settings-index-{section:?}")))
         .cursor_pointer()
         .py(px(8.0))

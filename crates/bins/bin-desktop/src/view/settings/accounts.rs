@@ -102,6 +102,7 @@ fn kicker_row(on_add_click: OnAddClick, cx: &App) -> impl IntoElement {
 fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
     let hover = color::muted(cx);
     div()
+        .debug_selector(|| "settings-accounts-add".to_string())
         .id("settings-accounts-add")
         .cursor_pointer()
         .flex_none()
@@ -224,6 +225,7 @@ fn row(
     let on_delete_click = props.on_delete_click.clone();
 
     div()
+        .debug_selector(move || format!("settings-accounts-row-{id}"))
         .id(SharedString::from(format!("settings-accounts-row-{id}")))
         .cursor_pointer()
         .flex()
@@ -301,6 +303,10 @@ fn row_action_button(
 ) -> impl IntoElement {
     let hover = color::hover(cx);
     div()
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
         .id(id)
         .cursor_pointer()
         .py(px(4.0))

@@ -430,6 +430,10 @@ fn row_action_button(
     cx: &App,
 ) -> impl IntoElement {
     div()
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
         .id(id)
         .cursor_pointer()
         .py(px(4.0))
@@ -450,6 +454,7 @@ fn add_button(id: &'static str, label: String, on_click: OnAddClick, cx: &App) -
     // `items_start`/etc.) -- without it, this button stretches to the full width of its column
     // parent instead of shrinking to its own content, unlike `width:fit-content` in the mockup.
     let mut button = div()
+        .debug_selector(move || id.to_string())
         .id(id)
         .cursor_pointer()
         .mt(px(16.0))

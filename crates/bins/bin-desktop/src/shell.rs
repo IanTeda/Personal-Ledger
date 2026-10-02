@@ -22,6 +22,7 @@
 mod bills_ui;
 mod budgets_ui;
 mod documents_ui;
+mod settings_ui;
 mod transactions_ui;
 #[doc(hidden)]
 pub use bills_ui::{BillRowSnapshot, BillsSnapshot};
@@ -29,6 +30,8 @@ pub use bills_ui::{BillRowSnapshot, BillsSnapshot};
 pub use budgets_ui::{BudgetRowSnapshot, BudgetsSnapshot};
 #[doc(hidden)]
 pub use documents_ui::DocumentsSnapshot;
+#[doc(hidden)]
+pub use settings_ui::SettingsSnapshot;
 #[doc(hidden)]
 pub use transactions_ui::{ChipSnapshot, TransactionsSnapshot};
 
@@ -1221,6 +1224,7 @@ impl Shell {
                 self.transactions_filter_form = None;
                 self.settings_dialog = None;
                 self.accounts_dialog = None;
+                self.categories_dialog = None;
                 self.payees_dialog = None;
                 self.tags_dialog = None;
                 self.bills_dialog = None;

@@ -130,6 +130,7 @@ fn kicker_row(label: String, on_add_click: Option<OnAddClick>, cx: &App) -> impl
 fn add_button(on_click: OnAddClick, cx: &App) -> impl IntoElement {
     let hover = color::muted(cx);
     div()
+        .debug_selector(|| "settings-categories-add".to_string())
         .id("settings-categories-add")
         .cursor_pointer()
         .flex_none()
@@ -204,6 +205,7 @@ fn tree_row(
     let subcategories = categories::child_count(props.categories, id);
 
     div()
+        .debug_selector(move || format!("settings-categories-row-{id}"))
         .id(SharedString::from(format!("settings-categories-row-{id}")))
         .cursor_pointer()
         .flex()
@@ -328,6 +330,10 @@ fn row_action_button(
 ) -> impl IntoElement {
     let hover = color::hover(cx);
     div()
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
         .id(id)
         .cursor_pointer()
         .py(px(2.0))

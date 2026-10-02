@@ -14,7 +14,10 @@ use bin_desktop::{
     locale::init_for_tests,
     nav::Noun,
     persistence::PersistedState,
-    shell::{BillsSnapshot, BudgetsSnapshot, DocumentsSnapshot, Shell, TransactionsSnapshot},
+    shell::{
+        BillsSnapshot, BudgetsSnapshot, DocumentsSnapshot, SettingsSnapshot, Shell,
+        TransactionsSnapshot,
+    },
 };
 use chrono::NaiveDate;
 use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
@@ -95,6 +98,11 @@ impl<'a> Harness<'a> {
     /// The Budgets page's state, read back for assertions.
     pub fn budgets(&mut self) -> BudgetsSnapshot {
         self.read(Shell::budgets_snapshot)
+    }
+
+    /// The Settings pages' state, read back for assertions.
+    pub fn settings(&mut self) -> SettingsSnapshot {
+        self.read(Shell::settings_snapshot)
     }
 
     /// The Transactions page's state, read back for assertions.
