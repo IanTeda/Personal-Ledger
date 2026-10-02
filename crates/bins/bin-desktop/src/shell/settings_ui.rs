@@ -7,6 +7,7 @@ use crate::{
     categories::CategoriesDialog,
     payees::{self, PayeesDialog},
     settings::{SettingsDialog, SettingsFocus},
+    tags::{self, TagsDialog},
 };
 
 /// The Settings pages' state: plain values, so the private form types stay private.
@@ -26,6 +27,11 @@ pub struct SettingsSnapshot {
     /// Payee names A-Z, and the selected row's name.
     pub payee_names: Vec<String>,
     pub selected_payee: Option<String>,
+    /// Tag names A-Z, and the selected row's name.
+    pub tag_names: Vec<String>,
+    pub selected_tag: Option<String>,
+    /// The Merge tags dialog's chosen `(source, target)` names, once both are set.
+    pub merge_pair: Option<(String, String)>,
     /// Unit codes in table order.
     pub unit_codes: Vec<String>,
     /// The open dialog (`AddAccount`, `EditPayee`, `DeleteUnit` and so on); only one page's
@@ -62,6 +68,10 @@ impl Shell {
                 .map(|payee| payee.name.clone())
         });
 
+        let selected_tag = self
+            .settings_tags_selected_id()
+            .and_then(|id| tags::get(&self.tags, id).map(|tag| tag.name.clone()));
+        let mut merge_pair = None;
         let mut dialog = None;
         let mut dialog_name = None;
         let mut dialog_confirm = None;
@@ -100,6 +110,27 @@ impl Shell {
             dialog = Some(label);
             dialog_name = name;
             dialog_confirm = confirm;
+        } else if let Some(open) = self.tags_dialog.as_ref() {
+            let (label, name, confirm) = match open {
+                TagsDialog::Add(form) => ("AddTag", Some(form.name.clone()), None),
+                TagsDialog::Edit(_, form) => ("EditTag", Some(form.name.clone()), None),
+                TagsDialog::Remove(_, form) => {
+                    ("RemoveTag", None, Some(form.confirmation_name.clone()))
+                }
+                TagsDialog::Merge(form) => {
+                    let options = self.merge_tag_options();
+                    merge_pair = form.pair(&options).and_then(|(source, target)| {
+                        Some((
+                            tags::get(&self.tags, source)?.name.clone(),
+                            tags::get(&self.tags, target)?.name.clone(),
+                        ))
+                    });
+                    ("MergeTags", None, None)
+                }
+            };
+            dialog = Some(label);
+            dialog_name = name;
+            dialog_confirm = confirm;
         } else if let Some(open) = self.settings_dialog.as_ref() {
             let (label, name, confirm) = match open {
                 SettingsDialog::AddUnit(form) => ("AddUnit", Some(form.code.clone()), None),
@@ -130,6 +161,12 @@ impl Shell {
                 .map(|payee| payee.name.clone())
                 .collect(),
             selected_payee,
+            tag_names: tags::sorted_by_name(&self.tags)
+                .into_iter()
+                .map(|tag| tag.name.clone())
+                .collect(),
+            selected_tag,
+            merge_pair,
             unit_codes: self
                 .settings_units
                 .iter()

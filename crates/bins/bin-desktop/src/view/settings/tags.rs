@@ -144,6 +144,7 @@ fn kicker_row(on_add_click: OnPlainClick, cx: &App) -> impl IntoElement {
         // `btn btn-primary` at `height:32px`.
         .child(
             div()
+                .debug_selector(|| "settings-tags-add".to_string())
                 .id("settings-tags-add")
                 .cursor_pointer()
                 .flex_none()
@@ -208,6 +209,7 @@ fn row(
     let on_remove_click = props.on_remove_click.clone();
 
     div()
+        .debug_selector(move || format!("settings-tags-row-{id}"))
         .id(SharedString::from(format!("settings-tags-row-{id}")))
         .cursor_pointer()
         .flex()
@@ -316,6 +318,10 @@ fn row_action_button(
 ) -> impl IntoElement {
     let hover = color::hover(cx);
     div()
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
         .id(id)
         .cursor_pointer()
         .py(px(2.0))
