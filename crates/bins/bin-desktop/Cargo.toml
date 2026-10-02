@@ -16,8 +16,9 @@ name = "desktop"
 path = "src/main.rs"
 
 [features]
-# Turns on gpui's in-process test support and the `debug_selector` tags the integration tests
-# click. Only the self dev-dependency below enables it, so shipped builds never compile it.
+# Turns on gpui's in-process test support, which also makes the `debug_selector` tags the
+# integration tests click take effect (without it gpui compiles them to no-ops). Only the self
+# dev-dependency below enables it, so shipped builds never compile gpui's test support.
 test-support = ["gpui/test-support"]
 
 [dependencies]
