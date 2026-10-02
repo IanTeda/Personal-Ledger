@@ -1,3 +1,18 @@
+# .github/workflows/end-to-end-desktop.yaml
+#
+# Headless keyboard and mouse integration tests for `bin-desktop` (the "Desktop UI Integration
+# Testing" Wayfinder map, issue #443; ADR-0030). They drive the real `Shell`, key router and
+# mouse handlers in process through gpui's `test-support`, so no window, GPU or display server
+# is needed. This is not a real-window end-to-end test: that stays a manual visual check.
+#
+# Runs in two ways:
+#   - directly, on pushes and pull requests to `main`, alongside lint-main-push.yaml;
+#   - as a reusable workflow (`workflow_call`) from build-publish-desktop.yaml, whose build
+#     matrix `needs` it, so a release or manual desktop build never packages a UI regression.
+#
+# Linux only: the tests exercise UI logic, not platform rendering, so one runner is enough.
+# The suite is the `test-ui` mise task, so a local `mise run test-ui` runs exactly what CI runs.
+
 name: Desktop UI End-to-End
 
 on:
