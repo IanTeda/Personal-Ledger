@@ -17,6 +17,7 @@ mod colours;
 mod command;
 mod dialog;
 mod documents;
+mod documents_form;
 mod error;
 mod explorer;
 mod feasibility_demo;
@@ -143,6 +144,17 @@ async fn main() -> Result<()> {
             });
             let start_sidebar_minimised = persisted.start_sidebar_minimised;
             let explorer_filters = persisted.explorer_filters;
+            let documents_state = {
+                let today = chrono::Local::now().date_naive();
+                (
+                    documents::DocumentsMode::from_id(persisted.documents_mode.as_deref()),
+                    documents::LibraryScope::from_id(
+                        persisted.documents_scope.as_deref().unwrap_or("all"),
+                        today,
+                    ),
+                    documents::LibrarySort::from_id(persisted.documents_sort.as_deref()),
+                )
+            };
             let settings_page = persisted
                 .settings_page
                 .as_deref()
@@ -196,6 +208,11 @@ async fn main() -> Result<()> {
                         shell.set_start_sidebar_minimised(start_sidebar_minimised);
                         shell.set_settings_page(settings_page);
                         shell.set_explorer_filters(explorer_filters);
+                        shell.set_documents_state(
+                            documents_state.0,
+                            documents_state.1,
+                            documents_state.2,
+                        );
                         shell.set_dismiss_toasts_binding(dismiss_toasts_binding);
                         shell.set_toast_history_binding(toast_history_binding);
                         shell.start_toast_clock(cx);
@@ -228,6 +245,9 @@ async fn main() -> Result<()> {
                         start_sidebar_minimised: shell.start_sidebar_minimised(),
                         settings_page: Some(shell.settings_page().id().to_string()),
                         explorer_filters: shell.explorer_filters(),
+                        documents_mode: Some(shell.documents_persisted().0.id().to_string()),
+                        documents_scope: Some(shell.documents_persisted().1.id()),
+                        documents_sort: Some(shell.documents_persisted().2.id().to_string()),
                         window: Some(WindowGeometry {
                             x: f32::from(bounds.origin.x),
                             y: f32::from(bounds.origin.y),

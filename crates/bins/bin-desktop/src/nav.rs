@@ -127,8 +127,7 @@ impl Noun {
     pub fn is_placeholder(self) -> bool {
         matches!(
             self,
-            Noun::Documents
-                | Noun::Notifications
+            Noun::Notifications
                 | Noun::Cash
                 | Noun::Inventory
                 | Noun::Loans

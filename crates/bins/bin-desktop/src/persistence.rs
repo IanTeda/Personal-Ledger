@@ -51,6 +51,16 @@ pub struct PersistedState {
     /// The `:open` file explorer's two footer checkboxes.
     #[serde(default)]
     pub explorer_filters: ExplorerFilters,
+    /// Documents: `inbox` or `library`. Anything else loads as the Library.
+    #[serde(default)]
+    pub documents_mode: Option<String>,
+    /// Documents: the last Library scope's stable id (`all`, `type:receipts`, `fy:2025`...). A
+    /// malformed or stale one loads as All documents.
+    #[serde(default)]
+    pub documents_scope: Option<String>,
+    /// Documents: `newest` or `expiring`.
+    #[serde(default)]
+    pub documents_sort: Option<String>,
     pub window: Option<WindowGeometry>,
 }
 
@@ -171,6 +181,9 @@ mod tests {
                 pldb_only: true,
                 hide_hidden: false,
             },
+            documents_mode: Some("inbox".to_string()),
+            documents_scope: Some("type:receipts".to_string()),
+            documents_sort: Some("expiring".to_string()),
             window: Some(WindowGeometry {
                 x: 10.0,
                 y: 20.0,
@@ -195,6 +208,9 @@ mod tests {
             start_sidebar_minimised: false,
             settings_page: None,
             explorer_filters: ExplorerFilters::default(),
+            documents_mode: None,
+            documents_scope: None,
+            documents_sort: None,
             window: None,
         };
 

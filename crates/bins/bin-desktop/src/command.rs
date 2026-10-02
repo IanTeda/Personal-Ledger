@@ -63,6 +63,8 @@ pub enum CommandEffect {
     /// A `budgets <verb>` command: `Shell::run_command` jumps to the Budgets page and runs the
     /// verb on the Budget on show.
     Budgets(BudgetsVerb),
+    /// A `documents <verb>` command: `Shell::run_command` jumps to Documents and runs the verb.
+    Documents(DocumentsVerb),
     /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
     Import,
     /// No real behaviour behind this command yet (`docs/ux/tui/README.md`'s commitment: "a
@@ -82,6 +84,21 @@ pub enum AccountsVerb {
     Edit,
     /// `accounts delete [<account name>]`: the Delete dialog for the named (or selected) account.
     Delete,
+}
+
+/// The Documents verbs the palette understands: the same actions the page's keys reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentsVerb {
+    /// `documents inbox`: the Inbox.
+    Inbox,
+    /// `documents library`: the Library, on its last scope.
+    Library,
+    /// `documents accept-all`: the count-first confirm for every strong Inbox match.
+    AcceptAll,
+    /// `documents add`: the `+ Add` dialog.
+    Add,
+    /// `documents import`: the `Import…` dialog.
+    Import,
 }
 
 /// The Budgets verbs the palette understands (#400): the same actions the page's keys and the
@@ -351,6 +368,41 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_documents_description,
         binding: Some("g f"),
         effect: CommandEffect::Navigate(Noun::Documents),
+    },
+    Command {
+        name: "documents inbox",
+        domain: Domain::Documents,
+        description: crate::msg::desktop_command_documents_inbox_description,
+        binding: Some("i"),
+        effect: CommandEffect::Documents(DocumentsVerb::Inbox),
+    },
+    Command {
+        name: "documents library",
+        domain: Domain::Documents,
+        description: crate::msg::desktop_command_documents_library_description,
+        binding: Some("i"),
+        effect: CommandEffect::Documents(DocumentsVerb::Library),
+    },
+    Command {
+        name: "documents accept-all",
+        domain: Domain::Documents,
+        description: crate::msg::desktop_command_documents_accept_all_description,
+        binding: Some("Y"),
+        effect: CommandEffect::Documents(DocumentsVerb::AcceptAll),
+    },
+    Command {
+        name: "documents add",
+        domain: Domain::Documents,
+        description: crate::msg::desktop_command_documents_add_description,
+        binding: Some("a"),
+        effect: CommandEffect::Documents(DocumentsVerb::Add),
+    },
+    Command {
+        name: "documents import",
+        domain: Domain::Documents,
+        description: crate::msg::desktop_command_documents_import_description,
+        binding: Some("I"),
+        effect: CommandEffect::Documents(DocumentsVerb::Import),
     },
     Command {
         name: "inventory",

@@ -311,8 +311,12 @@ fn command_query_echo(query: &str, cx: &App) -> impl IntoElement {
 /// -- representative content, not a real path yet (lands with the sync/open-file tickets,
 /// #164/#165).
 fn file_path() -> impl IntoElement {
-    div().child("~/Documents/My-Personal-Ledger.pldb · aud")
+    div().child(format!("~/Documents/{STUB_LEDGER_FILE} · aud"))
 }
+
+/// The stub Ledger's file name, shared with the Documents status line's "stored beside" note until
+/// a real open-file path exists.
+pub const STUB_LEDGER_FILE: &str = "My-Personal-Ledger.pldb";
 
 #[cfg(test)]
 mod tests {

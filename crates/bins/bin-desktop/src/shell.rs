@@ -19,6 +19,8 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
+mod documents_ui;
+
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -41,6 +43,8 @@ use crate::{
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
+    documents::{self, DocumentsMode, LibraryScope, LibrarySort},
+    documents_form::DocumentsDialog,
     explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
     format,
     import::{self, ImportState, RowSelect},
@@ -76,6 +80,7 @@ use crate::{
         budgets::{self as budgets_view, manage_dialog::ManageAction},
         categories as categories_view,
         dashboard::{self, Dashboard},
+        documents::{self as documents_view, DocumentsFocus},
         help as help_view, import as import_view, payees as payees_view,
         settings::{self as settings_view, SettingsBodyProps},
         tags as tags_view, toast_history as toast_history_view, transactions as transactions_view,
@@ -685,6 +690,24 @@ pub struct Shell {
     transactions_filter_anchor: FilterField,
     /// Where each chip was last painted; the header writes it, the popover reads it.
     transactions_chip_bounds: transactions_view::ChipBounds,
+    /// The Documents surface's stub Documents, and the Inventory Items they link to.
+    documents: Vec<documents::Document>,
+    inventory: Vec<documents::InventoryItem>,
+    /// Inbox or Library, the Library's scope and sort. These three persist across restarts.
+    documents_mode: DocumentsMode,
+    documents_scope: LibraryScope,
+    documents_sort: LibrarySort,
+    /// The Library's search text: session-only, and kept across an `i` round-trip.
+    documents_query: String,
+    /// Index rail or list, while the View zone has focus.
+    documents_focus: DocumentsFocus,
+    /// The selected Library row, a position in the listed rows; clamped wherever it is read.
+    documents_selected: usize,
+    documents_scroll: ScrollHandle,
+    /// The open Documents dialog -- `NavState::mode` is `InputMode::Dialog` while it is `Some`.
+    documents_dialog: Option<DocumentsDialog>,
+    /// A file to hand to the OS, taken by the key-down listener, which has the `App` it needs.
+    pending_file_action: Option<documents_ui::FileAction>,
 }
 
 impl Shell {
@@ -705,6 +728,14 @@ impl Shell {
             &seeded_accounts,
             &categories,
             &payees,
+            &mut transactions,
+            today,
+        );
+        let documents_seed = documents::default_documents(
+            &seeded_accounts,
+            &categories,
+            &payees,
+            &bills_seed.plans,
             &mut transactions,
             today,
         );
@@ -794,7 +825,28 @@ impl Shell {
             transactions_filter_form: None,
             transactions_filter_anchor: FilterField::Account,
             transactions_chip_bounds: Default::default(),
+            documents: documents_seed.documents,
+            inventory: documents_seed.inventory,
+            documents_mode: DocumentsMode::default(),
+            documents_scope: LibraryScope::default(),
+            documents_sort: LibrarySort::default(),
+            documents_query: String::new(),
+            documents_focus: DocumentsFocus::default(),
+            documents_selected: 0,
+            documents_scroll: documents_ui::new_scroll(),
+            documents_dialog: None,
+            pending_file_action: None,
         }
+    }
+
+    /// Restores the Documents mode, Library scope and sort from the last run.
+    pub fn set_documents_state(
+        &mut self,
+        mode: DocumentsMode,
+        scope: LibraryScope,
+        sort: LibrarySort,
+    ) {
+        self.set_documents_persisted(mode, scope, sort);
     }
 
     /// The last-visited Settings page, for persistence.
@@ -1015,6 +1067,11 @@ impl Shell {
             return true;
         }
 
+        if !pending_g_active && self.handle_documents_key(keystroke) {
+            self.status_message = None;
+            return true;
+        }
+
         let outcome = route_key(self.nav.mode(), pending_g_active, key, ctrl, shift);
 
         // `Esc`'s three shapes short-circuit before the hint-strip-clearing precedent below --
@@ -1085,6 +1142,9 @@ impl Shell {
                     }
                     return true;
                 }
+                if self.documents_dialog_close_select() {
+                    return true;
+                }
                 self.palette = None;
                 self.file_explorer = None;
                 // The README's own Dialog lifecycle table: "`esc` closes any dialog without
@@ -1104,12 +1164,16 @@ impl Shell {
                 self.bills_dialog = None;
                 self.budgets_dialog = None;
                 self.budgets_plan_edit = None;
+                self.documents_dialog = None;
                 self.toast_history_open = false;
                 // `Esc` while searching Transactions clears the search text as well as leaving the
                 // mode (the map's decision: search is cleared by `Esc` or by emptying the box).
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Transactions {
                     self.transactions_search.clear();
                     self.reset_transactions_selection();
+                }
+                if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Documents {
+                    self.documents_cancel_search();
                 }
                 self.nav.exit_mode();
                 return true;
@@ -1145,7 +1209,9 @@ impl Shell {
             }
             KeyOutcome::EnterSearch => {
                 // Settings has no Search: `/` is inert there rather than opening a mode with no box.
-                if self.nav.noun() != Noun::Settings {
+                if self.nav.noun() == Noun::Documents {
+                    self.documents_start_search();
+                } else if self.nav.noun() != Noun::Settings {
                     self.nav.enter_mode(InputMode::Search);
                 }
                 true
@@ -1366,6 +1432,8 @@ impl Shell {
         self.view_scroll_handle.set_offset(gpui::Point::default());
         self.settings_focus = SettingsFocus::default();
         self.colour_theme_focus = None;
+        // `g f` and the palette land on the Documents list, unlike Settings' index.
+        self.documents_focus = DocumentsFocus::List;
     }
 
     /// Swaps the Settings page on show. Each page starts at its top.
@@ -1612,6 +1680,10 @@ impl Shell {
             self.apply_transactions_movement(movement);
             return;
         }
+        if self.nav.noun() == Noun::Documents {
+            self.apply_documents_movement(movement);
+            return;
+        }
         if self.nav.noun() == Noun::Bills {
             self.apply_bills_movement(movement);
             return;
@@ -1714,6 +1786,9 @@ impl Shell {
         if self.nav.noun() == Noun::Transactions {
             return self.handle_transactions_search_key(keystroke);
         }
+        if self.nav.noun() == Noun::Documents {
+            return self.handle_documents_search_key(keystroke);
+        }
         false
     }
 
@@ -1747,6 +1822,9 @@ impl Shell {
         }
         if self.budgets_dialog.is_some() {
             return self.handle_budgets_dialog_key(keystroke);
+        }
+        if self.documents_dialog.is_some() {
+            return self.handle_documents_dialog_key(keystroke);
         }
         let Some(dialog) = self.settings_dialog.as_mut() else {
             return false;
@@ -7568,6 +7646,10 @@ impl Shell {
                 self.nav.exit_mode();
                 self.open_import();
             }
+            CommandEffect::Documents(verb) => {
+                self.nav.exit_mode();
+                self.run_documents_command(verb);
+            }
             CommandEffect::Budgets(verb) => {
                 self.nav.exit_mode();
                 let noun_before = self.nav.noun();
@@ -9133,7 +9215,10 @@ impl Render for Shell {
                 footer,
             }
         });
+        let documents_page =
+            (self.nav.noun() == Noun::Documents).then(|| self.documents_page_props(&entity));
         let page_status = match self.nav.noun() {
+            Noun::Documents => self.documents_page_status(),
             Noun::Settings if self.accounts_page_has_focus() => Some(PageStatus {
                 hints: accounts_hints(),
                 right: crate::msg::desktop_accounts_count(
@@ -9300,6 +9385,7 @@ impl Render for Shell {
                 if let Some(change) = this.pending_colour_change.take() {
                     change.apply(cx);
                 }
+                this.run_pending_file_action(cx);
             }))
             .child(
                 div()
@@ -9371,6 +9457,7 @@ impl Render for Shell {
                                     budgets: budgets_page,
                                     import: import_page,
                                     transactions: transactions_page,
+                                    documents: documents_page,
                                 },
                                 SettingsPanelProps {
                                     selected: self.settings_selected_section,
@@ -9445,13 +9532,15 @@ impl Render for Shell {
                 )
             }))
             .children(filter_popover)
-            .children(
-                (self.nav.mode() == InputMode::Help)
-                    .then(|| help_view::render(on_help_close, self.settings_cheat_sheet(), cx)),
-            )
+            .children((self.nav.mode() == InputMode::Help).then(|| {
+                let mut sheet = self.settings_cheat_sheet();
+                sheet.extend(self.documents_cheat_sheet());
+                help_view::render(on_help_close, sheet, cx)
+            }))
             .children(self.toast_history_open.then(|| {
                 toast_history_view::render(self.toasts.history(), on_toast_history_close, cx)
             }))
+            .children(self.render_documents_dialog(&entity, cx))
             .children(self.accounts_dialog.as_ref().map(|dialog| match dialog {
                 AccountsDialog::Add(form) => accounts_view::add_dialog::render(
                     form,
@@ -9819,6 +9908,8 @@ struct PageProps<'a> {
     /// `Some` while 6e shows in place of the Transactions page.
     import: Option<import_view::ImportPageProps<'a>>,
     transactions: Option<transactions_view::TransactionsPageProps>,
+    /// `Some` while Documents is the noun on show.
+    documents: Option<documents_view::DocumentsPageProps>,
 }
 
 /// Bundles `render_view`'s Settings-only parameters (keeps the function under Clippy's
@@ -9892,6 +9983,11 @@ fn render_view(
     settings: SettingsPanelProps<'_>,
     cx: &gpui::App,
 ) -> gpui::AnyElement {
+    if noun == Noun::Documents
+        && let Some(documents) = pages.documents
+    {
+        return documents_view::render(focused, documents, cx);
+    }
     if noun == Noun::Bills {
         return bills_view::render(focused, scroll_handle, pages.bills, cx);
     }

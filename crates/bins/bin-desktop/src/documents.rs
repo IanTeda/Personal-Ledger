@@ -16,7 +16,7 @@
 //!   agree on amount or payee, and the date Signal allows [`DATE_SIGNAL_DAYS`].
 //! - Skip is session-only, and undo is one level: [`undo`] reverses the last [`FilingUndo`] whole.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
@@ -24,7 +24,7 @@ use lib_core::{Money, TransactionStatus};
 
 use crate::{
     accounts::Account,
-    bill_history::financial_year_start,
+    bill_history::{FINANCIAL_YEAR_START_MONTH, financial_year_start},
     bills::BillPlan,
     categories::{self, Category},
     payees::{self, Payee},
@@ -171,6 +171,8 @@ pub enum Source {
     Downloads,
     WatchedFolder,
     Dropped,
+    /// Typed into the `Import…` dialog.
+    Import,
 }
 
 /// What was read from a file; any part may be absent. No `total` makes it Unreadable.
@@ -379,6 +381,57 @@ impl LibraryScope {
     }
 }
 
+/// Which half of the destination shows: the Library's scoped list or the Inbox. Moving the index
+/// rail onto the Inbox row is what switches it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DocumentsMode {
+    #[default]
+    Library,
+    Inbox,
+}
+
+impl DocumentsMode {
+    /// The stable id persisted between runs.
+    pub fn id(self) -> &'static str {
+        match self {
+            DocumentsMode::Library => "library",
+            DocumentsMode::Inbox => "inbox",
+        }
+    }
+
+    /// Parses a persisted id; anything unknown is the Library.
+    pub fn from_id(id: Option<&str>) -> Self {
+        match id {
+            Some("inbox") => DocumentsMode::Inbox,
+            _ => DocumentsMode::Library,
+        }
+    }
+}
+
+/// One selectable row of the index rail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RailEntry {
+    Inbox,
+    Scope(LibraryScope),
+}
+
+/// The selectable rows in rail order: the Inbox, All documents, every Document Type, then the
+/// Financial Years. The section labels between them are not rows.
+pub fn rail_entries(today: NaiveDate) -> Vec<RailEntry> {
+    let mut entries = vec![RailEntry::Inbox, RailEntry::Scope(LibraryScope::All)];
+    entries.extend(
+        DocumentType::ALL
+            .into_iter()
+            .map(|kind| RailEntry::Scope(LibraryScope::Type(kind))),
+    );
+    entries.extend(
+        year_facets(today)
+            .into_iter()
+            .map(|facet| RailEntry::Scope(LibraryScope::Year(facet))),
+    );
+    entries
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LibrarySort {
     #[default]
@@ -387,6 +440,22 @@ pub enum LibrarySort {
 }
 
 impl LibrarySort {
+    /// The stable id persisted between runs.
+    pub fn id(self) -> &'static str {
+        match self {
+            LibrarySort::Newest => "newest",
+            LibrarySort::Expiring => "expiring",
+        }
+    }
+
+    /// Parses a persisted id; anything unknown is Newest.
+    pub fn from_id(id: Option<&str>) -> Self {
+        match id {
+            Some("expiring") => LibrarySort::Expiring,
+            _ => LibrarySort::Newest,
+        }
+    }
+
     pub fn toggle(self) -> Self {
         match self {
             LibrarySort::Newest => LibrarySort::Expiring,
@@ -877,6 +946,218 @@ pub fn edit_facts(
     intake.facts = facts;
     intake.skipped = false;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------------------------
+// Library: adding, importing and editing
+// ---------------------------------------------------------------------------------------------
+
+/// Why a path cannot become a Document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AddError {
+    /// Only PDF, JPG and PNG files are Documents.
+    UnsupportedFile,
+    /// One Document per path: the Library already holds this one, under this Title.
+    AlreadyInLibrary(String),
+    /// No Document has that id.
+    NotFound,
+    /// A blank Title.
+    NoTitle,
+}
+
+impl FileKind {
+    /// The kind a path's extension names, or `None` for anything that is not a Document.
+    pub fn from_path(path: &Path) -> Option<Self> {
+        match path.extension()?.to_str()?.to_ascii_lowercase().as_str() {
+            "pdf" => Some(FileKind::Pdf),
+            "jpg" | "jpeg" => Some(FileKind::Jpg),
+            "png" => Some(FileKind::Png),
+            _ => None,
+        }
+    }
+}
+
+/// The Title a new Document starts with: its file name without the extension.
+pub fn default_title(path: &Path) -> String {
+    path.file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// A path as the user typed it, made absolute: `~` is the home directory and a relative path is
+/// taken from the working directory. Not canonicalised, so it never touches the file system.
+pub fn resolve_path(typed: &str) -> PathBuf {
+    let typed = typed.trim();
+    if let Some(rest) = typed.strip_prefix("~/")
+        && let Some(home) = dirs::home_dir()
+    {
+        return home.join(rest);
+    }
+    if typed == "~"
+        && let Some(home) = dirs::home_dir()
+    {
+        return home;
+    }
+    let path = PathBuf::from(typed);
+    if path.is_absolute() {
+        path
+    } else {
+        std::env::current_dir().map_or(path.clone(), |dir| dir.join(path))
+    }
+}
+
+/// The Document already holding `path`, whether Filed or Unfiled.
+pub fn find_by_path<'a>(documents: &'a [Document], path: &Path) -> Option<&'a Document> {
+    documents.iter().find(|document| document.path == path)
+}
+
+fn next_id(documents: &[Document]) -> u32 {
+    documents
+        .iter()
+        .map(|document| document.id)
+        .max()
+        .unwrap_or(0)
+        + 1
+}
+
+/// What the `+ Add` dialog collects.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewDocument {
+    pub path: PathBuf,
+    pub title: String,
+    pub doc_type: DocumentType,
+    pub date: NaiveDate,
+    pub key_date: Option<KeyDate>,
+}
+
+/// `+ Add`: a Filed Document from a path the user already knows the meaning of. Its Links come
+/// afterwards, through the picker. The size is read from disk when the file is there.
+pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<u32, AddError> {
+    let kind = FileKind::from_path(&new.path).ok_or(AddError::UnsupportedFile)?;
+    if let Some(existing) = find_by_path(documents, &new.path) {
+        return Err(AddError::AlreadyInLibrary(existing.title.clone()));
+    }
+    let title = new.title.trim();
+    if title.is_empty() {
+        return Err(AddError::NoTitle);
+    }
+    let id = next_id(documents);
+    documents.push(Document {
+        id,
+        bytes: std::fs::metadata(&new.path).map_or(0, |meta| meta.len()),
+        path: new.path,
+        kind,
+        pages: 1,
+        title: title.to_string(),
+        doc_type: new.doc_type,
+        date: new.date,
+        key_date: new.key_date,
+        links: Vec::new(),
+        extracted_text: None,
+        filing: Filing::Filed,
+        intake: None,
+    });
+    Ok(id)
+}
+
+/// The stub catalogue: files whose "extracted" facts the Inbox can show, in place of reading the
+/// file. Matched by file name, so an `Import…` of one of these arrives readable.
+pub fn catalogue_facts(path: &Path, today: NaiveDate) -> Option<ExtractedFacts> {
+    let name = path.file_name()?.to_string_lossy().to_lowercase();
+    match name.as_str() {
+        "coles-receipt.jpg" => Some(ExtractedFacts {
+            merchant: Some("Coles".to_string()),
+            date: Some(today - Duration::days(2)),
+            total: Some(cents_money(8_635)),
+            doc_type: Some(DocumentType::Receipt),
+        }),
+        "origin-energy-bill.pdf" => Some(ExtractedFacts {
+            merchant: Some("Origin Energy".to_string()),
+            date: Some(today - Duration::days(6)),
+            total: Some(cents_money(24_110)),
+            doc_type: Some(DocumentType::Bill),
+        }),
+        _ => None,
+    }
+}
+
+/// `Import…`: one Unfiled Document, from `Source::Import`. It is readable only when the path is in
+/// the stub catalogue; otherwise it carries no facts and is filed by hand.
+pub fn import_path(
+    documents: &mut Vec<Document>,
+    path: PathBuf,
+    today: NaiveDate,
+) -> Result<u32, AddError> {
+    let kind = FileKind::from_path(&path).ok_or(AddError::UnsupportedFile)?;
+    if let Some(existing) = find_by_path(documents, &path) {
+        return Err(AddError::AlreadyInLibrary(existing.title.clone()));
+    }
+    let facts = catalogue_facts(&path, today).unwrap_or_default();
+    let id = next_id(documents);
+    documents.push(Document {
+        id,
+        bytes: std::fs::metadata(&path).map_or(0, |meta| meta.len()),
+        title: default_title(&path),
+        path,
+        kind,
+        pages: 1,
+        doc_type: facts.doc_type.unwrap_or(DocumentType::Receipt),
+        date: today,
+        key_date: None,
+        links: Vec::new(),
+        extracted_text: None,
+        filing: Filing::Unfiled,
+        intake: Some(Intake {
+            source: Source::Import,
+            received_at: today,
+            facts,
+            skipped: false,
+        }),
+    });
+    Ok(id)
+}
+
+/// The Library's `e`: replaces a Filed Document's Title, Document Type, document date and Key Date.
+/// The Financial Year follows the date, since it is never stored.
+pub fn edit_metadata(
+    documents: &mut [Document],
+    id: u32,
+    title: &str,
+    doc_type: DocumentType,
+    date: NaiveDate,
+    key_date: Option<KeyDate>,
+) -> Result<(), AddError> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(AddError::NoTitle);
+    }
+    let document = get_mut(documents, id).ok_or(AddError::NotFound)?;
+    document.title = title.to_string();
+    document.doc_type = doc_type;
+    document.date = date;
+    document.key_date = key_date;
+    Ok(())
+}
+
+/// The Financial Year scope's pre-fill for a new Document: today when it falls inside the Year,
+/// otherwise the Year's last day.
+pub fn date_for_scope(scope: LibraryScope, today: NaiveDate) -> NaiveDate {
+    let LibraryScope::Year(facet) = scope else {
+        return today;
+    };
+    let start = match facet {
+        YearFacet::Year(start) => start,
+        YearFacet::Before(start) => start - 1,
+    };
+    let last_day = |start: i32| {
+        // The Year ends the day before the next one starts.
+        NaiveDate::from_ymd_opt(start + 1, FINANCIAL_YEAR_START_MONTH, 1)
+            .and_then(|next_start| next_start.pred_opt())
+    };
+    match facet {
+        YearFacet::Year(_) if financial_year_start(today) == start => today,
+        _ => last_day(start).unwrap_or(today),
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2089,5 +2370,180 @@ mod tests {
                 "{facet:?}"
             );
         }
+    }
+
+    fn new_document(path: &str, title: &str) -> NewDocument {
+        NewDocument {
+            path: PathBuf::from(path),
+            title: title.to_string(),
+            doc_type: DocumentType::Insurance,
+            date: today(),
+            key_date: None,
+        }
+    }
+
+    #[test]
+    fn add_files_a_document_with_no_links() {
+        let mut world = world();
+        let before = world.documents.len();
+        let id = add_filed(
+            &mut world.documents,
+            new_document("/tmp/policy.pdf", " Policy "),
+        )
+        .unwrap();
+        let added = get(&world.documents, id).unwrap();
+        assert_eq!(world.documents.len(), before + 1);
+        assert!(added.is_filed());
+        assert!(added.links.is_empty());
+        assert_eq!(added.title, "Policy");
+        assert_eq!(added.kind, FileKind::Pdf);
+    }
+
+    #[test]
+    fn add_refuses_a_duplicate_path_an_unsupported_file_and_a_blank_title() {
+        let mut documents = Vec::new();
+        add_filed(&mut documents, new_document("/tmp/a.pdf", "A")).unwrap();
+        assert_eq!(
+            add_filed(&mut documents, new_document("/tmp/a.pdf", "Again")),
+            Err(AddError::AlreadyInLibrary("A".to_string()))
+        );
+        assert_eq!(
+            add_filed(&mut documents, new_document("/tmp/a.txt", "A")),
+            Err(AddError::UnsupportedFile)
+        );
+        assert_eq!(
+            add_filed(&mut documents, new_document("/tmp/b.pdf", "  ")),
+            Err(AddError::NoTitle)
+        );
+        assert_eq!(documents.len(), 1);
+    }
+
+    #[test]
+    fn import_makes_an_unfiled_document_readable_only_from_the_catalogue() {
+        let mut documents = Vec::new();
+        let readable = import_path(
+            &mut documents,
+            PathBuf::from("/tmp/Coles-Receipt.jpg"),
+            today(),
+        )
+        .unwrap();
+        let unreadable =
+            import_path(&mut documents, PathBuf::from("/tmp/scan0001.pdf"), today()).unwrap();
+
+        let readable = get(&documents, readable).unwrap();
+        assert!(readable.is_unfiled());
+        let intake = readable.intake.as_ref().unwrap();
+        assert_eq!(intake.source, Source::Import);
+        assert_eq!(intake.facts.merchant.as_deref(), Some("Coles"));
+
+        let unreadable = get(&documents, unreadable).unwrap();
+        assert!(unreadable.intake.as_ref().unwrap().facts.total.is_none());
+        assert_eq!(inbox_count(&documents), 2);
+    }
+
+    #[test]
+    fn import_refuses_a_path_already_filed() {
+        let mut documents = Vec::new();
+        add_filed(&mut documents, new_document("/tmp/a.pdf", "A")).unwrap();
+        assert_eq!(
+            import_path(&mut documents, PathBuf::from("/tmp/a.pdf"), today()),
+            Err(AddError::AlreadyInLibrary("A".to_string()))
+        );
+    }
+
+    #[test]
+    fn editing_metadata_moves_the_financial_year_with_the_date() {
+        let mut world = world();
+        let id = world.documents.iter().find(|d| d.is_filed()).unwrap().id;
+        let key = KeyDate {
+            kind: KeyDateKind::Renews,
+            date: date(2027, 1, 14),
+            reminder: true,
+        };
+        edit_metadata(
+            &mut world.documents,
+            id,
+            "Renamed",
+            DocumentType::Tax,
+            date(2019, 8, 1),
+            Some(key),
+        )
+        .unwrap();
+        let edited = get(&world.documents, id).unwrap();
+        assert_eq!(edited.title, "Renamed");
+        assert_eq!(edited.doc_type, DocumentType::Tax);
+        assert_eq!(edited.financial_year(), 2019);
+        assert_eq!(edited.key_date, Some(key));
+        assert_eq!(
+            edit_metadata(
+                &mut world.documents,
+                id,
+                " ",
+                DocumentType::Tax,
+                today(),
+                None
+            ),
+            Err(AddError::NoTitle)
+        );
+        assert_eq!(
+            edit_metadata(
+                &mut world.documents,
+                9_999,
+                "X",
+                DocumentType::Tax,
+                today(),
+                None
+            ),
+            Err(AddError::NotFound)
+        );
+    }
+
+    #[test]
+    fn a_year_scope_prefills_today_inside_the_year_and_its_last_day_outside() {
+        // 2 Oct 2026 is in the FY that started on 1 Jul 2026.
+        let current = LibraryScope::Year(YearFacet::Year(2026));
+        let last = LibraryScope::Year(YearFacet::Year(2025));
+        let earlier = LibraryScope::Year(YearFacet::Before(2025));
+        assert_eq!(date_for_scope(LibraryScope::All, today()), today());
+        assert_eq!(date_for_scope(current, today()), today());
+        assert_eq!(date_for_scope(last, today()), date(2026, 6, 30));
+        assert_eq!(date_for_scope(earlier, today()), date(2025, 6, 30));
+    }
+
+    #[test]
+    fn the_rail_runs_inbox_all_types_then_years() {
+        let entries = rail_entries(today());
+        assert_eq!(entries.len(), 2 + DocumentType::ALL.len() + 3);
+        assert_eq!(entries[0], RailEntry::Inbox);
+        assert_eq!(entries[1], RailEntry::Scope(LibraryScope::All));
+        assert_eq!(
+            entries.last(),
+            Some(&RailEntry::Scope(LibraryScope::Year(YearFacet::Before(
+                2025
+            ))))
+        );
+    }
+
+    #[test]
+    fn mode_and_sort_ids_round_trip_and_default_when_unknown() {
+        for mode in [DocumentsMode::Library, DocumentsMode::Inbox] {
+            assert_eq!(DocumentsMode::from_id(Some(mode.id())), mode);
+        }
+        for sort in [LibrarySort::Newest, LibrarySort::Expiring] {
+            assert_eq!(LibrarySort::from_id(Some(sort.id())), sort);
+        }
+        assert_eq!(
+            DocumentsMode::from_id(Some("nonsense")),
+            DocumentsMode::Library
+        );
+        assert_eq!(DocumentsMode::from_id(None), DocumentsMode::Library);
+        assert_eq!(LibrarySort::from_id(None), LibrarySort::Newest);
+    }
+
+    #[test]
+    fn resolve_path_keeps_an_absolute_path_and_makes_a_relative_one_absolute() {
+        assert_eq!(resolve_path(" /tmp/a.pdf "), PathBuf::from("/tmp/a.pdf"));
+        assert!(resolve_path("docs/a.pdf").is_absolute());
+        assert_eq!(default_title(Path::new("/tmp/rates-q1.pdf")), "rates-q1");
     }
 }
