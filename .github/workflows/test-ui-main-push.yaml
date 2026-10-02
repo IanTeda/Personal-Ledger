@@ -1,0 +1,35 @@
+name: Desktop UI Tests on Main Push or Pull
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-ui:
+    runs-on: ubuntu-latest
+    env:
+      # As in lint-main-push.yaml: no DATABASE_URL in CI, so lib-database checks against `.sqlx`.
+      SQLX_OFFLINE: "true"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install mise-pinned toolchain
+        uses: jdx/mise-action@v4
+
+      # The tests run through gpui's in-process test platform (ADR-0030), so there is no window,
+      # GPU or X server and no Xvfb here, unlike build-publish-desktop.yaml's real-window smoke
+      # test. gpui still links against the system windowing libraries at build time, so those
+      # packages are needed; adjust the list against the first real run.
+      - name: Install Linux GUI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang cmake lld \
+            libfontconfig-dev \
+            libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev
+
+      - name: Run Desktop UI tests
+        run: mise run test-ui
