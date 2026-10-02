@@ -313,7 +313,7 @@ fn footnote(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .child(text)
 }
 
-/// The dashed drop target. Drawn as the handoff has it; dropping anywhere is not wired yet.
+/// The dashed drop target. Drawn as the handoff has it; the drop itself is handled by the Shell's root.
 fn drop_target(cx: &App) -> impl IntoElement {
     div()
         .flex_none()

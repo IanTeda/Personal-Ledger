@@ -489,3 +489,28 @@ fn the_inbox_picker_pins_file_without_link_and_draws_its_rows(app: &mut TestAppC
     ui.click("documents-picker-row-0");
     assert_eq!(ui.documents().dialog, None, "a click on a row picks it");
 }
+
+#[gpui::test]
+fn files_dropped_on_the_window_land_in_the_inbox(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    let before = ui.documents().inbox_rows;
+    let dir = std::env::temp_dir().join(format!("pl-drop-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir is writable");
+    let dropped = dir.join("Coles-Receipt.jpg");
+    std::fs::write(&dropped, b"stub").expect("temp file is writable");
+
+    ui.shell.update(ui.cx, |shell, _| {
+        shell.drop_documents(&[dropped.clone(), dir.join("missing.pdf")]);
+    });
+    ui.cx.run_until_parked();
+    std::fs::remove_dir_all(&dir).ok();
+
+    let page = ui.documents();
+    assert_eq!(
+        page.inbox_rows,
+        before + 1,
+        "only the file that exists lands"
+    );
+    assert_eq!(page.mode, "library", "a drop does not move the page");
+    assert_eq!(page.toasts.len(), 1);
+}

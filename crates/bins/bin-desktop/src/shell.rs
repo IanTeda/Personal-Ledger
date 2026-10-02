@@ -28,8 +28,9 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Context, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle, ScrollStrategy,
-    SharedString, Timer, UniformListScrollHandle, Window, div, point, prelude::*, px,
+    Context, ExternalPaths, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle,
+    ScrollStrategy, SharedString, Timer, UniformListScrollHandle, Window, div, point, prelude::*,
+    px,
 };
 
 use chrono::{DateTime, Local};
@@ -9388,6 +9389,10 @@ impl Render for Shell {
             .font_family(type_scale::FONT_FAMILY)
             .text_size(type_scale::BODY)
             .track_focus(&self.focus_handle)
+            .on_drop(cx.listener(|this, paths: &ExternalPaths, _window, cx| {
+                this.drop_documents(paths.paths());
+                cx.notify();
+            }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 let chosen = settings_view::colour_theme::chosen_index(cx);
                 if this.handle_settings_form_key(&event.keystroke, chosen)

@@ -547,7 +547,41 @@ pub fn import_all(
     today: NaiveDate,
     exists: impl Fn(&Path) -> bool,
 ) -> Vec<ImportOutcome> {
-    form.lines()
+    import_typed(
+        form.lines(),
+        documents::Source::Import,
+        library,
+        today,
+        exists,
+    )
+}
+
+/// The same import for paths a drop delivered rather than typed, so a drop and `Import…` agree on
+/// what is refused and why.
+pub fn import_dropped(
+    paths: &[PathBuf],
+    library: &mut Vec<Document>,
+    today: NaiveDate,
+    exists: impl Fn(&Path) -> bool,
+) -> Vec<ImportOutcome> {
+    let typed: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
+    import_typed(
+        typed.iter().map(String::as_str),
+        documents::Source::Dropped,
+        library,
+        today,
+        exists,
+    )
+}
+
+fn import_typed<'a>(
+    lines: impl IntoIterator<Item = &'a str>,
+    source: documents::Source,
+    library: &mut Vec<Document>,
+    today: NaiveDate,
+    exists: impl Fn(&Path) -> bool,
+) -> Vec<ImportOutcome> {
+    lines
         .into_iter()
         .map(|typed| {
             let path: PathBuf = documents::resolve_path(typed);
@@ -560,7 +594,7 @@ pub fn import_all(
             if !exists(&path) {
                 return ImportOutcome::NotFound(typed.to_string());
             }
-            match documents::import_path(library, path, today) {
+            match documents::import_path(library, path, today, source) {
                 Ok(id) => ImportOutcome::Imported(id),
                 Err(documents::AddError::AlreadyInLibrary(title)) => ImportOutcome::Already(title),
                 Err(_) => ImportOutcome::Unsupported(typed.to_string()),
@@ -958,6 +992,27 @@ mod tests {
         assert_eq!(parse_total("twelve"), None);
         assert_eq!(parse_total(""), None);
         assert_eq!(parse_total("1.2.3"), None);
+    }
+
+    #[test]
+    fn dropped_paths_land_in_the_inbox_as_dropped() {
+        let mut library = Vec::new();
+        let paths = [
+            PathBuf::from("/tmp/coles-receipt.jpg"),
+            PathBuf::from("/tmp/x.txt"),
+        ];
+        let outcomes = import_dropped(&paths, &mut library, day(2026, 9, 12), |_| true);
+        assert_eq!(
+            outcomes,
+            vec![
+                ImportOutcome::Imported(1),
+                ImportOutcome::Unsupported("/tmp/x.txt".to_string()),
+            ]
+        );
+        assert_eq!(
+            library[0].intake.as_ref().map(|intake| intake.source),
+            Some(documents::Source::Dropped)
+        );
     }
 
     fn facts() -> documents::ExtractedFacts {

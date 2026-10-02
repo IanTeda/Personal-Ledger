@@ -1081,12 +1081,13 @@ pub fn catalogue_facts(path: &Path, today: NaiveDate) -> Option<ExtractedFacts> 
     }
 }
 
-/// `Import…`: one Unfiled Document, from `Source::Import`. It is readable only when the path is in
-/// the stub catalogue; otherwise it carries no facts and is filed by hand.
+/// `Import…` and a file dropped on the window: one Unfiled Document, from `source`. It is readable
+/// only when the path is in the stub catalogue; otherwise it carries no facts and is filed by hand.
 pub fn import_path(
     documents: &mut Vec<Document>,
     path: PathBuf,
     today: NaiveDate,
+    source: Source,
 ) -> Result<u32, AddError> {
     let kind = FileKind::from_path(&path).ok_or(AddError::UnsupportedFile)?;
     if let Some(existing) = find_by_path(documents, &path) {
@@ -1108,7 +1109,7 @@ pub fn import_path(
         extracted_text: None,
         filing: Filing::Unfiled,
         intake: Some(Intake {
-            source: Source::Import,
+            source,
             received_at: today,
             facts,
             skipped: false,
@@ -2425,10 +2426,16 @@ mod tests {
             &mut documents,
             PathBuf::from("/tmp/Coles-Receipt.jpg"),
             today(),
+            Source::Import,
         )
         .unwrap();
-        let unreadable =
-            import_path(&mut documents, PathBuf::from("/tmp/scan0001.pdf"), today()).unwrap();
+        let unreadable = import_path(
+            &mut documents,
+            PathBuf::from("/tmp/scan0001.pdf"),
+            today(),
+            Source::Dropped,
+        )
+        .unwrap();
 
         let readable = get(&documents, readable).unwrap();
         assert!(readable.is_unfiled());
@@ -2437,7 +2444,9 @@ mod tests {
         assert_eq!(intake.facts.merchant.as_deref(), Some("Coles"));
 
         let unreadable = get(&documents, unreadable).unwrap();
-        assert!(unreadable.intake.as_ref().unwrap().facts.total.is_none());
+        let intake = unreadable.intake.as_ref().unwrap();
+        assert!(intake.facts.total.is_none());
+        assert_eq!(intake.source, Source::Dropped);
         assert_eq!(inbox_count(&documents), 2);
     }
 
@@ -2446,7 +2455,12 @@ mod tests {
         let mut documents = Vec::new();
         add_filed(&mut documents, new_document("/tmp/a.pdf", "A")).unwrap();
         assert_eq!(
-            import_path(&mut documents, PathBuf::from("/tmp/a.pdf"), today()),
+            import_path(
+                &mut documents,
+                PathBuf::from("/tmp/a.pdf"),
+                today(),
+                Source::Dropped
+            ),
             Err(AddError::AlreadyInLibrary("A".to_string()))
         );
     }

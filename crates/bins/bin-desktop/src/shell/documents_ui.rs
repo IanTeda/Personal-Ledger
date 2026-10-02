@@ -1643,6 +1643,42 @@ impl Shell {
         self.close_documents_dialog();
     }
 
+    /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
+    /// where it is: the Toast and the rail badge say what arrived.
+    pub fn drop_documents(&mut self, paths: &[std::path::PathBuf]) {
+        let outcomes = crate::documents_form::import_dropped(
+            paths,
+            &mut self.documents,
+            self.today,
+            exists_on_disk,
+        );
+        let imported = outcomes
+            .iter()
+            .filter(|outcome| matches!(outcome, ImportOutcome::Imported(_)))
+            .count();
+        let skipped = outcomes.len() - imported;
+        if imported == 0 {
+            if skipped > 0 {
+                self.raise_toast(
+                    ToastKind::Error,
+                    crate::msg::desktop_documents_toast_import_partial("0", &skipped.to_string()),
+                );
+            }
+            return;
+        }
+        let toast = if skipped == 0 {
+            crate::msg::desktop_documents_toast_imported(
+                i64::try_from(imported).unwrap_or(i64::MAX),
+            )
+        } else {
+            crate::msg::desktop_documents_toast_import_partial(
+                &imported.to_string(),
+                &skipped.to_string(),
+            )
+        };
+        self.raise_toast(ToastKind::Success, toast);
+    }
+
     fn handle_documents_field_click(&mut self, field: DocumentField, cx: &mut Context<'_, Self>) {
         let options = self.documents_options();
         if let Some(form) = self.documents_form_mut() {
