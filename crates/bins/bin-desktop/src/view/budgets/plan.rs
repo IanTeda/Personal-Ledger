@@ -205,6 +205,7 @@ fn render_cell(
         .map_or_else(|| EMPTY_CELL.to_string(), |money| amount(money).1);
     let base = div()
         .id(SharedString::from(format!("budgets-plan-{index}-{column}")))
+        .debug_selector(move || format!("budgets-plan-{index}-{column}"))
         .w(MONTH_WIDTH)
         .flex_none()
         .py(px(4.0))

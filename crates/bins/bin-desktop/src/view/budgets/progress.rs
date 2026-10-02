@@ -559,6 +559,7 @@ fn render_row(
             "budgets-row-{}",
             row.category_id
         )))
+        .debug_selector(move || format!("budgets-progress-row-{index}"))
         .cursor_pointer()
         .flex()
         .items_center()
@@ -596,6 +597,7 @@ fn render_row(
                     "budgets-row-action-{}",
                     row.category_id
                 )))
+                .debug_selector(move || format!("budgets-progress-action-{index}"))
                 .w(ACTIONS_WIDTH)
                 .flex_none()
                 .text_align(gpui::TextAlign::Right)

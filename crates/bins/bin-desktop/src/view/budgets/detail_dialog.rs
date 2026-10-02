@@ -253,6 +253,7 @@ pub fn render(props: DetailDialogProps<'_>, cx: &App) -> AnyElement {
             buttons.push(
                 div()
                     .id("budgets-detail-close")
+                    .debug_selector(|| "budgets-detail-close".to_string())
                     .cursor_pointer()
                     .py(px(8.0))
                     .px(px(16.0))

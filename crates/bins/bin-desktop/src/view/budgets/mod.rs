@@ -260,6 +260,7 @@ fn tab_row(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
             let hover = color::hover(cx);
             div()
                 .id(SharedString::from(format!("budgets-tab-{tab:?}")))
+                .debug_selector(move || format!("budgets-tab-{tab:?}"))
                 .cursor_pointer()
                 .py(px(8.0))
                 .px(px(16.0))
@@ -307,6 +308,7 @@ fn period_nav(label: String, on_prev: OnPlainClick, on_next: OnPlainClick, cx: &
         let hover = color::foreground(cx);
         div()
             .id(id)
+            .debug_selector(move || id.to_string())
             .cursor_pointer()
             .px(px(8.0))
             .text_color(color::muted(cx))

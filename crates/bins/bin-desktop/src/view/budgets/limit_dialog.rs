@@ -353,6 +353,7 @@ pub fn render(props: LimitDialogProps<'_>, cx: &App) -> AnyElement {
         buttons.push(
             div()
                 .id("budgets-limit-stop")
+                .debug_selector(|| "budgets-limit-stop".to_string())
                 .cursor_pointer()
                 .py(px(8.0))
                 .px(px(16.0))

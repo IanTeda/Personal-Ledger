@@ -20,10 +20,13 @@
 //! keystrokes at all.
 
 mod bills_ui;
+mod budgets_ui;
 mod documents_ui;
 mod transactions_ui;
 #[doc(hidden)]
 pub use bills_ui::{BillRowSnapshot, BillsSnapshot};
+#[doc(hidden)]
+pub use budgets_ui::{BudgetRowSnapshot, BudgetsSnapshot};
 #[doc(hidden)]
 pub use documents_ui::DocumentsSnapshot;
 #[doc(hidden)]
