@@ -2542,7 +2542,16 @@ mod tests {
 
     #[test]
     fn resolve_path_keeps_an_absolute_path_and_makes_a_relative_one_absolute() {
-        assert_eq!(resolve_path(" /tmp/a.pdf "), PathBuf::from("/tmp/a.pdf"));
+        // A rooted path with no drive letter is relative on Windows, so the absolute fixture needs one there.
+        let absolute = if cfg!(windows) {
+            "C:/tmp/a.pdf"
+        } else {
+            "/tmp/a.pdf"
+        };
+        assert_eq!(
+            resolve_path(&format!(" {absolute} ")),
+            PathBuf::from(absolute)
+        );
         assert!(resolve_path("docs/a.pdf").is_absolute());
         assert_eq!(default_title(Path::new("/tmp/rates-q1.pdf")), "rates-q1");
     }
