@@ -253,6 +253,10 @@ fn render_row(
 
     div()
         .id(SharedString::from(format!("bills-plan-row-{}", plan.id)))
+        .debug_selector({
+            let id = plan.id;
+            move || format!("bills-plan-row-{id}")
+        })
         .cursor_pointer()
         .flex()
         .items_center()
@@ -343,6 +347,10 @@ fn render_row(
                 .child(
                     div()
                         .id(SharedString::from(format!("bills-plan-edit-{}", plan.id)))
+                        .debug_selector({
+                            let id = plan.id;
+                            move || format!("bills-plan-edit-{id}")
+                        })
                         .cursor_pointer()
                         .py(px(4.0))
                         .px(px(9.0))

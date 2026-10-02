@@ -14,7 +14,7 @@ use bin_desktop::{
     locale::init_for_tests,
     nav::Noun,
     persistence::PersistedState,
-    shell::{DocumentsSnapshot, Shell, TransactionsSnapshot},
+    shell::{BillsSnapshot, DocumentsSnapshot, Shell, TransactionsSnapshot},
 };
 use chrono::NaiveDate;
 use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
@@ -85,6 +85,11 @@ impl<'a> Harness<'a> {
     /// The Documents page's state, read back for assertions.
     pub fn documents(&mut self) -> DocumentsSnapshot {
         self.read(Shell::documents_snapshot)
+    }
+
+    /// The Bills page's state, read back for assertions.
+    pub fn bills(&mut self) -> BillsSnapshot {
+        self.read(Shell::bills_snapshot)
     }
 
     /// The Transactions page's state, read back for assertions.

@@ -135,6 +135,7 @@ fn switch(current: PayMode, on_click: &OnModeClick, cx: &App) -> AnyElement {
             let on_click = on_click.clone();
             div()
                 .id(SharedString::from(format!("pay-bill-mode-{index}")))
+                .debug_selector(move || format!("pay-bill-mode-{index}"))
                 .cursor_pointer()
                 .flex_1()
                 .py(px(8.0))
@@ -216,6 +217,10 @@ fn radio_row(
         MatchChoice::NoneOfThese => "pay-bill-none-of-these".to_string(),
     };
     div()
+        .debug_selector({
+            let id = id.clone();
+            move || id.clone()
+        })
         .id(SharedString::from(id))
         .cursor_pointer()
         .flex()

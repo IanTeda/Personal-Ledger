@@ -412,6 +412,7 @@ fn render_row(
             "bills-schedule-row-{}-{}",
             row.id.plan_id, row.id.due
         )))
+        .debug_selector(move || format!("bills-row-{index}"))
         .cursor_pointer()
         .flex()
         .items_center()
@@ -583,8 +584,7 @@ fn actions_cell(
             .child(label)
             .into_any_element()
     };
-    let id =
-        |kind: &str| SharedString::from(format!("bills-{kind}-{}-{}", row.id.plan_id, row.id.due));
+    let id = |kind: &str| SharedString::from(format!("bills-{kind}-{index}"));
     let bind = |handler: &OnRowClick| -> OnPlainClick {
         let handler = handler.clone();
         std::rc::Rc::new(move |window: &mut Window, cx: &mut App| handler(index, window, cx))
@@ -641,6 +641,10 @@ fn action_button(
 ) -> AnyElement {
     let hover = color::hover(cx);
     div()
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
         .id(id)
         .cursor_pointer()
         .py(px(4.0))

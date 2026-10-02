@@ -161,6 +161,7 @@ fn chip(
     let label = status_label(status);
     div()
         .id(SharedString::from(format!("bills-filter-chip-{index}")))
+        .debug_selector(move || format!("bills-filter-chip-{index}"))
         .cursor_pointer()
         .flex_none()
         .py(px(8.0))

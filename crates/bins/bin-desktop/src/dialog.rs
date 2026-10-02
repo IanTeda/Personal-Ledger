@@ -132,8 +132,13 @@ pub fn action_row(buttons: impl IntoIterator<Item = AnyElement>, cx: &App) -> im
 /// background:transparent; font-weight:800`. `id` must be unique within the dialog it's used in
 /// (`gpui`'s own element-identity requirement for a clickable node).
 pub fn cancel_button(id: impl Into<SharedString>, on_click: OnClick, cx: &App) -> impl IntoElement {
+    let id = id.into();
     div()
-        .id(id.into())
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
+        .id(id)
         .cursor_pointer()
         .py(px(8.0))
         .px(px(16.0))
@@ -199,8 +204,13 @@ pub fn confirm_button(
     on_click: OnClick,
     cx: &App,
 ) -> impl IntoElement {
+    let id = id.into();
     div()
-        .id(id.into())
+        .debug_selector({
+            let id = id.clone();
+            move || id.to_string()
+        })
+        .id(id)
         .when(enabled, |this| this.cursor_pointer())
         .when(!enabled, |this| this.opacity(0.45))
         .py(px(8.0))
