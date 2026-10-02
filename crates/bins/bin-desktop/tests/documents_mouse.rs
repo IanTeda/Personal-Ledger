@@ -3,6 +3,11 @@
 //! Targets are found with `debug_selector` tags and `debug_bounds`, never coordinates; assertions
 //! read state back from `Shell`.
 
+#![expect(
+    clippy::panic,
+    reason = "test support: a row that never comes into focus should fail the test loudly"
+)]
+
 mod common;
 
 use bin_desktop::nav::Noun;
@@ -10,6 +15,7 @@ use common::Harness;
 use gpui::TestAppContext;
 
 const STRONG_RECEIPT: &str = "IMG_4471.jpg";
+const UNREADABLE_SCAN: &str = "scan0012.pdf";
 
 /// Opens Documents by clicking its primary rail row.
 fn on_documents(app: &mut TestAppContext) -> Harness<'_> {
@@ -28,6 +34,17 @@ fn focus_row(ui: &mut Harness<'_>, file: &str) {
         ui.press("j");
     }
     unreachable!("never reached `{file}`");
+}
+
+/// Clicks Inbox rows until the selection is on `file`, returning that row's index.
+fn click_inbox_row(ui: &mut Harness<'_>, file: &str) -> usize {
+    for index in 0..ui.documents().inbox_rows {
+        ui.click(&format!("documents-inbox-row-{index}"));
+        if ui.documents().selected_file.as_deref() == Some(file) {
+            return index;
+        }
+    }
+    panic!("no Inbox row shows `{file}`");
 }
 
 #[gpui::test]
@@ -52,16 +69,33 @@ fn index_rail_inbox_and_all_switch_the_mode(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn index_rail_facets_narrow_the_library(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    let all = ui.documents().library_rows;
+
+    ui.click("documents-rail-Scope(Type(Receipt))");
+
+    let page = ui.documents();
+    assert_eq!(page.scope, "type:receipts");
+    assert_eq!(page.mode, "library");
+    assert!(page.library_rows < all, "a type facet narrows the list");
+}
+
+#[gpui::test]
 fn clicking_a_list_row_selects_it_and_focuses_the_list(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     let first = ui.documents().selected_file;
+    ui.press("j");
+    let second = ui.documents().selected_file;
+    assert_ne!(second, first);
+    ui.press("k");
     ui.press("h");
     assert!(ui.documents().index_focused);
 
     ui.click("documents-row-1");
 
     let page = ui.documents();
-    assert_ne!(page.selected_file, first);
+    assert_eq!(page.selected_file, second);
     assert!(!page.index_focused, "a row click puts focus on the list");
 }
 
@@ -125,6 +159,7 @@ fn add_and_import_buttons_open_their_dialogs(app: &mut TestAppContext) {
     ui.click("documents-add");
     assert_eq!(ui.documents().dialog, Some("add"));
     ui.press("escape");
+    assert_eq!(ui.documents().dialog, None);
 
     ui.click("documents-import");
     assert_eq!(ui.documents().dialog, Some("import"));
@@ -156,47 +191,51 @@ fn inbox_row_accept_files_the_document(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.click("documents-rail-Inbox");
     let before = ui.documents().inbox_rows;
-    let mut strong = None;
-    for index in 0..before {
-        ui.click(&format!("documents-inbox-row-{index}"));
-        if ui.documents().selected_file.as_deref() == Some(STRONG_RECEIPT) {
-            strong = Some(index);
-            break;
-        }
-    }
-    let index = strong.expect("the strong receipt is in the Inbox");
+    let index = click_inbox_row(&mut ui, STRONG_RECEIPT);
 
     ui.click(&format!("documents-inbox-accept-{index}"));
 
-    assert_eq!(ui.documents().inbox_rows, before - 1);
+    let page = ui.documents();
+    assert_eq!(page.inbox_rows, before - 1);
+    assert_ne!(page.selected_file.as_deref(), Some(STRONG_RECEIPT));
 }
 
 #[gpui::test]
-fn inbox_detail_skip_keeps_the_row_but_moves_on(app: &mut TestAppContext) {
+fn inbox_detail_skip_keeps_an_unreadable_scan_in_the_inbox(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.click("documents-rail-Inbox");
+    // Nothing can be read from the scan, so its detail offers Skip rather than Link elsewhere.
+    click_inbox_row(&mut ui, UNREADABLE_SCAN);
     let before = ui.documents();
 
     ui.click("documents-inbox-secondary");
 
     let after = ui.documents();
     assert_eq!(after.inbox_rows, before.inbox_rows, "a skip never files");
-    assert_ne!(after.selected_file, before.selected_file);
+    assert_ne!(after.selected_file.as_deref(), Some(UNREADABLE_SCAN));
 }
 
 #[gpui::test]
-fn inbox_detail_primary_acts_on_the_selection(app: &mut TestAppContext) {
+fn inbox_detail_link_elsewhere_opens_the_picker(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.click("documents-rail-Inbox");
-    let before = ui.documents();
+    click_inbox_row(&mut ui, STRONG_RECEIPT);
+
+    ui.click("documents-inbox-secondary");
+
+    assert_eq!(ui.documents().dialog, Some("picker-file"));
+}
+
+#[gpui::test]
+fn inbox_detail_primary_files_a_strong_match(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.click("documents-rail-Inbox");
+    let before = ui.documents().inbox_rows;
+    click_inbox_row(&mut ui, STRONG_RECEIPT);
 
     ui.click("documents-inbox-primary");
 
-    let after = ui.documents();
-    assert!(
-        after.inbox_rows < before.inbox_rows
-            || after.dialog.is_some()
-            || ui.noun() != Noun::Documents,
-        "the primary button files, opens a picker or follows a link"
-    );
+    let page = ui.documents();
+    assert_eq!(page.inbox_rows, before - 1, "the primary button files it");
+    assert_ne!(page.selected_file.as_deref(), Some(STRONG_RECEIPT));
 }
