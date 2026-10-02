@@ -343,8 +343,12 @@ The twelve-month year a date falls in, beginning on the month set as the Financi
 _Avoid_: Tax year — the same period under another name; Financial Year is canonical.
 
 **Key Date**:
-The one forward-dated obligation a Document may carry (zero or one per Document): a kind — Renews, Ends (also used for a warranty's end), Expires or Revalue — a date, and whether a reminder is wanted. Drives the Documents surface's Expiring sort and need-review count; it is not part of Needs Attention.
+The one forward-dated obligation a Document may carry (zero or one per Document): a kind — Renews, Ends (also used for a warranty's end), Expires or Revalue — a date, and whether a reminder is wanted. The reminder flag records intent only; it does not change whether the Key Date needs review. Drives the Documents surface's Expiring sort and Need Review count; it is not part of Needs Attention.
 _Avoid_: Due date — that belongs to a Bill Schedule entry. Reminder — the reminder is a flag on the Key Date, not the date itself.
+
+**Need Review**:
+A Filed Document whose Key Date falls within 60 days either side of today, inclusive: soon due, or recently lapsed. A Key Date further ahead is **Upcoming**; one lapsed for longer is **Stale**, and neither needs review. Derived each time it is shown, never stored or dismissed, and local to the Documents surface.
+_Avoid_: Needs Attention — that is the Ledger-wide list, which Documents do not join. Expiring — the name of the sort, not of the state.
 
 **Document Link**:
 A Document's reference to one record it proves: a Transaction (the whole Transaction, never a single Split), an Inventory Item, an Account, a Payee or a Bill Plan (never a Bill Schedule entry; proof for one paid instance links to the Transaction that paid it). Many-to-many: a Document has any number of Document Links and a record may be linked from any number of Documents.
