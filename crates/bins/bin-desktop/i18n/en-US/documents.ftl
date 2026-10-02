@@ -258,3 +258,4 @@ desktop-documents-toast-unlinked = Unlinked { $record }.
 desktop-documents-link-remove = Remove link
 desktop-hint-follow = follow link
 desktop-hint-kind = kind
+desktop-documents-drop-overlay = Drop to add to the Inbox

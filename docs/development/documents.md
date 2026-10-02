@@ -59,7 +59,7 @@ Link targets: a Transaction row, Settings › Accounts or Payees, Bills › Plan
 
 ## Open questions and known gaps
 
-- **Drop-anywhere:** the full-window overlay and gpui external file drops are fog.
+- **Drop overlay:** the full-window dashed overlay (`view/documents/drop_overlay.rs`) is stateless: gpui sets its active drag on a file drag entering the window, and the overlay turns opaque through `group_drag_over` at paint time. The headless harness can't read paint styles back, so it is checked live only.
 - **Search highlighting** inside the preview, since the preview is a placeholder.
 - **Missing-file state:** what "locate…" does without a file-picker decision.
 - **Persistence and sync** of metadata and file bytes.

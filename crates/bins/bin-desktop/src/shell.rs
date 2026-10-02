@@ -9389,6 +9389,7 @@ impl Render for Shell {
             .font_family(type_scale::FONT_FAMILY)
             .text_size(type_scale::BODY)
             .track_focus(&self.focus_handle)
+            .group(documents_view::drop_overlay::GROUP)
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _window, cx| {
                 this.drop_documents(paths.paths());
                 cx.notify();
@@ -9567,6 +9568,7 @@ impl Render for Shell {
                 toast_history_view::render(self.toasts.history(), on_toast_history_close, cx)
             }))
             .children(self.render_documents_dialog(&entity, cx))
+            .child(documents_view::drop_overlay::render(cx))
             .children(self.accounts_dialog.as_ref().map(|dialog| match dialog {
                 AccountsDialog::Add(form) => accounts_view::add_dialog::render(
                     form,

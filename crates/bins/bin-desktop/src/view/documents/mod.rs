@@ -6,6 +6,7 @@
 //! never focused: its actions are list keys (`enter`, `o`, `l`).
 
 pub mod dialogs;
+pub mod drop_overlay;
 mod inbox;
 pub mod model;
 
