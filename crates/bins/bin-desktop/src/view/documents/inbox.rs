@@ -155,6 +155,7 @@ fn inbox_row(
     };
     div()
         .id(("documents-inbox-row", index))
+        .debug_selector(|| format!("documents-inbox-row-{index}"))
         .relative()
         .cursor_pointer()
         .flex()
@@ -225,6 +226,7 @@ fn inbox_row(
         .child(
             div()
                 .id(("documents-inbox-accept", index))
+                .debug_selector(|| format!("documents-inbox-accept-{index}"))
                 .cursor_pointer()
                 .flex_none()
                 .flex()
@@ -554,6 +556,7 @@ fn footer(detail: &InboxDetailView, props: &DocumentsPageProps, cx: &App) -> imp
         .child(
             div()
                 .id("documents-inbox-primary")
+                .debug_selector(|| "documents-inbox-primary".to_string())
                 .cursor_pointer()
                 .flex_1()
                 .flex()
@@ -570,6 +573,7 @@ fn footer(detail: &InboxDetailView, props: &DocumentsPageProps, cx: &App) -> imp
         .child(
             div()
                 .id("documents-inbox-secondary")
+                .debug_selector(|| "documents-inbox-secondary".to_string())
                 .cursor_pointer()
                 .flex()
                 .items_center()

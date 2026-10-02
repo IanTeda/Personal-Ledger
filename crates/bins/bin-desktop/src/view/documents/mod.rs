@@ -208,6 +208,7 @@ fn rail_row(row: &RailRow, active: bool, on_click: OnRailClick, cx: &App) -> imp
     let badge = entry == RailEntry::Inbox && row.count > 0;
     div()
         .id(SharedString::from(format!("documents-rail-{entry:?}")))
+        .debug_selector(|| format!("documents-rail-{entry:?}"))
         .cursor_pointer()
         .flex()
         .items_center()
@@ -346,6 +347,7 @@ fn primary_button(
     let hover = color::muted(cx);
     div()
         .id(id)
+        .debug_selector(|| id.to_string())
         .cursor_pointer()
         .flex_none()
         .flex()
@@ -370,6 +372,7 @@ fn secondary_button(
     let hover = color::hover(cx);
     div()
         .id(id)
+        .debug_selector(|| id.to_string())
         .cursor_pointer()
         .flex_none()
         .flex()
@@ -529,6 +532,7 @@ fn document_row(
     };
     div()
         .id(("documents-row", index))
+        .debug_selector(|| format!("documents-row-{index}"))
         .cursor_pointer()
         .flex()
         .items_center()
@@ -829,6 +833,7 @@ fn link_row(
     let target = link.link;
     div()
         .id(("documents-link", index))
+        .debug_selector(|| format!("documents-link-{index}"))
         .cursor_pointer()
         .flex()
         .gap(px(8.0))
@@ -856,6 +861,7 @@ fn link_row(
         .child(
             div()
                 .id(("documents-unlink", index))
+                .debug_selector(|| format!("documents-unlink-{index}"))
                 .flex_none()
                 .cursor_pointer()
                 .px(px(6.0))

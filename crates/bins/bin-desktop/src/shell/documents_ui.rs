@@ -129,6 +129,8 @@ pub struct DocumentsSnapshot {
     pub query: String,
     /// The file name of the Document the selection is on.
     pub selected_file: Option<String>,
+    /// How many Links the selected Document has.
+    pub selected_links: usize,
     /// Which dialog is open: `add`, `edit`, `import`, `facts`, `accept-all`, or
     /// `picker-link`, `picker-file`, `picker-follow`.
     pub dialog: Option<&'static str>,
@@ -148,6 +150,9 @@ impl Shell {
             index_focused: self.documents_focus == DocumentsFocus::Index,
             query: self.documents_query.clone(),
             selected_file: self.documents_selected_document().map(Document::file_name),
+            selected_links: self
+                .documents_selected_document()
+                .map_or(0, |document| document.links.len()),
             dialog: self.documents_dialog.as_ref().map(|dialog| match dialog {
                 DocumentsDialog::Add(_) => "add",
                 DocumentsDialog::Edit(..) => "edit",

@@ -65,10 +65,13 @@ impl<'a> Harness<'a> {
     }
 
     /// Clicks the centre of the element tagged `debug_selector(selector)`.
-    pub fn click(&mut self, selector: &'static str) {
+    pub fn click(&mut self, selector: &str) {
+        // gpui's `debug_bounds` wants a `'static` key and index-tagged selectors are built at run
+        // time; leaking a handful of short strings per test process is the cheap way through.
+        let key: &'static str = Box::leak(selector.to_string().into_boxed_str());
         let bounds = self
             .cx
-            .debug_bounds(selector)
+            .debug_bounds(key)
             .unwrap_or_else(|| panic!("no element tagged `{selector}` was drawn"));
         self.cx.simulate_click(bounds.center(), Modifiers::none());
         self.cx.run_until_parked();
