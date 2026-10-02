@@ -32,7 +32,7 @@ Here are the jump letters for each app:
 | Units | `g` `u` | Settings › Units (`:settings units`) |
 | Balance checks | `g` `k` | not in the desktop app yet |
 | Bills | not in the terminal app yet | `g` `w` |
-| Documents | not in the terminal app yet | `g` `f` (not yet built) |
+| Documents | not in the terminal app yet | `g` `f` |
 | Notifications | not in the terminal app yet | `g` `a` (not yet built) |
 | Cash | not in the terminal app yet | `g` `c` (not yet built) |
 | Inventory | not in the terminal app yet | `g` `o` (not yet built) |
