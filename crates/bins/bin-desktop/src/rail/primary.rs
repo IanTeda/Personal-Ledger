@@ -130,6 +130,8 @@ pub struct PrimaryRail {
     bill_attention: usize,
     /// The Budgets row's badge: the default Budget's over-budget count this month.
     budget_over: usize,
+    /// The Documents row's badge: how many Documents wait in the Inbox.
+    documents_inbox: usize,
 }
 
 impl PrimaryRail {
@@ -150,6 +152,7 @@ impl PrimaryRail {
             on_row_hover,
             bill_attention: 0,
             budget_over: 0,
+            documents_inbox: 0,
         }
     }
 
@@ -165,6 +168,12 @@ impl PrimaryRail {
         self
     }
 
+    /// Sets the Documents row's Inbox badge; zero draws none.
+    pub fn documents_inbox(mut self, count: usize) -> Self {
+        self.documents_inbox = count;
+        self
+    }
+
     /// The accent badge's number for `noun`: the Bills Needs Attention count or the Budgets
     /// over-budget count while there is any. The moved nouns' count badges went with them (#420):
     /// each Settings page carries its count in its heading meta instead.
@@ -172,6 +181,7 @@ impl PrimaryRail {
         match noun {
             Noun::Bills if self.bill_attention > 0 => Some(self.bill_attention),
             Noun::Budgets if self.budget_over > 0 => Some(self.budget_over),
+            Noun::Documents if self.documents_inbox > 0 => Some(self.documents_inbox),
             _ => None,
         }
     }

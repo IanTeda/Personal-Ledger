@@ -485,6 +485,12 @@ pub enum DocumentsDialog {
     Edit(u32, DocumentForm),
     /// The typed paths, and why the last attempt imported none of them.
     Import(ImportForm, Vec<String>),
+    /// An Unfiled Document's Extracted Facts, edited from the Inbox.
+    Facts(u32, FactsForm),
+    /// The count-first confirm for Accept all strong matches: how many it will file.
+    AcceptAll(usize),
+    /// The link picker: link toggling, filing from the Inbox, or following one of several Links.
+    Picker(crate::documents_picker::PickerState),
 }
 
 /// The Import dialog's live state: one path per line.
@@ -561,6 +567,207 @@ pub fn import_all(
             }
         })
         .collect()
+}
+
+/// The Extracted Facts form's fields, in `Tab` order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FactsField {
+    #[default]
+    Merchant,
+    Date,
+    Total,
+    Type,
+}
+
+impl FactsField {
+    const ORDER: [FactsField; 4] = [Self::Merchant, Self::Date, Self::Total, Self::Type];
+}
+
+/// A fact's inline problem: only the date and the total are parsed.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct FactsProblems {
+    /// The date parser's own hint.
+    pub date: Option<String>,
+    pub total: bool,
+}
+
+impl FactsProblems {
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// The Inbox's edit-facts form: merchant, date, total and Document Type. Any of the first three may
+/// be left blank, and a blank total makes the Document Unreadable.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FactsForm {
+    pub merchant: String,
+    pub date: String,
+    pub total: String,
+    pub doc_type: SelectState,
+    pub focused: FactsField,
+}
+
+impl FactsForm {
+    pub fn new(
+        facts: &documents::ExtractedFacts,
+        options: &DocumentOptions,
+        date_style: Option<DateStyle>,
+    ) -> Self {
+        let kind = facts.doc_type.unwrap_or(DocumentType::Receipt);
+        Self {
+            merchant: facts.merchant.clone().unwrap_or_default(),
+            date: facts
+                .date
+                .map(|date| format_date_input(date, date_style))
+                .unwrap_or_default(),
+            total: facts
+                .total
+                .as_ref()
+                .map(|total| total.0.abs().with_scale(2).to_string())
+                .unwrap_or_default(),
+            doc_type: SelectState::new(options.type_labels.get(type_position(kind)).cloned()),
+            focused: FactsField::Merchant,
+        }
+    }
+
+    pub fn is_select(field: FactsField) -> bool {
+        field == FactsField::Type
+    }
+
+    pub fn close_open_select(&mut self) -> bool {
+        let open = self.doc_type.is_open();
+        self.doc_type.cancel();
+        open
+    }
+
+    pub fn focus(&mut self, field: FactsField) {
+        if field != self.focused {
+            self.doc_type.cancel();
+        }
+        self.focused = field;
+    }
+
+    pub fn cycle_focus(&mut self, backward: bool, options: &DocumentOptions) {
+        if self.focused == FactsField::Type {
+            self.doc_type.commit(&options.type_labels);
+        }
+        let order = FactsField::ORDER;
+        let index = order
+            .iter()
+            .position(|field| *field == self.focused)
+            .unwrap_or(0);
+        let next = if backward {
+            (index + order.len() - 1) % order.len()
+        } else {
+            (index + 1) % order.len()
+        };
+        self.focused = order[next];
+    }
+
+    /// A key on the Type select. Returns whether the select is focused (and so took the key).
+    pub fn handle_select_key(&mut self, key: SelectKey, options: &DocumentOptions) -> bool {
+        if self.focused != FactsField::Type {
+            return false;
+        }
+        let list = &options.type_labels;
+        let state = &mut self.doc_type;
+        match (key, state.is_open()) {
+            (SelectKey::Up, true) => state.move_highlight(list, -1),
+            (SelectKey::Down, true) => state.move_highlight(list, 1),
+            (SelectKey::Up, false) => state.step(list, -1),
+            (SelectKey::Down, false) => state.step(list, 1),
+            (SelectKey::Activate, true) => state.commit(list),
+            (SelectKey::Activate, false) => state.open(list),
+        }
+        true
+    }
+
+    pub fn click_select(&mut self, options: &DocumentOptions) {
+        self.focus(FactsField::Type);
+        if self.doc_type.is_open() {
+            self.doc_type.cancel();
+        } else {
+            self.doc_type.open(&options.type_labels);
+        }
+    }
+
+    pub fn choose(&mut self, index: usize, options: &DocumentOptions) {
+        self.doc_type.choose(&options.type_labels, index);
+    }
+
+    pub fn push_char(&mut self, ch: char) {
+        if ch.is_control() {
+            return;
+        }
+        match self.focused {
+            FactsField::Merchant => self.merchant.push(ch),
+            FactsField::Date => self.date.push(ch),
+            FactsField::Total => self.total.push(ch),
+            FactsField::Type => {}
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        match self.focused {
+            FactsField::Merchant => self.merchant.pop(),
+            FactsField::Date => self.date.pop(),
+            FactsField::Total => self.total.pop(),
+            FactsField::Type => None,
+        };
+    }
+
+    pub fn problems(&self, today: NaiveDate, date_style: Option<DateStyle>) -> FactsProblems {
+        FactsProblems {
+            date: parse_date(&self.date, today, date_style).err(),
+            total: !self.total.trim().is_empty() && parse_total(&self.total).is_none(),
+        }
+    }
+
+    pub fn can_save(&self, problems: &FactsProblems) -> bool {
+        problems.is_empty()
+    }
+
+    /// The form's values as Extracted Facts, or `None` while a field cannot be read.
+    pub fn build(
+        &self,
+        options: &DocumentOptions,
+        today: NaiveDate,
+        date_style: Option<DateStyle>,
+    ) -> Option<documents::ExtractedFacts> {
+        let merchant = self.merchant.trim();
+        let total = self.total.trim();
+        Some(documents::ExtractedFacts {
+            merchant: (!merchant.is_empty()).then(|| merchant.to_string()),
+            date: parse_date(&self.date, today, date_style).ok()?,
+            total: if total.is_empty() {
+                None
+            } else {
+                Some(parse_total(total)?)
+            },
+            doc_type: Some(
+                DocumentType::ALL
+                    .get(options.type_index(self.doc_type.value()))
+                    .copied()
+                    .unwrap_or(DocumentType::Receipt),
+            ),
+        })
+    }
+}
+
+/// A typed total: digits with an optional decimal point, thousands commas and a leading currency
+/// symbol or sign tolerated. Only the magnitude matters to matching, so the sign is dropped.
+pub fn parse_total(text: &str) -> Option<lib_core::Money> {
+    let cleaned: String = text
+        .trim()
+        .trim_start_matches(['-', '+', '$'])
+        .chars()
+        .filter(|ch| *ch != ',')
+        .collect();
+    if cleaned.is_empty() || !cleaned.chars().all(|ch| ch.is_ascii_digit() || ch == '.') {
+        return None;
+    }
+    cleaned.parse::<lib_core::Money>().ok()
 }
 
 #[cfg(test)]
@@ -735,5 +942,90 @@ mod tests {
                 .as_ref()
                 .is_some_and(|intake| intake.facts.merchant.as_deref() == Some("Coles"))
         );
+    }
+
+    #[test]
+    fn a_typed_total_tolerates_symbols_commas_and_a_sign() {
+        let cents = |text: &str| parse_total(text).map(|money| money.0.abs().with_scale(2));
+        let expected = Some(bigdecimal::BigDecimal::new(21_240.into(), 2));
+        assert_eq!(cents("212.40"), expected);
+        assert_eq!(cents("$212.40"), expected);
+        assert_eq!(cents("-212.40"), expected);
+        assert_eq!(
+            cents("1,212.40"),
+            Some(bigdecimal::BigDecimal::new(121_240.into(), 2))
+        );
+        assert_eq!(parse_total("twelve"), None);
+        assert_eq!(parse_total(""), None);
+        assert_eq!(parse_total("1.2.3"), None);
+    }
+
+    fn facts() -> documents::ExtractedFacts {
+        documents::ExtractedFacts {
+            merchant: Some("Woolworths Metro".to_string()),
+            date: Some(day(2026, 9, 29)),
+            total: parse_total("212.40"),
+            doc_type: Some(DocumentType::Receipt),
+        }
+    }
+
+    #[test]
+    fn the_facts_form_round_trips_what_was_read() {
+        let options = options();
+        let form = FactsForm::new(&facts(), &options, Some(DateStyle::Iso));
+        assert_eq!(form.total, "212.40");
+        let built = form
+            .build(&options, day(2026, 10, 2), Some(DateStyle::Iso))
+            .expect("a form of read facts builds");
+        assert_eq!(built.merchant, facts().merchant);
+        assert_eq!(built.date, facts().date);
+        assert_eq!(built.doc_type, Some(DocumentType::Receipt));
+        assert_eq!(
+            built.total.map(|total| total.0.with_scale(2)),
+            facts().total.map(|total| total.0.with_scale(2))
+        );
+    }
+
+    #[test]
+    fn clearing_the_total_and_date_builds_blank_facts_and_a_bad_total_is_a_problem() {
+        let options = options();
+        let style = Some(DateStyle::Iso);
+        let mut form = FactsForm::new(&facts(), &options, style);
+        form.total.clear();
+        form.date.clear();
+        form.merchant = "   ".to_string();
+        let built = form
+            .build(&options, day(2026, 10, 2), style)
+            .expect("blank optional facts build");
+        assert_eq!(built.total, None);
+        assert_eq!(built.date, None);
+        assert_eq!(built.merchant, None);
+        assert!(form.problems(day(2026, 10, 2), style).is_empty());
+
+        form.total = "abc".to_string();
+        let problems = form.problems(day(2026, 10, 2), style);
+        assert!(problems.total);
+        assert!(!form.can_save(&problems));
+        assert!(form.build(&options, day(2026, 10, 2), style).is_none());
+    }
+
+    #[test]
+    fn the_facts_form_tabs_through_its_four_fields_and_types_into_the_focused_one() {
+        let options = options();
+        let mut form = FactsForm::new(&documents::ExtractedFacts::default(), &options, None);
+        assert_eq!(form.focused, FactsField::Merchant);
+        form.push_char('A');
+        form.cycle_focus(false, &options);
+        assert_eq!(form.focused, FactsField::Date);
+        form.cycle_focus(false, &options);
+        form.push_char('9');
+        assert_eq!(form.total, "9");
+        form.cycle_focus(false, &options);
+        assert_eq!(form.focused, FactsField::Type);
+        form.cycle_focus(false, &options);
+        assert_eq!(form.focused, FactsField::Merchant);
+        form.cycle_focus(true, &options);
+        assert_eq!(form.focused, FactsField::Type);
+        assert_eq!(form.merchant, "A");
     }
 }

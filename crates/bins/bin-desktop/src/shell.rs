@@ -704,6 +704,11 @@ pub struct Shell {
     /// The selected Library row, a position in the listed rows; clamped wherever it is read.
     documents_selected: usize,
     documents_scroll: ScrollHandle,
+    /// The focused Inbox row, a position in the Inbox's rows; clamped wherever it is read. Kept
+    /// apart from the Library's so an `i` round-trip returns to both.
+    documents_inbox_selected: usize,
+    /// The last filing action as a unit, for `u`. Session-only; a new filing action replaces it.
+    documents_undo: Option<documents::FilingUndo>,
     /// The open Documents dialog -- `NavState::mode` is `InputMode::Dialog` while it is `Some`.
     documents_dialog: Option<DocumentsDialog>,
     /// A file to hand to the OS, taken by the key-down listener, which has the `App` it needs.
@@ -834,6 +839,8 @@ impl Shell {
             documents_focus: DocumentsFocus::default(),
             documents_selected: 0,
             documents_scroll: documents_ui::new_scroll(),
+            documents_inbox_selected: 0,
+            documents_undo: None,
             documents_dialog: None,
             pending_file_action: None,
         }
@@ -5834,10 +5841,16 @@ impl Shell {
         else {
             return;
         };
+        self.open_transaction_row(split.transaction_id);
+    }
+
+    /// The Transactions page with `transaction_id` selected, the date range widened to reach it
+    /// when it falls outside this year's. A no-op when the Transaction has gone.
+    fn open_transaction_row(&mut self, transaction_id: u32) {
         let Some(date) = self
             .transactions
             .iter()
-            .find(|t| t.id == split.transaction_id)
+            .find(|t| t.id == transaction_id)
             .map(|t| t.date)
         else {
             return;
@@ -5856,7 +5869,7 @@ impl Shell {
         )
         .rows
         .iter()
-        .position(|row| row.transaction.id == split.transaction_id)
+        .position(|row| row.transaction.id == transaction_id)
         .unwrap_or(0);
         self.transactions_selected = index;
         self.transactions_scroll
@@ -9429,7 +9442,8 @@ impl Render for Shell {
                                     default_budget_figures
                                         .as_ref()
                                         .map_or(0, |figures| figures.over_count),
-                                ),
+                                )
+                                .documents_inbox(documents::inbox_count(&self.documents)),
                             )
                             .when(
                                 self.nav.noun().has_context_entities() && self.nav.ledger_open(),

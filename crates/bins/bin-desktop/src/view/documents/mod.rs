@@ -1,11 +1,12 @@
 //! The **Documents** destination (`docs/ux/desktop/Documents/`): the 190px index rail, the list pane
-//! (header, toolbar, count line and rows) and the 300px detail pane. This ticket builds the Library
-//! (4a); the Inbox (4b) shows a placeholder in the list pane until its own ticket lands.
+//! (header, toolbar, count line and rows) and the 300px detail pane. The Library (4a) is drawn
+//! here and the Inbox (4b) in `inbox`, each filling the list and detail panes.
 //!
 //! Every action is a callback into `Shell`, so keys and clicks share handlers. The detail pane is
 //! never focused: its actions are list keys (`enter`, `o`, `l`).
 
 pub mod dialogs;
+mod inbox;
 pub mod model;
 
 use std::rc::Rc;
@@ -13,7 +14,10 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, Pixels, ScrollHandle, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::upper;
 
-use self::model::{Chip, ChipKind, DetailView, Fact, LinkRow, RailRow, RowTail, RowView};
+use self::model::{
+    Chip, ChipKind, DetailView, Fact, InboxDetailView, InboxRowView, LinkRow, RailRow, RowTail,
+    RowView,
+};
 use crate::{
     documents::{DocumentLink, DocumentsMode, LibrarySort, RailEntry},
     theme::color,
@@ -24,6 +28,8 @@ pub type OnRailClick = Rc<dyn Fn(RailEntry, &mut Window, &mut App)>;
 pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 pub type OnSortClick = Rc<dyn Fn(LibrarySort, &mut Window, &mut App)>;
 pub type OnLinkClick = Rc<dyn Fn(DocumentLink, &mut Window, &mut App)>;
+/// A Transaction id: an Other candidate to accept instead of the Suggested Link.
+pub type OnCandidateClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
 
 const RAIL_WIDTH: Pixels = px(190.0);
 const DETAIL_WIDTH: Pixels = px(300.0);
@@ -52,8 +58,16 @@ pub struct DocumentsPageProps {
     pub rows: Vec<RowView>,
     pub selected: usize,
     pub detail: Option<DetailView>,
-    /// The Inbox's header line, while that mode shows.
-    pub inbox_count: usize,
+    /// The Inbox's rows (newest first, Skipped last), the focused index and its detail.
+    pub inbox_rows: Vec<InboxRowView>,
+    pub inbox_selected: usize,
+    pub inbox_detail: Option<InboxDetailView>,
+    /// How many Documents have a Strong Suggested Link: the Accept all button's count.
+    pub inbox_strong: usize,
+    /// The key strip under the Inbox detail: each key and what it does.
+    pub inbox_hints: Vec<(&'static str, String)>,
+    /// Whether the list zone has keyboard focus, which draws the focused Inbox row's outline.
+    pub list_focused: bool,
     pub scroll: ScrollHandle,
     pub on_rail_click: OnRailClick,
     pub on_row_click: OnRowClick,
@@ -64,13 +78,27 @@ pub struct DocumentsPageProps {
     pub on_open_click: OnPlainClick,
     pub on_show_click: OnPlainClick,
     pub on_link_click: OnLinkClick,
+    /// The × on a LINKED TO row: removes that Link.
+    pub on_unlink_click: OnLinkClick,
     pub on_add_link_click: OnPlainClick,
+    pub on_watched_click: OnPlainClick,
+    pub on_accept_all_click: OnPlainClick,
+    /// A row's own Accept (or File…) button.
+    pub on_accept_row_click: OnRowClick,
+    pub on_accept_next_click: OnPlainClick,
+    pub on_accept_candidate_click: OnCandidateClick,
+    pub on_link_elsewhere_click: OnPlainClick,
+    pub on_skip_click: OnPlainClick,
 }
 
 /// The whole destination: rail, list pane and detail pane, side by side.
 pub fn render(focused: bool, props: DocumentsPageProps, cx: &App) -> AnyElement {
     let list_focused = focused && props.focus == DocumentsFocus::List;
     let index_focused = focused && props.focus == DocumentsFocus::Index;
+    let props = DocumentsPageProps {
+        list_focused,
+        ..props
+    };
     div()
         .id("documents")
         .flex_1()
@@ -79,8 +107,10 @@ pub fn render(focused: bool, props: DocumentsPageProps, cx: &App) -> AnyElement 
         .flex()
         .child(index_rail(&props, index_focused, cx))
         .child(list_pane(&props, list_focused, cx))
-        .when(props.mode == DocumentsMode::Library, |this| {
-            this.child(detail_pane(&props, cx))
+        .child(if props.mode == DocumentsMode::Library {
+            detail_pane(&props, cx).into_any_element()
+        } else {
+            inbox::detail_pane(&props, cx)
         })
         .into_any_element()
 }
@@ -244,7 +274,7 @@ fn list_pane(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoEl
                 )
                 .child(rows(props, cx))
         })
-        .when(!library, |this| this.child(inbox_placeholder(cx)))
+        .when(!library, |this| this.child(inbox::list_body(props, cx)))
 }
 
 fn list_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
@@ -285,19 +315,25 @@ fn list_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                         .child(props.subline.clone()),
                 ),
         )
-        .child(secondary_button(
-            "documents-import",
-            crate::msg::desktop_documents_import_button(),
-            props.on_import_click.clone(),
-            cx,
-        ))
-        .when(library, |this| {
-            this.child(primary_button(
-                "documents-add",
-                crate::msg::desktop_documents_add_button(),
-                props.on_add_click.clone(),
-                cx,
-            ))
+        .children(if library {
+            vec![
+                secondary_button(
+                    "documents-import",
+                    crate::msg::desktop_documents_import_button(),
+                    props.on_import_click.clone(),
+                    cx,
+                )
+                .into_any_element(),
+                primary_button(
+                    "documents-add",
+                    crate::msg::desktop_documents_add_button(),
+                    props.on_add_click.clone(),
+                    cx,
+                )
+                .into_any_element(),
+            ]
+        } else {
+            inbox::header_buttons(props, cx).into()
         })
 }
 
@@ -621,13 +657,6 @@ fn tail(tail: &RowTail, selected: bool, cx: &App) -> impl IntoElement {
     }
 }
 
-fn inbox_placeholder(cx: &App) -> impl IntoElement {
-    div()
-        .p(px(20.0))
-        .text_color(color::muted(cx))
-        .child(crate::msg::desktop_documents_inbox_placeholder())
-}
-
 // ---------------------------------------------------------------------------------------------
 // Detail pane
 // ---------------------------------------------------------------------------------------------
@@ -645,7 +674,7 @@ fn detail_pane(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
     let Some(detail) = props.detail.as_ref() else {
         return pane;
     };
-    pane.child(preview(detail, cx))
+    pane.child(preview(detail.extension, cx))
         .child(
             div()
                 .id("documents-detail-body")
@@ -689,7 +718,7 @@ fn detail_pane(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
 
 /// The 200px preview well with a drawn page: real page-1 rendering is out of scope, so the page is
 /// a placeholder carrying the file's extension.
-fn preview(detail: &DetailView, cx: &App) -> impl IntoElement {
+fn preview(extension: &'static str, cx: &App) -> impl IntoElement {
     div()
         .flex_none()
         .h(px(200.0))
@@ -731,7 +760,7 @@ fn preview(detail: &DetailView, cx: &App) -> impl IntoElement {
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(10.0))
                         .text_color(color::faint_text(cx))
-                        .child(detail.extension),
+                        .child(extension),
                 ),
         )
 }
@@ -770,13 +799,15 @@ fn linked_to(props: &DocumentsPageProps, detail: &DetailView, cx: &App) -> impl 
                 .text_color(color::faint_text(cx))
                 .child(upper(&crate::msg::desktop_documents_linked_to())),
         )
-        .children(
-            detail
-                .links
-                .iter()
-                .enumerate()
-                .map(|(index, link)| link_row(index, link, props.on_link_click.clone(), cx)),
-        )
+        .children(detail.links.iter().enumerate().map(|(index, link)| {
+            link_row(
+                index,
+                link,
+                props.on_link_click.clone(),
+                props.on_unlink_click.clone(),
+                cx,
+            )
+        }))
         .child(
             div()
                 .id("documents-add-link")
@@ -788,7 +819,13 @@ fn linked_to(props: &DocumentsPageProps, detail: &DetailView, cx: &App) -> impl 
         )
 }
 
-fn link_row(index: usize, link: &LinkRow, on_click: OnLinkClick, cx: &App) -> impl IntoElement {
+fn link_row(
+    index: usize,
+    link: &LinkRow,
+    on_click: OnLinkClick,
+    on_unlink: OnLinkClick,
+    cx: &App,
+) -> impl IntoElement {
     let target = link.link;
     div()
         .id(("documents-link", index))
@@ -815,6 +852,20 @@ fn link_row(index: usize, link: &LinkRow, on_click: OnLinkClick, cx: &App) -> im
                 .min_w(px(0.0))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .child(link.name.clone()),
+        )
+        .child(
+            div()
+                .id(("documents-unlink", index))
+                .flex_none()
+                .cursor_pointer()
+                .px(px(6.0))
+                .text_color(color::faint_text(cx))
+                .hover(|style| style.text_color(color::foreground(cx)))
+                .on_click(move |_event, window, cx| {
+                    cx.stop_propagation();
+                    on_unlink(target, window, cx);
+                })
+                .child("\u{d7}"),
         )
 }
 

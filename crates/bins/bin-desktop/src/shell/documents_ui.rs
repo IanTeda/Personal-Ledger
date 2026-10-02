@@ -18,10 +18,13 @@ use crate::{
         RailEntry,
     },
     documents_form::{
-        DocumentField, DocumentForm, DocumentOptions, DocumentsDialog, ImportForm, ImportOutcome,
+        DocumentField, DocumentForm, DocumentOptions, DocumentsDialog, FactsField, FactsForm,
+        ImportForm, ImportOutcome,
     },
+    documents_picker::{self, PickerRow, PickerState, Purpose},
     key_router::Movement,
     nav::{FocusZone, InputMode, Noun},
+    settings::SettingsSection,
     statusline::PageStatus,
     view::documents::{
         self as documents_view, DocumentsFocus, DocumentsPageProps, dialogs,
@@ -61,6 +64,7 @@ fn library_hints() -> Vec<(&'static str, String)> {
         ("enter", crate::msg::desktop_hint_open()),
         ("/", crate::msg::desktop_hint_search()),
         ("l", crate::msg::desktop_hint_link()),
+        ("L", crate::msg::desktop_hint_follow()),
         ("o", crate::msg::desktop_hint_show_in_folder()),
         ("i", crate::msg::desktop_hint_inbox()),
     ]
@@ -73,6 +77,7 @@ fn inbox_hints() -> Vec<(&'static str, String)> {
         ("e", crate::msg::desktop_hint_edit()),
         ("x", crate::msg::desktop_hint_skip()),
         ("l", crate::msg::desktop_hint_link_elsewhere()),
+        ("L", crate::msg::desktop_hint_follow()),
     ]
 }
 
@@ -81,6 +86,14 @@ fn index_hints() -> Vec<(&'static str, String)> {
         ("j/k", crate::msg::desktop_hint_scope()),
         ("l/enter", crate::msg::desktop_hint_list()),
         ("i", crate::msg::desktop_hint_inbox()),
+    ]
+}
+
+fn picker_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("esc", crate::msg::desktop_hint_cancel()),
+        ("tab", crate::msg::desktop_hint_kind()),
+        ("enter", crate::msg::desktop_hint_confirm()),
     ]
 }
 
@@ -136,14 +149,38 @@ impl Shell {
         }
     }
 
-    /// The Document the Library's selection is on, if the Library is showing.
+    /// The Inbox's rows: newest received first, Skipped Documents last.
+    fn documents_inbox_rows(&self) -> Vec<&Document> {
+        documents::inbox_rows(&self.documents)
+    }
+
+    /// The Inbox row focus is on, a position clamped to the rows.
+    fn documents_inbox_at(&self, len: usize) -> usize {
+        self.documents_inbox_selected.min(len.saturating_sub(1))
+    }
+
+    /// The Document the selection is on: the Library's row or the Inbox's focused row.
     fn documents_selected_document(&self) -> Option<&Document> {
-        if self.documents_mode != DocumentsMode::Library {
-            return None;
+        match self.documents_mode {
+            DocumentsMode::Library => {
+                let rows = self.documents_library_rows();
+                let at = self.documents_selected.min(rows.len().saturating_sub(1));
+                rows.get(at).copied()
+            }
+            DocumentsMode::Inbox => {
+                let rows = self.documents_inbox_rows();
+                let at = self.documents_inbox_at(rows.len());
+                rows.get(at).copied()
+            }
         }
-        let rows = self.documents_library_rows();
-        let at = self.documents_selected.min(rows.len().saturating_sub(1));
-        rows.get(at).copied()
+    }
+
+    /// Switches Inbox / Library, putting the list back at its top when the mode changes.
+    fn set_documents_mode(&mut self, mode: DocumentsMode) {
+        if self.documents_mode != mode {
+            self.documents_mode = mode;
+            self.documents_scroll.set_offset(gpui::Point::default());
+        }
     }
 
     fn documents_reset_selection(&mut self) {
@@ -213,10 +250,50 @@ impl Shell {
                 entity.update(cx, act);
             })
         };
+        let inbox = self.documents_inbox_rows();
+        let inbox_selected = self.documents_inbox_at(inbox.len());
+        let inbox_views: Vec<_> = inbox
+            .iter()
+            .map(|document| view_model::inbox_row(document, &self.documents, &lookups))
+            .collect();
+        let inbox_detail = inbox
+            .get(inbox_selected)
+            .filter(|_| self.documents_mode == DocumentsMode::Inbox)
+            .map(|document| view_model::inbox_detail(document, &self.documents, &lookups));
+        let on_accept_row_click: documents_view::OnRowClick = {
+            let entity = entity.clone();
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.documents_inbox_selected = index;
+                    shell.documents_focus = DocumentsFocus::List;
+                    shell.documents_accept_focused();
+                    cx.notify();
+                });
+            })
+        };
+        let on_accept_candidate_click: documents_view::OnCandidateClick = {
+            let entity = entity.clone();
+            Rc::new(move |transaction_id, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    if let Some(id) = shell.documents_selected_document().map(|d| d.id) {
+                        shell.documents_accept(id, transaction_id);
+                    }
+                    cx.notify();
+                });
+            })
+        };
         let on_link_click: documents_view::OnLinkClick = {
             let entity = entity.clone();
             Rc::new(move |link, _window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_documents_link_click(link, cx));
+            })
+        };
+        let on_unlink_click: documents_view::OnLinkClick = {
+            let entity = entity.clone();
+            Rc::new(move |link, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_documents_unlink_click(link, cx)
+                });
             })
         };
         DocumentsPageProps {
@@ -240,7 +317,16 @@ impl Shell {
             rows: row_views,
             selected,
             detail,
-            inbox_count: documents::inbox_count(&self.documents),
+            inbox_rows: inbox_views,
+            inbox_selected,
+            inbox_detail,
+            inbox_strong: documents::strong_count(
+                &self.documents,
+                &self.transactions,
+                &self.payees,
+            ),
+            inbox_hints: inbox_hints(),
+            list_focused: false,
             scroll: self.documents_scroll.clone(),
             on_rail_click,
             on_row_click,
@@ -266,8 +352,31 @@ impl Shell {
                 cx.notify();
             }),
             on_link_click,
+            on_unlink_click,
             on_add_link_click: plain(|shell, cx| {
                 shell.documents_link_picker();
+                cx.notify();
+            }),
+            on_watched_click: plain(|shell, cx| {
+                shell.documents_watched_folder();
+                cx.notify();
+            }),
+            on_accept_all_click: plain(|shell, cx| {
+                shell.open_documents_accept_all();
+                cx.notify();
+            }),
+            on_accept_row_click,
+            on_accept_next_click: plain(|shell, cx| {
+                shell.documents_accept_focused();
+                cx.notify();
+            }),
+            on_accept_candidate_click,
+            on_link_elsewhere_click: plain(|shell, cx| {
+                shell.documents_link_picker();
+                cx.notify();
+            }),
+            on_skip_click: plain(|shell, cx| {
+                shell.documents_skip_focused();
                 cx.notify();
             }),
         }
@@ -288,6 +397,7 @@ impl Shell {
         }
         let hints = match &self.documents_dialog {
             Some(DocumentsDialog::Import(..)) => dialog_hints(true),
+            Some(DocumentsDialog::Picker(_)) => picker_hints(),
             Some(_) => dialog_hints(false),
             None if self.documents_focus == DocumentsFocus::Index => index_hints(),
             None if self.documents_mode == DocumentsMode::Inbox => inbox_hints(),
@@ -313,7 +423,12 @@ impl Shell {
                 hints.push(("a", crate::msg::desktop_hint_add()));
                 hints
             }
-            DocumentsMode::Inbox => inbox_hints(),
+            DocumentsMode::Inbox => {
+                let mut hints = inbox_hints();
+                hints.push(("u", crate::msg::desktop_hint_undo()));
+                hints.push(("Y", crate::msg::desktop_hint_accept_all()));
+                hints
+            }
         };
         index_hints()
             .into_iter()
@@ -329,9 +444,9 @@ impl Shell {
 
     fn select_documents_entry(&mut self, entry: RailEntry) {
         match entry {
-            RailEntry::Inbox => self.documents_mode = DocumentsMode::Inbox,
+            RailEntry::Inbox => self.set_documents_mode(DocumentsMode::Inbox),
             RailEntry::Scope(scope) => {
-                self.documents_mode = DocumentsMode::Library;
+                self.set_documents_mode(DocumentsMode::Library);
                 if self.documents_scope != scope {
                     self.documents_scope = scope;
                     self.documents_reset_selection();
@@ -347,7 +462,11 @@ impl Shell {
     }
 
     fn handle_documents_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.documents_selected = index;
+        if self.documents_mode == DocumentsMode::Inbox {
+            self.documents_inbox_selected = index;
+        } else {
+            self.documents_selected = index;
+        }
         self.documents_focus = DocumentsFocus::List;
         cx.notify();
     }
@@ -372,10 +491,10 @@ impl Shell {
 
     /// `i`: toggles Inbox and Library, keeping focus in its zone.
     fn toggle_documents_mode(&mut self) {
-        self.documents_mode = match self.documents_mode {
+        self.set_documents_mode(match self.documents_mode {
             DocumentsMode::Library => DocumentsMode::Inbox,
             DocumentsMode::Inbox => DocumentsMode::Library,
-        };
+        });
     }
 
     /// `j`/`k`/`gg`/`G`/`ctrl-d`/`ctrl-u`/`enter` on the Documents page, by focus zone.
@@ -415,14 +534,20 @@ impl Shell {
             self.documents_open_selected(false);
             return;
         }
-        if self.documents_mode != DocumentsMode::Library {
-            return;
-        }
-        let len = self.documents_library_rows().len();
+        let inbox = self.documents_mode == DocumentsMode::Inbox;
+        let len = if inbox {
+            self.documents_inbox_rows().len()
+        } else {
+            self.documents_library_rows().len()
+        };
         if len == 0 {
             return;
         }
-        let current = self.documents_selected.min(len - 1);
+        let current = if inbox {
+            self.documents_inbox_at(len)
+        } else {
+            self.documents_selected.min(len - 1)
+        };
         let last = len - 1;
         let next = match movement {
             Movement::Next => (current + 1).min(last),
@@ -433,7 +558,11 @@ impl Shell {
             Movement::HalfPageUp => current.saturating_sub(DOCUMENTS_HALF_PAGE),
             Movement::Enter => current,
         };
-        self.documents_selected = next;
+        if inbox {
+            self.documents_inbox_selected = next;
+        } else {
+            self.documents_selected = next;
+        }
         self.documents_scroll.scroll_to_item(next);
     }
 
@@ -494,8 +623,7 @@ impl Shell {
                 if library {
                     self.open_documents_edit();
                 } else {
-                    self.status_message =
-                        Some(crate::msg::desktop_documents_status_not_yet_built());
+                    self.open_documents_facts();
                 }
                 true
             }
@@ -507,16 +635,33 @@ impl Shell {
                 self.documents_link_picker();
                 true
             }
+            "l" if in_list && modifiers.shift => {
+                self.documents_follow_link();
+                true
+            }
             "h" | "left" if in_list => {
                 self.documents_focus = DocumentsFocus::Index;
                 true
             }
-            "o" if in_list && library => {
+            "o" if in_list => {
                 self.documents_open_selected(true);
                 true
             }
-            "y" | "x" | "u" if !library => {
-                self.status_message = Some(crate::msg::desktop_documents_status_not_yet_built());
+            // Inbox only; in the Library these fall through to the global router.
+            "y" if !library && modifiers.shift => {
+                self.open_documents_accept_all();
+                true
+            }
+            "y" if !library && in_list => {
+                self.documents_accept_focused();
+                true
+            }
+            "x" if !library && in_list && !modifiers.shift => {
+                self.documents_skip_focused();
+                true
+            }
+            "u" if !library && !modifiers.shift => {
+                self.documents_undo_last();
                 true
             }
             _ => false,
@@ -588,15 +733,240 @@ impl Shell {
         });
     }
 
-    /// `l`, **+ Link to…** and a LINKED TO row: the picker and link navigation are the next
-    /// ticket's work, so for now they say so.
+    /// `l`, **+ Link to…**, **Link elsewhere…** and **File…**: opens the one link picker, to toggle
+    /// a Link in the Library or to file the focused Unfiled Document from the Inbox.
     pub(super) fn documents_link_picker(&mut self) {
-        self.status_message = Some(crate::msg::desktop_documents_status_not_yet_built());
+        let Some(document) = self.documents_selected_document() else {
+            self.status_message = Some(crate::msg::desktop_documents_status_no_document());
+            return;
+        };
+        let id = document.id;
+        let state = match self.documents_mode {
+            DocumentsMode::Library => PickerState::new(Purpose::Link(id), document.date, None),
+            DocumentsMode::Inbox => {
+                let (anchor, doc_type) =
+                    document
+                        .intake
+                        .as_ref()
+                        .map_or((document.date, None), |intake| {
+                            (
+                                intake.facts.date.unwrap_or(intake.received_at),
+                                intake.facts.doc_type,
+                            )
+                        });
+                PickerState::new(Purpose::File(id), anchor, doc_type)
+            }
+        };
+        self.open_documents_picker(state);
     }
 
-    fn handle_documents_link_click(&mut self, _link: DocumentLink, cx: &mut Context<'_, Self>) {
-        self.documents_link_picker();
+    fn open_documents_picker(&mut self, state: PickerState) {
+        self.documents_dialog = Some(DocumentsDialog::Picker(state));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// The picker's rows for `state`: derived afresh from the stubs and the Document's Links.
+    pub(super) fn documents_picker_rows(&self, state: &PickerState) -> Vec<PickerRow> {
+        let lookups = self.documents_lookups();
+        let current: Vec<DocumentLink> = documents::get(&self.documents, state.purpose.document())
+            .map(|document| document.links.clone())
+            .unwrap_or_default();
+        documents_picker::rows(
+            state,
+            &documents_picker::Sources {
+                lookups: &lookups,
+                current: &current,
+            },
+        )
+    }
+
+    /// Keys while the picker is open, following the command palette's: typing goes to the query,
+    /// `↑`/`↓` (and `ctrl+n`/`ctrl+p`) move, `tab` cycles the kind filter, `enter` picks. In the
+    /// Inbox `←`/`→` step the Document Type select.
+    fn handle_documents_picker_key(&mut self, keystroke: &Keystroke) -> bool {
+        let Some(DocumentsDialog::Picker(state)) = self.documents_dialog.clone() else {
+            return false;
+        };
+        let len = self.documents_picker_rows(&state).len();
+        let modifiers = keystroke.modifiers;
+        let Some(DocumentsDialog::Picker(live)) = self.documents_dialog.as_mut() else {
+            return false;
+        };
+        match keystroke.key.as_str() {
+            "enter" => {
+                let at = state.selected.min(len.saturating_sub(1));
+                self.documents_picker_pick(at);
+            }
+            "down" => live.step(true, len),
+            "up" => live.step(false, len),
+            "n" if modifiers.control => live.step(true, len),
+            "p" if modifiers.control => live.step(false, len),
+            "tab" => live.cycle_kind(),
+            "left" | "right" if matches!(live.purpose, Purpose::File(_)) => {
+                live.step_type(keystroke.key == "right");
+            }
+            "backspace" => live.backspace(),
+            _ => {
+                if let Some(ch) = typed_char(keystroke).filter(|ch| !ch.is_control()) {
+                    live.push_char(ch);
+                }
+            }
+        }
+        true
+    }
+
+    /// What `enter` or a click on picker row `index` does: toggles a Link, files the Unfiled
+    /// Document, or follows a Link, according to why the picker opened.
+    pub(super) fn documents_picker_pick(&mut self, index: usize) {
+        let Some(DocumentsDialog::Picker(state)) = self.documents_dialog.clone() else {
+            return;
+        };
+        let Some(row) = self.documents_picker_rows(&state).get(index).cloned() else {
+            return;
+        };
+        match state.purpose {
+            Purpose::Link(id) => {
+                let Some(link) = row.link else {
+                    return;
+                };
+                let Some(added) = documents::toggle_link(&mut self.documents, id, link) else {
+                    return;
+                };
+                self.close_documents_dialog();
+                self.raise_toast(
+                    ToastKind::Info,
+                    if added {
+                        crate::msg::desktop_documents_toast_linked(&row.text)
+                    } else {
+                        crate::msg::desktop_documents_toast_unlinked(&row.text)
+                    },
+                );
+            }
+            Purpose::File(id) => {
+                let Some(doc_type) = state.doc_type else {
+                    self.status_message = Some(crate::msg::desktop_documents_picker_need_type());
+                    return;
+                };
+                self.close_documents_dialog();
+                self.documents_file_by_hand(id, doc_type, row.link);
+            }
+            Purpose::Follow(_) => {
+                self.close_documents_dialog();
+                if let Some(link) = row.link {
+                    self.documents_goto_link(link);
+                }
+            }
+        }
+    }
+
+    /// `L`: follows a Link. In the Library one Link jumps straight there, several open a small list
+    /// of them, and none is a quiet no-op. In the Inbox it follows the row's Suggested Link, so it
+    /// can be checked before `y`.
+    pub(super) fn documents_follow_link(&mut self) {
+        let Some(document) = self.documents_selected_document() else {
+            return;
+        };
+        let id = document.id;
+        match self.documents_mode {
+            DocumentsMode::Library => match document.links.as_slice() {
+                [] => {}
+                [only] => {
+                    let only = *only;
+                    self.documents_goto_link(only);
+                }
+                _ => {
+                    let state = PickerState::new(Purpose::Follow(id), document.date, None);
+                    self.open_documents_picker(state);
+                }
+            },
+            DocumentsMode::Inbox => {
+                let suggestion = documents::suggestion(
+                    document,
+                    &self.documents,
+                    &self.transactions,
+                    &self.payees,
+                );
+                if let Some(best) = suggestion.best() {
+                    let transaction_id = best.transaction_id;
+                    self.documents_goto_link(DocumentLink::Transaction(transaction_id));
+                }
+            }
+        }
+    }
+
+    /// Hands off to the record a Link points at, with it selected. There is no back-history: `g f`
+    /// returns to Documents.
+    pub(super) fn documents_goto_link(&mut self, link: DocumentLink) {
+        match link {
+            DocumentLink::Transaction(id) => self.open_transaction_row(id),
+            DocumentLink::Account(id) => {
+                self.open_settings_page(SettingsSection::Accounts);
+                self.select_account(id);
+            }
+            DocumentLink::Payee(id) => {
+                self.open_settings_page(SettingsSection::Payees);
+                self.select_payee(id);
+            }
+            DocumentLink::BillPlan(id) => {
+                let at = crate::bills::planner_order(&self.bill_plans)
+                    .iter()
+                    .position(|plan| plan.id == id);
+                let Some(at) = at else {
+                    return;
+                };
+                self.nav.set_noun(Noun::Bills);
+                self.set_bills_tab(crate::bills::BillsTab::Planner);
+                self.bills_selected = at;
+            }
+            DocumentLink::InventoryItem(_) => {
+                self.nav.set_noun(Noun::Inventory);
+                self.reset_view_scroll();
+            }
+        }
+    }
+
+    /// A click on a LINKED TO name: follows that Link.
+    fn handle_documents_link_click(&mut self, link: DocumentLink, cx: &mut Context<'_, Self>) {
+        self.documents_goto_link(link);
         cx.notify();
+    }
+
+    /// A click on a LINKED TO row's ×: removes the Link at once, with a Toast and no confirm.
+    fn handle_documents_unlink_click(&mut self, link: DocumentLink, cx: &mut Context<'_, Self>) {
+        if let Some(id) = self
+            .documents_selected_document()
+            .map(|document| document.id)
+        {
+            let name = self.documents_link_name(link);
+            if documents::toggle_link(&mut self.documents, id, link) == Some(false) {
+                self.raise_toast(
+                    ToastKind::Info,
+                    crate::msg::desktop_documents_toast_unlinked(&name),
+                );
+            }
+        }
+        cx.notify();
+    }
+
+    /// The text a Link reads as in the picker, for toasts.
+    fn documents_link_name(&self, link: DocumentLink) -> String {
+        let id = self
+            .documents_selected_document()
+            .map(|document| document.id)
+            .unwrap_or_default();
+        let state = PickerState::new(Purpose::Follow(id), self.today, None);
+        let lookups = self.documents_lookups();
+        documents_picker::rows(
+            &state,
+            &documents_picker::Sources {
+                lookups: &lookups,
+                current: &[link],
+            },
+        )
+        .into_iter()
+        .next()
+        .map(|row| row.text)
+        .unwrap_or_default()
     }
 
     /// Runs a queued file action with an `App`, after the key handler has recorded it.
@@ -625,6 +995,241 @@ impl Shell {
     }
 
     // -----------------------------------------------------------------------------------------
+    // Inbox: accept, skip, undo, accept all
+    // -----------------------------------------------------------------------------------------
+
+    /// `y` and **Accept & next**: files the focused Document under its Suggested Link. A Document
+    /// with no suggestion is filed by hand instead, through the picker.
+    pub(super) fn documents_accept_focused(&mut self) {
+        let Some(document) = self.documents_selected_document() else {
+            return;
+        };
+        let id = document.id;
+        let suggestion =
+            documents::suggestion(document, &self.documents, &self.transactions, &self.payees);
+        match suggestion.best() {
+            Some(best) => self.documents_accept(id, best.transaction_id),
+            None => self.documents_link_picker(),
+        }
+    }
+
+    /// Files `id` under `transaction_id`, remembers it for `u` and moves focus to the next row.
+    pub(super) fn documents_accept(&mut self, id: u32, transaction_id: u32) {
+        let before = self.documents_before_filing(id);
+        let Ok(entry) =
+            documents::accept(&mut self.documents, &self.transactions, id, transaction_id)
+        else {
+            return;
+        };
+        self.documents_after_filing(id, before, entry);
+    }
+
+    /// Files `id` by hand with a Document Type and at most one Link, as one filing action.
+    fn documents_file_by_hand(
+        &mut self,
+        id: u32,
+        doc_type: documents::DocumentType,
+        link: Option<DocumentLink>,
+    ) {
+        let before = self.documents_before_filing(id);
+        let Ok(entry) = documents::file_by_hand(&mut self.documents, id, doc_type, link) else {
+            return;
+        };
+        self.documents_after_filing(id, before, entry);
+    }
+
+    /// Where `id` sits in the Inbox and what it is called, read before it leaves the Inbox.
+    fn documents_before_filing(&self, id: u32) -> (Option<usize>, usize, String) {
+        let rows = self.documents_inbox_rows();
+        (
+            rows.iter().position(|document| document.id == id),
+            rows.len(),
+            documents::get(&self.documents, id)
+                .map(|document| document.title.clone())
+                .unwrap_or_default(),
+        )
+    }
+
+    /// What every filing does: remembers it as the one undoable action, moves focus to the next row
+    /// and raises the Toast.
+    fn documents_after_filing(
+        &mut self,
+        id: u32,
+        (at, len, title): (Option<usize>, usize, String),
+        entry: documents::FiledEntry,
+    ) {
+        self.documents_undo = Some(documents::FilingUndo {
+            entries: vec![entry],
+            focus: Some(id),
+        });
+        if let Some(at) = at {
+            self.documents_inbox_selected = documents::focus_after_filing(at, len).unwrap_or(0);
+            self.documents_scroll
+                .scroll_to_item(self.documents_inbox_selected);
+        }
+        self.raise_toast(
+            ToastKind::Success,
+            crate::msg::desktop_documents_toast_filed(&title),
+        );
+    }
+
+    /// `x` / **Skip**: sets the focused Document aside to the bottom of the Inbox for the session.
+    /// Focus stays at the same position, which is now the next row.
+    pub(super) fn documents_skip_focused(&mut self) {
+        let Some(id) = self
+            .documents_selected_document()
+            .map(|document| document.id)
+        else {
+            return;
+        };
+        if documents::skip(&mut self.documents, id).is_ok() {
+            let len = self.documents_inbox_rows().len();
+            self.documents_inbox_selected = self.documents_inbox_at(len);
+        }
+    }
+
+    /// `u`: reverses the last filing action as a unit and puts focus back on its Document.
+    pub(super) fn documents_undo_last(&mut self) {
+        let Some(record) = self.documents_undo.take() else {
+            self.status_message = Some(crate::msg::desktop_documents_status_nothing_to_undo());
+            return;
+        };
+        let count = record.entries.len();
+        let focus = documents::undo(&mut self.documents, record);
+        self.set_documents_mode(DocumentsMode::Inbox);
+        if let Some(id) = focus
+            && let Some(at) = self
+                .documents_inbox_rows()
+                .iter()
+                .position(|document| document.id == id)
+        {
+            self.documents_inbox_selected = at;
+            self.documents_scroll.scroll_to_item(at);
+        }
+        self.raise_toast(
+            ToastKind::Info,
+            crate::msg::desktop_documents_toast_undone(i64::try_from(count).unwrap_or(i64::MAX)),
+        );
+    }
+
+    /// **Watched folder…**: out of scope for now, so it says so.
+    pub(super) fn documents_watched_folder(&mut self) {
+        self.raise_toast(
+            ToastKind::Info,
+            crate::msg::desktop_documents_watched_folder_toast(),
+        );
+    }
+
+    /// `Y`, **Accept all strong matches** and `:documents accept-all`: asks first, with the count.
+    pub(super) fn open_documents_accept_all(&mut self) {
+        let count = documents::strong_count(&self.documents, &self.transactions, &self.payees);
+        if count == 0 {
+            self.status_message = Some(crate::msg::desktop_documents_status_no_strong());
+            return;
+        }
+        self.documents_dialog = Some(DocumentsDialog::AcceptAll(count));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    pub(super) fn confirm_documents_accept_all(&mut self) {
+        let focus = self
+            .documents_selected_document()
+            .map(|document| document.id);
+        let batch = documents::accept_all_strong(
+            &mut self.documents,
+            &self.transactions,
+            &self.payees,
+            focus,
+        );
+        self.close_documents_dialog();
+        let Some(batch) = batch else {
+            return;
+        };
+        let count = batch.entries.len();
+        self.documents_undo = Some(batch);
+        self.documents_inbox_selected = 0;
+        self.documents_scroll.set_offset(gpui::Point::default());
+        self.raise_toast(
+            ToastKind::Success,
+            crate::msg::desktop_documents_toast_filed_many(&count.to_string()),
+        );
+    }
+
+    /// `e` in the Inbox: the focused Document's Extracted Facts.
+    fn open_documents_facts(&mut self) {
+        let options = self.documents_options();
+        let Some(document) = self.documents_selected_document() else {
+            self.status_message = Some(crate::msg::desktop_documents_status_no_document());
+            return;
+        };
+        let facts = document
+            .intake
+            .as_ref()
+            .map(|intake| intake.facts.clone())
+            .unwrap_or_default();
+        let id = document.id;
+        let form = FactsForm::new(&facts, &options, self.settings_date_style);
+        self.documents_dialog = Some(DocumentsDialog::Facts(id, form));
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Saves the facts; suggestions recompute on the next render. A no-op while a field is wrong.
+    pub(super) fn confirm_documents_facts(&mut self) {
+        let options = self.documents_options();
+        let (today, style) = (self.today, self.settings_date_style);
+        let Some(DocumentsDialog::Facts(id, form)) = self.documents_dialog.as_ref() else {
+            return;
+        };
+        if !form.can_save(&form.problems(today, style)) {
+            return;
+        }
+        let Some(facts) = form.build(&options, today, style) else {
+            return;
+        };
+        let id = *id;
+        let title = documents::get(&self.documents, id)
+            .map(|document| document.title.clone())
+            .unwrap_or_default();
+        if documents::edit_facts(&mut self.documents, id, facts).is_err() {
+            return;
+        }
+        // Editing clears a skip, so the Document may have moved up the list: follow it.
+        if let Some(at) = self
+            .documents_inbox_rows()
+            .iter()
+            .position(|document| document.id == id)
+        {
+            self.documents_inbox_selected = at;
+            self.documents_scroll.scroll_to_item(at);
+        }
+        self.close_documents_dialog();
+        self.raise_toast(
+            ToastKind::Success,
+            crate::msg::desktop_documents_toast_facts_saved(&title),
+        );
+    }
+
+    fn handle_facts_field_click(&mut self, field: FactsField, cx: &mut Context<'_, Self>) {
+        let options = self.documents_options();
+        if let Some(DocumentsDialog::Facts(_, form)) = self.documents_dialog.as_mut() {
+            if FactsForm::is_select(field) {
+                form.click_select(&options);
+            } else {
+                form.focus(field);
+            }
+        }
+        cx.notify();
+    }
+
+    fn handle_facts_option_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
+        let options = self.documents_options();
+        if let Some(DocumentsDialog::Facts(_, form)) = self.documents_dialog.as_mut() {
+            form.choose(index, &options);
+        }
+        cx.notify();
+    }
+
+    // -----------------------------------------------------------------------------------------
     // Commands
     // -----------------------------------------------------------------------------------------
 
@@ -637,11 +1242,11 @@ impl Shell {
             self.reset_view_scroll();
         }
         match verb {
-            DocumentsVerb::Inbox => self.documents_mode = DocumentsMode::Inbox,
-            DocumentsVerb::Library => self.documents_mode = DocumentsMode::Library,
+            DocumentsVerb::Inbox => self.set_documents_mode(DocumentsMode::Inbox),
+            DocumentsVerb::Library => self.set_documents_mode(DocumentsMode::Library),
             DocumentsVerb::AcceptAll => {
-                self.documents_mode = DocumentsMode::Inbox;
-                self.status_message = Some(crate::msg::desktop_documents_status_not_yet_built());
+                self.set_documents_mode(DocumentsMode::Inbox);
+                self.open_documents_accept_all();
             }
             DocumentsVerb::Add => self.open_documents_add(),
             DocumentsVerb::Import => self.open_documents_import(),
@@ -691,6 +1296,7 @@ impl Shell {
             Some(DocumentsDialog::Add(form) | DocumentsDialog::Edit(_, form)) => {
                 form.close_open_select()
             }
+            Some(DocumentsDialog::Facts(_, form)) => form.close_open_select(),
             _ => false,
         }
     }
@@ -706,6 +1312,9 @@ impl Shell {
     /// anywhere else saves (in Import it types a newline, and `ctrl+enter` saves); `space` flips the
     /// reminder checkbox. `Esc` never reaches here.
     pub(super) fn handle_documents_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+        if matches!(self.documents_dialog, Some(DocumentsDialog::Picker(_))) {
+            return self.handle_documents_picker_key(keystroke);
+        }
         let options = self.documents_options();
         if let Some(DocumentsDialog::Import(form, notes)) = self.documents_dialog.as_mut() {
             match keystroke.key.as_str() {
@@ -724,6 +1333,44 @@ impl Shell {
                     if let Some(ch) = typed_char(keystroke) {
                         form.push_char(ch);
                         notes.clear();
+                    }
+                }
+            }
+            return true;
+        }
+        if let Some(DocumentsDialog::AcceptAll(_)) = self.documents_dialog.as_ref() {
+            if keystroke.key == "enter" {
+                self.confirm_documents_accept_all();
+            }
+            return true;
+        }
+        if let Some(DocumentsDialog::Facts(_, form)) = self.documents_dialog.as_mut() {
+            let modifiers = keystroke.modifiers;
+            match keystroke.key.as_str() {
+                "tab" => form.cycle_focus(modifiers.shift, &options),
+                "up" | "down" if form.focused == FactsField::Type => {
+                    let key = if keystroke.key == "up" {
+                        SelectKey::Up
+                    } else {
+                        SelectKey::Down
+                    };
+                    form.handle_select_key(key, &options);
+                }
+                "space" | "enter" if form.focused == FactsField::Type => {
+                    form.handle_select_key(SelectKey::Activate, &options);
+                }
+                "enter" => self.confirm_documents_facts(),
+                "backspace" => form.backspace(),
+                _ => {
+                    if modifiers.control
+                        || modifiers.alt
+                        || modifiers.platform
+                        || modifiers.function
+                    {
+                        return false;
+                    }
+                    if let Some(ch) = typed_char(keystroke) {
+                        form.push_char(ch);
                     }
                 }
             }
@@ -774,7 +1421,10 @@ impl Shell {
         let (editing, form) = match dialog {
             DocumentsDialog::Add(form) => (None, form),
             DocumentsDialog::Edit(id, form) => (Some(*id), form),
-            DocumentsDialog::Import(..) => return,
+            DocumentsDialog::Import(..)
+            | DocumentsDialog::Facts(..)
+            | DocumentsDialog::Picker(_)
+            | DocumentsDialog::AcceptAll(_) => return,
         };
         let problems = form.problems(&options, &self.documents, today, style, exists_on_disk);
         if !form.can_save(&problems) {
@@ -829,7 +1479,7 @@ impl Shell {
         if !in_scope {
             self.documents_scope = LibraryScope::All;
         }
-        self.documents_mode = DocumentsMode::Library;
+        self.set_documents_mode(DocumentsMode::Library);
         self.documents_focus = DocumentsFocus::List;
         self.documents_query.clear();
         let at = self
@@ -897,7 +1547,7 @@ impl Shell {
                 )
             },
         );
-        self.documents_mode = DocumentsMode::Inbox;
+        self.set_documents_mode(DocumentsMode::Inbox);
         self.close_documents_dialog();
     }
 
@@ -949,16 +1599,70 @@ impl Shell {
             let entity = entity.clone();
             Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
                 entity.update(cx, |shell, cx| {
-                    if matches!(shell.documents_dialog, Some(DocumentsDialog::Import(..))) {
-                        shell.confirm_documents_import();
-                    } else {
-                        shell.confirm_documents_form();
+                    match shell.documents_dialog {
+                        Some(DocumentsDialog::Import(..)) => shell.confirm_documents_import(),
+                        Some(DocumentsDialog::AcceptAll(_)) => shell.confirm_documents_accept_all(),
+                        Some(DocumentsDialog::Facts(..)) => shell.confirm_documents_facts(),
+                        _ => shell.confirm_documents_form(),
                     }
                     cx.notify();
                 });
             })
         };
         match dialog {
+            DocumentsDialog::Picker(state) => {
+                let rows = self.documents_picker_rows(state);
+                let on_pick: dialogs::OnPickerRow = {
+                    let entity = entity.clone();
+                    Rc::new(move |index, _window, cx| {
+                        entity.update(cx, |shell, cx| {
+                            shell.documents_picker_pick(index);
+                            cx.notify();
+                        });
+                    })
+                };
+                Some(dialogs::render_picker(
+                    dialogs::PickerProps {
+                        state,
+                        rows: &rows,
+                        type_label: state.doc_type.map(view_model::type_label),
+                        on_pick,
+                    },
+                    cx,
+                ))
+            }
+            DocumentsDialog::AcceptAll(count) => Some(dialogs::render_accept_all(
+                *count, on_cancel, on_confirm, cx,
+            )),
+            DocumentsDialog::Facts(_, form) => {
+                let options = self.documents_options();
+                let problems = form.problems(self.today, self.settings_date_style);
+                let on_field_click: dialogs::OnFactsFieldClick = {
+                    let entity = entity.clone();
+                    Rc::new(move |field, _window, cx| {
+                        entity.update(cx, |shell, cx| shell.handle_facts_field_click(field, cx));
+                    })
+                };
+                let on_option_click: dialogs::OnFactsOptionClick = {
+                    let entity = entity.clone();
+                    Rc::new(move |index, _window, cx| {
+                        entity.update(cx, |shell, cx| shell.handle_facts_option_click(index, cx));
+                    })
+                };
+                Some(dialogs::render_facts(
+                    dialogs::FactsProps {
+                        form,
+                        options: &options,
+                        valid: form.can_save(&problems),
+                        problems: &problems,
+                        on_field_click,
+                        on_option_click,
+                        on_cancel,
+                        on_confirm,
+                    },
+                    cx,
+                ))
+            }
             DocumentsDialog::Import(form, notes) => Some(dialogs::render_import(
                 dialogs::ImportProps {
                     form,

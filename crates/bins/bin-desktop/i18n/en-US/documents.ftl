@@ -12,6 +12,8 @@ desktop-hint-show-in-folder = show in folder
 desktop-hint-sort = sort
 desktop-hint-import = import
 desktop-hint-accept = accept
+desktop-hint-undo = undo
+desktop-hint-accept-all = accept all strong matches
 
 ## The status line's right-hand note. `$size` is the stored size, `$file` the Ledger file name.
 
@@ -98,14 +100,96 @@ desktop-documents-link-add = + Link to transaction, account, item…
 desktop-documents-open = Open
 desktop-documents-show-in-folder = Show in folder
 
-## The Inbox, until its own view is built.
+## The Inbox (4b). `$count` is a plural-selector number in the sublines and a text count in the
+## buttons; `$date` is a formatted date.
 
 desktop-documents-inbox-title = Inbox
 desktop-documents-inbox-subline = { $count ->
     [one] { $count } unfiled
    *[other] { $count } unfiled
-} · dropped, scanned or imported · each gets a suggested link
-desktop-documents-inbox-placeholder = The Inbox list is not built yet.
+} · dropped, scanned or imported from a watched folder · each gets a suggested link
+desktop-documents-watched-folder = Watched folder…
+desktop-documents-watched-folder-toast = Watched folders are not available yet.
+desktop-documents-accept-all = Accept all strong matches · { $count }
+desktop-documents-inbox-col-file = File
+desktop-documents-inbox-col-link = Suggested link
+desktop-documents-inbox-empty = Nothing to file
+desktop-documents-inbox-footnote = Accepted files move to their type and financial year; nothing is renamed on disk.
+desktop-documents-inbox-below = { $count ->
+    [one] { $count } more below
+   *[other] { $count } more below
+}
+desktop-documents-drop-target = Drop files anywhere in the app to add them to the Inbox
+desktop-documents-accept = Accept
+desktop-documents-file-button = File…
+desktop-documents-accept-next = Accept & next
+desktop-documents-skip = Skip
+
+## Where an Unfiled Document came from.
+
+desktop-documents-source-scanned = Scanned { $date }
+desktop-documents-source-emailed = Emailed { $date }
+desktop-documents-source-downloads = Downloads · { $date }
+desktop-documents-source-watched = Watched folder · { $date }
+desktop-documents-source-dropped = Dropped { $date }
+desktop-documents-source-import = Imported { $date }
+
+## The Suggested Link column. `$days` is a text number.
+
+desktop-documents-suggest-summary = { $kind } · { $who } · { $amount }
+desktop-documents-suggest-summary-bare = { $kind } · { $amount }
+desktop-documents-suggest-unreadable = Unreadable — no amount found
+desktop-documents-suggest-unreadable-hint = File it by hand, or skip
+desktop-documents-suggest-none = No suggestion — nothing within { $days } days
+desktop-documents-suggest-none-hint = File it by hand, or skip
+desktop-documents-signals-all = amount, date and payee match
+desktop-documents-signals-amount-date = amount and date match
+desktop-documents-signals-amount-payee = amount and payee match
+desktop-documents-signals-date-payee = date and payee match
+desktop-documents-signals-amount = amount matches
+desktop-documents-signals-payee = payee matches
+desktop-documents-signals-date = date matches
+
+## The Inbox detail pane.
+
+desktop-documents-inbox-meta-image = Read from the image · check before accepting
+desktop-documents-inbox-meta-file = Read from the file · check before accepting
+desktop-documents-inbox-meta-unreadable = Nothing could be read from this file
+desktop-documents-fact-merchant = Merchant
+desktop-documents-fact-total = Total
+desktop-documents-fact-none = —
+desktop-documents-suggested-link = Suggested link
+desktop-documents-suggested-detail = { $account } · { $documents }
+desktop-documents-suggested-no-document = no document yet
+desktop-documents-suggested-has-document = already has a document
+desktop-documents-other-candidates = Other candidates
+desktop-documents-other-none = Other candidates: none within { $days } days
+
+## Accepting, undoing and the confirm. `$title` is the Document's Title, `$count` a text count.
+
+desktop-documents-toast-filed = Filed "{ $title }" · u undo
+desktop-documents-toast-filed-many = Filed { $count } · u undo
+desktop-documents-toast-undone = { $count ->
+    [one] Put { $count } back in the Inbox.
+   *[other] Put { $count } back in the Inbox.
+}
+desktop-documents-status-nothing-to-undo = Nothing to undo.
+desktop-documents-status-no-strong = No strong matches to accept.
+desktop-documents-accept-all-title = Accept all strong matches
+desktop-documents-accept-all-body = { $count ->
+    [one] File { $count } document with a strong suggestion?
+   *[other] File { $count } documents with strong suggestions?
+}
+desktop-documents-accept-all-submit = File { $count }
+desktop-documents-accept-all-note = Only matches where the amount, date and payee all agree. You can undo it with u.
+
+## The extracted-facts dialog.
+
+desktop-documents-facts-title = Edit extracted facts
+desktop-documents-facts-submit = Save
+desktop-documents-facts-note = Suggestions are recomputed when you save. Clear the total to mark the file unreadable.
+desktop-documents-error-total = Enter an amount such as 212.40.
+desktop-documents-toast-facts-saved = Updated what was read from "{ $title }".
 
 ## Messages for opening a file. `$name` is the file name, `$path` where it should be.
 
@@ -153,3 +237,24 @@ desktop-documents-toast-imported = { $count ->
 }
 desktop-documents-toast-import-partial = { $imported } imported, { $skipped } not imported.
 desktop-hint-link-elsewhere = link elsewhere
+desktop-documents-link-elsewhere = Link elsewhere…
+
+# The link picker (one palette-chrome modal) and following a link.
+desktop-documents-picker-kind-all = All
+desktop-documents-picker-file-without-link = File without link
+desktop-documents-picker-placeholder = Search transactions, accounts, payees, bills, items…
+desktop-documents-picker-title-link = Link
+desktop-documents-picker-title-file = File
+desktop-documents-picker-title-follow = Follow
+desktop-documents-picker-empty = Nothing matches.
+desktop-documents-picker-type = Type
+desktop-documents-picker-type-none = choose with ← →
+desktop-documents-picker-hint-pick = ↑↓ move · tab kind · enter pick · esc close
+desktop-documents-picker-hint-toggle = ↑↓ move · tab kind · enter link or unlink · esc close
+desktop-documents-picker-hint-follow = ↑↓ move · enter go · esc close
+desktop-documents-picker-need-type = Choose a document type first (← →).
+desktop-documents-toast-linked = Linked { $record }.
+desktop-documents-toast-unlinked = Unlinked { $record }.
+desktop-documents-link-remove = Remove link
+desktop-hint-follow = follow link
+desktop-hint-kind = kind

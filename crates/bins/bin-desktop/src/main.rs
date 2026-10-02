@@ -18,6 +18,7 @@ mod command;
 mod dialog;
 mod documents;
 mod documents_form;
+mod documents_picker;
 mod error;
 mod explorer;
 mod feasibility_demo;

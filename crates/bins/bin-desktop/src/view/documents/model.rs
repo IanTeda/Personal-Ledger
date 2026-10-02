@@ -10,8 +10,9 @@ use crate::{
     accounts::Account,
     bills::BillPlan,
     documents::{
-        Document, DocumentLink, DocumentType, FileKind, InventoryItem, KeyDate, KeyDateBand,
-        KeyDateKind, LibraryScope, RailEntry, YearFacet, band, scope_count,
+        CANDIDATE_WINDOW_DAYS, Candidate, Document, DocumentLink, DocumentType, FileKind,
+        InventoryItem, KeyDate, KeyDateBand, KeyDateKind, LibraryScope, RailEntry, Signals, Source,
+        Suggestion, YearFacet, band, scope_count,
     },
     format,
     payees::Payee,
@@ -362,6 +363,267 @@ pub fn detail(document: &Document, lookups: &Lookups<'_>) -> DetailView {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// The Inbox
+// ---------------------------------------------------------------------------------------------
+
+/// What an Inbox row's Suggested Link column says.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InboxState {
+    /// A Transaction is suggested; Accept files it.
+    Link,
+    /// No amount was read: never guess, file by hand.
+    Unreadable,
+    /// Readable, but nothing within the window: file by hand.
+    NoSuggestion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboxRowView {
+    pub id: u32,
+    pub extension: &'static str,
+    pub name: String,
+    /// "Scanned 29 Sep", "Downloads · 26 Sep".
+    pub source: String,
+    pub state: InboxState,
+    /// The bold line: "Receipt · Woolworths · 212.40", or the Unreadable notice.
+    pub summary: String,
+    /// The muted line beside the meter: the target Transaction, or what to do instead.
+    pub hint: String,
+    pub signals: Option<Signals>,
+    /// The Transaction Accept would link.
+    pub best: Option<u32>,
+    pub skipped: bool,
+}
+
+/// One Transaction offered in the detail pane: the suggested one, or another candidate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CandidateView {
+    pub transaction_id: u32,
+    /// "29 Sep · Woolworths · −212.40".
+    pub line: String,
+    /// "ANZ Platinum · no document yet"; empty for an Other candidate.
+    pub sub: String,
+    pub signals: Signals,
+    pub signals_text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InboxDetailView {
+    pub id: u32,
+    pub extension: &'static str,
+    pub title: String,
+    pub meta: String,
+    pub facts: Vec<Fact>,
+    pub state: InboxState,
+    pub suggested: Option<CandidateView>,
+    pub others: Vec<CandidateView>,
+    /// "Other candidates: none within 7 days", shown only when there are no others.
+    pub others_none: String,
+}
+
+fn source_text(source: Source, date: NaiveDate, lookups: &Lookups<'_>) -> String {
+    let date = format_date(date, lookups.date_style);
+    match source {
+        Source::Scanned => crate::msg::desktop_documents_source_scanned(&date),
+        Source::Emailed => crate::msg::desktop_documents_source_emailed(&date),
+        Source::Downloads => crate::msg::desktop_documents_source_downloads(&date),
+        Source::WatchedFolder => crate::msg::desktop_documents_source_watched(&date),
+        Source::Dropped => crate::msg::desktop_documents_source_dropped(&date),
+        Source::Import => crate::msg::desktop_documents_source_import(&date),
+    }
+}
+
+/// The sentence under the match meter: which Signals agree.
+pub fn signals_text(signals: Signals) -> String {
+    match (signals.amount, signals.date, signals.payee) {
+        (true, true, true) => crate::msg::desktop_documents_signals_all(),
+        (true, true, false) => crate::msg::desktop_documents_signals_amount_date(),
+        (true, false, true) => crate::msg::desktop_documents_signals_amount_payee(),
+        (false, true, true) => crate::msg::desktop_documents_signals_date_payee(),
+        (true, false, false) => crate::msg::desktop_documents_signals_amount(),
+        (false, false, true) => crate::msg::desktop_documents_signals_payee(),
+        (false, true, false) => crate::msg::desktop_documents_signals_date(),
+        (false, false, false) => String::new(),
+    }
+}
+
+fn candidate_view(
+    candidate: &Candidate,
+    with_sub: bool,
+    lookups: &Lookups<'_>,
+) -> Option<CandidateView> {
+    let line = link_row_name(DocumentLink::Transaction(candidate.transaction_id), lookups)?;
+    let sub = if with_sub {
+        let account = lookups
+            .transactions
+            .iter()
+            .find(|transaction| transaction.id == candidate.transaction_id)
+            .and_then(|transaction| {
+                lookups
+                    .accounts
+                    .iter()
+                    .find(|account| account.id == transaction.account_id)
+            })
+            .map(|account| account.name.clone())
+            .unwrap_or_default();
+        let documents = if candidate.already_linked {
+            crate::msg::desktop_documents_suggested_has_document()
+        } else {
+            crate::msg::desktop_documents_suggested_no_document()
+        };
+        crate::msg::desktop_documents_suggested_detail(&account, &documents)
+    } else {
+        String::new()
+    };
+    Some(CandidateView {
+        transaction_id: candidate.transaction_id,
+        line,
+        sub,
+        signals: candidate.signals,
+        signals_text: signals_text(candidate.signals),
+    })
+}
+
+/// "Receipt · Woolworths · 212.40" from what was read; a missing merchant drops its slot.
+fn summary_text(document: &Document) -> String {
+    let facts = document.intake.as_ref().map(|intake| &intake.facts);
+    let kind = type_label(
+        facts
+            .and_then(|facts| facts.doc_type)
+            .unwrap_or(DocumentType::Receipt),
+    );
+    let amount = facts
+        .and_then(|facts| facts.total.as_ref())
+        .map(|total| format::amount(&lib_core::Money(total.0.abs())).1)
+        .unwrap_or_default();
+    match facts.and_then(|facts| facts.merchant.as_deref()) {
+        Some(merchant) => crate::msg::desktop_documents_suggest_summary(&kind, merchant, &amount),
+        None => crate::msg::desktop_documents_suggest_summary_bare(&kind, &amount),
+    }
+}
+
+/// An Inbox row. The Suggested Link is derived here, on every render, never stored.
+pub fn inbox_row(
+    document: &Document,
+    documents: &[Document],
+    lookups: &Lookups<'_>,
+) -> InboxRowView {
+    let suggestion =
+        crate::documents::suggestion(document, documents, lookups.transactions, lookups.payees);
+    let (state, summary, hint, signals, best) = match &suggestion {
+        Suggestion::Unreadable => (
+            InboxState::Unreadable,
+            crate::msg::desktop_documents_suggest_unreadable(),
+            crate::msg::desktop_documents_suggest_unreadable_hint(),
+            None,
+            None,
+        ),
+        Suggestion::Nothing => (
+            InboxState::NoSuggestion,
+            crate::msg::desktop_documents_suggest_none(&CANDIDATE_WINDOW_DAYS.to_string()),
+            crate::msg::desktop_documents_suggest_none_hint(),
+            None,
+            None,
+        ),
+        Suggestion::Link { best, .. } => (
+            InboxState::Link,
+            summary_text(document),
+            link_row_name(DocumentLink::Transaction(best.transaction_id), lookups)
+                .unwrap_or_default(),
+            Some(best.signals),
+            Some(best.transaction_id),
+        ),
+    };
+    let (source, received) = document
+        .intake
+        .as_ref()
+        .map_or((Source::Import, document.date), |intake| {
+            (intake.source, intake.received_at)
+        });
+    InboxRowView {
+        id: document.id,
+        extension: extension(document.kind),
+        name: document.file_name(),
+        source: source_text(source, received, lookups),
+        state,
+        summary,
+        hint,
+        signals,
+        best,
+        skipped: document.is_skipped(),
+    }
+}
+
+/// The Inbox's focused-row detail: what was read, the Suggested Link and the next candidates.
+pub fn inbox_detail(
+    document: &Document,
+    documents: &[Document],
+    lookups: &Lookups<'_>,
+) -> InboxDetailView {
+    let suggestion =
+        crate::documents::suggestion(document, documents, lookups.transactions, lookups.payees);
+    let facts = document
+        .intake
+        .as_ref()
+        .map(|intake| intake.facts.clone())
+        .unwrap_or_default();
+    let none = crate::msg::desktop_documents_fact_none();
+    let fact = |label: String, value: Option<String>| Fact {
+        label,
+        value: value.unwrap_or_else(|| none.clone()),
+        red: false,
+    };
+    let (state, suggested, others) = match &suggestion {
+        Suggestion::Unreadable => (InboxState::Unreadable, None, Vec::new()),
+        Suggestion::Nothing => (InboxState::NoSuggestion, None, Vec::new()),
+        Suggestion::Link { best, others } => (
+            InboxState::Link,
+            candidate_view(best, true, lookups),
+            others
+                .iter()
+                .filter_map(|other| candidate_view(other, false, lookups))
+                .collect(),
+        ),
+    };
+    let meta = match (state, document.kind) {
+        (InboxState::Unreadable, _) => crate::msg::desktop_documents_inbox_meta_unreadable(),
+        (_, FileKind::Pdf) => crate::msg::desktop_documents_inbox_meta_file(),
+        (_, _) => crate::msg::desktop_documents_inbox_meta_image(),
+    };
+    InboxDetailView {
+        id: document.id,
+        extension: extension(document.kind),
+        title: document.file_name(),
+        meta,
+        facts: vec![
+            fact(
+                crate::msg::desktop_documents_fact_merchant(),
+                facts.merchant.clone(),
+            ),
+            fact(
+                crate::msg::desktop_documents_detail_date(),
+                facts.date.map(|date| format_date(date, lookups.date_style)),
+            ),
+            fact(
+                crate::msg::desktop_documents_fact_total(),
+                facts
+                    .total
+                    .as_ref()
+                    .map(|total| format::amount(&lib_core::Money(total.0.abs())).1),
+            ),
+            fact(
+                crate::msg::desktop_documents_detail_type(),
+                Some(type_label(facts.doc_type.unwrap_or(DocumentType::Receipt))),
+            ),
+        ],
+        state,
+        suggested,
+        others,
+        others_none: crate::msg::desktop_documents_other_none(&CANDIDATE_WINDOW_DAYS.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,5 +802,134 @@ mod tests {
         crate::locale::init_for_tests();
         assert_eq!(year_label(2026), "FY 2026–27");
         assert_eq!(year_label(1999), "FY 1999–00");
+    }
+
+    fn inbox_named<'a>(world: &'a World, file: &str) -> &'a Document {
+        world
+            .seed
+            .documents
+            .iter()
+            .find(|d| d.is_unfiled() && d.file_name() == file)
+            .expect("the seed holds that Inbox file")
+    }
+
+    #[test]
+    fn a_strong_row_summarises_what_was_read_and_names_its_transaction() {
+        let world = world();
+        let lookups = world.lookups();
+        let row = inbox_row(
+            inbox_named(&world, "IMG_4471.jpg"),
+            &world.seed.documents,
+            &lookups,
+        );
+        assert_eq!(row.state, InboxState::Link);
+        assert!(row.summary.starts_with("Receipt · "), "{}", row.summary);
+        assert!(row.summary.contains("212.40"), "{}", row.summary);
+        let signals = row.signals.expect("a linked row has a meter");
+        assert_eq!(signals.count(), 3);
+        assert!(row.best.is_some());
+        assert!(row.hint.contains("212.40"), "{}", row.hint);
+        assert!(!row.skipped);
+    }
+
+    #[test]
+    fn an_unreadable_row_never_guesses_and_a_row_with_nothing_asks_to_be_filed_by_hand() {
+        let world = world();
+        let lookups = world.lookups();
+        let unreadable = inbox_row(
+            inbox_named(&world, "scan0012.pdf"),
+            &world.seed.documents,
+            &lookups,
+        );
+        assert_eq!(unreadable.state, InboxState::Unreadable);
+        assert_eq!(unreadable.summary, "Unreadable — no amount found");
+        assert_eq!(unreadable.best, None);
+        assert_eq!(unreadable.signals, None);
+
+        let nothing = inbox_row(
+            inbox_named(&world, "ATO_NOA_2026.pdf"),
+            &world.seed.documents,
+            &lookups,
+        );
+        assert_eq!(nothing.state, InboxState::NoSuggestion);
+        assert!(
+            nothing.summary.contains("nothing within 7 days"),
+            "{}",
+            nothing.summary
+        );
+        assert_eq!(nothing.best, None);
+    }
+
+    #[test]
+    fn the_meter_text_names_exactly_the_signals_that_agree() {
+        crate::locale::init_for_tests();
+        let signals = |amount, date, payee| Signals {
+            amount,
+            date,
+            payee,
+        };
+        assert_eq!(
+            signals_text(signals(true, true, true)),
+            "amount, date and payee match"
+        );
+        assert_eq!(
+            signals_text(signals(true, false, true)),
+            "amount and payee match"
+        );
+        assert_eq!(signals_text(signals(true, false, false)), "amount matches");
+        assert_eq!(signals_text(signals(false, false, true)), "payee matches");
+        assert_eq!(signals_text(signals(false, false, false)), "");
+    }
+
+    #[test]
+    fn the_inbox_detail_shows_the_facts_the_suggested_link_and_the_others() {
+        let world = world();
+        let lookups = world.lookups();
+        let detail = inbox_detail(
+            inbox_named(&world, "IMG_4471.jpg"),
+            &world.seed.documents,
+            &lookups,
+        );
+        assert_eq!(detail.title, "IMG_4471.jpg");
+        assert_eq!(detail.meta, "Read from the image · check before accepting");
+        let labels: Vec<_> = detail
+            .facts
+            .iter()
+            .map(|fact| fact.label.as_str())
+            .collect();
+        assert_eq!(labels, ["Merchant", "Document date", "Total", "Type"]);
+        let card = detail.suggested.expect("a readable file has a suggestion");
+        assert!(card.line.contains("212.40"), "{}", card.line);
+        assert!(card.sub.ends_with("no document yet"), "{}", card.sub);
+        assert_eq!(card.signals_text, "amount, date and payee match");
+        assert!(detail.others_none.contains("7 days"));
+
+        let pdf = inbox_detail(
+            inbox_named(&world, "bunnings-invoice-INV88213.pdf"),
+            &world.seed.documents,
+            &lookups,
+        );
+        assert_eq!(pdf.meta, "Read from the file · check before accepting");
+    }
+
+    #[test]
+    fn an_unreadable_detail_has_blank_facts_and_no_card() {
+        let world = world();
+        let lookups = world.lookups();
+        let detail = inbox_detail(
+            inbox_named(&world, "scan0012.pdf"),
+            &world.seed.documents,
+            &lookups,
+        );
+        assert_eq!(detail.state, InboxState::Unreadable);
+        assert_eq!(detail.suggested, None);
+        assert!(detail.others.is_empty());
+        assert_eq!(detail.meta, "Nothing could be read from this file");
+        let total = detail
+            .facts
+            .iter()
+            .find(|fact| fact.label == "Total")
+            .expect("a Total fact");
+        assert_eq!(total.value, "—");
     }
 }
