@@ -237,6 +237,46 @@ DocType   = Receipt | Statement | Tax | Insurance | WarrantyManual | Contract | 
 - **File glyph and preview thumbnail:** drawn with CSS boxes in the mock. Replace them with real page renders.
 - No images are bundled.
 
+## Acceptance pass
+
+The closing walk of the [Desktop Documents Surface](https://github.com/IanTeda/Personal-Ledger/issues/430) map: frames 4a and 4b and the interaction, keyboard and state sections above, checked against `crates/bins/bin-desktop/src/documents.rs`, `src/view/documents/` and `src/shell/documents_ui.rs`. All data is stubbed and in-memory, as the map's Destination says: the seed is a handful of Documents written against the stub Transactions, not the mockup's 412.
+
+- **Layout.** Met. Primary rail, 190px index rail, flexible list pane and 300px detail pane, with the 2px rules, the 14/20px list gutters, the 28px title, 36px header buttons, 30px search box, 112px row tail, 30×36 file glyph and 200px preview well with its 128×172 page all at the handoff's measurements. Radius is 0 and the only shadow is the preview page's.
+- **Index rail.** Met. Inbox (with the red count badge), All documents, the Type facet and the Financial year facet, then the "stored beside" footer; facets are single-select and replace the list scope.
+- **4a — Library.** Met. Header and subline, `Import…` and `+ Add`, the search box, the Newest / Expiring sort control, the "N of M · K need review" count line, rows with link chips, document date and either the caps type or the date flag, and the selected row inverted. The detail pane has the preview, title and meta line, fact rows, LINKED TO rows (each navigates), `+ Link to transaction, account, item…`, and `Open` / `Show in folder`.
+- **4b — Inbox.** Met. Header and subline, `Watched folder…` and `Accept all strong matches · N`, the FILE / SUGGESTED LINK columns, rows with the three-square match meter, the outline-focused row with a primary Accept and the `y` hint, "Unreadable — no amount found" with `File…`, the footnote and the dashed drop target. The detail pane has the extracted facts, the Suggested Link card, other candidates, the key hint strip and `Accept & next` / `Link elsewhere…`.
+- **Interactions.** Met. Accept links the file, sets its type and Financial Year, removes it from the Inbox and moves to the next row; `e` edits the extracted facts and recomputes the suggestion on save; `x` skips; Accept all is count-first and applies to 3-of-3 matches only, with `u` undoing it. The index badge and the primary rail's Inbox badge are derived, not stored.
+- **Keyboard.** Met, with the departures below. `g f`, `j`/`k`, `/`, `enter`, `i`, `y`, `e`, `x`, `l`, `o`, `s` and `esc` all act as the table says, and the status line shows the Library and Inbox legends with "stored beside" on the right. The palette offers `:documents`, `:documents inbox`, `:documents library`, `:documents accept-all`, `:documents add` and `:documents import`.
+- **Tokens and copy.** Met. Every string is a Message in `i18n/en-US/documents.ftl`.
+
+### Deliberate departures from the mockup
+
+Each was decided on the map, with Ian, and recorded on its ticket:
+
+- **Notifications is `g a`, not `g m`.** The Shell map's binding stands; Documents is `g f` as the handoff says.
+- **The preview is a drawn placeholder page**, not a render of page 1. There is no OCR or PDF text extraction, so extracted facts are seeded, and the preview has no matched-text highlighting for search.
+- **Watched folder… toasts that it is not available yet.** The button is drawn, as in the handoff, but there is no folder chooser or polling.
+- **The Financial year facet** is labelled "Financial year", derived always from the document date, rather than the handoff's "Tax year". "Earlier" groups everything before the two most recent years.
+- **Suggestions only come from real matches.** A readable file with no Transaction within ±7 days is filed by hand, so the handoff's ATO "Tax · FY 2025–26" and Sonos → Inventory suggestions are not reproduced. The date Signal allows ±3 days.
+- **Only Need Review flags are red.** A Key Date within 60 days either side of today draws in `#ae1800`; later and earlier flags are muted and show month and year. The reminder is display-only and nothing is raised in Notifications.
+- **The Expiring sort bands** Need Review, then Upcoming, then Stale, then Documents with no Key Date.
+- **Skip is session-only** and sorts skipped files last; undo is one level deep and also reverses an Accept all.
+- **`+ Add` and `Import…` take typed paths.** Add makes a Filed Document with links added afterwards; Import takes one path per line into the Inbox. They add `a` (Library) and `I`, which the handoff does not list.
+- **`L` follows a link** (in the Inbox, the Suggested Link), and the link picker is one palette-chrome modal with a `tab` kind filter, which the handoff leaves as "opens the picker".
+- **Open and Show in folder** call the real OS when the path exists and otherwise flash a status message.
+- **No unfiling.** A misfiled Document is fixed in place with `e` and `l`.
+
+### Verified live vs by code review
+
+The Library and Inbox pages were confirmed against frames 4a and 4b in a real window when each was built (the Library and Inbox build tickets). This closing pass could not open a window: the sandbox it ran in has no GPU access (`gpui` fails at `Unable to init GPU context`). Behaviour was instead verified through the headless gpui harness (`mise run end-to-end-ui`; `documents_keyboard`, `documents_mouse` and `harness`, 46 tests, all passing). By keyboard it covers `g f`, the index/list zones, `j`/`k`, `i`, `s` (Library only), `/` and `esc`, `y`/`x`/`u` (Inbox only), `a` and `I`, `L`, accept-all and its cancel, the link picker (kind filter, query, toggling and removing a link) and the palette verbs. By mouse it covers the rail rows and facets, row selection, link navigation to every target, the × unlink, the header buttons, the watched-folder toast, and the row, detail and accept-all actions. The pure model's rules (matching, Key Date window, Expiring sort, undo) are unit-tested in `documents.rs`. The harness asserts behaviour, not pixels, so the measurements, colours and copy in the checks above were compared by reading the view code against this document, not by eye.
+
+### Known gaps
+
+- **Drop-anywhere is not built.** The Inbox draws the dashed drop target and says "Drop files anywhere in the app to add them to the Inbox", but nothing handles an external file drop and there is no full-window overlay. Filed as [#449](https://github.com/IanTeda/Personal-Ledger/issues/449).
+- **No missing-file state.** The handoff's red title with "File missing — locate…" is not drawn; `Open` and `Show in folder` flash "is not at <path>" instead. "Locate" needs a file-picker decision first, which the map left unspecified.
+- **No "Reading…" state**, since there is no background extraction to wait for.
+- `gpui` 0.2 has no letter-spacing or `tabular-nums` hook, so the caps labels' `.11em` tracking and the tabular numerals are not reproduced.
+
 ## Files
 - `Documents.dc.html` — design reference: 4a Library, 4b Inbox.
 - `styles.css`, `_ds_bundle.js` — Modernist tokens and components.
