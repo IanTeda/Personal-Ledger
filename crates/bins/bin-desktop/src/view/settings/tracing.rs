@@ -1,4 +1,4 @@
-//! The **Tracing (Logs)** section (`docs/ux/desktop/Settings/README.md`'s "2a resting state"): a
+//! The **Tracing (Logs)** section (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting state"): a
 //! 400px column of level radios (error/warn/info/debug), a scrolling monospace log viewport, and
 //! a **Clear logs** button. Unlike every other button this map has built so far, "Clear logs" has
 //! a real effect: it empties `Shell`-owned `settings_log_lines`, since the ticket's own body asks
@@ -12,7 +12,7 @@
 //! before any downstream effect existed.
 //!
 //! Element ids are namespaced `tracing-level-*`/`settings-clear-logs`
-//! (`docs/ux/desktop/Settings/README.md`'s implementation note 11: "namespace radio groups per
+//! (`docs/ux/desktop/design_handoff_settings/README.md`'s implementation note 11: "namespace radio groups per
 //! instance" so a duplicated section's own radios can't collide with these).
 
 use std::rc::Rc;

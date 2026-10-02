@@ -1,5 +1,5 @@
 //! The floating "1e" file explorer behind `:open`
-//! (`docs/ux/desktop/Shell & Navigation/README.md`) -- browsing real directories to a `.pldb`
+//! (`docs/ux/desktop/design_handoff_shell_navigation/README.md`) -- browsing real directories to a `.pldb`
 //! ledger file. `Shell` owns `Option<FileExplorer>`, `Some` only while the dialog is open,
 //! mirroring `crate::palette::Palette`'s own split: pure, `gpui`-free state and unit tests
 //! here, `render` the one method that touches `gpui`.

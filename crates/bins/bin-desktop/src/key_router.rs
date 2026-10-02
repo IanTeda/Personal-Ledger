@@ -1,5 +1,5 @@
 //! Pure key-routing decisions for `Shell`'s `Normal`-mode keymap
-//! (`docs/ux/desktop/Shell & Navigation/README.md`'s "Keyboard" section) -- `gpui`-free, the
+//! (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "Keyboard" section) -- `gpui`-free, the
 //! same "pure state, `Shell` applies it" split `nav.rs`/`palette.rs`/`explorer.rs` already use.
 //!
 //! Extracted from `Shell::handle_key_down` (issue #144's own architecture review, "pull Shell's
@@ -52,7 +52,7 @@ pub enum KeyOutcome {
     DelegateToPalette,
     /// `InputMode::Search` owns every keystroke -- hand off to `Shell::handle_search_key`. Only
     /// meaningful on the Settings noun today (its index rail's own `/ search`,
-    /// `docs/ux/desktop/Settings/README.md`'s "Navigation" bullet); `Shell::handle_search_key`
+    /// `docs/ux/desktop/design_handoff_settings/README.md`'s "Navigation" bullet); `Shell::handle_search_key`
     /// is a no-op everywhere else, the same way `Swallowed` used to be for this mode outright.
     DelegateToSearch,
     /// `InputMode::Insert` has no real input surface yet -- swallow the key.

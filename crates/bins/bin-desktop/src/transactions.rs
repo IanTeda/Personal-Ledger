@@ -1,5 +1,5 @@
 //! Pure Transactions-surface domain types and the stub dataset behind them
-//! (`docs/ux/desktop/Transactions/README.md`) -- `gpui`-free, the same "pure state, chrome renders
+//! (`docs/ux/desktop/design_handoff_transactions/README.md`) -- `gpui`-free, the same "pure state, chrome renders
 //! it" split `accounts.rs` uses. All data is stubbed and in-memory (the Desktop Transactions
 //! Surface map's Destination): nothing here reads `lib_database`.
 //!

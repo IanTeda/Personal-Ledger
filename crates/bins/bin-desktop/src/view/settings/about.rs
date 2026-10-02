@@ -1,4 +1,4 @@
-//! The **About** section (`docs/ux/desktop/Settings/README.md`'s "2a resting state"): static
+//! The **About** section (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting state"): static
 //! project info, no interactive elements beyond the links -- no `Shell` state or click handlers
 //! to thread through, unlike every other real section built so far.
 //!

@@ -1,4 +1,4 @@
-//! The Schedule tab's filter row and stat callout (`docs/ux/desktop/Bills/README.md`'s 8a, carrying
+//! The Schedule tab's filter row and stat callout (`docs/ux/desktop/design_handoff_bills/README.md`'s 8a, carrying
 //! over 8f's History pieces in #381): status chips, then the Bill, Category and Account selects,
 //! and the Last paid / Average / Same period last year figures while scoped to one Bill Plan.
 //!

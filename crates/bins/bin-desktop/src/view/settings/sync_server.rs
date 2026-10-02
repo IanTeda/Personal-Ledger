@@ -1,4 +1,4 @@
-//! The **Sync server** section (`docs/ux/desktop/Settings/README.md`'s "2a resting state"): a
+//! The **Sync server** section (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting state"): a
 //! 300px column of label/value rows (Server URL, Status, Last sync), then a "Sync now" button.
 //!
 //! Unlike the summary rows `general::summary_panel` uses (bordered, `background:#eae9e9`,

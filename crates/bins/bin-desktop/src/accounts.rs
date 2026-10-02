@@ -1,4 +1,4 @@
-//! Pure Accounts-surface domain types (`docs/ux/desktop/Accounts/README.md`, section 3) --
+//! Pure Accounts-surface domain types (`docs/ux/desktop/design_handoff_accounts/README.md`, section 3) --
 //! `gpui`-free, the same "pure state, chrome renders it" split `settings.rs` uses. `view::accounts`
 //! and its dialogs are the chrome; this module only knows what an account row holds, the fixed
 //! order the page groups them in, and the stub rows the page is seeded with.
@@ -240,7 +240,7 @@ pub fn account_type_from_label(label: &str) -> Option<AccountType> {
         .cloned()
 }
 
-/// The Add and Edit account dialogs' live form state (`docs/ux/desktop/Accounts/README.md`'s 3b) -- pure,
+/// The Add and Edit account dialogs' live form state (`docs/ux/desktop/design_handoff_accounts/README.md`'s 3b) -- pure,
 /// `gpui`-free. Name, Opening balance and Account number are typed into (append/pop only, like
 /// the Settings dialogs); Institution, Type and Unit are [`SelectState`]s.
 ///

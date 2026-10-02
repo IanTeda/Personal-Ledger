@@ -1,4 +1,4 @@
-//! Renders the **Remove tag** dialog (`docs/ux/desktop/Tags/README.md`'s 7d) on the shared
+//! Renders the **Remove tag** dialog (`docs/ux/desktop/handoff_tags/README.md`'s 7d) on the shared
 //! `crate::dialog` chrome at the handoff's 400px. #353 settled that removing always deletes the
 //! Tag, used or not, and keeps the neutral (not red) styling the handoff gives it: nothing but a
 //! label is lost. A used Tag still sits behind the typed-name confirm, since the untagging can't

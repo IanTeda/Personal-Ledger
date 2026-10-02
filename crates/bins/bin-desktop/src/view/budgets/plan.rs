@@ -1,4 +1,4 @@
-//! The **9b** Plan tab (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`): a six-month grid of Budget
+//! The **9b** Plan tab (`docs/ux/desktop/design_handoff_budgets_v2/limits-9a-9g.md`): a six-month grid of Budget
 //! Amounts per leaf Category under their parent's label, a ROLLOVER column, and the Total
 //! budgeted and Unallocated footers.
 //!

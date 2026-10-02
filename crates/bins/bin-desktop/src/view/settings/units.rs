@@ -1,4 +1,4 @@
-//! The **Units** section (`docs/ux/desktop/Settings/README.md`'s "2a resting state", revised by
+//! The **Units** section (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting state", revised by
 //! issue #189): a "UNITS" table title, a table (CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS)
 //! seeded from `crate::settings::default_units()`, per-row edit/delete buttons, a "+ Add unit"
 //! button, and (new in #189) a **Price Sources** subsection with its own NAME/SOURCE/LAST

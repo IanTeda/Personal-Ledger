@@ -1,4 +1,4 @@
-//! The Settings index rail (`docs/ux/desktop/Settings/README.md`'s "2a resting state", "Settings
+//! The Settings index rail (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting state", "Settings
 //! index rail" component): a list of the Settings pages, each entry swapping the
 //! body to its own page. Deliberately **not** a reuse of `rail::context::ContextRail`'s "1c"
 //! pattern -- that rail is a flat record list with no page-index mode, so this is a separate
@@ -10,7 +10,7 @@ use gpui::{App, SharedString, Window, div, prelude::*, px};
 
 use crate::{settings::SettingsSection, theme::color};
 
-/// Fixed column width: `docs/ux/desktop/Settings/README.md`'s "Components" table.
+/// Fixed column width: `docs/ux/desktop/design_handoff_settings/README.md`'s "Components" table.
 pub const WIDTH: gpui::Pixels = px(214.0);
 
 /// An index-entry click: swaps the body to that page; the entry takes the active dark treatment.

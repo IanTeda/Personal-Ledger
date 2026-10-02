@@ -1,4 +1,4 @@
-//! The filter popover's draft state (`docs/ux/desktop/Transactions/README.md`'s 4b): every filter
+//! The filter popover's draft state (`docs/ux/desktop/design_handoff_transactions/README.md`'s 4b): every filter
 //! dimension as the user is editing it, kept apart from the applied filters until **apply**
 //! commits it. `gpui`-free and unit-tested.
 //!

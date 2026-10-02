@@ -1,4 +1,4 @@
-//! The **Categories** page (`docs/ux/desktop/Settings/README.md`'s 2i): a kicker (EXPENSE · n)
+//! The **Categories** page (`docs/ux/desktop/design_handoff_settings/README.md`'s 2i): a kicker (EXPENSE · n)
 //! with **+ Add category** over a nested tree of NAME and ACTIONS only, then the Income tree under
 //! its own kicker. Budget and spend figures live in Budgets and Reports; the Monthly budget field
 //! stays in the edit dialog. It reuses the Categories model and dialogs.

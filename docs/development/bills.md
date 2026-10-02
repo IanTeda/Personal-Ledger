@@ -6,7 +6,7 @@ End-user documentation: [Bills](../bills.md).
 
 The Bills domain has two entities: a **Bill Plan**, the recurring definition, and a **Bill Schedule** entry, one dated instance of it that is Matched to a Split once paid. [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md) and its amendments settled the design, and the [Desktop Bills Surface](https://github.com/IanTeda/Personal-Ledger/issues/364) map settled the details (#365 recurrence anchor, #366 statuses, #367 generation and edits, #368 settlement, #369 History figures, #381 History merged into the Schedule).
 
-The desktop app builds the whole Bills surface (handoff `docs/ux/desktop/Bills/`, screens 8a–8f, with 8f's History tab folded into the Schedule) on in-memory stubs. There is no `lib-core` type, no migration and no `lib-database` module yet, and the TUI has no Bills screen.
+The desktop app builds the whole Bills surface (handoff `docs/ux/desktop/design_handoff_bills/`, screens 8a–8f, with 8f's History tab folded into the Schedule) on in-memory stubs. There is no `lib-core` type, no migration and no `lib-database` module yet, and the TUI has no Bills screen.
 
 ## Data model
 

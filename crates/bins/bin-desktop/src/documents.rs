@@ -1,4 +1,4 @@
-//! Pure Documents-surface model and its stub seed (`docs/ux/desktop/Documents/`): `gpui`-free and
+//! Pure Documents-surface model and its stub seed (`docs/ux/desktop/design_handoff_documents/`): `gpui`-free and
 //! side-effect free, so every rule is unit-tested without a window. All data is stubbed and
 //! in-memory; nothing here reads `lib_database` or the file system.
 //!

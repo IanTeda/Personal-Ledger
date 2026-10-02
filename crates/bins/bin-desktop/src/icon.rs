@@ -1,4 +1,4 @@
-//! Bundled Lucide icon names, from `docs/ux/desktop/Shell & Navigation/README.md`'s "Assets"
+//! Bundled Lucide icon names, from `docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "Assets"
 //! table -- resolved through `crate::assets::Assets`, the app's own `gpui::AssetSource`
 //! (`gpui-component`'s `Icon` ships no SVGs of its own).
 

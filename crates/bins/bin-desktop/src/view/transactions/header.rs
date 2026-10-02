@@ -1,4 +1,4 @@
-//! The 4a view header (`docs/ux/desktop/Transactions/README.md`): the title with its computed count
+//! The 4a view header (`docs/ux/desktop/design_handoff_transactions/README.md`): the title with its computed count
 //! line and the **add transaction** button, then the filter chip row with `clear filters` and the
 //! search box, closed by the 2px rule. Every action is a callback into `Shell`, so keys and clicks
 //! share handlers.

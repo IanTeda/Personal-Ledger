@@ -1,4 +1,4 @@
-//! Renders **Manage budgets** (`docs/ux/desktop/Budgets_v2/README.md`'s 11f) on the shared
+//! Renders **Manage budgets** (`docs/ux/desktop/design_handoff_budgets_v2/README.md`'s 11f) on the shared
 //! `crate::dialog` chrome: the header counts, one row per Budget with its actions, and the three
 //! notes. An archived row is dimmed and offers only `restore` and `duplicate`; `set default` is
 //! left off the default and `archive` is refused on it (#400). `Shell` owns the row cursor and

@@ -1,4 +1,4 @@
-//! The **Tags** page (`docs/ux/desktop/Settings/README.md`'s 2j): a kicker (A–Z) with **+ Add tag**
+//! The **Tags** page (`docs/ux/desktop/design_handoff_settings/README.md`'s 2j): a kicker (A–Z) with **+ Add tag**
 //! over one bordered list of colour swatch and name, with `edit · remove` per row. A likely
 //! duplicate carries its warning badge and a direct **merge**; the merge flow is 7e's. Usage lives
 //! in Transactions and Reports, so there are no transaction, total or last-used columns. It reuses

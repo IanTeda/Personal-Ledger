@@ -1,4 +1,4 @@
-//! The context rail (`docs/ux/desktop/Shell & Navigation/README.md`'s "1a" spec, "Context
+//! The context rail (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "1a" spec, "Context
 //! rail" component): scoped to the active noun. Only Dashboard's own content (the account
 //! roll-call) is real -- every other noun with entities (rule 4: everything except Dashboard
 //! and Settings) gets a placeholder frame until its own view lands (issue #153). A noun with
@@ -9,7 +9,7 @@ use gpui::{App, Window, div, prelude::*, px};
 
 use crate::{nav::Noun, theme::color};
 
-/// Fixed column width: `docs/ux/desktop/Shell & Navigation/README.md`'s "Layout" table.
+/// Fixed column width: `docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "Layout" table.
 pub const WIDTH: gpui::Pixels = px(238.0);
 
 struct Account {

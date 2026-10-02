@@ -1,4 +1,4 @@
-//! The **9c** History tab (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`): a chart with one pair
+//! The **9c** History tab (`docs/ux/desktop/design_handoff_budgets_v2/limits-9a-9g.md`): a chart with one pair
 //! of bars per month (effective budget and Spent over the budgeted leaves), then a table of Spent
 //! per Category and month with its AVG and OVER columns.
 //!

@@ -2,7 +2,7 @@
 //! "Component tree"), replacing `feasibility_demo::DesktopApp`'s `TabBar`-driven screen
 //! cycling as the real navigation entry point (ADR-0016).
 //!
-//! Assembles the static chrome from `docs/ux/desktop/Shell & Navigation/README.md`'s "1a"
+//! Assembles the static chrome from `docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "1a"
 //! spec (issue #148) and drives it with real keyboard interaction: `Tab`/`Shift-Tab`
 //! focus-zone cycling and `j`/`k`/`Down`/`Up`/`gg`/`G`/`Ctrl-d`/`Ctrl-u`/`Enter` movement,
 //! scoped strictly to whichever zone (`NavState::focus`) currently has it (issue #149); the
@@ -116,7 +116,7 @@ use crate::{
     },
 };
 
-/// The collapsed rail's own hover-reveal delay (`docs/ux/desktop/Shell & Navigation/README.md`'s
+/// The collapsed rail's own hover-reveal delay (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s
 /// "1c" tooltip spec) -- deliberately the same 500ms `gpui`'s own built-in `.tooltip()` uses,
 /// even though this tooltip is hand-rolled (row-anchored, not cursor-anchored -- see
 /// `rail::primary::collapsed_tooltip`'s doc) rather than that builtin.
@@ -187,7 +187,7 @@ fn settings_tags_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The Bills Schedule tab's status-line legend (`docs/ux/desktop/Bills/README.md`'s 8a), with
+/// The Bills Schedule tab's status-line legend (`docs/ux/desktop/design_handoff_bills/README.md`'s 8a), with
 /// `[/]` and `0` added for the period nav and its All toggle, and 8f's `1–5` and `f` for the
 /// filter row it absorbed (#381).
 fn bills_schedule_hints() -> Vec<(&'static str, String)> {
@@ -210,7 +210,7 @@ const BUDGETS_SWITCHER_TOP: gpui::Pixels = px(122.0);
 /// The file name the History export's save dialog suggests.
 const BUDGET_HISTORY_FILE: &str = "budget-history.csv";
 
-/// The Budgets Progress tab's status-line legend (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`'s
+/// The Budgets Progress tab's status-line legend (`docs/ux/desktop/design_handoff_budgets_v2/limits-9a-9g.md`'s
 /// 9a).
 fn budgets_progress_hints() -> Vec<(&'static str, String)> {
     vec![
@@ -323,7 +323,7 @@ fn budgets_stop_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The Bills Planner tab's status-line legend (`docs/ux/desktop/Bills/README.md`'s 8b).
+/// The Bills Planner tab's status-line legend (`docs/ux/desktop/design_handoff_bills/README.md`'s 8b).
 fn bills_planner_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_row()),
@@ -445,7 +445,7 @@ fn delete_payee_dialog_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The Accounts page's status-line legend (`docs/ux/desktop/Accounts/README.md`'s 3a), as
+/// The Accounts page's status-line legend (`docs/ux/desktop/design_handoff_accounts/README.md`'s 3a), as
 /// `(key, action)`.
 fn accounts_hints() -> Vec<(&'static str, String)> {
     vec![
@@ -469,7 +469,7 @@ fn settings_categories_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The status-line legend while the filter popover is open (`docs/ux/desktop/Transactions/
+/// The status-line legend while the filter popover is open (`docs/ux/desktop/design_handoff_transactions/
 /// README.md`'s 4b), with `^r reset` added: the bundle's `reset` is a button, and this shell is
 /// keyboard-first.
 fn filter_hints() -> Vec<(&'static str, String)> {
@@ -481,7 +481,7 @@ fn filter_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The Transactions page's status-line legend (`docs/ux/desktop/Transactions/README.md`'s 4a),
+/// The Transactions page's status-line legend (`docs/ux/desktop/design_handoff_transactions/README.md`'s 4a),
 /// without the mockup's `R reconcile` (an Accounts action) and with `/` reading `search` beside a
 /// separate `f filter`, since here `/` searches and `f` opens the filter popover.
 fn transactions_hints() -> Vec<(&'static str, String)> {
@@ -3041,7 +3041,7 @@ impl Shell {
         );
     }
 
-    /// Keys typed into a Plan cell (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`'s 9b, Insert
+    /// Keys typed into a Plan cell (`docs/ux/desktop/design_handoff_budgets_v2/limits-9a-9g.md`'s 9b, Insert
     /// mode). `esc` is left to the router, which cancels the edit and leaves the mode.
     fn handle_budgets_plan_edit_key(&mut self, keystroke: &Keystroke) -> bool {
         if self.nav.mode() != InputMode::Insert
@@ -7870,7 +7870,7 @@ impl Shell {
 
     /// The settings index rail's own row click (`rail::settings_index::OnEntryClick`):
     /// swaps the settings body to the clicked page and takes the active dark treatment
-    /// (`docs/ux/desktop/Settings/README.md`'s "Navigation" bullet).
+    /// (`docs/ux/desktop/design_handoff_settings/README.md`'s "Navigation" bullet).
     fn handle_settings_index_click(
         &mut self,
         section: SettingsSection,
@@ -10042,7 +10042,7 @@ struct SettingsPanelProps<'a> {
 
 /// The active noun's own view interior. Only `Dashboard` and `Settings` are real; every other
 /// noun is a placeholder until its own view lands (issue #153). `Dashboard` itself further
-/// branches on `ledger_open` (`docs/ux/desktop/Shell & Navigation/README.md`'s "1a" empty
+/// branches on `ledger_open` (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "1a" empty
 /// state) -- implementation note 2's "only the main pane branches on `ledgerOpen`" scopes that
 /// to the one real view; the still-placeholder nouns say "not yet built" either way.
 ///
@@ -10205,7 +10205,7 @@ fn placeholder_view(noun: Noun, cx: &gpui::App) -> gpui::AnyElement {
 }
 
 /// The "1a" cold-start empty state: "No ledger open" centered in the main pane, `:open`/`:new`
-/// named in the body copy (`docs/ux/desktop/Shell & Navigation/README.md`'s "Main pane"
+/// named in the body copy (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "Main pane"
 /// bullet). `gpui` 0.2's `Styled` trait has no letter-spacing hook, so the title's `-.01em`
 /// tracking from the spec has no equivalent here -- a real, not merely unverified, gap.
 ///

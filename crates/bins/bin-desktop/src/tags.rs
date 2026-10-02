@@ -1,4 +1,4 @@
-//! Shared stub Tags, seeded from the Tags handoff's sample list (`docs/ux/desktop/Tags/`) plus the
+//! Shared stub Tags, seeded from the Tags handoff's sample list (`docs/ux/desktop/handoff_tags/`) plus the
 //! names the Transactions seed draws on. `gpui`-free and side-effect free, so every rule is
 //! unit-tested without a window.
 //!

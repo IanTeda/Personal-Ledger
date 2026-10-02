@@ -1,4 +1,4 @@
-//! Renders the **Skip this cycle** dialog (`docs/ux/desktop/Bills/README.md`'s 8e) on the shared
+//! Renders the **Skip this cycle** dialog (`docs/ux/desktop/design_handoff_bills/README.md`'s 8e) on the shared
 //! `crate::dialog` chrome at the handoff's 400px. Skipping resolves one Schedule entry and
 //! destroys nothing (Unskip reverses it), so there's no typed-name confirm and the confirm button
 //! keeps the neutral styling rather than the destructive one. A One-shot Plan's paragraph says

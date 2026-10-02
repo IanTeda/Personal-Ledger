@@ -1,4 +1,4 @@
-//! The pure engine behind the Transactions table (`docs/ux/desktop/Transactions/README.md`):
+//! The pure engine behind the Transactions table (`docs/ux/desktop/design_handoff_transactions/README.md`):
 //! applies a [`TransactionFilters`] value and a search string to the stub data and returns the
 //! visible rows newest-first with each row's amount, its running total and the footer figure.
 //! `gpui`-free and side-effect free, so every rule is unit-tested without a window.

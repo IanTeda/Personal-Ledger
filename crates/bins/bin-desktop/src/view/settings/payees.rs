@@ -1,4 +1,4 @@
-//! The **Payees** page (`docs/ux/desktop/Settings/README.md`, to the 2j pattern): a kicker (A–Z)
+//! The **Payees** page (`docs/ux/desktop/design_handoff_settings/README.md`, to the 2j pattern): a kicker (A–Z)
 //! with **+ Add payee** over one bordered list of name, default category and match rules, with
 //! `edit · delete` per row. Usage lives in Transactions and Reports, so there are no transaction
 //! or total columns. It reuses the Payees model and dialogs.

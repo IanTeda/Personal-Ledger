@@ -1,4 +1,4 @@
-//! Renders the **Fill from…** dialog (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`'s 9f) on the
+//! Renders the **Fill from…** dialog (`docs/ux/desktop/design_handoff_budgets_v2/limits-9a-9g.md`'s 9f) on the
 //! shared `crate::dialog` chrome at the handoff's 560px: the two sources as radio rows, each with
 //! the Total budgeted it would give the month, then the chosen source's diff against the plan.
 //! "The plan" is the baseline rather than a source (#386).

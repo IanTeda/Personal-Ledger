@@ -1,4 +1,4 @@
-//! The Settings body (`docs/ux/desktop/Settings/README.md`'s "2a resting state", "Body"): one page
+//! The Settings body (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting state", "Body"): one page
 //! at a time, not a continuous scroll. The settings index rail (`rail::settings_index`) swaps the
 //! page, and only the selected page is mounted. Each page keeps the same anatomy: one heading
 //! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
@@ -259,7 +259,7 @@ fn placeholder(cx: &App) -> AnyElement {
 }
 
 /// A field label: `display:block; font-weight:800; font-size:12px; margin-bottom:6px`
-/// (`docs/ux/desktop/Settings/README.md`'s Components table) -- shared by every section that
+/// (`docs/ux/desktop/design_handoff_settings/README.md`'s Components table) -- shared by every section that
 /// lays out `Field label` + `Input/select` pairs.
 pub(super) fn field_label(label: impl Into<SharedString>) -> impl IntoElement {
     div()

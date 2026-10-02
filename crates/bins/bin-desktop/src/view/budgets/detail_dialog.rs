@@ -1,4 +1,4 @@
-//! Renders the **Category detail** dialog (`docs/ux/desktop/Budgets_v2/limits-9a-9g.md`'s 9d) on
+//! Renders the **Category detail** dialog (`docs/ux/desktop/design_handoff_budgets_v2/limits-9a-9g.md`'s 9d) on
 //! the shared `crate::dialog` chrome at the handoff's 600px: four stats, the Progress row's bar
 //! with its caption, the largest Transactions behind Spent, the track record, and a footer that
 //! hands off to Transactions already filtered.

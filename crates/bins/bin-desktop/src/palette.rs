@@ -1,4 +1,4 @@
-//! The floating command palette (`docs/ux/desktop/Shell & Navigation/README.md`'s "1d" spec,
+//! The floating command palette (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "1d" spec,
 //! the shell's `:`/`InputMode::Command` state) -- `Shell` owns `Option<Palette>`, `Some` only
 //! while that mode is active, mirroring how `bin-tui`'s own `Shell` owns
 //! `Option<popup::command::CommandPopup>` (`docs/ux/desktop/README.md`'s Notes: "the desktop

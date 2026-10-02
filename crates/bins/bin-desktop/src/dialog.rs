@@ -1,4 +1,4 @@
-//! Shared chrome for a floating modal dialog (`docs/ux/desktop/Settings/README.md`'s "Dialog"
+//! Shared chrome for a floating modal dialog (`docs/ux/desktop/design_handoff_settings/README.md`'s "Dialog"
 //! component table): the full-viewport dimmer + centred bordered card, its header (with a
 //! destructive variant), body, action row, and Cancel/Confirm buttons.
 //!
@@ -30,7 +30,7 @@ use gpui::{AnyElement, App, BoxShadow, SharedString, Window, div, point, prelude
 
 use crate::theme::color;
 
-/// Fixed width: `docs/ux/desktop/Settings/README.md`'s Dialog component table -- every dialog
+/// Fixed width: `docs/ux/desktop/design_handoff_settings/README.md`'s Dialog component table -- every dialog
 /// this map builds except the Add institution dialog (issue #187), whose own raw markup sets
 /// `width:460px` instead. [`overlay`] takes `width` as a parameter rather than hardcoding this
 /// constant so that one dialog's own deviation doesn't need a special case.
@@ -38,7 +38,7 @@ pub const WIDTH: gpui::Pixels = px(420.0);
 
 pub type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-/// Wraps `card` in the full-viewport dimmer + centred frame (`docs/ux/desktop/Settings/README.md`'s
+/// Wraps `card` in the full-viewport dimmer + centred frame (`docs/ux/desktop/design_handoff_settings/README.md`'s
 /// "Dimmer"/"Dialog" rows: `position:absolute; inset:0; ...; align-items:center;
 /// justify-content:center`), then the bordered card itself -- `destructive` swaps the border to
 /// `negative` (the "Destructive dialog" row). `width` is almost always [`WIDTH`]; see that
@@ -82,7 +82,7 @@ pub fn overlay(
 
 /// The header row: `padding:18px 20px; border-bottom:2px solid rgba(32,30,29,.30)`, title
 /// `800 16px`. `destructive` swaps the rule to `negative` and the title to its text shade
-/// (`docs/ux/desktop/Settings/README.md`'s "Destructive header" row, e.g. "Delete unit — btc").
+/// (`docs/ux/desktop/design_handoff_settings/README.md`'s "Destructive header" row, e.g. "Delete unit — btc").
 pub fn header(title: impl Into<SharedString>, destructive: bool, cx: &App) -> impl IntoElement {
     div()
         .px(px(20.0))
@@ -177,7 +177,7 @@ pub fn rich_text(
 }
 
 /// The Info panel: `padding:10-12px; background:#eae9e9; border-left:2px solid #ec3013;
-/// font-size:11.5px` (`docs/ux/desktop/Settings/README.md`'s Components table) -- the Edit unit
+/// font-size:11.5px` (`docs/ux/desktop/design_handoff_settings/README.md`'s Components table) -- the Edit unit
 /// dialog's own usage notice (issue #185) and the Delete unit dialog's own reference panel
 /// (issue #186) share this exact style, so it's extracted here rather than built twice.
 pub fn info_panel(content: impl Into<SharedString>, cx: &App) -> impl IntoElement {

@@ -172,7 +172,7 @@ pub fn run(config: &lib_config::Config) {
             let window_geometry = persisted.window;
 
             // Restore the last saved window geometry; otherwise 1280x800 centered, the handoff's
-            // own window size (`docs/ux/desktop/Shell & Navigation/README.md`, option 1a).
+            // own window size (`docs/ux/desktop/design_handoff_shell_navigation/README.md`, option 1a).
             let bounds = match window_geometry {
                 Some(WindowGeometry {
                     x,

@@ -1,4 +1,4 @@
-//! Renders the **Switcher** popover (`docs/ux/desktop/Budgets_v2/README.md`'s 11b): a 380px card
+//! Renders the **Switcher** popover (`docs/ux/desktop/design_handoff_budgets_v2/README.md`'s 11b): a 380px card
 //! anchored under the page title over a dimmed page, listing the active Budgets with their health
 //! line and method tag, then the archived ones dimmed, with `+ New budget` and `Manage budgets…`
 //! in the footer. `Shell` owns the state (`budgets::Switcher`) and every keystroke.
