@@ -198,6 +198,7 @@ fn row(
 
     div()
         .id(("transactions-row", index))
+        .debug_selector(move || format!("transactions-row-{index}"))
         .cursor_pointer()
         .flex()
         .items_center()

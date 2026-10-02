@@ -20,8 +20,11 @@
 //! keystrokes at all.
 
 mod documents_ui;
+mod transactions_ui;
 #[doc(hidden)]
 pub use documents_ui::DocumentsSnapshot;
+#[doc(hidden)]
+pub use transactions_ui::{ChipSnapshot, TransactionsSnapshot};
 
 /// What a test can see of an open command palette.
 #[doc(hidden)]

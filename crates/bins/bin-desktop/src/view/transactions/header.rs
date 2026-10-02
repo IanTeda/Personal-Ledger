@@ -129,6 +129,7 @@ fn add_button(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
     let hover = color::muted(cx);
     div()
         .id("transactions-add")
+        .debug_selector(|| "transactions-add".to_string())
         .cursor_pointer()
         .flex_none()
         .flex()
@@ -166,6 +167,7 @@ fn chip(
     let field = chip.field;
     let base = div()
         .id(("transactions-chip", index))
+        .debug_selector(move || format!("transactions-chip-{index}"))
         .cursor_pointer()
         .flex_none()
         .flex()
@@ -198,6 +200,7 @@ fn chip(
             .child(
                 div()
                     .id(("transactions-chip-clear", index))
+                    .debug_selector(move || format!("transactions-chip-clear-{index}"))
                     .cursor_pointer()
                     .opacity(0.85)
                     .on_click(move |_event, window, cx| {
@@ -221,6 +224,7 @@ fn chip(
 fn clear_link(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
     div()
         .id("transactions-clear-filters")
+        .debug_selector(|| "transactions-clear-filters".to_string())
         .cursor_pointer()
         .flex_none()
         .text_size(px(11.5))
@@ -252,6 +256,7 @@ fn search_box(
     };
     div()
         .id("transactions-search")
+        .debug_selector(|| "transactions-search".to_string())
         .cursor_pointer()
         .flex_none()
         .flex()

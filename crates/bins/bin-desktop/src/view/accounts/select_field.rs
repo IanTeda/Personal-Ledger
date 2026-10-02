@@ -50,6 +50,7 @@ pub fn render(props: SelectFieldProps<'_>, cx: &App) -> AnyElement {
 
     let mut field = div()
         .id(id)
+        .debug_selector(move || id.to_string())
         .flex()
         .items_center()
         .justify_between()
@@ -125,6 +126,7 @@ fn option_list(
             let on_option_click = on_option_click.clone();
             div()
                 .id(SharedString::from(format!("{id}-option-{index}")))
+                .debug_selector(move || format!("{id}-option-{index}"))
                 .cursor_pointer()
                 .py(px(6.0))
                 .px(px(10.0))

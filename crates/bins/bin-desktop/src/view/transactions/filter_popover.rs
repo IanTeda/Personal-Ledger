@@ -266,6 +266,7 @@ fn date_field(
         .child(
             div()
                 .id(id)
+                .debug_selector(move || id.to_string())
                 .cursor_pointer()
                 .w_full()
                 .py(px(8.0))
@@ -324,6 +325,7 @@ fn reset_button(on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
     let hover = color::hover(cx);
     div()
         .id("filter-reset")
+        .debug_selector(|| "filter-reset".to_string())
         .cursor_pointer()
         .py(px(8.0))
         .px(px(16.0))
@@ -340,6 +342,7 @@ fn reset_button(on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
 fn apply_button(enabled: bool, on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
     div()
         .id("filter-apply")
+        .debug_selector(|| "filter-apply".to_string())
         .when(enabled, |this| this.cursor_pointer())
         .when(!enabled, |this| this.opacity(0.45))
         .flex()

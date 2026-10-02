@@ -221,6 +221,7 @@ pub(crate) fn segmented_control_sized<T: Copy + PartialEq + 'static, L: Into<Sha
             let on_click = on_click.clone();
             div()
                 .id(SharedString::from(format!("{id_prefix}-{index}")))
+                .debug_selector(move || format!("{id_prefix}-{index}"))
                 .cursor_pointer()
                 .py(px(7.0))
                 .px(px(12.0))

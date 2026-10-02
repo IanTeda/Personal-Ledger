@@ -231,6 +231,7 @@ pub(crate) fn text_field(
         .child(
             div()
                 .id(id)
+                .debug_selector(move || id.to_string())
                 .cursor_pointer()
                 .w_full()
                 .py(px(8.0))
