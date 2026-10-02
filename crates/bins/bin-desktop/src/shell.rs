@@ -22,6 +22,7 @@
 mod bills_ui;
 mod budgets_ui;
 mod documents_ui;
+mod overlays_ui;
 mod settings_ui;
 mod transactions_ui;
 #[doc(hidden)]
@@ -30,6 +31,10 @@ pub use bills_ui::{BillRowSnapshot, BillsSnapshot};
 pub use budgets_ui::{BudgetRowSnapshot, BudgetsSnapshot};
 #[doc(hidden)]
 pub use documents_ui::DocumentsSnapshot;
+#[doc(hidden)]
+pub use overlays_ui::{
+    DashboardBillSnapshot, ImportRowSnapshot, ImportSnapshot, ToastSnapshot, ToastsSnapshot,
+};
 #[doc(hidden)]
 pub use settings_ui::SettingsSnapshot;
 #[doc(hidden)]

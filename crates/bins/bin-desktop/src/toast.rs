@@ -114,6 +114,7 @@ fn render_toast(index: usize, toast: &Toast, on_dismiss: OnDismiss, cx: &App) ->
         }))
         .child(
             div()
+                .debug_selector(move || format!("toast-dismiss-{index}"))
                 .id(("toast-dismiss", index))
                 .flex_none()
                 .h_full()

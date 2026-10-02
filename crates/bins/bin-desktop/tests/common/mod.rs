@@ -15,8 +15,8 @@ use bin_desktop::{
     nav::Noun,
     persistence::PersistedState,
     shell::{
-        BillsSnapshot, BudgetsSnapshot, DocumentsSnapshot, SettingsSnapshot, Shell,
-        TransactionsSnapshot,
+        BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportSnapshot,
+        SettingsSnapshot, Shell, ToastsSnapshot, TransactionsSnapshot,
     },
 };
 use chrono::NaiveDate;
@@ -108,6 +108,30 @@ impl<'a> Harness<'a> {
     /// The Transactions page's state, read back for assertions.
     pub fn transactions(&mut self) -> TransactionsSnapshot {
         self.read(Shell::transactions_snapshot)
+    }
+
+    /// The Toast layer and its history, read back for assertions.
+    pub fn toasts(&mut self) -> ToastsSnapshot {
+        self.read(Shell::toasts_snapshot)
+    }
+
+    /// The Import step's state; `None` while it is not showing.
+    pub fn import(&mut self) -> Option<ImportSnapshot> {
+        self.read(Shell::import_snapshot)
+    }
+
+    /// The Dashboard's Needs Attention Bill rows.
+    pub fn dashboard_bills(&mut self) -> Vec<DashboardBillSnapshot> {
+        self.read(Shell::dashboard_bills_snapshot)
+    }
+
+    /// Raises a Toast the way a call site would, then settles.
+    pub fn raise_toast(&mut self, kind: lib_toast::ToastKind, text: &str) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.raise_toast(kind, text);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
     }
 
     /// Reads from the Shell without mutating it.

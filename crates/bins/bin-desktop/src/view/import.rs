@@ -267,6 +267,7 @@ fn render_row(index: usize, row: &ImportRow, props: &ImportPageProps<'_>, cx: &A
     let (negative, amount) = crate::format::amount(&row.amount);
 
     div()
+        .debug_selector(move || format!("import-row-{index}"))
         .id(SharedString::from(format!("import-row-{index}")))
         .flex()
         .items_start()
@@ -511,6 +512,7 @@ fn footer(props: &ImportPageProps<'_>, cx: &App) -> impl IntoElement {
         )
         .child(
             div()
+                .debug_selector(|| "import-remember".to_string())
                 .id("import-remember")
                 .cursor_pointer()
                 .flex()
@@ -537,6 +539,7 @@ fn footer(props: &ImportPageProps<'_>, cx: &App) -> impl IntoElement {
         .child(div().flex_1())
         .child(
             div()
+                .debug_selector(|| "import-back".to_string())
                 .id("import-back")
                 .cursor_pointer()
                 .py(px(8.0))
@@ -549,6 +552,7 @@ fn footer(props: &ImportPageProps<'_>, cx: &App) -> impl IntoElement {
         )
         .child(
             div()
+                .debug_selector(|| "import-continue".to_string())
                 .id("import-continue")
                 .flex()
                 .gap(px(4.0))

@@ -643,6 +643,7 @@ fn bill_row(
     let id = bill.id;
     let on_click = on_click.clone();
     div()
+        .debug_selector(move || format!("dashboard-bill-{}-{}", id.plan_id, id.due))
         .id(SharedString::from(format!(
             "dashboard-bill-{}-{}",
             id.plan_id, id.due
