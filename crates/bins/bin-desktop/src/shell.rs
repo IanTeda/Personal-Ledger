@@ -23,6 +23,15 @@ mod documents_ui;
 #[doc(hidden)]
 pub use documents_ui::DocumentsSnapshot;
 
+/// What a test can see of an open command palette.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaletteSnapshot {
+    pub input: String,
+    pub matches: Vec<&'static str>,
+    pub selected: Option<&'static str>,
+}
+
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -987,6 +996,28 @@ impl Shell {
     #[doc(hidden)]
     pub fn open_ledger_for_test(&mut self) {
         self.nav.open_ledger();
+    }
+
+    /// The command palette's state for a test: `None` while it is closed.
+    #[doc(hidden)]
+    pub fn palette_snapshot(&self) -> Option<PaletteSnapshot> {
+        self.palette.as_ref().map(|palette| PaletteSnapshot {
+            input: palette.input().to_string(),
+            matches: palette.match_names(),
+            selected: palette.selected_command().map(|command| command.name),
+        })
+    }
+
+    /// The status line's flash message (e.g. "not yet built"), if one is showing.
+    #[doc(hidden)]
+    pub fn status_message(&self) -> Option<&str> {
+        self.status_message.as_deref()
+    }
+
+    /// Previously run palette commands, most recent first.
+    #[doc(hidden)]
+    pub fn command_history(&self) -> &[String] {
+        &self.command_history
     }
 
     pub fn nav(&self) -> &NavState {

@@ -220,6 +220,7 @@ fn hint_strip(on_hint: Option<OnHint>, cx: &App) -> impl IntoElement {
         let on_hint = on_hint.clone();
         div()
             .id(id)
+            .debug_selector(|| id.to_string())
             .flex()
             .items_center()
             .gap(px(4.0))

@@ -204,6 +204,12 @@ impl Palette {
         }
     }
 
+    /// The names of every command the current input matches, in ranked order.
+    #[doc(hidden)]
+    pub fn match_names(&self) -> Vec<&'static str> {
+        self.matches().iter().map(|command| command.name).collect()
+    }
+
     /// The command the current selection would run on `Enter`.
     pub fn selected_command(&self) -> Option<&'static Command> {
         self.matches().get(self.selected).copied()
