@@ -699,6 +699,7 @@ fn picker_row(
     };
     div()
         .id(("documents-picker-row", index))
+        .debug_selector(|| format!("documents-picker-row-{index}"))
         .cursor_pointer()
         .when_some(bg, |this, bg| this.bg(bg))
         .flex()

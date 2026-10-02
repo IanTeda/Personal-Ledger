@@ -138,6 +138,22 @@ pub struct DocumentsSnapshot {
     pub inbox_rows: usize,
     pub toasts: Vec<String>,
     pub status: Option<String>,
+    /// The open picker's state, if one is open.
+    pub picker: Option<PickerSnapshot>,
+}
+
+/// What a test reads of the open link picker.
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PickerSnapshot {
+    /// The kind filter's label.
+    pub kind: String,
+    pub query: String,
+    pub selected: usize,
+    /// Each row's kind label, text and whether it is a ticked current Link; `link` is `None` on
+    /// **File without link**.
+    pub rows: Vec<(String, String, bool, bool)>,
+    pub doc_type_chosen: bool,
 }
 
 impl Shell {
@@ -174,6 +190,20 @@ impl Shell {
                 .map(|toast| toast.text().to_string())
                 .collect(),
             status: self.status_message.clone(),
+            picker: match self.documents_dialog.as_ref() {
+                Some(DocumentsDialog::Picker(state)) => Some(PickerSnapshot {
+                    kind: state.kind.label(),
+                    query: state.query.clone(),
+                    selected: state.selected,
+                    rows: self
+                        .documents_picker_rows(state)
+                        .into_iter()
+                        .map(|row| (row.kind, row.text, row.checked, row.link.is_some()))
+                        .collect(),
+                    doc_type_chosen: state.doc_type.is_some(),
+                }),
+                _ => None,
+            },
         }
     }
 

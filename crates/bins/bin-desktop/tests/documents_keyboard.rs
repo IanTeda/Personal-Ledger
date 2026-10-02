@@ -442,3 +442,50 @@ fn palette_documents_add_import_and_accept_all(app: &mut TestAppContext) {
     ui.press(": d o c u m e n t s space a c c e p t - a l l enter");
     assert_eq!(ui.documents().dialog, Some("accept-all"));
 }
+
+#[gpui::test]
+fn the_picker_cycles_kinds_and_filters_by_typing(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.press("l");
+    let all = ui.documents().picker.expect("picker open");
+    assert!(all.rows.len() > 1);
+    assert!(all.rows[0].2, "the current Link is pinned first and ticked");
+
+    ui.press("tab");
+    let txns = ui.documents().picker.expect("picker open");
+    assert_ne!(txns.kind, all.kind, "`tab` moves the kind filter");
+    assert!(txns.rows.iter().all(|row| row.0 == txns.rows[0].0 || row.2));
+
+    ui.press("tab tab tab tab tab");
+    assert_eq!(ui.documents().picker.expect("open").kind, all.kind);
+
+    ui.press("z z z q x");
+    let none = ui.documents().picker.expect("open");
+    assert_eq!(none.query, "zzzqx");
+    assert!(
+        none.rows.iter().all(|row| row.2),
+        "only pinned rows survive"
+    );
+
+    ui.press("backspace");
+    assert_eq!(ui.documents().picker.expect("open").query, "zzzq");
+}
+
+#[gpui::test]
+fn the_inbox_picker_pins_file_without_link_and_draws_its_rows(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    ui.press("l");
+
+    let picker = ui.documents().picker.expect("picker open");
+    assert!(!picker.rows[0].3, "File without link is the first row");
+    assert!(
+        picker.doc_type_chosen,
+        "the type is prefilled from the facts"
+    );
+    assert_eq!(picker.selected, 0);
+
+    ui.click("documents-picker-row-0");
+    assert_eq!(ui.documents().dialog, None, "a click on a row picks it");
+}
