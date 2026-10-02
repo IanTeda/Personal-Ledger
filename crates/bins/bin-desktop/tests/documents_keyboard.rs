@@ -287,6 +287,49 @@ fn enter_in_the_link_picker_toggles_a_link(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn the_link_picker_pins_a_current_link_and_enter_removes_it(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    // The Amex statement links only to its Account, which the picker pins first.
+    let before = ui.documents().selected_links;
+    assert_eq!(before, 1);
+
+    ui.press("l");
+    ui.press("enter");
+
+    let page = ui.documents();
+    assert_eq!(page.selected_links, 0, "enter on a pinned link removes it");
+    assert_eq!(
+        page.selected_file.as_deref(),
+        Some("amex-platinum-statement.pdf"),
+        "a Document stays Filed with no links"
+    );
+
+    ui.press("l");
+    ui.press("down");
+    ui.press("enter");
+    assert_eq!(ui.documents().selected_links, 1, "any other row adds one");
+}
+
+#[gpui::test]
+fn picking_in_the_inbox_files_the_document_and_u_undoes_it(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    let before = ui.documents().inbox_rows;
+
+    ui.press("l");
+    ui.press("enter");
+    let filed = ui.documents();
+    assert_eq!(filed.dialog, None);
+    assert_eq!(filed.inbox_rows, before - 1, "picking files the Document");
+
+    ui.press("u");
+    let undone = ui.documents();
+    assert_eq!(undone.inbox_rows, before, "one `u` undoes the filing");
+    assert_eq!(undone.selected_file.as_deref(), Some(STRONG_RECEIPT));
+}
+
+#[gpui::test]
 fn l_in_the_inbox_opens_the_filing_picker(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.press("i");
