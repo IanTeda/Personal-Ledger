@@ -16,6 +16,10 @@ Each test file starts with `mod common;` and takes a `&mut TestAppContext` under
 - `ui.click("selector")` clicks the centre of the element tagged `.debug_selector(|| "selector".to_string())` and panics if it was not drawn.
 - `ui.noun()`, `ui.documents()` and `ui.read(|shell| ...)` read state back from `Shell`.
 
+## Model
+
+Haiku is the minimum, per the model-selection policy in `CLAUDE.md`: use it to add a test that follows the existing harness and a file such as `documents_keyboard.rs` or `documents_mouse.rs`, with the flow and expected state spelled out (an explicit ticket, a new case for a surface already covered). Use Sonnet or Opus when the work needs design judgement: a new surface with no precedent, a new accessor or snapshot shape, the OS-call seam, a harness change, or diagnosing a flaky or hanging test. If Haiku hits any of these, or an unexpected result, it should stop and escalate to the user rather than guess.
+
 ## When to add a test
 
 Add one for user-visible keyboard or mouse behaviour: a key-router scope, a click target, a mode or selection change. Pure logic belongs in a unit test beside the code (`/unit-tests`).
