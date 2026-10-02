@@ -16,6 +16,7 @@ mod categories;
 mod colours;
 mod command;
 mod dialog;
+mod documents;
 mod error;
 mod explorer;
 mod feasibility_demo;
