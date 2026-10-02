@@ -87,6 +87,7 @@ fn button(
 ) -> impl IntoElement {
     let mut button = div()
         .id(id)
+        .debug_selector(|| id.to_string())
         .cursor_pointer()
         .when(top_gap, |this| this.mt(px(8.0)))
         .py(px(8.0))
