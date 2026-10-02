@@ -11,7 +11,7 @@
 #     matrix `needs` it, so a release or manual desktop build never packages a UI regression.
 #
 # Linux only: the tests exercise UI logic, not platform rendering, so one runner is enough.
-# The suite is the `test-ui` mise task, so a local `mise run test-ui` runs exactly what CI runs.
+# The suite is the `end-to-end-ui` mise task, so a local `mise run end-to-end-ui` runs exactly what CI runs.
 
 name: Desktop UI End-to-End
 
@@ -24,7 +24,7 @@ on:
   workflow_call:
 
 jobs:
-  test-ui:
+  end-to-end-ui:
     runs-on: ubuntu-latest
     env:
       # As in lint-main-push.yaml: no DATABASE_URL in CI, so lib-database checks against `.sqlx`.
@@ -49,4 +49,4 @@ jobs:
             libwayland-dev libx11-xcb-dev libxkbcommon-x11-dev
 
       - name: Run Desktop UI tests
-        run: mise run test-ui
+        run: mise run end-to-end-ui

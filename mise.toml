@@ -50,7 +50,7 @@ run = [
 # Headless Desktop UI integration tests (ADR-0030). `bin_desktop`'s self dev-dependency already
 # turns on `test-support`, so plain `cargo test` works too; the explicit feature keeps the intent
 # visible and survives that dev-dependency ever going away. SQLX_OFFLINE as in `lint`.
-[tasks.test-ui]
+[tasks.end-to-end-ui]
 description = "Run the headless Desktop UI integration tests (gpui test-support, no window or GPU)"
 env = { SQLX_OFFLINE = "true" }
 run = "cargo test --package bin_desktop --features test-support --tests"

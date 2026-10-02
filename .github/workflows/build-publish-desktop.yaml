@@ -39,11 +39,11 @@ env:
 
 jobs:
   # Gate: no desktop build or packaging unless the headless UI tests pass (ADR-0030).
-  test-ui:
+  end-to-end-ui:
     uses: ./.github/workflows/end-to-end-desktop.yaml
 
   build-test:
-    needs: test-ui
+    needs: end-to-end-ui
     strategy:
       fail-fast: false
       matrix:
@@ -84,11 +84,16 @@ jobs:
             libvulkan1 mesa-vulkan-drivers vulkan-tools \
             xvfb
 
+      # Caches dependency builds (gpui is the slow part, most of all on Windows).
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
       - name: Build desktop
         run: cargo build --locked --package bin_desktop
 
-      - name: Test desktop
-        run: cargo test --locked --package bin_desktop
+      # No `cargo test` here: the end-to-end-ui gate above already runs the unit and UI tests
+      # (`--tests`), and recompiling gpui under the test profile on Windows was the step that
+      # pushed this job past its timeout.
 
       # Linux CI runners are headless (no real display server), unlike the TUI's terminal
       # smoke test which just needed a simulated TTY -- GPUI needs an actual X11/Wayland

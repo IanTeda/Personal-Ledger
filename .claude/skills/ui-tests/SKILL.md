@@ -5,7 +5,7 @@ description: Write or extend headless keyboard and mouse integration tests for t
 
 # Desktop UI tests
 
-Run them with `mise run test-ui` (headless; no window or GPU, so it works in Claude's sandbox). Design and gating are in ADR-0030.
+Run them with `mise run end-to-end-ui` (headless; no window or GPU, so it works in Claude's sandbox). Design and gating are in ADR-0030.
 
 ## Harness (`tests/common/mod.rs`)
 

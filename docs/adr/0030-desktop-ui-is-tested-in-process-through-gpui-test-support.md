@@ -8,5 +8,5 @@ To let tests build `Shell` the way the app does, `bin_desktop` is a lib plus a t
 
 - Modules become `pub` only as a test needs them, and `Shell` fields stay private.
 - Tests are hermetic: a fixed `today`, the locale pinned to en-US with `locale::init_for_tests`, the deterministic stub seed, no `persistence` calls and no real OS calls. A seam for `Open`, `Show in folder` and CSV export is added when the first test needs it.
-- `mise run test-ui` runs the suite, and `.github/workflows/end-to-end-desktop.yaml` runs it in CI on `main` pushes and PRs, headless with no virtual display.
+- `mise run end-to-end-ui` runs the suite, and `.github/workflows/end-to-end-desktop.yaml` runs it in CI on `main` pushes and PRs, headless with no virtual display.
 - Pixel or screenshot comparison and testing the TUI are out of scope.
