@@ -62,6 +62,12 @@ pub struct SettingsSnapshot {
     pub status_glyphs: String,
     pub start_sidebar_minimised: bool,
     pub toasts_on: bool,
+    /// The Tracing page: the chosen level (`TracingLevel` variant name) and how many log lines
+    /// the viewport still holds.
+    pub tracing_level: String,
+    pub log_line_count: usize,
+    /// The status line's message, where the stubbed buttons report.
+    pub status_message: Option<String>,
 }
 
 impl Shell {
@@ -236,6 +242,9 @@ impl Shell {
             status_glyphs: format!("{:?}", self.settings_status_glyphs),
             start_sidebar_minimised: self.settings_start_sidebar_minimised,
             toasts_on: self.toasts.display().toasts_on,
+            tracing_level: format!("{:?}", self.settings_tracing_level),
+            log_line_count: self.settings_log_lines.len(),
+            status_message: self.status_message.clone(),
         }
     }
 }

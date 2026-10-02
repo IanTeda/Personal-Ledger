@@ -108,6 +108,7 @@ fn status_dot(cx: &App) -> impl IntoElement {
 fn sync_now_button(on_click: OnSyncNowClick, cx: &App) -> impl IntoElement {
     let mut button = div()
         .id("settings-sync-now")
+        .debug_selector(|| "settings-sync-now".to_string())
         .cursor_pointer()
         .mt(px(8.0))
         .py(px(8.0))

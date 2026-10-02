@@ -74,11 +74,13 @@ fn radio_option(
     on_click: OnPlainClick,
     cx: &App,
 ) -> impl IntoElement {
+    let id = format!("tracing-level-{}", format!("{level:?}").to_lowercase());
     div()
-        .id(SharedString::from(format!(
-            "tracing-level-{}",
-            format!("{level:?}").to_lowercase()
-        )))
+        .debug_selector({
+            let id = id.clone();
+            move || id.clone()
+        })
+        .id(SharedString::from(id))
         .cursor_pointer()
         .flex()
         .items_center()
@@ -152,6 +154,7 @@ fn log_viewport(log_lines: &[&'static str], cx: &App) -> impl IntoElement {
 fn clear_logs_button(on_click: OnClearLogsClick, cx: &App) -> impl IntoElement {
     let mut button = div()
         .id("settings-clear-logs")
+        .debug_selector(|| "settings-clear-logs".to_string())
         .cursor_pointer()
         .mt(px(8.0))
         .py(px(8.0))
