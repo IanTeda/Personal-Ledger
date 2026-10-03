@@ -108,6 +108,7 @@ pub fn build_shell(
         documents::DocumentsMode::from_id(persisted.documents_mode.as_deref()),
         documents::LibraryScope::from_id(
             persisted.documents_scope.as_deref().unwrap_or("all"),
+            &document_types::default_types(),
             today,
         ),
         documents::LibrarySort::from_id(persisted.documents_sort.as_deref()),

@@ -9,10 +9,11 @@ use lib_locale::format::{format_date, format_year_month, upper};
 use crate::{
     accounts::Account,
     bills::BillPlan,
+    document_types::{self, DocumentTypeRow},
     documents::{
         CANDIDATE_WINDOW_DAYS, Candidate, Document, DocumentLink, DocumentType, FileKind,
         InventoryItem, KeyDate, KeyDateBand, KeyDateKind, LibraryScope, RailEntry, Signals, Source,
-        Suggestion, YearFacet, band, scope_count,
+        Suggestion, YearFacet, band, scope_count, tracks_financial_year,
     },
     format,
     payees::Payee,
@@ -21,6 +22,7 @@ use crate::{
 
 /// The shared stubs a Document's Links point into, and the clock they are read against.
 pub struct Lookups<'a> {
+    pub types: &'a [DocumentTypeRow],
     pub accounts: &'a [Account],
     pub payees: &'a [Payee],
     pub plans: &'a [BillPlan],
@@ -109,32 +111,13 @@ pub fn extension(kind: FileKind) -> &'static str {
     }
 }
 
-/// The Type in the singular, for the detail facts and the row's caps label.
-pub fn type_label(kind: DocumentType) -> String {
-    match kind {
-        DocumentType::Receipt => crate::msg::desktop_documents_type_one_receipt(),
-        DocumentType::Statement => crate::msg::desktop_documents_type_one_statement(),
-        DocumentType::Tax => crate::msg::desktop_documents_type_one_tax(),
-        DocumentType::Insurance => crate::msg::desktop_documents_type_one_insurance(),
-        DocumentType::WarrantyManual => crate::msg::desktop_documents_type_one_warranty(),
-        DocumentType::Contract => crate::msg::desktop_documents_type_one_contract(),
-        DocumentType::Identity => crate::msg::desktop_documents_type_one_identity(),
-        DocumentType::Bill => crate::msg::desktop_documents_type_one_bill(),
-    }
-}
-
-/// The Type in the plural, for the index rail.
-pub fn type_plural_label(kind: DocumentType) -> String {
-    match kind {
-        DocumentType::Receipt => crate::msg::desktop_documents_type_receipts(),
-        DocumentType::Statement => crate::msg::desktop_documents_type_statements(),
-        DocumentType::Tax => crate::msg::desktop_documents_type_tax(),
-        DocumentType::Insurance => crate::msg::desktop_documents_type_insurance(),
-        DocumentType::WarrantyManual => crate::msg::desktop_documents_type_warranties(),
-        DocumentType::Contract => crate::msg::desktop_documents_type_contracts(),
-        DocumentType::Identity => crate::msg::desktop_documents_type_identity(),
-        DocumentType::Bill => crate::msg::desktop_documents_type_bills(),
-    }
+/// The Type's name, for the detail facts, the row's caps label, the rail and the pickers. A type
+/// that is gone reads as the Default type, as the Document would be filed under it.
+pub fn type_label(types: &[DocumentTypeRow], kind: DocumentType) -> String {
+    let kind = kind.or_fallback(types);
+    document_types::get(types, kind.0)
+        .map(|row| row.name.clone())
+        .unwrap_or_default()
 }
 
 /// `FY 2026–27` for the Financial Year starting in `start`.
@@ -145,10 +128,10 @@ pub fn year_label(start: i32) -> String {
     )
 }
 
-fn scope_label(scope: LibraryScope) -> String {
+fn scope_label(types: &[DocumentTypeRow], scope: LibraryScope) -> String {
     match scope {
         LibraryScope::All => crate::msg::desktop_documents_rail_all(),
-        LibraryScope::Type(kind) => type_plural_label(kind),
+        LibraryScope::Type(kind) => type_label(types, kind),
         LibraryScope::Year(YearFacet::Year(start)) => year_label(start),
         LibraryScope::Year(YearFacet::Before(_)) => crate::msg::desktop_documents_rail_earlier(),
     }
@@ -156,8 +139,12 @@ fn scope_label(scope: LibraryScope) -> String {
 
 /// The index rail's rows, each with its count: the Inbox's Unfiled Documents, or the Filed
 /// Documents in a scope (search is not applied).
-pub fn rail_rows(documents: &[Document], today: NaiveDate) -> Vec<RailRow> {
-    crate::documents::rail_entries(today)
+pub fn rail_rows(
+    types: &[DocumentTypeRow],
+    documents: &[Document],
+    today: NaiveDate,
+) -> Vec<RailRow> {
+    crate::documents::rail_entries(types, today)
         .into_iter()
         .map(|entry| match entry {
             RailEntry::Inbox => RailRow {
@@ -167,8 +154,8 @@ pub fn rail_rows(documents: &[Document], today: NaiveDate) -> Vec<RailRow> {
             },
             RailEntry::Scope(scope) => RailRow {
                 entry,
-                label: scope_label(scope),
-                count: scope_count(documents, scope),
+                label: scope_label(types, scope),
+                count: scope_count(types, documents, scope),
             },
         })
         .collect()
@@ -259,12 +246,12 @@ fn link_kind_label(link: DocumentLink) -> String {
 }
 
 pub fn row(document: &Document, lookups: &Lookups<'_>) -> RowView {
-    let tail = match &document.key_date {
+    let tail = match document.effective_key_date(lookups.types) {
         Some(key_date) => RowTail::Flag {
-            text: flag_text(key_date, lookups),
-            red: band(key_date, lookups.today) == KeyDateBand::NeedReview,
+            text: flag_text(&key_date, lookups),
+            red: band(&key_date, lookups.today) == KeyDateBand::NeedReview,
         },
-        None => RowTail::Type(upper(&type_label(document.doc_type))),
+        None => RowTail::Type(upper(&type_label(lookups.types, document.doc_type))),
     };
     RowView {
         id: document.id,
@@ -313,7 +300,7 @@ pub fn detail(document: &Document, lookups: &Lookups<'_>) -> DetailView {
     let mut facts = vec![
         Fact {
             label: crate::msg::desktop_documents_detail_type(),
-            value: type_label(document.doc_type),
+            value: type_label(lookups.types, document.doc_type),
             red: false,
         },
         Fact {
@@ -322,7 +309,7 @@ pub fn detail(document: &Document, lookups: &Lookups<'_>) -> DetailView {
             red: false,
         },
     ];
-    if let Some(key_date) = &document.key_date {
+    if let Some(key_date) = document.effective_key_date(lookups.types) {
         let date = format_date(key_date.date, lookups.date_style);
         facts.push(Fact {
             label: key_kind_label(key_date.kind),
@@ -331,14 +318,16 @@ pub fn detail(document: &Document, lookups: &Lookups<'_>) -> DetailView {
             } else {
                 date
             },
-            red: band(key_date, lookups.today) == KeyDateBand::NeedReview,
+            red: band(&key_date, lookups.today) == KeyDateBand::NeedReview,
         });
     }
-    facts.push(Fact {
-        label: crate::msg::desktop_documents_detail_year(),
-        value: year_label(document.financial_year()),
-        red: false,
-    });
+    if tracks_financial_year(lookups.types, document.doc_type) {
+        facts.push(Fact {
+            label: crate::msg::desktop_documents_detail_year(),
+            value: year_label(document.financial_year()),
+            red: false,
+        });
+    }
     DetailView {
         id: document.id,
         extension: extension(document.kind),
@@ -486,13 +475,14 @@ fn candidate_view(
 }
 
 /// "Receipt · Woolworths · 212.40" from what was read; a missing merchant drops its slot.
-fn summary_text(document: &Document) -> String {
+fn summary_text(types: &[DocumentTypeRow], document: &Document) -> String {
     let facts = document.intake.as_ref().map(|intake| &intake.facts);
-    let kind = type_label(
-        facts
-            .and_then(|facts| facts.doc_type)
-            .unwrap_or(DocumentType::Receipt),
-    );
+    // No match by name leaves the type absent rather than guessing one.
+    let kind = facts
+        .and_then(|facts| facts.doc_type)
+        .map_or_else(crate::msg::desktop_documents_fact_none, |kind| {
+            type_label(types, kind)
+        });
     let amount = facts
         .and_then(|facts| facts.total.as_ref())
         .map(|total| format::amount(&lib_core::Money(total.0.abs())).1)
@@ -528,7 +518,7 @@ pub fn inbox_row(
         ),
         Suggestion::Link { best, .. } => (
             InboxState::Link,
-            summary_text(document),
+            summary_text(lookups.types, document),
             link_row_name(DocumentLink::Transaction(best.transaction_id), lookups)
                 .unwrap_or_default(),
             Some(best.signals),
@@ -614,7 +604,7 @@ pub fn inbox_detail(
             ),
             fact(
                 crate::msg::desktop_documents_detail_type(),
-                Some(type_label(facts.doc_type.unwrap_or(DocumentType::Receipt))),
+                facts.doc_type.map(|kind| type_label(lookups.types, kind)),
             ),
         ],
         state,
@@ -638,6 +628,7 @@ mod tests {
     };
 
     struct World {
+        types: Vec<DocumentTypeRow>,
         accounts: Vec<Account>,
         payees: Vec<Payee>,
         plans: Vec<BillPlan>,
@@ -664,6 +655,7 @@ mod tests {
             today,
         );
         World {
+            types: document_types::default_types(),
             accounts,
             payees,
             plans: bills.plans,
@@ -676,6 +668,7 @@ mod tests {
     impl World {
         fn lookups(&self) -> Lookups<'_> {
             Lookups {
+                types: &self.types,
                 accounts: &self.accounts,
                 payees: &self.payees,
                 plans: &self.plans,
@@ -695,10 +688,10 @@ mod tests {
         for document in world.seed.documents.iter().filter(|d| d.is_filed()) {
             if let RowTail::Flag { red: is_red, .. } = row(document, &lookups).tail {
                 if is_red {
-                    assert!(document.needs_review(world.today));
+                    assert!(document.needs_review(&world.types, world.today));
                     red += 1;
                 } else {
-                    assert!(!document.needs_review(world.today));
+                    assert!(!document.needs_review(&world.types, world.today));
                     muted += 1;
                 }
             }
@@ -758,7 +751,7 @@ mod tests {
     #[test]
     fn the_rail_counts_filed_documents_and_the_inbox_separately() {
         let world = world();
-        let rows = rail_rows(&world.seed.documents, world.today);
+        let rows = rail_rows(&world.types, &world.seed.documents, world.today);
         let inbox = rows
             .iter()
             .find(|row| row.entry == RailEntry::Inbox)
@@ -782,7 +775,9 @@ mod tests {
             .seed
             .documents
             .iter()
-            .find(|d| d.is_filed() && d.needs_review(world.today) && !d.links.is_empty())
+            .find(|d| {
+                d.is_filed() && d.needs_review(&world.types, world.today) && !d.links.is_empty()
+            })
             .expect("a Need Review document with links");
         let view = detail(document, &lookups);
         assert!(view.facts.iter().any(|fact| fact.red));
@@ -823,7 +818,7 @@ mod tests {
             &lookups,
         );
         assert_eq!(row.state, InboxState::Link);
-        assert!(row.summary.starts_with("Receipt · "), "{}", row.summary);
+        assert!(row.summary.starts_with("Receipts · "), "{}", row.summary);
         assert!(row.summary.contains("212.40"), "{}", row.summary);
         let signals = row.signals.expect("a linked row has a meter");
         assert_eq!(signals.count(), 3);

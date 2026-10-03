@@ -32,22 +32,6 @@ desktop-documents-rail-earlier = Earlier
 ## The Document Types. The rail names them in the plural; the detail pane and the row's caps label
 ## in the singular.
 
-desktop-documents-type-receipts = Receipts
-desktop-documents-type-statements = Statements
-desktop-documents-type-tax = Tax
-desktop-documents-type-insurance = Insurance
-desktop-documents-type-warranties = Warranties & manuals
-desktop-documents-type-contracts = Contracts
-desktop-documents-type-identity = Identity
-desktop-documents-type-bills = Bills
-desktop-documents-type-one-receipt = Receipt
-desktop-documents-type-one-statement = Statement
-desktop-documents-type-one-tax = Tax
-desktop-documents-type-one-insurance = Insurance
-desktop-documents-type-one-warranty = Warranty or manual
-desktop-documents-type-one-contract = Contract
-desktop-documents-type-one-identity = Identity
-desktop-documents-type-one-bill = Bill
 
 ## The Library's header, toolbar and count line. `$count` is how many Documents are filed.
 

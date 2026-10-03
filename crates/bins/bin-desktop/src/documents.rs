@@ -27,6 +27,7 @@ use crate::{
     bill_history::{FINANCIAL_YEAR_START_MONTH, financial_year_start},
     bills::BillPlan,
     categories::{self, Category},
+    document_types::{self, DocumentTypeRow, TracksDate},
     payees::{self, Payee},
     transactions::{Split, Transaction},
 };
@@ -44,48 +45,44 @@ pub const DATE_SIGNAL_DAYS: i64 = 3;
 /// How many candidates after the Suggested Link the Inbox offers as "Other candidates".
 pub const OTHER_CANDIDATES: usize = 2;
 
-/// The fixed kind of a Document, in the index rail's order.
+/// A Document's type: the stable id of a user-managed [`DocumentTypeRow`] (ADR-0031). Names, order
+/// and the per-type flags live in the list, so a Document never carries them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum DocumentType {
-    Receipt,
-    Statement,
-    Tax,
-    Insurance,
-    WarrantyManual,
-    Contract,
-    Identity,
-    Bill,
-}
+pub struct DocumentType(pub u32);
 
 impl DocumentType {
-    pub const ALL: [DocumentType; 8] = [
-        DocumentType::Receipt,
-        DocumentType::Statement,
-        DocumentType::Tax,
-        DocumentType::Insurance,
-        DocumentType::WarrantyManual,
-        DocumentType::Contract,
-        DocumentType::Identity,
-        DocumentType::Bill,
-    ];
+    // The nine seeded types' ids, for the mock data and tests that name one.
+    pub const RECEIPTS: DocumentType = DocumentType(1);
+    pub const STATEMENTS: DocumentType = DocumentType(2);
+    pub const TAX: DocumentType = DocumentType(3);
+    pub const INSURANCE: DocumentType = DocumentType(4);
+    pub const WARRANTIES: DocumentType = DocumentType(5);
+    pub const CONTRACTS: DocumentType = DocumentType(6);
+    pub const IDENTITY: DocumentType = DocumentType(7);
+    pub const BILLS: DocumentType = DocumentType(8);
+    pub const OTHER: DocumentType = DocumentType(9);
 
-    /// The stable id persisted in a Library scope (`type:<id>`); never shown.
-    pub fn id(self) -> &'static str {
-        match self {
-            DocumentType::Receipt => "receipts",
-            DocumentType::Statement => "statements",
-            DocumentType::Tax => "tax",
-            DocumentType::Insurance => "insurance",
-            DocumentType::WarrantyManual => "warranties",
-            DocumentType::Contract => "contracts",
-            DocumentType::Identity => "identity",
-            DocumentType::Bill => "bills",
-        }
+    /// The id persisted in a Library scope (`type:<id>`); never shown.
+    pub fn id(self) -> String {
+        self.0.to_string()
     }
 
-    pub fn from_id(id: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|kind| kind.id() == id)
+    /// Parses a persisted id, only when `types` still has that type.
+    pub fn from_id(id: &str, types: &[DocumentTypeRow]) -> Option<Self> {
+        let id = id.parse().ok()?;
+        document_types::position(types, id).map(|_| DocumentType(id))
     }
+
+    /// The Default type's id when the Document's own is gone.
+    pub fn or_fallback(self, types: &[DocumentTypeRow]) -> Self {
+        document_types::position(types, self.0)
+            .map_or(DocumentType(document_types::fallback_id(types)), |_| self)
+    }
+}
+
+/// Whether the type's Financial year flag is on (#476): off for a type that is gone.
+pub fn tracks_financial_year(types: &[DocumentTypeRow], kind: DocumentType) -> bool {
+    document_types::get(types, kind.0).is_some_and(|row| row.financial_year)
 }
 
 /// The kind of a [`KeyDate`].
@@ -251,12 +248,32 @@ impl Document {
             .unwrap_or_default()
     }
 
-    pub fn band(&self, today: NaiveDate) -> Option<KeyDateBand> {
-        self.key_date.as_ref().map(|key_date| band(key_date, today))
+    /// The Key Date as its type reads it (#474, #475): the kind comes from the type's Tracks date,
+    /// the reminder from its Remind lead time, and a type that tracks no date leaves the stored
+    /// date inert (kept, but neither shown nor counted).
+    pub fn effective_key_date(&self, types: &[DocumentTypeRow]) -> Option<KeyDate> {
+        let stored = self.key_date.as_ref()?;
+        let row = document_types::get(types, self.doc_type.0)?;
+        let kind = match row.tracks_date? {
+            TracksDate::Renews => KeyDateKind::Renews,
+            TracksDate::Ends => KeyDateKind::Ends,
+            TracksDate::Expires => KeyDateKind::Expires,
+            TracksDate::Revalue => KeyDateKind::Revalue,
+        };
+        Some(KeyDate {
+            kind,
+            date: stored.date,
+            reminder: row.remind.is_some(),
+        })
     }
 
-    pub fn needs_review(&self, today: NaiveDate) -> bool {
-        self.is_filed() && self.band(today) == Some(KeyDateBand::NeedReview)
+    pub fn band(&self, types: &[DocumentTypeRow], today: NaiveDate) -> Option<KeyDateBand> {
+        self.effective_key_date(types)
+            .map(|key_date| band(&key_date, today))
+    }
+
+    pub fn needs_review(&self, types: &[DocumentTypeRow], today: NaiveDate) -> bool {
+        self.is_filed() && self.band(types, today) == Some(KeyDateBand::NeedReview)
     }
 
     /// Case-insensitive substring over the Title, file name, Extracted Facts merchant and the
@@ -304,7 +321,11 @@ pub enum YearFacet {
 }
 
 impl YearFacet {
-    pub fn contains(self, document: &Document) -> bool {
+    /// Only a Document whose type has the Financial year flag on matches (#476).
+    pub fn contains(self, document: &Document, types: &[DocumentTypeRow]) -> bool {
+        if !tracks_financial_year(types, document.doc_type) {
+            return false;
+        }
         match self {
             YearFacet::Year(start) => document.financial_year() == start,
             YearFacet::Before(start) => document.financial_year() < start,
@@ -343,13 +364,13 @@ impl LibraryScope {
         }
     }
 
-    /// Parses a persisted id, falling back to All for one that is malformed or whose Financial
-    /// Year is no longer on the rail (the year rolled over since it was saved).
-    pub fn from_id(id: &str, today: NaiveDate) -> Self {
+    /// Parses a persisted id, falling back to All for one that is malformed, whose type was removed,
+    /// or whose Financial Year is no longer on the rail (the year rolled over since it was saved).
+    pub fn from_id(id: &str, types: &[DocumentTypeRow], today: NaiveDate) -> Self {
         let parsed = if id == "all" {
             Some(LibraryScope::All)
         } else if let Some(kind) = id.strip_prefix("type:") {
-            DocumentType::from_id(kind).map(LibraryScope::Type)
+            DocumentType::from_id(kind, types).map(LibraryScope::Type)
         } else if let Some(start) = id.strip_prefix("fy:before:") {
             start
                 .parse()
@@ -372,11 +393,11 @@ impl LibraryScope {
         }
     }
 
-    pub fn contains(self, document: &Document) -> bool {
+    pub fn contains(self, document: &Document, types: &[DocumentTypeRow]) -> bool {
         match self {
             LibraryScope::All => true,
             LibraryScope::Type(kind) => document.doc_type == kind,
-            LibraryScope::Year(facet) => facet.contains(document),
+            LibraryScope::Year(facet) => facet.contains(document, types),
         }
     }
 }
@@ -415,14 +436,14 @@ pub enum RailEntry {
     Scope(LibraryScope),
 }
 
-/// The selectable rows in rail order: the Inbox, All documents, every Document Type, then the
-/// Financial Years. The section labels between them are not rows.
-pub fn rail_entries(today: NaiveDate) -> Vec<RailEntry> {
+/// The selectable rows in rail order: the Inbox, All documents, every Document Type in Settings
+/// order, then the Financial Years. The section labels between them are not rows.
+pub fn rail_entries(types: &[DocumentTypeRow], today: NaiveDate) -> Vec<RailEntry> {
     let mut entries = vec![RailEntry::Inbox, RailEntry::Scope(LibraryScope::All)];
     entries.extend(
-        DocumentType::ALL
-            .into_iter()
-            .map(|kind| RailEntry::Scope(LibraryScope::Type(kind))),
+        types
+            .iter()
+            .map(|row| RailEntry::Scope(LibraryScope::Type(DocumentType(row.id)))),
     );
     entries.extend(
         year_facets(today)
@@ -465,15 +486,20 @@ impl LibrarySort {
 }
 
 /// How many Filed Documents a scope holds, for the rail's counts (search is not applied).
-pub fn scope_count(documents: &[Document], scope: LibraryScope) -> usize {
+pub fn scope_count(
+    types: &[DocumentTypeRow],
+    documents: &[Document],
+    scope: LibraryScope,
+) -> usize {
     documents
         .iter()
-        .filter(|document| document.is_filed() && scope.contains(document))
+        .filter(|document| document.is_filed() && scope.contains(document, types))
         .count()
 }
 
 /// The Library's rows: Filed Documents in `scope` matching `query`, in `sort` order.
 pub fn library_rows<'a>(
+    types: &[DocumentTypeRow],
     documents: &'a [Document],
     scope: LibraryScope,
     query: &str,
@@ -483,7 +509,7 @@ pub fn library_rows<'a>(
     let mut rows: Vec<&Document> = documents
         .iter()
         .filter(|document| {
-            document.is_filed() && scope.contains(document) && document.matches(query)
+            document.is_filed() && scope.contains(document, types) && document.matches(query)
         })
         .collect();
     // Newest document date, then Title A→Z, then id so equal rows never swap between renders.
@@ -496,8 +522,8 @@ pub fn library_rows<'a>(
     match sort {
         LibrarySort::Newest => rows.sort_by(newest),
         LibrarySort::Expiring => rows.sort_by(|a, b| {
-            expiring_key(a, today)
-                .cmp(&expiring_key(b, today))
+            expiring_key(types, a, today)
+                .cmp(&expiring_key(types, b, today))
                 .then_with(|| newest(a, b))
         }),
     }
@@ -506,11 +532,11 @@ pub fn library_rows<'a>(
 
 /// Need Review ascending, Upcoming ascending, Stale descending (most recently lapsed first), then
 /// no Key Date.
-fn expiring_key(document: &Document, today: NaiveDate) -> (u8, i64) {
-    match &document.key_date {
+fn expiring_key(types: &[DocumentTypeRow], document: &Document, today: NaiveDate) -> (u8, i64) {
+    match document.effective_key_date(types) {
         Some(key_date) => {
             let days = (key_date.date - today).num_days();
-            match band(key_date, today) {
+            match band(&key_date, today) {
                 KeyDateBand::NeedReview => (0, days),
                 KeyDateBand::Upcoming => (1, days),
                 KeyDateBand::Stale => (2, -days),
@@ -521,9 +547,9 @@ fn expiring_key(document: &Document, today: NaiveDate) -> (u8, i64) {
 }
 
 /// The count line's "N NEED REVIEW": Need Review rows among those listed.
-pub fn need_review_count(rows: &[&Document], today: NaiveDate) -> usize {
+pub fn need_review_count(types: &[DocumentTypeRow], rows: &[&Document], today: NaiveDate) -> usize {
     rows.iter()
-        .filter(|document| document.needs_review(today))
+        .filter(|document| document.needs_review(types, today))
         .count()
 }
 
@@ -816,9 +842,10 @@ fn file_one(
     Ok(entry)
 }
 
-/// Accept: files the Document with a `Transaction` Link, the extracted Document Type (Receipt when
-/// none was read) and the extracted date (the Transaction's when none was read).
+/// Accept: files the Document with a `Transaction` Link, the extracted Document Type (the Default
+/// type when none was read) and the extracted date (the Transaction's when none was read).
 pub fn accept(
+    types: &[DocumentTypeRow],
     documents: &mut [Document],
     transactions: &[Transaction],
     id: u32,
@@ -837,7 +864,9 @@ pub fn accept(
     file_one(
         documents,
         id,
-        facts.doc_type.unwrap_or(DocumentType::Receipt),
+        facts
+            .doc_type
+            .unwrap_or(DocumentType(document_types::fallback_id(types))),
         facts.date.unwrap_or(transaction.date),
         Some(DocumentLink::Transaction(transaction_id)),
     )
@@ -863,6 +892,7 @@ pub fn file_by_hand(
 /// Accept all strong matches: accepts every Unfiled Document whose Suggested Link is Strong, as
 /// one undoable batch. Returns `None` when there were none.
 pub fn accept_all_strong(
+    types: &[DocumentTypeRow],
     documents: &mut [Document],
     transactions: &[Transaction],
     payees: &[Payee],
@@ -884,7 +914,9 @@ pub fn accept_all_strong(
         .collect();
     let entries: Vec<FiledEntry> = strong
         .into_iter()
-        .filter_map(|(id, transaction_id)| accept(documents, transactions, id, transaction_id).ok())
+        .filter_map(|(id, transaction_id)| {
+            accept(types, documents, transactions, id, transaction_id).ok()
+        })
         .collect();
     (!entries.is_empty()).then_some(FilingUndo { entries, focus })
 }
@@ -1060,22 +1092,31 @@ pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<u32,
     Ok(id)
 }
 
+/// The extracted type, matched by name: absent when no type has it (it was renamed or removed).
+fn type_named(types: &[DocumentTypeRow], name: &str) -> Option<DocumentType> {
+    document_types::id_by_name(types, name).map(DocumentType)
+}
+
 /// The stub catalogue: files whose "extracted" facts the Inbox can show, in place of reading the
 /// file. Matched by file name, so an `Import…` of one of these arrives readable.
-pub fn catalogue_facts(path: &Path, today: NaiveDate) -> Option<ExtractedFacts> {
+pub fn catalogue_facts(
+    types: &[DocumentTypeRow],
+    path: &Path,
+    today: NaiveDate,
+) -> Option<ExtractedFacts> {
     let name = path.file_name()?.to_string_lossy().to_lowercase();
     match name.as_str() {
         "coles-receipt.jpg" => Some(ExtractedFacts {
             merchant: Some("Coles".to_string()),
             date: Some(today - Duration::days(2)),
             total: Some(cents_money(8_635)),
-            doc_type: Some(DocumentType::Receipt),
+            doc_type: type_named(types, "Receipts"),
         }),
         "origin-energy-bill.pdf" => Some(ExtractedFacts {
             merchant: Some("Origin Energy".to_string()),
             date: Some(today - Duration::days(6)),
             total: Some(cents_money(24_110)),
-            doc_type: Some(DocumentType::Bill),
+            doc_type: type_named(types, "Bills"),
         }),
         _ => None,
     }
@@ -1084,6 +1125,7 @@ pub fn catalogue_facts(path: &Path, today: NaiveDate) -> Option<ExtractedFacts> 
 /// `Import…` and a file dropped on the window: one Unfiled Document, from `source`. It is readable
 /// only when the path is in the stub catalogue; otherwise it carries no facts and is filed by hand.
 pub fn import_path(
+    types: &[DocumentTypeRow],
     documents: &mut Vec<Document>,
     path: PathBuf,
     today: NaiveDate,
@@ -1093,7 +1135,7 @@ pub fn import_path(
     if let Some(existing) = find_by_path(documents, &path) {
         return Err(AddError::AlreadyInLibrary(existing.title.clone()));
     }
-    let facts = catalogue_facts(&path, today).unwrap_or_default();
+    let facts = catalogue_facts(types, &path, today).unwrap_or_default();
     let id = next_id(documents);
     documents.push(Document {
         id,
@@ -1102,7 +1144,9 @@ pub fn import_path(
         path,
         kind,
         pages: 1,
-        doc_type: facts.doc_type.unwrap_or(DocumentType::Receipt),
+        doc_type: facts
+            .doc_type
+            .unwrap_or(DocumentType(document_types::fallback_id(types))),
         date: today,
         key_date: None,
         links: Vec::new(),
@@ -1301,7 +1345,7 @@ impl Draft {
 
     fn unfiled(file: &str, source: Source, received_at: NaiveDate, facts: ExtractedFacts) -> Self {
         let title = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
-        let mut draft = Draft::filed(file, title, DocumentType::Receipt, received_at);
+        let mut draft = Draft::filed(file, title, DocumentType::OTHER, received_at);
         draft.intake = Some(Intake {
             source,
             received_at,
@@ -1440,7 +1484,6 @@ pub fn default_documents(
     let statement_month = (first_of_month - Duration::days(1)).format("%b %Y");
     let fy = financial_year_start(today) % 100;
     let money = |cents: i64| Some(cents_money(cents));
-    use DocumentType::*;
     use KeyDateKind::*;
 
     let mut drafts = vec![
@@ -1448,7 +1491,7 @@ pub fn default_documents(
         Draft::filed(
             "amex-platinum-statement.pdf",
             &format!("Amex Platinum statement — {statement_month}"),
-            Statement,
+            DocumentType::STATEMENTS,
             first_of_month,
         )
         .size(6, 420_000)
@@ -1457,7 +1500,7 @@ pub fn default_documents(
         Draft::filed(
             "receipt-camera-house.pdf",
             "Receipt — Camera House",
-            Receipt,
+            DocumentType::RECEIPTS,
             day(-212),
         )
         .link(item("Sony A7 IV"))
@@ -1466,7 +1509,7 @@ pub fn default_documents(
         Draft::filed(
             "nrma-home-contents-pds.pdf",
             "NRMA home contents — PDS & schedule",
-            Insurance,
+            DocumentType::INSURANCE,
             day(-320),
         )
         .size(24, 1_400_000)
@@ -1476,7 +1519,7 @@ pub fn default_documents(
         Draft::filed(
             "aami-car-policy.pdf",
             "AAMI car insurance — policy schedule",
-            Insurance,
+            DocumentType::INSURANCE,
             day(-345),
         )
         .size(8, 610_000)
@@ -1488,7 +1531,7 @@ pub fn default_documents(
         Draft::filed(
             "westpac-home-loan-annual.pdf",
             "Westpac home loan — annual statement",
-            Statement,
+            DocumentType::CONTRACTS,
             day(-95),
         )
         .size(4, 380_000)
@@ -1498,7 +1541,7 @@ pub fn default_documents(
         Draft::filed(
             "vanguard-tax-statement.pdf",
             &format!("Vanguard VAS — tax statement FY{fy:02}"),
-            Tax,
+            DocumentType::TAX,
             day(-80),
         )
         .size(3, 260_000)
@@ -1507,7 +1550,7 @@ pub fn default_documents(
         Draft::filed(
             "fridge-warranty-manual.pdf",
             "Fridge warranty & manual",
-            WarrantyManual,
+            DocumentType::WARRANTIES,
             day(-420),
         )
         .size(48, 3_200_000)
@@ -1517,31 +1560,41 @@ pub fn default_documents(
         Draft::filed(
             "engagement-ring-valuation.jpg",
             "Engagement ring valuation",
-            Insurance,
+            DocumentType::INSURANCE,
             day(-560),
         )
         .size(1, 2_100_000)
         .key(Revalue, day(150), false)
         .link(item("Engagement ring"))
         .text("Valuation certificate for insurance purposes"),
-        Draft::filed("rates-notice-q1.pdf", "Rates notice — Q1", Bill, day(-40))
-            .size(2, 210_000)
-            .link(payee("Brisbane City Council"))
-            .link(plan("Council Rates"))
-            .text("Brisbane City Council rates notice quarter one"),
+        Draft::filed(
+            "rates-notice-q1.pdf",
+            "Rates notice — Q1",
+            DocumentType::BILLS,
+            day(-40),
+        )
+        .size(2, 210_000)
+        .link(payee("Brisbane City Council"))
+        .link(plan("Council Rates"))
+        .text("Brisbane City Council rates notice quarter one"),
         Draft::filed(
             "lease-agreement-12-elm-st.pdf",
             "Lease agreement — 12 Elm St",
-            Contract,
+            DocumentType::CONTRACTS,
             day(-250),
         )
         .size(12, 900_000)
         .key(Ends, day(115), true)
         .link(payee("Ray White Rentals"))
         .text("Residential tenancy agreement fixed term lease Ray White"),
-        Draft::filed("passport-scan.jpg", "Passport — scan", Identity, day(-700))
-            .size(1, 1_800_000)
-            .key(Expires, day(2_040), false),
+        Draft::filed(
+            "passport-scan.jpg",
+            "Passport — scan",
+            DocumentType::IDENTITY,
+            day(-700),
+        )
+        .size(1, 1_800_000)
+        .key(Expires, day(2_040), false),
         // The Inbox's sample rows: two Strong, a Likely, a Likely and a Weak from the stubs' own
         // Transactions, one readable with nothing to suggest, and one Unreadable.
         Draft::unfiled(
@@ -1552,7 +1605,7 @@ pub fn default_documents(
                 merchant: Some("Woolworths Metro".to_string()),
                 date: Some(day(-3)),
                 total: money(21_240),
-                doc_type: Some(Receipt),
+                doc_type: Some(DocumentType::RECEIPTS),
             },
         )
         .size(1, 1_200_000)
@@ -1565,7 +1618,7 @@ pub fn default_documents(
                 merchant: Some("Bunnings Warehouse".to_string()),
                 date: Some(day(-6)),
                 total: money(61_235),
-                doc_type: Some(Receipt),
+                doc_type: Some(DocumentType::RECEIPTS),
             },
         )
         .size(2, 240_000)
@@ -1578,7 +1631,7 @@ pub fn default_documents(
                 merchant: Some("Sonos".to_string()),
                 date: Some(day(-11)),
                 total: money(49_900),
-                doc_type: Some(Receipt),
+                doc_type: Some(DocumentType::RECEIPTS),
             },
         )
         .text("Sonos order confirmation Era 100 total 499.00"),
@@ -1590,7 +1643,7 @@ pub fn default_documents(
                 merchant: Some("Origin Energy".to_string()),
                 date: Some(day(-16)),
                 total: money(31_240),
-                doc_type: Some(Bill),
+                doc_type: Some(DocumentType::BILLS),
             },
         )
         .size(3, 300_000)
@@ -1616,7 +1669,7 @@ pub fn default_documents(
                 merchant: Some("Australian Taxation Office".to_string()),
                 date: Some(day(-18)),
                 total: money(128_400),
-                doc_type: Some(Tax),
+                doc_type: Some(DocumentType::TAX),
             },
         )
         .size(4, 150_000)
@@ -1664,7 +1717,7 @@ fn filler(lookup: &Lookup<'_>, transactions: &[Transaction], today: NaiveDate) -
                 Draft::filed(
                     &format!("{slug}-{}.pdf", month.format("%Y-%m")),
                     &format!("{name} statement — {label}"),
-                    DocumentType::Statement,
+                    DocumentType::STATEMENTS,
                     // The month's last day, so the hand-authored sample (issued the 1st) leads.
                     issued - Duration::days(1),
                 )
@@ -1696,7 +1749,7 @@ fn filler(lookup: &Lookup<'_>, transactions: &[Transaction], today: NaiveDate) -
             Draft::filed(
                 &format!("receipt-{slug}-{}.pdf", purchase.id),
                 &format!("Receipt — {name}"),
-                DocumentType::Receipt,
+                DocumentType::RECEIPTS,
                 purchase.date,
             )
             .size(1, 120_000)
@@ -1709,6 +1762,10 @@ fn filler(lookup: &Lookup<'_>, transactions: &[Transaction], today: NaiveDate) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn types() -> Vec<DocumentTypeRow> {
+        document_types::default_types()
+    }
     use crate::{
         accounts::default_accounts, bills::default_bills, categories::default_categories,
         payees::default_payees, tags::default_tags, transactions::default_transactions,
@@ -1804,11 +1861,11 @@ mod tests {
     #[test]
     fn financial_year_derives_from_the_document_date() {
         assert_eq!(
-            filed(1, DocumentType::Tax, date(2026, 6, 30)).financial_year(),
+            filed(1, DocumentType::TAX, date(2026, 6, 30)).financial_year(),
             2025
         );
         assert_eq!(
-            filed(1, DocumentType::Tax, date(2026, 7, 1)).financial_year(),
+            filed(1, DocumentType::TAX, date(2026, 7, 1)).financial_year(),
             2026
         );
     }
@@ -1823,38 +1880,54 @@ mod tests {
                 YearFacet::Before(2025)
             ]
         );
-        assert!(YearFacet::Before(2025).contains(&filed(1, DocumentType::Tax, date(2025, 6, 30))));
-        assert!(!YearFacet::Before(2025).contains(&filed(1, DocumentType::Tax, date(2025, 7, 1))));
+        assert!(
+            YearFacet::Before(2025)
+                .contains(&filed(1, DocumentType::TAX, date(2025, 6, 30)), &types())
+        );
+        assert!(
+            !YearFacet::Before(2025)
+                .contains(&filed(1, DocumentType::TAX, date(2025, 7, 1)), &types())
+        );
     }
 
     #[test]
     fn scope_ids_round_trip_and_stale_years_fall_back_to_all() {
         for scope in [
             LibraryScope::All,
-            LibraryScope::Type(DocumentType::WarrantyManual),
+            LibraryScope::Type(DocumentType::WARRANTIES),
             LibraryScope::Year(YearFacet::Year(2025)),
             LibraryScope::Year(YearFacet::Before(2025)),
         ] {
-            assert_eq!(LibraryScope::from_id(&scope.id(), today()), scope);
+            assert_eq!(LibraryScope::from_id(&scope.id(), &types(), today()), scope);
         }
-        assert_eq!(LibraryScope::from_id("fy:2023", today()), LibraryScope::All);
         assert_eq!(
-            LibraryScope::from_id("type:nope", today()),
+            LibraryScope::from_id("fy:2023", &types(), today()),
             LibraryScope::All
         );
-        assert_eq!(LibraryScope::from_id("garbage", today()), LibraryScope::All);
+        assert_eq!(
+            LibraryScope::from_id("type:nope", &types(), today()),
+            LibraryScope::All
+        );
+        assert_eq!(
+            LibraryScope::from_id("garbage", &types(), today()),
+            LibraryScope::All
+        );
     }
 
     #[test]
     fn counts_cover_filed_documents_only() {
         let documents = vec![
-            filed(1, DocumentType::Receipt, today()),
-            filed(2, DocumentType::Tax, today()),
+            filed(1, DocumentType::RECEIPTS, today()),
+            filed(2, DocumentType::TAX, today()),
             unfiled(3, facts(None, None, Some(100))),
         ];
-        assert_eq!(scope_count(&documents, LibraryScope::All), 2);
+        assert_eq!(scope_count(&types(), &documents, LibraryScope::All), 2);
         assert_eq!(
-            scope_count(&documents, LibraryScope::Type(DocumentType::Receipt)),
+            scope_count(
+                &types(),
+                &documents,
+                LibraryScope::Type(DocumentType::RECEIPTS)
+            ),
             1
         );
         assert_eq!(inbox_count(&documents), 1);
@@ -1865,7 +1938,7 @@ mod tests {
     fn keyed(id: u32, offset: i64) -> Document {
         let mut document = filed(
             id,
-            DocumentType::Insurance,
+            DocumentType::INSURANCE,
             today() - Duration::days(id.into()),
         );
         document.key_date = Some(KeyDate {
@@ -1892,7 +1965,10 @@ mod tests {
         if let Some(key_date) = document.key_date.as_mut() {
             key_date.reminder = true;
         }
-        assert_eq!(document.band(today()), Some(KeyDateBand::Upcoming));
+        assert_eq!(
+            document.band(&types(), today()),
+            Some(KeyDateBand::Upcoming)
+        );
     }
 
     #[test]
@@ -1902,11 +1978,12 @@ mod tests {
             keyed(2, -200),
             keyed(3, 10),
             keyed(4, -30),
-            filed(5, DocumentType::Receipt, today()),
+            filed(5, DocumentType::RECEIPTS, today()),
             keyed(6, -100),
             keyed(7, 100),
         ];
         let ids: Vec<u32> = library_rows(
+            &types(),
             &documents,
             LibraryScope::All,
             "",
@@ -1927,6 +2004,7 @@ mod tests {
         newer.date = today() - Duration::days(5);
         let documents = vec![older, newer];
         let rows = library_rows(
+            &types(),
             &documents,
             LibraryScope::All,
             "",
@@ -1941,6 +2019,7 @@ mod tests {
         let mut documents = vec![keyed(1, 5), keyed(2, -5), keyed(3, 90)];
         documents[1].title = "Hidden".to_string();
         let rows = library_rows(
+            &types(),
             &documents,
             LibraryScope::All,
             "doc",
@@ -1948,14 +2027,14 @@ mod tests {
             today(),
         );
         assert_eq!(rows.len(), 2);
-        assert_eq!(need_review_count(&rows, today()), 1);
+        assert_eq!(need_review_count(&types(), &rows, today()), 1);
     }
 
     // Search and Newest
 
     #[test]
     fn search_matches_title_file_name_and_extracted_text_case_insensitively() {
-        let mut document = filed(1, DocumentType::Receipt, today());
+        let mut document = filed(1, DocumentType::RECEIPTS, today());
         document.extracted_text = Some("Sony A7 IV body".to_string());
         assert!(document.matches("sony a7"));
         assert!(document.matches("FILE.PDF"));
@@ -1966,13 +2045,14 @@ mod tests {
 
     #[test]
     fn newest_sorts_by_document_date_then_title() {
-        let mut a = filed(1, DocumentType::Receipt, date(2026, 1, 1));
+        let mut a = filed(1, DocumentType::RECEIPTS, date(2026, 1, 1));
         a.title = "B".to_string();
-        let mut b = filed(2, DocumentType::Receipt, date(2026, 1, 1));
+        let mut b = filed(2, DocumentType::RECEIPTS, date(2026, 1, 1));
         b.title = "A".to_string();
-        let c = filed(3, DocumentType::Receipt, date(2026, 5, 1));
+        let c = filed(3, DocumentType::RECEIPTS, date(2026, 5, 1));
         let documents = vec![a, b, c];
         let ids: Vec<u32> = library_rows(
+            &types(),
             &documents,
             LibraryScope::All,
             "",
@@ -1987,7 +2067,7 @@ mod tests {
 
     #[test]
     fn removing_the_last_link_leaves_the_document_filed() {
-        let mut documents = vec![filed(1, DocumentType::Receipt, today())];
+        let mut documents = vec![filed(1, DocumentType::RECEIPTS, today())];
         assert_eq!(
             toggle_link(&mut documents, 1, DocumentLink::Payee(4)),
             Some(true)
@@ -2088,7 +2168,7 @@ mod tests {
             txn(4, today() - Duration::days(1), -500, None),    // amount + date, nearer
             txn(5, today() - Duration::days(1), -500, None),    // as 4, but linked
         ];
-        let mut linker = filed(9, DocumentType::Receipt, today());
+        let mut linker = filed(9, DocumentType::RECEIPTS, today());
         linker.links.push(DocumentLink::Transaction(4));
         let document = unfiled(1, facts(Some("Woolworths"), Some(today()), Some(500)));
         let documents = vec![linker, document.clone()];
@@ -2132,26 +2212,26 @@ mod tests {
         let transactions = vec![txn(7, today() - Duration::days(2), -500, None)];
         let mut documents = vec![unfiled(1, facts(None, Some(today()), Some(500)))];
         if let Some(intake) = documents[0].intake.as_mut() {
-            intake.facts.doc_type = Some(DocumentType::Bill);
+            intake.facts.doc_type = Some(DocumentType::BILLS);
         }
-        accept(&mut documents, &transactions, 1, 7).unwrap();
+        accept(&types(), &mut documents, &transactions, 1, 7).unwrap();
         let document = &documents[0];
         assert!(document.is_filed());
         assert_eq!(document.links, [DocumentLink::Transaction(7)]);
-        assert_eq!(document.doc_type, DocumentType::Bill);
+        assert_eq!(document.doc_type, DocumentType::BILLS);
         assert_eq!(document.date, today());
     }
 
     #[test]
-    fn accept_without_extracted_type_or_date_uses_receipt_and_the_transaction_date() {
+    fn accept_without_extracted_type_or_date_uses_the_default_type_and_the_transaction_date() {
         let on = today() - Duration::days(2);
         let transactions = vec![txn(7, on, -500, None)];
         let mut documents = vec![unfiled(1, facts(None, None, Some(500)))];
-        accept(&mut documents, &transactions, 1, 7).unwrap();
-        assert_eq!(documents[0].doc_type, DocumentType::Receipt);
+        accept(&types(), &mut documents, &transactions, 1, 7).unwrap();
+        assert_eq!(documents[0].doc_type, DocumentType::OTHER);
         assert_eq!(documents[0].date, on);
         assert_eq!(
-            accept(&mut documents, &transactions, 1, 7),
+            accept(&types(), &mut documents, &transactions, 1, 7),
             Err(FilingError::AlreadyFiled)
         );
     }
@@ -2159,10 +2239,10 @@ mod tests {
     #[test]
     fn file_by_hand_takes_the_chosen_type_and_an_optional_link() {
         let mut documents = vec![unfiled(1, ExtractedFacts::default())];
-        file_by_hand(&mut documents, 1, DocumentType::Identity, None).unwrap();
+        file_by_hand(&mut documents, 1, DocumentType::IDENTITY, None).unwrap();
         assert!(documents[0].is_filed());
         assert!(documents[0].links.is_empty());
-        assert_eq!(documents[0].doc_type, DocumentType::Identity);
+        assert_eq!(documents[0].doc_type, DocumentType::IDENTITY);
         assert_eq!(documents[0].date, today());
     }
 
@@ -2171,7 +2251,7 @@ mod tests {
         let transactions = vec![txn(7, today(), -500, None)];
         let mut documents = vec![unfiled(1, facts(None, None, Some(500)))];
         let before = documents[0].clone();
-        let entry = accept(&mut documents, &transactions, 1, 7).unwrap();
+        let entry = accept(&types(), &mut documents, &transactions, 1, 7).unwrap();
         let focus = undo(
             &mut documents,
             FilingUndo {
@@ -2193,7 +2273,8 @@ mod tests {
         } = world();
         let before = documents.clone();
         assert_eq!(strong_count(&documents, &transactions, &payees), 2);
-        let record = accept_all_strong(&mut documents, &transactions, &payees, Some(42)).unwrap();
+        let record =
+            accept_all_strong(&types(), &mut documents, &transactions, &payees, Some(42)).unwrap();
         assert_eq!(record.entries.len(), 2);
         assert_eq!(inbox_count(&documents), 5);
         assert_eq!(strong_count(&documents, &transactions, &payees), 0);
@@ -2295,6 +2376,7 @@ mod tests {
     fn the_library_seed_has_the_sample_rows_with_three_needing_review() {
         let world = world();
         let rows = library_rows(
+            &types(),
             &world.documents,
             LibraryScope::All,
             "",
@@ -2302,11 +2384,11 @@ mod tests {
             today(),
         );
         assert!(rows.len() > 100, "filler gives the facets weight");
-        assert_eq!(need_review_count(&rows, today()), 3);
+        assert_eq!(need_review_count(&types(), &rows, today()), 3);
         assert_eq!(rows[0].title, "Amex Platinum statement — Sep 2026");
 
         let nrma = by_title(&world.documents, "NRMA home contents — PDS & schedule");
-        assert_eq!(nrma.band(today()), Some(KeyDateBand::NeedReview));
+        assert_eq!(nrma.band(&types(), today()), Some(KeyDateBand::NeedReview));
         assert!(nrma.key_date.unwrap().reminder);
         let passport = by_title(&world.documents, "Passport — scan");
         assert!(passport.links.is_empty());
@@ -2359,15 +2441,20 @@ mod tests {
     #[test]
     fn every_facet_has_documents() {
         let world = world();
-        for kind in DocumentType::ALL {
+        // The Default type (Other) is the catch-all, so it may legitimately be empty.
+        for kind in types()
+            .iter()
+            .filter(|row| !row.is_default)
+            .map(|row| DocumentType(row.id))
+        {
             assert!(
-                scope_count(&world.documents, LibraryScope::Type(kind)) > 0,
+                scope_count(&types(), &world.documents, LibraryScope::Type(kind)) > 0,
                 "{kind:?}"
             );
         }
         for facet in year_facets(today()) {
             assert!(
-                scope_count(&world.documents, LibraryScope::Year(facet)) > 0,
+                scope_count(&types(), &world.documents, LibraryScope::Year(facet)) > 0,
                 "{facet:?}"
             );
         }
@@ -2377,7 +2464,7 @@ mod tests {
         NewDocument {
             path: PathBuf::from(path),
             title: title.to_string(),
-            doc_type: DocumentType::Insurance,
+            doc_type: DocumentType::INSURANCE,
             date: today(),
             key_date: None,
         }
@@ -2423,6 +2510,7 @@ mod tests {
     fn import_makes_an_unfiled_document_readable_only_from_the_catalogue() {
         let mut documents = Vec::new();
         let readable = import_path(
+            &types(),
             &mut documents,
             PathBuf::from("/tmp/Coles-Receipt.jpg"),
             today(),
@@ -2430,6 +2518,7 @@ mod tests {
         )
         .unwrap();
         let unreadable = import_path(
+            &types(),
             &mut documents,
             PathBuf::from("/tmp/scan0001.pdf"),
             today(),
@@ -2456,6 +2545,7 @@ mod tests {
         add_filed(&mut documents, new_document("/tmp/a.pdf", "A")).unwrap();
         assert_eq!(
             import_path(
+                &types(),
                 &mut documents,
                 PathBuf::from("/tmp/a.pdf"),
                 today(),
@@ -2478,14 +2568,14 @@ mod tests {
             &mut world.documents,
             id,
             "Renamed",
-            DocumentType::Tax,
+            DocumentType::TAX,
             date(2019, 8, 1),
             Some(key),
         )
         .unwrap();
         let edited = get(&world.documents, id).unwrap();
         assert_eq!(edited.title, "Renamed");
-        assert_eq!(edited.doc_type, DocumentType::Tax);
+        assert_eq!(edited.doc_type, DocumentType::TAX);
         assert_eq!(edited.financial_year(), 2019);
         assert_eq!(edited.key_date, Some(key));
         assert_eq!(
@@ -2493,7 +2583,7 @@ mod tests {
                 &mut world.documents,
                 id,
                 " ",
-                DocumentType::Tax,
+                DocumentType::TAX,
                 today(),
                 None
             ),
@@ -2504,7 +2594,7 @@ mod tests {
                 &mut world.documents,
                 9_999,
                 "X",
-                DocumentType::Tax,
+                DocumentType::TAX,
                 today(),
                 None
             ),
@@ -2526,8 +2616,8 @@ mod tests {
 
     #[test]
     fn the_rail_runs_inbox_all_types_then_years() {
-        let entries = rail_entries(today());
-        assert_eq!(entries.len(), 2 + DocumentType::ALL.len() + 3);
+        let entries = rail_entries(&types(), today());
+        assert_eq!(entries.len(), 2 + types().len() + 3);
         assert_eq!(entries[0], RailEntry::Inbox);
         assert_eq!(entries[1], RailEntry::Scope(LibraryScope::All));
         assert_eq!(
@@ -2568,5 +2658,112 @@ mod tests {
         );
         assert!(resolve_path("docs/a.pdf").is_absolute());
         assert_eq!(default_title(Path::new("/tmp/rates-q1.pdf")), "rates-q1");
+    }
+
+    fn set_type(
+        types: &mut [DocumentTypeRow],
+        kind: DocumentType,
+        change: impl FnOnce(&mut DocumentTypeRow),
+    ) {
+        if let Some(row) = types.iter_mut().find(|row| row.id == kind.0) {
+            change(row);
+        }
+    }
+
+    #[test]
+    fn the_rail_lists_types_in_settings_order() {
+        let mut types = types();
+        document_types::move_by(&mut types, DocumentType::BILLS.0, -7);
+        let listed: Vec<_> = rail_entries(&types, today())
+            .into_iter()
+            .filter_map(|entry| match entry {
+                RailEntry::Scope(LibraryScope::Type(kind)) => Some(kind),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(listed.first(), Some(&DocumentType::BILLS));
+        assert_eq!(listed.len(), types.len());
+    }
+
+    #[test]
+    fn a_saved_scope_on_a_removed_type_falls_back_to_all() {
+        let mut types = types();
+        let scope = LibraryScope::Type(DocumentType::BILLS);
+        assert_eq!(LibraryScope::from_id(&scope.id(), &types, today()), scope);
+        types.retain(|row| row.id != DocumentType::BILLS.0);
+        assert_eq!(
+            LibraryScope::from_id(&scope.id(), &types, today()),
+            LibraryScope::All
+        );
+    }
+
+    #[test]
+    fn the_financial_year_flag_gates_the_year_match() {
+        let mut types = types();
+        let document = filed(1, DocumentType::TAX, date(2026, 6, 30));
+        let facet = YearFacet::Year(document.financial_year());
+        assert!(facet.contains(&document, &types));
+        set_type(&mut types, DocumentType::TAX, |row| {
+            row.financial_year = false;
+        });
+        assert!(!facet.contains(&document, &types));
+        // The derived year itself is unchanged: only the match is gated.
+        assert_eq!(document.financial_year(), facet_start(facet));
+    }
+
+    fn facet_start(facet: YearFacet) -> i32 {
+        match facet {
+            YearFacet::Year(start) | YearFacet::Before(start) => start,
+        }
+    }
+
+    #[test]
+    fn the_key_date_kind_follows_the_type_and_goes_inert_when_it_tracks_nothing() {
+        let mut types = types();
+        let mut document = filed(1, DocumentType::INSURANCE, today());
+        document.key_date = Some(KeyDate {
+            kind: KeyDateKind::Revalue,
+            date: today() + Duration::days(10),
+            reminder: false,
+        });
+        let key = document.effective_key_date(&types).expect("tracks a date");
+        assert_eq!(key.kind, KeyDateKind::Renews);
+        assert!(key.reminder, "Insurance has a Remind lead time");
+
+        set_type(&mut types, DocumentType::INSURANCE, |row| {
+            row.tracks_date = Some(TracksDate::Expires);
+            row.remind = None;
+        });
+        let key = document.effective_key_date(&types).expect("still tracked");
+        assert_eq!((key.kind, key.reminder), (KeyDateKind::Expires, false));
+
+        set_type(&mut types, DocumentType::INSURANCE, |row| {
+            row.tracks_date = None;
+        });
+        assert_eq!(document.effective_key_date(&types), None);
+        assert!(document.key_date.is_some(), "the date is kept, just inert");
+        assert!(!document.needs_review(&types, today()));
+    }
+
+    #[test]
+    fn an_extracted_type_is_matched_by_name_and_absent_without_a_match() {
+        let mut types = types();
+        let facts = catalogue_facts(&types, Path::new("/tmp/Coles-Receipt.jpg"), today())
+            .expect("in the catalogue");
+        assert_eq!(facts.doc_type, Some(DocumentType::RECEIPTS));
+        set_type(&mut types, DocumentType::RECEIPTS, |row| {
+            row.name = "Dockets".to_string();
+        });
+        let facts = catalogue_facts(&types, Path::new("/tmp/Coles-Receipt.jpg"), today())
+            .expect("in the catalogue");
+        assert_eq!(facts.doc_type, None);
+    }
+
+    #[test]
+    fn a_missing_type_reads_as_the_default() {
+        let mut types = types();
+        types.retain(|row| row.id != DocumentType::TAX.0);
+        assert_eq!(DocumentType::TAX.or_fallback(&types), DocumentType::OTHER);
+        assert_eq!(DocumentType::BILLS.or_fallback(&types), DocumentType::BILLS);
     }
 }

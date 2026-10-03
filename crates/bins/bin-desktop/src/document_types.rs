@@ -2,8 +2,8 @@
 //! them: in the user's order, each with its Tracks date, Remind lead time and Financial year flag.
 //! `gpui`-free and side-effect free, so every rule is unit-tested without a window.
 //!
-//! The Documents surface still reads the fixed `documents::DocumentType` enum; rewiring it to this
-//! list is a later ticket (#482), which is why the types here carry their own stable `id`.
+//! The Documents surface reads this list through `documents::DocumentType`, which is just a row's
+//! stable `id`, so a rename or a reorder never touches a Document.
 
 use crate::select::SelectState;
 
@@ -100,6 +100,29 @@ pub fn default_types() -> Vec<DocumentTypeRow> {
         other.is_default = true;
     }
     types
+}
+
+/// The row with `id`.
+pub fn get(types: &[DocumentTypeRow], id: u32) -> Option<&DocumentTypeRow> {
+    types.iter().find(|row| row.id == id)
+}
+
+/// The id a Document falls back to when its type is missing or none was read: the Default type
+/// (Other), else the first in order.
+pub fn fallback_id(types: &[DocumentTypeRow]) -> u32 {
+    types
+        .iter()
+        .find(|row| row.is_default)
+        .or_else(|| types.first())
+        .map_or(0, |row| row.id)
+}
+
+/// The id of the type named `name`, ignoring case: how an Inbox file's extracted type is matched.
+pub fn id_by_name(types: &[DocumentTypeRow], name: &str) -> Option<u32> {
+    types
+        .iter()
+        .find(|row| row.name.to_lowercase() == name.to_lowercase())
+        .map(|row| row.id)
 }
 
 /// Filed Documents across every type.

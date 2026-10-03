@@ -11,6 +11,7 @@ use crate::{
     document_types::{
         self, DocumentTypeForm, DocumentTypesDialog, FormField, RemindLead, TracksDate,
     },
+    documents,
     nav::InputMode,
     view::settings::document_type_dialogs as view,
 };
@@ -167,10 +168,30 @@ impl Shell {
             DocumentTypesDialog::Remove(id, select) => {
                 // Keep the cursor on the neighbour that takes the removed row's place.
                 let position = document_types::position(&self.document_types, id).unwrap_or(0);
+                let destination = select
+                    .value()
+                    .and_then(|name| document_types::id_by_name(&self.document_types, name))
+                    .filter(|destination| *destination != id);
                 if document_types::remove_type(&mut self.document_types, id, select.value())
                     .is_err()
                 {
                     return;
+                }
+                // The Documents surface follows the list: Filed files move with their type, to the
+                // chosen destination or else the Default, and a scope on the type falls back to All.
+                let moved_to = documents::DocumentType(
+                    destination
+                        .unwrap_or_else(|| document_types::fallback_id(&self.document_types)),
+                );
+                for document in &mut self.documents {
+                    if document.doc_type == documents::DocumentType(id) {
+                        document.doc_type = moved_to;
+                    }
+                }
+                if self.documents_scope
+                    == documents::LibraryScope::Type(documents::DocumentType(id))
+                {
+                    self.documents_scope = documents::LibraryScope::All;
                 }
                 self.settings_documents_selected = self
                     .document_types

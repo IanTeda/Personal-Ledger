@@ -18,6 +18,7 @@ use lib_locale::format::format_date_input;
 
 use crate::{
     accounts::SelectKey,
+    document_types::{self, DocumentTypeRow},
     documents::{
         self, Document, DocumentType, FileKind, KeyDate, KeyDateKind, LibraryScope, NewDocument,
     },
@@ -50,25 +51,35 @@ impl DocumentField {
     ];
 }
 
-/// The selects' option labels: the eight Document Types (in [`DocumentType::ALL`] order) and the
-/// Key Date kinds, "None" first.
+/// The selects' option labels: the Ledger's Document Types (in Settings order) and the Key Date
+/// kinds, "None" first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentOptions {
     pub type_labels: Vec<String>,
+    /// The type behind each of `type_labels`.
+    pub type_ids: Vec<DocumentType>,
+    /// The Default type, which a form falls back to when it has no type of its own.
+    pub fallback: DocumentType,
     pub key_labels: Vec<String>,
 }
 
 impl DocumentOptions {
-    pub fn new(
-        type_label: fn(DocumentType) -> String,
-        key_label: fn(Option<KeyDateKind>) -> String,
-    ) -> Self {
+    pub fn new(types: &[DocumentTypeRow], key_label: fn(Option<KeyDateKind>) -> String) -> Self {
         Self {
-            type_labels: DocumentType::ALL.into_iter().map(type_label).collect(),
+            type_labels: types.iter().map(|row| row.name.clone()).collect(),
+            type_ids: types.iter().map(|row| DocumentType(row.id)).collect(),
+            fallback: DocumentType(document_types::fallback_id(types)),
             key_labels: std::iter::once(key_label(None))
                 .chain(KEY_KINDS.into_iter().map(|kind| key_label(Some(kind))))
                 .collect(),
         }
+    }
+
+    fn type_position(&self, kind: DocumentType) -> usize {
+        self.type_ids
+            .iter()
+            .position(|candidate| *candidate == kind)
+            .unwrap_or(0)
     }
 
     fn type_index(&self, label: Option<&str>) -> usize {
@@ -148,14 +159,19 @@ impl DocumentForm {
     ) -> Self {
         let doc_type = match scope {
             LibraryScope::Type(kind) => kind,
-            _ => DocumentType::Receipt,
+            _ => options.fallback,
         };
         let date = documents::date_for_scope(scope, today);
         Self {
             path: String::new(),
             title: String::new(),
             title_typed: false,
-            doc_type: SelectState::new(options.type_labels.get(type_position(doc_type)).cloned()),
+            doc_type: SelectState::new(
+                options
+                    .type_labels
+                    .get(options.type_position(doc_type))
+                    .cloned(),
+            ),
             date: if date == today {
                 lib_locale::msg::date_word_today()
             } else {
@@ -183,7 +199,7 @@ impl DocumentForm {
             doc_type: SelectState::new(
                 options
                     .type_labels
-                    .get(type_position(document.doc_type))
+                    .get(options.type_position(document.doc_type))
                     .cloned(),
             ),
             date: format_date_input(document.date, date_style),
@@ -203,10 +219,11 @@ impl DocumentForm {
     }
 
     pub fn doc_type(&self, options: &DocumentOptions) -> DocumentType {
-        DocumentType::ALL
+        options
+            .type_ids
             .get(options.type_index(self.doc_type.value()))
             .copied()
-            .unwrap_or(DocumentType::Receipt)
+            .unwrap_or(options.fallback)
     }
 
     pub fn key_kind(&self, options: &DocumentOptions) -> Option<KeyDateKind> {
@@ -463,13 +480,6 @@ impl DocumentForm {
     }
 }
 
-fn type_position(kind: DocumentType) -> usize {
-    DocumentType::ALL
-        .iter()
-        .position(|candidate| *candidate == kind)
-        .unwrap_or(0)
-}
-
 fn key_position(kind: KeyDateKind) -> usize {
     KEY_KINDS
         .iter()
@@ -542,12 +552,14 @@ impl ImportForm {
 /// Imports every typed path that exists into the Inbox, reporting what became of each. A path
 /// repeated in the same batch is refused as already present, since the first copy was added.
 pub fn import_all(
+    types: &[DocumentTypeRow],
     form: &ImportForm,
     library: &mut Vec<Document>,
     today: NaiveDate,
     exists: impl Fn(&Path) -> bool,
 ) -> Vec<ImportOutcome> {
     import_typed(
+        types,
         form.lines(),
         documents::Source::Import,
         library,
@@ -559,6 +571,7 @@ pub fn import_all(
 /// The same import for paths a drop delivered rather than typed, so a drop and `Import…` agree on
 /// what is refused and why.
 pub fn import_dropped(
+    types: &[DocumentTypeRow],
     paths: &[PathBuf],
     library: &mut Vec<Document>,
     today: NaiveDate,
@@ -566,6 +579,7 @@ pub fn import_dropped(
 ) -> Vec<ImportOutcome> {
     let typed: Vec<String> = paths.iter().map(|p| p.display().to_string()).collect();
     import_typed(
+        types,
         typed.iter().map(String::as_str),
         documents::Source::Dropped,
         library,
@@ -575,6 +589,7 @@ pub fn import_dropped(
 }
 
 fn import_typed<'a>(
+    types: &[DocumentTypeRow],
     lines: impl IntoIterator<Item = &'a str>,
     source: documents::Source,
     library: &mut Vec<Document>,
@@ -594,7 +609,7 @@ fn import_typed<'a>(
             if !exists(&path) {
                 return ImportOutcome::NotFound(typed.to_string());
             }
-            match documents::import_path(library, path, today, source) {
+            match documents::import_path(types, library, path, today, source) {
                 Ok(id) => ImportOutcome::Imported(id),
                 Err(documents::AddError::AlreadyInLibrary(title)) => ImportOutcome::Already(title),
                 Err(_) => ImportOutcome::Unsupported(typed.to_string()),
@@ -648,7 +663,7 @@ impl FactsForm {
         options: &DocumentOptions,
         date_style: Option<DateStyle>,
     ) -> Self {
-        let kind = facts.doc_type.unwrap_or(DocumentType::Receipt);
+        let kind = facts.doc_type.unwrap_or(options.fallback);
         Self {
             merchant: facts.merchant.clone().unwrap_or_default(),
             date: facts
@@ -660,7 +675,12 @@ impl FactsForm {
                 .as_ref()
                 .map(|total| total.0.abs().with_scale(2).to_string())
                 .unwrap_or_default(),
-            doc_type: SelectState::new(options.type_labels.get(type_position(kind)).cloned()),
+            doc_type: SelectState::new(
+                options
+                    .type_labels
+                    .get(options.type_position(kind))
+                    .cloned(),
+            ),
             focused: FactsField::Merchant,
         }
     }
@@ -780,10 +800,11 @@ impl FactsForm {
                 Some(parse_total(total)?)
             },
             doc_type: Some(
-                DocumentType::ALL
+                options
+                    .type_ids
                     .get(options.type_index(self.doc_type.value()))
                     .copied()
-                    .unwrap_or(DocumentType::Receipt),
+                    .unwrap_or(options.fallback),
             ),
         })
     }
@@ -813,10 +834,9 @@ mod tests {
     }
 
     fn options() -> DocumentOptions {
-        DocumentOptions::new(
-            |kind| format!("{kind:?}"),
-            |kind| kind.map_or("None".to_string(), |kind| format!("{kind:?}")),
-        )
+        DocumentOptions::new(&document_types::default_types(), |kind| {
+            kind.map_or("None".to_string(), |kind| format!("{kind:?}"))
+        })
     }
 
     fn form() -> DocumentForm {
@@ -843,11 +863,11 @@ mod tests {
         let options = options();
         let by_type = DocumentForm::new(
             &options,
-            LibraryScope::Type(DocumentType::Insurance),
+            LibraryScope::Type(DocumentType::INSURANCE),
             day(2026, 9, 12),
             None,
         );
-        assert_eq!(by_type.doc_type(&options), DocumentType::Insurance);
+        assert_eq!(by_type.doc_type(&options), DocumentType::INSURANCE);
 
         let by_year = DocumentForm::new(
             &options,
@@ -855,7 +875,7 @@ mod tests {
             day(2026, 9, 12),
             None,
         );
-        assert_eq!(by_year.doc_type(&options), DocumentType::Receipt);
+        assert_eq!(by_year.doc_type(&options), DocumentType::OTHER);
         assert_eq!(
             parse_date(&by_year.date, day(2026, 9, 12), None),
             Ok(Some(day(2025, 6, 30)))
@@ -931,7 +951,7 @@ mod tests {
             pages: 1,
             bytes: 0,
             title: "A".to_string(),
-            doc_type: DocumentType::Tax,
+            doc_type: DocumentType::TAX,
             date: day(2026, 1, 2),
             key_date: None,
             links: Vec::new(),
@@ -942,7 +962,7 @@ mod tests {
         let mut form = DocumentForm::for_edit(&document, &options, None);
         assert_eq!(form.focused, DocumentField::Title);
         assert!(!form.shows(DocumentField::Path, &options));
-        assert_eq!(form.doc_type(&options), DocumentType::Tax);
+        assert_eq!(form.doc_type(&options), DocumentType::TAX);
         form.cycle_focus(true, &options);
         // Back from Title wraps past the hidden Path and Key Date fields to the Key Date kind.
         assert_eq!(form.focused, DocumentField::KeyKind);
@@ -956,9 +976,13 @@ mod tests {
                 "/tmp/coles-receipt.jpg\n/tmp/none.pdf\n/tmp/readme.txt\n/tmp/coles-receipt.jpg\n"
                     .to_string(),
         };
-        let outcomes = import_all(&form, &mut library, day(2026, 9, 12), |path| {
-            !path.ends_with("none.pdf")
-        });
+        let outcomes = import_all(
+            &document_types::default_types(),
+            &form,
+            &mut library,
+            day(2026, 9, 12),
+            |path| !path.ends_with("none.pdf"),
+        );
         assert_eq!(
             outcomes,
             vec![
@@ -1001,7 +1025,13 @@ mod tests {
             PathBuf::from("/tmp/coles-receipt.jpg"),
             PathBuf::from("/tmp/x.txt"),
         ];
-        let outcomes = import_dropped(&paths, &mut library, day(2026, 9, 12), |_| true);
+        let outcomes = import_dropped(
+            &document_types::default_types(),
+            &paths,
+            &mut library,
+            day(2026, 9, 12),
+            |_| true,
+        );
         assert_eq!(
             outcomes,
             vec![
@@ -1020,7 +1050,7 @@ mod tests {
             merchant: Some("Woolworths Metro".to_string()),
             date: Some(day(2026, 9, 29)),
             total: parse_total("212.40"),
-            doc_type: Some(DocumentType::Receipt),
+            doc_type: Some(DocumentType::RECEIPTS),
         }
     }
 
@@ -1034,7 +1064,7 @@ mod tests {
             .expect("a form of read facts builds");
         assert_eq!(built.merchant, facts().merchant);
         assert_eq!(built.date, facts().date);
-        assert_eq!(built.doc_type, Some(DocumentType::Receipt));
+        assert_eq!(built.doc_type, Some(DocumentType::RECEIPTS));
         assert_eq!(
             built.total.map(|total| total.0.with_scale(2)),
             facts().total.map(|total| total.0.with_scale(2))

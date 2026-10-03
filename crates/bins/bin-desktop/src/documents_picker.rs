@@ -141,10 +141,12 @@ impl PickerState {
         };
     }
 
-    /// The Inbox's Document Type select: previous or next of the eight, from the first when none is
-    /// chosen yet.
-    pub fn step_type(&mut self, forward: bool) {
-        let all = DocumentType::ALL;
+    /// The Inbox's Document Type select: previous or next of `all` (Settings order), from the first
+    /// when none is chosen yet.
+    pub fn step_type(&mut self, all: &[DocumentType], forward: bool) {
+        if all.is_empty() {
+            return;
+        }
         let at = self
             .doc_type
             .and_then(|current| all.iter().position(|kind| *kind == current));
@@ -450,6 +452,7 @@ mod tests {
     use lib_core::DateStyle;
 
     struct World {
+        types: Vec<crate::document_types::DocumentTypeRow>,
         accounts: Vec<Account>,
         payees: Vec<Payee>,
         plans: Vec<BillPlan>,
@@ -476,6 +479,7 @@ mod tests {
             today,
         );
         World {
+            types: crate::document_types::default_types(),
             accounts,
             payees,
             plans: bills.plans,
@@ -488,6 +492,7 @@ mod tests {
     impl World {
         fn lookups(&self) -> Lookups<'_> {
             Lookups {
+                types: &self.types,
                 accounts: &self.accounts,
                 payees: &self.payees,
                 plans: &self.plans,
@@ -716,11 +721,15 @@ mod tests {
     fn the_type_select_starts_at_the_first_and_wraps() {
         let world = world();
         let mut state = state(&world, Purpose::File(1));
-        state.step_type(true);
-        assert_eq!(state.doc_type, Some(DocumentType::Receipt));
-        state.step_type(false);
-        assert_eq!(state.doc_type, Some(DocumentType::Bill));
-        state.step_type(true);
-        assert_eq!(state.doc_type, Some(DocumentType::Receipt));
+        let all: Vec<_> = crate::document_types::default_types()
+            .iter()
+            .map(|row| DocumentType(row.id))
+            .collect();
+        state.step_type(&all, true);
+        assert_eq!(state.doc_type, Some(DocumentType::RECEIPTS));
+        state.step_type(&all, false);
+        assert_eq!(state.doc_type, Some(DocumentType::OTHER));
+        state.step_type(&all, true);
+        assert_eq!(state.doc_type, Some(DocumentType::RECEIPTS));
     }
 }

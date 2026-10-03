@@ -43,10 +43,6 @@ pub enum FileAction {
     Reveal(std::path::PathBuf),
 }
 
-fn type_label_for_options(kind: documents::DocumentType) -> String {
-    view_model::type_label(kind)
-}
-
 fn key_label_for_options(kind: Option<KeyDateKind>) -> String {
     match kind {
         None => crate::msg::desktop_documents_key_none(),
@@ -212,6 +208,7 @@ impl Shell {
             accounts: &self.accounts,
             payees: &self.payees,
             plans: &self.bill_plans,
+            types: &self.document_types,
             inventory: &self.inventory,
             transactions: &self.transactions,
             today: self.today,
@@ -220,12 +217,13 @@ impl Shell {
     }
 
     fn documents_options(&self) -> DocumentOptions {
-        DocumentOptions::new(type_label_for_options, key_label_for_options)
+        DocumentOptions::new(&self.document_types, key_label_for_options)
     }
 
     /// The Library's rows under the current scope, search and sort.
     fn documents_library_rows(&self) -> Vec<&Document> {
         documents::library_rows(
+            &self.document_types,
             &self.documents,
             self.documents_scope,
             &self.documents_query,
@@ -304,11 +302,12 @@ impl Shell {
         let lookups = self.documents_lookups();
         let rows = self.documents_library_rows();
         let selected = self.documents_selected.min(rows.len().saturating_sub(1));
-        let total = documents::scope_count(&self.documents, LibraryScope::All);
+        let total =
+            documents::scope_count(&self.document_types, &self.documents, LibraryScope::All);
         let count_line = crate::msg::desktop_documents_count_line(
             &rows.len().to_string(),
             &total.to_string(),
-            &documents::need_review_count(&rows, self.today).to_string(),
+            &documents::need_review_count(&self.document_types, &rows, self.today).to_string(),
         );
         let detail = rows
             .get(selected)
@@ -391,7 +390,7 @@ impl Shell {
         DocumentsPageProps {
             mode: self.documents_mode,
             focus: self.documents_focus,
-            rail: view_model::rail_rows(&self.documents, self.today),
+            rail: view_model::rail_rows(&self.document_types, &self.documents, self.today),
             rail_selected: self.documents_rail_selected(),
             rail_footer: self.documents_stored_text(),
             subline: match self.documents_mode {
@@ -598,7 +597,7 @@ impl Shell {
     }
 
     fn apply_documents_rail_movement(&mut self, movement: Movement) {
-        let entries = documents::rail_entries(self.today);
+        let entries = documents::rail_entries(&self.document_types, self.today);
         let current = entries
             .iter()
             .position(|entry| *entry == self.documents_rail_selected())
@@ -895,7 +894,12 @@ impl Shell {
             "p" if modifiers.control => live.step(false, len),
             "tab" => live.cycle_kind(),
             "left" | "right" if matches!(live.purpose, Purpose::File(_)) => {
-                live.step_type(keystroke.key == "right");
+                let ids: Vec<_> = self
+                    .document_types
+                    .iter()
+                    .map(|row| documents::DocumentType(row.id))
+                    .collect();
+                live.step_type(&ids, keystroke.key == "right");
             }
             "backspace" => live.backspace(),
             _ => {
@@ -1108,9 +1112,13 @@ impl Shell {
     /// Files `id` under `transaction_id`, remembers it for `u` and moves focus to the next row.
     pub(super) fn documents_accept(&mut self, id: u32, transaction_id: u32) {
         let before = self.documents_before_filing(id);
-        let Ok(entry) =
-            documents::accept(&mut self.documents, &self.transactions, id, transaction_id)
-        else {
+        let Ok(entry) = documents::accept(
+            &self.document_types,
+            &mut self.documents,
+            &self.transactions,
+            id,
+            transaction_id,
+        ) else {
             return;
         };
         self.documents_after_filing(id, before, entry);
@@ -1228,6 +1236,7 @@ impl Shell {
             .documents_selected_document()
             .map(|document| document.id);
         let batch = documents::accept_all_strong(
+            &self.document_types,
             &mut self.documents,
             &self.transactions,
             &self.payees,
@@ -1567,7 +1576,10 @@ impl Shell {
             .documents
             .iter()
             .find(|document| document.id == id)
-            .is_some_and(|document| self.documents_scope.contains(document));
+            .is_some_and(|document| {
+                self.documents_scope
+                    .contains(document, &self.document_types)
+            });
         if !in_scope {
             self.documents_scope = LibraryScope::All;
         }
@@ -1594,6 +1606,7 @@ impl Shell {
         }
         let form = form.clone();
         let outcomes = crate::documents_form::import_all(
+            &self.document_types,
             &form,
             &mut self.documents,
             self.today,
@@ -1647,6 +1660,7 @@ impl Shell {
     /// where it is: the Toast and the rail badge say what arrived.
     pub fn drop_documents(&mut self, paths: &[std::path::PathBuf]) {
         let outcomes = crate::documents_form::import_dropped(
+            &self.document_types,
             paths,
             &mut self.documents,
             self.today,
@@ -1753,7 +1767,9 @@ impl Shell {
                     dialogs::PickerProps {
                         state,
                         rows: &rows,
-                        type_label: state.doc_type.map(view_model::type_label),
+                        type_label: state
+                            .doc_type
+                            .map(|kind| view_model::type_label(&self.document_types, kind)),
                         on_pick,
                     },
                     cx,

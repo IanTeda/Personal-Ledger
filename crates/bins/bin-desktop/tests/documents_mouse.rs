@@ -73,10 +73,10 @@ fn index_rail_facets_narrow_the_library(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     let all = ui.documents().library_rows;
 
-    ui.click("documents-rail-Scope(Type(Receipt))");
+    ui.click("documents-rail-Scope(Type(DocumentType(1)))");
 
     let page = ui.documents();
-    assert_eq!(page.scope, "type:receipts");
+    assert_eq!(page.scope, "type:1");
     assert_eq!(page.mode, "library");
     assert!(page.library_rows < all, "a type facet narrows the list");
 }
