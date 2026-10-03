@@ -78,3 +78,17 @@ fn other_reorders_but_x_on_it_removes_nothing_and_says_why(app: &mut TestAppCont
         Some("Other can't be removed")
     );
 }
+
+#[gpui::test]
+fn n_and_e_change_nothing_until_the_dialogs_exist(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+    ui.press("j j");
+
+    ui.press("n");
+    ui.press("e");
+
+    let page = ui.settings();
+    assert_eq!(page.document_type_names.len(), 9);
+    assert_eq!(page.selected_document_type.as_deref(), Some("Tax"));
+    assert!(page.page_focused);
+}

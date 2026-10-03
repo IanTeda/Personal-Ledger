@@ -41,8 +41,10 @@ fn the_remove_action_selects_its_row_and_other_has_none(app: &mut TestAppContext
 
     ui.click("settings-documents-remove-3");
     assert_eq!(ui.settings().selected_document_type.as_deref(), Some("Tax"));
-    // Other (id 9) is drawn with edit but no remove button.
-    ui.click("settings-documents-edit-9");
+    // Other (id 9) is drawn with edit but no remove button; a normal row has both.
+    assert!(ui.cx.debug_bounds("settings-documents-edit-9").is_some());
+    assert!(ui.cx.debug_bounds("settings-documents-remove-9").is_none());
+    assert!(ui.cx.debug_bounds("settings-documents-remove-3").is_some());
 }
 
 #[gpui::test]

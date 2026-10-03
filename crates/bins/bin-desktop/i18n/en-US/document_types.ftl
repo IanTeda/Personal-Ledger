@@ -7,6 +7,7 @@ desktop-document-types-count = { $count ->
     [one] { $count } type
    *[other] { $count } types
 }
+desktop-document-types-scope = { $types } · { $files }
 desktop-document-types-files-typed = { $typed } of { $all } files typed
 
 ## The kicker, Add button and column headings. `$glyph` is the Add button's leading plus sign.
@@ -32,6 +33,7 @@ desktop-document-types-remind-months = { $count ->
     [one] { $count } month before
    *[other] { $count } months before
 }
+desktop-document-types-none = —
 desktop-document-types-yes = Yes
 desktop-document-types-no = No
 desktop-document-types-flag-default = default

@@ -36,13 +36,12 @@ fn count(len: usize) -> i64 {
 
 /// The heading's meta as plain text, for the status line: `9 types · 392 of 412 files typed`.
 pub fn scope_text(types: &[DocumentTypeRow]) -> String {
-    format!(
-        "{} \u{b7} {}",
-        crate::msg::desktop_document_types_count(count(types.len())),
-        crate::msg::desktop_document_types_files_typed(
+    crate::msg::desktop_document_types_scope(
+        &crate::msg::desktop_document_types_count(count(types.len())),
+        &crate::msg::desktop_document_types_files_typed(
             &document_types::typed_files(types).to_string(),
             &document_types::all_files(types).to_string(),
-        )
+        ),
     )
 }
 
@@ -240,7 +239,9 @@ fn row(
         let cell = div().w(px(width)).flex_none();
         match text {
             Some(text) => cell.child(text),
-            None => cell.text_color(placeholder).child("\u{2014}"),
+            None => cell
+                .text_color(placeholder)
+                .child(crate::msg::desktop_document_types_none()),
         }
     };
     let yes_no = if row_type.financial_year {
@@ -380,6 +381,13 @@ mod tests {
             scope_text(&document_types::default_types()),
             "9 types \u{b7} 392 of 412 files typed"
         );
+    }
+
+    #[test]
+    fn a_single_type_reads_singular() {
+        crate::locale::init_for_tests();
+        let one = &document_types::default_types()[..1];
+        assert!(scope_text(one).starts_with("1 type \u{b7} "));
     }
 
     #[test]
