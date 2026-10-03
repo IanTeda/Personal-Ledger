@@ -25,6 +25,7 @@ desktop-document-types-column-files = Files
 desktop-document-types-tracks-renews = Renews
 desktop-document-types-tracks-ends = Ends
 desktop-document-types-tracks-expires = Expires
+desktop-document-types-tracks-revalue = Revalue
 desktop-document-types-remind-days = { $count ->
     [one] { $count } day before
    *[other] { $count } days before
@@ -51,3 +52,54 @@ desktop-document-types-note-default = <strong>Other</strong> is the fallback typ
 
 desktop-hint-reorder = reorder
 desktop-document-types-hint-default-kept = Other can't be removed
+
+## The Add, Edit and Remove Document type dialogs (#478). `$files` is a count of Filed files.
+
+desktop-document-types-dialog-add-title = Add Document type
+desktop-document-types-dialog-edit-title = Edit Document type
+desktop-document-types-dialog-remove-title = Remove Document type
+desktop-document-types-dialog-default-title = Other can't be removed
+desktop-document-types-dialog-add-submit = Add type
+desktop-document-types-dialog-save = Save
+desktop-document-types-dialog-close = Close
+
+desktop-document-types-field-name = Name
+desktop-document-types-field-name-placeholder = e.g. Leases
+desktop-document-types-field-name-hint = Up to 40 characters, and different from every other type.
+desktop-document-types-field-tracks-date = Tracks date
+desktop-document-types-field-tracks-date-hint = The kind of Key Date every document of this type carries.
+desktop-document-types-field-remind = Remind
+desktop-document-types-field-remind-hint = How long before the Key Date to raise a reminder. Needs a Tracks date.
+desktop-document-types-field-financial-year = Financial year
+desktop-document-types-field-financial-year-hint = Lets the type be filtered and shown by financial year.
+
+desktop-document-types-option-none = None
+desktop-document-types-option-days = { $count } d
+desktop-document-types-option-months = { $count } mo
+
+desktop-document-types-error-name-empty = A name is required.
+desktop-document-types-error-name-too-long = Names are at most { $max } characters.
+desktop-document-types-error-name-taken = Another type already has that name.
+
+desktop-document-types-edit-usage = { $files ->
+    [one] Used by { $files } Filed file.
+   *[other] Used by { $files } Filed files.
+} { $dated ->
+    [one] { $dated } file has a date.
+   *[other] { $dated } files have dates.
+} Changing the kind relabels them; clearing it makes the dates inert.
+
+desktop-document-types-remove-with-files = { $name } has { $files ->
+    [one] { $files } Filed file.
+   *[other] { $files } Filed files.
+} Move them to:
+desktop-document-types-remove-destination = Destination
+desktop-document-types-remove-moved-note = Moved files keep their dates, which go hidden and inert if the destination tracks no date.
+desktop-document-types-remove-confirm-move = { $files ->
+    [one] Move { $files } file and remove
+   *[other] Move { $files } files and remove
+}
+desktop-document-types-remove-no-files = No Filed files use { $name }, so nothing moves.
+desktop-document-types-remove-confirm = Remove type
+
+desktop-document-types-default-notice = Other is the default type: the fallback for documents with no type and the pre-selected destination when another type is removed. You can still rename and reorder it.

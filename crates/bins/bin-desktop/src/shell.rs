@@ -21,6 +21,7 @@
 
 mod bills_ui;
 mod budgets_ui;
+mod document_types_ui;
 mod documents_ui;
 mod overlays_ui;
 mod settings_ui;
@@ -72,7 +73,7 @@ use crate::{
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
-    document_types::{self, DocumentTypeRow},
+    document_types::{self, DocumentTypeRow, DocumentTypesDialog},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     documents_form::DocumentsDialog,
     explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
@@ -683,6 +684,8 @@ pub struct Shell {
     /// The Ledger's Document Types in the user's order (mock data until persistence lands).
     document_types: Vec<DocumentTypeRow>,
     settings_documents_selected: Option<u32>,
+    /// The open Add, Edit or Remove Document type dialog; `InputMode::Dialog` for as long as it is.
+    document_types_dialog: Option<DocumentTypesDialog>,
     /// The currently open Payees dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
     /// exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
     payees_dialog: Option<payees::PayeesDialog>,
@@ -860,6 +863,7 @@ impl Shell {
             settings_payees_selected: None,
             document_types: document_types::default_types(),
             settings_documents_selected: None,
+            document_types_dialog: None,
             payees_dialog: None,
             import: None,
             tags,
@@ -1193,6 +1197,9 @@ impl Shell {
                 {
                     return true;
                 }
+                if self.close_open_document_type_select() {
+                    return true;
+                }
                 if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut()
                     && form.close_open_select()
                 {
@@ -1256,6 +1263,7 @@ impl Shell {
                 self.accounts_dialog = None;
                 self.categories_dialog = None;
                 self.payees_dialog = None;
+                self.document_types_dialog = None;
                 self.tags_dialog = None;
                 self.bills_dialog = None;
                 self.budgets_dialog = None;
@@ -1916,6 +1924,9 @@ impl Shell {
         if self.payees_dialog.is_some() {
             return self.handle_payees_dialog_key(keystroke);
         }
+        if self.document_types_dialog.is_some() {
+            return self.handle_document_types_dialog_key(keystroke);
+        }
         if self.tags_dialog.is_some() {
             return self.handle_tags_dialog_key(keystroke);
         }
@@ -2496,8 +2507,7 @@ impl Shell {
         true
     }
 
-    /// The Documents page's own `n`/`e`/`x`. Add, Edit and Remove open their dialogs once those
-    /// exist (#481); `x` on Other only says why it does nothing.
+    /// The Documents page's own `n`/`e`/`x`, which open the Add, Edit and Remove dialogs.
     fn handle_settings_documents_key(&mut self, keystroke: &Keystroke) -> bool {
         if !self.settings_documents_page_has_focus() {
             return false;
@@ -2508,7 +2518,12 @@ impl Shell {
         }
         match (keystroke.key.as_str(), modifiers.shift) {
             ("x", false) => self.remove_selected_document_type(),
-            ("n" | "e", false) => {}
+            ("n", false) => self.open_add_document_type_dialog(),
+            ("e", false) => {
+                if let Some(id) = self.settings_documents_selected_id() {
+                    self.open_edit_document_type_dialog(id);
+                }
+            }
             _ => return false,
         }
         true
@@ -2521,16 +2536,19 @@ impl Shell {
         }
     }
 
-    /// The Remove action: Other, the Default, is never removed, and says so on the status line.
+    /// The Remove action. Other, the Default, is never removed: it gets a notice dialog and says
+    /// so on the status line.
     fn remove_selected_document_type(&mut self) {
-        let is_default = self
-            .settings_documents_selected_id()
-            .and_then(|id| document_types::position(&self.document_types, id))
+        let Some(id) = self.settings_documents_selected_id() else {
+            return;
+        };
+        let is_default = document_types::position(&self.document_types, id)
             .and_then(|position| self.document_types.get(position))
             .is_some_and(|row| row.is_default);
         if is_default {
             self.status_message = Some(crate::msg::desktop_document_types_hint_default_kept());
         }
+        self.open_remove_document_type_dialog(id);
     }
 
     /// Whether Settings' Categories tree owns the keyboard: the page, not the index, has focus.
@@ -6994,23 +7012,26 @@ impl Shell {
         cx.notify();
     }
 
-    /// **edit** on a Documents row: selects it; the Edit dialog arrives with #481.
+    /// **edit** on a Documents row: selects it and opens the Edit dialog.
     fn handle_settings_documents_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.settings_documents_selected = Some(id);
         self.focus_settings_page();
+        self.open_edit_document_type_dialog(id);
         cx.notify();
     }
 
-    /// **remove** on a Documents row: selects it; the Remove dialog arrives with #481.
+    /// **remove** on a Documents row: selects it and opens the Remove dialog.
     fn handle_settings_documents_remove_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.settings_documents_selected = Some(id);
         self.focus_settings_page();
+        self.open_remove_document_type_dialog(id);
         cx.notify();
     }
 
-    /// **+ Add document type**: the Add dialog arrives with #481.
+    /// **+ Add document type**: opens the Add dialog.
     fn handle_settings_documents_add_click(&mut self, cx: &mut Context<'_, Self>) {
         self.focus_settings_page();
+        self.open_add_document_type_dialog();
         cx.notify();
     }
 
@@ -9499,7 +9520,10 @@ impl Render for Shell {
                 right: settings_view::payees::scope_text(&self.payees),
             }),
             Noun::Settings if self.settings_documents_page_has_focus() => Some(PageStatus {
-                hints: settings_documents_hints(),
+                hints: self
+                    .document_types_dialog
+                    .as_ref()
+                    .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
                 right: settings_view::documents::scope_text(&self.document_types),
             }),
             Noun::Settings if self.settings_categories_page_has_focus() => Some(PageStatus {
@@ -9907,6 +9931,7 @@ impl Render for Shell {
                 }
                 None => None,
             })
+            .children(self.render_document_types_dialog(&entity, cx))
             .children(match self.tags_dialog.as_ref() {
                 Some(tags::TagsDialog::Add(form)) => Some(tags_view::add_dialog::render(
                     form,

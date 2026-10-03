@@ -138,6 +138,7 @@ pub(super) fn text_field(
     div().child(field_label(label)).child(
         div()
             .id(id)
+            .debug_selector(move || id.to_string())
             .cursor_pointer()
             .w_full()
             .py(px(8.0))

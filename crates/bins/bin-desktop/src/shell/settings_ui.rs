@@ -5,6 +5,7 @@ use super::Shell;
 use crate::{
     accounts::{self, AccountsDialog},
     categories::CategoriesDialog,
+    document_types::DocumentTypesDialog,
     payees::{self, PayeesDialog},
     settings::{SettingsDialog, SettingsFocus},
     tags::{self, TagsDialog},
@@ -30,6 +31,10 @@ pub struct SettingsSnapshot {
     /// Document type names in the user's order, and the selected row's name.
     pub document_type_names: Vec<String>,
     pub selected_document_type: Option<String>,
+    /// Filed files per type in the same order, and the open dialog (`add`, `edit`, `remove` or
+    /// `notice`).
+    pub document_type_files: Vec<u32>,
+    pub document_type_dialog: Option<String>,
     /// Tag names A-Z, and the selected row's name.
     pub tag_names: Vec<String>,
     pub selected_tag: Option<String>,
@@ -215,6 +220,16 @@ impl Shell {
                 .map(|row| row.name.clone())
                 .collect(),
             selected_document_type,
+            document_type_files: self.document_types.iter().map(|row| row.files).collect(),
+            document_type_dialog: self.document_types_dialog.as_ref().map(|dialog| {
+                match dialog {
+                    DocumentTypesDialog::Add(_) => "add",
+                    DocumentTypesDialog::Edit(..) => "edit",
+                    DocumentTypesDialog::Remove(..) => "remove",
+                    DocumentTypesDialog::DefaultNotice => "notice",
+                }
+                .to_string()
+            }),
             tag_names: tags::sorted_by_name(&self.tags)
                 .into_iter()
                 .map(|tag| tag.name.clone())

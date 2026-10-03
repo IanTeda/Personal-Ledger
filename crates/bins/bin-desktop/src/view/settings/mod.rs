@@ -12,6 +12,7 @@ pub mod colour_theme;
 pub mod data_backup;
 pub mod delete_unit_dialog;
 pub mod display;
+pub mod document_type_dialogs;
 pub mod documents;
 pub mod edit_unit_dialog;
 mod general;
