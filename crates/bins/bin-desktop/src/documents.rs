@@ -28,6 +28,7 @@ use crate::{
     bills::BillPlan,
     categories::{self, Category},
     document_types::{self, DocumentTypeRow, TracksDate},
+    inventory::Inventory,
     payees::{self, Payee},
     transactions::{Split, Transaction},
 };
@@ -142,14 +143,6 @@ pub enum DocumentLink {
     Account(u32),
     Payee(u32),
     BillPlan(u32),
-}
-
-/// A physical possession a Document can prove ownership of. Stub names only until the Inventory
-/// surface exists.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InventoryItem {
-    pub id: u32,
-    pub name: String,
 }
 
 /// The file format, for the glyph's extension label.
@@ -1209,30 +1202,24 @@ pub fn date_for_scope(scope: LibraryScope, today: NaiveDate) -> NaiveDate {
 // Seed
 // ---------------------------------------------------------------------------------------------
 
-/// The stub Documents and the Inventory Items they link to.
+/// The stub Documents. Their Inventory Links name Items the Inventory seeds.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentsSeed {
     pub documents: Vec<Document>,
-    pub inventory: Vec<InventoryItem>,
 }
 
-/// The stub Inventory Items, until the Inventory surface seeds its own.
-pub fn default_inventory() -> Vec<InventoryItem> {
-    [
-        "12 Elm St contents",
-        "Sony A7 IV",
-        "Fridge",
-        "Engagement ring",
-        "Sonos Era 100",
-        "Toyota Corolla",
-    ]
-    .into_iter()
-    .zip(1..)
-    .map(|(name, id)| InventoryItem {
-        id,
-        name: name.to_string(),
-    })
-    .collect()
+/// Drops every Link to the given Items, as removing a Property does. The Documents themselves
+/// stay, whatever Links they have left; returns how many lost a Link.
+pub fn drop_inventory_links(documents: &mut [Document], removed_items: &[u32]) -> usize {
+    let mut affected = 0;
+    for document in documents {
+        let before = document.links.len();
+        document.links.retain(
+            |link| !matches!(link, DocumentLink::InventoryItem(id) if removed_items.contains(id)),
+        );
+        affected += usize::from(document.links.len() != before);
+    }
+    affected
 }
 
 fn cents_money(cents: i64) -> Money {
@@ -1257,7 +1244,7 @@ struct Lookup<'a> {
     categories: &'a [Category],
     payees: &'a [Payee],
     plans: &'a [BillPlan],
-    inventory: &'a [InventoryItem],
+    inventory: &'a Inventory,
 }
 
 impl Lookup<'_> {
@@ -1274,7 +1261,11 @@ impl Lookup<'_> {
     }
 
     fn item(&self, name: &str) -> Option<u32> {
-        self.inventory.iter().find(|i| i.name == name).map(|i| i.id)
+        self.inventory
+            .items
+            .iter()
+            .find(|i| i.name == name)
+            .map(|i| i.id)
     }
 
     /// A one-Split Transaction, or `None` when the stubs lack the Account or Category.
@@ -1424,16 +1415,16 @@ pub fn default_documents(
     categories: &[Category],
     payees: &[Payee],
     plans: &[BillPlan],
+    inventory: &Inventory,
     transactions: &mut Vec<Transaction>,
     today: NaiveDate,
 ) -> DocumentsSeed {
-    let inventory = default_inventory();
     let lookup = Lookup {
         accounts,
         categories,
         payees,
         plans,
-        inventory: &inventory,
+        inventory,
     };
     let day = |offset: i64| today + Duration::days(offset);
     let mut add = |transaction: Option<Transaction>| {
@@ -1514,7 +1505,8 @@ pub fn default_documents(
         )
         .size(24, 1_400_000)
         .key(Renews, day(45), true)
-        .link(item("12 Elm St contents"))
+        .link(item("Fridge"))
+        .link(item("Sony A7 IV"))
         .text("NRMA Insurance home contents product disclosure statement and schedule"),
         Draft::filed(
             "aami-car-policy.pdf",
@@ -1689,10 +1681,7 @@ pub fn default_documents(
         .zip(1..)
         .map(|(draft, id)| draft.build(id))
         .collect();
-    DocumentsSeed {
-        documents,
-        inventory,
-    }
+    DocumentsSeed { documents }
 }
 
 /// How many monthly statements each banking Account gets.
@@ -1783,7 +1772,7 @@ mod tests {
         payees: Vec<Payee>,
         transactions: Vec<Transaction>,
         documents: Vec<Document>,
-        inventory: Vec<InventoryItem>,
+        inventory: Inventory,
     }
 
     /// Seeded as the app does: Transactions, then Bills' payments, then Documents' purchases.
@@ -1798,11 +1787,13 @@ mod tests {
         let tags = default_tags();
         let mut transactions = default_transactions(&accounts, &categories, &payees, &tags, today);
         let bills = default_bills(&accounts, &categories, &payees, &mut transactions, today);
+        let inventory = crate::inventory::default_inventory(today);
         let seed = default_documents(
             &accounts,
             &categories,
             &payees,
             &bills.plans,
+            &inventory,
             &mut transactions,
             today,
         );
@@ -1810,7 +1801,50 @@ mod tests {
             payees,
             transactions,
             documents: seed.documents,
-            inventory: seed.inventory,
+            inventory,
+        }
+    }
+
+    #[test]
+    fn dropping_inventory_links_keeps_the_documents() {
+        let mut world = world();
+        let fridge = world
+            .inventory
+            .items
+            .iter()
+            .find(|i| i.name == "Fridge")
+            .unwrap()
+            .id;
+        let count = world.documents.len();
+        let had = |docs: &[Document]| {
+            docs.iter()
+                .filter(|d| d.links.contains(&DocumentLink::InventoryItem(fridge)))
+                .count()
+        };
+        let linked = had(&world.documents);
+        assert!(linked > 0, "the seed links a Document to the Fridge");
+        assert_eq!(
+            drop_inventory_links(&mut world.documents, &[fridge]),
+            linked
+        );
+        assert_eq!(had(&world.documents), 0);
+        assert_eq!(world.documents.len(), count, "no Document is removed");
+        assert_eq!(drop_inventory_links(&mut world.documents, &[fridge]), 0);
+    }
+
+    #[test]
+    fn removing_a_property_drops_only_its_items_links() {
+        let mut world = world();
+        let elm = world.inventory.properties[0].id;
+        let removed = crate::inventory::remove_property(&mut world.inventory, elm).unwrap();
+        let lost = drop_inventory_links(&mut world.documents, &removed.items);
+        assert!(lost > 0);
+        for document in &world.documents {
+            for link in &document.links {
+                if let DocumentLink::InventoryItem(id) = link {
+                    assert!(world.inventory.item(*id).is_some(), "no dangling Item Link");
+                }
+            }
         }
     }
 
@@ -2414,7 +2448,7 @@ mod tests {
             for link in &document.links {
                 let resolves = match *link {
                     DocumentLink::Transaction(id) => world.transactions.iter().any(|t| t.id == id),
-                    DocumentLink::InventoryItem(id) => world.inventory.iter().any(|i| i.id == id),
+                    DocumentLink::InventoryItem(id) => world.inventory.item(id).is_some(),
                     DocumentLink::Payee(id) => payees::get(&world.payees, id).is_some(),
                     DocumentLink::Account(id) => default_accounts().iter().any(|a| a.id == id),
                     DocumentLink::BillPlan(_) => true,

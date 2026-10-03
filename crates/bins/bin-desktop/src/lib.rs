@@ -29,6 +29,7 @@ mod format;
 mod help;
 mod icon;
 mod import;
+mod inventory;
 #[doc(hidden)]
 pub mod key_router;
 mod limit_form;

@@ -285,7 +285,7 @@ pub fn rows(state: &PickerState, sources: &Sources<'_>) -> Vec<PickerRow> {
             push(&mut out, link, false);
         }
     }
-    let mut items: Vec<_> = lookups.inventory.iter().collect();
+    let mut items: Vec<_> = lookups.inventory.items.iter().collect();
     items.sort_by_key(|item| item.name.to_lowercase());
     for item in items {
         let link = DocumentLink::InventoryItem(item.id);
@@ -370,7 +370,7 @@ fn describe(
             Some((crate::msg::desktop_documents_link_bill(), text, haystack))
         }
         DocumentLink::InventoryItem(id) => {
-            let item = lookups.inventory.iter().find(|item| item.id == id)?;
+            let item = lookups.inventory.items.iter().find(|item| item.id == id)?;
             Some((
                 crate::msg::desktop_documents_link_inventory(),
                 item.name.clone(),
@@ -440,6 +440,7 @@ pub fn visible_window(selected: usize, len: usize, cap: usize) -> Range<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inventory::Inventory;
     use crate::{
         accounts::{Account, default_accounts},
         bills::{BillPlan, default_bills},
@@ -458,6 +459,7 @@ mod tests {
         plans: Vec<BillPlan>,
         transactions: Vec<Transaction>,
         seed: DocumentsSeed,
+        inventory: Inventory,
         today: NaiveDate,
     }
 
@@ -470,11 +472,13 @@ mod tests {
         let tags = default_tags();
         let mut transactions = default_transactions(&accounts, &categories, &payees, &tags, today);
         let bills = default_bills(&accounts, &categories, &payees, &mut transactions, today);
+        let inventory = crate::inventory::default_inventory(today);
         let seed = default_documents(
             &accounts,
             &categories,
             &payees,
             &bills.plans,
+            &inventory,
             &mut transactions,
             today,
         );
@@ -485,6 +489,7 @@ mod tests {
             plans: bills.plans,
             transactions,
             seed,
+            inventory,
             today,
         }
     }
@@ -496,7 +501,7 @@ mod tests {
                 accounts: &self.accounts,
                 payees: &self.payees,
                 plans: &self.plans,
-                inventory: &self.seed.inventory,
+                inventory: &self.inventory,
                 transactions: &self.transactions,
                 today: self.today,
                 date_style: Some(DateStyle::Iso),

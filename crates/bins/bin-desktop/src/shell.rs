@@ -79,6 +79,7 @@ use crate::{
     explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
     format,
     import::{self, ImportState, RowSelect},
+    inventory,
     key_router::{self, KeyOutcome, Movement, route_key},
     limit_form,
     nav::{FocusZone, InputMode, NavState, Noun},
@@ -741,9 +742,9 @@ pub struct Shell {
     transactions_filter_anchor: FilterField,
     /// Where each chip was last painted; the header writes it, the popover reads it.
     transactions_chip_bounds: transactions_view::ChipBounds,
-    /// The Documents surface's stub Documents, and the Inventory Items they link to.
+    /// The Documents surface's stub Documents, and the Inventory their Links resolve against.
     documents: Vec<documents::Document>,
-    inventory: Vec<documents::InventoryItem>,
+    inventory: inventory::Inventory,
     /// Inbox or Library, the Library's scope and sort. These three persist across restarts.
     documents_mode: DocumentsMode,
     documents_scope: LibraryScope,
@@ -792,11 +793,13 @@ impl Shell {
             &mut transactions,
             today,
         );
+        let inventory = inventory::default_inventory(today);
         let documents_seed = documents::default_documents(
             &seeded_accounts,
             &categories,
             &payees,
             &bills_seed.plans,
+            &inventory,
             &mut transactions,
             today,
         );
@@ -892,7 +895,7 @@ impl Shell {
             transactions_filter_anchor: FilterField::Account,
             transactions_chip_bounds: Default::default(),
             documents: documents_seed.documents,
-            inventory: documents_seed.inventory,
+            inventory,
             documents_mode: DocumentsMode::default(),
             documents_scope: LibraryScope::default(),
             documents_sort: LibrarySort::default(),

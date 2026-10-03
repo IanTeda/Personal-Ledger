@@ -11,11 +11,12 @@ use crate::{
     bills::BillPlan,
     document_types::{self, DocumentTypeRow},
     documents::{
-        CANDIDATE_WINDOW_DAYS, Candidate, Document, DocumentLink, DocumentType, FileKind,
-        InventoryItem, KeyDate, KeyDateBand, KeyDateKind, LibraryScope, RailEntry, Signals, Source,
-        Suggestion, YearFacet, band, scope_count, tracks_financial_year,
+        CANDIDATE_WINDOW_DAYS, Candidate, Document, DocumentLink, DocumentType, FileKind, KeyDate,
+        KeyDateBand, KeyDateKind, LibraryScope, RailEntry, Signals, Source, Suggestion, YearFacet,
+        band, scope_count, tracks_financial_year,
     },
     format,
+    inventory::Inventory,
     payees::Payee,
     transactions::Transaction,
 };
@@ -26,7 +27,7 @@ pub struct Lookups<'a> {
     pub accounts: &'a [Account],
     pub payees: &'a [Payee],
     pub plans: &'a [BillPlan],
-    pub inventory: &'a [InventoryItem],
+    pub inventory: &'a Inventory,
     pub transactions: &'a [Transaction],
     pub today: NaiveDate,
     pub date_style: Option<DateStyle>,
@@ -193,6 +194,7 @@ fn link_name(link: DocumentLink, lookups: &Lookups<'_>) -> Option<(ChipKind, Str
         }
         DocumentLink::InventoryItem(id) => lookups
             .inventory
+            .items
             .iter()
             .find(|item| item.id == id)
             .map(|item| (ChipKind::Item, item.name.clone())),
@@ -634,6 +636,7 @@ mod tests {
         plans: Vec<BillPlan>,
         transactions: Vec<Transaction>,
         seed: DocumentsSeed,
+        inventory: Inventory,
         today: NaiveDate,
     }
 
@@ -646,11 +649,13 @@ mod tests {
         let tags = default_tags();
         let mut transactions = default_transactions(&accounts, &categories, &payees, &tags, today);
         let bills = default_bills(&accounts, &categories, &payees, &mut transactions, today);
+        let inventory = crate::inventory::default_inventory(today);
         let seed = default_documents(
             &accounts,
             &categories,
             &payees,
             &bills.plans,
+            &inventory,
             &mut transactions,
             today,
         );
@@ -661,6 +666,7 @@ mod tests {
             plans: bills.plans,
             transactions,
             seed,
+            inventory,
             today,
         }
     }
@@ -672,7 +678,7 @@ mod tests {
                 accounts: &self.accounts,
                 payees: &self.payees,
                 plans: &self.plans,
-                inventory: &self.seed.inventory,
+                inventory: &self.inventory,
                 transactions: &self.transactions,
                 today: self.today,
                 date_style: Some(DateStyle::Iso),
