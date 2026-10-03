@@ -157,14 +157,8 @@ fn n_e_and_x_open_the_property_dialogs_and_escape_cancels(app: &mut TestAppConte
     assert_eq!(ui.settings().inventory_dialog.as_deref(), Some("remove"));
     ui.press("escape");
     assert_eq!(ui.settings().inventory_dialog, None);
-    // Rooms keep the placeholder until their own dialogs land.
     ui.press("right right e");
-    assert_eq!(ui.settings().inventory_dialog, None);
-    assert!(
-        ui.settings()
-            .inventory_stub
-            .is_some_and(|stub| stub.starts_with("Edit(Room"))
-    );
+    assert_eq!(ui.settings().inventory_dialog.as_deref(), Some("edit-room"));
 }
 
 fn names(ui: &mut Harness<'_>) -> Vec<String> {
@@ -311,11 +305,8 @@ fn r_expands_a_collapsed_property_and_works_from_a_room(app: &mut TestAppContext
     ui.press("r");
     let page = ui.settings();
     assert!(page.inventory_rows.len() > 2, "r opens the Property");
-    assert!(
-        page.inventory_stub
-            .is_some_and(|stub| stub.starts_with("AddRoom"))
-    );
-    ui.press("right right");
+    assert_eq!(page.inventory_dialog.as_deref(), Some("add-room"));
+    ui.press("escape right right");
     ui.press("r");
     assert_eq!(
         ui.settings()
@@ -324,11 +315,7 @@ fn r_expands_a_collapsed_property_and_works_from_a_room(app: &mut TestAppContext
             .map(|r| r.starts_with("room:")),
         Some(true)
     );
-    assert!(
-        ui.settings()
-            .inventory_stub
-            .is_some_and(|stub| stub.starts_with("AddRoom"))
-    );
+    assert_eq!(ui.settings().inventory_dialog.as_deref(), Some("add-room"));
 }
 
 #[gpui::test]
@@ -343,7 +330,6 @@ fn the_empty_state_ignores_r_e_and_x_but_r_raises_a_toast(app: &mut TestAppConte
     assert_eq!(page.selected_inventory, None);
 
     ui.press("e x");
-    assert_eq!(ui.settings().inventory_stub, None);
     assert_eq!(ui.settings().inventory_dialog, None);
     ui.press("j k shift-j right");
     assert!(ui.settings().inventory_rows.is_empty());
@@ -353,7 +339,6 @@ fn the_empty_state_ignores_r_e_and_x_but_r_raises_a_toast(app: &mut TestAppConte
         toasts.visible.first().map(|toast| toast.text.as_str()),
         Some("Add a property first")
     );
-    assert_eq!(ui.settings().inventory_stub, None);
     ui.press("n");
     assert_eq!(ui.settings().inventory_dialog.as_deref(), Some("add"));
 }
@@ -365,7 +350,213 @@ fn the_page_has_no_effect_on_keys_while_the_index_has_focus(app: &mut TestAppCon
     ui.press("escape");
     assert!(!ui.settings().page_focused);
     ui.press("n r e x");
-    assert_eq!(ui.settings().inventory_stub, None);
     assert_eq!(ui.settings().inventory_dialog, None);
     assert_eq!(ui.settings().page, "Inventory");
+}
+
+/// 12 Elm St opened, its first Room selected.
+fn on_first_room(app: &mut TestAppContext) -> Harness<'_> {
+    let mut ui = in_inventory(app);
+    ui.press("right right");
+    assert!(
+        ui.settings()
+            .selected_inventory
+            .is_some_and(|r| r.starts_with("room:"))
+    );
+    ui
+}
+
+fn room_names(ui: &mut Harness<'_>, property: usize) -> Vec<String> {
+    ui.settings().inventory_rooms[property].1.clone()
+}
+
+fn room_items(ui: &mut Harness<'_>, name: &str) -> usize {
+    ui.settings()
+        .inventory_room_items
+        .iter()
+        .find(|(room, _)| room == name)
+        .map_or(0, |(_, items)| *items)
+}
+
+#[gpui::test]
+fn add_room_appends_it_last_selects_it_and_updates_the_count(app: &mut TestAppContext) {
+    let mut ui = in_inventory(app);
+    let before = room_names(&mut ui, 0).len();
+
+    ui.press("r");
+    assert_eq!(ui.settings().inventory_dialog.as_deref(), Some("add-room"));
+    ui.press("enter");
+    assert_eq!(
+        ui.settings().inventory_dialog.as_deref(),
+        Some("add-room"),
+        "an empty name keeps the dialog open"
+    );
+    ui.press("a t t i c enter");
+    let page = ui.settings();
+    assert_eq!(page.inventory_dialog, None);
+    assert!(page.page_focused, "focus returns to the page");
+    assert_eq!(room_names(&mut ui, 0).len(), before + 1);
+    assert_eq!(
+        room_names(&mut ui, 0).last().map(String::as_str),
+        Some("attic")
+    );
+    assert_eq!(
+        ui.settings().selected_inventory.as_deref(),
+        Some("room:attic")
+    );
+    assert_eq!(room_items(&mut ui, "attic"), 0);
+    let toasts = ui.toasts();
+    assert_eq!(
+        toasts.visible.first().map(|toast| toast.text.as_str()),
+        Some("Added room \"attic\"")
+    );
+}
+
+#[gpui::test]
+fn a_room_name_may_repeat_in_another_property_but_not_in_its_own(app: &mut TestAppContext) {
+    let mut ui = in_inventory(app);
+    let living = room_names(&mut ui, 0)[0].clone();
+
+    ui.press("r");
+    for ch in living.to_uppercase().chars() {
+        ui.press(&ch.to_string());
+    }
+    ui.press("enter");
+    assert_eq!(
+        ui.settings().inventory_dialog.as_deref(),
+        Some("add-room"),
+        "the same name, ignoring case, is refused in its own Property"
+    );
+    ui.press("escape");
+
+    // The Storage unit is another Property, so the name is free there.
+    ui.press("left j r");
+    for ch in living.chars() {
+        ui.press(&ch.to_string());
+    }
+    ui.press("enter");
+    assert_eq!(ui.settings().inventory_dialog, None);
+    assert!(room_names(&mut ui, 1).contains(&living));
+}
+
+#[gpui::test]
+fn edit_room_renames_it_and_keeps_its_items_and_position(app: &mut TestAppContext) {
+    let mut ui = on_first_room(app);
+    let before = room_names(&mut ui, 0);
+    let items = room_items(&mut ui, &before[0]);
+
+    ui.press("e");
+    assert_eq!(ui.settings().inventory_dialog.as_deref(), Some("edit-room"));
+    ui.press("escape");
+    assert_eq!(ui.settings().inventory_dialog, None);
+    ui.press("e backspace x enter");
+    let after = room_names(&mut ui, 0);
+    assert_eq!(after.len(), before.len());
+    assert_eq!(after[0], format!("{}x", &before[0][..before[0].len() - 1]));
+    assert_eq!(room_items(&mut ui, &after[0]), items);
+    assert_eq!(&after[1..], &before[1..]);
+}
+
+#[gpui::test]
+fn removing_an_empty_room_is_a_plain_confirm(app: &mut TestAppContext) {
+    let mut ui = in_inventory(app);
+    ui.press("r a t t i c enter");
+    let with_attic = room_names(&mut ui, 0);
+
+    ui.press("x");
+    assert_eq!(
+        ui.settings().inventory_dialog.as_deref(),
+        Some("remove-room")
+    );
+    ui.press("escape");
+    assert_eq!(room_names(&mut ui, 0), with_attic);
+    ui.press("x enter");
+    let page = ui.settings();
+    assert_eq!(page.inventory_dialog, None);
+    assert_eq!(room_names(&mut ui, 0).len(), with_attic.len() - 1);
+    let toasts = ui.toasts();
+    assert!(
+        toasts
+            .visible
+            .iter()
+            .any(|toast| toast.text == "Removed room \"attic\"")
+    );
+    assert!(
+        ui.settings()
+            .selected_inventory
+            .is_some_and(|r| r.starts_with("room:"))
+    );
+}
+
+#[gpui::test]
+fn removing_a_room_with_items_moves_them_to_the_room_above_by_default(app: &mut TestAppContext) {
+    let mut ui = on_first_room(app);
+    ui.press("j");
+    let rooms = room_names(&mut ui, 0);
+    let (second, first) = (rooms[1].clone(), rooms[0].clone());
+    let moving = room_items(&mut ui, &second);
+    let first_before = room_items(&mut ui, &first);
+    let total = ui
+        .settings()
+        .inventory_room_items
+        .iter()
+        .map(|r| r.1)
+        .sum::<usize>();
+
+    ui.press("x");
+    assert_eq!(
+        ui.settings().inventory_dialog.as_deref(),
+        Some("remove-room")
+    );
+    ui.press("enter");
+    assert_eq!(ui.settings().inventory_dialog, None);
+    assert!(!room_names(&mut ui, 0).contains(&second));
+    assert_eq!(room_items(&mut ui, &first), first_before + moving);
+    assert_eq!(
+        ui.settings()
+            .inventory_room_items
+            .iter()
+            .map(|r| r.1)
+            .sum::<usize>(),
+        total,
+        "no Item is lost"
+    );
+}
+
+#[gpui::test]
+fn the_first_room_pre_selects_the_room_below_and_the_picker_can_change_it(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_first_room(app);
+    let rooms = room_names(&mut ui, 0);
+    let moving = room_items(&mut ui, &rooms[0]);
+    let second_before = room_items(&mut ui, &rooms[1]);
+    let third_before = room_items(&mut ui, &rooms[2]);
+
+    ui.press("x space down enter");
+    assert_eq!(
+        ui.settings().inventory_dialog.as_deref(),
+        Some("remove-room"),
+        "enter on the open list picks, it does not confirm"
+    );
+    ui.press("enter");
+    assert_eq!(room_items(&mut ui, &rooms[1]), second_before);
+    assert_eq!(room_items(&mut ui, &rooms[2]), third_before + moving);
+}
+
+#[gpui::test]
+fn the_last_room_with_items_is_blocked_and_nothing_changes(app: &mut TestAppContext) {
+    let mut ui = in_inventory(app);
+    // The Storage unit has one Room, holding Items.
+    ui.press("j right right x");
+    assert_eq!(
+        ui.settings().inventory_dialog.as_deref(),
+        Some("room-blocked")
+    );
+    ui.press("enter");
+    assert_eq!(ui.settings().inventory_dialog, None);
+    assert_eq!(room_names(&mut ui, 1).len(), 1);
+    ui.press("x escape");
+    assert_eq!(ui.settings().inventory_dialog, None);
+    assert!(ui.settings().page_focused);
 }

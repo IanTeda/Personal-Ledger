@@ -112,3 +112,27 @@ desktop-inventory-remove-confirm-label = Type { $name } to confirm
 desktop-inventory-toast-property-added = Added property "{ $name }"
 desktop-inventory-toast-property-saved = Saved property "{ $name }"
 desktop-inventory-toast-property-removed = Removed property "{ $name }"
+
+## The Add, Edit and Remove room dialogs (#490, #487). A room's name is unique within its property.
+
+desktop-inventory-room-add-title = Add room
+desktop-inventory-room-add-submit = Add room
+desktop-inventory-room-edit-title = Edit room
+desktop-inventory-room-edit-submit = Save
+desktop-inventory-room-field-name = Name
+desktop-inventory-room-field-name-placeholder = e.g. Garage
+desktop-inventory-room-error-name-empty = Give the room a name.
+desktop-inventory-room-error-name-taken = Another room in this property already has that name.
+desktop-inventory-room-in-property = In { $property }. Its items stay with it if you rename it.
+desktop-inventory-room-remove-title = Remove room
+desktop-inventory-room-remove-submit = Remove room
+desktop-inventory-room-remove-plain = Remove { $name }? It has no items.
+desktop-inventory-room-remove-with-items = { $name } holds { $items }. Choose the room that takes them.
+desktop-inventory-room-remove-destination = Move items to
+desktop-inventory-room-blocked-title = Can't remove room
+desktop-inventory-room-blocked-body = { $name } is the only room in { $property } and it holds { $items }. Add another room first, or remove the property.
+desktop-inventory-room-blocked-close = Close
+desktop-inventory-toast-room-added = Added room "{ $name }"
+desktop-inventory-toast-room-saved = Saved room "{ $name }"
+desktop-inventory-toast-room-removed = Removed room "{ $name }"
+desktop-inventory-toast-room-removed-moved = Removed room "{ $name }" and moved its { $items } to "{ $destination }"

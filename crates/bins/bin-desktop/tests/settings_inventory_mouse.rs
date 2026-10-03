@@ -84,10 +84,9 @@ fn the_row_actions_select_the_row_and_ask_for_their_dialogs(app: &mut TestAppCon
 
     ui.click(&format!("settings-inventory-toggle-{ELM}"));
     ui.click("settings-inventory-edit-room-1");
-    assert_eq!(
-        ui.settings().inventory_stub.as_deref(),
-        Some("Edit(Room(1))")
-    );
+    assert_eq!(ui.settings().inventory_dialog.as_deref(), Some("edit-room"));
+    ui.click("edit-room-cancel");
+    assert_eq!(ui.settings().inventory_dialog, None);
     assert!(
         ui.settings()
             .selected_inventory
@@ -114,7 +113,7 @@ fn the_add_buttons_ask_for_their_dialogs(app: &mut TestAppContext) {
     let selected = ui.settings().selected_inventory;
     ui.click(&format!("settings-inventory-add-room-{ELM}"));
     let page = ui.settings();
-    assert_eq!(page.inventory_stub, Some(format!("AddRoom({ELM})")));
+    assert_eq!(page.inventory_dialog.as_deref(), Some("add-room"));
     assert_eq!(page.selected_inventory, selected);
 }
 
@@ -190,4 +189,80 @@ fn the_remove_dialog_confirms_by_its_button(app: &mut TestAppContext) {
     ui.click("remove-property-confirm");
     assert_eq!(ui.settings().inventory_properties.len(), 2);
     assert_eq!(ui.settings().inventory_dialog, None);
+}
+
+#[gpui::test]
+fn add_room_submits_by_its_button_under_the_clicked_property(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+    ui.click(&format!("settings-inventory-toggle-{STORAGE}"));
+    let before = ui.settings().inventory_rooms[1].1.len();
+
+    ui.click(&format!("settings-inventory-add-room-{STORAGE}"));
+    ui.click("room-name");
+    ui.press("l o f t");
+    ui.click("add-room-confirm");
+    let page = ui.settings();
+    assert_eq!(page.inventory_dialog, None);
+    assert_eq!(page.inventory_rooms[1].1.len(), before + 1);
+    assert_eq!(
+        page.inventory_rooms[1].1.last().map(String::as_str),
+        Some("loft")
+    );
+    assert_eq!(page.selected_inventory.as_deref(), Some("room:loft"));
+}
+
+#[gpui::test]
+fn edit_room_saves_by_its_button(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+    ui.click(&format!("settings-inventory-toggle-{ELM}"));
+
+    ui.click("settings-inventory-edit-room-1");
+    ui.click("room-name");
+    ui.press("s");
+    ui.click("edit-room-confirm");
+    assert_eq!(ui.settings().inventory_dialog, None);
+    assert!(ui.settings().inventory_rooms[0].1[0].ends_with('s'));
+}
+
+#[gpui::test]
+fn remove_room_moves_items_by_the_picker_and_the_confirm_button(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+    ui.click(&format!("settings-inventory-toggle-{ELM}"));
+    let rooms = ui.settings().inventory_rooms[0].1.clone();
+    let count = |ui: &mut Harness<'_>, name: &str| {
+        ui.settings()
+            .inventory_room_items
+            .iter()
+            .find(|(room, _)| room == name)
+            .map_or(0, |(_, items)| *items)
+    };
+    let moving = count(&mut ui, &rooms[0]);
+    let third = count(&mut ui, &rooms[2]);
+
+    ui.click("settings-inventory-remove-room-1");
+    assert_eq!(
+        ui.settings().inventory_dialog.as_deref(),
+        Some("remove-room")
+    );
+    ui.click("room-destination");
+    ui.click("room-destination-option-1");
+    ui.click("remove-room-confirm");
+    assert_eq!(ui.settings().inventory_dialog, None);
+    assert_eq!(count(&mut ui, &rooms[2]), third + moving);
+    assert_eq!(ui.settings().inventory_rooms[0].1.len(), rooms.len() - 1);
+}
+
+#[gpui::test]
+fn the_last_room_with_items_shows_the_notice_which_closes_by_its_button(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+    ui.click(&format!("settings-inventory-toggle-{STORAGE}"));
+
+    ui.click("settings-inventory-remove-room-11");
+    assert_eq!(
+        ui.settings().inventory_dialog.as_deref(),
+        Some("room-blocked")
+    );
+    ui.click("room-blocked-close");
+    assert_eq!(ui.settings().inventory_dialog, None);
+    assert_eq!(ui.settings().inventory_rooms[1].1.len(), 1);
 }

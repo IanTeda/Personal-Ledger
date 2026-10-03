@@ -176,16 +176,6 @@ const SETTINGS_DOCUMENTS_HALF_PAGE: isize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Inventory page: rows per half page.
 const SETTINGS_INVENTORY_HALF_PAGE: usize = 5;
 
-/// What an Inventory dialog was last asked for. The Add, Edit and Remove dialogs are separate
-/// tickets, so until they land this is all a key or button does beyond selecting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InventoryStub {
-    AddProperty,
-    AddRoom(u32),
-    Edit(InventoryRow),
-    Remove(InventoryRow),
-}
-
 /// The Settings Payees page's status-line legend: the Payees page's keys without the Transactions
 /// hand-off, which stays on the old page.
 fn settings_payees_hints() -> Vec<(&'static str, String)> {
@@ -725,11 +715,9 @@ pub struct Shell {
     /// The Ledger's Document Types in the user's order (mock data until persistence lands).
     document_types: Vec<DocumentTypeRow>,
     settings_documents_selected: Option<u32>,
-    /// Settings' Inventory page: the selected row, the Properties shown open (session-only) and
-    /// the last Add, Edit or Remove its placeholder dialogs were asked for.
+    /// Settings' Inventory page: the selected row and the Properties shown open (session-only).
     settings_inventory_selected: Option<InventoryRow>,
     settings_inventory_expanded: HashSet<u32>,
-    settings_inventory_stub: Option<InventoryStub>,
     /// The open Add, Edit or Remove Document type dialog; `InputMode::Dialog` for as long as it is.
     document_types_dialog: Option<DocumentTypesDialog>,
     /// The open Add, Edit or Remove Property dialog; `InputMode::Dialog` for as long as it is.
@@ -919,7 +907,6 @@ impl Shell {
             settings_documents_selected: None,
             settings_inventory_selected: None,
             settings_inventory_expanded: HashSet::new(),
-            settings_inventory_stub: None,
             document_types_dialog: None,
             inventory_dialog: None,
             payees_dialog: None,
@@ -2760,7 +2747,7 @@ impl Shell {
             }
         };
         self.settings_inventory_expanded.insert(property);
-        self.settings_inventory_stub = Some(InventoryStub::AddRoom(property));
+        self.open_add_room_dialog(property);
     }
 
     /// `right`: open a closed Property, or step from an open one to its first Room.
@@ -7343,7 +7330,7 @@ impl Shell {
     /// **+ Add room** under an open Property.
     fn handle_settings_inventory_add_room_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.focus_settings_page();
-        self.settings_inventory_stub = Some(InventoryStub::AddRoom(id));
+        self.open_add_room_dialog(id);
         cx.notify();
     }
 

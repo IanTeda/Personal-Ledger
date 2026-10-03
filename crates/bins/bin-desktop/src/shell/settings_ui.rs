@@ -41,11 +41,12 @@ pub struct SettingsSnapshot {
     pub inventory_rows: Vec<String>,
     pub selected_inventory: Option<String>,
     pub inventory_rooms: Vec<(String, Vec<String>)>,
-    pub inventory_stub: Option<String>,
     /// The open Property dialog (`add`, `edit` or `remove`), and each Property as
     /// `(name, unit code, insurer)`.
     pub inventory_dialog: Option<String>,
     pub inventory_properties: Vec<(String, String, Option<String>)>,
+    /// Each Room's name with its Item count, in page order.
+    pub inventory_room_items: Vec<(String, usize)>,
     /// Tag names A-Z, and the selected row's name.
     pub tag_names: Vec<String>,
     pub selected_tag: Option<String>,
@@ -274,15 +275,25 @@ impl Shell {
                     )
                 })
                 .collect(),
-            inventory_stub: self.settings_inventory_stub.map(|stub| format!("{stub:?}")),
             inventory_dialog: self.inventory_dialog.as_ref().map(|dialog| {
                 match dialog {
                     InventoryDialog::Add(_) => "add",
                     InventoryDialog::Edit(..) => "edit",
                     InventoryDialog::Remove(..) => "remove",
+                    InventoryDialog::AddRoom(..) => "add-room",
+                    InventoryDialog::EditRoom(..) => "edit-room",
+                    InventoryDialog::RemoveRoom(..) => "remove-room",
+                    InventoryDialog::RoomBlocked(_) => "room-blocked",
                 }
                 .to_string()
             }),
+            inventory_room_items: self
+                .inventory
+                .properties
+                .iter()
+                .flat_map(|p| p.rooms.iter())
+                .map(|room| (room.name.clone(), self.inventory.room_items(room.id)))
+                .collect(),
             inventory_properties: self
                 .inventory
                 .properties

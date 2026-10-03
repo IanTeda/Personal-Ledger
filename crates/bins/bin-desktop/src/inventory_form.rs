@@ -342,6 +342,58 @@ impl PropertyForm {
     }
 }
 
+/// The Add and Edit **Room** dialog's draft (#495): a name and whether it has been typed in, which
+/// is when its error starts to show. The rules stay in `inventory`; this only words them.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RoomForm {
+    pub name: String,
+    touched: bool,
+}
+
+impl RoomForm {
+    pub fn for_edit(room: &inventory::Room) -> Self {
+        Self {
+            name: room.name.clone(),
+            touched: false,
+        }
+    }
+
+    pub fn push_char(&mut self, ch: char) {
+        if !ch.is_control() {
+            self.name.push(ch);
+            self.touched = true;
+        }
+    }
+
+    pub fn backspace(&mut self) {
+        self.name.pop();
+        self.touched = true;
+    }
+
+    /// What is wrong with the name, if anything. `own_id` is the Room being edited; the name is
+    /// unique within the Property only, so the same name in another Property is fine.
+    pub fn problem(
+        &self,
+        inventory: &Inventory,
+        property: u32,
+        own_id: Option<u32>,
+    ) -> Option<NameError> {
+        let mut scratch = inventory.clone();
+        let result = match own_id {
+            Some(id) => inventory::edit_room(&mut scratch, id, &self.name),
+            None => inventory::add_room(&mut scratch, property, &self.name).map(|_| ()),
+        };
+        match result {
+            Err(inventory::RoomError::Name(error)) => Some(error),
+            _ => None,
+        }
+    }
+
+    pub fn shows_problem(&self) -> bool {
+        self.touched
+    }
+}
+
 /// The insurers already on a Property, A-Z, each once ignoring case: the Insurer field's
 /// suggestions.
 pub fn insurers_in_use(inventory: &Inventory) -> Vec<String> {
@@ -562,5 +614,31 @@ mod tests {
         );
         let part = first[..2].to_lowercase();
         assert!(suggestions(&inventory, &part).contains(&first));
+    }
+
+    #[test]
+    fn a_room_name_is_unique_within_its_property_only() {
+        let inventory = seed();
+        let elm = &inventory.properties[0];
+        let storage = &inventory.properties[1];
+        let mut form = RoomForm::default();
+        assert_eq!(
+            form.problem(&inventory, elm.id, None),
+            Some(NameError::Empty)
+        );
+        assert!(!form.shows_problem(), "a fresh dialog shows no error yet");
+        for ch in elm.rooms[1].name.to_uppercase().chars() {
+            form.push_char(ch);
+        }
+        assert!(form.shows_problem());
+        assert_eq!(
+            form.problem(&inventory, elm.id, None),
+            Some(NameError::Taken)
+        );
+        assert_eq!(
+            form.problem(&inventory, elm.id, Some(elm.rooms[1].id)),
+            None
+        );
+        assert_eq!(form.problem(&inventory, storage.id, None), None);
     }
 }
