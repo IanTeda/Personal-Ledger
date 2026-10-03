@@ -80,6 +80,15 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Empties the Inventory so the Settings Inventory page shows its empty state.
+    pub fn empty_inventory(&mut self) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.empty_inventory_for_test();
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
     /// The Noun the Shell is showing.
     pub fn noun(&mut self) -> Noun {
         self.read(|shell| shell.nav().noun())

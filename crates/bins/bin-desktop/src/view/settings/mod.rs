@@ -17,6 +17,7 @@ pub mod documents;
 pub mod edit_unit_dialog;
 mod general;
 pub mod institutions;
+pub mod inventory;
 pub mod payees;
 pub mod sync_server;
 pub mod tags;
@@ -50,6 +51,7 @@ pub struct SettingsBodyProps<'a> {
     pub tags: tags::TagsPageProps<'a>,
     pub payees: payees::PayeesPageProps<'a>,
     pub documents: documents::DocumentsPageProps<'a>,
+    pub inventory: inventory::InventoryPageProps<'a>,
     pub date_style: Option<DateStyle>,
     pub row_density: RowDensity,
     pub status_glyphs: StatusGlyphs,
@@ -186,6 +188,9 @@ fn scope_meta(section: SettingsSection, props: &SettingsBodyProps<'_>, cx: &App)
         SettingsSection::Documents => {
             documents::scope_text(props.documents.types).into_any_element()
         }
+        SettingsSection::Inventory => {
+            inventory::scope_text(props.inventory.inventory).into_any_element()
+        }
         other => scope_note(other, props).into_any_element(),
     }
 }
@@ -240,6 +245,7 @@ fn section_content(
         SettingsSection::Tags => tags::render(&props.tags, props.page_focused, cx),
         SettingsSection::Payees => payees::render(&props.payees, props.page_focused, cx),
         SettingsSection::Documents => documents::render(&props.documents, props.page_focused, cx),
+        SettingsSection::Inventory => inventory::render(&props.inventory, props.page_focused, cx),
         SettingsSection::SyncServer => sync_server::render(props.on_sync_now_click.clone(), cx),
         SettingsSection::DataBackup => data_backup::render(
             props.on_backup_now_click.clone(),

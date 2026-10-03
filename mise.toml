@@ -53,7 +53,27 @@ run = [
 [tasks.end-to-end-ui]
 description = "Run the headless Desktop UI integration tests (gpui test-support, no window or GPU)"
 env = { SQLX_OFFLINE = "true" }
-run = "cargo test --package bin_desktop --features test-support --tests"
+# `mise run end-to-end-ui settings_inventory` runs only the test files whose name contains the
+# argument (each View owns `<view>_keyboard.rs` and `<view>_mouse.rs`); no argument runs them all.
+# Run the full suite once before pushing.
+usage = 'arg "[view]" help="Substring of the tests/ file names to run, e.g. settings_inventory"'
+run = '''
+set -eu
+view="${usage_view:-}"
+if [ -z "$view" ]; then
+  exec cargo test --package bin_desktop --features test-support --tests
+fi
+targets=""
+for file in crates/bins/bin-desktop/tests/*"$view"*.rs; do
+  [ -e "$file" ] || continue
+  targets="$targets --test $(basename "$file" .rs)"
+done
+if [ -z "$targets" ]; then
+  echo "no tests/ file name contains '$view'" >&2
+  exit 1
+fi
+exec cargo test --package bin_desktop --features test-support $targets
+'''
 
 # Applies the fixes rustfmt and clippy can make mechanically; whatever `lint` still reports
 # afterwards needs a hand fix.

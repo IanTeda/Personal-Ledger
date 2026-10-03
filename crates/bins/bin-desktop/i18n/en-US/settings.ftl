@@ -24,6 +24,7 @@ desktop-settings-section-general = General
 desktop-settings-section-display = Display
 desktop-settings-section-units = Units
 desktop-settings-section-institutions = Institutions
+desktop-settings-section-inventory = Inventory
 desktop-settings-section-sync-server = Sync server
 desktop-settings-section-data-backup = Data & backup
 desktop-settings-section-tracing = Tracing (Logs)

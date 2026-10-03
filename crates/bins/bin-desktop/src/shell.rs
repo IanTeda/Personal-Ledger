@@ -50,9 +50,12 @@ pub struct PaletteSnapshot {
     pub selected: Option<&'static str>,
 }
 
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
+
+use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
 
 use gpui::{
     Context, ExternalPaths, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle,
@@ -169,6 +172,18 @@ const SETTINGS_TAGS_HALF_PAGE: isize = 5;
 const SETTINGS_PAYEES_HALF_PAGE: isize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Documents page: rows per half page.
 const SETTINGS_DOCUMENTS_HALF_PAGE: isize = 5;
+/// `Ctrl-d`/`Ctrl-u` on the Settings Inventory page: rows per half page.
+const SETTINGS_INVENTORY_HALF_PAGE: usize = 5;
+
+/// What an Inventory dialog was last asked for. The Add, Edit and Remove dialogs are separate
+/// tickets, so until they land this is all a key or button does beyond selecting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InventoryStub {
+    AddProperty,
+    AddRoom(u32),
+    Edit(InventoryRow),
+    Remove(InventoryRow),
+}
 
 /// The Settings Payees page's status-line legend: the Payees page's keys without the Transactions
 /// hand-off, which stays on the old page.
@@ -190,6 +205,30 @@ fn settings_documents_hints() -> Vec<(&'static str, String)> {
         ("x", crate::msg::desktop_hint_remove()),
         ("n", crate::msg::desktop_hint_new()),
     ]
+}
+
+/// The Settings Inventory page's status-line legend by the selected row (#491), as `(key, action)`.
+fn settings_inventory_hints(selected: Option<InventoryRow>) -> Vec<(&'static str, String)> {
+    match selected {
+        Some(InventoryRow::Property(_)) => vec![
+            ("j/k", crate::msg::desktop_inventory_hint_move()),
+            ("\u{2192}/\u{2190}", crate::msg::desktop_hint_expand()),
+            ("e", crate::msg::desktop_hint_edit()),
+            ("x", crate::msg::desktop_hint_remove()),
+            ("n", crate::msg::desktop_inventory_hint_new_property()),
+            ("r", crate::msg::desktop_inventory_hint_new_room()),
+        ],
+        Some(InventoryRow::Room(_)) => vec![
+            ("j/k", crate::msg::desktop_inventory_hint_move()),
+            ("\u{2190}", crate::msg::desktop_inventory_hint_property()),
+            ("J/K", crate::msg::desktop_hint_reorder()),
+            ("e", crate::msg::desktop_hint_edit()),
+            ("x", crate::msg::desktop_hint_remove()),
+            ("r", crate::msg::desktop_inventory_hint_new_room()),
+            ("n", crate::msg::desktop_inventory_hint_new_property()),
+        ],
+        None => vec![("n", crate::msg::desktop_inventory_hint_new_property())],
+    }
 }
 
 /// The Settings Tags page's status-line legend (2j's keys), as `(key, action)`.
@@ -685,6 +724,11 @@ pub struct Shell {
     /// The Ledger's Document Types in the user's order (mock data until persistence lands).
     document_types: Vec<DocumentTypeRow>,
     settings_documents_selected: Option<u32>,
+    /// Settings' Inventory page: the selected row, the Properties shown open (session-only) and
+    /// the last Add, Edit or Remove its placeholder dialogs were asked for.
+    settings_inventory_selected: Option<InventoryRow>,
+    settings_inventory_expanded: HashSet<u32>,
+    settings_inventory_stub: Option<InventoryStub>,
     /// The open Add, Edit or Remove Document type dialog; `InputMode::Dialog` for as long as it is.
     document_types_dialog: Option<DocumentTypesDialog>,
     /// The id the next added Document Type takes; only counts up, so ids are never reused.
@@ -870,6 +914,9 @@ impl Shell {
             document_types_next_id: document_types::first_free_id(&document_types_seed),
             document_types: document_types_seed,
             settings_documents_selected: None,
+            settings_inventory_selected: None,
+            settings_inventory_expanded: HashSet::new(),
+            settings_inventory_stub: None,
             document_types_dialog: None,
             payees_dialog: None,
             import: None,
@@ -1045,6 +1092,13 @@ impl Shell {
         self.nav.open_ledger();
     }
 
+    /// Empties the Inventory, standing in for removing every Property until the Remove dialog
+    /// lands, so a test can reach the Inventory page's empty state.
+    #[doc(hidden)]
+    pub fn empty_inventory_for_test(&mut self) {
+        self.inventory = inventory::Inventory::default();
+    }
+
     /// The command palette's state for a test: `None` while it is closed.
     #[doc(hidden)]
     pub fn palette_snapshot(&self) -> Option<PaletteSnapshot> {
@@ -1174,6 +1228,12 @@ impl Shell {
 
         // `J`/`K` reorder the Documents page's types; the router would read them as `j`/`k`.
         if !pending_g_active && self.handle_settings_documents_reorder_key(keystroke) {
+            self.status_message = None;
+            return true;
+        }
+
+        // `J`/`K` reorder a Room within its Property; the router would read them as `j`/`k`.
+        if !pending_g_active && self.handle_settings_inventory_reorder_key(keystroke) {
             self.status_message = None;
             return true;
         }
@@ -1368,6 +1428,7 @@ impl Shell {
                     || self.handle_categories_key(keystroke)
                     || self.handle_payees_key(keystroke)
                     || self.handle_settings_documents_key(keystroke)
+                    || self.handle_settings_inventory_key(keystroke)
                     || self.handle_tags_key(keystroke)
                     || self.handle_bills_key(keystroke)
                     || self.handle_budgets_key(keystroke)
@@ -1479,6 +1540,9 @@ impl Shell {
             SettingsSection::Tags => settings_tags_hints(),
             SettingsSection::Payees => settings_payees_hints(),
             SettingsSection::Documents => settings_documents_hints(),
+            SettingsSection::Inventory => {
+                settings_inventory_hints(self.settings_inventory_selected_row())
+            }
             SettingsSection::Display => {
                 let mut keys = settings_display_hints();
                 keys.extend(settings_colour_grid_hints().into_iter().take(2));
@@ -1692,6 +1756,12 @@ impl Shell {
             {
                 false
             }
+            (SettingsFocus::Page, "left")
+                if self.settings_inventory_page_has_focus()
+                    && self.settings_inventory_left_is_local() =>
+            {
+                false
+            }
             (SettingsFocus::Page, "h" | "left") if self.colour_theme_focus.is_none() => {
                 self.status_message = None;
                 self.focus_settings_index();
@@ -1791,6 +1861,10 @@ impl Shell {
         }
         if self.settings_documents_page_has_focus() {
             self.apply_settings_documents_movement(movement);
+            return;
+        }
+        if self.settings_inventory_page_has_focus() {
+            self.apply_settings_inventory_movement(movement);
             return;
         }
         if self.nav.noun() == Noun::Transactions {
@@ -2556,6 +2630,158 @@ impl Shell {
             self.status_message = Some(crate::msg::desktop_document_types_hint_default_kept());
         }
         self.open_remove_document_type_dialog(id);
+    }
+
+    /// Whether Settings' Inventory table owns the keyboard: the page, not the index, has focus.
+    fn settings_inventory_page_has_focus(&self) -> bool {
+        self.nav.noun() == Noun::Settings
+            && self.nav.focus() == FocusZone::View
+            && self.settings_focus == SettingsFocus::Page
+            && self.settings_selected_section == SettingsSection::Inventory
+    }
+
+    /// The Inventory page's selected row: the stored one while it is still on screen, else the
+    /// first row, so the cursor is never lost. `None` only with no Properties.
+    fn settings_inventory_selected_row(&self) -> Option<InventoryRow> {
+        let rows = inventory_view::visible_rows(&self.inventory, &self.settings_inventory_expanded);
+        self.settings_inventory_selected
+            .filter(|row| rows.contains(row))
+            .or_else(|| rows.first().copied())
+    }
+
+    /// Whether `left` has something to do on the Inventory page: close an open Property, or
+    /// climb from a Room to its Property. Anything else hands it back to the index.
+    fn settings_inventory_left_is_local(&self) -> bool {
+        match self.settings_inventory_selected_row() {
+            Some(InventoryRow::Room(_)) => true,
+            Some(InventoryRow::Property(id)) => self.settings_inventory_expanded.contains(&id),
+            None => false,
+        }
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the visible Property and Room rows as one list.
+    fn apply_settings_inventory_movement(&mut self, movement: Movement) {
+        let rows = inventory_view::visible_rows(&self.inventory, &self.settings_inventory_expanded);
+        let Some(last) = rows.len().checked_sub(1) else {
+            return;
+        };
+        let current = self
+            .settings_inventory_selected_row()
+            .and_then(|row| rows.iter().position(|r| *r == row))
+            .unwrap_or(0);
+        let next = match movement {
+            Movement::Next => (current + 1).min(last),
+            Movement::Prev => current.saturating_sub(1),
+            Movement::First => 0,
+            Movement::Last => last,
+            Movement::HalfPageDown => (current + SETTINGS_INVENTORY_HALF_PAGE).min(last),
+            Movement::HalfPageUp => current.saturating_sub(SETTINGS_INVENTORY_HALF_PAGE),
+            Movement::Enter => return,
+        };
+        self.settings_inventory_selected = rows.get(next).copied();
+    }
+
+    /// `J`/`K` on a Room move it a place within its Property; inert on a Property row.
+    fn handle_settings_inventory_reorder_key(&mut self, keystroke: &Keystroke) -> bool {
+        if !self.settings_inventory_page_has_focus() {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || !modifiers.shift {
+            return false;
+        }
+        let delta = match keystroke.key.as_str() {
+            "j" => 1,
+            "k" => -1,
+            _ => return false,
+        };
+        if let Some(InventoryRow::Room(id)) = self.settings_inventory_selected_row() {
+            inventory::move_room(&mut self.inventory, id, delta);
+        }
+        true
+    }
+
+    /// The Inventory page's own keys: right and left open, close and climb, and `n`/`r`/`e`/`x`
+    /// ask for the Add, Edit and Remove dialogs, which are still placeholders.
+    fn handle_settings_inventory_key(&mut self, keystroke: &Keystroke) -> bool {
+        if !self.settings_inventory_page_has_focus() {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "n" => self.settings_inventory_stub = Some(InventoryStub::AddProperty),
+            "r" => self.add_inventory_room_for_selection(),
+            "e" => {
+                if let Some(row) = self.settings_inventory_selected_row() {
+                    self.settings_inventory_stub = Some(InventoryStub::Edit(row));
+                }
+            }
+            "x" => {
+                if let Some(row) = self.settings_inventory_selected_row() {
+                    self.settings_inventory_stub = Some(InventoryStub::Remove(row));
+                }
+            }
+            "right" => self.step_settings_inventory_in(),
+            "left" => self.step_settings_inventory_out(),
+            _ => return false,
+        }
+        true
+    }
+
+    /// `r`: Add room for the selected Property (or the selected Room's), opening it so the new
+    /// Room shows. With no Property it is a Toast.
+    fn add_inventory_room_for_selection(&mut self) {
+        let property = match self.settings_inventory_selected_row() {
+            Some(InventoryRow::Property(id)) => id,
+            Some(InventoryRow::Room(id)) => match self.inventory.room(id) {
+                Some((property, _)) => property.id,
+                None => return,
+            },
+            None => {
+                self.raise_toast(
+                    ToastKind::Info,
+                    crate::msg::desktop_inventory_toast_no_property(),
+                );
+                return;
+            }
+        };
+        self.settings_inventory_expanded.insert(property);
+        self.settings_inventory_stub = Some(InventoryStub::AddRoom(property));
+    }
+
+    /// `right`: open a closed Property, or step from an open one to its first Room.
+    fn step_settings_inventory_in(&mut self) {
+        let Some(InventoryRow::Property(id)) = self.settings_inventory_selected_row() else {
+            return;
+        };
+        if self.settings_inventory_expanded.insert(id) {
+            return;
+        }
+        if let Some(room) = self
+            .inventory
+            .property(id)
+            .and_then(|property| property.rooms.first())
+        {
+            self.settings_inventory_selected = Some(InventoryRow::Room(room.id));
+        }
+    }
+
+    /// `left`: climb from a Room to its Property, or close an open Property.
+    fn step_settings_inventory_out(&mut self) {
+        match self.settings_inventory_selected_row() {
+            Some(InventoryRow::Room(id)) => {
+                if let Some((property, _)) = self.inventory.room(id) {
+                    self.settings_inventory_selected = Some(InventoryRow::Property(property.id));
+                }
+            }
+            Some(InventoryRow::Property(id)) => {
+                self.settings_inventory_expanded.remove(&id);
+            }
+            None => {}
+        }
     }
 
     /// Whether Settings' Categories tree owns the keyboard: the page, not the index, has focus.
@@ -7042,6 +7268,74 @@ impl Shell {
         cx.notify();
     }
 
+    /// A click on a row of Settings' Inventory table: selects it and moves focus into the page.
+    fn handle_settings_inventory_row_click(
+        &mut self,
+        row: InventoryRow,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.settings_inventory_selected = Some(row);
+        self.focus_settings_page();
+        cx.notify();
+    }
+
+    /// The disclosure control of a Property row: opens or closes it. Closing keeps the selection
+    /// on screen by moving a hidden Room's selection up to its Property.
+    fn handle_settings_inventory_toggle_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.focus_settings_page();
+        if self.settings_inventory_expanded.remove(&id) {
+            if let Some(InventoryRow::Room(room)) = self.settings_inventory_selected_row()
+                && self
+                    .inventory
+                    .room(room)
+                    .is_some_and(|(property, _)| property.id == id)
+            {
+                self.settings_inventory_selected = Some(InventoryRow::Property(id));
+            }
+        } else {
+            self.settings_inventory_expanded.insert(id);
+        }
+        cx.notify();
+    }
+
+    /// **edit** on an Inventory row: selects it and asks for the Edit dialog.
+    fn handle_settings_inventory_edit_click(
+        &mut self,
+        row: InventoryRow,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.settings_inventory_selected = Some(row);
+        self.focus_settings_page();
+        self.settings_inventory_stub = Some(InventoryStub::Edit(row));
+        cx.notify();
+    }
+
+    /// **remove** on an Inventory row: selects it and asks for the Remove dialog.
+    fn handle_settings_inventory_remove_click(
+        &mut self,
+        row: InventoryRow,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.settings_inventory_selected = Some(row);
+        self.focus_settings_page();
+        self.settings_inventory_stub = Some(InventoryStub::Remove(row));
+        cx.notify();
+    }
+
+    /// **+ Add property**.
+    fn handle_settings_inventory_add_property_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.focus_settings_page();
+        self.settings_inventory_stub = Some(InventoryStub::AddProperty);
+        cx.notify();
+    }
+
+    /// **+ Add room** under an open Property.
+    fn handle_settings_inventory_add_room_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.focus_settings_page();
+        self.settings_inventory_stub = Some(InventoryStub::AddRoom(id));
+        cx.notify();
+    }
+
     fn handle_payees_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_payee(id);
         self.open_edit_payee_dialog(id);
@@ -8928,6 +9222,43 @@ impl Render for Shell {
             on_edit_click: document_type_click(Shell::handle_settings_documents_edit_click),
             on_remove_click: document_type_click(Shell::handle_settings_documents_remove_click),
         };
+        let inventory_row_click =
+            |handler: fn(&mut Shell, InventoryRow, &mut Context<'_, Shell>)| {
+                let entity = entity.clone();
+                let on_click: inventory_view::OnRowClick = Rc::new(move |row, _window, cx| {
+                    entity.update(cx, |shell, cx| handler(shell, row, cx));
+                });
+                on_click
+            };
+        let inventory_property_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: inventory_view::OnPropertyClick = Rc::new(move |id, _window, cx| {
+                entity.update(cx, |shell, cx| handler(shell, id, cx));
+            });
+            on_click
+        };
+        let settings_inventory_page = inventory_view::InventoryPageProps {
+            inventory: &self.inventory,
+            expanded: &self.settings_inventory_expanded,
+            selected: self.settings_inventory_selected_row(),
+            on_add_property_click: {
+                let entity = entity.clone();
+                Rc::new(move |_window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.handle_settings_inventory_add_property_click(cx)
+                    });
+                })
+            },
+            on_add_room_click: inventory_property_click(
+                Shell::handle_settings_inventory_add_room_click,
+            ),
+            on_toggle_click: inventory_property_click(
+                Shell::handle_settings_inventory_toggle_click,
+            ),
+            on_row_click: inventory_row_click(Shell::handle_settings_inventory_row_click),
+            on_edit_click: inventory_row_click(Shell::handle_settings_inventory_edit_click),
+            on_remove_click: inventory_row_click(Shell::handle_settings_inventory_remove_click),
+        };
         let tag_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
             let on_click: tags_view::OnTagClick = Rc::new(move |id, _window, cx| {
@@ -9533,6 +9864,10 @@ impl Render for Shell {
                     .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
                 right: settings_view::documents::scope_text(&self.document_types),
             }),
+            Noun::Settings if self.settings_inventory_page_has_focus() => Some(PageStatus {
+                hints: settings_inventory_hints(self.settings_inventory_selected_row()),
+                right: inventory_view::scope_text(&self.inventory),
+            }),
             Noun::Settings if self.settings_categories_page_has_focus() => Some(PageStatus {
                 hints: settings_categories_hints(),
                 right: settings_view::categories::scope_note(&self.categories),
@@ -9747,6 +10082,7 @@ impl Render for Shell {
                                     settings_tags: settings_tags_page,
                                     settings_payees: settings_payees_page,
                                     settings_documents: settings_documents_page,
+                                    settings_inventory: settings_inventory_page,
                                     bills: bills_page,
                                     budgets: budgets_page,
                                     import: import_page,
@@ -10200,6 +10536,8 @@ struct PageProps<'a> {
     settings_payees: settings_view::payees::PayeesPageProps<'a>,
     /// Settings' own Documents page, mounted only while Settings shows it.
     settings_documents: settings_view::documents::DocumentsPageProps<'a>,
+    /// Settings' own Inventory page, mounted only while Settings shows it.
+    settings_inventory: inventory_view::InventoryPageProps<'a>,
     bills: bills_view::BillsPageProps<'a>,
     /// `None` when the Budget shown has gone.
     budgets: Option<budgets_view::BudgetsPageProps<'a>>,
@@ -10336,6 +10674,7 @@ fn render_view(
                     tags: pages.settings_tags,
                     payees: pages.settings_payees,
                     documents: pages.settings_documents,
+                    inventory: pages.settings_inventory,
                     date_style: settings.date_style,
                     row_density: settings.row_density,
                     status_glyphs: settings.status_glyphs,

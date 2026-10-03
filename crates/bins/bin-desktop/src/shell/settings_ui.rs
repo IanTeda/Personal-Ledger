@@ -35,6 +35,12 @@ pub struct SettingsSnapshot {
     /// `notice`).
     pub document_type_files: Vec<u32>,
     pub document_type_dialog: Option<String>,
+    /// The Inventory page's visible rows and the selected one, as `property:<name>` or
+    /// `room:<name>`, each Property's Rooms in order, and the dialog last asked for.
+    pub inventory_rows: Vec<String>,
+    pub selected_inventory: Option<String>,
+    pub inventory_rooms: Vec<(String, Vec<String>)>,
+    pub inventory_stub: Option<String>,
     /// Tag names A-Z, and the selected row's name.
     pub tag_names: Vec<String>,
     pub selected_tag: Option<String>,
@@ -79,6 +85,23 @@ pub struct SettingsSnapshot {
 }
 
 impl Shell {
+    /// An Inventory row as `property:<name>` or `room:<name>`.
+    fn inventory_row_label(&self, row: crate::view::settings::inventory::InventoryRow) -> String {
+        use crate::view::settings::inventory::InventoryRow;
+        match row {
+            InventoryRow::Property(id) => self
+                .inventory
+                .property(id)
+                .map(|property| format!("property:{}", property.name))
+                .unwrap_or_default(),
+            InventoryRow::Room(id) => self
+                .inventory
+                .room(id)
+                .map(|(_, room)| format!("room:{}", room.name))
+                .unwrap_or_default(),
+        }
+    }
+
     /// The Settings pages for a test.
     #[doc(hidden)]
     pub fn settings_snapshot(&self) -> SettingsSnapshot {
@@ -221,6 +244,32 @@ impl Shell {
                 .collect(),
             selected_document_type,
             document_type_files: self.document_types.iter().map(|row| row.files).collect(),
+            inventory_rows: crate::view::settings::inventory::visible_rows(
+                &self.inventory,
+                &self.settings_inventory_expanded,
+            )
+            .into_iter()
+            .map(|row| self.inventory_row_label(row))
+            .collect(),
+            selected_inventory: self
+                .settings_inventory_selected_row()
+                .map(|row| self.inventory_row_label(row)),
+            inventory_rooms: self
+                .inventory
+                .properties
+                .iter()
+                .map(|property| {
+                    (
+                        property.name.clone(),
+                        property
+                            .rooms
+                            .iter()
+                            .map(|room| room.name.clone())
+                            .collect(),
+                    )
+                })
+                .collect(),
+            inventory_stub: self.settings_inventory_stub.map(|stub| format!("{stub:?}")),
             document_type_dialog: self.document_types_dialog.as_ref().map(|dialog| {
                 match dialog {
                     DocumentTypesDialog::Add(_) => "add",

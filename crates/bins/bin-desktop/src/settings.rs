@@ -21,6 +21,7 @@ pub enum SettingsSection {
     Tags,
     Payees,
     Documents,
+    Inventory,
     SyncServer,
     DataBackup,
     Tracing,
@@ -56,9 +57,9 @@ pub fn step_choice<T: Copy + PartialEq>(choices: &[T], current: T, delta: isize)
 
 impl SettingsSection {
     /// Every page, in index-rail order (the handoff's canonical `General · Display · Units ·
-    /// Institutions · Accounts · Categories · Tags · Payees · Documents · Sync server · Data & backup ·
+    /// Institutions · Accounts · Categories · Tags · Payees · Documents · Inventory · Sync server · Data & backup ·
     /// Tracing (Logs) · About`).
-    pub const ALL: [SettingsSection; 13] = [
+    pub const ALL: [SettingsSection; 14] = [
         SettingsSection::General,
         SettingsSection::Display,
         SettingsSection::Units,
@@ -68,6 +69,7 @@ impl SettingsSection {
         SettingsSection::Tags,
         SettingsSection::Payees,
         SettingsSection::Documents,
+        SettingsSection::Inventory,
         SettingsSection::SyncServer,
         SettingsSection::DataBackup,
         SettingsSection::Tracing,
@@ -86,6 +88,7 @@ impl SettingsSection {
             Self::Tags => lib_locale::msg::nav_tags(),
             Self::Payees => lib_locale::msg::nav_payees(),
             Self::Documents => crate::msg::desktop_nav_documents(),
+            Self::Inventory => crate::msg::desktop_settings_section_inventory(),
             Self::SyncServer => crate::msg::desktop_settings_section_sync_server(),
             Self::DataBackup => crate::msg::desktop_settings_section_data_backup(),
             Self::Tracing => crate::msg::desktop_settings_section_tracing(),
@@ -101,9 +104,12 @@ impl SettingsSection {
             Self::Units | Self::Institutions => {
                 crate::msg::desktop_settings_scope_synced_change_sets()
             }
-            Self::Accounts | Self::Categories | Self::Tags | Self::Payees | Self::Documents => {
-                crate::msg::desktop_settings_scope_ledger_data()
-            }
+            Self::Accounts
+            | Self::Categories
+            | Self::Tags
+            | Self::Payees
+            | Self::Documents
+            | Self::Inventory => crate::msg::desktop_settings_scope_ledger_data(),
             Self::Display => crate::msg::desktop_settings_scope_display(),
             Self::SyncServer => crate::msg::desktop_settings_scope_sync_server(30),
             Self::DataBackup => crate::msg::desktop_settings_scope_data_backup("aud", "2.84 mb"),
@@ -126,6 +132,7 @@ impl SettingsSection {
             Self::Tags => 418,
             Self::Payees => 419,
             Self::Documents => 480,
+            Self::Inventory => 493,
             Self::Display => 179,
             Self::SyncServer => 180,
             Self::DataBackup => 181,
@@ -159,6 +166,7 @@ impl SettingsSection {
             Self::Tags => "tags",
             Self::Payees => "payees",
             Self::Documents => "documents",
+            Self::Inventory => "inventory",
             Self::SyncServer => "sync-server",
             Self::DataBackup => "data-backup",
             Self::Tracing => "tracing",
@@ -836,6 +844,7 @@ mod tests {
                 "tags",
                 "payees",
                 "documents",
+                "inventory",
                 "sync-server",
                 "data-backup",
                 "tracing",
