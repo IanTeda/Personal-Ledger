@@ -8,6 +8,8 @@ Documents is a desktop-only surface built against in-memory stubs, from the hand
 
 ## Data model
 
+Document Types are user-managed ledger data ([ADR-0031](../adr/0031-document-types-are-user-managed-ledger-data.md)): `src/document_types.rs` holds the in-memory list (stable ids, order, Tracks date, Remind, Financial year flag, the fixed Default type Other), and `documents.rs` reads it for the Type filter, the Add and Edit form, the Inbox's extracted type (matched by name) and the Key Date kind. The Settings page that edits it is `src/view/settings/documents.rs` with its dialogs in `src/shell/document_types_ui.rs`; tests are `settings_documents_keyboard.rs`, `settings_documents_mouse.rs` and `document_type_dialogs.rs`. Persistence and sync of Document Types, and of per-Document Key Dates, are not specified yet (map [#472](https://github.com/IanTeda/Personal-Ledger/issues/472)).
+
 Not yet built. No migration exists. The rules the schema must carry are in `CONTEXT.md` (Document, Document Type, Financial Year, Key Date, Need Review, Document Link, Inbox, Extracted Facts, Suggested Link, Filing) and the doc comment at the top of `src/documents.rs`:
 
 - One entity, the `Document`, Unfiled or Filed. Only the user files one; gaining a Link never does.

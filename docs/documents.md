@@ -2,7 +2,7 @@
 
 Documents is your library of proof: receipts, statements, insurance policies, warranties, tax papers and identity scans. A file only matters for what it proves, so each one links to the records it backs up, such as the Transaction for a fridge, the Payee that issued a policy or the Bill it settles. Personal Ledger keeps the links and details; the files themselves stay on disk beside your ledger and are never renamed or moved.
 
-> **Heads up:** The Documents screen is built in the desktop app only, and it runs on sample data for now, so nothing you add or file is saved. Reading text out of scanned files (OCR), watched folders, dropping files onto the window and reminders that actually notify you aren't built yet.
+> **Heads up:** The Documents screen is built in the desktop app only, and it runs on sample data for now, so nothing you add or file is saved. Reading text out of scanned files (OCR), watched folders, dropping files onto the window and reminders that actually notify you aren't built yet. You manage the list of document types in Settings › Documents, which is also on sample data.
 
 ## What you can do
 
@@ -20,11 +20,11 @@ Documents is your library of proof: receipts, statements, insurance policies, wa
 ## Terminology
 
 - **Document:** A reference to one file kept beside your ledger, plus its details: a title, a type, a date, an optional key date and any number of links.
-- **Document type:** What kind of document it is. You manage the list in Settings › Documents; a new ledger starts with Receipts, Statements, Tax, Insurance, Warranties & manuals, Contracts, Identity and Bills.
+- **Document type:** What kind of document it is. You manage the list in Settings › Documents; a new ledger starts with Receipts, Statements, Tax, Insurance, Warranties & manuals, Contracts, Identity, Bills and Other. Other is the fallback type and can't be removed. A type decides which key date its documents carry, how long before it you're reminded, and whether it is tied to a financial year.
 - **Filed / Unfiled:** A filed document is in the Library. An unfiled one is waiting in the Inbox. Only you file a document; adding a link doesn't.
 - **Link:** A document's reference to one record it proves: a Transaction, an Inventory item, an Account, a Payee or a Bill plan.
-- **Financial year:** The twelve months a document's date falls in, starting 1 July, such as FY 2025–26. It is worked out from the document date.
-- **Key date:** The one forward-looking date a document may carry: Renews, Ends, Expires or Revalue by, with an optional reminder.
+- **Financial year:** The twelve months a document's date falls in, starting 1 July, such as FY 2025–26. It is worked out from the document date. Documents shows it, and filters by it, only for types tied to a financial year.
+- **Key date:** The one forward-looking date a document may carry: Renews, Ends, Expires or Revalue by. Which kind it is, and how long before it you're reminded, is set by the document's type, not the document.
 - **Need review:** A filed document whose key date is within 60 days either side of today.
 - **Inbox:** The list of unfiled documents.
 - **Suggested link:** The Transaction Personal Ledger thinks an unfiled document belongs to. It is recalculated each time and never saved.
@@ -69,7 +69,7 @@ Two columns: File, with the source (Scanned, Emailed, Downloads, Watched folder,
 
 ### Dialogs
 
-- **Add document / Edit document:** file path (Add only), title, document type, document date, key date kind and date, and a reminder tick.
+- **Add document / Edit document:** file path (Add only), title, document type, document date, and key date. The kind of key date comes from the type. A type that tracks no date has no key date field.
 - **Import files:** one path per line. Press `ctrl`+`enter` to import.
 - **Edit extracted facts:** merchant, date, total and type. Clearing the total marks the file unreadable.
 - **Link picker:** transactions near the document's date first, then accounts, payees, bill plans and inventory items. Type to narrow, `tab` to filter by kind.
@@ -78,6 +78,8 @@ Two columns: File, with the source (Scanned, Emailed, Downloads, Watched folder,
 ## Rules to know
 
 - A document has exactly one type and any number of links, including none.
+- Removing a type in Settings moves its files to the type you pick, Other by default. The Type filter follows the order set in Settings.
+- Changing a type's key date kind relabels its documents' dates. If it stops tracking a date, the dates are kept but stop counting towards Expiring and Need review.
 - Filing is your decision. Adding a link to a filed document doesn't move it, and a filed document with no links is fine.
 - Only a Transaction can be suggested, and only if its amount or payee agrees with the file and it's within 7 days of the date. The date counts as agreeing within 3 days.
 - A file with no readable amount never gets a suggestion. File it by hand or skip it.
@@ -152,6 +154,7 @@ Intended features for Documents. Ticked means built in at least one app; the tag
 - [x] DOC-009 (desktop): Correct what was read from an Inbox file
 - [x] DOC-010 (desktop): Flag renewal, end, expiry and revalue dates, and count those needing review
 - [x] DOC-011 (desktop): Open a file or show it in its folder
+- [x] DOC-017 (desktop): Manage document types in Settings: add, rename, reorder, remove, and set the date each tracks, its reminder and its financial year
 - [ ] DOC-012: Read text from files (OCR and PDF extraction)
 - [ ] DOC-013: Watched folder and dropping files onto the window
 - [ ] DOC-014: Raise a notification from a key date reminder

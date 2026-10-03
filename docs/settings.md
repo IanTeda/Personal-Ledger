@@ -222,14 +222,28 @@ log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 
 ## The Settings screen in the Desktop app
 
-Settings in the Desktop app is paged: a list of pages down the left (the index) and one page open beside it. Choosing an entry swaps the page; nothing scrolls from one section into the next. The pages are General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Sync server, Data and backup, Tracing and About.
+Settings in the Desktop app is paged: a list of pages down the left (the index) and one page open beside it. Choosing an entry swaps the page; nothing scrolls from one section into the next. The pages are General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Sync server, Data and backup, Tracing and About.
 
-Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work.
+Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`, `documents`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work.
 
 - Press `g` `s` to open Settings with the index focused. `j` and `k` move through the index and the page follows. `/` searches the index.
 - Press `l` to move into the open page and `h` to come back to the index. Page keys such as `e` (edit), `d` (delete), `n` (new), `x` (remove) and `m` (merge) only act while the page has focus.
 - `Esc` backs out one step at a time: a dialog or search first, then the page back to the index.
 - The page you last had open is remembered, so Settings reopens where you left it.
+
+### Documents page
+
+The Documents page is where you manage the list of Document types, the kinds your documents are filed under. A new ledger starts with Receipts, Statements, Tax, Insurance, Warranties & manuals, Contracts, Identity, Bills and Other. Like the rest of Documents, it runs on sample data for now, so nothing you change is saved.
+
+The page is a table with a row per type: its name, what date it tracks (Renews, Ends, Expires, Revalue or none), how long before that date to remind you, whether it is tied to a financial year, and how many files it holds. The order of the rows is the order of the Type filter in Documents.
+
+- Press `n` to add a type. A dialog asks for a name, what date it tracks, a reminder lead time and whether it is tied to a financial year. Names must be different from every other type, ignoring capitals.
+- Press `e` to edit the selected type. Renaming a type keeps its files and any saved filters.
+- Press `shift`+`j` or `shift`+`k` to move the selected type down or up. Documents shows its Type filter in the same order.
+- Press `x` to remove the selected type. If it still holds files, you choose which type they move to (Other is pre-selected). Removing a type never removes a document.
+- **Other** is the fallback type. You can rename and reorder it, but you can't remove it; pressing `x` on it tells you why.
+
+A reminder only does something when the type tracks a date, and reminders don't notify you yet. Turning Financial year on or off changes what Documents shows for the type, not any document's date.
 
 ## Toasts
 
