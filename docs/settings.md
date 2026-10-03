@@ -222,9 +222,9 @@ log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 
 ## The Settings screen in the Desktop app
 
-Settings in the Desktop app is paged: a list of pages down the left (the index) and one page open beside it. Choosing an entry swaps the page; nothing scrolls from one section into the next. The pages are General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Sync server, Data and backup, Tracing and About.
+Settings in the Desktop app is paged: a list of pages down the left (the index) and one page open beside it. Choosing an entry swaps the page; nothing scrolls from one section into the next. The pages are General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync server, Data and backup, Tracing and About.
 
-Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`, `documents`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work.
+Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`, `documents`, `inventory`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work.
 
 - Press `g` `s` to open Settings with the index focused. `j` and `k` move through the index and the page follows. `/` searches the index.
 - Press `l` to move into the open page and `h` to come back to the index. Page keys such as `e` (edit), `d` (delete), `n` (new), `x` (remove) and `m` (merge) only act while the page has focus.
@@ -244,6 +244,25 @@ The page is a table with a row per type: its name, what date it tracks (Renews, 
 - **Other** is the fallback type. You can rename and reorder it, but you can't remove it; pressing `x` on it tells you why.
 
 A reminder only does something when the type tracks a date, and reminders don't notify you yet. Turning Financial year on or off changes what Documents shows for the type, not any document's date.
+
+### Inventory page
+
+The Inventory page is where you set up the places whose contents you keep a register of. A **Property** is one such place, such as a house or a storage unit, and each Property holds any number of **Rooms**. Each Property is one Inventory register, so its Rooms become that register's room tabs, in the order shown here. Like the rest of Inventory, it runs on sample data for now, so nothing you change is saved.
+
+The page is a table with a row per Property: its name and address, its insurance policy (insurer and policy number), its sum insured, its single-item limit and how many items it holds. Properties are listed in the order you added them. They all start collapsed. Expanding one shows its Rooms in the order of the room tabs, each with its item count and value, and a clickable **+ Add room** row at the end. A line under the table counts what you have, for example "2 properties · 11 rooms · 232 items". With no Properties the table is replaced by "No properties yet. Press n to add one."
+
+- Press `j` and `k` to move through the visible rows, Properties and the Rooms of expanded Properties alike. `e` and `x` act on whichever row is selected.
+- Press `→` to expand a collapsed Property, or to move to the first Room of an expanded one. Press `←` to collapse an expanded Property, or to move from a Room to its Property.
+- Press `n` to add a Property. A dialog asks for a name (unique across your Properties, ignoring capitals), an address and a fiat Unit. The Unit is fixed once the Property is added, because every value in it is in that Unit. The new Property opens expanded.
+- Insurance cover is optional. Fill in the insurer, the sum insured and, if you like, a policy number, a renewal date and a single-item limit. Leave the insurer empty for no cover, which clears the other cover fields. The renewal date is for display and changes nothing when it passes. The single-item limit can't be more than the sum insured.
+- Press `r` to add a Room to the selected Property, or to the Property of the selected Room. A collapsed Property expands so you see the new Room. Room names must be different within a Property, ignoring capitals, but two Properties can each have a Kitchen.
+- Press `e` to edit the selected Property or Room. Renaming a Room keeps its items.
+- Press `shift`+`j` or `shift`+`k` to move the selected Room down or up within its Property. They do nothing on a Property row or at the ends of the list.
+- Press `x` to remove the selected row.
+  - A Room with items asks which Room of the same Property takes them, with the one above pre-selected. A Property's only Room can't be removed while it holds items; the dialog tells you to add another Room first or remove the Property.
+  - A Property that holds Rooms or items asks you to type its name to confirm. Its Rooms and items are removed with it, and any Document that linked to those items loses that link. The Documents and the transactions that bought the items are kept. You can remove your last Property.
+
+Sum insured and Item limit are what the Inventory register uses for its cover check and its over-limit flag. The register itself isn't built yet.
 
 ## Toasts
 
