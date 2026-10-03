@@ -18,6 +18,7 @@ mod categories;
 pub mod colours;
 mod command;
 mod dialog;
+mod document_types;
 mod documents;
 mod documents_form;
 mod documents_picker;

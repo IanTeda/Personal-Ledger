@@ -72,6 +72,7 @@ use crate::{
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
+    document_types::{self, DocumentTypeRow},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     documents_form::DocumentsDialog,
     explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
@@ -164,6 +165,8 @@ const CATEGORIES_HALF_PAGE: usize = 5;
 const SETTINGS_TAGS_HALF_PAGE: isize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Payees page: rows per half page.
 const SETTINGS_PAYEES_HALF_PAGE: isize = 5;
+/// `Ctrl-d`/`Ctrl-u` on the Settings Documents page: rows per half page.
+const SETTINGS_DOCUMENTS_HALF_PAGE: isize = 5;
 
 /// The Settings Payees page's status-line legend: the Payees page's keys without the Transactions
 /// hand-off, which stays on the old page.
@@ -172,6 +175,17 @@ fn settings_payees_hints() -> Vec<(&'static str, String)> {
         ("j/k", crate::msg::desktop_hint_row()),
         ("e", crate::msg::desktop_hint_edit()),
         ("d", crate::msg::desktop_hint_delete()),
+        ("n", crate::msg::desktop_hint_new()),
+    ]
+}
+
+/// The Settings Documents page's status-line legend (16p's keys), as `(key, action)`.
+fn settings_documents_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("J/K", crate::msg::desktop_hint_reorder()),
+        ("e", crate::msg::desktop_hint_edit()),
+        ("x", crate::msg::desktop_hint_remove()),
         ("n", crate::msg::desktop_hint_new()),
     ]
 }
@@ -666,6 +680,9 @@ pub struct Shell {
     payees_selected: usize,
     /// The selected row on Settings' Payees page, by Payee id: that page lists A–Z.
     settings_payees_selected: Option<u32>,
+    /// The Ledger's Document Types in the user's order (mock data until persistence lands).
+    document_types: Vec<DocumentTypeRow>,
+    settings_documents_selected: Option<u32>,
     /// The currently open Payees dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
     /// exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
     payees_dialog: Option<payees::PayeesDialog>,
@@ -841,6 +858,8 @@ impl Shell {
             payees,
             payees_selected: 0,
             settings_payees_selected: None,
+            document_types: document_types::default_types(),
+            settings_documents_selected: None,
             payees_dialog: None,
             import: None,
             tags,
@@ -1142,6 +1161,12 @@ impl Shell {
             return true;
         }
 
+        // `J`/`K` reorder the Documents page's types; the router would read them as `j`/`k`.
+        if !pending_g_active && self.handle_settings_documents_reorder_key(keystroke) {
+            self.status_message = None;
+            return true;
+        }
+
         let outcome = route_key(self.nav.mode(), pending_g_active, key, ctrl, shift);
 
         // `Esc`'s three shapes short-circuit before the hint-strip-clearing precedent below --
@@ -1327,6 +1352,7 @@ impl Shell {
                 self.handle_accounts_key(keystroke)
                     || self.handle_categories_key(keystroke)
                     || self.handle_payees_key(keystroke)
+                    || self.handle_settings_documents_key(keystroke)
                     || self.handle_tags_key(keystroke)
                     || self.handle_bills_key(keystroke)
                     || self.handle_budgets_key(keystroke)
@@ -1437,6 +1463,7 @@ impl Shell {
             SettingsSection::Categories => settings_categories_hints(),
             SettingsSection::Tags => settings_tags_hints(),
             SettingsSection::Payees => settings_payees_hints(),
+            SettingsSection::Documents => settings_documents_hints(),
             SettingsSection::Display => {
                 let mut keys = settings_display_hints();
                 keys.extend(settings_colour_grid_hints().into_iter().take(2));
@@ -1745,6 +1772,10 @@ impl Shell {
         }
         if self.settings_payees_page_has_focus() {
             self.apply_settings_payees_movement(movement);
+            return;
+        }
+        if self.settings_documents_page_has_focus() {
+            self.apply_settings_documents_movement(movement);
             return;
         }
         if self.nav.noun() == Noun::Transactions {
@@ -2406,6 +2437,100 @@ impl Shell {
             Movement::Enter => return,
         };
         self.settings_payees_selected = sorted.get(next).map(|payee| payee.id);
+    }
+
+    /// Whether Settings' Documents table owns the keyboard: the page, not the index, has focus.
+    fn settings_documents_page_has_focus(&self) -> bool {
+        self.nav.noun() == Noun::Settings
+            && self.nav.focus() == FocusZone::View
+            && self.settings_focus == SettingsFocus::Page
+            && self.settings_selected_section == SettingsSection::Documents
+    }
+
+    /// The Documents page's selected type: the stored id while it still exists, else the first
+    /// row, so the cursor is never lost.
+    fn settings_documents_selected_id(&self) -> Option<u32> {
+        self.settings_documents_selected
+            .filter(|id| document_types::position(&self.document_types, *id).is_some())
+            .or_else(|| self.document_types.first().map(|row| row.id))
+    }
+
+    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the types in the user's order.
+    fn apply_settings_documents_movement(&mut self, movement: Movement) {
+        let len = self.document_types.len();
+        let current = self
+            .settings_documents_selected_id()
+            .and_then(|id| document_types::position(&self.document_types, id))
+            .unwrap_or(0);
+        let next = match movement {
+            Movement::Next => accounts::step_selection(current, len, 1),
+            Movement::Prev => accounts::step_selection(current, len, -1),
+            Movement::First => 0,
+            Movement::Last => len.saturating_sub(1),
+            Movement::HalfPageDown => {
+                accounts::step_selection(current, len, SETTINGS_DOCUMENTS_HALF_PAGE)
+            }
+            Movement::HalfPageUp => {
+                accounts::step_selection(current, len, -SETTINGS_DOCUMENTS_HALF_PAGE)
+            }
+            Movement::Enter => return,
+        };
+        self.settings_documents_selected = self.document_types.get(next).map(|row| row.id);
+    }
+
+    /// `J`/`K` on the Documents page move the selected type a place, which is also its place in
+    /// the Documents Type filter.
+    fn handle_settings_documents_reorder_key(&mut self, keystroke: &Keystroke) -> bool {
+        if !self.settings_documents_page_has_focus() {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform || !modifiers.shift {
+            return false;
+        }
+        match keystroke.key.as_str() {
+            "j" => self.move_selected_document_type(1),
+            "k" => self.move_selected_document_type(-1),
+            _ => return false,
+        }
+        true
+    }
+
+    /// The Documents page's own `n`/`e`/`x`. Add, Edit and Remove open their dialogs once those
+    /// exist (#481); `x` on Other only says why it does nothing.
+    fn handle_settings_documents_key(&mut self, keystroke: &Keystroke) -> bool {
+        if !self.settings_documents_page_has_focus() {
+            return false;
+        }
+        let modifiers = &keystroke.modifiers;
+        if modifiers.control || modifiers.alt || modifiers.platform {
+            return false;
+        }
+        match (keystroke.key.as_str(), modifiers.shift) {
+            ("x", false) => self.remove_selected_document_type(),
+            ("n" | "e", false) => {}
+            _ => return false,
+        }
+        true
+    }
+
+    fn move_selected_document_type(&mut self, delta: isize) {
+        if let Some(id) = self.settings_documents_selected_id() {
+            document_types::move_by(&mut self.document_types, id, delta);
+            self.settings_documents_selected = Some(id);
+        }
+    }
+
+    /// The Remove action: Other, the Default, is never removed, and says so on the status line.
+    fn remove_selected_document_type(&mut self) {
+        let is_default = self
+            .settings_documents_selected_id()
+            .and_then(|id| document_types::position(&self.document_types, id))
+            .and_then(|position| self.document_types.get(position))
+            .is_some_and(|row| row.is_default);
+        if is_default {
+            self.status_message = Some(crate::msg::desktop_document_types_hint_default_kept());
+        }
     }
 
     /// Whether Settings' Categories tree owns the keyboard: the page, not the index, has focus.
@@ -6862,6 +6987,33 @@ impl Shell {
         cx.notify();
     }
 
+    /// A click on a row of Settings' Documents table: selects it and moves focus into the page.
+    fn handle_settings_documents_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.settings_documents_selected = Some(id);
+        self.focus_settings_page();
+        cx.notify();
+    }
+
+    /// **edit** on a Documents row: selects it; the Edit dialog arrives with #481.
+    fn handle_settings_documents_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.settings_documents_selected = Some(id);
+        self.focus_settings_page();
+        cx.notify();
+    }
+
+    /// **remove** on a Documents row: selects it; the Remove dialog arrives with #481.
+    fn handle_settings_documents_remove_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.settings_documents_selected = Some(id);
+        self.focus_settings_page();
+        cx.notify();
+    }
+
+    /// **+ Add document type**: the Add dialog arrives with #481.
+    fn handle_settings_documents_add_click(&mut self, cx: &mut Context<'_, Self>) {
+        self.focus_settings_page();
+        cx.notify();
+    }
+
     fn handle_payees_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_payee(id);
         self.open_edit_payee_dialog(id);
@@ -8725,6 +8877,29 @@ impl Render for Shell {
             on_edit_click: payee_click(Shell::handle_payees_edit_click),
             on_delete_click: payee_click(Shell::handle_payees_delete_click),
         };
+        let document_type_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
+            let entity = entity.clone();
+            let on_click: settings_view::documents::OnTypeClick =
+                Rc::new(move |id, _window, cx| {
+                    entity.update(cx, |shell, cx| handler(shell, id, cx));
+                });
+            on_click
+        };
+        let settings_documents_page = settings_view::documents::DocumentsPageProps {
+            types: &self.document_types,
+            selected: self.settings_documents_selected_id(),
+            on_add_click: {
+                let entity = entity.clone();
+                Rc::new(move |_window, cx| {
+                    entity.update(cx, |shell, cx| {
+                        shell.handle_settings_documents_add_click(cx)
+                    });
+                })
+            },
+            on_row_click: document_type_click(Shell::handle_settings_documents_row_click),
+            on_edit_click: document_type_click(Shell::handle_settings_documents_edit_click),
+            on_remove_click: document_type_click(Shell::handle_settings_documents_remove_click),
+        };
         let tag_click = |handler: fn(&mut Shell, u32, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
             let on_click: tags_view::OnTagClick = Rc::new(move |id, _window, cx| {
@@ -9323,6 +9498,10 @@ impl Render for Shell {
                 },
                 right: settings_view::payees::scope_text(&self.payees),
             }),
+            Noun::Settings if self.settings_documents_page_has_focus() => Some(PageStatus {
+                hints: settings_documents_hints(),
+                right: settings_view::documents::scope_text(&self.document_types),
+            }),
             Noun::Settings if self.settings_categories_page_has_focus() => Some(PageStatus {
                 hints: settings_categories_hints(),
                 right: settings_view::categories::scope_note(&self.categories),
@@ -9536,6 +9715,7 @@ impl Render for Shell {
                                     settings_categories: settings_categories_page,
                                     settings_tags: settings_tags_page,
                                     settings_payees: settings_payees_page,
+                                    settings_documents: settings_documents_page,
                                     bills: bills_page,
                                     budgets: budgets_page,
                                     import: import_page,
@@ -9986,6 +10166,8 @@ struct PageProps<'a> {
     settings_tags: settings_view::tags::TagsPageProps<'a>,
     /// Settings' own Payees page, mounted only while Settings shows it.
     settings_payees: settings_view::payees::PayeesPageProps<'a>,
+    /// Settings' own Documents page, mounted only while Settings shows it.
+    settings_documents: settings_view::documents::DocumentsPageProps<'a>,
     bills: bills_view::BillsPageProps<'a>,
     /// `None` when the Budget shown has gone.
     budgets: Option<budgets_view::BudgetsPageProps<'a>>,
@@ -10121,6 +10303,7 @@ fn render_view(
                     categories: pages.settings_categories,
                     tags: pages.settings_tags,
                     payees: pages.settings_payees,
+                    documents: pages.settings_documents,
                     date_style: settings.date_style,
                     row_density: settings.row_density,
                     status_glyphs: settings.status_glyphs,

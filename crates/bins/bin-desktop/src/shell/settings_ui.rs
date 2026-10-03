@@ -27,6 +27,9 @@ pub struct SettingsSnapshot {
     /// Payee names A-Z, and the selected row's name.
     pub payee_names: Vec<String>,
     pub selected_payee: Option<String>,
+    /// Document type names in the user's order, and the selected row's name.
+    pub document_type_names: Vec<String>,
+    pub selected_document_type: Option<String>,
     /// Tag names A-Z, and the selected row's name.
     pub tag_names: Vec<String>,
     pub selected_tag: Option<String>,
@@ -96,6 +99,12 @@ impl Shell {
                 .map(|payee| payee.name.clone())
         });
 
+        let selected_document_type = self.settings_documents_selected_id().and_then(|id| {
+            self.document_types
+                .iter()
+                .find(|row| row.id == id)
+                .map(|row| row.name.clone())
+        });
         let selected_tag = self
             .settings_tags_selected_id()
             .and_then(|id| tags::get(&self.tags, id).map(|tag| tag.name.clone()));
@@ -200,6 +209,12 @@ impl Shell {
                 .map(|payee| payee.name.clone())
                 .collect(),
             selected_payee,
+            document_type_names: self
+                .document_types
+                .iter()
+                .map(|row| row.name.clone())
+                .collect(),
+            selected_document_type,
             tag_names: tags::sorted_by_name(&self.tags)
                 .into_iter()
                 .map(|tag| tag.name.clone())

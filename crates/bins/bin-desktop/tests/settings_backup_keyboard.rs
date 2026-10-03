@@ -9,7 +9,7 @@ use gpui::TestAppContext;
 fn on_page(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    ui.press(&["j"; 9].join(" "));
+    ui.press(&["j"; 10].join(" "));
     assert_eq!(ui.settings().page, "DataBackup");
     ui
 }

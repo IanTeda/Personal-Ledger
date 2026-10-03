@@ -482,6 +482,7 @@ pub const COMMANDS: &[Command] = &[
     settings_page_command("settings categories", SettingsSection::Categories),
     settings_page_command("settings tags", SettingsSection::Tags),
     settings_page_command("settings payees", SettingsSection::Payees),
+    settings_page_command("settings documents", SettingsSection::Documents),
     settings_page_command("settings sync-server", SettingsSection::SyncServer),
     settings_page_command("settings data-backup", SettingsSection::DataBackup),
     settings_page_command("settings tracing", SettingsSection::Tracing),
