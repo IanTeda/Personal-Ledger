@@ -1,5 +1,5 @@
 //! The text and state behind the Transactions view's header and footer
-//! (`docs/ux/desktop/design_handoff_transactions/README.md`'s 4a): the filter chips, the count line, and the footer
+//! (`docs/ux/desktop/03-transactions/README.md`'s 4a): the filter chips, the count line, and the footer
 //! bar's figures. `gpui`-free and unit-tested; the view only paints what it returns.
 //!
 //! Chip behaviour is the Desktop Transactions map's decision. There are six chips, one per filter

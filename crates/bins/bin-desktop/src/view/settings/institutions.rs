@@ -1,4 +1,4 @@
-//! The **Institutions** section (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting state"): a
+//! The **Institutions** section (`docs/ux/desktop/16-settings/README.md`'s "2a resting state"): a
 //! table (INSTITUTION / ACCOUNT TYPE) seeded from `crate::settings::default_institutions()`,
 //! per-row edit/delete buttons, and a "+ Add institution" button below it -- same shape as
 //! `view::settings::units`, just a two-column table instead of three.

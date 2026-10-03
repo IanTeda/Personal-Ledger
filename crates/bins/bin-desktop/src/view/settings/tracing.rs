@@ -1,18 +1,17 @@
-//! The **Tracing (Logs)** section (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting state"): a
+//! The **Tracing (Logs)** section (`docs/ux/desktop/16-settings/README.md`'s "2a resting state"): a
 //! 400px column of level radios (error/warn/info/debug), a scrolling monospace log viewport, and
 //! a **Clear logs** button. Unlike every other button this map has built so far, "Clear logs" has
 //! a real effect: it empties `Shell`-owned `settings_log_lines`, since the ticket's own body asks
 //! for that specifically (not a permanently-out-of-scope stand-in like Sync server's/Data &
 //! backup's buttons).
 //!
-//! The level radios are a dot-style `.radio`/`.dot` control (`docs/ux/desktop/Shell &
-//! Navigation/styles.css`), not the segmented-box `.seg`/`.seg-opt` style `ledger_units` uses --
+//! The level radios are a dot-style `.radio`/`.dot` control (`docs/ux/desktop/styles.css`), not the segmented-box `.seg`/`.seg-opt` style `ledger_units` uses --
 //! the first use of this component in the crate. There are no real log lines to filter by level
 //! yet, so selecting one is a stored preference only, same as `ledger_units`'s own controls
 //! before any downstream effect existed.
 //!
 //! Element ids are namespaced `tracing-level-*`/`settings-clear-logs`
-//! (`docs/ux/desktop/design_handoff_settings/README.md`'s implementation note 11: "namespace radio groups per
+//! (`docs/ux/desktop/16-settings/README.md`'s implementation note 11: "namespace radio groups per
 //! instance" so a duplicated section's own radios can't collide with these).
 
 use std::rc::Rc;

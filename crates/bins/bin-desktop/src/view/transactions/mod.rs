@@ -1,4 +1,4 @@
-//! The **4a** Transactions page (`docs/ux/desktop/design_handoff_transactions/README.md`): a full-width view --
+//! The **4a** Transactions page (`docs/ux/desktop/03-transactions/README.md`): a full-width view --
 //! the header block, the column header, then the virtualised table -- with no context rail beside
 //! it (the mockup shows none, the same as Accounts and Settings).
 //!

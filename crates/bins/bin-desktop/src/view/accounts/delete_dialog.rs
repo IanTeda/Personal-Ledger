@@ -1,4 +1,4 @@
-//! Renders the **Delete account** destructive-confirm dialog (`docs/ux/desktop/design_handoff_accounts/README.md`'s
+//! Renders the **Delete account** destructive-confirm dialog (`docs/ux/desktop/17-accounts/README.md`'s
 //! 3d) on the shared `crate::dialog` chrome's destructive variant, following the Settings Delete
 //! unit dialog: the consequences are named and the account's own name must be typed back exactly
 //! (`accounts::DeleteAccountForm::matches`, case-sensitive) before **Delete account** enables.

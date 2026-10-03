@@ -1,4 +1,4 @@
-//! Renders the **Add category** dialog (`docs/ux/desktop/design_handoff_categories/README.md`'s 5b) on the shared
+//! Renders the **Add category** dialog (`docs/ux/desktop/18-categories/README.md`'s 5b) on the shared
 //! `crate::dialog` chrome. Form fields: Name, Type (segmented, locked when parent is selected),
 //! Parent category (tree select, excluding depth-3), Monthly budget (optional).
 //! Inline notice explains type locking behavior.

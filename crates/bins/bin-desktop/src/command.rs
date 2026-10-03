@@ -1,5 +1,5 @@
 //! The command registry driving `crate::palette::Palette`
-//! (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "Command registry" section): "every rail
+//! (`docs/ux/desktop/01-shell/README.md`'s "Command registry" section): "every rail
 //! item, every context-rail footer affordance, and every view action registers a command with:
 //! command string, description, kind ... optional binding, and a handler." Mirrors the shape of
 //! `bin-tui`'s own per-domain registry (`crates/bins/bin-tui/src/popup/command/commands/`,

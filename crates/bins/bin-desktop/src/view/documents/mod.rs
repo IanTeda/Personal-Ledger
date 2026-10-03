@@ -1,4 +1,4 @@
-//! The **Documents** destination (`docs/ux/desktop/design_handoff_documents/`): the 190px index rail, the list pane
+//! The **Documents** destination (`docs/ux/desktop/04-documents/`): the 190px index rail, the list pane
 //! (header, toolbar, count line and rows) and the 300px detail pane. The Library (4a) is drawn
 //! here and the Inbox (4b) in `inbox`, each filling the list and detail panes.
 //!

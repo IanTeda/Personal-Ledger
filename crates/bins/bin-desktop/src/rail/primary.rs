@@ -1,4 +1,4 @@
-//! The primary rail (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "1a" spec, "Primary
+//! The primary rail (`docs/ux/desktop/01-shell/README.md`'s "1a" spec, "Primary
 //! rail" component): grouped noun rows, jump-key column, the Accounts row's own count badge --
 //! and its collapsed "1c" state (52px, icon-only boxes, row-anchored hover tooltip), issue
 //! #152.
@@ -17,11 +17,11 @@ use crate::{
     theme::color,
 };
 
-/// Fixed column width: `docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "Layout" table.
+/// Fixed column width: `docs/ux/desktop/01-shell/README.md`'s "Layout" table.
 pub const WIDTH: gpui::Pixels = px(206.0);
 
 /// The collapsed ("1c") rail's own fixed width and per-row icon box, from the handoff's own
-/// collapsed-rail markup (`docs/ux/desktop/design_handoff_shell_navigation/Shell and Settings.dc.html`,
+/// collapsed-rail markup (`docs/ux/desktop/01-shell/Shell.dc.html`,
 /// card `1c`) -- the README's own "1a-1d" prose is silent on these pixels, so the canvas
 /// itself is the literal source here.
 pub const COLLAPSED_WIDTH: gpui::Pixels = px(52.0);

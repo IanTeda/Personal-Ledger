@@ -176,7 +176,7 @@ pub enum InputMode {
     /// feature unrelated to a floating dialog, and conflating the two would make either one
     /// harder to reason about once its own real feature lands.
     Dialog,
-    /// The Transactions filter popover (`docs/ux/desktop/design_handoff_transactions/README.md`'s 4b) owns every
+    /// The Transactions filter popover (`docs/ux/desktop/03-transactions/README.md`'s 4b) owns every
     /// keystroke while it is open. Modal like `Dialog`, but its own mode so the status line reads
     /// `FILTER` (the mockup's own chip) and its legend can differ.
     Filter,
@@ -216,7 +216,7 @@ pub struct NavState {
     /// `Normal`, set once on the transition away from `Normal` and cleared on the way back.
     pre_mode_focus: Option<FocusZone>,
     primary_highlight: Noun,
-    /// Whether a ledger is loaded (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "State"
+    /// Whether a ledger is loaded (`docs/ux/desktop/01-shell/README.md`'s "State"
     /// block: `shell.ledgerOpen`). `false` on every launch (the "1a" cold-start state) --
     /// deliberately absent from `crate::persistence::PersistedState`, since the "Empty state"
     /// spec section reaches this state "on cold start and after `:close`", never by restoring
@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn default_state_has_no_ledger_open() {
-        // The "1a" cold-start state -- see docs/ux/desktop/design_handoff_shell_navigation/README.md's
+        // The "1a" cold-start state -- see docs/ux/desktop/01-shell/README.md's
         // "Empty state" section.
         assert!(!NavState::new().ledger_open());
     }

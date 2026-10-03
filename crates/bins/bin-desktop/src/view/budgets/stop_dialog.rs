@@ -1,4 +1,4 @@
-//! Renders the **Stop budgeting** dialog (`docs/ux/desktop/design_handoff_budgets_v2/limits-9a-9g.md`'s 9g) on
+//! Renders the **Stop budgeting** dialog (`docs/ux/desktop/14-budgets-v2/README.md`'s 9g) on
 //! the shared `crate::dialog` chrome at the handoff's 420px. A Stop deletes nothing (a later
 //! Onward amount resumes the Category), so there's no typed confirmation and the confirm button
 //! keeps the neutral dark fill rather than the destructive one.

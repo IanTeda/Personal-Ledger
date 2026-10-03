@@ -1,4 +1,4 @@
-//! Renders the **Edit account** dialog (`docs/ux/desktop/design_handoff_accounts/README.md`'s 3c) on the same
+//! Renders the **Edit account** dialog (`docs/ux/desktop/17-accounts/README.md`'s 3c) on the same
 //! form and chrome as Add (`super::add_dialog`), pre-filled from the account.
 //!
 //! **Editable**: Name, Institution, Type, and the UI-only Account number. **Shown read-only**:

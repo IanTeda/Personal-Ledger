@@ -1,4 +1,4 @@
-//! Renders the **New budget** dialog (`docs/ux/desktop/design_handoff_budgets_v2/README.md`'s 11c) and its edit
+//! Renders the **New budget** dialog (`docs/ux/desktop/14-budgets-v2/README.md`'s 11c) and its edit
 //! mode on the shared `crate::dialog` chrome at the handoff's 640px: Name and Unit, the four
 //! method cards, the on-budget Account chips and Start from. Only Category limits is built, so
 //! the other three cards are drawn dimmed and take no click (#400). Edit mode locks the Unit and

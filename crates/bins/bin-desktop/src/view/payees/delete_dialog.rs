@@ -1,4 +1,4 @@
-//! Renders the **Delete payee** dialog (`docs/ux/desktop/handoff_payees/README.md`'s 6d) on the shared
+//! Renders the **Delete payee** dialog (`docs/ux/desktop/20-payees/README.md`'s 6d) on the shared
 //! `crate::dialog` chrome's destructive variant at the handoff's 440px. #283 overrode the handoff's
 //! always-hard-delete, so the one dialog serves three [`DeleteAction`]s: an unreferenced Payee is
 //! deleted, a referenced one is deactivated, and a referenced inactive one is offered

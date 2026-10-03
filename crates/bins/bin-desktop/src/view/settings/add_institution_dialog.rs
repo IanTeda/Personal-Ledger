@@ -7,7 +7,7 @@
 //!   `add_unit_dialog::text_field` with `focused: true` and a no-op click handler, the same
 //!   "implicitly focused, nothing to click into" shape `delete_unit_dialog`'s own confirm field
 //!   uses.
-//! - **Account types**: multi-select chips (`docs/ux/desktop/design_handoff_shell_navigation/styles.css`'s
+//! - **Account types**: multi-select chips (`docs/ux/desktop/styles.css`'s
 //!   `.chip` role) -- the first *multi*-select control in this crate; every other "pick one"
 //!   control (segmented controls, dot radios) only ever holds one selection at a time.
 //! - **Default unit**: a single-select built from `Shell::settings_units`' own live `Vec`, not a
@@ -94,7 +94,7 @@ fn name_field(value: &str, cx: &App) -> AnyElement {
     .into_any_element()
 }
 
-/// The `.chip` multi-select row (`docs/ux/desktop/design_handoff_settings/README.md`'s Dialog components:
+/// The `.chip` multi-select row (`docs/ux/desktop/16-settings/README.md`'s Dialog components:
 /// `display:flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid
 /// rgba(32,30,29,.30); font-size:12px; cursor:pointer`, selected takes the dark treatment).
 fn account_types_field(

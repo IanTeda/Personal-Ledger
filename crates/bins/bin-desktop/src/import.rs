@@ -1,4 +1,4 @@
-//! The stubbed **6e** Import "match payees" step (`docs/ux/desktop/handoff_payees/README.md`), as #284
+//! The stubbed **6e** Import "match payees" step (`docs/ux/desktop/20-payees/README.md`), as #284
 //! settled it: a seeded mock statement (no real CSV upload or parsing), each line matched to a
 //! Payee by its Payee Aliases, the rest given a cleaned-up name to create, and **continue**
 //! committing the lot to the in-memory stubs. `gpui`-free, so every rule is unit-tested without a

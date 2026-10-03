@@ -1,4 +1,4 @@
-//! Shared stub Payees, seeded from the Payees handoff's sample list (`docs/ux/desktop/handoff_payees/`)
+//! Shared stub Payees, seeded from the Payees handoff's sample list (`docs/ux/desktop/20-payees/`)
 //! plus the names the Transactions seed data needs. `gpui`-free and side-effect free, so every
 //! rule is unit-tested without a window.
 //!

@@ -1,6 +1,6 @@
 //! Design tokens for the desktop shell chrome. Colours come from the resolved Colour Theme
 //! (`color`, ADR-0025); type scale and spacing stay fixed by the Modernist design system
-//! (`docs/ux/desktop/design_handoff_shell_navigation/README.md`'s "Design Tokens" table), as a Colour
+//! (`docs/ux/desktop/01-shell/README.md`'s "Design Tokens" table), as a Colour
 //! Theme doesn't carry them (`docs/colour-themes-design.md` "Not part of a Colour Theme").
 //!
 //! Radius is deliberately not a constant here: the handoff's rule is `0` everywhere, no

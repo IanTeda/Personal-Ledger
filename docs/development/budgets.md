@@ -6,7 +6,7 @@ End-user documentation: [Budgets](../budgets.md).
 
 A **Budget** is a named view over the one Ledger: a Method, one Unit locked at creation, a set of on-budget Accounts, a default flag and an archived date. A Category limits Budget holds a chain of effective-dated records per leaf Expense Category. [ADR-0028](../adr/0028-budget-amounts-are-effective-dated-and-never-rewrite-closed-months.md) and [ADR-0029](../adr/0029-budgets-are-named-overlapping-views-over-one-ledger.md) settled the design, and the [Desktop Budgets Surface](https://github.com/IanTeda/Personal-Ledger/issues/398) map settled the details (#383–#387, #399, #400).
 
-The desktop app builds the whole surface (handoff `docs/ux/desktop/design_handoff_budgets_v2/`, screens 9a–9g and 11b, 11c, 11f) on in-memory stubs. There is no `lib-core` type for the v2 model, `lib-database`'s `budgets` table still has the pre-v2 shape and is not read, and the TUI's Budgets screen is a wireframe placeholder.
+The desktop app builds the whole surface (handoff `docs/ux/desktop/14-budgets-v2/`, screens 9a–9g and 11b, 11c, 11f) on in-memory stubs. There is no `lib-core` type for the v2 model, `lib-database`'s `budgets` table still has the pre-v2 shape and is not read, and the TUI's Budgets screen is a wireframe placeholder.
 
 ## Data model
 

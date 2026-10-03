@@ -1,4 +1,4 @@
-//! Pure Settings-surface domain types (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting
+//! Pure Settings-surface domain types (`docs/ux/desktop/16-settings/README.md`'s "2a resting
 //! state" -- "Sections" table) -- `gpui`-free, the same "pure state, chrome renders it" split
 //! `nav.rs` uses between `NavState` and `Shell`'s render tree. `rail::settings_index::SettingsIndexRail`
 //! and `view::settings` are the chrome; this module only knows what pages exist, their index
@@ -223,7 +223,7 @@ impl RowDensity {
 
     /// The PREVIEW table's own row vertical padding at this density -- the mockup only draws the
     /// `regular` state (`padding:8px 12px`), so `compact`/`roomy` step by the design tokens' own
-    /// 4px rhythm (`docs/ux/desktop/design_handoff_settings/README.md`'s Spacing token list) either side of it,
+    /// 4px rhythm (`docs/ux/desktop/16-settings/README.md`'s Spacing token list) either side of it,
     /// the same "reflects the currently-selected values" the README's own field list promises
     /// for this control.
     pub fn preview_row_padding_y(self) -> f32 {
@@ -257,7 +257,7 @@ impl StatusGlyphs {
     }
 }
 
-/// One PREVIEW-table row's transaction status (`docs/ux/desktop/design_handoff_settings/README.md`'s own three
+/// One PREVIEW-table row's transaction status (`docs/ux/desktop/16-settings/README.md`'s own three
 /// drawn rows: cleared, pending, flagged) -- distinct from [`StatusGlyphs`], which picks *how* a
 /// status renders, not *which* status a row has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -285,7 +285,7 @@ impl PreviewStatus {
 }
 
 /// One PREVIEW-table row -- the mockup's own three seeded rows
-/// (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting state" markup), keyed on a real
+/// (`docs/ux/desktop/16-settings/README.md`'s "2a resting state" markup), keyed on a real
 /// `(year, month, day)` and integer cents rather than pre-formatted strings so
 /// [`format_preview_date`]/[`format_preview_amount`] can re-render them under any selected
 /// [`DateFormat`]/[`DecimalSeparator`].
@@ -351,7 +351,7 @@ pub fn format_preview_amount(amount_cents: i64) -> String {
         .unwrap_or_default()
 }
 
-/// One row of the **Units** section's table (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a resting
+/// One row of the **Units** section's table (`docs/ux/desktop/16-settings/README.md`'s "2a resting
 /// state" markup: CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS columns as of issue #189, up
 /// from CODE / NAME / TYPE). Owned `String` fields, not `&'static str` --
 /// issue #184's own Add unit dialog is this crate's first real typed-text input, so a row can
@@ -441,7 +441,7 @@ pub fn default_price_sources() -> Vec<PriceSourceRow> {
     ]
 }
 
-/// The Add/Edit unit dialogs' own "Type" selector (`docs/ux/desktop/design_handoff_settings/README.md`'s "2b —
+/// The Add/Edit unit dialogs' own "Type" selector (`docs/ux/desktop/16-settings/README.md`'s "2b —
 /// Add unit": "Type (select: currency / cryptocurrency / custom)") -- rendered as a segmented
 /// control (like [`TracingLevel`]), not a real `<select>` dropdown, same reasoning as every
 /// other "pick one of a few options" control this map has built: dropdown-open behaviour has no
@@ -593,7 +593,7 @@ impl DeleteUnitForm {
     }
 }
 
-/// One row of the **Institutions** section's table (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a
+/// One row of the **Institutions** section's table (`docs/ux/desktop/16-settings/README.md`'s "2a
 /// resting state" markup: INSTITUTION / ACCOUNT TYPE columns). Owned `String` fields, not
 /// `&'static str` -- issue #187's own Add institution dialog produces real typed text, same
 /// reasoning as [`UnitRow`]'s own migration for issue #184.
@@ -644,7 +644,7 @@ pub fn default_institutions() -> Vec<InstitutionRow> {
 }
 
 /// The Add institution dialog's own Account types multi-select chips
-/// (`docs/ux/desktop/design_handoff_settings/README.md`'s "2e — Add institution": savings / credit card /
+/// (`docs/ux/desktop/16-settings/README.md`'s "2e — Add institution": savings / credit card /
 /// offset / loan / investment).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccountType {
@@ -735,7 +735,7 @@ impl AddInstitutionForm {
     }
 }
 
-/// The **Tracing (Logs)** section's level radios (`docs/ux/desktop/design_handoff_settings/README.md`'s "2a
+/// The **Tracing (Logs)** section's level radios (`docs/ux/desktop/16-settings/README.md`'s "2a
 /// resting state" markup: `error`/`warn`/`info`/`debug`, `error` the mockup's own `checked`
 /// option). Purely a selected-level preference, like [`UnitKind`] -- there
 /// are no real log lines to filter by level yet (see [`DEFAULT_LOG_LINES`]'s own doc).

@@ -1,5 +1,5 @@
 //! The live forms behind **Edit budget** (9e) and **Stop budgeting** (9g) in
-//! `docs/ux/desktop/design_handoff_budgets_v2/limits-9a-9g.md`: `gpui`-free and unit-tested, the same split
+//! `docs/ux/desktop/14-budgets-v2/README.md`: `gpui`-free and unit-tested, the same split
 //! `pay_form.rs` uses.
 //!
 //! The behaviour is the Desktop Budgets Surface map's settled decisions (#383, #386):
