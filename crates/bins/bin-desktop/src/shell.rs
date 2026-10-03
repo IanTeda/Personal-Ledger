@@ -686,6 +686,8 @@ pub struct Shell {
     settings_documents_selected: Option<u32>,
     /// The open Add, Edit or Remove Document type dialog; `InputMode::Dialog` for as long as it is.
     document_types_dialog: Option<DocumentTypesDialog>,
+    /// The id the next added Document Type takes; only counts up, so ids are never reused.
+    document_types_next_id: u32,
     /// The currently open Payees dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
     /// exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
     payees_dialog: Option<payees::PayeesDialog>,
@@ -802,6 +804,7 @@ impl Shell {
         let budgets_current = seeded_budgets
             .default_budget()
             .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id);
+        let document_types_seed = document_types::default_types();
         Self {
             nav,
             focus_handle,
@@ -861,7 +864,8 @@ impl Shell {
             payees,
             payees_selected: 0,
             settings_payees_selected: None,
-            document_types: document_types::default_types(),
+            document_types_next_id: document_types::first_free_id(&document_types_seed),
+            document_types: document_types_seed,
             settings_documents_selected: None,
             document_types_dialog: None,
             payees_dialog: None,

@@ -150,7 +150,11 @@ impl Shell {
                 if !form.is_valid(&self.document_types, None) {
                     return;
                 }
-                let id = document_types::add_type(&mut self.document_types, &form);
+                let id = document_types::add_type(
+                    &mut self.document_types,
+                    &mut self.document_types_next_id,
+                    &form,
+                );
                 self.settings_documents_selected = Some(id);
             }
             DocumentTypesDialog::Edit(id, form) => {

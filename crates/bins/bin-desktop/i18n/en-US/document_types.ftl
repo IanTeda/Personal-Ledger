@@ -46,7 +46,7 @@ desktop-document-types-row-remove = remove
 desktop-document-types-note-tracks-date = <strong>Tracks date</strong> gives every document of the type a Key Date of that kind, and Remind raises a notification that long before it; Remind does nothing without a Tracks date.
 desktop-document-types-note-financial-year = <strong>Financial year</strong> lets the type be filtered and shown by financial year in Documents.
 desktop-document-types-note-removal = <strong>Removing</strong> a type that still has files asks which type to move them to.
-desktop-document-types-note-default = <strong>Other</strong> is the fallback type: it can't be removed or renamed.
+desktop-document-types-note-default = <strong>Other</strong> is the fallback type: it can't be removed, though it can be renamed and reordered.
 
 ## The status line's keys and the hint shown when `x` is pressed on Other.
 

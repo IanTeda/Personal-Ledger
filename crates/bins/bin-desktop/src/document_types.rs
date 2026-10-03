@@ -363,13 +363,25 @@ pub fn destination_select(types: &[DocumentTypeRow], removing: u32) -> SelectSta
     )
 }
 
-/// Adds a type from `form` at the end of the order and returns its new id.
-pub fn add_type(types: &mut Vec<DocumentTypeRow>, form: &DocumentTypeForm) -> u32 {
-    let id = types
+/// The id the next added type takes: past every seeded id.
+pub fn first_free_id(types: &[DocumentTypeRow]) -> u32 {
+    types
         .iter()
         .map(|row| row.id)
         .max()
-        .map_or(1, |max| max + 1);
+        .map_or(1, |max| max + 1)
+}
+
+/// Adds a type from `form` at the end of the order and returns its new id. `next_id` only ever
+/// counts up, so removing the newest type never frees its id for a saved `type:<id>` filter to
+/// match against a different type.
+pub fn add_type(
+    types: &mut Vec<DocumentTypeRow>,
+    next_id: &mut u32,
+    form: &DocumentTypeForm,
+) -> u32 {
+    let id = *next_id;
+    *next_id += 1;
     types.push(DocumentTypeRow {
         id,
         name: form.name.trim().to_string(),
@@ -495,13 +507,24 @@ mod tests {
     #[test]
     fn add_appends_with_a_fresh_id_and_no_files() {
         let mut types = default_types();
-        let id = add_type(&mut types, &form("  Leases "));
+        let mut next_id = first_free_id(&types);
+        let id = add_type(&mut types, &mut next_id, &form("  Leases "));
         assert_eq!(id, 10);
+        assert_eq!(next_id, 11);
         let row = types.last().unwrap();
         assert_eq!(
             (row.name.as_str(), row.files, row.is_default),
             ("Leases", 0, false)
         );
+    }
+
+    #[test]
+    fn a_removed_types_id_is_never_given_to_a_new_type() {
+        let mut types = default_types();
+        let mut next_id = first_free_id(&types);
+        let newest = add_type(&mut types, &mut next_id, &form("Leases"));
+        assert_eq!(remove_type(&mut types, newest, None), Ok(()));
+        assert_ne!(add_type(&mut types, &mut next_id, &form("Loans")), newest);
     }
 
     #[test]
