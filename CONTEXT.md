@@ -326,8 +326,15 @@ _Avoid_: To-Do, Reminder — Task is this glossary's canonical term. Attention I
 The always-current list of everything wanting a user's action right now, computed fresh on every view rather than stored anywhere — every open Task (see above), every currently Flagged Transaction, every Transaction that's Cleared but not yet Reconciled, and every unresolved (not Paid or Skipped) Bill Schedule entry whose due date is on or before today plus that Bill Plan's own Attention Lead (see Bill Plan, above) — a date rule, not a status one, so an Upcoming entry due early next month still counts once inside its lead, and one with no lead counts from its due day. Beyond Task, nothing here is a separately stored fact: each is read directly off the Transaction Status, Flagged marker, or Bill Schedule status a row already carries, so an entry disappears the moment its underlying state resolves (a Transaction gets Reconciled, a Bill Schedule entry gets Paid) with nothing to separately dismiss. See `docs/needs-attention.md` and [ADR-0020](docs/adr/0020-needs-attention-as-derived-view.md).
 _Avoid_: Attention Item, To-Do List — Needs Attention names the computed list as a whole; Task (see above) is the only thing actually stored inside it.
 
+**Property**:
+A place whose contents are kept as one Inventory register (e.g. a house, a storage unit), holding any number of Rooms. Property names are unique. A user may keep several Properties, each managed under Settings › Inventory and switched between on the Inventory surface. Every Property has exactly one fiat Unit, fixed when it is added, in which its insurance cover and every value of its Inventory Items are denominated. A Property may carry the details of its own insurance cover (insurer, policy number, renewal date, sum insured, single-item limit) or none; the cover is a detail of the Property, not a record of its own, so two Properties under one policy each record it separately. In this glossary Property always means a contents location, never real estate as an Asset.
+_Avoid_: Inventory (for the place rather than the feature), Register — the Inventory surface's view of one Property, not a separate thing. Premises, Location.
+
+**Room**:
+A named area within exactly one Property (e.g. Kitchen, Garage, Outdoor & shed), in a user-set order that is the order of that Property's room tabs on the Inventory surface. Every Inventory Item sits in one Room.
+
 **Inventory Item**:
-A physical possession recorded for its value and as something a Document can prove ownership of (e.g. a camera, a ring, a household's contents). Defined here so a Document Link has a target; the Inventory surface will sharpen it.
+A physical possession recorded for its value and as something a Document can prove ownership of (e.g. a camera, a ring, a household's contents), belonging to one Property and sitting in one of its Rooms.
 _Avoid_: Asset — too broad, and it collides with the Assets Category Type.
 
 **Document**:
