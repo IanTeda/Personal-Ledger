@@ -18,6 +18,7 @@ pub mod edit_unit_dialog;
 mod general;
 pub mod institutions;
 pub mod inventory;
+pub mod inventory_dialogs;
 pub mod payees;
 pub mod sync_server;
 pub mod tags;

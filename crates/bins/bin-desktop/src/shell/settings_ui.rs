@@ -2,6 +2,7 @@
 //! snapshot shape and its accessor sit together.
 
 use super::Shell;
+use super::inventory_ui::InventoryDialog;
 use crate::{
     accounts::{self, AccountsDialog},
     categories::CategoriesDialog,
@@ -41,6 +42,10 @@ pub struct SettingsSnapshot {
     pub selected_inventory: Option<String>,
     pub inventory_rooms: Vec<(String, Vec<String>)>,
     pub inventory_stub: Option<String>,
+    /// The open Property dialog (`add`, `edit` or `remove`), and each Property as
+    /// `(name, unit code, insurer)`.
+    pub inventory_dialog: Option<String>,
+    pub inventory_properties: Vec<(String, String, Option<String>)>,
     /// Tag names A-Z, and the selected row's name.
     pub tag_names: Vec<String>,
     pub selected_tag: Option<String>,
@@ -270,6 +275,26 @@ impl Shell {
                 })
                 .collect(),
             inventory_stub: self.settings_inventory_stub.map(|stub| format!("{stub:?}")),
+            inventory_dialog: self.inventory_dialog.as_ref().map(|dialog| {
+                match dialog {
+                    InventoryDialog::Add(_) => "add",
+                    InventoryDialog::Edit(..) => "edit",
+                    InventoryDialog::Remove(..) => "remove",
+                }
+                .to_string()
+            }),
+            inventory_properties: self
+                .inventory
+                .properties
+                .iter()
+                .map(|p| {
+                    (
+                        p.name.clone(),
+                        p.unit.clone(),
+                        p.cover.as_ref().map(|c| c.insurer.clone()),
+                    )
+                })
+                .collect(),
             document_type_dialog: self.document_types_dialog.as_ref().map(|dialog| {
                 match dialog {
                     DocumentTypesDialog::Add(_) => "add",

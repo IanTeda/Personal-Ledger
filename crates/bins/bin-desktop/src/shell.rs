@@ -23,6 +23,7 @@ mod bills_ui;
 mod budgets_ui;
 mod document_types_ui;
 mod documents_ui;
+mod inventory_ui;
 mod overlays_ui;
 mod settings_ui;
 mod transactions_ui;
@@ -731,6 +732,8 @@ pub struct Shell {
     settings_inventory_stub: Option<InventoryStub>,
     /// The open Add, Edit or Remove Document type dialog; `InputMode::Dialog` for as long as it is.
     document_types_dialog: Option<DocumentTypesDialog>,
+    /// The open Add, Edit or Remove Property dialog; `InputMode::Dialog` for as long as it is.
+    inventory_dialog: Option<inventory_ui::InventoryDialog>,
     /// The id the next added Document Type takes; only counts up, so ids are never reused.
     document_types_next_id: u32,
     /// The currently open Payees dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
@@ -918,6 +921,7 @@ impl Shell {
             settings_inventory_expanded: HashSet::new(),
             settings_inventory_stub: None,
             document_types_dialog: None,
+            inventory_dialog: None,
             payees_dialog: None,
             import: None,
             tags,
@@ -1267,6 +1271,9 @@ impl Shell {
                 if self.close_open_document_type_select() {
                     return true;
                 }
+                if self.close_open_property_unit_select() {
+                    return true;
+                }
                 if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut()
                     && form.close_open_select()
                 {
@@ -1331,6 +1338,7 @@ impl Shell {
                 self.categories_dialog = None;
                 self.payees_dialog = None;
                 self.document_types_dialog = None;
+                self.inventory_dialog = None;
                 self.tags_dialog = None;
                 self.bills_dialog = None;
                 self.budgets_dialog = None;
@@ -2007,6 +2015,9 @@ impl Shell {
         }
         if self.document_types_dialog.is_some() {
             return self.handle_document_types_dialog_key(keystroke);
+        }
+        if self.inventory_dialog.is_some() {
+            return self.handle_inventory_dialog_key(keystroke);
         }
         if self.tags_dialog.is_some() {
             return self.handle_tags_dialog_key(keystroke);
@@ -2712,16 +2723,16 @@ impl Shell {
             return false;
         }
         match keystroke.key.as_str() {
-            "n" => self.settings_inventory_stub = Some(InventoryStub::AddProperty),
+            "n" => self.open_add_property_dialog(),
             "r" => self.add_inventory_room_for_selection(),
             "e" => {
                 if let Some(row) = self.settings_inventory_selected_row() {
-                    self.settings_inventory_stub = Some(InventoryStub::Edit(row));
+                    self.open_edit_inventory_row(row);
                 }
             }
             "x" => {
                 if let Some(row) = self.settings_inventory_selected_row() {
-                    self.settings_inventory_stub = Some(InventoryStub::Remove(row));
+                    self.open_remove_inventory_row(row);
                 }
             }
             "right" => self.step_settings_inventory_in(),
@@ -7306,7 +7317,7 @@ impl Shell {
     ) {
         self.settings_inventory_selected = Some(row);
         self.focus_settings_page();
-        self.settings_inventory_stub = Some(InventoryStub::Edit(row));
+        self.open_edit_inventory_row(row);
         cx.notify();
     }
 
@@ -7318,14 +7329,14 @@ impl Shell {
     ) {
         self.settings_inventory_selected = Some(row);
         self.focus_settings_page();
-        self.settings_inventory_stub = Some(InventoryStub::Remove(row));
+        self.open_remove_inventory_row(row);
         cx.notify();
     }
 
     /// **+ Add property**.
     fn handle_settings_inventory_add_property_click(&mut self, cx: &mut Context<'_, Self>) {
         self.focus_settings_page();
-        self.settings_inventory_stub = Some(InventoryStub::AddProperty);
+        self.open_add_property_dialog();
         cx.notify();
     }
 
@@ -9865,7 +9876,10 @@ impl Render for Shell {
                 right: settings_view::documents::scope_text(&self.document_types),
             }),
             Noun::Settings if self.settings_inventory_page_has_focus() => Some(PageStatus {
-                hints: settings_inventory_hints(self.settings_inventory_selected_row()),
+                hints: self.inventory_dialog.as_ref().map_or_else(
+                    || settings_inventory_hints(self.settings_inventory_selected_row()),
+                    inventory_ui::dialog_hints,
+                ),
                 right: inventory_view::scope_text(&self.inventory),
             }),
             Noun::Settings if self.settings_categories_page_has_focus() => Some(PageStatus {
@@ -10275,6 +10289,7 @@ impl Render for Shell {
                 None => None,
             })
             .children(self.render_document_types_dialog(&entity, cx))
+            .children(self.render_inventory_dialog(&entity, cx))
             .children(match self.tags_dialog.as_ref() {
                 Some(tags::TagsDialog::Add(form)) => Some(tags_view::add_dialog::render(
                     form,

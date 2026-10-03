@@ -30,6 +30,7 @@ mod help;
 mod icon;
 mod import;
 mod inventory;
+mod inventory_form;
 #[doc(hidden)]
 pub mod key_router;
 mod limit_form;
