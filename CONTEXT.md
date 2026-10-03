@@ -331,7 +331,8 @@ A place whose contents are kept as one Inventory register (e.g. a house, a stora
 _Avoid_: Inventory (for the place rather than the feature), Register — the Inventory surface's view of one Property, not a separate thing. Premises, Location.
 
 **Room**:
-A named area within exactly one Property (e.g. Kitchen, Garage, Outdoor & shed), in a user-set order that is the order of that Property's room tabs on the Inventory surface. Every Inventory Item sits in one Room.
+A named area within exactly one Property (e.g. Kitchen, Garage, Outdoor & shed), in a user-set order that is the order of that Property's room tabs on the Inventory surface: one tab per Room, never grouped. Every Inventory Item sits in one Room. A Room never changes Property. Names are unique within a Property ignoring case; two Properties may each have a Room of the same name. A Property starts with no Rooms and may have none, but then holds no Items. There is no fallback Room: removing a Room that holds Items moves them to another Room of the same Property, so a Property's last Room cannot be removed while it holds Items.
+_Avoid_: Unassigned, Other — there is no catch-all Room.
 
 **Inventory Item**:
 A physical possession recorded for its value and as something a Document can prove ownership of (e.g. a camera, a ring, a household's contents), belonging to one Property and sitting in one of its Rooms.
