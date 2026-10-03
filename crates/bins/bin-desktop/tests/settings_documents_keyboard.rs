@@ -229,3 +229,46 @@ fn x_on_other_opens_the_notice_and_enter_closes_it(app: &mut TestAppContext) {
     assert_eq!(page.document_type_dialog, None);
     assert_eq!(page.document_type_names.len(), 9);
 }
+
+/// Whole-library row count as the Documents surface sees it.
+fn library_rows(ui: &mut Harness<'_>) -> usize {
+    ui.press("g f");
+    ui.documents().library_rows
+}
+
+#[gpui::test]
+fn removing_a_type_in_settings_keeps_every_document_in_the_library(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+    let before = {
+        ui.press("g f");
+        let rows = ui.documents().library_rows;
+        ui.press("g s");
+        if !ui.settings().page_focused {
+            ui.press("l");
+        }
+        assert_eq!(ui.settings().page, "Documents");
+        rows
+    };
+    ui.press("j j");
+    ui.press("x");
+    ui.press("enter");
+    assert_eq!(ui.settings().document_type_names.len(), 8);
+
+    assert_eq!(library_rows(&mut ui), before);
+}
+
+#[gpui::test]
+fn a_type_added_in_settings_gets_a_facet_on_the_documents_rail(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+    ui.press("n");
+    ui.press("l e a s e s");
+    ui.press("enter");
+    // Seeded ids are 1..=9 and ids are never reused, so the new type is 10.
+    ui.press("g f");
+
+    ui.click("documents-rail-Scope(Type(DocumentType(10)))");
+
+    let page = ui.documents();
+    assert_eq!(page.scope, "type:10");
+    assert_eq!(page.library_rows, 0);
+}
