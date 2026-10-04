@@ -38,7 +38,7 @@ pub use overlays_ui::{
     DashboardBillSnapshot, ImportRowSnapshot, ImportSnapshot, ToastSnapshot, ToastsSnapshot,
 };
 #[doc(hidden)]
-pub use settings_ui::SettingsSnapshot;
+pub use settings_ui::{AccountFormSnapshot, SettingsSnapshot};
 #[doc(hidden)]
 pub use transactions_ui::{ChipSnapshot, TransactionsSnapshot};
 

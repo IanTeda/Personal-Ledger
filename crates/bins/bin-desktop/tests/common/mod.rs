@@ -15,8 +15,9 @@ use bin_desktop::{
     nav::Noun,
     persistence::PersistedState,
     shell::{
-        BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportSnapshot,
-        SettingsSnapshot, Shell, ToastsSnapshot, TransactionsSnapshot,
+        AccountFormSnapshot, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot,
+        DocumentsSnapshot, ImportSnapshot, SettingsSnapshot, Shell, ToastsSnapshot,
+        TransactionsSnapshot,
     },
 };
 use chrono::NaiveDate;
@@ -141,6 +142,12 @@ impl<'a> Harness<'a> {
     /// The Settings pages' state, read back for assertions.
     pub fn settings(&mut self) -> SettingsSnapshot {
         self.read(Shell::settings_snapshot)
+    }
+
+    /// The open Add or Edit account dialog's form; panics if none is open.
+    pub fn account_form(&mut self) -> AccountFormSnapshot {
+        self.read(Shell::account_form_snapshot)
+            .expect("an Add or Edit account dialog is open")
     }
 
     /// The Colour Theme id and Appearance now chosen, read from the colours Global.
