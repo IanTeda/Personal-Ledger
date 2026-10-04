@@ -13,7 +13,7 @@ Generated 3 October 2026. This set replaces all earlier `design_handoff_*` folde
 ## Packages
 | Folder | Destination | Frames | Rail / key |
 | --- | --- | --- | --- |
-| `00-logo` | App icon & wordmark | light / dark assets | — |
+| `../Logo` | App icon & wordmark (shared by Desktop, TUI and Sync Server) | light / dark assets | — |
 | `01-shell` | Shell & navigation | 1a–1f | header, rail, status bar, palette |
 | `02-dashboard` | Dashboard: Today, Net worth, This month | 2a–2d | LEDGER · `g d` |
 | `03-transactions` | Transactions: cross-account ledger | 3a–3c | LEDGER · `g l` |
