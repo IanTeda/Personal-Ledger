@@ -77,7 +77,7 @@ impl Shell {
                 .bills_filter_focus
                 .as_ref()
                 .map(|(field, _)| format!("{field:?}")),
-            dialog: self.bills_dialog.as_ref().map(|dialog| {
+            dialog: self.bills_dialog().map(|dialog| {
                 match dialog {
                     BillsDialog::Add(_) => "Add",
                     BillsDialog::Edit(..) => "Edit",
@@ -86,17 +86,17 @@ impl Shell {
                 }
                 .to_string()
             }),
-            plan_name: match self.bills_dialog.as_ref() {
+            plan_name: match self.bills_dialog() {
                 Some(BillsDialog::Add(form) | BillsDialog::Edit(_, form)) => {
-                    Some(form.name.clone())
+                    Some(form.name.text().to_string())
                 }
                 _ => None,
             },
-            pay_mode: match self.bills_dialog.as_ref() {
+            pay_mode: match self.bills_dialog() {
                 Some(BillsDialog::Pay(form)) => Some(format!("{:?}", form.mode)),
                 _ => None,
             },
-            pay_candidates: match self.bills_dialog.as_ref() {
+            pay_candidates: match self.bills_dialog() {
                 Some(BillsDialog::Pay(form)) => Some(form.candidates.len()),
                 _ => None,
             },

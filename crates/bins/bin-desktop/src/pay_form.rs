@@ -20,6 +20,8 @@ use lib_locale::format::format_date_input;
 
 use crate::{
     bills::{BillError, BillPlan, EntryId, SplitRef},
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    field::TextField,
     transaction_filter_form::parse_date,
 };
 
@@ -63,10 +65,13 @@ pub struct PayForm {
     pub candidates: Vec<SplitRef>,
     pub choice: Option<MatchChoice>,
     pub focused: PayField,
-    pub amount: String,
-    pub date: String,
+    pub amount: TextField,
+    pub date: TextField,
     /// A refused confirm, shown until the next change.
     pub error: Option<BillError>,
+    /// Today and the date style, copied in when the Dialog opens so it can judge its own Date.
+    today: NaiveDate,
+    date_style: Option<DateStyle>,
 }
 
 impl PayForm {
@@ -91,9 +96,11 @@ impl PayForm {
             candidates,
             choice,
             focused: PayField::Amount,
-            amount: plan.planned_amount.0.to_string(),
-            date: format_date_input(today, date_style),
+            amount: TextField::new(plan.planned_amount.0.to_string()),
+            date: TextField::new(format_date_input(today, date_style)),
             error: None,
+            today,
+            date_style,
         }
     }
 
@@ -161,36 +168,9 @@ impl PayForm {
         self.focused = field;
     }
 
-    /// Types into Pay it directly's focused field: the amount takes a decimal only.
-    pub fn push_char(&mut self, ch: char) {
-        if ch.is_control() || self.mode != PayMode::Direct {
-            return;
-        }
-        match self.focused {
-            PayField::Amount
-                if ch.is_ascii_digit() || (ch == '.' && !self.amount.contains('.')) =>
-            {
-                self.amount.push(ch);
-            }
-            PayField::Amount => return,
-            PayField::Date => self.date.push(ch),
-        }
-        self.error = None;
-    }
-
-    pub fn backspace(&mut self) {
-        if self.mode != PayMode::Direct {
-            return;
-        }
-        match self.focused {
-            PayField::Amount => self.amount.pop(),
-            PayField::Date => self.date.pop(),
-        };
-        self.error = None;
-    }
-
     fn amount_money(&self) -> Option<Money> {
         self.amount
+            .text()
             .trim()
             .parse::<BigDecimal>()
             .ok()
@@ -200,21 +180,21 @@ impl PayForm {
 
     /// The amount's problem, once something is typed.
     pub fn amount_invalid(&self) -> bool {
-        !self.amount.trim().is_empty() && self.amount_money().is_none()
+        !self.amount.is_blank() && self.amount_money().is_none()
     }
 
     /// The date's problem, as the Transactions filter words it.
-    pub fn date_error(&self, today: NaiveDate, date_style: Option<DateStyle>) -> Option<String> {
-        parse_date(&self.date, today, date_style).err()
+    pub fn date_error(&self) -> Option<String> {
+        parse_date(self.date.text(), self.today, self.date_style).err()
     }
 
     /// What confirm does from the active panel, or `None` while it can't: an empty or invalid
     /// field, or no candidate chosen.
-    pub fn action(&self, today: NaiveDate, date_style: Option<DateStyle>) -> Option<PayAction> {
+    pub fn action(&self) -> Option<PayAction> {
         match self.mode {
             PayMode::Direct => Some(PayAction::Pay {
                 amount: self.amount_money()?,
-                date: parse_date(&self.date, today, date_style).ok()??,
+                date: parse_date(self.date.text(), self.today, self.date_style).ok()??,
             }),
             PayMode::Match => match self.choice? {
                 MatchChoice::Candidate(index) => {
@@ -226,12 +206,54 @@ impl PayForm {
     }
 }
 
+impl Dialog for PayForm {
+    /// `←`/`→` switch panel. On Match `j`/`k` (and `↓`/`↑`) choose a row and `Enter` on "None of
+    /// these" switches to Pay it directly instead of confirming. Typing only reaches Pay it
+    /// directly, and the amount takes a decimal only. Any key clears a refused confirm.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        self.error = None;
+        let on_match = self.mode == PayMode::Match;
+        match key {
+            DialogKey::Left | DialogKey::Right => self.toggle_mode(),
+            DialogKey::Char('j') | DialogKey::Down if on_match => self.step_choice(true),
+            DialogKey::Char('k') | DialogKey::Up if on_match => self.step_choice(false),
+            DialogKey::Enter if on_match && self.choice == Some(MatchChoice::NoneOfThese) => {
+                self.choose(MatchChoice::NoneOfThese);
+            }
+            DialogKey::Char(_) | DialogKey::Backspace if on_match => {}
+            DialogKey::Char(ch)
+                if self.focused == PayField::Amount
+                    && !(ch.is_ascii_digit()
+                        || (ch == '.' && !self.amount.text().contains('.'))) => {}
+            _ => return None,
+        }
+        Some(DialogOutcome::Handled)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        match (self.mode, self.focused) {
+            (PayMode::Match, _) => None,
+            (PayMode::Direct, PayField::Amount) => Some(&mut self.amount),
+            (PayMode::Direct, PayField::Date) => Some(&mut self.date),
+        }
+    }
+
+    fn cycle_field(&mut self) {
+        self.cycle_focus();
+    }
+
+    fn is_valid(&self) -> bool {
+        self.action().is_some()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         accounts::default_accounts, bills::default_bills, categories::default_categories,
-        payees::default_payees, tags::default_tags, transactions::default_transactions,
+        dialog_host::handle_key, payees::default_payees, tags::default_tags,
+        transactions::default_transactions,
     };
 
     fn today() -> NaiveDate {
@@ -271,7 +293,7 @@ mod tests {
         let f = form(vec![split(4), split(9)], Some(split(9)));
         assert_eq!(f.mode, PayMode::Match);
         assert_eq!(f.choice, Some(MatchChoice::Candidate(1)));
-        assert_eq!(f.action(today(), None), Some(PayAction::Match(split(9))));
+        assert_eq!(f.action(), Some(PayAction::Match(split(9))));
     }
 
     #[test]
@@ -279,7 +301,7 @@ mod tests {
         let f = form(Vec::new(), None);
         assert_eq!(f.mode, PayMode::Direct);
         assert_eq!(
-            f.action(today(), None),
+            f.action(),
             Some(PayAction::Pay {
                 amount: plan().planned_amount,
                 date: today(),
@@ -290,13 +312,13 @@ mod tests {
     #[test]
     fn nothing_chosen_refuses_confirm_until_a_step() {
         let mut f = form(vec![split(4)], None);
-        assert_eq!(f.action(today(), None), None);
+        assert_eq!(f.action(), None);
         f.step_choice(true);
         assert_eq!(f.choice, Some(MatchChoice::Candidate(0)));
         f.step_choice(true);
         f.step_choice(true);
         assert_eq!(f.choice, Some(MatchChoice::NoneOfThese));
-        assert_eq!(f.action(today(), None), None);
+        assert_eq!(f.action(), None);
         f.step_choice(false);
         assert_eq!(f.choice, Some(MatchChoice::Candidate(0)));
     }
@@ -313,27 +335,26 @@ mod tests {
     #[test]
     fn direct_refuses_a_zero_amount_or_a_bad_date() {
         let mut f = form(Vec::new(), None);
-        f.amount = "0".to_string();
+        f.amount = TextField::new("0");
         assert!(f.amount_invalid());
-        assert_eq!(f.action(today(), None), None);
-        f.amount.clear();
-        f.push_char('1');
-        f.push_char('.');
-        f.push_char('.');
-        f.push_char('x');
-        assert_eq!(f.amount, "1.");
+        assert_eq!(f.action(), None);
+        f.amount = TextField::default();
+        for ch in ['1', '.', '.', 'x'] {
+            handle_key(&mut f, DialogKey::Char(ch));
+        }
+        assert_eq!(f.amount.text(), "1.");
         f.focus(PayField::Date);
-        f.date = "not a date".to_string();
-        assert!(f.date_error(today(), None).is_some());
-        assert_eq!(f.action(today(), None), None);
+        f.date = TextField::new("not a date");
+        assert!(f.date_error().is_some());
+        assert_eq!(f.action(), None);
     }
 
     #[test]
     fn typing_is_ignored_on_the_match_panel() {
         let mut f = form(vec![split(4)], None);
         let amount = f.amount.clone();
-        f.push_char('5');
-        f.backspace();
+        handle_key(&mut f, DialogKey::Char('5'));
+        handle_key(&mut f, DialogKey::Backspace);
         assert_eq!(f.amount, amount);
     }
 }

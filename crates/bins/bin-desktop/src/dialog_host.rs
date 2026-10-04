@@ -20,9 +20,9 @@
 //! their own `Shell::*_dialog` fields.
 
 use crate::{
-    accounts::AccountsDialog, categories::CategoriesDialog, document_types::DocumentTypesDialog,
-    field::TextField, inventory_form::InventoryDialog, payees::PayeesDialog,
-    settings::SettingsDialog, tags::TagsDialog,
+    accounts::AccountsDialog, bills::BillsDialog, categories::CategoriesDialog,
+    document_types::DocumentTypesDialog, field::TextField, inventory_form::InventoryDialog,
+    payees::PayeesDialog, settings::SettingsDialog, tags::TagsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -89,6 +89,8 @@ pub enum OpenDialog {
     DocumentTypes(DocumentTypesDialog),
     Inventory(InventoryDialog),
     Tags(TagsDialog),
+    /// Boxed: the plan form carries its select choices, which would swell every variant.
+    Bills(Box<BillsDialog>),
 }
 
 impl OpenDialog {
@@ -101,6 +103,7 @@ impl OpenDialog {
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
+            Self::Bills(dialog) => &**dialog,
         }
     }
 
@@ -113,6 +116,7 @@ impl OpenDialog {
             Self::DocumentTypes(dialog) => dialog,
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
+            Self::Bills(dialog) => &mut **dialog,
         }
     }
 }
@@ -177,6 +181,8 @@ pub fn handle_key(dialog: &mut impl Dialog, key: DialogKey) -> DialogOutcome {
 mod tests {
     use super::*;
     use crate::accounts::{AccountField, AccountForm, DeleteAccountForm};
+    use crate::bill_form::BillPlanField;
+    use crate::bills::AmountKind;
     use crate::categories::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
     use crate::document_types::{
         DocumentTypeForm, DocumentTypesDialog, FormField, RemoveForm, TracksDate, default_types,
@@ -973,5 +979,239 @@ mod tests {
             handle_key(&mut dialog, DialogKey::Enter),
             DialogOutcome::Confirm
         );
+    }
+
+    fn bill_plan_form() -> crate::bill_form::BillPlanForm {
+        use crate::{accounts::default_accounts, bill_form, categories::default_categories};
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
+        let source = bill_form::BillPlanSource::new(
+            &default_categories(),
+            &default_accounts(),
+            &default_payees(),
+            None,
+            "none".to_string(),
+            |recurrence| format!("{recurrence:?}"),
+            today,
+            None,
+        );
+        bill_form::BillPlanForm::new(source)
+    }
+
+    fn bill_plan_form_of(dialog: &OpenDialog) -> &crate::bill_form::BillPlanForm {
+        match dialog {
+            OpenDialog::Bills(inner) => match &**inner {
+                BillsDialog::Add(form) => form,
+                other => panic!("expected Add bill plan, got {other:?}"),
+            },
+            other => panic!("expected Bills, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn bill_plan_typing_tab_and_the_amount_filter() {
+        let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Add(bill_plan_form())));
+        type_text(&mut dialog, "Water");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(bill_plan_form_of(&dialog).name.text(), "Wate");
+
+        // Name, then the Category, Unit, Account, Payee selects, to Amount.
+        for _ in 0..5 {
+            handle_key(&mut dialog, DialogKey::Tab);
+        }
+        assert_eq!(bill_plan_form_of(&dialog).focused, BillPlanField::Amount);
+        type_text(&mut dialog, "1a2.3.4-");
+        assert_eq!(bill_plan_form_of(&dialog).amount.text(), "12.34");
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(bill_plan_form_of(&dialog).focused, BillPlanField::Payee);
+        type_text(&mut dialog, "x");
+        assert_eq!(
+            bill_plan_form_of(&dialog).name.text(),
+            "Wate",
+            "selects take no text"
+        );
+    }
+
+    #[test]
+    fn bill_plan_enter_confirms_only_once_valid_and_a_select_takes_enter_first() {
+        let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Add(bill_plan_form())));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "Water");
+        for _ in 0..5 {
+            handle_key(&mut dialog, DialogKey::Tab);
+        }
+        type_text(&mut dialog, "90");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+
+        // On a select `Enter` opens its list instead, and a first Esc closes it.
+        handle_key(&mut dialog, DialogKey::BackTab);
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+    }
+
+    #[test]
+    fn bill_plan_space_toggles_fixed_estimated_and_a_unit_change_keeps_the_account_in_it() {
+        let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Add(bill_plan_form())));
+        for _ in 0..6 {
+            handle_key(&mut dialog, DialogKey::Tab);
+        }
+        assert_eq!(
+            bill_plan_form_of(&dialog).focused,
+            BillPlanField::AmountKind
+        );
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert_eq!(
+            bill_plan_form_of(&dialog).amount_kind,
+            AmountKind::Estimated
+        );
+        handle_key(&mut dialog, DialogKey::Left);
+        assert_eq!(bill_plan_form_of(&dialog).amount_kind, AmountKind::Fixed);
+
+        let OpenDialog::Bills(inner) = &mut dialog else {
+            panic!("expected Bills");
+        };
+        let BillsDialog::Add(form) = &mut **inner else {
+            panic!("expected Add bill plan");
+        };
+        form.focus(BillPlanField::Unit);
+        let before = form.account.value().map(str::to_string);
+        if form.options.units.len() > 1 {
+            handle_key(form, DialogKey::Down);
+            assert_ne!(form.account.value().map(str::to_string), before);
+            assert!(
+                form.options
+                    .account_labels
+                    .iter()
+                    .any(|a| Some(a.as_str()) == form.account.value())
+            );
+        }
+    }
+
+    fn pay_form(candidates: usize) -> crate::pay_form::PayForm {
+        use crate::{
+            accounts::default_accounts,
+            bills::{EntryId, SplitRef, default_bills},
+            categories::default_categories,
+            tags::default_tags,
+            transactions::default_transactions,
+        };
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
+        let (accounts, categories, payees) =
+            (default_accounts(), default_categories(), default_payees());
+        let mut transactions =
+            default_transactions(&accounts, &categories, &payees, &default_tags(), today);
+        let plan = default_bills(&accounts, &categories, &payees, &mut transactions, today)
+            .plans
+            .into_iter()
+            .next()
+            .unwrap();
+        let entry = EntryId {
+            plan_id: plan.id,
+            due: today,
+        };
+        let candidates = (0..candidates as u32)
+            .map(|transaction_id| SplitRef {
+                transaction_id,
+                split_index: 0,
+            })
+            .collect();
+        crate::pay_form::PayForm::new(entry, &plan, candidates, None, today, None)
+    }
+
+    fn pay_form_of(dialog: &OpenDialog) -> &crate::pay_form::PayForm {
+        match dialog {
+            OpenDialog::Bills(inner) => match &**inner {
+                BillsDialog::Pay(form) => form,
+                other => panic!("expected Pay, got {other:?}"),
+            },
+            other => panic!("expected Bills, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn pay_directly_types_into_amount_and_date_and_enter_needs_both_valid() {
+        let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Pay(pay_form(0))));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm,
+            "prefilled from the plan, dated today"
+        );
+        for _ in 0..pay_form_of(&dialog).amount.text().len() {
+            handle_key(&mut dialog, DialogKey::Backspace);
+        }
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled,
+            "an empty amount refuses"
+        );
+        type_text(&mut dialog, "1x2.5.");
+        assert_eq!(pay_form_of(&dialog).amount.text(), "12.5");
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(
+            pay_form_of(&dialog).focused,
+            crate::pay_form::PayField::Date
+        );
+        type_text(&mut dialog, "!");
+        assert!(pay_form_of(&dialog).date_error().is_some());
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+    }
+
+    #[test]
+    fn pay_match_steps_rows_and_none_of_these_switches_panel_instead_of_confirming() {
+        use crate::pay_form::{MatchChoice, PayMode};
+        let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Pay(pay_form(1))));
+        assert_eq!(pay_form_of(&dialog).mode, PayMode::Match);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled,
+            "nothing chosen yet"
+        );
+        handle_key(&mut dialog, DialogKey::Char('j'));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+        handle_key(&mut dialog, DialogKey::Down);
+        assert_eq!(pay_form_of(&dialog).choice, Some(MatchChoice::NoneOfThese));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        assert_eq!(pay_form_of(&dialog).mode, PayMode::Direct);
+        handle_key(&mut dialog, DialogKey::Right);
+        assert_eq!(pay_form_of(&dialog).mode, PayMode::Match);
+        handle_key(&mut dialog, DialogKey::Char('k'));
+        assert_eq!(pay_form_of(&dialog).choice, Some(MatchChoice::Candidate(0)));
+    }
+
+    #[test]
+    fn skip_confirms_on_enter_and_swallows_tab() {
+        let entry = crate::bills::EntryId {
+            plan_id: 1,
+            due: chrono::NaiveDate::from_ymd_opt(2026, 9, 19).unwrap(),
+        };
+        let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Skip(entry)));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Tab),
+            DialogOutcome::Handled
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+        assert!(!dialog.close_open_select());
     }
 }

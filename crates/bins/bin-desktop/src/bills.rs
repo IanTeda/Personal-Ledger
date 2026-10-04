@@ -32,6 +32,8 @@ use crate::{
     accounts::Account,
     bill_form::BillPlanForm,
     categories::{self, Category},
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    field::TextField,
     pay_form::PayForm,
     payees::{self, Payee},
     transaction_query::Total,
@@ -1005,6 +1007,47 @@ impl BillsDialog {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
             Self::Pay(_) | Self::Skip(_) => None,
         }
+    }
+
+    /// The form behind the dialog, which Skip has none of: it confirms with nothing to fill in.
+    fn inner(&self) -> Option<&dyn Dialog> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => Some(form),
+            Self::Pay(form) => Some(form),
+            Self::Skip(_) => None,
+        }
+    }
+
+    fn inner_mut(&mut self) -> Option<&mut dyn Dialog> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => Some(form),
+            Self::Pay(form) => Some(form),
+            Self::Skip(_) => None,
+        }
+    }
+}
+
+impl Dialog for BillsDialog {
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        self.inner_mut()?.handle_own_key(key)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        self.inner_mut()?.focused_text()
+    }
+
+    fn cycle_field(&mut self) {
+        if let Some(form) = self.inner_mut() {
+            form.cycle_field();
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        self.inner().is_none_or(Dialog::is_valid)
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        self.inner_mut().is_some_and(Dialog::close_open_select)
     }
 }
 

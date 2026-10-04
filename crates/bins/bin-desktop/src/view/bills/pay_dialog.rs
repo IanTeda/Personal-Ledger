@@ -291,7 +291,7 @@ fn direct_panel(
                 text_field(
                     "pay-bill-amount",
                     label(crate::msg::desktop_bills_pay_field_amount()),
-                    &form.amount,
+                    form.amount.text(),
                     "0.00",
                     form.focused == PayField::Amount,
                     click(PayField::Amount),
@@ -303,7 +303,7 @@ fn direct_panel(
                 text_field(
                     "pay-bill-date",
                     label(crate::msg::desktop_bills_pay_field_date()),
-                    &form.date,
+                    form.date.text(),
                     &lib_locale::msg::date_word_today(),
                     form.focused == PayField::Date,
                     click(PayField::Date),

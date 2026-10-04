@@ -134,7 +134,7 @@ pub fn render(props: PlanDialogProps<'_>, cx: &App) -> AnyElement {
         text_field(
             "bill-plan-name",
             label(lib_locale::msg::column_name()),
-            &form.name,
+            form.name.text(),
             &crate::msg::desktop_bills_plan_name_placeholder(),
             focused(BillPlanField::Name),
             click(BillPlanField::Name),
@@ -192,7 +192,7 @@ pub fn render(props: PlanDialogProps<'_>, cx: &App) -> AnyElement {
                 text_field(
                     "bill-plan-amount",
                     label(crate::msg::desktop_bills_plan_field_amount()),
-                    &form.amount,
+                    form.amount.text(),
                     "0.00",
                     focused(BillPlanField::Amount),
                     click(BillPlanField::Amount),
@@ -224,7 +224,7 @@ pub fn render(props: PlanDialogProps<'_>, cx: &App) -> AnyElement {
             .into_any_element(),
     ];
 
-    let recurring = form.shows(BillPlanField::EndsOn, options);
+    let recurring = form.shows(BillPlanField::EndsOn);
     fields.push(
         div()
             .flex()
@@ -242,7 +242,7 @@ pub fn render(props: PlanDialogProps<'_>, cx: &App) -> AnyElement {
                 text_field(
                     "bill-plan-first-due",
                     label(crate::msg::desktop_bills_plan_field_first_due()),
-                    &form.first_due,
+                    form.first_due.text(),
                     &lib_locale::msg::date_word_today(),
                     focused(BillPlanField::FirstDue),
                     click(BillPlanField::FirstDue),
@@ -255,7 +255,7 @@ pub fn render(props: PlanDialogProps<'_>, cx: &App) -> AnyElement {
                     text_field(
                         "bill-plan-ends-on",
                         label(crate::msg::desktop_bills_plan_field_ends_on()),
-                        &form.ends_on,
+                        form.ends_on.text(),
                         &crate::msg::desktop_bills_plan_ends_on_placeholder(),
                         focused(BillPlanField::EndsOn),
                         click(BillPlanField::EndsOn),
@@ -280,7 +280,7 @@ pub fn render(props: PlanDialogProps<'_>, cx: &App) -> AnyElement {
             .child(div().w(px(140.0)).child(text_field(
                 "bill-plan-lead",
                 div().into_any_element(),
-                &form.attention_lead,
+                form.attention_lead.text(),
                 &crate::msg::desktop_bills_plan_lead_placeholder(),
                 focused(BillPlanField::AttentionLead),
                 click(BillPlanField::AttentionLead),
