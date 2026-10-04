@@ -69,7 +69,7 @@ pub fn render(
         ))
         .child(dialog::body([
             name_field(
-                &form.name,
+                form.name.text(),
                 form.focused == CategoryField::Name,
                 on_field_click.clone(),
                 cx,
@@ -91,7 +91,7 @@ pub fn render(
                 cx,
             ),
             budget_field(
-                &form.budget,
+                form.budget.text(),
                 form.focused == CategoryField::Budget,
                 form.budget_lock.as_ref(),
                 on_field_click.clone(),
@@ -478,7 +478,7 @@ fn is_valid(
     category_id: u32,
 ) -> bool {
     // Name must not be empty
-    if form.name.trim().is_empty() {
+    if form.name.text().trim().is_empty() {
         return false;
     }
 
@@ -486,7 +486,7 @@ fn is_valid(
     let has_sibling_with_same_name = all_categories.iter().any(|c| {
         c.id != category_id
             && c.parent == form.parent_id
-            && c.name.eq_ignore_ascii_case(form.name.trim())
+            && c.name.eq_ignore_ascii_case(form.name.text().trim())
     });
 
     !has_sibling_with_same_name

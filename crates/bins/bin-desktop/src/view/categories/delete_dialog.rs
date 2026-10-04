@@ -36,7 +36,7 @@ pub fn render(
         .child(dialog::body([
             warning_copy(split_count),
             dialog::info_panel(reference_notice(budget_count), cx).into_any_element(),
-            confirm_input_field(&category.name, &form.confirmation_name, cx),
+            confirm_input_field(&category.name, form.confirmation_name.text(), cx),
         ]))
         .child(dialog::action_row(
             [
@@ -44,7 +44,7 @@ pub fn render(
                 dialog::confirm_button(
                     "delete-category-confirm",
                     crate::msg::desktop_categories_delete_submit(),
-                    form.matches(&category.name),
+                    form.is_valid(),
                     true,
                     on_confirm,
                     cx,

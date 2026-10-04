@@ -17,7 +17,9 @@
 ///
 /// In this non-double-entry ledger, accounts handle assets and liabilities,
 /// while categories classify transactions as income or expenses.
-#[derive(Debug, Clone, Default, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, PartialOrd, serde::Deserialize, serde::Serialize,
+)]
 pub enum CategoryTypes {
     /// Money spent or costs incurred (groceries, utilities, entertainment).
     #[default]

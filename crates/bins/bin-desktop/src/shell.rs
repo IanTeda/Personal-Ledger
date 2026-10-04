@@ -727,7 +727,6 @@ pub struct Shell {
     categories_expanded: Vec<u32>,
     /// The currently open Categories dialog, if any -- `NavState::mode` is `InputMode::Dialog`
     /// for exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
-    categories_dialog: Option<categories::CategoriesDialog>,
     payees: Vec<Payee>,
     /// The selected row on the Payees page.
     payees_selected: usize,
@@ -922,7 +921,6 @@ impl Shell {
             categories_selected: 0,
             categories_selected_id: None,
             categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
-            categories_dialog: None,
             payees,
             payees_selected: 0,
             settings_payees_selected: None,
@@ -1391,7 +1389,6 @@ impl Shell {
                 }
                 self.transactions_filter_form = None;
                 self.close_dialog();
-                self.categories_dialog = None;
                 self.payees_dialog = None;
                 self.document_types_dialog = None;
                 self.inventory_dialog = None;
@@ -2117,9 +2114,6 @@ impl Shell {
                 }
             };
         }
-        if self.categories_dialog.is_some() {
-            return self.handle_categories_dialog_key(keystroke);
-        }
         if self.payees_dialog.is_some() {
             return self.handle_payees_dialog_key(keystroke);
         }
@@ -2170,6 +2164,7 @@ impl Shell {
         match dialog {
             OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog),
             OpenDialog::Accounts(dialog) => self.apply_accounts_dialog(dialog),
+            OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog),
         }
     }
 
@@ -2183,6 +2178,20 @@ impl Shell {
     fn settings_dialog_mut(&mut self) -> Option<&mut SettingsDialog> {
         match self.dialog.as_mut()? {
             OpenDialog::Settings(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn categories_dialog(&self) -> Option<&categories::CategoriesDialog> {
+        match self.dialog.as_ref()? {
+            OpenDialog::Categories(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn categories_dialog_mut(&mut self) -> Option<&mut categories::CategoriesDialog> {
+        match self.dialog.as_mut()? {
+            OpenDialog::Categories(dialog) => Some(dialog),
             _ => None,
         }
     }
@@ -3066,10 +3075,8 @@ impl Shell {
                         self.status_message =
                             Some(crate::msg::desktop_status_delete_children_first());
                     } else {
-                        let form = categories::DeleteCategoryForm::default();
-                        self.categories_dialog =
-                            Some(categories::CategoriesDialog::Delete(category.id, form));
-                        self.nav.enter_mode(InputMode::Dialog);
+                        let id = category.id;
+                        self.open_delete_categories_dialog(id);
                     }
                 }
                 true
@@ -3114,15 +3121,17 @@ impl Shell {
             None => Some(CategoryTypes::Expense),
         };
         let form = categories::CategoryForm {
-            name: String::new(),
+            name: TextField::default(),
             parent_id,
             category_type,
-            budget: String::new(),
+            budget: TextField::default(),
             budget_lock: self.categories_budget_lock(None),
             focused: categories::CategoryField::Name,
         };
-        self.categories_dialog = Some(categories::CategoriesDialog::Add { parent_id, form });
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_dialog(OpenDialog::Categories(categories::CategoriesDialog::Add {
+            parent_id,
+            form,
+        }));
     }
 
     /// Opens the Edit categories dialog on `id`, pre-filled. Monthly budget shows the current
@@ -3140,15 +3149,17 @@ impl Shell {
                 .map(|amount| amount.0.to_string())
                 .unwrap_or_default();
             let form = categories::CategoryForm {
-                name: category.name.clone(),
+                name: TextField::new(category.name.as_str()),
                 parent_id: category.parent,
                 category_type: Some(category.category_type.clone()),
-                budget: budget_str,
+                budget: TextField::new(budget_str),
                 budget_lock: self.categories_budget_lock(Some(category_id)),
                 focused: categories::CategoryField::Name,
             };
-            self.categories_dialog = Some(categories::CategoriesDialog::Edit(category_id, form));
-            self.nav.enter_mode(InputMode::Dialog);
+            self.open_dialog(OpenDialog::Categories(categories::CategoriesDialog::Edit(
+                category_id,
+                form,
+            )));
         }
     }
 
@@ -3164,13 +3175,13 @@ impl Shell {
         if form.budget_lock.is_some() {
             return;
         }
-        let amount = if form.budget.trim().is_empty() {
+        let amount = if form.budget.is_blank() {
             if !clears {
                 return;
             }
             None
         } else {
-            match form.budget.parse::<lib_core::Money>() {
+            match form.budget.text().trim().parse::<lib_core::Money>() {
                 Ok(amount) => Some(amount),
                 Err(_) => return,
             }
@@ -7497,169 +7508,6 @@ impl Shell {
         self.open_dialog(OpenDialog::Accounts(AccountsDialog::Add(form)));
     }
 
-    /// Routes a keystroke while a Categories dialog is open. `Esc` never reaches here (it cancels
-    /// ahead of the mode gates).
-    fn handle_categories_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        if matches!(
-            self.categories_dialog,
-            Some(categories::CategoriesDialog::Delete(..))
-        ) {
-            return self.handle_delete_categories_key(keystroke);
-        }
-
-        let Some(dialog) = self.categories_dialog.as_mut() else {
-            return false;
-        };
-
-        let Some(form) = dialog.form_mut() else {
-            return false;
-        };
-
-        match keystroke.key.as_str() {
-            "escape" => {
-                self.categories_dialog = None;
-                self.nav.exit_mode();
-                true
-            }
-            "backspace" => {
-                form.backspace();
-                true
-            }
-            "tab" => {
-                form.cycle_field();
-                true
-            }
-            "enter" => {
-                if !form.name.trim().is_empty()
-                    && let Some(dialog) = self.categories_dialog.take()
-                {
-                    match dialog {
-                        categories::CategoriesDialog::Add { form, .. } => {
-                            let category_type =
-                                form.category_type.clone().unwrap_or(CategoryTypes::Expense);
-                            if let Ok(category_id) = categories::insert_category(
-                                &mut self.categories,
-                                form.name.trim().to_string(),
-                                form.parent_id,
-                                category_type,
-                            ) {
-                                self.save_category_budget(category_id, &form, false);
-                            }
-                            self.nav.exit_mode();
-                        }
-                        categories::CategoriesDialog::Edit(id, form) => {
-                            let _ = categories::edit_category(
-                                &mut self.categories,
-                                id,
-                                form.name.trim().to_string(),
-                            );
-                            if let Some(new_parent) = form.parent_id {
-                                let _ = categories::move_category(
-                                    &mut self.categories,
-                                    id,
-                                    Some(new_parent),
-                                );
-                            }
-                            self.save_category_budget(id, &form, true);
-                            self.nav.exit_mode();
-                        }
-                        _ => {
-                            self.nav.exit_mode();
-                        }
-                    }
-                }
-                true
-            }
-            _ => {
-                let modifiers = &keystroke.modifiers;
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-                if let Some(text) = keystroke.key_char.as_deref()
-                    && text.chars().count() == 1
-                    && let Some(ch) = text.chars().next()
-                {
-                    form.push_char(ch);
-                    true
-                } else {
-                    false
-                }
-            }
-        }
-    }
-
-    /// Keys in the Delete category dialog: type the category's name back (`Backspace` edits it),
-    /// `Enter` deletes once it matches, and `Tab` is swallowed since the confirmation is the only
-    /// field. `Esc` never reaches here (it cancels ahead of the mode gates).
-    fn handle_delete_categories_key(&mut self, keystroke: &Keystroke) -> bool {
-        let Some(categories::CategoriesDialog::Delete(id, form)) = self.categories_dialog.as_mut()
-        else {
-            return false;
-        };
-        match keystroke.key.as_str() {
-            "backspace" => form.backspace(),
-            "tab" => {}
-            "enter" => {
-                let matches = self
-                    .categories
-                    .iter()
-                    .find(|category| category.id == *id)
-                    .is_some_and(|category| form.matches(&category.name));
-                if matches {
-                    self.confirm_categories_dialog();
-                }
-            }
-            _ => {
-                let modifiers = &keystroke.modifiers;
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-                if let Some(text) = keystroke.key_char.as_deref()
-                    && text.chars().count() == 1
-                    && let Some(ch) = text.chars().next()
-                {
-                    form.push_char(ch);
-                }
-            }
-        }
-        true
-    }
-
-    fn confirm_categories_dialog(&mut self) {
-        if let Some(categories::CategoriesDialog::Delete(category_id, form)) =
-            self.categories_dialog.as_ref()
-        {
-            let category = self.categories.iter().find(|c| c.id == *category_id);
-            let matches = category.is_some_and(|c| form.matches(&c.name));
-            if matches {
-                let category_id = *category_id;
-                let (kind, text) = delete_category(
-                    &mut self.categories,
-                    &mut self.transactions,
-                    &mut self.budgets,
-                    category_id,
-                );
-                self.raise_toast(kind, text);
-                // Keep the selection in range
-                let tree_rows = categories::tree_rows(&self.categories, &self.categories_expanded);
-                let filtered_rows: Vec<_> = tree_rows
-                    .iter()
-                    .filter(|row| {
-                        self.categories
-                            .iter()
-                            .find(|c| c.id == row.id)
-                            .map(|c| c.category_type == CategoryTypes::Expense)
-                            .unwrap_or(false)
-                    })
-                    .collect();
-                self.categories_selected = self
-                    .categories_selected
-                    .min(filtered_rows.len().saturating_sub(1));
-            }
-            self.categories_dialog = None;
-        }
-    }
-
     /// A click on a field of the Add account dialog: focuses a text field, or focuses a select
     /// and toggles its list.
     fn handle_accounts_dialog_field_click(
@@ -7805,9 +7653,20 @@ impl Shell {
             return;
         }
 
-        let form = categories::DeleteCategoryForm::default();
-        self.categories_dialog = Some(categories::CategoriesDialog::Delete(category_id, form));
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_delete_categories_dialog(category_id);
+        cx.notify();
+    }
+
+    /// Opens the Delete category dialog on `category_id`, copying its name in so the form
+    /// validates without `Shell`. A no-op if the category is gone.
+    fn open_delete_categories_dialog(&mut self, category_id: u32) {
+        let Some(category) = self.categories.iter().find(|c| c.id == category_id) else {
+            return;
+        };
+        let form = categories::DeleteCategoryForm::new(category.name.as_str());
+        self.open_dialog(OpenDialog::Categories(
+            categories::CategoriesDialog::Delete(category_id, form),
+        ));
     }
 
     fn handle_categories_dialog_field_click(
@@ -7815,7 +7674,7 @@ impl Shell {
         field: categories::CategoryField,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(dialog) = self.categories_dialog.as_mut()
+        if let Some(dialog) = self.categories_dialog_mut()
             && let Some(form) = dialog.form_mut()
         {
             form.focus_field(field);
@@ -7828,15 +7687,19 @@ impl Shell {
         parent_id: Option<u32>,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(dialog) = self.categories_dialog.as_mut()
+        // A child takes its parent's type.
+        let parent_type = parent_id.and_then(|parent_id| {
+            self.categories
+                .iter()
+                .find(|c| c.id == parent_id)
+                .map(|parent| parent.category_type.clone())
+        });
+        if let Some(dialog) = self.categories_dialog_mut()
             && let Some(form) = dialog.form_mut()
         {
             form.parent_id = parent_id;
-            // Update the category type if a parent is selected
-            if let Some(parent_id) = parent_id
-                && let Some(parent) = self.categories.iter().find(|c| c.id == parent_id)
-            {
-                form.category_type = Some(parent.category_type.clone());
+            if parent_type.is_some() {
+                form.category_type = parent_type;
             }
             cx.notify();
         }
@@ -7847,91 +7710,94 @@ impl Shell {
         category_type: CategoryTypes,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(dialog) = self.categories_dialog.as_mut() {
-            let can_change_type = match dialog {
-                categories::CategoriesDialog::Add { form, .. } => form.parent_id.is_none(),
-                categories::CategoriesDialog::Edit(id, _form) => self
-                    .categories
-                    .iter()
-                    .find(|c| c.id == *id)
-                    .map(|c| c.parent.is_none())
-                    .unwrap_or(false),
-                _ => false,
-            };
-
-            if can_change_type && let Some(form) = dialog.form_mut() {
-                form.category_type = Some(category_type.clone());
-                // For Edit dialogs, cascade the type change to descendants
-                if let categories::CategoriesDialog::Edit(id, _) = dialog {
-                    let _ =
-                        categories::change_category_type(&mut self.categories, *id, category_type);
-                }
-                cx.notify();
-            }
+        let can_change_type = match self.categories_dialog() {
+            Some(categories::CategoriesDialog::Add { form, .. }) => form.parent_id.is_none(),
+            Some(categories::CategoriesDialog::Edit(id, _)) => self
+                .categories
+                .iter()
+                .find(|c| c.id == *id)
+                .is_some_and(|c| c.parent.is_none()),
+            _ => false,
+        };
+        if !can_change_type {
+            return;
         }
+        let edited_id = match self.categories_dialog() {
+            Some(categories::CategoriesDialog::Edit(id, _)) => Some(*id),
+            _ => None,
+        };
+        if let Some(dialog) = self.categories_dialog_mut()
+            && let Some(form) = dialog.form_mut()
+        {
+            form.category_type = Some(category_type.clone());
+        }
+        // For Edit dialogs, cascade the type change to descendants
+        if let Some(id) = edited_id {
+            let _ = categories::change_category_type(&mut self.categories, id, category_type);
+        }
+        cx.notify();
     }
 
     fn handle_categories_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.categories_dialog = None;
-        self.nav.exit_mode();
+        self.close_dialog();
         cx.notify();
     }
 
     fn handle_categories_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(dialog) = self.categories_dialog.take() {
-            match dialog {
-                categories::CategoriesDialog::Add { form, .. } => {
-                    if !form.name.trim().is_empty() {
-                        let category_type =
-                            form.category_type.clone().unwrap_or(CategoryTypes::Expense);
-                        match categories::insert_category(
-                            &mut self.categories,
-                            form.name.trim().to_string(),
-                            form.parent_id,
-                            category_type,
-                        ) {
-                            Ok(category_id) => {
-                                self.save_category_budget(category_id, &form, false);
-                                self.nav.exit_mode();
-                                cx.notify();
-                            }
-                            Err(_) => {
-                                // TODO: Show error message
-                                self.nav.exit_mode();
-                            }
-                        }
-                    }
+        self.confirm_open_dialog();
+        cx.notify();
+    }
+
+    /// Applies a confirmed Categories dialog (reached through [`Self::confirm_open_dialog`] from
+    /// the Add/Save/Delete button or `Enter`): Add inserts the category and saves its Monthly
+    /// budget; Edit renames, re-parents and saves the budget; Delete removes it and keeps the
+    /// selection in range. The form has already validated.
+    fn apply_categories_dialog(&mut self, dialog: categories::CategoriesDialog) {
+        match dialog {
+            categories::CategoriesDialog::Add { form, .. } => {
+                let category_type = form.category_type.clone().unwrap_or(CategoryTypes::Expense);
+                // A rejected insert (e.g. depth) closes the dialog without adding anything.
+                if let Ok(category_id) = categories::insert_category(
+                    &mut self.categories,
+                    form.name.text().trim().to_string(),
+                    form.parent_id,
+                    category_type,
+                ) {
+                    self.save_category_budget(category_id, &form, false);
                 }
-                categories::CategoriesDialog::Edit(id, form) => {
-                    if !form.name.trim().is_empty() {
-                        let _ = categories::edit_category(
-                            &mut self.categories,
-                            id,
-                            form.name.trim().to_string(),
-                        );
-                        // Handle parent change if necessary
-                        if let Some(new_parent) = form.parent_id {
-                            let _ = categories::move_category(
-                                &mut self.categories,
-                                id,
-                                Some(new_parent),
-                            );
-                        } else if form.parent_id.is_none() {
-                            // If parent was cleared, move to top-level
-                            let _ = categories::move_category(&mut self.categories, id, None);
-                        }
-                        self.save_category_budget(id, &form, true);
-                        self.nav.exit_mode();
-                        cx.notify();
-                    }
-                }
-                categories::CategoriesDialog::Delete(category_id, form) => {
-                    self.categories_dialog =
-                        Some(categories::CategoriesDialog::Delete(category_id, form));
-                    self.confirm_categories_dialog();
-                    self.nav.exit_mode();
-                    cx.notify();
-                }
+            }
+            categories::CategoriesDialog::Edit(id, form) => {
+                let _ = categories::edit_category(
+                    &mut self.categories,
+                    id,
+                    form.name.text().trim().to_string(),
+                );
+                // `None` moves it to top level when the parent was cleared.
+                let _ = categories::move_category(&mut self.categories, id, form.parent_id);
+                self.save_category_budget(id, &form, true);
+            }
+            categories::CategoriesDialog::Delete(category_id, _) => {
+                let (kind, text) = delete_category(
+                    &mut self.categories,
+                    &mut self.transactions,
+                    &mut self.budgets,
+                    category_id,
+                );
+                self.raise_toast(kind, text);
+                // Keep the selection in range
+                let tree_rows = categories::tree_rows(&self.categories, &self.categories_expanded);
+                let filtered_rows = tree_rows
+                    .iter()
+                    .filter(|row| {
+                        self.categories
+                            .iter()
+                            .find(|c| c.id == row.id)
+                            .is_some_and(|c| c.category_type == CategoryTypes::Expense)
+                    })
+                    .count();
+                self.categories_selected = self
+                    .categories_selected
+                    .min(filtered_rows.saturating_sub(1));
             }
         }
     }
@@ -10347,7 +10213,7 @@ impl Render for Shell {
                 }
                 None => None,
             })
-            .children(self.categories_dialog.as_ref().map(|dialog| match dialog {
+            .children(self.categories_dialog().map(|dialog| match dialog {
                 categories::CategoriesDialog::Add { form, .. } => {
                     let parent_options: Vec<_> = self
                         .categories

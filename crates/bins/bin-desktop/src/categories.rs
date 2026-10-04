@@ -10,6 +10,11 @@ use bigdecimal::BigDecimal;
 use chrono::Datelike;
 use lib_core::{CategoryTypes, Money};
 
+use crate::{
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    field::TextField,
+};
+
 /// Joins a category's ancestors in a path label: `Food › Groceries`.
 pub const PATH_SEPARATOR: &str = " \u{203a} ";
 
@@ -241,12 +246,12 @@ pub enum BudgetLock {
 }
 
 /// A form for adding or editing a category: name, parent, type, and monthly budget.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CategoryForm {
-    pub name: String,
+    pub name: TextField,
     pub parent_id: Option<u32>,
     pub category_type: Option<CategoryTypes>,
-    pub budget: String,
+    pub budget: TextField,
     /// `Some` makes the Monthly budget field read-only; saving then leaves the Budget alone.
     pub budget_lock: Option<BudgetLock>,
     pub focused: CategoryField,
@@ -255,10 +260,10 @@ pub struct CategoryForm {
 impl Default for CategoryForm {
     fn default() -> Self {
         CategoryForm {
-            name: String::new(),
+            name: TextField::default(),
             parent_id: None,
             category_type: Some(CategoryTypes::Expense),
-            budget: String::new(),
+            budget: TextField::default(),
             budget_lock: None,
             focused: CategoryField::Name,
         }
@@ -266,60 +271,67 @@ impl Default for CategoryForm {
 }
 
 impl CategoryForm {
-    pub fn push_char(&mut self, ch: char) {
-        match self.focused {
-            CategoryField::Name => self.name.push(ch),
-            CategoryField::Budget => {
-                if self.budget_lock.is_none() && (ch.is_numeric() || ch == '.') {
-                    self.budget.push(ch);
-                }
-            }
-            CategoryField::Parent | CategoryField::Type => {}
-        }
-    }
-
-    pub fn backspace(&mut self) {
-        match self.focused {
-            CategoryField::Name => {
-                self.name.pop();
-            }
-            CategoryField::Budget => {
-                if self.budget_lock.is_none() {
-                    self.budget.pop();
-                }
-            }
-            CategoryField::Parent | CategoryField::Type => {}
-        }
-    }
-
-    pub fn cycle_field(&mut self) {
-        self.focused = self.focused.next();
-    }
-
     pub fn focus_field(&mut self, field: CategoryField) {
         self.focused = field;
     }
-}
 
-/// A form for deleting a category: confirmation name.
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct DeleteCategoryForm {
-    pub confirmation_name: String,
-}
+    /// Only a blank name blocks saving; a duplicate sibling name is the view's warning.
+    pub fn is_valid(&self) -> bool {
+        !self.name.is_blank()
+    }
 
-impl DeleteCategoryForm {
-    pub fn push_char(&mut self, ch: char) {
-        if !ch.is_control() {
-            self.confirmation_name.push(ch);
+    /// The text field typing edits: Name, or Monthly budget unless it is locked.
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        match self.focused {
+            CategoryField::Name => Some(&mut self.name),
+            CategoryField::Budget if self.budget_lock.is_none() => Some(&mut self.budget),
+            CategoryField::Budget | CategoryField::Parent | CategoryField::Type => None,
         }
     }
 
-    pub fn backspace(&mut self) {
-        self.confirmation_name.pop();
+    /// Typing and `Backspace` on a field with nothing to type into (the two selects, a locked
+    /// Monthly budget) are swallowed so they never fall through to the shell, and the Monthly
+    /// budget only takes digits and `.`.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        match key {
+            DialogKey::Char(ch) => {
+                let on_budget = self.focused == CategoryField::Budget;
+                match self.focused_text() {
+                    None => {}
+                    Some(field) if on_budget => {
+                        if ch.is_numeric() || ch == '.' {
+                            field.push(ch);
+                        }
+                    }
+                    Some(_) => return None,
+                }
+            }
+            DialogKey::Backspace if self.focused_text().is_none() => {}
+            _ => return None,
+        }
+        Some(DialogOutcome::Handled)
+    }
+}
+
+/// A form for deleting a category: confirmation name. The category's name is copied in at open
+/// so the form validates without `Shell`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeleteCategoryForm {
+    pub confirmation_name: TextField,
+    name: String,
+}
+
+impl DeleteCategoryForm {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            confirmation_name: TextField::default(),
+            name: name.into(),
+        }
     }
 
-    pub fn matches(&self, name: &str) -> bool {
-        self.confirmation_name == name
+    /// A plain case-sensitive `==`, so it can't be confirmed by habit.
+    pub fn is_valid(&self) -> bool {
+        self.confirmation_name.text() == self.name
     }
 }
 
@@ -347,6 +359,7 @@ pub enum CategoryError {
 }
 
 /// The categories dialog's state: Add { parent } / Edit(id) / Delete(id).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CategoriesDialog {
     /// Adding a new category under a parent (or None for top-level).
     Add {
@@ -375,20 +388,30 @@ impl CategoriesDialog {
             CategoriesDialog::Delete(_, _) => None,
         }
     }
+}
 
-    /// The delete form, if this is a Delete dialog.
-    pub fn delete_form(&self) -> Option<&DeleteCategoryForm> {
+impl Dialog for CategoriesDialog {
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        self.form_mut()?.handle_own_key(key)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
         match self {
-            CategoriesDialog::Delete(_, form) => Some(form),
-            _ => None,
+            Self::Add { form, .. } | Self::Edit(_, form) => form.focused_text(),
+            Self::Delete(_, form) => Some(&mut form.confirmation_name),
         }
     }
 
-    /// The mutable delete form, if this is a Delete dialog.
-    pub fn delete_form_mut(&mut self) -> Option<&mut DeleteCategoryForm> {
+    fn cycle_field(&mut self) {
+        if let Some(form) = self.form_mut() {
+            form.focused = form.focused.next();
+        }
+    }
+
+    fn is_valid(&self) -> bool {
         match self {
-            CategoriesDialog::Delete(_, form) => Some(form),
-            _ => None,
+            Self::Add { form, .. } | Self::Edit(_, form) => form.is_valid(),
+            Self::Delete(_, form) => form.is_valid(),
         }
     }
 }

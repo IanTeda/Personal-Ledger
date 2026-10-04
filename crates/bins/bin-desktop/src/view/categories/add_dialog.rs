@@ -59,7 +59,7 @@ pub fn render(
         ))
         .child(dialog::body([
             name_field(
-                &form.name,
+                form.name.text(),
                 form.focused == CategoryField::Name,
                 on_field_click.clone(),
                 cx,
@@ -81,7 +81,7 @@ pub fn render(
                 cx,
             ),
             budget_field(
-                &form.budget,
+                form.budget.text(),
                 form.focused == CategoryField::Budget,
                 form.budget_lock.as_ref(),
                 on_field_click.clone(),
@@ -418,14 +418,14 @@ fn suffixed_label(
 
 fn is_valid(form: &CategoryForm, all_categories: &[categories::Category]) -> bool {
     // Name must not be empty
-    if form.name.trim().is_empty() {
+    if form.name.text().trim().is_empty() {
         return false;
     }
 
     // Check for sibling name clash (same parent and same name)
-    let has_sibling_with_same_name = all_categories
-        .iter()
-        .any(|c| c.parent == form.parent_id && c.name.eq_ignore_ascii_case(form.name.trim()));
+    let has_sibling_with_same_name = all_categories.iter().any(|c| {
+        c.parent == form.parent_id && c.name.eq_ignore_ascii_case(form.name.text().trim())
+    });
 
     !has_sibling_with_same_name
 }

@@ -205,15 +205,19 @@ impl Shell {
             dialog = Some(label);
             dialog_name = name;
             dialog_confirm = confirm;
-        } else if let Some(open) = self.categories_dialog.as_ref() {
+        } else if let Some(open) = self.categories_dialog() {
             let (label, name, confirm) = match open {
                 CategoriesDialog::Add { form, .. } => {
-                    ("AddCategory", Some(form.name.clone()), None)
+                    ("AddCategory", Some(form.name.text().to_string()), None)
                 }
-                CategoriesDialog::Edit(_, form) => ("EditCategory", Some(form.name.clone()), None),
-                CategoriesDialog::Delete(_, form) => {
-                    ("DeleteCategory", None, Some(form.confirmation_name.clone()))
+                CategoriesDialog::Edit(_, form) => {
+                    ("EditCategory", Some(form.name.text().to_string()), None)
                 }
+                CategoriesDialog::Delete(_, form) => (
+                    "DeleteCategory",
+                    None,
+                    Some(form.confirmation_name.text().to_string()),
+                ),
             };
             dialog = Some(label);
             dialog_name = name;
