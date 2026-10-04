@@ -78,6 +78,7 @@ use crate::{
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
+    dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog},
     document_types::{self, DocumentTypeRow, DocumentTypesDialog},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     documents_form::DocumentsDialog,
@@ -660,11 +661,11 @@ pub struct Shell {
     /// nothing on this map's own dialog tickets mutates this `Vec` yet (test/edit/delete/add are
     /// all clearly-marked stubs, see `view::settings::units`'s own doc).
     settings_price_sources: Vec<PriceSourceRow>,
-    /// The currently open Settings dialog, if any (issue #184's own "Add unit" the first
-    /// variant) -- `NavState::mode` is `InputMode::Dialog` for exactly as long as this is
-    /// `Some`, the same "`Option<T>` + a matching mode" shape `Self::palette`/
-    /// `Self::file_explorer` already use with `InputMode::Command`.
-    settings_dialog: Option<SettingsDialog>,
+    /// The open Dialog in the Dialog host (`crate::dialog_host`), if any. Only
+    /// [`Self::open_dialog`]/[`Self::close_dialog`] change it, so `NavState::mode` is
+    /// `InputMode::Dialog` for exactly as long as this is `Some`. The Settings dialogs live here;
+    /// the other features' dialogs still have their own `*_dialog` fields until they move in.
+    dialog: Option<OpenDialog>,
     /// The Institutions section's own table rows (issue #178), seeded from
     /// `settings::default_institutions()` -- same reasoning as [`Self::settings_units`].
     settings_institutions: Vec<InstitutionRow>,
@@ -681,7 +682,7 @@ pub struct Shell {
     /// `j`/`k` move -- not an index into [`Self::accounts`], since the page shows accounts
     /// grouped by type rather than in insertion order.
     accounts_selected: usize,
-    /// The currently open Accounts dialog, if any -- same shape as [`Self::settings_dialog`],
+    /// The currently open Accounts dialog, if any -- same shape as [`Self::dialog`],
     /// with `NavState::mode` being `InputMode::Dialog` for exactly as long as it is `Some`.
     accounts_dialog: Option<AccountsDialog>,
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
@@ -895,7 +896,7 @@ impl Shell {
             explorer_filters: ExplorerFilters::default(),
             settings_units: settings::default_units(),
             settings_price_sources: settings::default_price_sources(),
-            settings_dialog: None,
+            dialog: None,
             settings_institutions: settings::default_institutions(),
             // A private, empty capture until `set_log_capture` hands over the real one.
             settings_log: LogView::new(
@@ -1316,6 +1317,9 @@ impl Shell {
         match outcome {
             KeyOutcome::ClearPendingG => return true,
             KeyOutcome::ClosePopupsAndExitMode => {
+                if self.dialog.as_mut().is_some_and(Dialog::close_open_select) {
+                    return true;
+                }
                 // The Accounts dialogs' dropdowns: the first `Esc` closes an open list only, the
                 // next one cancels the dialog (the Desktop Accounts map's select-control decision).
                 if let Some(form) = self
@@ -1399,7 +1403,7 @@ impl Shell {
                     return true;
                 }
                 self.transactions_filter_form = None;
-                self.settings_dialog = None;
+                self.close_dialog();
                 self.accounts_dialog = None;
                 self.categories_dialog = None;
                 self.payees_dialog = None;
@@ -1598,7 +1602,7 @@ impl Shell {
                 settings_colour_grid_hints()
             }
             SettingsSection::Display => settings_display_hints(),
-            SettingsSection::Tracing if self.settings_dialog.is_some() => confirm_dialog_hints(),
+            SettingsSection::Tracing if self.settings_dialog().is_some() => confirm_dialog_hints(),
             SettingsSection::Tracing => settings_tracing_hints(),
             _ => settings_plain_page_hints(),
         }
@@ -2108,17 +2112,24 @@ impl Shell {
     }
 
     /// Routes a keystroke while `InputMode::Dialog` is active (tier 2, mirroring
-    /// [`Self::handle_search_key`]'s shape): extracts the open [`SettingsDialog`]'s own
-    /// [`UnitForm`] regardless of which variant it is (`AddUnit`/`EditUnit` share one form type,
-    /// so their keystroke handling is identical). `Tab` cycles the open dialog's own field focus
-    /// rather than reaching `NavState::cycle_focus_forward` -- this tier returns before
-    /// `route_key`'s `Tab` tier is ever checked, so the shell-wide zones stay untouched while a
-    /// dialog is up. `Enter` submits only when the form validates, mirroring
-    /// `dialog::confirm_button`'s own `enabled`-gated `on_click`.
+    /// [`Self::handle_search_key`]'s shape). A Dialog in the Dialog host goes through
+    /// [`dialog_host::handle_key`]; the dialogs not yet moved there keep their own handlers.
+    /// This tier returns before `route_key`'s `Tab` tier is ever checked, so the shell-wide zones
+    /// stay untouched while a dialog is up.
     fn handle_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
         // Read-only: `Esc` (handled before this) is its only key; the list scrolls by pointer.
         if self.toast_history_open {
             return false;
+        }
+        if let Some(dialog) = self.dialog.as_mut() {
+            return match dialog_host::handle_key(dialog, dialog_key(keystroke)) {
+                DialogOutcome::Ignored => false,
+                DialogOutcome::Handled => true,
+                DialogOutcome::Confirm => {
+                    self.confirm_open_dialog();
+                    true
+                }
+            };
         }
         if self.accounts_dialog.is_some() {
             return self.handle_accounts_dialog_key(keystroke);
@@ -2147,100 +2158,46 @@ impl Shell {
         if self.documents_dialog.is_some() {
             return self.handle_documents_dialog_key(keystroke);
         }
-        let Some(dialog) = self.settings_dialog.as_mut() else {
-            return false;
-        };
+        false
+    }
 
+    /// Opens `dialog` in the Dialog host, entering `InputMode::Dialog` with it.
+    fn open_dialog(&mut self, dialog: OpenDialog) {
+        self.dialog = Some(dialog);
+        self.nav.enter_mode(InputMode::Dialog);
+    }
+
+    /// Closes the Dialog host's Dialog, if one is open, without applying it.
+    fn close_dialog(&mut self) {
+        if self.dialog.take().is_some() {
+            self.nav.exit_mode();
+        }
+    }
+
+    /// `Enter` and the confirm button both land here: applies the open Dialog if its form is
+    /// valid, then closes it. A no-op while the form is invalid, leaving the Dialog open.
+    fn confirm_open_dialog(&mut self) {
+        if !self.dialog.as_ref().is_some_and(Dialog::is_valid) {
+            return;
+        }
+        let Some(dialog) = self.dialog.take() else {
+            return;
+        };
+        self.nav.exit_mode();
         match dialog {
-            SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
-                match keystroke.key.as_str() {
-                    "backspace" => {
-                        form.backspace();
-                        true
-                    }
-                    "tab" => {
-                        form.cycle_field();
-                        true
-                    }
-                    "enter" => {
-                        let valid = form.is_valid();
-                        if valid {
-                            self.confirm_settings_dialog();
-                        }
-                        true
-                    }
-                    _ => match typed_char(keystroke) {
-                        Some(ch) => {
-                            form.push_char(ch);
-                            true
-                        }
-                        None => false,
-                    },
-                }
-            }
-            // No `Tab` field to cycle -- the confirmation input is the dialog's only field, so
-            // `Tab` is swallowed as a no-op rather than reaching the shell-wide zones.
-            SettingsDialog::DeleteUnit(index, form) => {
-                let index = *index;
-                match keystroke.key.as_str() {
-                    "backspace" => {
-                        form.backspace();
-                        true
-                    }
-                    "tab" => true,
-                    "enter" => {
-                        let matches = self
-                            .settings_units
-                            .get(index)
-                            .is_some_and(|row| form.matches(&row.code));
-                        if matches {
-                            self.confirm_settings_dialog();
-                        }
-                        true
-                    }
-                    _ => match typed_char(keystroke) {
-                        Some(ch) => {
-                            form.push_char(ch);
-                            true
-                        }
-                        None => false,
-                    },
-                }
-            }
-            // Institution name is the dialog's only text field, same shape as `DeleteUnit`'s
-            // own confirm input above -- `Tab` is swallowed, and Account types/Default unit are
-            // click-only (`Shell::handle_add_institution_account_type_click`/
-            // `handle_add_institution_unit_click`), never typed into.
-            // Nothing to type: `enter` clears, `esc` (handled upstream) cancels.
-            SettingsDialog::ClearLogs => match keystroke.key.as_str() {
-                "enter" => {
-                    self.confirm_settings_dialog();
-                    true
-                }
-                "tab" => true,
-                _ => false,
-            },
-            SettingsDialog::AddInstitution(form) => match keystroke.key.as_str() {
-                "backspace" => {
-                    form.backspace();
-                    true
-                }
-                "tab" => true,
-                "enter" => {
-                    let valid = form.is_valid();
-                    if valid {
-                        self.confirm_settings_dialog();
-                    }
-                    true
-                }
-                _ => match typed_char(keystroke) {
-                    Some(ch) => {
-                        form.push_char(ch);
-                        true
-                    }
-                    None => false,
-                },
-            },
+            OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog),
+        }
+    }
+
+    fn settings_dialog(&self) -> Option<&SettingsDialog> {
+        match self.dialog.as_ref()? {
+            OpenDialog::Settings(dialog) => Some(dialog),
+        }
+    }
+
+    fn settings_dialog_mut(&mut self) -> Option<&mut SettingsDialog> {
+        match self.dialog.as_mut()? {
+            OpenDialog::Settings(dialog) => Some(dialog),
         }
     }
 
@@ -8100,8 +8057,9 @@ impl Shell {
     /// The Units section's own "+ Add unit" button (issue #184, replacing the stub #177 left
     /// behind): opens the Add unit dialog rather than flashing a status message.
     fn handle_add_unit_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.settings_dialog = Some(SettingsDialog::AddUnit(UnitForm::default()));
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_dialog(OpenDialog::Settings(SettingsDialog::AddUnit(
+            UnitForm::default(),
+        )));
         cx.notify();
     }
 
@@ -8114,15 +8072,15 @@ impl Shell {
         let Some(row) = self.settings_units.get(index) else {
             return;
         };
-        self.settings_dialog = Some(SettingsDialog::EditUnit(index, UnitForm::from_row(row)));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = UnitForm::from_row(row);
+        self.open_dialog(OpenDialog::Settings(SettingsDialog::EditUnit(index, form)));
         cx.notify();
     }
 
     /// Shared by the Add/Edit unit dialogs' own field-focus clicks (issues #184/#185) -- which
     /// field a click targets doesn't depend on which dialog variant is open.
     fn handle_unit_dialog_field_click(&mut self, field: AddUnitField, cx: &mut Context<'_, Self>) {
-        if let Some(dialog) = self.settings_dialog.as_mut() {
+        if let Some(dialog) = self.settings_dialog_mut() {
             match dialog {
                 SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
                     form.focused_field = field;
@@ -8139,7 +8097,7 @@ impl Shell {
 
     /// Shared by the Add/Edit unit dialogs' own Type segmented control (issues #184/#185).
     fn handle_unit_dialog_kind_click(&mut self, kind: UnitKind, cx: &mut Context<'_, Self>) {
-        if let Some(dialog) = self.settings_dialog.as_mut() {
+        if let Some(dialog) = self.settings_dialog_mut() {
             match dialog {
                 SettingsDialog::AddUnit(form) | SettingsDialog::EditUnit(_, form) => {
                     form.kind = kind;
@@ -8156,31 +8114,22 @@ impl Shell {
     /// Shared by the Add/Edit unit dialogs' own Cancel button -- discards whatever was typed,
     /// same as `Esc` (`Self::handle_key_down`'s `ClosePopupsAndExitMode` arm).
     fn handle_settings_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.settings_dialog = None;
-        self.nav.exit_mode();
+        self.close_dialog();
         cx.notify();
     }
 
-    /// The Add/Edit/Delete unit dialogs' own Add/Save/Delete unit button (and `Enter`, via
-    /// [`Self::handle_dialog_key`]): the README's own "Dialog lifecycle" rows -- Add "validate ->
-    /// append to Units table -> close", Edit "Save -> update the in-memory row -> close" (a
-    /// changed code just relabels the row here; rewriting real references is out of scope per
-    /// the map's own Destination), Delete "confirm -> remove + close". A no-op if the relevant
-    /// form isn't valid/matching, or (defensively) nothing is actually open -- each dialog's own
-    /// confirm button is only clickable while that gate already holds, so this should only ever
-    /// run on a form that's already passed it.
-    fn confirm_settings_dialog(&mut self) {
-        let Some(dialog) = self.settings_dialog.take() else {
-            return;
-        };
+    /// Applies a confirmed Settings dialog (reached through [`Self::confirm_open_dialog`], from
+    /// the Add/Save/Delete button or `Enter`): the README's own "Dialog lifecycle" rows -- Add
+    /// "validate -> append to Units table -> close", Edit "Save -> update the in-memory row ->
+    /// close" (a changed code just relabels the row here; rewriting real references is out of
+    /// scope per the map's own Destination), Delete "confirm -> remove + close". The form has
+    /// already validated.
+    fn apply_settings_dialog(&mut self, dialog: SettingsDialog) {
         match dialog {
             SettingsDialog::AddUnit(form) => {
-                if !form.is_valid() {
-                    return;
-                }
                 self.settings_units.push(UnitRow {
-                    code: form.code,
-                    name: form.name,
+                    code: form.code.into_text(),
+                    name: form.name.into_text(),
                     kind: form.kind.label().to_string(),
                     // Neither field exists in the Add unit dialog (issue #184's own fields are
                     // just Code/Name/Type) -- a dialog-created unit has no real price-source
@@ -8192,16 +8141,13 @@ impl Shell {
                 });
             }
             SettingsDialog::EditUnit(index, form) => {
-                if !form.is_valid() {
-                    return;
-                }
                 if let Some(existing) = self.settings_units.get_mut(index) {
                     // `source`/`is_base`/`is_default` aren't Edit unit dialog fields either
                     // (issue #185's own body: "same form as Add unit") -- preserved from the
                     // row being edited rather than reset, unlike `code`/`name`/`kind`.
                     *existing = UnitRow {
-                        code: form.code,
-                        name: form.name,
+                        code: form.code.into_text(),
+                        name: form.name.into_text(),
                         kind: form.kind.label().to_string(),
                         source: existing.source.clone(),
                         is_base: existing.is_base,
@@ -8210,14 +8156,12 @@ impl Shell {
                 }
             }
             SettingsDialog::DeleteUnit(index, form) => {
-                let matches = self
+                // Defensive only: the dialog is modal, so the row it opened on is still there.
+                if self
                     .settings_units
                     .get(index)
-                    .is_some_and(|row| form.matches(&row.code));
-                if !matches {
-                    return;
-                }
-                if index < self.settings_units.len() {
+                    .is_some_and(|row| row.code == form.code)
+                {
                     let unit = self.settings_units.remove(index);
                     self.raise_toast(
                         ToastKind::Success,
@@ -8226,9 +8170,6 @@ impl Shell {
                 }
             }
             SettingsDialog::AddInstitution(form) => {
-                if !form.is_valid() {
-                    return;
-                }
                 let account_type = form
                     .account_types
                     .iter()
@@ -8236,7 +8177,7 @@ impl Shell {
                     .collect::<Vec<_>>()
                     .join(" \u{b7} ");
                 self.settings_institutions.push(InstitutionRow {
-                    name: form.name,
+                    name: form.name.into_text(),
                     account_type,
                 });
             }
@@ -8249,11 +8190,10 @@ impl Shell {
                 );
             }
         }
-        self.nav.exit_mode();
     }
 
     fn handle_settings_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_settings_dialog();
+        self.confirm_open_dialog();
         cx.notify();
     }
 
@@ -8535,11 +8475,13 @@ impl Shell {
     /// message. A no-op if `index` is somehow out of bounds (defensive only, same reasoning as
     /// [`Self::handle_unit_edit_click`]).
     fn handle_unit_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        if index >= self.settings_units.len() {
+        let Some(row) = self.settings_units.get(index) else {
             return;
-        }
-        self.settings_dialog = Some(SettingsDialog::DeleteUnit(index, DeleteUnitForm::default()));
-        self.nav.enter_mode(InputMode::Dialog);
+        };
+        let form = DeleteUnitForm::new(row.code.as_str());
+        self.open_dialog(OpenDialog::Settings(SettingsDialog::DeleteUnit(
+            index, form,
+        )));
         cx.notify();
     }
 
@@ -8566,10 +8508,8 @@ impl Shell {
     /// first entry, so this dialog reads Units' live state even though the two sections are
     /// otherwise independent.
     fn handle_add_institution_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.settings_dialog = Some(SettingsDialog::AddInstitution(AddInstitutionForm::new(
-            &self.settings_units,
-        )));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = AddInstitutionForm::new(&self.settings_units);
+        self.open_dialog(OpenDialog::Settings(SettingsDialog::AddInstitution(form)));
         cx.notify();
     }
 
@@ -8578,14 +8518,14 @@ impl Shell {
         account_type: AccountType,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog.as_mut() {
+        if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog_mut() {
             form.toggle_account_type(account_type);
             cx.notify();
         }
     }
 
     fn handle_add_institution_unit_click(&mut self, code: String, cx: &mut Context<'_, Self>) {
-        if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog.as_mut() {
+        if let Some(SettingsDialog::AddInstitution(form)) = self.settings_dialog_mut() {
             form.default_unit_code = Some(code);
             cx.notify();
         }
@@ -8666,8 +8606,7 @@ impl Shell {
 
     fn open_clear_logs_dialog(&mut self) {
         self.status_message = None;
-        self.settings_dialog = Some(SettingsDialog::ClearLogs);
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_dialog(OpenDialog::Settings(SettingsDialog::ClearLogs));
     }
 
     /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
@@ -10641,7 +10580,7 @@ impl Render for Shell {
                     }
                 }
             }))
-            .children(self.settings_dialog.as_ref().map(|dialog| match dialog {
+            .children(self.settings_dialog().map(|dialog| match dialog {
                 SettingsDialog::AddUnit(form) => settings_view::add_unit_dialog::render(
                     form,
                     on_unit_dialog_field_click.clone(),
@@ -10988,6 +10927,16 @@ fn empty_state(on_command_click: OnEmptyStateCommandClick, cx: &gpui::App) -> gp
 
 /// The one character an unmodified keystroke types into a text field, or `None` for a modified
 /// key (a chord this field gives no meaning to) or anything that isn't a single character.
+/// `keystroke` as the Dialog host reads it.
+fn dialog_key(keystroke: &Keystroke) -> DialogKey {
+    match keystroke.key.as_str() {
+        "backspace" => DialogKey::Backspace,
+        "tab" => DialogKey::Tab,
+        "enter" => DialogKey::Enter,
+        _ => typed_char(keystroke).map_or(DialogKey::Other, DialogKey::Char),
+    }
+}
+
 fn typed_char(keystroke: &Keystroke) -> Option<char> {
     let modifiers = &keystroke.modifiers;
     if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {

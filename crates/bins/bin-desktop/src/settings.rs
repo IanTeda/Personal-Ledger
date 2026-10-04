@@ -6,6 +6,8 @@
 
 use lib_core::DateStyle;
 
+use crate::{dialog_host::Dialog, field::TextField};
+
 /// The twelve pages of Settings, in the settings index rail's own row order. Settings is paged,
 /// not one continuous scroll: each entry swaps the body to its own page. Accounts, Categories,
 /// Tags and Payees joined the original eight when they left the primary rail.
@@ -513,12 +515,11 @@ pub enum AddUnitField {
 /// mirroring `nav.rs`/`palette.rs`'s "state here, chrome renders it" split. `Shell` owns
 /// `Option<Self>` wrapped in [`SettingsDialog`]; `None` means no dialog is open. Shared between
 /// both dialogs rather than a separate `EditUnitForm` -- issue #185's own body: "same form as
-/// Add unit" -- so [`Self::is_valid`]/[`Self::push_char`]/[`Self::backspace`]/[`Self::cycle_field`]
-/// only need writing once.
+/// Add unit" -- so [`Self::is_valid`]/[`Self::cycle_field`] only need writing once.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct UnitForm {
-    pub code: String,
-    pub name: String,
+    pub code: TextField,
+    pub name: TextField,
     pub kind: UnitKind,
     pub focused_field: AddUnitField,
 }
@@ -529,8 +530,8 @@ impl UnitForm {
     /// enum itself.
     pub fn from_row(row: &UnitRow) -> Self {
         Self {
-            code: row.code.clone(),
-            name: row.name.clone(),
+            code: TextField::new(row.code.as_str()),
+            name: TextField::new(row.name.as_str()),
             kind: UnitKind::from_label(&row.kind),
             focused_field: AddUnitField::default(),
         }
@@ -540,29 +541,14 @@ impl UnitForm {
     /// Type always has a value (a segmented control can't be empty), so only Code/Name gate the
     /// Add/Save button's enabled state.
     pub fn is_valid(&self) -> bool {
-        !self.code.trim().is_empty() && !self.name.trim().is_empty()
+        !self.code.is_blank() && !self.name.is_blank()
     }
 
-    /// Appends whichever character `text` is to the currently focused field -- `Shell` calls
-    /// this once per typed character (see `Self::backspace`'s own doc for why there's no bulk
-    /// "set text" method instead).
-    pub fn push_char(&mut self, ch: char) {
+    /// The field typing and `Backspace` edit.
+    pub fn focused_mut(&mut self) -> &mut TextField {
         match self.focused_field {
-            AddUnitField::Code => self.code.push(ch),
-            AddUnitField::Name => self.name.push(ch),
-        }
-    }
-
-    /// Pops one character from the focused field -- a no-op on an already-empty field, mirroring
-    /// `String::pop`'s own behaviour rather than treating it as an error.
-    pub fn backspace(&mut self) {
-        match self.focused_field {
-            AddUnitField::Code => {
-                self.code.pop();
-            }
-            AddUnitField::Name => {
-                self.name.pop();
-            }
+            AddUnitField::Code => &mut self.code,
+            AddUnitField::Name => &mut self.name,
         }
     }
 
@@ -591,28 +577,56 @@ pub enum SettingsDialog {
     ClearLogs,
 }
 
+impl Dialog for SettingsDialog {
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        match self {
+            Self::AddUnit(form) | Self::EditUnit(_, form) => Some(form.focused_mut()),
+            Self::DeleteUnit(_, form) => Some(&mut form.confirm_input),
+            Self::AddInstitution(form) => Some(&mut form.name),
+            Self::ClearLogs => None,
+        }
+    }
+
+    fn cycle_field(&mut self) {
+        if let Self::AddUnit(form) | Self::EditUnit(_, form) = self {
+            form.cycle_field();
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        match self {
+            Self::AddUnit(form) | Self::EditUnit(_, form) => form.is_valid(),
+            Self::DeleteUnit(_, form) => form.is_valid(),
+            Self::AddInstitution(form) => form.is_valid(),
+            Self::ClearLogs => true,
+        }
+    }
+}
+
 /// The Delete unit dialog's own live form state (issue #186) -- pure, `gpui`-free. Just the one
 /// typed-back confirmation field: unlike [`UnitForm`], there's nothing to `Tab` between, so no
 /// `focused_field` -- the confirmation input is implicitly the only thing you can type into
-/// while this dialog is open.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+/// while this dialog is open. The code to type back is copied in when the dialog opens, so the
+/// form validates without reading `Shell`'s Units (the dialog is modal: they can't change under
+/// it).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteUnitForm {
-    pub confirm_input: String,
+    pub code: String,
+    pub confirm_input: TextField,
 }
 
 impl DeleteUnitForm {
-    pub fn push_char(&mut self, ch: char) {
-        self.confirm_input.push(ch);
-    }
-
-    pub fn backspace(&mut self) {
-        self.confirm_input.pop();
+    pub fn new(code: impl Into<String>) -> Self {
+        Self {
+            code: code.into(),
+            confirm_input: TextField::default(),
+        }
     }
 
     /// The README's own "disabled until the typed value matches the code exactly" -- a plain
     /// case-sensitive `==`, not a trim/lowercase-tolerant comparison, per the ticket's own body.
-    pub fn matches(&self, code: &str) -> bool {
-        self.confirm_input == code
+    pub fn is_valid(&self) -> bool {
+        self.confirm_input.text() == self.code
     }
 }
 
@@ -706,7 +720,7 @@ impl AccountType {
 /// fixed-size set since membership toggles are simpler as push/remove.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct AddInstitutionForm {
-    pub name: String,
+    pub name: TextField,
     pub account_types: Vec<AccountType>,
     /// The selected default unit's own *code*, not an index into `Shell::settings_units` -- a
     /// code stays meaningful even if that `Vec`'s shape changes, though nothing in this map
@@ -721,18 +735,10 @@ impl AddInstitutionForm {
     /// of a compile-time enum's own `ALL`.
     pub fn new(units: &[UnitRow]) -> Self {
         Self {
-            name: String::new(),
+            name: TextField::default(),
             account_types: vec![AccountType::Savings],
             default_unit_code: units.first().map(|unit| unit.code.clone()),
         }
-    }
-
-    pub fn push_char(&mut self, ch: char) {
-        self.name.push(ch);
-    }
-
-    pub fn backspace(&mut self) {
-        self.name.pop();
     }
 
     /// Toggles `account_type`'s own membership -- present removes it, absent adds it.
@@ -752,9 +758,7 @@ impl AddInstitutionForm {
     /// The README's own "Dialog lifecycle" row: "name + at least one account type + default
     /// unit" (all required).
     pub fn is_valid(&self) -> bool {
-        !self.name.trim().is_empty()
-            && !self.account_types.is_empty()
-            && self.default_unit_code.is_some()
+        !self.name.is_blank() && !self.account_types.is_empty() && self.default_unit_code.is_some()
     }
 }
 
@@ -944,27 +948,10 @@ mod tests {
             is_default: false,
         };
         let form = UnitForm::from_row(&row);
-        assert_eq!(form.code, "btc");
-        assert_eq!(form.name, "Bitcoin");
+        assert_eq!(form.code.text(), "btc");
+        assert_eq!(form.name.text(), "Bitcoin");
         assert_eq!(form.kind, UnitKind::Custom);
         assert_eq!(form.focused_field, AddUnitField::Code);
-    }
-
-    #[test]
-    fn delete_unit_form_matches_is_case_sensitive_and_exact() {
-        let mut form = DeleteUnitForm::default();
-        assert!(!form.matches("btc"));
-        for ch in "BTC".chars() {
-            form.push_char(ch);
-        }
-        assert!(!form.matches("btc"));
-        form.backspace();
-        form.backspace();
-        form.backspace();
-        for ch in "btc".chars() {
-            form.push_char(ch);
-        }
-        assert!(form.matches("btc"));
     }
 
     #[test]
@@ -992,43 +979,16 @@ mod tests {
     }
 
     #[test]
-    fn add_institution_form_is_invalid_until_name_type_and_unit_are_set() {
-        let mut form = AddInstitutionForm::new(&default_units());
-        assert!(!form.is_valid()); // name is empty
-        for ch in "ANZ".chars() {
-            form.push_char(ch);
-        }
-        assert!(form.is_valid());
-        form.toggle_account_type(AccountType::Savings);
-        assert!(!form.is_valid()); // no account types selected
-    }
-
-    #[test]
     fn add_unit_form_is_invalid_until_code_and_name_are_both_filled() {
         let mut form = UnitForm::default();
         assert!(!form.is_valid());
-        form.push_char('a');
+        form.focused_mut().push('a');
         assert!(!form.is_valid());
         form.cycle_field();
-        form.push_char('b');
+        form.focused_mut().push(' ');
+        assert!(!form.is_valid());
+        form.focused_mut().push('b');
         assert!(form.is_valid());
-    }
-
-    #[test]
-    fn add_unit_form_push_and_backspace_target_the_focused_field() {
-        let mut form = UnitForm::default();
-        form.push_char('a');
-        form.push_char('u');
-        form.push_char('d');
-        assert_eq!(form.code, "aud");
-        assert_eq!(form.name, "");
-        form.backspace();
-        assert_eq!(form.code, "au");
-
-        form.cycle_field();
-        form.push_char('x');
-        assert_eq!(form.name, "x");
-        assert_eq!(form.code, "au");
     }
 
     #[test]

@@ -34,7 +34,7 @@ pub fn render(
         .flex()
         .flex_col()
         .child(dialog::header(
-            crate::msg::desktop_settings_units_edit_title(&form.code),
+            crate::msg::desktop_settings_units_edit_title(form.code.text()),
             false,
             cx,
         ))
@@ -42,7 +42,7 @@ pub fn render(
             text_field(
                 "edit-unit-code",
                 lib_locale::msg::column_code(),
-                &form.code,
+                form.code.text(),
                 &crate::msg::desktop_settings_units_code_placeholder(),
                 form.focused_field == AddUnitField::Code,
                 field_click(AddUnitField::Code, on_field_click.clone()),
@@ -52,7 +52,7 @@ pub fn render(
             text_field(
                 "edit-unit-name",
                 lib_locale::msg::column_name(),
-                &form.name,
+                form.name.text(),
                 &crate::msg::desktop_settings_units_name_placeholder(),
                 form.focused_field == AddUnitField::Name,
                 field_click(AddUnitField::Name, on_field_click),

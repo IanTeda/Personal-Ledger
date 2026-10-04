@@ -208,22 +208,24 @@ impl Shell {
             dialog = Some(label);
             dialog_name = name;
             dialog_confirm = confirm;
-        } else if let Some(open) = self.settings_dialog.as_ref() {
+        } else if let Some(open) = self.settings_dialog() {
             let (label, name, confirm) = match open {
                 SettingsDialog::AddUnit(form) => {
                     unit_form = Some(form);
-                    ("AddUnit", Some(form.code.clone()), None)
+                    ("AddUnit", Some(form.code.text().to_string()), None)
                 }
                 SettingsDialog::EditUnit(_, form) => {
                     unit_form = Some(form);
-                    ("EditUnit", Some(form.code.clone()), None)
+                    ("EditUnit", Some(form.code.text().to_string()), None)
                 }
-                SettingsDialog::DeleteUnit(_, form) => {
-                    ("DeleteUnit", None, Some(form.confirm_input.clone()))
-                }
+                SettingsDialog::DeleteUnit(_, form) => (
+                    "DeleteUnit",
+                    None,
+                    Some(form.confirm_input.text().to_string()),
+                ),
                 SettingsDialog::AddInstitution(form) => {
                     institution_form = Some(form);
-                    ("AddInstitution", Some(form.name.clone()), None)
+                    ("AddInstitution", Some(form.name.text().to_string()), None)
                 }
                 SettingsDialog::ClearLogs => ("ClearLogs", None, None),
             };
@@ -341,7 +343,7 @@ impl Shell {
                 .iter()
                 .map(|unit| (unit.code.clone(), unit.name.clone(), unit.kind.clone()))
                 .collect(),
-            unit_dialog_name: unit_form.map(|form| form.name.clone()),
+            unit_dialog_name: unit_form.map(|form| form.name.text().to_string()),
             unit_dialog_kind: unit_form.map(|form| format!("{:?}", form.kind)),
             unit_dialog_field: unit_form.map(|form| format!("{:?}", form.focused_field)),
             institution_dialog_types: institution_form.map(|form| {

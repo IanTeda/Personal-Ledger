@@ -1,13 +1,13 @@
 //! Renders the **Delete unit** destructive-confirm dialog (issue #186's own "2d"), on the shared
 //! `crate::dialog` chrome's destructive variant (`overlay(true, ...)`/`header(_, true)`).
 //! References are named, and the unit's own code must be typed back exactly
-//! (`settings::DeleteUnitForm::matches`, case-sensitive) before the confirm button enables --
+//! (`settings::DeleteUnitForm::is_valid`, case-sensitive) before the confirm button enables --
 //! deletion can't happen by muscle memory.
 //!
 //! Reuses `add_unit_dialog::text_field` for the confirm input, but always `focused: true` with a
 //! no-op click handler: unlike Code/Name in the Add/Edit dialogs, there's only one field here, so
-//! nothing to click into or `Tab` between (`Shell::handle_dialog_key`'s own `DeleteUnit` arm
-//! swallows `Tab` for the same reason).
+//! nothing to click into or `Tab` between (`dialog_host::handle_key` swallows `Tab` for every
+//! Dialog).
 //!
 //! The warning copy and the reference panel's own numbers ("1 account and 9 transactions",
 //! "0.4120 u") are the ticket's own fixed mockup example, shown identically regardless of which
@@ -50,7 +50,7 @@ pub fn render(
                 cx,
             )
             .into_any_element(),
-            confirm_field(code, &form.confirm_input, cx).into_any_element(),
+            confirm_field(code, form.confirm_input.text(), cx).into_any_element(),
         ]))
         .child(dialog::action_row(
             [
@@ -58,7 +58,7 @@ pub fn render(
                 dialog::confirm_button(
                     "delete-unit-confirm",
                     crate::msg::desktop_settings_units_delete_submit(),
-                    form.matches(code),
+                    form.is_valid(),
                     true,
                     on_confirm,
                     cx,

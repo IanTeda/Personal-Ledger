@@ -64,7 +64,7 @@ pub fn render(
             text_field(
                 "add-unit-code",
                 lib_locale::msg::column_code(),
-                &form.code,
+                form.code.text(),
                 &crate::msg::desktop_settings_units_code_placeholder(),
                 form.focused_field == AddUnitField::Code,
                 field_click(AddUnitField::Code, on_field_click.clone()),
@@ -74,7 +74,7 @@ pub fn render(
             text_field(
                 "add-unit-name",
                 lib_locale::msg::column_name(),
-                &form.name,
+                form.name.text(),
                 &crate::msg::desktop_settings_units_name_placeholder(),
                 form.focused_field == AddUnitField::Name,
                 field_click(AddUnitField::Name, on_field_click),

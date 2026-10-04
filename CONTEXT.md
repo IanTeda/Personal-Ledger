@@ -85,6 +85,10 @@ _Avoid_: notification (reserved for anything operating-system level), snackbar, 
 The severity a Toast carries, one of Info, Success, Warning or Error. Each Toast Kind is drawn in its own calculated colours.
 _Avoid_: level, type, severity (alone).
 
+**Dialog**:
+A blocking panel a Client opens over the current view to add, edit, remove or confirm something. While it is open it takes every key; it ends by being confirmed, which applies it, or cancelled, which discards whatever was typed. `Enter` confirms only once the form is valid. The first `Esc` closes an open select inside it; the next cancels the Dialog. Only one Dialog is open at a time. Distinct from a Toast, which never blocks, and from the command palette, which navigates rather than edits.
+_Avoid_: modal (as a noun), popup, window.
+
 **Colour Theme**:
 A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides individual Colour Roles on that one Client (it cannot choose the Colour Theme or Colour Appearance itself).
 _Avoid_: theme (alone), palette — "palette" already names the command palette; "theme" alone is ambiguous with typography and spacing.

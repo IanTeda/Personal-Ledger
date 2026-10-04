@@ -56,7 +56,7 @@ pub fn render(
             cx,
         ))
         .child(dialog::body([
-            name_field(&form.name, cx).into_any_element(),
+            name_field(form.name.text(), cx).into_any_element(),
             account_types_field(&form.account_types, on_account_type_click, cx).into_any_element(),
             default_unit_field(units, form.default_unit_code.as_deref(), on_unit_click, cx)
                 .into_any_element(),
