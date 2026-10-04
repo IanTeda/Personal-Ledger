@@ -1,5 +1,5 @@
 //! The **Display** section (`docs/ux/desktop/16-settings/README.md`'s "2a resting state", moved
-//! directly after General by issue #189's own reorder): a 300px column of three segmented
+//! directly after General by issue #189's own reorder): a column of three segmented
 //! controls (Date format, Row density) plus a read-only Locale and a dot-style Status
 //! glyphs radio group, beside a live **PREVIEW** table that re-renders the mockup's own three
 //! seeded transaction rows under whichever combination is currently selected.
@@ -43,7 +43,11 @@ pub type OnToastsClick = Rc<dyn Fn(bool, &mut Window, &mut App)>;
 /// own option has already been curried in (mirrors `units::OnPlainClick`).
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-const FIELD_COLUMN_WIDTH: gpui::Pixels = px(380.0);
+/// As wide as the widest control, Date format's uniform bar (one option per choice plus its 1px
+/// border each side): any narrower and the bar overflows the `flex_none` column into the
+/// PREVIEW beside it.
+const FIELD_COLUMN_WIDTH: gpui::Pixels =
+    px(DATE_STYLE_CHOICES.len() as f32 * UNIFORM_OPTION_WIDTH + 2.0);
 const PREVIEW_GLYPH_WIDTH: gpui::Pixels = px(18.0);
 const PREVIEW_DATE_WIDTH: gpui::Pixels = px(92.0);
 const PREVIEW_AMOUNT_WIDTH: gpui::Pixels = px(96.0);
