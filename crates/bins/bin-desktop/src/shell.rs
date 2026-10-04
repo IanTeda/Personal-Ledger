@@ -83,6 +83,7 @@ use crate::{
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     documents_form::DocumentsDialog,
     explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
+    field::TextField,
     format,
     import::{self, ImportState, RowSelect},
     inventory,
@@ -682,9 +683,6 @@ pub struct Shell {
     /// `j`/`k` move -- not an index into [`Self::accounts`], since the page shows accounts
     /// grouped by type rather than in insertion order.
     accounts_selected: usize,
-    /// The currently open Accounts dialog, if any -- same shape as [`Self::dialog`],
-    /// with `NavState::mode` being `InputMode::Dialog` for exactly as long as it is `Some`.
-    accounts_dialog: Option<AccountsDialog>,
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
@@ -906,7 +904,6 @@ impl Shell {
             settings_log_list: ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
             accounts: accounts::default_accounts(),
             accounts_selected: 0,
-            accounts_dialog: None,
             today,
             categories,
             budgets: seeded_budgets,
@@ -1320,16 +1317,6 @@ impl Shell {
                 if self.dialog.as_mut().is_some_and(Dialog::close_open_select) {
                     return true;
                 }
-                // The Accounts dialogs' dropdowns: the first `Esc` closes an open list only, the
-                // next one cancels the dialog (the Desktop Accounts map's select-control decision).
-                if let Some(form) = self
-                    .accounts_dialog
-                    .as_mut()
-                    .and_then(AccountsDialog::form_mut)
-                    && form.close_open_select()
-                {
-                    return true;
-                }
                 if let Some(form) = self
                     .payees_dialog
                     .as_mut()
@@ -1404,7 +1391,6 @@ impl Shell {
                 }
                 self.transactions_filter_form = None;
                 self.close_dialog();
-                self.accounts_dialog = None;
                 self.categories_dialog = None;
                 self.payees_dialog = None;
                 self.document_types_dialog = None;
@@ -2131,9 +2117,6 @@ impl Shell {
                 }
             };
         }
-        if self.accounts_dialog.is_some() {
-            return self.handle_accounts_dialog_key(keystroke);
-        }
         if self.categories_dialog.is_some() {
             return self.handle_categories_dialog_key(keystroke);
         }
@@ -2186,18 +2169,35 @@ impl Shell {
         self.nav.exit_mode();
         match dialog {
             OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog),
+            OpenDialog::Accounts(dialog) => self.apply_accounts_dialog(dialog),
         }
     }
 
     fn settings_dialog(&self) -> Option<&SettingsDialog> {
         match self.dialog.as_ref()? {
             OpenDialog::Settings(dialog) => Some(dialog),
+            _ => None,
         }
     }
 
     fn settings_dialog_mut(&mut self) -> Option<&mut SettingsDialog> {
         match self.dialog.as_mut()? {
             OpenDialog::Settings(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn accounts_dialog(&self) -> Option<&AccountsDialog> {
+        match self.dialog.as_ref()? {
+            OpenDialog::Accounts(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn accounts_dialog_mut(&mut self) -> Option<&mut AccountsDialog> {
+        match self.dialog.as_mut()? {
+            OpenDialog::Accounts(dialog) => Some(dialog),
+            _ => None,
         }
     }
 
@@ -7493,64 +7493,12 @@ impl Shell {
             .find(|unit| unit.is_default)
             .map(|unit| unit.code.as_str());
         let mut form = AccountForm::new(&options, default_unit);
-        form.name = name.trim().to_string();
-        self.accounts_dialog = Some(AccountsDialog::Add(form));
-        self.nav.enter_mode(InputMode::Dialog);
+        form.name = TextField::new(name.trim());
+        self.open_dialog(OpenDialog::Accounts(AccountsDialog::Add(form)));
     }
 
-    /// Routes a keystroke while an Accounts dialog with a form (Add or Edit) is open. `Esc` never
-    /// reaches here (it is handled ahead of the mode gates); everything else is swallowed.
-    fn handle_accounts_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        if matches!(self.accounts_dialog, Some(AccountsDialog::Delete(..))) {
-            return self.handle_delete_account_key(keystroke);
-        }
-        let options = self.account_dialog_options();
-        let Some(form) = self
-            .accounts_dialog
-            .as_mut()
-            .and_then(AccountsDialog::form_mut)
-        else {
-            return false;
-        };
-        let modifiers = &keystroke.modifiers;
-        match keystroke.key.as_str() {
-            "tab" => form.cycle_focus(modifiers.shift, &options),
-            "up" => {
-                form.handle_select_key(SelectKey::Up, &options);
-            }
-            "down" => {
-                form.handle_select_key(SelectKey::Down, &options);
-            }
-            "space" if form.focused.is_select() => {
-                form.handle_select_key(SelectKey::Activate, &options);
-            }
-            "enter" if form.focused.is_select() => {
-                form.handle_select_key(SelectKey::Activate, &options);
-            }
-            "enter" => {
-                if form.is_valid() {
-                    self.confirm_accounts_dialog();
-                }
-            }
-            "backspace" => form.backspace(),
-            _ => {
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-                if let Some(text) = keystroke.key_char.as_deref()
-                    && text.chars().count() == 1
-                    && let Some(ch) = text.chars().next()
-                {
-                    form.push_char(ch);
-                }
-            }
-        }
-        true
-    }
-
-    /// Keys in the Delete account dialog: type the account's name back (`Backspace` edits it),
-    /// `Enter` deletes once it matches, and `Tab` is swallowed since the confirmation is the only
-    /// field. `Esc` never reaches here (it cancels ahead of the mode gates).
+    /// Routes a keystroke while a Categories dialog is open. `Esc` never reaches here (it cancels
+    /// ahead of the mode gates).
     fn handle_categories_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
         if matches!(
             self.categories_dialog,
@@ -7640,39 +7588,6 @@ impl Shell {
         }
     }
 
-    fn handle_delete_account_key(&mut self, keystroke: &Keystroke) -> bool {
-        let Some(AccountsDialog::Delete(id, form)) = self.accounts_dialog.as_mut() else {
-            return false;
-        };
-        match keystroke.key.as_str() {
-            "backspace" => form.backspace(),
-            "tab" => {}
-            "enter" => {
-                let matches = self
-                    .accounts
-                    .iter()
-                    .find(|account| account.id == *id)
-                    .is_some_and(|account| form.matches(&account.name));
-                if matches {
-                    self.confirm_accounts_dialog();
-                }
-            }
-            _ => {
-                let modifiers = &keystroke.modifiers;
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-                if let Some(text) = keystroke.key_char.as_deref()
-                    && text.chars().count() == 1
-                    && let Some(ch) = text.chars().next()
-                {
-                    form.push_char(ch);
-                }
-            }
-        }
-        true
-    }
-
     /// Keys in the Delete category dialog: type the category's name back (`Backspace` edits it),
     /// `Enter` deletes once it matches, and `Tab` is swallowed since the confirmation is the only
     /// field. `Esc` never reaches here (it cancels ahead of the mode gates).
@@ -7752,14 +7667,12 @@ impl Shell {
         field: AccountField,
         cx: &mut Context<'_, Self>,
     ) {
-        let options = self.account_dialog_options();
         if let Some(form) = self
-            .accounts_dialog
-            .as_mut()
+            .accounts_dialog_mut()
             .and_then(AccountsDialog::form_mut)
         {
             if field.is_select() {
-                form.click_select(field, &options);
+                form.click_select(field);
             } else {
                 form.focus(field);
             }
@@ -7774,48 +7687,31 @@ impl Shell {
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        let options = self.account_dialog_options();
         if let Some(form) = self
-            .accounts_dialog
-            .as_mut()
+            .accounts_dialog_mut()
             .and_then(AccountsDialog::form_mut)
         {
-            form.choose_option(field, index, &options);
+            form.choose_option(field, index);
         }
         cx.notify();
     }
 
     fn handle_accounts_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.accounts_dialog = None;
-        self.nav.exit_mode();
+        self.close_dialog();
         cx.notify();
     }
 
     fn handle_accounts_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_accounts_dialog();
+        self.confirm_open_dialog();
         cx.notify();
     }
 
-    /// The Add account dialog's **Add account** button, the Edit dialog's **Save**, the Delete
-    /// dialog's **Delete account** (once the name matches), and `Enter` in any of them: Add builds the account, appends it and selects it; Edit writes the changes onto the
-    /// existing row (which regroups if its Type changed) and keeps it selected. Either way the
-    /// dialog closes. A no-op, leaving it open, while the form is invalid.
-    fn confirm_accounts_dialog(&mut self) {
-        let valid = match self.accounts_dialog.as_ref() {
-            Some(AccountsDialog::Delete(id, form)) => self
-                .accounts
-                .iter()
-                .find(|account| account.id == *id)
-                .is_some_and(|account| form.matches(&account.name)),
-            Some(dialog) => dialog.form().is_some_and(AccountForm::is_valid),
-            None => false,
-        };
-        if !valid {
-            return;
-        }
-        let Some(dialog) = self.accounts_dialog.take() else {
-            return;
-        };
+    /// Applies a confirmed Accounts dialog (reached through [`Self::confirm_open_dialog`] from
+    /// the Add account button, the Edit dialog's **Save**, the Delete dialog's **Delete account**
+    /// or `Enter`): Add builds the account, appends it and selects it; Edit writes the changes
+    /// onto the existing row (which regroups if its Type changed) and keeps it selected; Delete
+    /// removes it. The form has already validated.
+    fn apply_accounts_dialog(&mut self, dialog: AccountsDialog) {
         let changed_id = match dialog {
             AccountsDialog::Add(form) => {
                 let is_currency = form
@@ -7850,16 +7746,15 @@ impl Shell {
         if let Some(id) = changed_id {
             self.select_account(id);
         }
-        self.nav.exit_mode();
     }
 
     /// Opens the Delete account dialog on `id`. A no-op if the account is gone.
     fn open_delete_account_dialog(&mut self, id: u32) {
-        if !self.accounts.iter().any(|account| account.id == id) {
+        let Some(account) = self.accounts.iter().find(|account| account.id == id) else {
             return;
-        }
-        self.accounts_dialog = Some(AccountsDialog::Delete(id, DeleteAccountForm::default()));
-        self.nav.enter_mode(InputMode::Dialog);
+        };
+        let form = DeleteAccountForm::new(account.name.as_str());
+        self.open_dialog(OpenDialog::Accounts(AccountsDialog::Delete(id, form)));
     }
 
     /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
@@ -7869,8 +7764,7 @@ impl Shell {
             return;
         };
         let form = AccountForm::from_account(account, &options);
-        self.accounts_dialog = Some(AccountsDialog::Edit(id, form));
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_dialog(OpenDialog::Accounts(AccountsDialog::Edit(id, form)));
     }
 
     fn handle_accounts_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
@@ -10277,7 +10171,7 @@ impl Render for Shell {
             }))
             .children(self.render_documents_dialog(&entity, cx))
             .child(documents_view::drop_overlay::render(cx))
-            .children(self.accounts_dialog.as_ref().map(|dialog| match dialog {
+            .children(self.accounts_dialog().map(|dialog| match dialog {
                 AccountsDialog::Add(form) => accounts_view::add_dialog::render(
                     form,
                     &account_options,
@@ -10931,8 +10825,11 @@ fn empty_state(on_command_click: OnEmptyStateCommandClick, cx: &gpui::App) -> gp
 fn dialog_key(keystroke: &Keystroke) -> DialogKey {
     match keystroke.key.as_str() {
         "backspace" => DialogKey::Backspace,
+        "tab" if keystroke.modifiers.shift => DialogKey::BackTab,
         "tab" => DialogKey::Tab,
         "enter" => DialogKey::Enter,
+        "up" => DialogKey::Up,
+        "down" => DialogKey::Down,
         _ => typed_char(keystroke).map_or(DialogKey::Other, DialogKey::Char),
     }
 }

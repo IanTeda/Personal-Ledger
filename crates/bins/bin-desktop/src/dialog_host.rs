@@ -19,13 +19,17 @@
 //! Dialogs move into this slot one feature at a time; until they all have, the rest still live in
 //! their own `Shell::*_dialog` fields.
 
-use crate::{field::TextField, settings::SettingsDialog};
+use crate::{accounts::AccountsDialog, field::TextField, settings::SettingsDialog};
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DialogKey {
     Backspace,
     Tab,
+    /// `Shift-Tab`; a Dialog without its own handling treats it as `Tab`.
+    BackTab,
+    Up,
+    Down,
     Enter,
     /// A printable character, typed without Ctrl/Alt/Cmd/Fn.
     Char(char),
@@ -70,21 +74,28 @@ pub trait Dialog {
 }
 
 /// The open Dialog, one variant per feature.
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one value lives in `Shell::dialog`, so boxing each form would only add indirection"
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
     Settings(SettingsDialog),
+    Accounts(AccountsDialog),
 }
 
 impl OpenDialog {
     fn inner(&self) -> &dyn Dialog {
         match self {
             Self::Settings(dialog) => dialog,
+            Self::Accounts(dialog) => dialog,
         }
     }
 
     fn inner_mut(&mut self) -> &mut dyn Dialog {
         match self {
             Self::Settings(dialog) => dialog,
+            Self::Accounts(dialog) => dialog,
         }
     }
 }
@@ -126,7 +137,7 @@ pub fn handle_key(dialog: &mut impl Dialog, key: DialogKey) -> DialogOutcome {
         },
         // Swallowed even with one field, so `Tab` never moves the shell's focus zones behind
         // the scrim.
-        DialogKey::Tab => {
+        DialogKey::Tab | DialogKey::BackTab => {
             dialog.cycle_field();
             DialogOutcome::Handled
         }
@@ -139,13 +150,14 @@ pub fn handle_key(dialog: &mut impl Dialog, key: DialogKey) -> DialogOutcome {
             }
             None => DialogOutcome::Ignored,
         },
-        DialogKey::Other => DialogOutcome::Ignored,
+        DialogKey::Up | DialogKey::Down | DialogKey::Other => DialogOutcome::Ignored,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accounts::{AccountField, AccountForm, DeleteAccountForm};
     use crate::settings::{
         AccountType, AddInstitutionForm, AddUnitField, DeleteUnitForm, UnitForm, default_units,
     };
@@ -256,6 +268,120 @@ mod tests {
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Other),
             DialogOutcome::Ignored
+        );
+    }
+
+    fn account_options() -> crate::accounts::AccountOptions {
+        crate::accounts::AccountOptions::new(
+            vec!["ANZ".to_string(), "CBA".to_string()],
+            vec!["aud".to_string(), "btc".to_string()],
+        )
+    }
+
+    fn add_account() -> OpenDialog {
+        OpenDialog::Accounts(AccountsDialog::Add(AccountForm::new(
+            &account_options(),
+            Some("aud"),
+        )))
+    }
+
+    fn account_form(dialog: &OpenDialog) -> &AccountForm {
+        match dialog {
+            OpenDialog::Accounts(AccountsDialog::Add(form) | AccountsDialog::Edit(_, form)) => form,
+            other => panic!("expected an account form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn account_typing_edits_the_focused_text_field_and_tab_moves_on() {
+        let mut dialog = add_account();
+        type_text(&mut dialog, "Everyday");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(account_form(&dialog).name.text(), "Everyda");
+
+        // Name -> Institution (a select): typed characters are swallowed, not typed.
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(account_form(&dialog).focused, AccountField::Institution);
+        type_text(&mut dialog, "x");
+        assert_eq!(account_form(&dialog).name.text(), "Everyda");
+        assert_eq!(account_form(&dialog).account_number.text(), "");
+
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(account_form(&dialog).focused, AccountField::Name);
+    }
+
+    #[test]
+    fn account_opening_balance_only_takes_a_decimal_amount() {
+        let mut dialog = add_account();
+        if let OpenDialog::Accounts(AccountsDialog::Add(form)) = &mut dialog {
+            form.focus(AccountField::OpeningBalance);
+        }
+        type_text(&mut dialog, "-12a3.4.5e-");
+        assert_eq!(account_form(&dialog).opening_balance.text(), "-123.45");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(account_form(&dialog).opening_balance.text(), "-123.4");
+    }
+
+    #[test]
+    fn account_enter_confirms_only_with_a_name_and_activates_a_focused_select() {
+        let mut dialog = add_account();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "Everyday");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+
+        // On a select, Enter opens its list instead of confirming.
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        assert!(account_form(&dialog).institution.is_open());
+    }
+
+    #[test]
+    fn account_select_keys_step_and_the_first_esc_closes_only_the_open_list() {
+        let mut dialog = add_account();
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(account_form(&dialog).institution.value(), Some("ANZ"));
+        handle_key(&mut dialog, DialogKey::Down);
+        assert_eq!(account_form(&dialog).institution.value(), Some("CBA"));
+
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(account_form(&dialog).institution.is_open());
+        assert!(dialog.close_open_select(), "first Esc closes the list");
+        assert!(!dialog.close_open_select(), "second Esc closes the Dialog");
+    }
+
+    #[test]
+    fn delete_account_confirms_only_on_the_exact_case_sensitive_name() {
+        let mut dialog = OpenDialog::Accounts(AccountsDialog::Delete(
+            1,
+            DeleteAccountForm::new("Amex Platinum"),
+        ));
+        type_text(&mut dialog, "amex platinum");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        for _ in 0.."amex platinum".len() {
+            handle_key(&mut dialog, DialogKey::Backspace);
+        }
+        type_text(&mut dialog, "Amex Platinum");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+        type_text(&mut dialog, " ");
+        assert!(!dialog.is_valid(), "no trimming");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Tab),
+            DialogOutcome::Handled
         );
     }
 }

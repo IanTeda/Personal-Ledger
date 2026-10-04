@@ -66,7 +66,7 @@ pub fn render(
             text_field(
                 "edit-account-name",
                 label(lib_locale::msg::column_name()),
-                &form.name,
+                form.name.text(),
                 &crate::msg::desktop_accounts_name_placeholder(),
                 focused(AccountField::Name),
                 click(AccountField::Name),
@@ -129,7 +129,7 @@ pub fn render(
             text_field(
                 "edit-account-number",
                 add_dialog::optional_label(crate::msg::desktop_accounts_field_number(), cx),
-                &form.account_number,
+                form.account_number.text(),
                 "\u{2022}\u{2022}\u{2022}\u{2022} \u{2022}\u{2022}\u{2022}\u{2022} 1234",
                 focused(AccountField::AccountNumber),
                 click(AccountField::AccountNumber),

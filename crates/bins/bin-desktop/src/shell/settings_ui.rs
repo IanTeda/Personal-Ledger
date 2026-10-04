@@ -152,13 +152,19 @@ impl Shell {
         let mut dialog_confirm = None;
         let mut unit_form = None;
         let mut institution_form = None;
-        if let Some(open) = self.accounts_dialog.as_ref() {
+        if let Some(open) = self.accounts_dialog() {
             let (label, name, confirm) = match open {
-                AccountsDialog::Add(form) => ("AddAccount", Some(form.name.clone()), None),
-                AccountsDialog::Edit(_, form) => ("EditAccount", Some(form.name.clone()), None),
-                AccountsDialog::Delete(_, form) => {
-                    ("DeleteAccount", None, Some(form.confirm_input.clone()))
+                AccountsDialog::Add(form) => {
+                    ("AddAccount", Some(form.name.text().to_string()), None)
                 }
+                AccountsDialog::Edit(_, form) => {
+                    ("EditAccount", Some(form.name.text().to_string()), None)
+                }
+                AccountsDialog::Delete(_, form) => (
+                    "DeleteAccount",
+                    None,
+                    Some(form.confirm_input.text().to_string()),
+                ),
             };
             dialog = Some(label);
             dialog_name = name;
