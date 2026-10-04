@@ -363,7 +363,7 @@ impl Shell {
                     )
                 })
                 .collect(),
-            document_type_dialog: self.document_types_dialog.as_ref().map(|dialog| {
+            document_type_dialog: self.document_types_dialog().map(|dialog| {
                 match dialog {
                     DocumentTypesDialog::Add(_) => "add",
                     DocumentTypesDialog::Edit(..) => "edit",

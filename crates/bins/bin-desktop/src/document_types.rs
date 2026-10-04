@@ -5,7 +5,11 @@
 //! The Documents surface reads this list through `documents::DocumentType`, which is just a row's
 //! stable `id`, so a rename or a reorder never touches a Document.
 
-use crate::select::SelectState;
+use crate::{
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    field::TextField,
+    select::SelectState,
+};
 
 /// The kind of Key Date a type tracks (`CONTEXT.md`'s Key Date).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,45 +210,50 @@ pub enum NameError {
     Taken,
 }
 
-/// The Add/Edit dialog's draft.
+/// The Add/Edit dialog's draft. The other types' names are copied in at open, so the form
+/// validates without `Shell`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentTypeForm {
-    pub name: String,
+    pub name: TextField,
     pub tracks_date: Option<TracksDate>,
     pub remind: Option<RemindLead>,
     pub financial_year: bool,
     pub focused: FormField,
     /// Whether the name has been edited, which is when its error starts to show.
     pub touched: bool,
+    /// Every other type's name, trimmed and lower-cased: the ones this name must not repeat.
+    taken: Vec<String>,
 }
 
-impl Default for DocumentTypeForm {
-    fn default() -> Self {
+impl DocumentTypeForm {
+    /// A blank form for a new type among `types`.
+    pub fn new(types: &[DocumentTypeRow]) -> Self {
         Self {
-            name: String::new(),
+            name: TextField::default(),
             tracks_date: None,
             remind: None,
             financial_year: false,
             focused: FormField::Name,
             touched: false,
+            taken: taken_names(types, None),
         }
     }
-}
 
-impl DocumentTypeForm {
-    pub fn from_row(row: &DocumentTypeRow) -> Self {
+    /// A form editing `row`, whose own name is not taken.
+    pub fn from_row(row: &DocumentTypeRow, types: &[DocumentTypeRow]) -> Self {
         Self {
-            name: row.name.clone(),
+            name: TextField::new(row.name.clone()),
             tracks_date: row.tracks_date,
             remind: row.remind,
             financial_year: row.financial_year,
-            ..Self::default()
+            taken: taken_names(types, Some(row.id)),
+            ..Self::new(types)
         }
     }
 
-    /// The name's problem, if any. `own_id` is the type being edited, whose own name is not taken.
-    pub fn name_error(&self, types: &[DocumentTypeRow], own_id: Option<u32>) -> Option<NameError> {
-        let name = self.name.trim();
+    /// The name's problem, if any.
+    pub fn name_error(&self) -> Option<NameError> {
+        let name = self.name.text().trim();
         if name.is_empty() {
             return Some(NameError::Empty);
         }
@@ -252,33 +261,16 @@ impl DocumentTypeForm {
             return Some(NameError::TooLong);
         }
         let wanted = name.to_lowercase();
-        types
-            .iter()
-            .any(|row| Some(row.id) != own_id && row.name.trim().to_lowercase() == wanted)
-            .then_some(NameError::Taken)
+        self.taken.contains(&wanted).then_some(NameError::Taken)
     }
 
-    pub fn is_valid(&self, types: &[DocumentTypeRow], own_id: Option<u32>) -> bool {
-        self.name_error(types, own_id).is_none()
+    pub fn is_valid(&self) -> bool {
+        self.name_error().is_none()
     }
 
     /// Remind is inert, and so disabled, while no date is tracked.
     pub fn remind_enabled(&self) -> bool {
         self.tracks_date.is_some()
-    }
-
-    pub fn push_char(&mut self, ch: char) {
-        if self.focused == FormField::Name && !ch.is_control() {
-            self.name.push(ch);
-            self.touched = true;
-        }
-    }
-
-    pub fn backspace(&mut self) {
-        if self.focused == FormField::Name {
-            self.name.pop();
-            self.touched = true;
-        }
     }
 
     pub fn set_tracks_date(&mut self, tracks_date: Option<TracksDate>) {
@@ -336,6 +328,38 @@ impl DocumentTypeForm {
     }
 }
 
+fn taken_names(types: &[DocumentTypeRow], own_id: Option<u32>) -> Vec<String> {
+    types
+        .iter()
+        .filter(|row| Some(row.id) != own_id)
+        .map(|row| row.name.trim().to_lowercase())
+        .collect()
+}
+
+impl DocumentTypeForm {
+    /// Keys this form takes before the shared typing: `Left`/`Right` step the focused control,
+    /// `Space` toggles the Financial year flag, `Shift-Tab` goes back a field. Typing and
+    /// `Backspace` fall through to the Name field, marking it touched so its error shows.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        match key {
+            DialogKey::Left => self.step_focused(-1),
+            DialogKey::Right => self.step_focused(1),
+            DialogKey::BackTab => self.cycle_focus(true),
+            DialogKey::Char(' ') if self.focused == FormField::FinancialYear => {
+                self.toggle_financial_year();
+            }
+            DialogKey::Char(_) | DialogKey::Backspace if self.focused == FormField::Name => {
+                self.touched = true;
+                return None;
+            }
+            // A control swallows typing rather than letting it fall through to the shell.
+            DialogKey::Char(_) | DialogKey::Backspace | DialogKey::Up | DialogKey::Down => {}
+            DialogKey::Tab | DialogKey::Enter | DialogKey::Other => return None,
+        }
+        Some(DialogOutcome::Handled)
+    }
+}
+
 fn step<T: Copy + PartialEq>(options: &[T], current: T, delta: isize) -> T {
     let index = options
         .iter()
@@ -347,13 +371,73 @@ fn step<T: Copy + PartialEq>(options: &[T], current: T, delta: isize) -> T {
     options.get(next).copied().unwrap_or(current)
 }
 
+/// The Remove dialog's destination select. The destination names and whether one is needed are
+/// copied in at open, so the dialog validates without `Shell`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoveForm {
+    /// Where the removed type's Filed files can move: every other type, in order.
+    pub destinations: Vec<String>,
+    pub select: SelectState,
+    needs_destination: bool,
+}
+
+impl RemoveForm {
+    /// The form for removing the type with `id`, whose files move to Other unless told otherwise.
+    pub fn new(types: &[DocumentTypeRow], id: u32) -> Self {
+        Self {
+            destinations: destination_names(types, id),
+            select: destination_select(types, id),
+            needs_destination: get(types, id).is_some_and(|row| row.files > 0),
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.needs_destination || self.select.value().is_some()
+    }
+
+    /// `Up`/`Down` walk the open list or step the value; `Space` opens it or commits the
+    /// highlight; `Enter` commits an open list, else falls through to confirm.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        match key {
+            DialogKey::Up | DialogKey::Down => {
+                let delta = if key == DialogKey::Up { -1 } else { 1 };
+                if self.select.is_open() {
+                    self.select.move_highlight(&self.destinations, delta);
+                } else {
+                    self.select.step(&self.destinations, delta);
+                }
+            }
+            DialogKey::Char(' ') if self.select.is_open() => {
+                self.select.commit(&self.destinations);
+            }
+            DialogKey::Char(' ') => self.select.open(&self.destinations),
+            DialogKey::Enter if self.select.is_open() => self.select.commit(&self.destinations),
+            _ => return None,
+        }
+        Some(DialogOutcome::Handled)
+    }
+
+    /// A click on the select toggles its list.
+    pub fn click_select(&mut self) {
+        if self.select.is_open() {
+            self.select.cancel();
+        } else {
+            self.select.open(&self.destinations);
+        }
+    }
+
+    pub fn choose(&mut self, index: usize) {
+        self.select.choose(&self.destinations, index);
+    }
+}
+
 /// The dialog open over the Documents page.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocumentTypesDialog {
     Add(DocumentTypeForm),
     Edit(u32, DocumentTypeForm),
     /// Removing the type with this id; the select is where its Filed files move to.
-    Remove(u32, SelectState),
+    Remove(u32, RemoveForm),
     /// Other has no remove action, so this only says why.
     DefaultNotice,
 }
@@ -363,6 +447,50 @@ impl DocumentTypesDialog {
         match self {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
             _ => None,
+        }
+    }
+}
+
+impl Dialog for DocumentTypesDialog {
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form.handle_own_key(key),
+            Self::Remove(_, form) => form.handle_own_key(key),
+            Self::DefaultNotice => None,
+        }
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) if form.focused == FormField::Name => {
+                Some(&mut form.name)
+            }
+            _ => None,
+        }
+    }
+
+    fn cycle_field(&mut self) {
+        if let Some(form) = self.form_mut() {
+            form.cycle_focus(false);
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form.is_valid(),
+            Self::Remove(_, form) => form.is_valid(),
+            Self::DefaultNotice => true,
+        }
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        match self {
+            Self::Remove(_, form) => {
+                let was_open = form.select.is_open();
+                form.select.cancel();
+                was_open
+            }
+            _ => false,
         }
     }
 }
@@ -407,7 +535,7 @@ pub fn add_type(
     *next_id += 1;
     types.push(DocumentTypeRow {
         id,
-        name: form.name.trim().to_string(),
+        name: form.name.text().trim().to_string(),
         tracks_date: form.tracks_date,
         remind: form.remind,
         financial_year: form.financial_year,
@@ -420,7 +548,7 @@ pub fn add_type(
 /// Applies `form` to the type with `id`. The id never changes, so saved filters survive a rename.
 pub fn edit_type(types: &mut [DocumentTypeRow], id: u32, form: &DocumentTypeForm) {
     if let Some(row) = types.iter_mut().find(|row| row.id == id) {
-        row.name = form.name.trim().to_string();
+        row.name = form.name.text().trim().to_string();
         row.tracks_date = form.tracks_date;
         row.remind = form.remind;
         row.financial_year = form.financial_year;
@@ -464,29 +592,30 @@ mod tests {
     use super::*;
 
     fn form(name: &str) -> DocumentTypeForm {
-        DocumentTypeForm {
-            name: name.to_string(),
-            ..DocumentTypeForm::default()
-        }
+        form_editing(name, None)
+    }
+
+    /// A draft named `name` over the seed, editing the type `own_id` if given.
+    fn form_editing(name: &str, own_id: Option<u32>) -> DocumentTypeForm {
+        let types = default_types();
+        let mut form = match own_id.and_then(|id| get(&types, id)) {
+            Some(row) => DocumentTypeForm::from_row(row, &types),
+            None => DocumentTypeForm::new(&types),
+        };
+        form.name = TextField::new(name);
+        form
     }
 
     #[test]
     fn names_are_required_trimmed_short_and_unique_ignoring_case() {
-        let types = default_types();
-        assert_eq!(form("  ").name_error(&types, None), Some(NameError::Empty));
-        assert_eq!(
-            form(&"a".repeat(41)).name_error(&types, None),
-            Some(NameError::TooLong)
-        );
-        assert_eq!(form(&"a".repeat(40)).name_error(&types, None), None);
-        assert_eq!(
-            form(" tAx ").name_error(&types, None),
-            Some(NameError::Taken)
-        );
+        assert_eq!(form("  ").name_error(), Some(NameError::Empty));
+        assert_eq!(form(&"a".repeat(41)).name_error(), Some(NameError::TooLong));
+        assert_eq!(form(&"a".repeat(40)).name_error(), None);
+        assert_eq!(form(" tAx ").name_error(), Some(NameError::Taken));
         // Editing a type keeps its own name free, even in another case.
-        assert_eq!(form("TAX").name_error(&types, Some(3)), None);
+        assert_eq!(form_editing("TAX", Some(3)).name_error(), None);
         assert_eq!(
-            form("tax").name_error(&types, Some(4)),
+            form_editing("tax", Some(4)).name_error(),
             Some(NameError::Taken)
         );
     }
@@ -553,8 +682,8 @@ mod tests {
     #[test]
     fn edit_renames_but_keeps_the_id_files_and_default_flag() {
         let mut types = default_types();
-        let mut draft = DocumentTypeForm::from_row(&types[8]);
-        draft.name = "Misc".to_string();
+        let mut draft = DocumentTypeForm::from_row(&types[8], &types);
+        draft.name = TextField::new("Misc");
         edit_type(&mut types, 9, &draft);
         assert_eq!(types[8].id, 9);
         assert_eq!(types[8].name, "Misc");

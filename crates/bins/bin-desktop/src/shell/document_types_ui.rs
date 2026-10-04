@@ -4,15 +4,15 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, Context, Keystroke};
+use gpui::{AnyElement, Context};
 
 use super::Shell;
 use crate::{
+    dialog_host::OpenDialog,
     document_types::{
-        self, DocumentTypeForm, DocumentTypesDialog, FormField, RemindLead, TracksDate,
+        self, DocumentTypeForm, DocumentTypesDialog, FormField, RemindLead, RemoveForm, TracksDate,
     },
     documents,
-    nav::InputMode,
     view::settings::document_type_dialogs as view,
 };
 
@@ -33,124 +33,39 @@ pub(super) fn dialog_hints(dialog: &DocumentTypesDialog) -> Vec<(&'static str, S
 
 impl Shell {
     pub(super) fn open_add_document_type_dialog(&mut self) {
-        self.document_types_dialog = Some(DocumentTypesDialog::Add(DocumentTypeForm::default()));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = DocumentTypeForm::new(&self.document_types);
+        self.open_dialog(OpenDialog::DocumentTypes(DocumentTypesDialog::Add(form)));
     }
 
     pub(super) fn open_edit_document_type_dialog(&mut self, id: u32) {
-        let Some(position) = document_types::position(&self.document_types, id) else {
+        let Some(row) = document_types::get(&self.document_types, id) else {
             return;
         };
-        let form = DocumentTypeForm::from_row(&self.document_types[position]);
-        self.document_types_dialog = Some(DocumentTypesDialog::Edit(id, form));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = DocumentTypeForm::from_row(row, &self.document_types);
+        self.open_dialog(OpenDialog::DocumentTypes(DocumentTypesDialog::Edit(
+            id, form,
+        )));
     }
 
     /// Other, the Default, has no remove action and gets a notice instead.
     pub(super) fn open_remove_document_type_dialog(&mut self, id: u32) {
-        let Some(position) = document_types::position(&self.document_types, id) else {
+        let Some(row) = document_types::get(&self.document_types, id) else {
             return;
         };
-        self.document_types_dialog = Some(if self.document_types[position].is_default {
+        let dialog = if row.is_default {
             DocumentTypesDialog::DefaultNotice
         } else {
-            DocumentTypesDialog::Remove(
-                id,
-                document_types::destination_select(&self.document_types, id),
-            )
-        });
-        self.nav.enter_mode(InputMode::Dialog);
-    }
-
-    fn close_document_types_dialog(&mut self) {
-        self.document_types_dialog = None;
-        self.nav.exit_mode();
-    }
-
-    /// The first `Esc` on an open destination list closes the list only.
-    pub(super) fn close_open_document_type_select(&mut self) -> bool {
-        if let Some(DocumentTypesDialog::Remove(_, select)) = self.document_types_dialog.as_mut() {
-            let was_open = select.is_open();
-            select.cancel();
-            return was_open;
-        }
-        false
-    }
-
-    /// Keys while a Document type dialog is open. `Esc` never reaches here.
-    pub(super) fn handle_document_types_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        let modifiers = &keystroke.modifiers;
-        let key = keystroke.key.as_str();
-        match self.document_types_dialog.as_mut() {
-            Some(DocumentTypesDialog::Remove(id, select)) => {
-                let list = document_types::destination_names(&self.document_types, *id);
-                match key {
-                    "up" | "down" => {
-                        let delta = if key == "up" { -1 } else { 1 };
-                        if select.is_open() {
-                            select.move_highlight(&list, delta);
-                        } else {
-                            select.step(&list, delta);
-                        }
-                    }
-                    "space" if !select.is_open() => select.open(&list),
-                    "space" => select.commit(&list),
-                    "enter" if select.is_open() => select.commit(&list),
-                    "enter" => self.confirm_document_types_dialog(),
-                    _ => return false,
-                }
-                true
-            }
-            Some(DocumentTypesDialog::DefaultNotice) => {
-                if key == "enter" {
-                    self.close_document_types_dialog();
-                    return true;
-                }
-                false
-            }
-            Some(DocumentTypesDialog::Add(form) | DocumentTypesDialog::Edit(_, form)) => {
-                match key {
-                    "tab" => form.cycle_focus(modifiers.shift),
-                    "left" => form.step_focused(-1),
-                    "right" => form.step_focused(1),
-                    "space" if form.focused == FormField::FinancialYear => {
-                        form.toggle_financial_year();
-                    }
-                    "enter" => self.confirm_document_types_dialog(),
-                    "backspace" => form.backspace(),
-                    _ => {
-                        if modifiers.control
-                            || modifiers.alt
-                            || modifiers.platform
-                            || modifiers.function
-                        {
-                            return false;
-                        }
-                        if let Some(text) = keystroke.key_char.as_deref()
-                            && text.chars().count() == 1
-                            && let Some(ch) = text.chars().next()
-                        {
-                            form.push_char(ch);
-                        }
-                    }
-                }
-                true
-            }
-            None => false,
-        }
-    }
-
-    /// **Add type** / **Save** / **Remove** and `enter`: a no-op while the name is invalid;
-    /// otherwise applies the change, selects the type and closes the dialog.
-    pub(super) fn confirm_document_types_dialog(&mut self) {
-        let Some(dialog) = self.document_types_dialog.clone() else {
-            return;
+            DocumentTypesDialog::Remove(id, RemoveForm::new(&self.document_types, id))
         };
+        self.open_dialog(OpenDialog::DocumentTypes(dialog));
+    }
+
+    /// Applies a confirmed Document types dialog (reached through [`Self::confirm_open_dialog`]
+    /// from **Add type** / **Save** / **Remove** or `Enter`): applies the change and selects the
+    /// type. The Default notice only closes.
+    pub(super) fn apply_document_types_dialog(&mut self, dialog: DocumentTypesDialog) {
         match dialog {
             DocumentTypesDialog::Add(form) => {
-                if !form.is_valid(&self.document_types, None) {
-                    return;
-                }
                 let id = document_types::add_type(
                     &mut self.document_types,
                     &mut self.document_types_next_id,
@@ -159,20 +74,18 @@ impl Shell {
                 self.settings_documents_selected = Some(id);
             }
             DocumentTypesDialog::Edit(id, form) => {
-                if !form.is_valid(&self.document_types, Some(id)) {
-                    return;
-                }
                 document_types::edit_type(&mut self.document_types, id, &form);
                 self.settings_documents_selected = Some(id);
             }
-            DocumentTypesDialog::Remove(id, select) => {
+            DocumentTypesDialog::Remove(id, form) => {
                 // Keep the cursor on the neighbour that takes the removed row's place.
                 let position = document_types::position(&self.document_types, id).unwrap_or(0);
-                let destination = select
+                let destination = form
+                    .select
                     .value()
                     .and_then(|name| document_types::id_by_name(&self.document_types, name))
                     .filter(|destination| *destination != id);
-                if document_types::remove_type(&mut self.document_types, id, select.value())
+                if document_types::remove_type(&mut self.document_types, id, form.select.value())
                     .is_err()
                 {
                     return;
@@ -200,7 +113,6 @@ impl Shell {
             }
             DocumentTypesDialog::DefaultNotice => {}
         }
-        self.close_document_types_dialog();
     }
 
     fn with_document_type_form(
@@ -209,8 +121,7 @@ impl Shell {
         change: impl FnOnce(&mut DocumentTypeForm),
     ) {
         if let Some(form) = self
-            .document_types_dialog
-            .as_mut()
+            .document_types_dialog_mut()
             .and_then(DocumentTypesDialog::form_mut)
         {
             change(form);
@@ -219,23 +130,18 @@ impl Shell {
     }
 
     fn handle_document_types_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_document_types_dialog();
+        self.close_dialog();
         cx.notify();
     }
 
     fn handle_document_types_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_document_types_dialog();
+        self.confirm_open_dialog();
         cx.notify();
     }
 
     fn handle_document_types_destination_field_click(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(DocumentTypesDialog::Remove(id, select)) = self.document_types_dialog.as_mut() {
-            let list = document_types::destination_names(&self.document_types, *id);
-            if select.is_open() {
-                select.cancel();
-            } else {
-                select.open(&list);
-            }
+        if let Some(DocumentTypesDialog::Remove(_, form)) = self.document_types_dialog_mut() {
+            form.click_select();
         }
         cx.notify();
     }
@@ -245,9 +151,8 @@ impl Shell {
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(DocumentTypesDialog::Remove(id, select)) = self.document_types_dialog.as_mut() {
-            let list = document_types::destination_names(&self.document_types, *id);
-            select.choose(&list, index);
+        if let Some(DocumentTypesDialog::Remove(_, form)) = self.document_types_dialog_mut() {
+            form.choose(index);
         }
         cx.notify();
     }
@@ -276,13 +181,13 @@ impl Shell {
             on_click
         };
         let types = &self.document_types;
-        match self.document_types_dialog.as_ref()? {
+        match self.document_types_dialog()? {
             DocumentTypesDialog::Add(form) => Some(view::render_form(
                 view::FormProps {
                     form,
                     edit: None,
-                    error: form.name_error(types, None),
-                    valid: form.is_valid(types, None),
+                    error: form.name_error(),
+                    valid: form.is_valid(),
                     handlers: self.document_type_form_handlers(entity, plain),
                 },
                 cx,
@@ -293,16 +198,15 @@ impl Shell {
                     view::FormProps {
                         form,
                         edit: Some(row),
-                        error: form.name_error(types, Some(*id)),
-                        valid: form.is_valid(types, Some(*id)),
+                        error: form.name_error(),
+                        valid: form.is_valid(),
                         handlers: self.document_type_form_handlers(entity, plain),
                     },
                     cx,
                 ))
             }
-            DocumentTypesDialog::Remove(id, select) => {
+            DocumentTypesDialog::Remove(id, form) => {
                 let row = types.iter().find(|row| row.id == *id)?;
-                let destinations = document_types::destination_names(types, *id);
                 let on_option_click: crate::view::accounts::select_field::OnOptionClick = {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
@@ -314,8 +218,8 @@ impl Shell {
                 Some(view::render_remove(
                     view::RemoveProps {
                         row,
-                        destinations: &destinations,
-                        destination: select,
+                        destinations: &form.destinations,
+                        destination: &form.select,
                         handlers: view::RemoveHandlers {
                             on_field_click: plain(
                                 Shell::handle_document_types_destination_field_click,

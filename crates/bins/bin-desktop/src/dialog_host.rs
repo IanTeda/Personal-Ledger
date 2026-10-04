@@ -20,8 +20,8 @@
 //! their own `Shell::*_dialog` fields.
 
 use crate::{
-    accounts::AccountsDialog, categories::CategoriesDialog, field::TextField, payees::PayeesDialog,
-    settings::SettingsDialog,
+    accounts::AccountsDialog, categories::CategoriesDialog, document_types::DocumentTypesDialog,
+    field::TextField, payees::PayeesDialog, settings::SettingsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -33,6 +33,8 @@ pub enum DialogKey {
     BackTab,
     Up,
     Down,
+    Left,
+    Right,
     Enter,
     /// A printable character, typed without Ctrl/Alt/Cmd/Fn.
     Char(char),
@@ -83,6 +85,7 @@ pub enum OpenDialog {
     Accounts(AccountsDialog),
     Categories(CategoriesDialog),
     Payees(PayeesDialog),
+    DocumentTypes(DocumentTypesDialog),
 }
 
 impl OpenDialog {
@@ -92,6 +95,7 @@ impl OpenDialog {
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::Payees(dialog) => dialog,
+            Self::DocumentTypes(dialog) => dialog,
         }
     }
 
@@ -101,6 +105,7 @@ impl OpenDialog {
             Self::Accounts(dialog) => dialog,
             Self::Categories(dialog) => dialog,
             Self::Payees(dialog) => dialog,
+            Self::DocumentTypes(dialog) => dialog,
         }
     }
 }
@@ -155,7 +160,9 @@ pub fn handle_key(dialog: &mut impl Dialog, key: DialogKey) -> DialogOutcome {
             }
             None => DialogOutcome::Ignored,
         },
-        DialogKey::Up | DialogKey::Down | DialogKey::Other => DialogOutcome::Ignored,
+        DialogKey::Up | DialogKey::Down | DialogKey::Left | DialogKey::Right | DialogKey::Other => {
+            DialogOutcome::Ignored
+        }
     }
 }
 
@@ -164,6 +171,9 @@ mod tests {
     use super::*;
     use crate::accounts::{AccountField, AccountForm, DeleteAccountForm};
     use crate::categories::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
+    use crate::document_types::{
+        DocumentTypeForm, DocumentTypesDialog, FormField, RemoveForm, TracksDate, default_types,
+    };
     use crate::payees::{DeleteAction, DeletePayeeForm, PayeeField, PayeeForm, default_payees};
     use crate::settings::{
         AccountType, AddInstitutionForm, AddUnitField, DeleteUnitForm, UnitForm, default_units,
@@ -628,6 +638,118 @@ mod tests {
         ));
         assert_eq!(
             handle_key(&mut reactivate, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    fn add_document_type() -> OpenDialog {
+        OpenDialog::DocumentTypes(DocumentTypesDialog::Add(DocumentTypeForm::new(
+            &default_types(),
+        )))
+    }
+
+    fn document_type_form(dialog: &OpenDialog) -> &DocumentTypeForm {
+        match dialog {
+            OpenDialog::DocumentTypes(
+                DocumentTypesDialog::Add(form) | DocumentTypesDialog::Edit(_, form),
+            ) => form,
+            other => panic!("expected a document type form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn document_type_typing_edits_the_name_and_tab_skips_a_disabled_remind() {
+        let mut dialog = add_document_type();
+        type_text(&mut dialog, "Leasex");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(document_type_form(&dialog).name.text(), "Lease");
+        assert!(document_type_form(&dialog).touched);
+
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(document_type_form(&dialog).focused, FormField::TracksDate);
+        // Typing on a control is swallowed, not appended to the name.
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Handled
+        );
+        assert_eq!(document_type_form(&dialog).name.text(), "Lease");
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(
+            document_type_form(&dialog).focused,
+            FormField::FinancialYear
+        );
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(document_type_form(&dialog).financial_year);
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(document_type_form(&dialog).focused, FormField::TracksDate);
+        handle_key(&mut dialog, DialogKey::Right);
+        assert_eq!(
+            document_type_form(&dialog).tracks_date,
+            Some(TracksDate::Renews)
+        );
+    }
+
+    #[test]
+    fn document_type_enter_confirms_only_with_a_free_name() {
+        let mut dialog = add_document_type();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "tax");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "es");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn remove_document_type_select_walks_commits_and_first_esc_closes_it() {
+        let mut dialog = OpenDialog::DocumentTypes(DocumentTypesDialog::Remove(
+            3,
+            RemoveForm::new(&default_types(), 3),
+        ));
+        let destination = |dialog: &OpenDialog| match dialog {
+            OpenDialog::DocumentTypes(DocumentTypesDialog::Remove(_, form)) => {
+                form.select.value().map(str::to_string)
+            }
+            other => panic!("expected a remove dialog, got {other:?}"),
+        };
+        assert_eq!(destination(&dialog).as_deref(), Some("Other"));
+        // Space opens the list; Esc closes it first and keeps the value and the dialog.
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        handle_key(&mut dialog, DialogKey::Up);
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+        assert_eq!(destination(&dialog).as_deref(), Some("Other"));
+        // Enter on an open list commits it rather than confirming; on a closed one it confirms.
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        handle_key(&mut dialog, DialogKey::Up);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        assert_eq!(destination(&dialog).as_deref(), Some("Bills"));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn the_default_document_type_notice_confirms_with_enter_and_swallows_tab() {
+        let mut dialog = OpenDialog::DocumentTypes(DocumentTypesDialog::DefaultNotice);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Tab),
+            DialogOutcome::Handled
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
             DialogOutcome::Confirm
         );
     }

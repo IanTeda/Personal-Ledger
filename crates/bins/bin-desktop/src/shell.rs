@@ -738,8 +738,6 @@ pub struct Shell {
     /// Settings' Inventory page: the selected row and the Properties shown open (session-only).
     settings_inventory_selected: Option<InventoryRow>,
     settings_inventory_expanded: HashSet<u32>,
-    /// The open Add, Edit or Remove Document type dialog; `InputMode::Dialog` for as long as it is.
-    document_types_dialog: Option<DocumentTypesDialog>,
     /// The open Add, Edit or Remove Property dialog; `InputMode::Dialog` for as long as it is.
     inventory_dialog: Option<inventory_ui::InventoryDialog>,
     /// The id the next added Document Type takes; only counts up, so ids are never reused.
@@ -926,7 +924,6 @@ impl Shell {
             settings_documents_selected: None,
             settings_inventory_selected: None,
             settings_inventory_expanded: HashSet::new(),
-            document_types_dialog: None,
             inventory_dialog: None,
             import: None,
             tags,
@@ -1311,9 +1308,6 @@ impl Shell {
                 if self.dialog.as_mut().is_some_and(Dialog::close_open_select) {
                     return true;
                 }
-                if self.close_open_document_type_select() {
-                    return true;
-                }
                 if self.close_open_property_unit_select() {
                     return true;
                 }
@@ -1377,7 +1371,6 @@ impl Shell {
                 }
                 self.transactions_filter_form = None;
                 self.close_dialog();
-                self.document_types_dialog = None;
                 self.inventory_dialog = None;
                 self.tags_dialog = None;
                 self.bills_dialog = None;
@@ -2101,9 +2094,6 @@ impl Shell {
                 }
             };
         }
-        if self.document_types_dialog.is_some() {
-            return self.handle_document_types_dialog_key(keystroke);
-        }
         if self.inventory_dialog.is_some() {
             return self.handle_inventory_dialog_key(keystroke);
         }
@@ -2150,6 +2140,7 @@ impl Shell {
             OpenDialog::Accounts(dialog) => self.apply_accounts_dialog(dialog),
             OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog),
             OpenDialog::Payees(dialog) => self.apply_payees_dialog(dialog),
+            OpenDialog::DocumentTypes(dialog) => self.apply_document_types_dialog(dialog),
         }
     }
 
@@ -2177,6 +2168,20 @@ impl Shell {
     fn categories_dialog_mut(&mut self) -> Option<&mut categories::CategoriesDialog> {
         match self.dialog.as_mut()? {
             OpenDialog::Categories(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn document_types_dialog(&self) -> Option<&DocumentTypesDialog> {
+        match self.dialog.as_ref()? {
+            OpenDialog::DocumentTypes(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn document_types_dialog_mut(&mut self) -> Option<&mut DocumentTypesDialog> {
+        match self.dialog.as_mut()? {
+            OpenDialog::DocumentTypes(dialog) => Some(dialog),
             _ => None,
         }
     }
@@ -9600,8 +9605,7 @@ impl Render for Shell {
             }),
             Noun::Settings if self.settings_documents_page_has_focus() => Some(PageStatus {
                 hints: self
-                    .document_types_dialog
-                    .as_ref()
+                    .document_types_dialog()
                     .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
                 right: settings_view::documents::scope_text(&self.document_types),
             }),
@@ -10580,6 +10584,8 @@ fn dialog_key(keystroke: &Keystroke) -> DialogKey {
         "enter" => DialogKey::Enter,
         "up" => DialogKey::Up,
         "down" => DialogKey::Down,
+        "left" => DialogKey::Left,
+        "right" => DialogKey::Right,
         _ => typed_char(keystroke).map_or(DialogKey::Other, DialogKey::Char),
     }
 }

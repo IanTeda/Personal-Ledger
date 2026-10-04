@@ -133,7 +133,7 @@ pub fn render_form(props: FormProps<'_>, cx: &App) -> AnyElement {
             .child(text_field(
                 "document-type-name",
                 crate::msg::desktop_document_types_field_name(),
-                &form.name,
+                form.name.text(),
                 &crate::msg::desktop_document_types_field_name_placeholder(),
                 form.focused == FormField::Name,
                 click(FormField::Name),
