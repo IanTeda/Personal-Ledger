@@ -10,7 +10,7 @@
 )]
 
 use bin_desktop::{
-    ShellBindings, build_shell, colours,
+    ShellBindings, ShellLogs, build_shell, colours,
     locale::init_for_tests,
     nav::Noun,
     persistence::PersistedState,
@@ -32,11 +32,27 @@ pub fn today() -> NaiveDate {
 pub struct Harness<'a> {
     pub shell: Entity<Shell>,
     pub cx: &'a mut VisualTestContext,
+    /// The Shell's live log capture: push entries here, then [`Harness::settle_logs`].
+    pub logs: lib_tracing::LogBuffer,
 }
 
 impl<'a> Harness<'a> {
     /// Boots the app-level globals and a `Shell` with default (nothing persisted) state.
     pub fn new(app: &'a mut TestAppContext) -> Self {
+        Self::with_logs(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+        )
+    }
+
+    /// As [`Harness::new`], with a log capture already holding entries and a configured `log`
+    /// level, as the app would have at start.
+    pub fn with_logs(
+        app: &'a mut TestAppContext,
+        logs: lib_tracing::LogBuffer,
+        configured_level: Option<lib_tracing::Levels>,
+    ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
         // never depends on the host; `main` is never run in a test.
         init_for_tests();
@@ -53,12 +69,25 @@ impl<'a> Harness<'a> {
                     dismiss_toasts: "ctrl+l".to_string(),
                     toast_history: None,
                 },
+                ShellLogs {
+                    buffer: logs.clone(),
+                    configured_level,
+                },
                 today(),
                 focus_handle,
                 cx,
             )
         });
-        Self { shell, cx }
+        Self { shell, cx, logs }
+    }
+
+    /// Lets the Tracing page's live feed pull what was pushed: past its coalescing window.
+    pub fn settle_logs(&mut self) {
+        self.cx.run_until_parked();
+        self.cx
+            .executor()
+            .advance_clock(bin_desktop::shell::LOG_COALESCE * 2);
+        self.cx.run_until_parked();
     }
 
     /// Presses a space-separated keystroke sequence, e.g. `press("g f")`.
@@ -154,8 +183,30 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Whether an element tagged `debug_selector(selector)` was drawn in the last frame.
+    pub fn is_drawn(&mut self, selector: &str) -> bool {
+        let key: &'static str = Box::leak(selector.to_string().into_boxed_str());
+        self.cx.debug_bounds(key).is_some()
+    }
+
     /// Reads from the Shell without mutating it.
     pub fn read<T>(&mut self, f: impl FnOnce(&Shell) -> T) -> T {
         self.shell.read_with(self.cx, |shell, _| f(shell))
+    }
+}
+
+/// A captured log entry, as the capture layer would record it.
+pub fn log_entry(
+    level: tracing::Level,
+    target: &'static str,
+    message: &str,
+) -> lib_tracing::LogEntry {
+    lib_tracing::LogEntry {
+        seq: 0,
+        time: std::time::SystemTime::now(),
+        level,
+        target: std::borrow::Cow::Borrowed(target),
+        message: message.to_string(),
+        fields: Vec::new(),
     }
 }

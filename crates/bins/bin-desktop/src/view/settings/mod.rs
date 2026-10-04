@@ -8,6 +8,7 @@ pub mod accounts;
 pub mod add_institution_dialog;
 pub mod add_unit_dialog;
 pub mod categories;
+pub mod clear_logs_dialog;
 pub mod colour_theme;
 pub mod data_backup;
 pub mod delete_unit_dialog;
@@ -32,8 +33,7 @@ use lib_core::DateStyle;
 use crate::{
     nav::Noun,
     settings::{
-        InstitutionRow, PriceSourceRow, RowDensity, SettingsSection, StatusGlyphs, TracingLevel,
-        UnitRow,
+        InstitutionRow, PriceSourceRow, RowDensity, SettingsSection, StatusGlyphs, UnitRow,
     },
     theme::color,
 };
@@ -84,8 +84,7 @@ pub struct SettingsBodyProps<'a> {
     pub on_sync_now_click: sync_server::OnSyncNowClick,
     pub on_backup_now_click: data_backup::OnBackupNowClick,
     pub on_export_ledger_click: data_backup::OnExportLedgerClick,
-    pub tracing_level: TracingLevel,
-    pub log_lines: &'a [&'static str],
+    pub log: tracing::LogBoxProps,
     pub on_tracing_level_click: tracing::OnLevelClick,
     pub on_clear_logs_click: tracing::OnClearLogsClick,
 }
@@ -96,13 +95,17 @@ pub fn render(
     props: SettingsBodyProps<'_>,
     cx: &App,
 ) -> AnyElement {
+    // Tracing's log box fills the page and scrolls itself, so its body must not scroll too.
+    let fills = props.selected.fills_page();
     div()
         .id("settings-body")
         .flex_1()
         .min_w(px(0.0))
         .h_full()
-        .overflow_y_scroll()
-        .track_scroll(scroll_handle)
+        .when(fills, |this| this.overflow_hidden())
+        .when(!fills, |this| {
+            this.overflow_y_scroll().track_scroll(scroll_handle)
+        })
         .when(focused, |this| {
             this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
@@ -125,6 +128,7 @@ fn section_block(
     div()
         .flex()
         .flex_col()
+        .when(section.fills_page(), |this| this.flex_1().min_h(px(0.0)))
         .mb(px(48.0))
         .child(
             div()
@@ -254,8 +258,7 @@ fn section_content(
             cx,
         ),
         SettingsSection::Tracing => tracing::render(
-            props.tracing_level,
-            props.log_lines,
+            &props.log,
             props.on_tracing_level_click.clone(),
             props.on_clear_logs_click.clone(),
             cx,

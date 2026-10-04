@@ -41,7 +41,7 @@ desktop-settings-scope-sync-server = synced · every { $seconds ->
    *[other] { $seconds } seconds
 }
 desktop-settings-scope-data-backup = local files · { $unit } · { $size }
-desktop-settings-scope-tracing = diagnostic · last { $entries ->
+desktop-settings-scope-tracing = this device · diagnostic · last { $entries ->
     [one] { $entries } entry
    *[other] { $entries } entries
 }
@@ -172,6 +172,14 @@ desktop-settings-tracing-level-warn = warn
 desktop-settings-tracing-level-info = info
 desktop-settings-tracing-level-debug = debug
 desktop-settings-tracing-clear = Clear logs
+desktop-settings-tracing-empty = No log entries yet.
+desktop-settings-tracing-all-hidden = No entries at { $level } or above. Choose a lower level to see { $hidden ->
+    [one] { $hidden } hidden entry
+   *[other] { $hidden } hidden entries
+}.
+desktop-settings-tracing-clear-title = Clear logs
+desktop-settings-tracing-clear-warning = Remove every captured log entry from this page? New entries keep arriving, and the console and log file keep their own copies.
+desktop-settings-tracing-toast-cleared = Logs cleared
 
 ## About.
 

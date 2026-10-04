@@ -20,7 +20,9 @@ async fn main() -> Result<()> {
     let log_file_path = config.personal_ledger_config().log_file_path();
     // Held for the lifetime of `main` -- dropping it stops the background worker that
     // flushes buffered log lines to `log_file_path` (when configured).
-    let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
-    bin_desktop::run(&config);
+    // The Tracing page's live view of this run's events.
+    let logs = lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY);
+    let _log_guard = lib_tracing::init(telemetry_level, log_file_path, Some(logs.clone()))?;
+    bin_desktop::run(&config, logs);
     Ok(())
 }

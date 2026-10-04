@@ -28,7 +28,10 @@ use tracing::subscriber::set_global_default;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{EnvFilter, prelude::*};
 
-use crate::{Error, Levels, Result};
+use crate::{
+    Error, Levels, Result,
+    capture::{CaptureLayer, LogBuffer, capture_filter},
+};
 
 /// Initialises the telemetry system for the Personal Ledger application.
 ///
@@ -51,6 +54,9 @@ use crate::{Error, Levels, Result};
 /// * `log_file_path` - Optional path to a file that telemetry events should also be
 ///   written to, in addition to the console. Parent directories are created if they
 ///   don't already exist. If `None`, telemetry is only written to the console.
+/// * `capture` - Optional [`LogBuffer`] to also feed with recent events, for an in-app log view.
+///   It records our own crates at `debug` whatever `tracing_level` and `RUST_LOG` say, so the
+///   viewer can filter for itself. The Sync Server and TUI pass `None`.
 ///
 /// # Returns
 ///
@@ -81,12 +87,14 @@ use crate::{Error, Levels, Result};
 pub fn init(
     tracing_level: Option<&Levels>,
     log_file_path: Option<&Path>,
+    capture: Option<LogBuffer>,
 ) -> Result<Option<WorkerGuard>> {
     // ============================================================================
     // Phase 1: Configure Event Filtering (Tracing/Log Level)
     // ============================================================================
     // Set default tracing level based on configuration
-    let default_env_filter = {
+    // `RUST_LOG`, when set and valid, replaces the configured default wholesale.
+    let env_filter = {
         // Convert our serde-friendly TracingLevels -> tracing LevelFilter -> Directive
         let default_directive = tracing_level
             .map(|&level| tracing::level_filters::LevelFilter::from(level))
@@ -97,9 +105,6 @@ pub fn init(
             .with_default_directive(default_directive)
             .from_env_lossy()
     };
-
-    // Try to use runtime level from RUST_LOG env var, fallback to configured default
-    let env_filter = EnvFilter::try_from_default_env().unwrap_or(default_env_filter);
 
     // `calloop` (gpui's Linux/Wayland event loop) emits a TRACE line per dispatched event
     // source on every frame -- pure event-loop bookkeeping, never useful outside debugging
@@ -143,11 +148,17 @@ pub fn init(
     // ============================================================================
     // Phase 3: Build Subscriber Registry
     // ============================================================================
-    // Combine filters and collectors into a complete subscriber registry
+    // Every layer carries its own filter rather than one global `EnvFilter`, which would gate
+    // the capture layer at the configured level too. It has to be every layer: one unfiltered
+    // layer makes the global level hint `TRACE`, waking every `trace!` callsite in the process.
+    let console_and_file = console_collector
+        .and_then(file_collector)
+        .with_filter(env_filter);
+    let capture_collector =
+        capture.map(|buffer| CaptureLayer::new(buffer).with_filter(capture_filter()));
     let registry = tracing_subscriber::registry()
-        .with(env_filter)
-        .with(console_collector)
-        .with(file_collector);
+        .with(console_and_file)
+        .with(capture_collector);
 
     // ============================================================================
     // Phase 4: Integrate with Standard Log Crate
@@ -189,7 +200,7 @@ mod tests {
     fn test_init_with_none_level() {
         // This test may fail if telemetry is already initialised
         // In a real scenario, this would be the first call during app startup
-        let result = init(None, None);
+        let result = init(None, None, None);
 
         // If it succeeds, telemetry was initialised
         // If it fails, it might be because telemetry is already initialised
@@ -214,7 +225,7 @@ mod tests {
     #[test]
     fn test_init_with_debug_level() {
         let debug_level = Levels::DEBUG;
-        let result = init(Some(&debug_level), None);
+        let result = init(Some(&debug_level), None, None);
 
         match result {
             Ok(_guard) => {
@@ -245,7 +256,7 @@ mod tests {
         ];
 
         for level in &levels {
-            let result = init(Some(level), None);
+            let result = init(Some(level), None, None);
             match result {
                 Ok(_guard) => {
                     // Successfully initialised
@@ -271,10 +282,10 @@ mod tests {
         // Test that init returns appropriate errors
 
         // First, try to initialize (might succeed or fail)
-        let _ = init(None, None);
+        let _ = init(None, None, None);
 
         // Second call should definitely fail
-        let result = init(Some(&Levels::DEBUG), None);
+        let result = init(Some(&Levels::DEBUG), None, None);
 
         // This should fail because telemetry is already initialised
         match result {
@@ -400,7 +411,7 @@ mod tests {
         // this process -- as with the other `init` tests, that failure mode is expected and
         // allowed. The log file is created during filter/writer setup, before the global
         // subscriber is activated, so it should exist regardless of that outcome.
-        let result = init(Some(&Levels::INFO), Some(&log_file));
+        let result = init(Some(&Levels::INFO), Some(&log_file), None);
 
         match result {
             Ok(guard) => assert!(guard.is_some(), "a log file was requested"),

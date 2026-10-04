@@ -54,14 +54,15 @@ pub struct PaletteSnapshot {
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
 
 use gpui::{
-    Context, ExternalPaths, FocusHandle, Focusable, KeyDownEvent, Keystroke, ScrollHandle,
-    ScrollStrategy, SharedString, Timer, UniformListScrollHandle, Window, div, point, prelude::*,
-    px,
+    Context, ExternalPaths, FocusHandle, Focusable, KeyDownEvent, Keystroke, ListAlignment,
+    ListOffset, ListState, ScrollHandle, ScrollStrategy, SharedString, Timer,
+    UniformListScrollHandle, Window, div, point, prelude::*, px,
 };
 
 use chrono::{DateTime, Local};
@@ -86,6 +87,7 @@ use crate::{
     inventory,
     key_router::{self, KeyOutcome, Movement, route_key},
     limit_form,
+    log_view::{LogChange, LogView},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
     pay_form::{self, PayForm},
@@ -128,6 +130,17 @@ use crate::{
 /// even though this tooltip is hand-rolled (row-anchored, not cursor-anchored -- see
 /// `rail::primary::collapsed_tooltip`'s doc) rather than that builtin.
 const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
+
+/// How long the Tracing page lets a burst of log events settle before redrawing, capping live
+/// updates at about ten a second. Public so the headless tests advance past exactly this.
+#[doc(hidden)]
+pub const LOG_COALESCE: Duration = Duration::from_millis(100);
+
+/// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
+const LOG_LIST_OVERDRAW: gpui::Pixels = px(200.0);
+
+/// One `j`/`k` step in the Tracing log box: a line of its 11px/1.6 monospace.
+const LOG_LINE_STEP: gpui::Pixels = px(17.6);
 
 /// The handoff's own "Jumps" timeout: a `g` with no completing chord within this window is
 /// abandoned rather than left waiting indefinitely.
@@ -416,6 +429,17 @@ fn settings_plain_page_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
+/// The Tracing page's keys while it has focus: the level radios, scrolling the log box, and
+/// Clear logs.
+fn settings_tracing_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("h/l", crate::msg::desktop_hint_level()),
+        ("j/k", crate::msg::desktop_hint_scroll()),
+        ("c", crate::msg::desktop_hint_clear_logs()),
+        ("esc", crate::msg::desktop_hint_index()),
+    ]
+}
+
 /// The status-line legend while the 7e Merge dialog is open.
 fn merge_tags_dialog_hints() -> Vec<(&'static str, String)> {
     vec![
@@ -482,9 +506,9 @@ fn payee_dialog_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The status-line legend while the Delete payee or Remove tag dialog is open: each has at most
-/// the one confirm field, so no `tab`.
-fn delete_payee_dialog_hints() -> Vec<(&'static str, String)> {
+/// The status-line legend while a plain confirm dialog is open (Delete payee, Remove tag, Clear
+/// logs): each has at most the one confirm field, so no `tab`.
+fn confirm_dialog_hints() -> Vec<(&'static str, String)> {
     vec![
         ("esc", crate::msg::desktop_hint_cancel()),
         ("enter", crate::msg::desktop_hint_confirm()),
@@ -606,7 +630,7 @@ pub struct Shell {
     /// grid); `None` off that page or while the grid has focus.
     settings_display_field: Option<usize>,
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored
-    /// preference, not reset on noun change (same reasoning as [`Self::settings_tracing_level`]).
+    /// preference, not reset on noun change (same reasoning as [`Self::settings_units`]).
     settings_date_style: Option<DateStyle>,
     /// The same section's "Row density" segmented control -- also drives the PREVIEW table's own
     /// row padding (`view::settings::display`'s own doc), unlike a purely-cosmetic preference.
@@ -644,13 +668,11 @@ pub struct Shell {
     /// The Institutions section's own table rows (issue #178), seeded from
     /// `settings::default_institutions()` -- same reasoning as [`Self::settings_units`].
     settings_institutions: Vec<InstitutionRow>,
-    /// The Tracing (Logs) section's own selected level (issue #182) -- a stored preference, not
-    /// reset on noun change (same reasoning as [`Self::settings_units`]).
-    settings_tracing_level: TracingLevel,
-    /// The same section's log viewport contents, seeded from `settings::DEFAULT_LOG_LINES`.
-    /// Real, mutable state -- "Clear logs" empties this `Vec`, the one button in this map with a
-    /// real effect rather than a permanently-out-of-scope stub.
-    settings_log_lines: Vec<&'static str>,
+    /// The Tracing page's mirror of the live log capture and its level filter (session only).
+    settings_log: LogView,
+    /// The Tracing page's virtualised log list. Kept in step with `settings_log` by splicing,
+    /// so a scrolled-down reader stays anchored as entries arrive.
+    settings_log_list: ListState,
     /// The Accounts page's rows, seeded from `accounts::default_accounts()`. A real, mutable
     /// `Vec` the Add/Edit/Delete dialogs push to, update and remove from -- saved-in-memory
     /// state like [`Self::settings_units`], so it survives leaving and re-entering Accounts.
@@ -875,8 +897,12 @@ impl Shell {
             settings_price_sources: settings::default_price_sources(),
             settings_dialog: None,
             settings_institutions: settings::default_institutions(),
-            settings_tracing_level: TracingLevel::default(),
-            settings_log_lines: settings::DEFAULT_LOG_LINES.to_vec(),
+            // A private, empty capture until `set_log_capture` hands over the real one.
+            settings_log: LogView::new(
+                lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+                TracingLevel::default(),
+            ),
+            settings_log_list: ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
             accounts: accounts::default_accounts(),
             accounts_selected: 0,
             accounts_dialog: None,
@@ -1010,6 +1036,59 @@ impl Shell {
     /// Raises a Toast whose Message the caller has already resolved to text.
     pub fn raise_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
         self.toasts.raise(kind, text, Local::now());
+    }
+
+    /// Hands the Tracing page the app's live log capture, opening on `level`, and starts the
+    /// feed that pulls new entries in. Called once, by `build_shell`.
+    pub fn set_log_capture(
+        &mut self,
+        buffer: lib_tracing::LogBuffer,
+        level: TracingLevel,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let notify = Arc::new(tokio::sync::Notify::new());
+        let waker = notify.clone();
+        // Runs on whichever thread logged: only signal. One stored permit absorbs a burst.
+        buffer.set_waker(move || waker.notify_one());
+        self.settings_log = LogView::new(buffer, level);
+        self.settings_log_list
+            .reset(self.settings_log.visible().len());
+        cx.spawn(async move |this, cx| {
+            loop {
+                notify.notified().await;
+                // The executor's timer, not `Timer::after`, so headless tests can advance it.
+                cx.background_executor().timer(LOG_COALESCE).await;
+                // Stops once the window, and with it the Shell, has gone.
+                if this
+                    .update(cx, |shell, cx| {
+                        let change = shell.settings_log.pull();
+                        if change != LogChange::default() {
+                            shell.apply_log_change(change);
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// Mirrors a pull onto the list: evicted rows leave the bottom, new ones arrive at the top.
+    /// A reader at the very top keeps seeing the newest; one scrolled down stays where they are.
+    fn apply_log_change(&mut self, change: LogChange) {
+        let list = &self.settings_log_list;
+        let top = list.logical_scroll_top();
+        let at_top = top.item_ix == 0 && top.offset_in_item <= px(0.0);
+        let count = list.item_count();
+        let evicted = change.evicted.min(count);
+        list.splice(count - evicted..count, 0);
+        list.splice(0..0, change.added);
+        if at_top {
+            list.scroll_to(ListOffset::default());
+        }
     }
 
     /// Starts the Toast clock for the window's life: every [`crate::toast::TICK`] it advances
@@ -1519,6 +1598,8 @@ impl Shell {
                 settings_colour_grid_hints()
             }
             SettingsSection::Display => settings_display_hints(),
+            SettingsSection::Tracing if self.settings_dialog.is_some() => confirm_dialog_hints(),
+            SettingsSection::Tracing => settings_tracing_hints(),
             _ => settings_plain_page_hints(),
         }
     }
@@ -1543,6 +1624,7 @@ impl Shell {
                 keys.extend(settings_colour_grid_hints().into_iter().take(2));
                 keys
             }
+            SettingsSection::Tracing => settings_tracing_hints(),
             _ => settings_plain_page_hints(),
         };
         settings_index_hints()
@@ -1719,6 +1801,53 @@ impl Shell {
             }
             _ => false,
         }
+    }
+
+    /// The Tracing page's keys while it has focus, ahead of Settings' focus keys so `h` steps the
+    /// level rather than leaving (Display's radio grammar; `esc` leaves): `h`/`l` the level,
+    /// `j`/`k` a line, `J`/`K` a page, `G` the oldest entry, `c` Clear logs. Focus never enters
+    /// the box itself. `false` for any key it does not take.
+    fn handle_settings_tracing_key(&mut self, keystroke: &Keystroke) -> bool {
+        let pending_g_active = self
+            .pending_g
+            .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
+        let modifiers = &keystroke.modifiers;
+        if self.nav.mode() != InputMode::Normal
+            || self.nav.noun() != Noun::Settings
+            || self.nav.focus() != FocusZone::View
+            || self.settings_focus != SettingsFocus::Page
+            || self.settings_selected_section != SettingsSection::Tracing
+            || modifiers.control
+            || modifiers.alt
+            || modifiers.platform
+            || pending_g_active
+        {
+            return false;
+        }
+        let list = &self.settings_log_list;
+        let page = list.viewport_bounds().size.height.max(LOG_LINE_STEP);
+        match (modifiers.shift, keystroke.key.as_str()) {
+            (false, "h" | "left") => self.step_tracing_level(-1),
+            (false, "l" | "right") => self.step_tracing_level(1),
+            (false, "j" | "down") => list.scroll_by(LOG_LINE_STEP),
+            (false, "k" | "up") => list.scroll_by(-LOG_LINE_STEP),
+            (true, "j") => list.scroll_by(page),
+            (true, "k") => list.scroll_by(-page),
+            (true, "g") => {
+                if let Some(last) = list.item_count().checked_sub(1) {
+                    list.scroll_to_reveal_item(last);
+                }
+            }
+            (false, "c") => self.open_clear_logs_dialog(),
+            _ => return false,
+        }
+        true
+    }
+
+    fn step_tracing_level(&mut self, delta: isize) {
+        self.status_message = None;
+        let level = step_choice(&TracingLevel::ALL, self.settings_log.level(), delta);
+        self.set_tracing_level(level);
     }
 
     /// Settings' own focus keys, ahead of the Colour Theme grid and the global keymap: `l`/`right`
@@ -2082,6 +2211,15 @@ impl Shell {
             // own confirm input above -- `Tab` is swallowed, and Account types/Default unit are
             // click-only (`Shell::handle_add_institution_account_type_click`/
             // `handle_add_institution_unit_click`), never typed into.
+            // Nothing to type: `enter` clears, `esc` (handled upstream) cancels.
+            SettingsDialog::ClearLogs => match keystroke.key.as_str() {
+                "enter" => {
+                    self.confirm_settings_dialog();
+                    true
+                }
+                "tab" => true,
+                _ => false,
+            },
             SettingsDialog::AddInstitution(form) => match keystroke.key.as_str() {
                 "backspace" => {
                     form.backspace();
@@ -7992,7 +8130,9 @@ impl Shell {
                 }
                 // Neither has more than one text field, always implicitly focused -- nothing to
                 // click into.
-                SettingsDialog::DeleteUnit(..) | SettingsDialog::AddInstitution(_) => {}
+                SettingsDialog::DeleteUnit(..)
+                | SettingsDialog::AddInstitution(_)
+                | SettingsDialog::ClearLogs => {}
             }
         }
     }
@@ -8006,7 +8146,9 @@ impl Shell {
                     cx.notify();
                 }
                 // Neither has a Type selector at all.
-                SettingsDialog::DeleteUnit(..) | SettingsDialog::AddInstitution(_) => {}
+                SettingsDialog::DeleteUnit(..)
+                | SettingsDialog::AddInstitution(_)
+                | SettingsDialog::ClearLogs => {}
             }
         }
     }
@@ -8097,6 +8239,14 @@ impl Shell {
                     name: form.name,
                     account_type,
                 });
+            }
+            SettingsDialog::ClearLogs => {
+                self.settings_log.clear();
+                self.settings_log_list.reset(0);
+                self.raise_toast(
+                    ToastKind::Info,
+                    crate::msg::desktop_settings_tracing_toast_cleared(),
+                );
             }
         }
         self.nav.exit_mode();
@@ -8461,12 +8611,17 @@ impl Shell {
         cx.notify();
     }
 
-    /// The Tracing (Logs) section's own level radios (issue #182): a stored preference, same
-    /// shape as [`Self::handle_row_density_click`] -- there are no real log lines to filter by
-    /// level yet.
+    /// The Tracing page's level radios: filters the log box at once, including what is already
+    /// there, and starts it back at the newest entry.
     fn handle_tracing_level_click(&mut self, level: TracingLevel, cx: &mut Context<'_, Self>) {
-        self.settings_tracing_level = level;
+        self.set_tracing_level(level);
         cx.notify();
+    }
+
+    fn set_tracing_level(&mut self, level: TracingLevel) {
+        self.settings_log.set_level(level);
+        self.settings_log_list
+            .reset(self.settings_log.visible().len());
     }
 
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored
@@ -8502,12 +8657,17 @@ impl Shell {
         cx.notify();
     }
 
-    /// The same section's "Clear logs" button: unlike every other button this map has built,
-    /// this one has a real effect -- the ticket's own body asks for the viewport's in-memory
-    /// contents to actually empty, not a stubbed status-line message.
+    /// The Tracing page's **Clear logs** button (and `c`): asks first, since the capture is
+    /// emptied for good (issue #502).
     fn handle_clear_logs_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.settings_log_lines.clear();
+        self.open_clear_logs_dialog();
         cx.notify();
+    }
+
+    fn open_clear_logs_dialog(&mut self) {
+        self.status_message = None;
+        self.settings_dialog = Some(SettingsDialog::ClearLogs);
+        self.nav.enter_mode(InputMode::Dialog);
     }
 
     /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
@@ -9838,7 +9998,7 @@ impl Render for Shell {
                 hints: match self.tags_dialog {
                     Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
                     Some(tags::TagsDialog::Edit(..)) => tag_dialog_hints(true),
-                    Some(tags::TagsDialog::Remove(..)) => delete_payee_dialog_hints(),
+                    Some(tags::TagsDialog::Remove(..)) => confirm_dialog_hints(),
                     Some(tags::TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
                     None => settings_tags_hints(),
                 },
@@ -9849,7 +10009,7 @@ impl Render for Shell {
             }),
             Noun::Settings if self.settings_payees_page_has_focus() => Some(PageStatus {
                 hints: match self.payees_dialog {
-                    Some(payees::PayeesDialog::Delete(..)) => delete_payee_dialog_hints(),
+                    Some(payees::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
                     Some(_) => payee_dialog_hints(),
                     None => settings_payees_hints(),
                 },
@@ -9999,6 +10159,7 @@ impl Render for Shell {
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 let chosen = settings_view::colour_theme::chosen_index(cx);
                 if this.handle_settings_form_key(&event.keystroke, chosen)
+                    || this.handle_settings_tracing_key(&event.keystroke)
                     || this.handle_settings_focus_key(&event.keystroke)
                     || this.handle_colour_theme_grid_key(&event.keystroke)
                     || this.handle_bills_tab_key(&event.keystroke)
@@ -10123,8 +10284,12 @@ impl Render for Shell {
                                     on_sync_now_click,
                                     on_backup_now_click,
                                     on_export_ledger_click,
-                                    tracing_level: self.settings_tracing_level,
-                                    log_lines: &self.settings_log_lines,
+                                    log: settings_view::tracing::LogBoxProps {
+                                        level: self.settings_log.level(),
+                                        entries: self.settings_log.visible(),
+                                        hidden: self.settings_log.hidden_count(),
+                                        list: self.settings_log_list.clone(),
+                                    },
                                     on_tracing_level_click,
                                     on_clear_logs_click,
                                 },
@@ -10508,6 +10673,11 @@ impl Render for Shell {
                         None => div().into_any_element(),
                     }
                 }
+                SettingsDialog::ClearLogs => settings_view::clear_logs_dialog::render(
+                    on_settings_dialog_cancel.clone(),
+                    on_settings_dialog_confirm.clone(),
+                    cx,
+                ),
                 SettingsDialog::AddInstitution(form) => {
                     settings_view::add_institution_dialog::render(
                         form,
@@ -10588,8 +10758,7 @@ struct SettingsPanelProps<'a> {
     on_sync_now_click: settings_view::sync_server::OnSyncNowClick,
     on_backup_now_click: settings_view::data_backup::OnBackupNowClick,
     on_export_ledger_click: settings_view::data_backup::OnExportLedgerClick,
-    tracing_level: TracingLevel,
-    log_lines: &'a [&'static str],
+    log: settings_view::tracing::LogBoxProps,
     on_tracing_level_click: settings_view::tracing::OnLevelClick,
     on_clear_logs_click: settings_view::tracing::OnClearLogsClick,
 }
@@ -10706,8 +10875,7 @@ fn render_view(
                     on_sync_now_click: settings.on_sync_now_click,
                     on_backup_now_click: settings.on_backup_now_click,
                     on_export_ledger_click: settings.on_export_ledger_click,
-                    tracing_level: settings.tracing_level,
-                    log_lines: settings.log_lines,
+                    log: settings.log,
                     on_tracing_level_click: settings.on_tracing_level_click,
                     on_clear_logs_click: settings.on_clear_logs_click,
                 },

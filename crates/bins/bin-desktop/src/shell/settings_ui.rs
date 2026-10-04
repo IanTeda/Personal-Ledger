@@ -82,10 +82,14 @@ pub struct SettingsSnapshot {
     pub status_glyphs: String,
     pub start_sidebar_minimised: bool,
     pub toasts_on: bool,
-    /// The Tracing page: the chosen level (`TracingLevel` variant name) and how many log lines
-    /// the viewport still holds.
+    /// The Tracing page: the chosen level (`TracingLevel` variant name), how many entries the
+    /// filter shows, their bodies newest first (`subsystem: message key=value`), how many it
+    /// hides, and the list's top row.
     pub tracing_level: String,
     pub log_line_count: usize,
+    pub log_lines: Vec<String>,
+    pub log_hidden_count: usize,
+    pub log_scroll_top: usize,
     /// The status line's message, where the stubbed buttons report.
     pub status_message: Option<String>,
 }
@@ -221,6 +225,7 @@ impl Shell {
                     institution_form = Some(form);
                     ("AddInstitution", Some(form.name.clone()), None)
                 }
+                SettingsDialog::ClearLogs => ("ClearLogs", None, None),
             };
             dialog = Some(label);
             dialog_name = name;
@@ -357,8 +362,16 @@ impl Shell {
             status_glyphs: format!("{:?}", self.settings_status_glyphs),
             start_sidebar_minimised: self.settings_start_sidebar_minimised,
             toasts_on: self.toasts.display().toasts_on,
-            tracing_level: format!("{:?}", self.settings_tracing_level),
-            log_line_count: self.settings_log_lines.len(),
+            tracing_level: format!("{:?}", self.settings_log.level()),
+            log_line_count: self.settings_log.visible().len(),
+            log_lines: self
+                .settings_log
+                .visible()
+                .iter()
+                .map(|entry| crate::log_view::body(entry))
+                .collect(),
+            log_hidden_count: self.settings_log.hidden_count(),
+            log_scroll_top: self.settings_log_list.logical_scroll_top().item_ix,
             status_message: self.status_message.clone(),
         }
     }

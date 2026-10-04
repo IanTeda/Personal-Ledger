@@ -41,7 +41,7 @@ async fn main() -> SyncServerResult<()> {
     let log_file_path = config.personal_ledger_config().log_file_path();
     // Held for the lifetime of `main` -- dropping it stops the background worker that
     // flushes buffered log lines to `log_file_path` (when configured).
-    let _log_guard = telemetry::init(telemetry_level, log_file_path)?;
+    let _log_guard = telemetry::init(telemetry_level, log_file_path, None)?;
     tracing::info!("Starting Sync Server with config: {:#?}", config);
 
     // The Sync Server's own durable Change Set log (ADR-0009) -- reuses lib-database's

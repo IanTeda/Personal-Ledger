@@ -728,7 +728,7 @@ async fn run() -> Result<()> {
     let log_file_path = config.personal_ledger_config().log_file_path();
     // Held for the lifetime of `main` -- dropping it stops the background worker that
     // flushes buffered log lines to `log_file_path` (when configured).
-    let _log_guard = lib_tracing::init(telemetry_level, log_file_path)?;
+    let _log_guard = lib_tracing::init(telemetry_level, log_file_path, None)?;
 
     let tokio_handle = tokio::runtime::Handle::current();
 

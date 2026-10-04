@@ -713,6 +713,7 @@ dependencies = [
  "chrono",
  "clap",
  "dirs 6.0.0",
+ "fake",
  "gpui",
  "gpui-component",
  "lib_colour_theme",
@@ -4776,6 +4777,7 @@ name = "lib_tracing"
 version = "0.1.0"
 dependencies = [
  "fake",
+ "log",
  "serde",
  "serde_json",
  "sqlx",

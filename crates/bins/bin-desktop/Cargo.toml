@@ -53,6 +53,7 @@ lib_locale_build = { path = "../../libs/lib-locale-build" }
 [dev-dependencies]
 bin_desktop = { path = ".", features = ["test-support"] }
 tempfile = { workspace = true }
+fake = { workspace = true }
 
 [lints]
 workspace = true

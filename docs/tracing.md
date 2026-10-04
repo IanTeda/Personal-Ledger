@@ -9,7 +9,7 @@ The Personal Ledger application uses a structured logging system based on the
 hierarchical, contextual logging that makes it easier to understand application
 flow and debug issues in asynchronous code.
 
-The telemetry library will use `WARN` level if no level is set.
+The console and log file use the `log` Configuration (see [Settings](settings.md)), which defaults to `info`; `lib_tracing::init` also falls back to `INFO` when it is given no level. `RUST_LOG` overrides both for the console and log file.
 
 ## Telemetry Levels
 
@@ -40,7 +40,7 @@ verbose to least verbose:
 ### WARN
 
 - **Purpose**: Warning messages for potential issues
-- **Use Case**: Production monitoring (default level)
+- **Use Case**: Production monitoring
 - **Performance Impact**: Low
 - **Example Output**: Deprecated API usage, recoverable errors, configuration
   issues
@@ -61,4 +61,15 @@ verbose to least verbose:
 
 ## Configuration
 
-This is empty for now, as config is a work in progress after telemetry.
+The `log` level and `log_file_path` live in the `[Personal-Ledger]` section; see [Settings](settings.md).
+
+## Live capture for the Desktop
+
+The Desktop's Settings › Tracing page shows this run's own events as they happen, without reading the log file back. `lib_tracing::init` takes an optional `LogBuffer`: when one is passed, a capture layer also records events into it, a ring of the last 1000 (`LOG_CAPACITY`). The Desktop passes one; the TUI and Sync Server pass `None`, so they never capture.
+
+- Every layer has its own filter. The console and log file share the `EnvFilter` (the `log` level, `RUST_LOG`, and the `calloop=warn` cap). The capture layer has a fixed filter: our own crates (`bin_*`, `lib_*`) at `debug` and every dependency at `warn`, whatever `log` and `RUST_LOG` say. So the page can show `debug` entries while the console stays at `info`, and dependency chatter bridged from `log` doesn't push our few events out of the ring.
+- Each entry is a structured `LogEntry`: sequence number, local capture time, level, target (the original target for `log`-bridged records), message and fields. The viewer decides the format.
+- After each push the buffer calls a waker set with `set_waker`, outside its lock. The Desktop's waker signals a `tokio::sync::Notify`; the page waits about 100 ms for a burst to settle, then pulls `since(seq)` and redraws once.
+- Clear logs empties the buffer for every reader; sequence numbers keep counting.
+
+Design and research: [#497](https://github.com/IanTeda/Personal-Ledger/issues/497) and `docs/research/tracing-ring-buffer-capture.md` (on the `research/tracing-capture` branch).

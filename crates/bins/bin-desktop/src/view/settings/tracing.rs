@@ -1,24 +1,26 @@
-//! The **Tracing (Logs)** section (`docs/ux/desktop/16-settings/README.md`'s "2a resting state"): a
-//! 400px column of level radios (error/warn/info/debug), a scrolling monospace log viewport, and
-//! a **Clear logs** button. Unlike every other button this map has built so far, "Clear logs" has
-//! a real effect: it empties `Shell`-owned `settings_log_lines`, since the ticket's own body asks
-//! for that specifically (not a permanently-out-of-scope stand-in like Sync server's/Data &
-//! backup's buttons).
+//! The **Tracing (Logs)** page (16m, issues #499–#502): level radios on the left and **Clear logs**
+//! on the right of one row, then a log box filling the rest of the page with the live capture,
+//! newest first. The box is a virtualised `list` (rows wrap, so heights vary) with an
+//! always-visible scroll bar; `Shell` owns its `ListState` and splices it as entries arrive.
 //!
-//! The level radios are a dot-style `.radio`/`.dot` control (`docs/ux/desktop/styles.css`), not the segmented-box `.seg`/`.seg-opt` style `ledger_units` uses --
-//! the first use of this component in the crate. There are no real log lines to filter by level
-//! yet, so selecting one is a stored preference only, same as `ledger_units`'s own controls
-//! before any downstream effect existed.
+//! One entry is `[hh:mm:ss] LEVEL subsystem: message key=value` (`crate::log_view`): the time is
+//! a fixed column, and a long body wraps under the level tag, not under the time.
 //!
 //! Element ids are namespaced `tracing-level-*`/`settings-clear-logs`
 //! (`docs/ux/desktop/16-settings/README.md`'s implementation note 11: "namespace radio groups per
-//! instance" so a duplicated section's own radios can't collide with these).
+//! instance").
 
-use std::rc::Rc;
+use std::{rc::Rc, sync::Arc};
 
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, App, HighlightStyle, ListState, Rgba, SharedString, StyledText, Window, div, list,
+    prelude::*, px,
+};
+use gpui_component::scroll::{Scrollbar, ScrollbarShow};
+use lib_tracing::LogEntry;
+use tracing::Level;
 
-use crate::{settings::TracingLevel, theme::color};
+use crate::{log_view, settings::TracingLevel, theme::color};
 
 pub type OnLevelClick = Rc<dyn Fn(TracingLevel, &mut Window, &mut App)>;
 pub type OnClearLogsClick = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -26,28 +28,44 @@ pub type OnClearLogsClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// has already been curried in (mirrors `units::OnPlainClick`).
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-const COLUMN_WIDTH: gpui::Pixels = px(400.0);
-const VIEWPORT_HEIGHT: gpui::Pixels = px(120.0);
 const DOT_SIZE: gpui::Pixels = px(16.0);
 const DOT_INNER_SIZE: gpui::Pixels = px(8.0);
 const DOT_BORDER: gpui::Pixels = px(1.5);
+const LOG_TEXT_SIZE: gpui::Pixels = px(11.0);
+
+/// What the log box shows, gathered by `Shell` from its `LogView`.
+pub struct LogBoxProps {
+    pub level: TracingLevel,
+    /// Filtered, newest first.
+    pub entries: Rc<Vec<Arc<LogEntry>>>,
+    /// Captured entries the filter hides, for the empty state.
+    pub hidden: usize,
+    pub list: ListState,
+}
 
 pub fn render(
-    selected: TracingLevel,
-    log_lines: &[&'static str],
+    log: &LogBoxProps,
     on_level_click: OnLevelClick,
     on_clear_logs_click: OnClearLogsClick,
     cx: &App,
 ) -> AnyElement {
     div()
-        .w(COLUMN_WIDTH)
-        .flex_none()
+        .flex_1()
+        .min_h(px(0.0))
         .flex()
         .flex_col()
-        .gap(px(8.0))
-        .child(level_row(selected, on_level_click, cx))
-        .child(log_viewport(log_lines, cx))
-        .child(clear_logs_button(on_clear_logs_click, cx))
+        .child(
+            div()
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap(px(12.0))
+                .mb(px(10.0))
+                .child(level_row(log.level, on_level_click, cx))
+                .child(clear_logs_button(on_clear_logs_click, cx)),
+        )
+        .child(log_box(log, cx))
         .into_any_element()
 }
 
@@ -55,7 +73,6 @@ fn level_row(selected: TracingLevel, on_click: OnLevelClick, cx: &App) -> impl I
     div()
         .flex()
         .gap(px(8.0))
-        .mb(px(8.0))
         .children(TracingLevel::ALL.into_iter().map(|level| {
             let on_click = on_click.clone();
             radio_option(
@@ -121,42 +138,121 @@ pub(super) fn radio_dot(checked: bool, cx: &App) -> impl IntoElement {
         })
 }
 
-/// The log viewport: `border:1px solid rgba(32,30,29,.30); background:#eae9e9; padding:10px;
-/// height:120px; overflow-y:auto; font-family:monospace; font-size:10px; line-height:1.5;
-/// color:#605d5d`.
-fn log_viewport(log_lines: &[&'static str], cx: &App) -> impl IntoElement {
-    div()
-        .id("tracing-log-viewport")
-        .h(VIEWPORT_HEIGHT)
+/// The log box: `flex:1; min-height:0; border:1px solid rgba(32,30,29,.30); #eae9e9;
+/// padding:10px 12px`, monospace 11px/1.6 muted, with the scroll bar always shown.
+fn log_box(log: &LogBoxProps, cx: &App) -> impl IntoElement {
+    let frame = div()
+        .id("tracing-log-box")
+        .debug_selector(|| "tracing-log-box".to_string())
+        .relative()
+        .flex_1()
+        .min_h(px(0.0))
         .border_1()
         .border_color(color::border(cx))
         .bg(color::chrome(cx))
-        .p(px(10.0))
-        .overflow_y_scroll()
         .font_family("monospace")
-        .text_size(px(10.0))
-        .line_height(gpui::relative(1.5))
-        .text_color(color::muted(cx))
-        .flex()
-        .flex_col()
-        .children(
-            log_lines
-                .iter()
-                .enumerate()
-                .map(|(index, line)| div().id(("tracing-log-line", index)).child(*line)),
-        )
+        .text_size(LOG_TEXT_SIZE)
+        .line_height(gpui::relative(1.6))
+        .text_color(color::muted(cx));
+
+    if log.entries.is_empty() {
+        let message = if log.hidden == 0 {
+            crate::msg::desktop_settings_tracing_empty()
+        } else {
+            crate::msg::desktop_settings_tracing_all_hidden(
+                &log.level.label(),
+                i64::try_from(log.hidden).unwrap_or(i64::MAX),
+            )
+        };
+        return frame
+            .flex()
+            .items_center()
+            .justify_center()
+            .p(px(24.0))
+            .child(
+                div()
+                    .debug_selector(|| "tracing-log-empty".to_string())
+                    .text_color(color::faint_text(cx))
+                    .font_family(crate::theme::type_scale::FONT_FAMILY)
+                    .child(message),
+            );
+    }
+
+    let entries = log.entries.clone();
+    let rows = list(log.list.clone(), move |index, _window, cx| {
+        match entries.get(index) {
+            Some(entry) => entry_row(index, entry, cx),
+            // The list's count can briefly lead the entries during a splice; draw nothing.
+            None => div().into_any_element(),
+        }
+    })
+    .size_full()
+    .py(px(10.0))
+    .px(px(12.0));
+
+    frame.child(rows).child(
+        div()
+            .occlude()
+            .absolute()
+            .top_0()
+            .right_0()
+            .bottom_0()
+            .w(px(12.0))
+            .child(Scrollbar::vertical(&log.list).scrollbar_show(ScrollbarShow::Always)),
+    )
 }
 
-/// The "Clear logs" button: `padding:8px 16px; border:1px solid rgba(32,30,29,.30);
-/// background:#eae9e9; font-weight:800; margin-top:8px` -- same shape as
-/// `sync_server::sync_now_button`, but with a real effect on click.
+/// One entry: the time in a fixed column, then the level tag (coloured) and body as one wrapping
+/// run, so continuation lines hang under the level tag.
+fn entry_row(index: usize, entry: &LogEntry, cx: &App) -> AnyElement {
+    let tag = log_view::level_tag(entry.level);
+    let text = format!("{tag} {}", log_view::body(entry));
+    let highlight = HighlightStyle {
+        color: Some(level_colour(entry.level, cx).into()),
+        font_weight: (entry.level <= Level::WARN).then_some(gpui::FontWeight::EXTRA_BOLD),
+        ..Default::default()
+    };
+    div()
+        .debug_selector(move || format!("tracing-log-row-{index}"))
+        .flex()
+        .gap(px(8.0))
+        .pr(px(12.0))
+        .child(
+            div()
+                .flex_none()
+                .text_color(color::faint_text(cx))
+                .child(log_view::timestamp(entry.time)),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w(px(0.0))
+                .child(StyledText::new(text).with_highlights([(0..tag.len(), highlight)])),
+        )
+        .into_any_element()
+}
+
+/// Error and warning use the Toast marks, which hold 3:1 against the box's chrome ground; info
+/// stays muted like the body and debug drops back to faint.
+fn level_colour(level: Level, cx: &App) -> Rgba {
+    match level {
+        Level::ERROR => color::toast_mark(lib_toast::ToastKind::Error, cx),
+        Level::WARN => color::toast_mark(lib_toast::ToastKind::Warning, cx),
+        Level::INFO => color::muted(cx),
+        Level::DEBUG | Level::TRACE => color::faint_text(cx),
+    }
+}
+
+/// **Clear logs**: `.btn.btn-secondary`, 32px, top right of the level row.
 fn clear_logs_button(on_click: OnClearLogsClick, cx: &App) -> impl IntoElement {
-    let mut button = div()
+    div()
         .id("settings-clear-logs")
         .debug_selector(|| "settings-clear-logs".to_string())
         .cursor_pointer()
-        .mt(px(8.0))
-        .py(px(8.0))
+        .flex_none()
+        .h(px(32.0))
+        .flex()
+        .items_center()
         .px(px(16.0))
         .bg(color::chrome(cx))
         .border_1()
@@ -164,7 +260,5 @@ fn clear_logs_button(on_click: OnClearLogsClick, cx: &App) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(crate::msg::desktop_settings_tracing_clear());
-    button.style().align_self = Some(gpui::AlignItems::FlexStart);
-    button
+        .child(crate::msg::desktop_settings_tracing_clear())
 }

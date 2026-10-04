@@ -264,6 +264,20 @@ The page is a table with a row per Property: its name and address, its insurance
 
 Sum insured and Item limit are what the Inventory register uses for its cover check and its over-limit flag. The register itself isn't built yet.
 
+### Tracing page
+
+The Tracing page shows the Desktop's own log as it is written, newest at the top: the last 1000 entries from this run, kept in memory on this device. Nothing is read from or written to the log file here, and the list starts empty each time the app starts.
+
+Each entry reads `[14:02:11] WARN  sync: retrying push attempt=2`: the local time, the level, the part of the app it came from, the message and any extra details. Long entries wrap. Errors and warnings are coloured.
+
+The radios above the list choose how much to show: `error`, `warn`, `info` or `debug`, each including everything more serious. The list changes at once, including entries already shown. The page opens on your `log` level (see the Personal-Ledger Section below, with `off` showing as `error` and `trace` as `debug`), and the choice lasts until you close the app. The page records `debug` entries even when `log` is quieter, so you can switch to `debug` after something has gone wrong and still see what led up to it.
+
+- Press `h` or `l` to choose a quieter or more detailed level. On this page `h` doesn't go back to the index; press `Esc` for that.
+- Press `j` and `k` to scroll the list a line, `shift`+`j` and `shift`+`k` a page, and `shift`+`g` to jump to the oldest entry. While you are at the top, new entries appear as they arrive; if you have scrolled down, the list stays where you are.
+- Press `c`, or click **Clear logs**, to empty the list. A dialog asks first; `Enter` clears and `Esc` keeps them. New entries keep arriving afterwards, and the console and log file keep their own copies.
+
+With nothing captured yet the list says "No log entries yet." When entries exist but the level hides them all, it says how many are hidden and suggests a more detailed level.
+
 ## Toasts
 
 A Toast is a short message in the bottom-right corner that tells you how something turned out, for example "Deleted tag Food". You can turn Toasts off from Settings: go to Display, where the Toasts row sits above the Colour Theme settings. In the Desktop app it's an On / Off switch; in the TUI, move to the row and press `Enter` to flip it. From the command box you can also run `toasts on` or `toasts off`.

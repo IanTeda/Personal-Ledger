@@ -56,6 +56,12 @@ pub fn step_choice<T: Copy + PartialEq>(choices: &[T], current: T, delta: isize)
 }
 
 impl SettingsSection {
+    /// Whether the page fills the body's height and scrolls inside itself (Tracing's log box)
+    /// rather than the body scrolling the whole page.
+    pub fn fills_page(self) -> bool {
+        self == Self::Tracing
+    }
+
     /// Every page, in index-rail order (the handoff's canonical `General · Display · Units ·
     /// Institutions · Accounts · Categories · Tags · Payees · Documents · Inventory · Sync server · Data & backup ·
     /// Tracing (Logs) · About`).
@@ -113,7 +119,9 @@ impl SettingsSection {
             Self::Display => crate::msg::desktop_settings_scope_display(),
             Self::SyncServer => crate::msg::desktop_settings_scope_sync_server(30),
             Self::DataBackup => crate::msg::desktop_settings_scope_data_backup("aud", "2.84 mb"),
-            Self::Tracing => crate::msg::desktop_settings_scope_tracing(1000),
+            Self::Tracing => crate::msg::desktop_settings_scope_tracing(
+                i64::try_from(lib_tracing::LOG_CAPACITY).unwrap_or(i64::MAX),
+            ),
             Self::About => crate::msg::desktop_settings_scope_about(),
         }
     }
@@ -579,6 +587,8 @@ pub enum SettingsDialog {
     EditUnit(usize, UnitForm),
     DeleteUnit(usize, DeleteUnitForm),
     AddInstitution(AddInstitutionForm),
+    /// Tracing's Clear logs confirm: nothing to fill in.
+    ClearLogs,
 }
 
 /// The Delete unit dialog's own live form state (issue #186) -- pure, `gpui`-free. Just the one
@@ -748,15 +758,16 @@ impl AddInstitutionForm {
     }
 }
 
-/// The **Tracing (Logs)** section's level radios (`docs/ux/desktop/16-settings/README.md`'s "2a
-/// resting state" markup: `error`/`warn`/`info`/`debug`, `error` the mockup's own `checked`
-/// option). Purely a selected-level preference, like [`UnitKind`] -- there
-/// are no real log lines to filter by level yet (see [`DEFAULT_LOG_LINES`]'s own doc).
+/// The **Tracing (Logs)** page's level radios: the most verbose level the log box shows. A view
+/// filter over what the capture already holds (it records at `debug`), so changing it is instant
+/// and retroactive. Session only, not a Preference (issue #501). There is no `trace` or `off`:
+/// the capture never records `trace`, and `off` would only ever show the empty state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TracingLevel {
-    #[default]
     Error,
     Warn,
+    /// `lib_tracing::init`'s own default when no `log` level is configured.
+    #[default]
     Info,
     Debug,
 }
@@ -772,19 +783,31 @@ impl TracingLevel {
             Self::Debug => crate::msg::desktop_settings_tracing_level_debug(),
         }
     }
-}
 
-/// The log viewport's own seeded lines, in the mockup's own order -- dummy data, not a real
-/// `tracing`-subscriber feed (see the Desktop Settings Surface map's own Destination). `Shell`
-/// clones this into a real `Vec` it owns, so "Clear logs" (issue #182) can empty it -- the one
-/// real mutation this section makes, unlike Sync server's/Data & backup's own permanently
-/// no-effect buttons.
-pub const DEFAULT_LOG_LINES: &[&str] = &[
-    "[14:22:18] sync: connected to server",
-    "[14:22:15] txn: reconciled payment 312.80",
-    "[14:22:12] budget: updated dining limit",
-    "[14:22:08] import: 3 csv rows processed",
-];
+    /// The radio the page opens on: the configured `log` level, clamped to the four offered, so
+    /// the page starts by showing what the console and log file show.
+    pub fn from_configured(level: Option<lib_tracing::Levels>) -> Self {
+        use lib_tracing::Levels;
+        match level {
+            Some(Levels::OFF | Levels::ERROR) => Self::Error,
+            Some(Levels::WARN) => Self::Warn,
+            Some(Levels::INFO) | None => Self::Info,
+            Some(Levels::DEBUG | Levels::TRACE) => Self::Debug,
+        }
+    }
+
+    /// Whether an entry at `level` shows under this filter.
+    pub fn admits(self, level: tracing::Level) -> bool {
+        let most_verbose = match self {
+            Self::Error => tracing::Level::ERROR,
+            Self::Warn => tracing::Level::WARN,
+            Self::Info => tracing::Level::INFO,
+            Self::Debug => tracing::Level::DEBUG,
+        };
+        // `tracing` orders levels by verbosity: `ERROR` is the least.
+        level <= most_verbose
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -1038,14 +1061,31 @@ mod tests {
     }
 
     #[test]
-    fn tracing_level_defaults_to_error() {
-        assert_eq!(TracingLevel::default(), TracingLevel::Error);
+    fn tracing_level_starts_from_the_configured_level_clamped() {
+        use lib_tracing::Levels;
+        let cases = [
+            (Some(Levels::OFF), TracingLevel::Error),
+            (Some(Levels::ERROR), TracingLevel::Error),
+            (Some(Levels::WARN), TracingLevel::Warn),
+            (Some(Levels::INFO), TracingLevel::Info),
+            (None, TracingLevel::Info),
+            (Some(Levels::DEBUG), TracingLevel::Debug),
+            (Some(Levels::TRACE), TracingLevel::Debug),
+        ];
+        for (configured, expected) in cases {
+            assert_eq!(TracingLevel::from_configured(configured), expected);
+        }
     }
 
     #[test]
-    fn default_log_lines_matches_the_mockups_own_four_seeded_lines() {
-        assert_eq!(DEFAULT_LOG_LINES.len(), 4);
-        assert!(DEFAULT_LOG_LINES[0].contains("sync: connected to server"));
+    fn tracing_level_admits_its_own_level_and_anything_more_severe() {
+        use tracing::Level;
+        assert!(TracingLevel::Warn.admits(Level::ERROR));
+        assert!(TracingLevel::Warn.admits(Level::WARN));
+        assert!(!TracingLevel::Warn.admits(Level::INFO));
+        assert!(TracingLevel::Debug.admits(Level::DEBUG));
+        assert!(!TracingLevel::Debug.admits(Level::TRACE));
+        assert!(!TracingLevel::Error.admits(Level::WARN));
     }
 
     #[test]

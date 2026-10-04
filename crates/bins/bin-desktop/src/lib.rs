@@ -35,6 +35,7 @@ mod inventory_form;
 pub mod key_router;
 mod limit_form;
 pub mod locale;
+mod log_view;
 pub mod nav;
 mod palette;
 mod pay_form;
@@ -90,11 +91,18 @@ pub struct ShellBindings {
     pub toast_history: Option<String>,
 }
 
+/// The live log capture the Tracing page shows, and the configured `log` level it opens on.
+pub struct ShellLogs {
+    pub buffer: lib_tracing::LogBuffer,
+    pub configured_level: Option<lib_tracing::Levels>,
+}
+
 /// Builds `Shell` from persisted state the way the app does, so tests construct it identically.
 /// `today` is a parameter so tests can pin the date the seeded stub data and scopes hang off.
 pub fn build_shell(
     persisted: PersistedState,
     bindings: ShellBindings,
+    logs: ShellLogs,
     today: chrono::NaiveDate,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
@@ -129,11 +137,18 @@ pub fn build_shell(
     shell.set_dismiss_toasts_binding(bindings.dismiss_toasts);
     shell.set_toast_history_binding(bindings.toast_history);
     shell.start_toast_clock(cx);
+    shell.set_log_capture(
+        logs.buffer,
+        settings::TracingLevel::from_configured(logs.configured_level),
+        cx,
+    );
     shell
 }
 
-/// Opens the main window and runs the app until it quits. Tracing is already initialised.
-pub fn run(config: &lib_config::Config) {
+/// Opens the main window and runs the app until it quits. Tracing is already initialised, feeding
+/// `logs` for the Tracing page.
+pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
+    let configured_level = Some(config.personal_ledger_config().log());
     config.theme_config().warn_invalid();
     let theme_overrides = config.theme_config().overrides.clone();
     let dismiss_toasts_binding = config
@@ -223,6 +238,10 @@ pub fn run(config: &lib_config::Config) {
                             ShellBindings {
                                 dismiss_toasts: dismiss_toasts_binding,
                                 toast_history: toast_history_binding,
+                            },
+                            ShellLogs {
+                                buffer: logs,
+                                configured_level,
                             },
                             chrono::Local::now().date_naive(),
                             focus_handle,
