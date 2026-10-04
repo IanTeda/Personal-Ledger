@@ -96,7 +96,7 @@ pub fn render(
                 .child(text_field(
                     name_id,
                     label(lib_locale::msg::column_name()),
-                    &form.name,
+                    form.name.text(),
                     &crate::msg::desktop_payees_name_placeholder(),
                     form.focused == PayeeField::Name,
                     click(PayeeField::Name),
@@ -128,7 +128,7 @@ pub fn render(
                     RulesFieldProps {
                         id,
                         rules: &form.rules,
-                        input: &form.rule_input,
+                        input: form.rule_input.text(),
                         placeholder,
                         focused: form.focused == PayeeField::Rule,
                         on_input_click: click(PayeeField::Rule),

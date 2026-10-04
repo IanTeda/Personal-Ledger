@@ -222,13 +222,17 @@ impl Shell {
             dialog = Some(label);
             dialog_name = name;
             dialog_confirm = confirm;
-        } else if let Some(open) = self.payees_dialog.as_ref() {
+        } else if let Some(open) = self.payees_dialog() {
             let (label, name, confirm) = match open {
-                PayeesDialog::Add(form) => ("AddPayee", Some(form.name.clone()), None),
-                PayeesDialog::Edit(_, form) => ("EditPayee", Some(form.name.clone()), None),
-                PayeesDialog::Delete(_, form) => {
-                    ("DeletePayee", None, Some(form.confirmation_name.clone()))
+                PayeesDialog::Add(form) => ("AddPayee", Some(form.name.text().to_string()), None),
+                PayeesDialog::Edit(_, form) => {
+                    ("EditPayee", Some(form.name.text().to_string()), None)
                 }
+                PayeesDialog::Delete(_, form) => (
+                    "DeletePayee",
+                    None,
+                    Some(form.confirmation_name.text().to_string()),
+                ),
             };
             dialog = Some(label);
             dialog_name = name;

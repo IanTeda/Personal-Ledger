@@ -58,7 +58,7 @@ pub fn render(props: DeletePayeeProps<'_>, cx: &App) -> AnyElement {
     if destructive {
         fields.push(confirm_input_field(
             &payee.name,
-            &form.confirmation_name,
+            form.confirmation_name.text(),
             cx,
         ));
     }
@@ -74,7 +74,7 @@ pub fn render(props: DeletePayeeProps<'_>, cx: &App) -> AnyElement {
                 dialog::confirm_button(
                     "delete-payee-confirm",
                     submit,
-                    form.allows(action, &payee.name),
+                    form.is_valid(),
                     destructive,
                     on_confirm,
                     cx,

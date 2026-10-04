@@ -20,6 +20,8 @@ use lib_core::Money;
 use crate::{
     accounts::{Account, SelectKey},
     categories::{self, Category},
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    field::TextField,
     select::SelectState,
     transactions::Transaction,
 };
@@ -426,80 +428,96 @@ impl PayeeField {
 }
 
 /// The Add and Edit payee dialogs' live form state -- pure, `gpui`-free. Name and the rule input
-/// are typed into (append/pop only, like the other dialogs); Default category is a
-/// [`SelectState`]; the rules are chips, added from the input and removed by their `✕`.
+/// are [`TextField`]s; Default category is a [`SelectState`]; the rules are chips, added from the
+/// input and removed by their `✕`. The select's options and the Payees the checks read are
+/// copied in when the dialog opens, so the form validates without `Shell`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PayeeForm {
-    pub name: String,
+    pub name: TextField,
     pub default_category: SelectState,
     /// The chips, normalised by [`normalise_alias`] as they are added.
     pub rules: Vec<String>,
-    pub rule_input: String,
+    pub rule_input: TextField,
     pub focused: PayeeField,
     /// The last rejected rule or submit, shown inline until the offending text changes.
     pub error: Option<PayeeError>,
+    options: PayeeOptions,
+    /// Every Payee when the dialog opened, what names and rules are checked against.
+    payees: Vec<Payee>,
+    /// The Payee being edited (`None` for Add), so its own name and rules don't count as taken.
+    own_id: Option<u32>,
 }
 
 impl PayeeForm {
     /// A fresh Add form: no name, no default Category, no rules.
-    pub fn new(options: &PayeeOptions) -> Self {
+    pub fn new(options: &PayeeOptions, payees: &[Payee]) -> Self {
         Self {
-            name: String::new(),
+            name: TextField::default(),
             default_category: SelectState::new(options.label_for(None)),
             rules: Vec::new(),
-            rule_input: String::new(),
+            rule_input: TextField::default(),
             focused: PayeeField::Name,
             error: None,
+            options: options.clone(),
+            payees: payees.to_vec(),
+            own_id: None,
         }
     }
 
     /// A form pre-filled from `payee`, for the Edit dialog.
-    pub fn from_payee(payee: &Payee, options: &PayeeOptions) -> Self {
+    pub fn from_payee(payee: &Payee, options: &PayeeOptions, payees: &[Payee]) -> Self {
         Self {
-            name: payee.name.clone(),
+            name: TextField::new(payee.name.as_str()),
             default_category: SelectState::new(
                 options
                     .label_for(payee.default_category)
                     .or_else(|| options.label_for(None)),
             ),
             rules: payee.aliases.clone(),
-            ..Self::new(options)
+            own_id: Some(payee.id),
+            ..Self::new(options, payees)
         }
     }
 
+    /// The Default category select's options, for the view to list.
+    pub fn options(&self) -> &PayeeOptions {
+        &self.options
+    }
+
     /// What the dialog submits.
-    pub fn draft(&self, options: &PayeeOptions) -> PayeeDraft {
+    pub fn draft(&self) -> PayeeDraft {
         PayeeDraft {
-            name: self.name.clone(),
+            name: self.name.text().to_string(),
             default_category: self
                 .default_category
                 .value()
-                .and_then(|label| options.id_for(label)),
+                .and_then(|label| self.options.id_for(label)),
             aliases: self.rules.clone(),
         }
     }
 
-    /// The name's problem, if any, checked live against every other Payee: `own_id` is the Payee
-    /// being edited. An empty name is not reported, only kept from submitting.
-    pub fn name_error(&self, payees: &[Payee], own_id: Option<u32>) -> Option<PayeeError> {
-        if self.name.trim().is_empty() {
+    /// The name's problem, if any, checked live against every other Payee. An empty name is not
+    /// reported, only kept from submitting.
+    pub fn name_error(&self) -> Option<PayeeError> {
+        if self.name.is_blank() {
             return None;
         }
-        clean_name(payees, own_id, &self.name).err()
+        clean_name(&self.payees, self.own_id, self.name.text()).err()
     }
 
-    pub fn is_valid(&self, payees: &[Payee], own_id: Option<u32>) -> bool {
-        clean_name(payees, own_id, &self.name).is_ok()
+    pub fn is_valid(&self) -> bool {
+        clean_name(&self.payees, self.own_id, self.name.text()).is_ok()
     }
 
     /// Turns the rule input into a chip: normalised, ignored when blank or already a chip, and
     /// refused (kept in the input, with [`Self::error`] set) when another Payee owns it.
-    pub fn add_rule(&mut self, payees: &[Payee], own_id: Option<u32>) {
-        let Some(rule) = normalise_alias(&self.rule_input) else {
-            self.rule_input.clear();
+    pub fn add_rule(&mut self) {
+        let Some(rule) = normalise_alias(self.rule_input.text()) else {
+            self.rule_input = TextField::default();
             return;
         };
-        if let Some(owner) = alias_owner(payees, &rule).filter(|p| Some(p.id) != own_id) {
+        if let Some(owner) = alias_owner(&self.payees, &rule).filter(|p| Some(p.id) != self.own_id)
+        {
             self.error = Some(PayeeError::AliasTaken {
                 alias: rule,
                 owner: owner.name.clone(),
@@ -509,7 +527,7 @@ impl PayeeForm {
         if !self.rules.contains(&rule) {
             self.rules.push(rule);
         }
-        self.rule_input.clear();
+        self.rule_input = TextField::default();
         self.error = None;
     }
 
@@ -528,8 +546,8 @@ impl PayeeForm {
     }
 
     /// `Tab` / `Shift-Tab`: commits an open list's highlight, then moves to the next field.
-    pub fn cycle_focus(&mut self, backward: bool, options: &PayeeOptions) {
-        self.default_category.commit(&options.labels);
+    pub fn cycle_focus(&mut self, backward: bool) {
+        self.default_category.commit(&self.options.labels);
         let count = PayeeField::ORDER.len();
         let index = PayeeField::ORDER
             .iter()
@@ -544,11 +562,11 @@ impl PayeeForm {
     }
 
     /// A key on the Default category select. Returns whether it is focused (and so took the key).
-    pub fn handle_select_key(&mut self, key: SelectKey, options: &PayeeOptions) -> bool {
+    pub fn handle_select_key(&mut self, key: SelectKey) -> bool {
         if self.focused != PayeeField::DefaultCategory {
             return false;
         }
-        let list = &options.labels;
+        let list = &self.options.labels;
         let state = &mut self.default_category;
         match (key, state.is_open()) {
             (SelectKey::Up, true) => state.move_highlight(list, -1),
@@ -562,13 +580,18 @@ impl PayeeForm {
     }
 
     /// A click on the select's closed field: focuses it and toggles its list.
-    pub fn click_select(&mut self, options: &PayeeOptions) {
+    pub fn click_select(&mut self) {
         self.focus(PayeeField::DefaultCategory);
         if self.default_category.is_open() {
             self.default_category.cancel();
         } else {
-            self.default_category.open(&options.labels);
+            self.default_category.open(&self.options.labels);
         }
+    }
+
+    /// Picks option `index` from the select's list.
+    pub fn choose_category(&mut self, index: usize) {
+        self.default_category.choose(&self.options.labels, index);
     }
 
     /// Closes the select's list if open -- the first `Esc`. Returns whether it was open.
@@ -578,33 +601,51 @@ impl PayeeForm {
         was_open
     }
 
-    /// Types `ch` into the focused text field.
-    pub fn push_char(&mut self, ch: char) {
-        if ch.is_control() {
-            return;
-        }
+    /// The text field typing and `Backspace` edit; the select has none.
+    fn focused_text(&mut self) -> Option<&mut TextField> {
         match self.focused {
-            PayeeField::Name => self.name.push(ch),
-            PayeeField::Rule => self.rule_input.push(ch),
-            PayeeField::DefaultCategory => return,
+            PayeeField::Name => Some(&mut self.name),
+            PayeeField::Rule => Some(&mut self.rule_input),
+            PayeeField::DefaultCategory => None,
         }
-        self.error = None;
     }
 
-    /// Deletes from the focused text field; in an empty rule input, removes the last chip.
-    pub fn backspace(&mut self) {
-        match self.focused {
-            PayeeField::Name => {
-                self.name.pop();
+    /// The keys the form takes before `dialog_host`'s shared typing: the select's, `Enter` adding
+    /// the typed rule as a chip, and `Backspace` in an empty rule input removing the last chip.
+    /// Typing and `Backspace` that fall through to the shared handling clear a shown error first.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        let on_select = self.focused == PayeeField::DefaultCategory;
+        match key {
+            DialogKey::Up => {
+                self.handle_select_key(SelectKey::Up);
             }
-            PayeeField::Rule => {
-                if self.rule_input.pop().is_none() {
-                    self.rules.pop();
-                }
+            DialogKey::Down => {
+                self.handle_select_key(SelectKey::Down);
             }
-            PayeeField::DefaultCategory => return,
+            DialogKey::BackTab => self.cycle_focus(true),
+            DialogKey::Enter | DialogKey::Char(' ') if on_select => {
+                self.handle_select_key(SelectKey::Activate);
+            }
+            DialogKey::Enter
+                if self.focused == PayeeField::Rule && !self.rule_input.text().is_empty() =>
+            {
+                self.add_rule();
+            }
+            // A select swallows typing rather than letting it fall through to the shell.
+            DialogKey::Char(_) | DialogKey::Backspace if on_select => {}
+            DialogKey::Backspace
+                if self.focused == PayeeField::Rule && self.rule_input.text().is_empty() =>
+            {
+                self.rules.pop();
+                self.error = None;
+            }
+            DialogKey::Char(_) | DialogKey::Backspace => {
+                self.error = None;
+                return None;
+            }
+            _ => return None,
         }
-        self.error = None;
+        Some(DialogOutcome::Handled)
     }
 }
 
@@ -625,6 +666,36 @@ impl PayeesDialog {
             Self::Add(form) | Self::Edit(_, form) => Some(form),
             Self::Delete(..) => None,
         }
+    }
+}
+
+impl Dialog for PayeesDialog {
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        self.form_mut()?.handle_own_key(key)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form.focused_text(),
+            Self::Delete(_, form) => Some(&mut form.confirmation_name),
+        }
+    }
+
+    fn cycle_field(&mut self) {
+        if let Some(form) = self.form_mut() {
+            form.cycle_focus(false);
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form.is_valid(),
+            Self::Delete(_, form) => form.is_valid(),
+        }
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        self.form_mut().is_some_and(PayeeForm::close_open_select)
     }
 }
 
@@ -655,26 +726,31 @@ impl DeleteAction {
 }
 
 /// The 6d dialog's typed-name confirmation (exact and case-sensitive, as in Accounts and
-/// Categories).
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// Categories). The Payee's name and [`DeleteAction`] are copied in at open so the form validates
+/// without `Shell`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeletePayeeForm {
-    pub confirmation_name: String,
+    pub confirmation_name: TextField,
+    name: String,
+    action: DeleteAction,
 }
 
 impl DeletePayeeForm {
-    pub fn push_char(&mut self, ch: char) {
-        if !ch.is_control() {
-            self.confirmation_name.push(ch);
+    pub fn new(payee: &Payee, action: DeleteAction) -> Self {
+        Self {
+            confirmation_name: TextField::default(),
+            name: payee.name.clone(),
+            action,
         }
     }
 
-    pub fn backspace(&mut self) {
-        self.confirmation_name.pop();
+    pub fn action(&self) -> DeleteAction {
+        self.action
     }
 
     /// Whether the confirm button is live: the typed name matches for a destructive action.
-    pub fn allows(&self, action: DeleteAction, name: &str) -> bool {
-        !action.is_destructive() || self.confirmation_name == name
+    pub fn is_valid(&self) -> bool {
+        !self.action.is_destructive() || self.confirmation_name.text() == self.name
     }
 }
 
@@ -955,18 +1031,20 @@ mod tests {
 
     #[test]
     fn the_delete_form_needs_the_exact_name_unless_reactivating() {
-        let mut form = DeletePayeeForm::default();
+        let payees = default_payees();
+        let j_smith = get(&payees, id_of(&payees, "J Smith")).unwrap();
+        let mut form = DeletePayeeForm::new(j_smith, DeleteAction::Delete);
         for ch in "j smith".chars() {
-            form.push_char(ch);
+            form.confirmation_name.push(ch);
         }
-        assert!(!form.allows(DeleteAction::Delete, "J Smith"));
-        assert!(!form.allows(DeleteAction::Deactivate, "J Smith"));
-        assert!(form.allows(DeleteAction::Reactivate, "J Smith"));
+        assert!(!form.is_valid());
+        assert!(!DeletePayeeForm::new(j_smith, DeleteAction::Deactivate).is_valid());
+        assert!(DeletePayeeForm::new(j_smith, DeleteAction::Reactivate).is_valid());
 
-        form.confirmation_name = "J Smith".to_string();
-        assert!(form.allows(DeleteAction::Delete, "J Smith"));
-        form.backspace();
-        assert!(!form.allows(DeleteAction::Delete, "J Smith"));
+        form.confirmation_name = TextField::new("J Smith");
+        assert!(form.is_valid());
+        form.confirmation_name.backspace();
+        assert!(!form.is_valid());
     }
 
     #[test]
@@ -1066,12 +1144,11 @@ mod tests {
 
     #[test]
     fn a_fresh_form_drafts_no_category_and_no_rules() {
-        let options = options();
-        let mut form = PayeeForm::new(&options);
+        let mut form = PayeeForm::new(&options(), &default_payees());
         assert_eq!(form.default_category.value(), Some("none"));
-        form.name = "Aussie Candle Co".to_string();
+        form.name = TextField::new("Aussie Candle Co");
         assert_eq!(
-            form.draft(&options),
+            form.draft(),
             PayeeDraft {
                 name: "Aussie Candle Co".to_string(),
                 default_category: None,
@@ -1083,11 +1160,11 @@ mod tests {
     #[test]
     fn the_select_picks_a_leaf_category_into_the_draft() {
         let options = options();
-        let mut form = PayeeForm::new(&options);
+        let mut form = PayeeForm::new(&options, &default_payees());
         form.focus(PayeeField::DefaultCategory);
-        assert!(form.handle_select_key(SelectKey::Down, &options));
-        assert_eq!(form.draft(&options).default_category, options.ids[1]);
-        assert!(form.handle_select_key(SelectKey::Activate, &options));
+        assert!(form.handle_select_key(SelectKey::Down));
+        assert_eq!(form.draft().default_category, options.ids[1]);
+        assert!(form.handle_select_key(SelectKey::Activate));
         assert!(form.default_category.is_open());
         assert!(form.close_open_select());
         assert!(!form.close_open_select());
@@ -1095,49 +1172,46 @@ mod tests {
 
     #[test]
     fn select_keys_are_ignored_off_the_select() {
-        let options = options();
-        let mut form = PayeeForm::new(&options);
-        assert!(!form.handle_select_key(SelectKey::Down, &options));
+        let mut form = PayeeForm::new(&options(), &default_payees());
+        assert!(!form.handle_select_key(SelectKey::Down));
         assert_eq!(form.default_category.value(), Some("none"));
     }
 
     #[test]
     fn tab_cycles_the_three_fields_both_ways() {
-        let options = options();
-        let mut form = PayeeForm::new(&options);
-        form.cycle_focus(false, &options);
+        let mut form = PayeeForm::new(&options(), &default_payees());
+        form.cycle_focus(false);
         assert_eq!(form.focused, PayeeField::DefaultCategory);
-        form.cycle_focus(false, &options);
+        form.cycle_focus(false);
         assert_eq!(form.focused, PayeeField::Rule);
-        form.cycle_focus(false, &options);
+        form.cycle_focus(false);
         assert_eq!(form.focused, PayeeField::Name);
-        form.cycle_focus(true, &options);
+        form.cycle_focus(true);
         assert_eq!(form.focused, PayeeField::Rule);
     }
 
     #[test]
     fn add_rule_normalises_dedupes_and_ignores_blank() {
-        let payees = default_payees();
-        let mut form = PayeeForm::new(&options());
-        form.rule_input = " aussie candle ".to_string();
-        form.add_rule(&payees, None);
-        form.rule_input = "AUSSIE CANDLE".to_string();
-        form.add_rule(&payees, None);
-        form.rule_input = "   ".to_string();
-        form.add_rule(&payees, None);
+        let mut form = PayeeForm::new(&options(), &default_payees());
+        form.rule_input = TextField::new(" aussie candle ");
+        form.add_rule();
+        form.rule_input = TextField::new("AUSSIE CANDLE");
+        form.add_rule();
+        form.rule_input = TextField::new("   ");
+        form.add_rule();
         assert_eq!(form.rules, vec!["AUSSIE CANDLE".to_string()]);
-        assert!(form.rule_input.is_empty());
+        assert_eq!(form.rule_input.text(), "");
         assert_eq!(form.error, None);
     }
 
     #[test]
     fn add_rule_refuses_another_payees_alias_and_keeps_the_input() {
         let payees = default_payees();
-        let mut form = PayeeForm::new(&options());
-        form.rule_input = "woolies".to_string();
-        form.add_rule(&payees, None);
+        let mut form = PayeeForm::new(&options(), &payees);
+        form.rule_input = TextField::new("woolies");
+        form.add_rule();
         assert!(form.rules.is_empty());
-        assert_eq!(form.rule_input, "woolies");
+        assert_eq!(form.rule_input.text(), "woolies");
         assert_eq!(
             form.error,
             Some(PayeeError::AliasTaken {
@@ -1145,49 +1219,43 @@ mod tests {
                 owner: "Woolworths".to_string(),
             })
         );
-        form.push_char('!');
-        assert_eq!(form.error, None);
 
         // Editing Woolworths itself, its own alias is fine.
-        form.rule_input = "woolies".to_string();
-        form.add_rule(&payees, Some(id_of(&payees, "Woolworths")));
+        let woolworths = get(&payees, id_of(&payees, "Woolworths")).unwrap();
+        let mut form = PayeeForm::from_payee(woolworths, &options(), &payees);
+        form.rules.clear();
+        form.rule_input = TextField::new("woolies");
+        form.add_rule();
         assert_eq!(form.rules, vec!["WOOLIES".to_string()]);
     }
 
     #[test]
-    fn backspace_in_an_empty_rule_input_removes_the_last_chip() {
-        let payees = default_payees();
-        let mut form = PayeeForm::new(&options());
-        form.focus(PayeeField::Rule);
-        for rule in ["ONE", "TWO"] {
-            form.rule_input = rule.to_string();
-            form.add_rule(&payees, None);
-        }
-        form.push_char('x');
-        form.backspace();
-        assert_eq!(form.rules.len(), 2);
-        form.backspace();
-        assert_eq!(form.rules, vec!["ONE".to_string()]);
+    fn remove_rule_ignores_an_index_past_the_end() {
+        let mut form = PayeeForm::new(&options(), &default_payees());
+        form.rules = vec!["ONE".to_string(), "TWO".to_string()];
         form.remove_rule(0);
         form.remove_rule(5);
-        assert!(form.rules.is_empty());
+        assert_eq!(form.rules, vec!["TWO".to_string()]);
     }
 
     #[test]
     fn the_name_is_checked_live_but_blank_is_only_invalid() {
         let payees = default_payees();
-        let mut form = PayeeForm::new(&options());
-        assert_eq!(form.name_error(&payees, None), None);
-        assert!(!form.is_valid(&payees, None));
-        form.name = "coles".to_string();
+        let mut form = PayeeForm::new(&options(), &payees);
+        assert_eq!(form.name_error(), None);
+        assert!(!form.is_valid());
+        form.name = TextField::new("coles");
         assert_eq!(
-            form.name_error(&payees, None),
+            form.name_error(),
             Some(PayeeError::DuplicateName("Coles".to_string()))
         );
-        assert!(!form.is_valid(&payees, None));
-        assert!(form.is_valid(&payees, Some(id_of(&payees, "Coles"))));
-        form.name = "Aussie Candle Co".to_string();
-        assert!(form.is_valid(&payees, None));
+        assert!(!form.is_valid());
+        let coles = get(&payees, id_of(&payees, "Coles")).unwrap();
+        let mut editing = PayeeForm::from_payee(coles, &options(), &payees);
+        editing.name = TextField::new("coles");
+        assert!(editing.is_valid());
+        form.name = TextField::new("Aussie Candle Co");
+        assert!(form.is_valid());
     }
 
     #[test]
@@ -1195,10 +1263,10 @@ mod tests {
         let payees = default_payees();
         let options = options();
         let woolworths = get(&payees, id_of(&payees, "Woolworths")).unwrap();
-        let form = PayeeForm::from_payee(woolworths, &options);
-        assert_eq!(form.name, "Woolworths");
+        let form = PayeeForm::from_payee(woolworths, &options, &payees);
+        assert_eq!(form.name.text(), "Woolworths");
         assert_eq!(form.default_category.value(), Some("Groceries"));
         assert_eq!(form.rules, woolworths.aliases);
-        assert_eq!(form.draft(&options).default_category, Some(7));
+        assert_eq!(form.draft().default_category, Some(7));
     }
 }

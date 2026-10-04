@@ -744,9 +744,6 @@ pub struct Shell {
     inventory_dialog: Option<inventory_ui::InventoryDialog>,
     /// The id the next added Document Type takes; only counts up, so ids are never reused.
     document_types_next_id: u32,
-    /// The currently open Payees dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
-    /// exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
-    payees_dialog: Option<payees::PayeesDialog>,
     /// The stubbed 6e Import "match payees" step, `Some` while it shows in place of the
     /// Transactions page (`:import`). Dropped on leaving Transactions.
     import: Option<ImportState>,
@@ -756,7 +753,7 @@ pub struct Shell {
     /// The selected row on Settings' Tags page, by Tag id: that page lists A–Z, not by usage.
     settings_tags_selected: Option<u32>,
     /// The currently open Tags dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
-    /// exactly as long as this is `Some`, following the pattern of `payees_dialog`.
+    /// exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
     tags_dialog: Option<tags::TagsDialog>,
     /// The Transactions view's stub dataset, newest first (`transactions::default_transactions`).
     /// A real, mutable `Vec`, like [`Self::accounts`]: saved-in-memory state that survives leaving
@@ -931,7 +928,6 @@ impl Shell {
             settings_inventory_expanded: HashSet::new(),
             document_types_dialog: None,
             inventory_dialog: None,
-            payees_dialog: None,
             import: None,
             tags,
             tags_selected: 0,
@@ -1315,14 +1311,6 @@ impl Shell {
                 if self.dialog.as_mut().is_some_and(Dialog::close_open_select) {
                     return true;
                 }
-                if let Some(form) = self
-                    .payees_dialog
-                    .as_mut()
-                    .and_then(payees::PayeesDialog::form_mut)
-                    && form.close_open_select()
-                {
-                    return true;
-                }
                 if self.close_open_document_type_select() {
                     return true;
                 }
@@ -1389,7 +1377,6 @@ impl Shell {
                 }
                 self.transactions_filter_form = None;
                 self.close_dialog();
-                self.payees_dialog = None;
                 self.document_types_dialog = None;
                 self.inventory_dialog = None;
                 self.tags_dialog = None;
@@ -2114,9 +2101,6 @@ impl Shell {
                 }
             };
         }
-        if self.payees_dialog.is_some() {
-            return self.handle_payees_dialog_key(keystroke);
-        }
         if self.document_types_dialog.is_some() {
             return self.handle_document_types_dialog_key(keystroke);
         }
@@ -2165,6 +2149,7 @@ impl Shell {
             OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog),
             OpenDialog::Accounts(dialog) => self.apply_accounts_dialog(dialog),
             OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog),
+            OpenDialog::Payees(dialog) => self.apply_payees_dialog(dialog),
         }
     }
 
@@ -2192,6 +2177,20 @@ impl Shell {
     fn categories_dialog_mut(&mut self) -> Option<&mut categories::CategoriesDialog> {
         match self.dialog.as_mut()? {
             OpenDialog::Categories(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn payees_dialog(&self) -> Option<&payees::PayeesDialog> {
+        match self.dialog.as_ref()? {
+            OpenDialog::Payees(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn payees_dialog_mut(&mut self) -> Option<&mut payees::PayeesDialog> {
+        match self.dialog.as_mut()? {
+            OpenDialog::Payees(dialog) => Some(dialog),
             _ => None,
         }
     }
@@ -7065,125 +7064,70 @@ impl Shell {
     }
 
     fn open_add_payee_dialog(&mut self) {
-        let form = payees::PayeeForm::new(&self.payee_dialog_options());
-        self.payees_dialog = Some(payees::PayeesDialog::Add(form));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = payees::PayeeForm::new(&self.payee_dialog_options(), &self.payees);
+        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Add(form)));
     }
 
-    /// The Payee a form dialog is editing (`None` for Add), so its own name and rules don't count
-    /// as taken.
-    fn payee_dialog_own_id(&self) -> Option<u32> {
-        match self.payees_dialog {
-            Some(payees::PayeesDialog::Edit(id, _)) => Some(id),
-            _ => None,
-        }
-    }
-
-    /// Keys while an Add or Edit payee dialog is open. `enter` in the rule input adds a chip; on a
-    /// closed select it opens the list; anywhere else it submits. `Esc` never reaches here.
-    fn handle_payees_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        if let Some(payees::PayeesDialog::Delete(_, form)) = self.payees_dialog.as_mut() {
-            match keystroke.key.as_str() {
-                "enter" => self.confirm_delete_payee_dialog(),
-                "backspace" => form.backspace(),
-                _ => {
-                    let modifiers = &keystroke.modifiers;
-                    if modifiers.control
-                        || modifiers.alt
-                        || modifiers.platform
-                        || modifiers.function
-                    {
-                        return false;
+    /// Applies a confirmed Payees dialog (reached through [`Self::confirm_open_dialog`] from the
+    /// **Add payee** / **Save** / **Delete** buttons or `Enter`). Add and Edit store the Payee and
+    /// select it; a refused submit reopens the dialog with the error shown. Delete applies its
+    /// [`payees::DeleteAction`], toasts the outcome and keeps the selection in range.
+    fn apply_payees_dialog(&mut self, dialog: payees::PayeesDialog) {
+        match dialog {
+            payees::PayeesDialog::Delete(id, form) => {
+                let Some(name) = payees::get(&self.payees, id).map(|p| p.name.clone()) else {
+                    return;
+                };
+                let action = form.action();
+                let (kind, text) = match payees::apply_delete_action(
+                    &mut self.payees,
+                    &self.transactions,
+                    id,
+                    action,
+                ) {
+                    Ok(()) => (
+                        ToastKind::Success,
+                        match action {
+                            payees::DeleteAction::Delete => {
+                                lib_locale::msg::toast_payee_deleted(&name)
+                            }
+                            payees::DeleteAction::Deactivate => {
+                                lib_locale::msg::toast_payee_deactivated(&name)
+                            }
+                            payees::DeleteAction::Reactivate => {
+                                lib_locale::msg::toast_payee_reactivated(&name)
+                            }
+                        },
+                    ),
+                    Err(error) => (
+                        ToastKind::Error,
+                        lib_locale::msg::toast_save_failed(
+                            &lib_locale::msg::toast_entity_payee(),
+                            &error.to_string(),
+                        ),
+                    ),
+                };
+                self.raise_toast(kind, text);
+                self.payees_selected = self
+                    .payees_selected
+                    .min(self.payees.len().saturating_sub(1));
+            }
+            payees::PayeesDialog::Add(mut form) => {
+                match payees::insert_payee(&mut self.payees, &form.draft()) {
+                    Ok(id) => self.select_payee(id),
+                    Err(error) => {
+                        form.error = Some(error);
+                        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Add(form)));
                     }
-                    if let Some(text) = keystroke.key_char.as_deref()
-                        && text.chars().count() == 1
-                        && let Some(ch) = text.chars().next()
-                    {
-                        form.push_char(ch);
+                }
+            }
+            payees::PayeesDialog::Edit(id, mut form) => {
+                match payees::edit_payee(&mut self.payees, id, &form.draft()) {
+                    Ok(()) => self.select_payee(id),
+                    Err(error) => {
+                        form.error = Some(error);
+                        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Edit(id, form)));
                     }
-                }
-            }
-            return true;
-        }
-        let options = self.payee_dialog_options();
-        let own_id = self.payee_dialog_own_id();
-        let Some(form) = self
-            .payees_dialog
-            .as_mut()
-            .and_then(payees::PayeesDialog::form_mut)
-        else {
-            return false;
-        };
-        let modifiers = &keystroke.modifiers;
-        let on_select = form.focused == payees::PayeeField::DefaultCategory;
-        match keystroke.key.as_str() {
-            "tab" => form.cycle_focus(modifiers.shift, &options),
-            "up" => {
-                form.handle_select_key(SelectKey::Up, &options);
-            }
-            "down" => {
-                form.handle_select_key(SelectKey::Down, &options);
-            }
-            "space" | "enter" if on_select => {
-                form.handle_select_key(SelectKey::Activate, &options);
-            }
-            "enter" if form.focused == payees::PayeeField::Rule && !form.rule_input.is_empty() => {
-                form.add_rule(&self.payees, own_id);
-            }
-            "enter" => self.confirm_payees_dialog(),
-            "backspace" => form.backspace(),
-            _ => {
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-                if let Some(text) = keystroke.key_char.as_deref()
-                    && text.chars().count() == 1
-                    && let Some(ch) = text.chars().next()
-                {
-                    form.push_char(ch);
-                }
-            }
-        }
-        true
-    }
-
-    /// **Add payee** / **Save** and `enter`: adds or edits the Payee and selects it, closing the
-    /// dialog. A no-op while the name is invalid; a refused rule keeps the dialog open with the
-    /// error shown.
-    fn confirm_payees_dialog(&mut self) {
-        let options = self.payee_dialog_options();
-        let own_id = self.payee_dialog_own_id();
-        let Some(dialog) = self.payees_dialog.as_mut() else {
-            return;
-        };
-        let Some(form) = dialog.form_mut() else {
-            return;
-        };
-        if !form.is_valid(&self.payees, own_id) {
-            return;
-        }
-        let draft = form.draft(&options);
-        let result = match dialog {
-            payees::PayeesDialog::Add(_) => payees::insert_payee(&mut self.payees, &draft),
-            payees::PayeesDialog::Edit(id, _) => {
-                let id = *id;
-                payees::edit_payee(&mut self.payees, id, &draft).map(|()| id)
-            }
-            payees::PayeesDialog::Delete(..) => return,
-        };
-        match result {
-            Ok(id) => {
-                self.payees_dialog = None;
-                self.nav.exit_mode();
-                self.select_payee(id);
-            }
-            Err(error) => {
-                if let Some(form) = self
-                    .payees_dialog
-                    .as_mut()
-                    .and_then(payees::PayeesDialog::form_mut)
-                {
-                    form.error = Some(error);
                 }
             }
         }
@@ -7192,16 +7136,13 @@ impl Shell {
     fn with_payee_form(
         &mut self,
         cx: &mut Context<'_, Self>,
-        change: impl FnOnce(&mut payees::PayeeForm, &payees::PayeeOptions, &[Payee], Option<u32>),
+        change: impl FnOnce(&mut payees::PayeeForm),
     ) {
-        let options = self.payee_dialog_options();
-        let own_id = self.payee_dialog_own_id();
         if let Some(form) = self
-            .payees_dialog
-            .as_mut()
+            .payees_dialog_mut()
             .and_then(payees::PayeesDialog::form_mut)
         {
-            change(form, &options, &self.payees, own_id);
+            change(form);
         }
         cx.notify();
     }
@@ -7211,9 +7152,9 @@ impl Shell {
         field: payees::PayeeField,
         cx: &mut Context<'_, Self>,
     ) {
-        self.with_payee_form(cx, |form, options, _, _| {
+        self.with_payee_form(cx, |form| {
             if field == payees::PayeeField::DefaultCategory {
-                form.click_select(options);
+                form.click_select();
             } else {
                 form.focus(field);
             }
@@ -7221,30 +7162,27 @@ impl Shell {
     }
 
     fn handle_payees_dialog_option_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.with_payee_form(cx, |form, options, _, _| {
-            form.default_category.choose(&options.labels, index);
-        });
+        self.with_payee_form(cx, |form| form.choose_category(index));
     }
 
     fn handle_payees_dialog_add_rule(&mut self, cx: &mut Context<'_, Self>) {
-        self.with_payee_form(cx, |form, _, payees, own_id| {
+        self.with_payee_form(cx, |form| {
             form.focus(payees::PayeeField::Rule);
-            form.add_rule(payees, own_id);
+            form.add_rule();
         });
     }
 
     fn handle_payees_dialog_remove_rule(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.with_payee_form(cx, |form, _, _, _| form.remove_rule(index));
+        self.with_payee_form(cx, |form| form.remove_rule(index));
     }
 
     fn handle_payees_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.payees_dialog = None;
-        self.nav.exit_mode();
+        self.close_dialog();
         cx.notify();
     }
 
     fn handle_payees_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_payees_dialog();
+        self.confirm_open_dialog();
         cx.notify();
     }
 
@@ -7253,81 +7191,27 @@ impl Shell {
         let Some(payee) = payees::get(&self.payees, id) else {
             return;
         };
-        let form = payees::PayeeForm::from_payee(payee, &self.payee_dialog_options());
-        self.payees_dialog = Some(payees::PayeesDialog::Edit(id, form));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = payees::PayeeForm::from_payee(payee, &self.payee_dialog_options(), &self.payees);
+        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Edit(id, form)));
     }
 
+    /// Opens the Delete dialog on Payee `id`, copying its name and action in so the form validates
+    /// without `Shell`. A no-op if the Payee is gone.
     fn open_delete_payee_dialog(&mut self, id: u32) {
-        if payees::get(&self.payees, id).is_none() {
+        let Some(payee) = payees::get(&self.payees, id) else {
             return;
-        }
-        self.payees_dialog = Some(payees::PayeesDialog::Delete(
-            id,
-            payees::DeletePayeeForm::default(),
-        ));
-        self.nav.enter_mode(InputMode::Dialog);
+        };
+        let action = payees::DeleteAction::for_payee(payee, &self.transactions);
+        let form = payees::DeletePayeeForm::new(payee, action);
+        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Delete(id, form)));
     }
 
     /// The Payee the Delete dialog is open on and what confirming it would do (#283).
     fn delete_payee_target(&self) -> Option<(&Payee, payees::DeleteAction)> {
-        let Some(payees::PayeesDialog::Delete(id, _)) = self.payees_dialog.as_ref() else {
+        let Some(payees::PayeesDialog::Delete(id, form)) = self.payees_dialog() else {
             return None;
         };
-        let payee = payees::get(&self.payees, *id)?;
-        Some((
-            payee,
-            payees::DeleteAction::for_payee(payee, &self.transactions),
-        ))
-    }
-
-    /// **Delete payee** / **Deactivate payee** / **Reactivate payee** and `enter`: a no-op until the
-    /// typed name matches (for the destructive two), then applies the action, toasts the outcome
-    /// and closes the dialog.
-    fn confirm_delete_payee_dialog(&mut self) {
-        let Some((payee, action)) = self.delete_payee_target() else {
-            return;
-        };
-        let Some(payees::PayeesDialog::Delete(_, form)) = self.payees_dialog.as_ref() else {
-            return;
-        };
-        if !form.allows(action, &payee.name) {
-            return;
-        }
-        let (id, name) = (payee.id, payee.name.clone());
-        let (kind, text) =
-            match payees::apply_delete_action(&mut self.payees, &self.transactions, id, action) {
-                Ok(()) => (
-                    ToastKind::Success,
-                    match action {
-                        payees::DeleteAction::Delete => lib_locale::msg::toast_payee_deleted(&name),
-                        payees::DeleteAction::Deactivate => {
-                            lib_locale::msg::toast_payee_deactivated(&name)
-                        }
-                        payees::DeleteAction::Reactivate => {
-                            lib_locale::msg::toast_payee_reactivated(&name)
-                        }
-                    },
-                ),
-                Err(error) => (
-                    ToastKind::Error,
-                    lib_locale::msg::toast_save_failed(
-                        &lib_locale::msg::toast_entity_payee(),
-                        &error.to_string(),
-                    ),
-                ),
-            };
-        self.raise_toast(kind, text);
-        self.payees_dialog = None;
-        self.nav.exit_mode();
-        self.payees_selected = self
-            .payees_selected
-            .min(self.payees.len().saturating_sub(1));
-    }
-
-    fn handle_delete_payee_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_delete_payee_dialog();
-        cx.notify();
+        Some((payees::get(&self.payees, *id)?, form.action()))
     }
 
     fn handle_payees_add_click(&mut self, cx: &mut Context<'_, Self>) {
@@ -9707,7 +9591,7 @@ impl Render for Shell {
                 ),
             }),
             Noun::Settings if self.settings_payees_page_has_focus() => Some(PageStatus {
-                hints: match self.payees_dialog {
+                hints: match self.payees_dialog() {
                     Some(payees::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
                     Some(_) => payee_dialog_hints(),
                     None => settings_payees_hints(),
@@ -10084,13 +9968,13 @@ impl Render for Shell {
             .children(self.render_budgets_switcher(&entity, cx))
             .children(self.render_budgets_form_dialog(&entity, cx))
             .children(self.render_budgets_manage_dialog(&entity, cx))
-            .children(match self.payees_dialog.as_ref() {
+            .children(match self.payees_dialog() {
                 Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
                     payees_view::add_dialog::PayeeDialogMode::Add,
                     form,
-                    &self.payee_dialog_options(),
-                    form.name_error(&self.payees, None),
-                    form.is_valid(&self.payees, None),
+                    form.options(),
+                    form.name_error(),
+                    form.is_valid(),
                     payees_dialog_handlers,
                     cx,
                 )),
@@ -10108,9 +9992,9 @@ impl Render for Shell {
                                 .splits,
                             },
                             form,
-                            &self.payee_dialog_options(),
-                            form.name_error(&self.payees, Some(*id)),
-                            form.is_valid(&self.payees, Some(*id)),
+                            form.options(),
+                            form.name_error(),
+                            form.is_valid(),
                             payees_dialog_handlers,
                             cx,
                         )
@@ -10131,7 +10015,7 @@ impl Render for Shell {
                                 )
                                 .splits,
                                 on_cancel: plain_payees(Shell::handle_payees_dialog_cancel),
-                                on_confirm: plain_payees(Shell::handle_delete_payee_confirm),
+                                on_confirm: plain_payees(Shell::handle_payees_dialog_confirm),
                             },
                             cx,
                         )
