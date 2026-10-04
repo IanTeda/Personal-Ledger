@@ -4,9 +4,10 @@
 //! (the Desktop's Settings › Tracing page) without reading the log file back. Opt-in: a caller
 //! builds a [`LogBuffer`] and hands it to [`crate::init`]; the Sync Server never does.
 //!
-//! The capture layer records at `debug` for our own crates whatever the `log` Configuration says
-//! (the page filters by level itself), and only `warn` and above for dependencies, whose bridged
-//! `log::debug!` chatter would otherwise push our few events out of the ring in seconds.
+//! The capture layer records everything the console does (the `log` Configuration, `RUST_LOG`),
+//! plus our own crates at `debug` whatever those say, so the page can filter by level itself.
+//! Dependencies stay at the console's level: their bridged `log::debug!` chatter would otherwise
+//! push our few events out of the ring in seconds.
 //!
 //! See `docs/research/tracing-ring-buffer-capture.md` (issue #498) and the seam decision (#500).
 
@@ -24,8 +25,9 @@ use tracing::{
 };
 use tracing_log::NormalizeEvent;
 use tracing_subscriber::{
-    filter::{LevelFilter, Targets},
-    layer::{Context, Layer},
+    EnvFilter,
+    filter::{FilterExt, LevelFilter, Targets},
+    layer::{Context, Filter, Layer},
 };
 
 /// How many entries the Desktop keeps: 16m's "last 1000 entries".
@@ -187,14 +189,14 @@ impl CaptureLayer {
     }
 }
 
-/// Our crates at `debug`, everything else at `warn`. `Targets` matches by prefix, so `lib_`
-/// covers every workspace library. It ignores `RUST_LOG` so the page shows the same whatever the
-/// app was launched with.
-pub(crate) fn capture_filter() -> Targets {
-    Targets::new()
+/// Whatever `console` (the console and log file's filter) admits, or anything from our own crates
+/// at `debug`. So the page shows at least what the terminal does, and our `debug` lines on top,
+/// without letting dependencies' `debug` chatter (bridged from `log`) flood the ring. `Targets`
+/// matches by prefix, so `lib_` covers every workspace library.
+pub(crate) fn capture_filter<S: Subscriber>(console: EnvFilter) -> impl Filter<S> {
+    console.or(Targets::new()
         .with_target("bin_", LevelFilter::DEBUG)
-        .with_target("lib_", LevelFilter::DEBUG)
-        .with_default(LevelFilter::WARN)
+        .with_target("lib_", LevelFilter::DEBUG))
 }
 
 impl<S: Subscriber> Layer<S> for CaptureLayer {
@@ -271,13 +273,19 @@ mod tests {
         entries.iter().map(|entry| entry.message.as_str()).collect()
     }
 
-    /// Runs `body` with only a capture layer installed, scoped to this thread.
-    fn captured(body: impl FnOnce()) -> Vec<Arc<LogEntry>> {
+    /// Runs `body` with only a capture layer installed, scoped to this thread, as if the console
+    /// were at `console`.
+    fn captured_at(console: &str, body: impl FnOnce()) -> Vec<Arc<LogEntry>> {
         let buffer = LogBuffer::new(LOG_CAPACITY);
-        let subscriber = tracing_subscriber::registry()
-            .with(CaptureLayer::new(buffer.clone()).with_filter(capture_filter()));
+        let subscriber = tracing_subscriber::registry().with(
+            CaptureLayer::new(buffer.clone()).with_filter(capture_filter(EnvFilter::new(console))),
+        );
         tracing::subscriber::with_default(subscriber, body);
         buffer.snapshot()
+    }
+
+    fn captured(body: impl FnOnce()) -> Vec<Arc<LogEntry>> {
+        captured_at("warn", body)
     }
 
     #[test]
@@ -403,6 +411,15 @@ mod tests {
             tracing::warn!(target: "wgpu_core::device", "their warning");
         });
         assert_eq!(messages(&entries), ["ours", "their warning"]);
+    }
+
+    #[test]
+    fn the_filter_keeps_whatever_the_console_shows() {
+        let entries = captured_at("info", || {
+            tracing::info!(target: "wgpu_core::device", "their info");
+            tracing::debug!(target: "wgpu_core::device", "their debug");
+        });
+        assert_eq!(messages(&entries), ["their info"]);
     }
 
     #[test]

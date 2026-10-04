@@ -266,7 +266,7 @@ Sum insured and Item limit are what the Inventory register uses for its cover ch
 
 ### Tracing page
 
-The Tracing page shows the Desktop's own log as it is written, newest at the top: the last 1000 entries from this run, kept in memory on this device. Nothing is read from or written to the log file here, and the list starts empty each time the app starts.
+The Tracing page shows the Desktop's log as it is written, newest at the top: the last 1000 entries from this run, kept in memory on this device. It holds everything the terminal you launched from shows, including messages from the libraries the app is built on, plus the app's own `debug` entries. Nothing is read from or written to the log file here, and the list starts empty each time the app starts.
 
 Each entry reads `[14:02:11] WARN  sync: retrying push attempt=2`: the local time, the level, the part of the app it came from, the message and any extra details. Long entries wrap. Errors and warnings are coloured.
 

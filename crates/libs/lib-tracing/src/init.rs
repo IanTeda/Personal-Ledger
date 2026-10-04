@@ -55,8 +55,8 @@ use crate::{
 ///   written to, in addition to the console. Parent directories are created if they
 ///   don't already exist. If `None`, telemetry is only written to the console.
 /// * `capture` - Optional [`LogBuffer`] to also feed with recent events, for an in-app log view.
-///   It records our own crates at `debug` whatever `tracing_level` and `RUST_LOG` say, so the
-///   viewer can filter for itself. The Sync Server and TUI pass `None`.
+///   It records everything the console shows, plus our own crates at `debug` even when the
+///   console is quieter, so the viewer can filter for itself. The Sync Server and TUI pass `None`.
 ///
 /// # Returns
 ///
@@ -92,28 +92,7 @@ pub fn init(
     // ============================================================================
     // Phase 1: Configure Event Filtering (Tracing/Log Level)
     // ============================================================================
-    // Set default tracing level based on configuration
-    // `RUST_LOG`, when set and valid, replaces the configured default wholesale.
-    let env_filter = {
-        // Convert our serde-friendly TracingLevels -> tracing LevelFilter -> Directive
-        let default_directive = tracing_level
-            .map(|&level| tracing::level_filters::LevelFilter::from(level))
-            .unwrap_or(tracing::level_filters::LevelFilter::INFO)
-            .into();
-
-        EnvFilter::builder()
-            .with_default_directive(default_directive)
-            .from_env_lossy()
-    };
-
-    // `calloop` (gpui's Linux/Wayland event loop) emits a TRACE line per dispatched event
-    // source on every frame -- pure event-loop bookkeeping, never useful outside debugging
-    // calloop itself. Capped independently of the configured/`RUST_LOG` level, since a
-    // directive with a target always outranks the global default regardless of verbosity.
-    let calloop_directive: tracing_subscriber::filter::Directive = "calloop=warn"
-        .parse()
-        .map_err(|e| Error::generic(format!("Failed to parse calloop directive: {}", e)))?;
-    let env_filter = env_filter.add_directive(calloop_directive);
+    let env_filter = console_filter(tracing_level)?;
 
     // ============================================================================
     // Phase 2: Configure Event Collection
@@ -154,8 +133,14 @@ pub fn init(
     let console_and_file = console_collector
         .and_then(file_collector)
         .with_filter(env_filter);
-    let capture_collector =
-        capture.map(|buffer| CaptureLayer::new(buffer).with_filter(capture_filter()));
+    // The capture sees everything the console does, plus our own crates at `debug`. Built
+    // separately because an `EnvFilter` can't be shared between two filtered layers.
+    let capture_collector = match capture {
+        Some(buffer) => Some(
+            CaptureLayer::new(buffer).with_filter(capture_filter(console_filter(tracing_level)?)),
+        ),
+        None => None,
+    };
     let registry = tracing_subscriber::registry()
         .with(console_and_file)
         .with(capture_collector);
@@ -175,6 +160,28 @@ pub fn init(
         .map_err(|e| Error::generic(format!("Failed to set global default subscriber: {}", e)))?;
 
     Ok(guard)
+}
+
+/// The console and log file's filter: the configured level (or `INFO`), replaced wholesale by
+/// `RUST_LOG` when that is set and valid, with `calloop` capped at `warn`.
+fn console_filter(tracing_level: Option<&Levels>) -> Result<EnvFilter> {
+    // Convert our serde-friendly TracingLevels -> tracing LevelFilter -> Directive
+    let default_directive = tracing_level
+        .map(|&level| tracing::level_filters::LevelFilter::from(level))
+        .unwrap_or(tracing::level_filters::LevelFilter::INFO)
+        .into();
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(default_directive)
+        .from_env_lossy();
+
+    // `calloop` (gpui's Linux/Wayland event loop) emits a TRACE line per dispatched event
+    // source on every frame -- pure event-loop bookkeeping, never useful outside debugging
+    // calloop itself. Capped independently of the configured/`RUST_LOG` level, since a
+    // directive with a target always outranks the global default regardless of verbosity.
+    let calloop_directive: tracing_subscriber::filter::Directive = "calloop=warn"
+        .parse()
+        .map_err(|e| Error::generic(format!("Failed to parse calloop directive: {}", e)))?;
+    Ok(env_filter.add_directive(calloop_directive))
 }
 
 /// Split a log file path into the directory it lives in and its file name, as required by
