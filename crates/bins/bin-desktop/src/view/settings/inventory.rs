@@ -209,7 +209,7 @@ fn table_header(cx: &App) -> impl IntoElement {
             60.0,
             true,
         ))
-        .child(header_cell(lib_locale::msg::column_actions(), 118.0, true))
+        .child(header_cell(lib_locale::msg::column_actions(), 150.0, true))
 }
 
 /// One Property row and, while it is open, its Room sub-table.
@@ -473,7 +473,7 @@ fn selectable_row(
         .on_click(move |_event, window, cx| on_row_click(row, window, cx))
 }
 
-/// The edit and remove buttons of a row.
+/// The buttons of a row: **+ room** (Properties only), edit and remove.
 fn actions(
     row: InventoryRow,
     inverted: bool,
@@ -491,12 +491,26 @@ fn actions(
     };
     let on_edit = props.on_edit_click.clone();
     let on_remove = props.on_remove_click.clone();
+    // Only a Property row carries **+ room**, and its wider column makes room for it.
+    let (width, add_room) = match row {
+        InventoryRow::Property(_) => (150.0, Some(props.on_add_room_click.clone())),
+        InventoryRow::Room(_) => (118.0, None),
+    };
     div()
-        .w(px(118.0))
+        .w(px(width))
         .flex_none()
         .flex()
         .justify_end()
         .gap(px(4.0))
+        .when_some(add_room, |this, on_add_room| {
+            this.child(row_action_button(
+                SharedString::from(format!("settings-inventory-property-add-room-{id}")),
+                crate::msg::desktop_inventory_row_add_room(),
+                border,
+                Rc::new(move |window: &mut Window, cx: &mut App| on_add_room(id, window, cx)),
+                cx,
+            ))
+        })
         .child(row_action_button(
             SharedString::from(format!("settings-inventory-edit-{kind}-{id}")),
             crate::msg::desktop_inventory_row_edit(),

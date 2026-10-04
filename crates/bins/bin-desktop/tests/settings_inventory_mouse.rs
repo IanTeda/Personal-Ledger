@@ -212,6 +212,27 @@ fn add_room_submits_by_its_button_under_the_clicked_property(app: &mut TestAppCo
 }
 
 #[gpui::test]
+fn a_property_row_has_its_own_add_room_button(app: &mut TestAppContext) {
+    let mut ui = on_inventory(app);
+    // Collapsed: the + room button on the Property row still opens the dialog (16q).
+    let selected = ui.settings().selected_inventory;
+    ui.click(&format!("settings-inventory-property-add-room-{STORAGE}"));
+    let page = ui.settings();
+    assert_eq!(page.inventory_dialog.as_deref(), Some("add-room"));
+    assert_eq!(page.selected_inventory, selected);
+
+    ui.click("room-name");
+    ui.press("l o f t");
+    ui.click("add-room-confirm");
+    let page = ui.settings();
+    assert_eq!(page.inventory_dialog, None);
+    assert_eq!(
+        page.inventory_rooms[1].1.last().map(String::as_str),
+        Some("loft")
+    );
+}
+
+#[gpui::test]
 fn edit_room_saves_by_its_button(app: &mut TestAppContext) {
     let mut ui = on_inventory(app);
     ui.click(&format!("settings-inventory-toggle-{ELM}"));

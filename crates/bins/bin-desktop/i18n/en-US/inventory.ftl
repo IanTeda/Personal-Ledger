@@ -33,6 +33,7 @@ desktop-inventory-column-value = Value
 ## Cells. A dash stands for "not set": no cover, or no item limit.
 
 desktop-inventory-none = —
+desktop-inventory-row-add-room = + room
 desktop-inventory-row-edit = edit
 desktop-inventory-row-remove = remove
 
