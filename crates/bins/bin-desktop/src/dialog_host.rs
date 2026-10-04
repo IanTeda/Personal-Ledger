@@ -21,7 +21,8 @@
 
 use crate::{
     accounts::AccountsDialog, categories::CategoriesDialog, document_types::DocumentTypesDialog,
-    field::TextField, payees::PayeesDialog, settings::SettingsDialog,
+    field::TextField, inventory_form::InventoryDialog, payees::PayeesDialog,
+    settings::SettingsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -86,6 +87,7 @@ pub enum OpenDialog {
     Categories(CategoriesDialog),
     Payees(PayeesDialog),
     DocumentTypes(DocumentTypesDialog),
+    Inventory(InventoryDialog),
 }
 
 impl OpenDialog {
@@ -96,6 +98,7 @@ impl OpenDialog {
             Self::Categories(dialog) => dialog,
             Self::Payees(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
+            Self::Inventory(dialog) => dialog,
         }
     }
 
@@ -106,6 +109,7 @@ impl OpenDialog {
             Self::Categories(dialog) => dialog,
             Self::Payees(dialog) => dialog,
             Self::DocumentTypes(dialog) => dialog,
+            Self::Inventory(dialog) => dialog,
         }
     }
 }
@@ -173,6 +177,9 @@ mod tests {
     use crate::categories::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
     use crate::document_types::{
         DocumentTypeForm, DocumentTypesDialog, FormField, RemoveForm, TracksDate, default_types,
+    };
+    use crate::inventory_form::{
+        InventoryDialog, PropertyField, PropertyForm, RemovePropertyForm, RemoveRoomForm,
     };
     use crate::payees::{DeleteAction, DeletePayeeForm, PayeeField, PayeeForm, default_payees};
     use crate::settings::{
@@ -744,6 +751,120 @@ mod tests {
     #[test]
     fn the_default_document_type_notice_confirms_with_enter_and_swallows_tab() {
         let mut dialog = OpenDialog::DocumentTypes(DocumentTypesDialog::DefaultNotice);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Tab),
+            DialogOutcome::Handled
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    fn property_context() -> crate::inventory_form::PropertyContext {
+        crate::inventory_form::PropertyContext {
+            inventory: crate::inventory::Inventory::default(),
+            today: chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a valid date"),
+            date_style: None,
+            unit_choices: vec![
+                ("AUD".to_string(), "aud".to_string()),
+                ("NZD".to_string(), "nzd".to_string()),
+            ],
+        }
+    }
+
+    fn add_property() -> OpenDialog {
+        OpenDialog::Inventory(InventoryDialog::Add(PropertyForm::for_add(
+            Some("AUD".to_string()),
+            property_context(),
+        )))
+    }
+
+    fn property_form(dialog: &OpenDialog) -> &PropertyForm {
+        match dialog {
+            OpenDialog::Inventory(InventoryDialog::Add(form) | InventoryDialog::Edit(_, form)) => {
+                form
+            }
+            other => panic!("expected a property form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn property_typing_tab_and_enter_only_when_valid() {
+        let mut dialog = add_property();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "Beach housex");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(property_form(&dialog).name.text(), "Beach house");
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(property_form(&dialog).focused, PropertyField::Address);
+        type_text(&mut dialog, "1 Beach Rd");
+        assert_eq!(property_form(&dialog).address.text(), "1 Beach Rd");
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(property_form(&dialog).focused, PropertyField::Name);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn property_unit_select_first_esc_closes_it_and_keeps_the_dialog() {
+        let mut dialog = add_property();
+        handle_key(&mut dialog, DialogKey::Tab);
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(property_form(&dialog).focused, PropertyField::Unit);
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(property_form(&dialog).unit.is_open());
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+        assert_eq!(property_form(&dialog).unit.value(), Some("AUD"));
+    }
+
+    #[test]
+    fn remove_property_with_holdings_confirms_only_on_the_typed_name() {
+        let mut dialog = OpenDialog::Inventory(InventoryDialog::Remove(
+            1,
+            RemovePropertyForm::new("Elm St", true),
+        ));
+        type_text(&mut dialog, "Elm");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, " St");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn remove_room_select_first_esc_closes_it_and_enter_needs_a_destination() {
+        let mut dialog = OpenDialog::Inventory(InventoryDialog::RemoveRoom(
+            1,
+            RemoveRoomForm::new(vec!["Kitchen".to_string()], None, true),
+        ));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+        handle_key(&mut dialog, DialogKey::Down);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn the_room_blocked_notice_confirms_with_enter_and_swallows_tab() {
+        let mut dialog = OpenDialog::Inventory(InventoryDialog::RoomBlocked(1));
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Tab),
             DialogOutcome::Handled

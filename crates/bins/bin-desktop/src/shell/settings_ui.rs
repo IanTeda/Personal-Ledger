@@ -2,7 +2,7 @@
 //! snapshot shape and its accessor sit together.
 
 use super::Shell;
-use super::inventory_ui::InventoryDialog;
+use crate::inventory_form::InventoryDialog;
 use crate::{
     accounts::{self, AccountsDialog},
     categories::CategoriesDialog,
@@ -332,7 +332,7 @@ impl Shell {
                     )
                 })
                 .collect(),
-            inventory_dialog: self.inventory_dialog.as_ref().map(|dialog| {
+            inventory_dialog: self.inventory_dialog().map(|dialog| {
                 match dialog {
                     InventoryDialog::Add(_) => "add",
                     InventoryDialog::Edit(..) => "edit",

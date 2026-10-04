@@ -440,7 +440,7 @@ pub fn render_room_form(props: RoomFormProps<'_>, cx: &App) -> AnyElement {
         .child(text_field(
             "room-name",
             crate::msg::desktop_inventory_room_field_name(),
-            &form.name,
+            form.name.text(),
             &crate::msg::desktop_inventory_room_field_name_placeholder(),
             true,
             handlers.on_name_click,

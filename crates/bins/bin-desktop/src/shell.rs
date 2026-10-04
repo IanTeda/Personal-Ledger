@@ -87,6 +87,7 @@ use crate::{
     format,
     import::{self, ImportState, RowSelect},
     inventory,
+    inventory_form::InventoryDialog,
     key_router::{self, KeyOutcome, Movement, route_key},
     limit_form,
     log_view::{LogChange, LogView},
@@ -738,8 +739,6 @@ pub struct Shell {
     /// Settings' Inventory page: the selected row and the Properties shown open (session-only).
     settings_inventory_selected: Option<InventoryRow>,
     settings_inventory_expanded: HashSet<u32>,
-    /// The open Add, Edit or Remove Property dialog; `InputMode::Dialog` for as long as it is.
-    inventory_dialog: Option<inventory_ui::InventoryDialog>,
     /// The id the next added Document Type takes; only counts up, so ids are never reused.
     document_types_next_id: u32,
     /// The stubbed 6e Import "match payees" step, `Some` while it shows in place of the
@@ -924,7 +923,6 @@ impl Shell {
             settings_documents_selected: None,
             settings_inventory_selected: None,
             settings_inventory_expanded: HashSet::new(),
-            inventory_dialog: None,
             import: None,
             tags,
             tags_selected: 0,
@@ -1308,9 +1306,6 @@ impl Shell {
                 if self.dialog.as_mut().is_some_and(Dialog::close_open_select) {
                     return true;
                 }
-                if self.close_open_property_unit_select() {
-                    return true;
-                }
                 if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut()
                     && form.close_open_select()
                 {
@@ -1371,7 +1366,6 @@ impl Shell {
                 }
                 self.transactions_filter_form = None;
                 self.close_dialog();
-                self.inventory_dialog = None;
                 self.tags_dialog = None;
                 self.bills_dialog = None;
                 self.budgets_dialog = None;
@@ -2094,9 +2088,6 @@ impl Shell {
                 }
             };
         }
-        if self.inventory_dialog.is_some() {
-            return self.handle_inventory_dialog_key(keystroke);
-        }
         if self.tags_dialog.is_some() {
             return self.handle_tags_dialog_key(keystroke);
         }
@@ -2141,6 +2132,7 @@ impl Shell {
             OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog),
             OpenDialog::Payees(dialog) => self.apply_payees_dialog(dialog),
             OpenDialog::DocumentTypes(dialog) => self.apply_document_types_dialog(dialog),
+            OpenDialog::Inventory(dialog) => self.apply_inventory_dialog(dialog),
         }
     }
 
@@ -2175,6 +2167,20 @@ impl Shell {
     fn document_types_dialog(&self) -> Option<&DocumentTypesDialog> {
         match self.dialog.as_ref()? {
             OpenDialog::DocumentTypes(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn inventory_dialog(&self) -> Option<&InventoryDialog> {
+        match self.dialog.as_ref()? {
+            OpenDialog::Inventory(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn inventory_dialog_mut(&mut self) -> Option<&mut InventoryDialog> {
+        match self.dialog.as_mut()? {
+            OpenDialog::Inventory(dialog) => Some(dialog),
             _ => None,
         }
     }
@@ -9610,7 +9616,7 @@ impl Render for Shell {
                 right: settings_view::documents::scope_text(&self.document_types),
             }),
             Noun::Settings if self.settings_inventory_page_has_focus() => Some(PageStatus {
-                hints: self.inventory_dialog.as_ref().map_or_else(
+                hints: self.inventory_dialog().map_or_else(
                     || settings_inventory_hints(self.settings_inventory_selected_row()),
                     inventory_ui::dialog_hints,
                 ),

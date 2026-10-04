@@ -53,7 +53,7 @@ pub struct Item {
 }
 
 /// Every Property and Item. The Items sit in one list so Documents can resolve a Link by id.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Inventory {
     pub properties: Vec<Property>,
     pub items: Vec<Item>,

@@ -6,34 +6,20 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, Context, Keystroke};
+use gpui::{AnyElement, Context};
 use lib_toast::ToastKind;
 
-use super::{Shell, typed_char};
+use super::Shell;
 use crate::{
+    dialog_host::OpenDialog,
     documents,
     inventory::{self, PropertyError},
-    inventory_form::{self, Problem, PropertyField, PropertyForm, RoomForm},
-    nav::InputMode,
-    select::SelectState,
+    inventory_form::{
+        self, InventoryDialog, Problem, PropertyContext, PropertyField, PropertyForm,
+        RemovePropertyForm, RemoveRoomForm, RoomForm,
+    },
     view::settings::{inventory::InventoryRow, inventory_dialogs as view},
 };
-
-/// The open Property dialog. `InputMode::Dialog` for exactly as long as it is `Some`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum InventoryDialog {
-    Add(PropertyForm),
-    Edit(u32, PropertyForm),
-    /// The Property and the name typed so far, which only a Property holding something asks for.
-    Remove(u32, String),
-    /// Add room to the Property.
-    AddRoom(u32, RoomForm),
-    EditRoom(u32, RoomForm),
-    /// The Room, and the chosen destination for its Items (unused while it is empty).
-    RemoveRoom(u32, SelectState),
-    /// The Room is its Property's last and holds Items.
-    RoomBlocked(u32),
-}
 
 /// What Remove would take with it.
 struct Holdings {
@@ -72,20 +58,14 @@ impl Shell {
             .collect()
     }
 
-    fn property_unit_labels(&self) -> Vec<String> {
-        self.property_unit_choices()
-            .into_iter()
-            .map(|(label, _)| label)
-            .collect()
-    }
-
-    /// The Unit code the Add dialog's picker is on, if it has a Unit at all.
-    fn property_unit_code(&self, form: &PropertyForm) -> Option<String> {
-        let label = form.unit.value()?;
-        self.property_unit_choices()
-            .into_iter()
-            .find(|(option, _)| option == label)
-            .map(|(_, code)| code)
+    /// What the Property form checks against, copied in when it opens.
+    fn property_context(&self) -> PropertyContext {
+        PropertyContext {
+            inventory: self.inventory.clone(),
+            today: self.today,
+            date_style: self.settings_date_style,
+            unit_choices: self.property_unit_choices(),
+        }
     }
 
     /// The Property the selected row belongs to.
@@ -121,42 +101,43 @@ impl Shell {
             .and_then(|property| choices.iter().find(|(_, code)| *code == property.unit))
             .or_else(|| choices.first())
             .map(|(label, _)| label.clone());
-        self.inventory_dialog = Some(InventoryDialog::Add(PropertyForm::for_add(preferred)));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = PropertyForm::for_add(preferred, self.property_context());
+        self.open_dialog(OpenDialog::Inventory(InventoryDialog::Add(form)));
     }
 
     pub(super) fn open_edit_property_dialog(&mut self, id: u32) {
         let Some(property) = self.inventory.property(id) else {
             return;
         };
-        let form = PropertyForm::from_property(property);
-        self.inventory_dialog = Some(InventoryDialog::Edit(id, form));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = PropertyForm::from_property(property, self.property_context());
+        self.open_dialog(OpenDialog::Inventory(InventoryDialog::Edit(id, form)));
     }
 
     pub(super) fn open_remove_property_dialog(&mut self, id: u32) {
-        if self.inventory.property(id).is_none() {
+        let Some(property) = self.inventory.property(id) else {
             return;
-        }
-        self.inventory_dialog = Some(InventoryDialog::Remove(id, String::new()));
-        self.nav.enter_mode(InputMode::Dialog);
+        };
+        let form =
+            RemovePropertyForm::new(property.name.clone(), self.holdings_need_typed_name(id));
+        self.open_dialog(OpenDialog::Inventory(InventoryDialog::Remove(id, form)));
     }
 
     pub(super) fn open_add_room_dialog(&mut self, property: u32) {
         if self.inventory.property(property).is_none() {
             return;
         }
-        self.inventory_dialog = Some(InventoryDialog::AddRoom(property, RoomForm::default()));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = RoomForm::for_add(self.inventory.clone(), property);
+        self.open_dialog(OpenDialog::Inventory(InventoryDialog::AddRoom(
+            property, form,
+        )));
     }
 
     fn open_edit_room_dialog(&mut self, id: u32) {
-        let Some((_, room)) = self.inventory.room(id) else {
+        let Some((property, room)) = self.inventory.room(id) else {
             return;
         };
-        let form = RoomForm::for_edit(room);
-        self.inventory_dialog = Some(InventoryDialog::EditRoom(id, form));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = RoomForm::for_edit(self.inventory.clone(), property.id, room);
+        self.open_dialog(OpenDialog::Inventory(InventoryDialog::EditRoom(id, form)));
     }
 
     /// An empty Room gets a plain confirm; one with Items a destination picker pre-selecting the
@@ -165,40 +146,22 @@ impl Shell {
         let Some((property, _)) = self.inventory.room(id) else {
             return;
         };
-        let dialog = if self.inventory.room_items(id) == 0 {
-            InventoryDialog::RemoveRoom(id, SelectState::new(None))
-        } else if property.rooms.len() == 1 {
+        let items = self.inventory.room_items(id);
+        let dialog = if items > 0 && property.rooms.len() == 1 {
             InventoryDialog::RoomBlocked(id)
         } else {
-            let preselected = inventory::default_destination(&self.inventory, id)
+            let preselected = (items > 0)
+                .then(|| inventory::default_destination(&self.inventory, id))
+                .flatten()
                 .and_then(|to| self.inventory.room(to))
                 .map(|(_, room)| room.name.clone());
-            InventoryDialog::RemoveRoom(id, SelectState::new(preselected))
+            let destinations = room_destinations(&self.inventory, id);
+            InventoryDialog::RemoveRoom(
+                id,
+                RemoveRoomForm::new(destinations, preselected, items > 0),
+            )
         };
-        self.inventory_dialog = Some(dialog);
-        self.nav.enter_mode(InputMode::Dialog);
-    }
-
-    fn close_inventory_dialog(&mut self) {
-        self.inventory_dialog = None;
-        self.nav.exit_mode();
-    }
-
-    /// The first `Esc` on an open Unit list closes the list only.
-    pub(super) fn close_open_property_unit_select(&mut self) -> bool {
-        match self.inventory_dialog.as_mut() {
-            Some(InventoryDialog::Add(form)) => {
-                let was_open = form.unit.is_open();
-                form.unit.cancel();
-                was_open
-            }
-            Some(InventoryDialog::RemoveRoom(_, select)) => {
-                let was_open = select.is_open();
-                select.cancel();
-                was_open
-            }
-            _ => false,
-        }
+        self.open_dialog(OpenDialog::Inventory(dialog));
     }
 
     fn holdings(&self, id: u32) -> Holdings {
@@ -226,185 +189,52 @@ impl Shell {
         }
     }
 
-    /// The first problem with the open Add or Edit form.
-    fn property_problem(&self, form: &PropertyForm, own_id: Option<u32>) -> Option<Problem> {
-        let unit = self.property_unit_code(form);
-        form.problem(
-            &self.inventory,
-            own_id,
-            unit.as_deref(),
-            self.today,
-            self.settings_date_style,
-        )
-    }
-
-    /// Keys while a Property dialog is open. `Esc` never reaches here.
-    pub(super) fn handle_inventory_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        let key = keystroke.key.as_str();
-        let shift = keystroke.modifiers.shift;
-        let unit_labels = self.property_unit_labels();
-        match self.inventory_dialog.as_mut() {
-            Some(InventoryDialog::AddRoom(_, form) | InventoryDialog::EditRoom(_, form)) => {
-                match key {
-                    "enter" => self.confirm_inventory_dialog(),
-                    "backspace" => form.backspace(),
-                    "tab" => {}
-                    _ => {
-                        let Some(ch) = typed_char(keystroke) else {
-                            return false;
-                        };
-                        form.push_char(ch);
-                    }
-                }
-                true
-            }
-            Some(InventoryDialog::RemoveRoom(id, select)) => {
-                let list = room_destinations(&self.inventory, *id);
-                match key {
-                    "up" | "down" => {
-                        let delta = if key == "up" { -1 } else { 1 };
-                        if select.is_open() {
-                            select.move_highlight(&list, delta);
-                        } else {
-                            select.step(&list, delta);
-                        }
-                    }
-                    "space" if !select.is_open() => select.open(&list),
-                    "space" => select.commit(&list),
-                    "enter" if select.is_open() => select.commit(&list),
-                    "enter" => self.confirm_inventory_dialog(),
-                    _ => return false,
-                }
-                true
-            }
-            Some(InventoryDialog::RoomBlocked(_)) => {
-                if key == "enter" {
-                    self.close_inventory_dialog();
-                    return true;
-                }
-                false
-            }
-            Some(InventoryDialog::Remove(id, typed)) => {
-                let id = *id;
-                match key {
-                    "enter" => self.confirm_inventory_dialog(),
-                    "backspace" => {
-                        typed.pop();
-                    }
-                    "tab" => {}
-                    _ => {
-                        let Some(ch) = typed_char(keystroke) else {
-                            return false;
-                        };
-                        if self.holdings_need_typed_name(id)
-                            && let Some(InventoryDialog::Remove(_, typed)) =
-                                self.inventory_dialog.as_mut()
-                        {
-                            typed.push(ch);
-                        }
-                    }
-                }
-                true
-            }
-            Some(InventoryDialog::Add(form) | InventoryDialog::Edit(_, form)) => {
-                let on_unit = form.focused == PropertyField::Unit;
-                match key {
-                    "tab" => {
-                        form.unit.cancel();
-                        form.cycle_focus(shift);
-                    }
-                    "up" | "down" if on_unit => {
-                        let delta = if key == "up" { -1 } else { 1 };
-                        if form.unit.is_open() {
-                            form.unit.move_highlight(&unit_labels, delta);
-                        } else {
-                            form.unit.step(&unit_labels, delta);
-                        }
-                    }
-                    "space" if on_unit => {
-                        if form.unit.is_open() {
-                            form.unit.commit(&unit_labels);
-                        } else {
-                            form.unit.open(&unit_labels);
-                        }
-                    }
-                    "enter" if on_unit && form.unit.is_open() => form.unit.commit(&unit_labels),
-                    "enter" => self.confirm_inventory_dialog(),
-                    "backspace" => form.backspace(),
-                    _ => {
-                        let Some(ch) = typed_char(keystroke) else {
-                            return false;
-                        };
-                        form.push_char(ch);
-                    }
-                }
-                true
-            }
-            None => false,
-        }
-    }
-
     fn holdings_need_typed_name(&self, id: u32) -> bool {
         let holdings = self.holdings(id);
         holdings.rooms > 0 || holdings.items > 0
     }
 
-    /// **Add property** / **Save** / **Remove property** and `enter`: a no-op while the dialog is
-    /// not valid; otherwise applies the change, selects the Property and closes the dialog.
-    pub(super) fn confirm_inventory_dialog(&mut self) {
-        let Some(dialog) = self.inventory_dialog.clone() else {
-            return;
-        };
+    /// Applies a confirmed Inventory dialog (reached through [`Self::confirm_open_dialog`] from
+    /// **Add property** / **Save** / **Remove property** and `enter`): applies the change and
+    /// selects the Property or Room. The Room-blocked notice only closes.
+    pub(super) fn apply_inventory_dialog(&mut self, dialog: InventoryDialog) {
         match dialog {
             InventoryDialog::AddRoom(property, form) => {
-                if form.problem(&self.inventory, property, None).is_some() {
-                    return;
-                }
-                let Ok(id) = inventory::add_room(&mut self.inventory, property, &form.name) else {
+                let name = form.name.text().trim().to_string();
+                let Ok(id) = inventory::add_room(&mut self.inventory, property, &name) else {
                     return;
                 };
                 self.settings_inventory_expanded.insert(property);
                 self.settings_inventory_selected = Some(InventoryRow::Room(id));
                 self.raise_toast(
                     ToastKind::Success,
-                    crate::msg::desktop_inventory_toast_room_added(form.name.trim()),
+                    crate::msg::desktop_inventory_toast_room_added(&name),
                 );
             }
             InventoryDialog::EditRoom(id, form) => {
-                let Some((property, _)) = self.inventory.room(id) else {
-                    return;
-                };
-                if form
-                    .problem(&self.inventory, property.id, Some(id))
-                    .is_some()
-                {
-                    return;
-                }
-                if inventory::edit_room(&mut self.inventory, id, &form.name).is_err() {
+                let name = form.name.text().trim().to_string();
+                if inventory::edit_room(&mut self.inventory, id, &name).is_err() {
                     return;
                 }
                 self.settings_inventory_selected = Some(InventoryRow::Room(id));
                 self.raise_toast(
                     ToastKind::Success,
-                    crate::msg::desktop_inventory_toast_room_saved(form.name.trim()),
+                    crate::msg::desktop_inventory_toast_room_saved(&name),
                 );
             }
-            InventoryDialog::RemoveRoom(id, select) => {
+            InventoryDialog::RemoveRoom(id, form) => {
                 let Some((property, room)) = self.inventory.room(id) else {
                     return;
                 };
                 let (property_id, name) = (property.id, room.name.clone());
                 let position = property.rooms.iter().position(|r| r.id == id).unwrap_or(0);
                 let items = self.inventory.room_items(id);
-                let destination = select.value().and_then(|chosen| {
+                let destination = form.select.value().and_then(|chosen| {
                     property
                         .rooms
                         .iter()
                         .find(|r| r.id != id && r.name == chosen)
                 });
-                if items > 0 && destination.is_none() {
-                    return;
-                }
                 let destination_name = destination.map(|r| r.name.clone());
                 let destination_id = destination.map(|r| r.id);
                 if inventory::remove_room(&mut self.inventory, id, destination_id).is_err() {
@@ -439,30 +269,24 @@ impl Shell {
             }
             InventoryDialog::RoomBlocked(_) => {}
             InventoryDialog::Add(form) => {
-                if self.property_problem(&form, None).is_some() {
-                    return;
-                }
-                let Some(unit) = self.property_unit_code(&form) else {
+                let Some(unit) = form.unit_code() else {
                     return;
                 };
-                let Ok(draft) = form.draft(self.today, self.settings_date_style) else {
+                let Ok(draft) = form.draft() else {
                     return;
                 };
-                let Ok(id) = inventory::add_property(&mut self.inventory, &draft, &unit) else {
+                let Ok(id) = inventory::add_property(&mut self.inventory, &draft, unit) else {
                     return;
                 };
                 self.settings_inventory_expanded.insert(id);
                 self.settings_inventory_selected = Some(InventoryRow::Property(id));
                 self.raise_toast(
                     ToastKind::Success,
-                    crate::msg::desktop_inventory_toast_property_added(form.name.trim()),
+                    crate::msg::desktop_inventory_toast_property_added(form.name.text().trim()),
                 );
             }
             InventoryDialog::Edit(id, form) => {
-                if self.property_problem(&form, Some(id)).is_some() {
-                    return;
-                }
-                let Ok(draft) = form.draft(self.today, self.settings_date_style) else {
+                let Ok(draft) = form.draft() else {
                     return;
                 };
                 if inventory::edit_property(&mut self.inventory, id, &draft).is_err() {
@@ -471,17 +295,14 @@ impl Shell {
                 self.settings_inventory_selected = Some(InventoryRow::Property(id));
                 self.raise_toast(
                     ToastKind::Success,
-                    crate::msg::desktop_inventory_toast_property_saved(form.name.trim()),
+                    crate::msg::desktop_inventory_toast_property_saved(form.name.text().trim()),
                 );
             }
-            InventoryDialog::Remove(id, typed) => {
+            InventoryDialog::Remove(id, _) => {
                 let Some(property) = self.inventory.property(id) else {
                     return;
                 };
                 let name = property.name.clone();
-                if self.holdings_need_typed_name(id) && typed != name {
-                    return;
-                }
                 // The cursor lands on the neighbour that takes the removed row's place.
                 let position = self
                     .inventory
@@ -507,7 +328,6 @@ impl Shell {
                 );
             }
         }
-        self.close_inventory_dialog();
     }
 
     fn with_property_form(
@@ -516,7 +336,7 @@ impl Shell {
         change: impl FnOnce(&mut PropertyForm),
     ) {
         if let Some(InventoryDialog::Add(form) | InventoryDialog::Edit(_, form)) =
-            self.inventory_dialog.as_mut()
+            self.inventory_dialog_mut()
         {
             change(form);
         }
@@ -524,12 +344,12 @@ impl Shell {
     }
 
     fn handle_inventory_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_inventory_dialog();
+        self.close_dialog();
         cx.notify();
     }
 
     fn handle_inventory_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_inventory_dialog();
+        self.confirm_open_dialog();
         cx.notify();
     }
 
@@ -538,40 +358,25 @@ impl Shell {
     }
 
     fn handle_room_destination_field_click(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(InventoryDialog::RemoveRoom(id, select)) = self.inventory_dialog.as_mut() {
-            let list = room_destinations(&self.inventory, *id);
-            if select.is_open() {
-                select.cancel();
-            } else {
-                select.open(&list);
-            }
+        if let Some(InventoryDialog::RemoveRoom(_, form)) = self.inventory_dialog_mut() {
+            form.click_select();
         }
         cx.notify();
     }
 
     fn handle_room_destination_option_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        if let Some(InventoryDialog::RemoveRoom(id, select)) = self.inventory_dialog.as_mut() {
-            let list = room_destinations(&self.inventory, *id);
-            select.choose(&list, index);
+        if let Some(InventoryDialog::RemoveRoom(_, form)) = self.inventory_dialog_mut() {
+            form.choose(index);
         }
         cx.notify();
     }
 
     fn handle_property_unit_field_click(&mut self, cx: &mut Context<'_, Self>) {
-        let labels = self.property_unit_labels();
-        self.with_property_form(cx, |form| {
-            form.focus(PropertyField::Unit);
-            if form.unit.is_open() {
-                form.unit.cancel();
-            } else {
-                form.unit.open(&labels);
-            }
-        });
+        self.with_property_form(cx, PropertyForm::click_unit);
     }
 
     fn handle_property_unit_option_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        let labels = self.property_unit_labels();
-        self.with_property_form(cx, |form| form.unit.choose(&labels, index));
+        self.with_property_form(cx, |form| form.choose_unit(index));
     }
 
     /// The open dialog as an element, if any.
@@ -587,26 +392,18 @@ impl Shell {
             });
             on_click
         };
-        match self.inventory_dialog.as_ref()? {
+        match self.inventory_dialog()? {
             InventoryDialog::AddRoom(property, form) => {
                 let name = self.inventory.property(*property)?.name.clone();
-                Some(self.render_room_form(
-                    true,
-                    &name,
-                    form,
-                    form.problem(&self.inventory, *property, None),
-                    plain,
-                    cx,
-                ))
+                Some(self.render_room_form(true, &name, form, form.problem(), plain, cx))
             }
             InventoryDialog::EditRoom(id, form) => {
                 let (property, _) = self.inventory.room(*id)?;
-                let problem = form.problem(&self.inventory, property.id, Some(*id));
+                let problem = form.problem();
                 Some(self.render_room_form(false, &property.name.clone(), form, problem, plain, cx))
             }
-            InventoryDialog::RemoveRoom(id, select) => {
+            InventoryDialog::RemoveRoom(id, form) => {
                 let (_, room) = self.inventory.room(*id)?;
-                let destinations = room_destinations(&self.inventory, *id);
                 let on_option_click: crate::view::accounts::select_field::OnOptionClick = {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
@@ -619,8 +416,8 @@ impl Shell {
                     view::RoomRemoveProps {
                         name: &room.name,
                         items: self.inventory.room_items(*id),
-                        destinations: &destinations,
-                        destination: select,
+                        destinations: &form.destinations,
+                        destination: &form.select,
                         handlers: view::RoomRemoveHandlers {
                             on_field_click: plain(Shell::handle_room_destination_field_click),
                             on_option_click,
@@ -642,17 +439,17 @@ impl Shell {
                 ))
             }
             InventoryDialog::Add(form) => {
-                let problem = self.property_problem(form, None);
+                let problem = form.problem();
                 Some(self.render_property_form(entity, form, None, problem, plain, cx))
             }
             InventoryDialog::Edit(id, form) => {
                 let property = self.inventory.property(*id)?;
                 let fixed =
                     crate::msg::desktop_inventory_field_unit_fixed(&property.unit.to_uppercase());
-                let problem = self.property_problem(form, Some(*id));
+                let problem = form.problem();
                 Some(self.render_property_form(entity, form, Some(fixed), problem, plain, cx))
             }
-            InventoryDialog::Remove(id, typed) => {
+            InventoryDialog::Remove(id, form) => {
                 let property = self.inventory.property(*id)?;
                 let holdings = self.holdings(*id);
                 Some(view::render_remove(
@@ -661,7 +458,7 @@ impl Shell {
                         rooms: holdings.rooms,
                         items: holdings.items,
                         documents: holdings.documents,
-                        typed,
+                        typed: form.typed.text(),
                         handlers: view::RemoveHandlers {
                             on_cancel: plain(Shell::handle_inventory_dialog_cancel),
                             on_confirm: plain(Shell::handle_inventory_dialog_confirm),
@@ -734,12 +531,12 @@ impl Shell {
                 });
             })
         };
-        let suggestions = inventory_form::suggestions(&self.inventory, &form.insurer);
+        let suggestions = inventory_form::suggestions(&self.inventory, form.insurer.text());
         view::render_form(
             view::FormProps {
                 form,
                 fixed_unit,
-                unit_options: &self.property_unit_labels(),
+                unit_options: &form.unit_labels(),
                 suggestions: &suggestions,
                 valid: problem.is_none(),
                 problem,
