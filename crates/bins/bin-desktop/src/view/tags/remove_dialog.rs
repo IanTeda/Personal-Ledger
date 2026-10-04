@@ -34,7 +34,11 @@ pub fn render(props: RemoveTagProps<'_>, cx: &App) -> AnyElement {
     } = props;
     let mut fields = vec![warning_copy(&tag.name, transactions)];
     if transactions > 0 {
-        fields.push(confirm_input_field(&tag.name, &form.confirmation_name, cx));
+        fields.push(confirm_input_field(
+            &tag.name,
+            form.confirmation_name.text(),
+            cx,
+        ));
     }
 
     let card = div()
@@ -52,7 +56,7 @@ pub fn render(props: RemoveTagProps<'_>, cx: &App) -> AnyElement {
                 dialog::confirm_button(
                     "remove-tag-confirm",
                     crate::msg::desktop_tags_remove_submit(),
-                    form.allows(&tag.name, transactions),
+                    form.allows(),
                     false,
                     on_confirm,
                     cx,

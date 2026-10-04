@@ -25,7 +25,12 @@ use chrono::NaiveDate;
 use lib_core::{HexColor, Money};
 
 use crate::{
-    accounts::Account, select::SelectState, transaction_query::Total, transactions::Transaction,
+    accounts::Account,
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    field::TextField,
+    select::SelectState,
+    transaction_query::Total,
+    transactions::Transaction,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -422,24 +427,16 @@ impl TagField {
 /// value and a picked one can never disagree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TagForm {
-    pub name: String,
-    pub hex: String,
+    pub name: TextField,
+    pub hex: TextField,
     pub is_active: bool,
     pub focused: TagField,
     /// An Edit form, which adds the Active checkbox to the `Tab` order.
     pub editing: bool,
-}
-
-impl Default for TagForm {
-    fn default() -> Self {
-        Self {
-            name: String::new(),
-            hex: String::new(),
-            is_active: true,
-            focused: TagField::default(),
-            editing: false,
-        }
-    }
+    /// Every Tag, copied in when the Dialog opens so the name check needs nothing from `Shell`.
+    tags: Vec<Tag>,
+    /// The Tag being edited; `None` on Add.
+    own_id: Option<u32>,
 }
 
 impl TagForm {
@@ -447,22 +444,33 @@ impl TagForm {
     pub const PICKS: usize = 7;
 
     /// A fresh Add form: no name and no colour (#352: a new Tag has none).
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(tags: Vec<Tag>) -> Self {
+        Self {
+            name: TextField::default(),
+            hex: TextField::default(),
+            is_active: true,
+            focused: TagField::default(),
+            editing: false,
+            tags,
+            own_id: None,
+        }
     }
 
-    /// An Edit form pre-filled from `tag`.
-    pub fn for_edit(tag: &Tag) -> Self {
+    /// An Edit form pre-filled from `tag`; `tags` is every Tag, `tag` included.
+    pub fn for_edit(tag: &Tag, tags: Vec<Tag>) -> Self {
         Self {
-            name: tag.name.clone(),
-            hex: tag
-                .color
-                .as_ref()
-                .map(|colour| colour.as_str().to_string())
-                .unwrap_or_default(),
+            name: TextField::new(tag.name.clone()),
+            hex: TextField::new(
+                tag.color
+                    .as_ref()
+                    .map(|colour| colour.as_str().to_string())
+                    .unwrap_or_default(),
+            ),
             is_active: tag.is_active,
             focused: TagField::Name,
             editing: true,
+            tags,
+            own_id: Some(tag.id),
         }
     }
 
@@ -473,10 +481,10 @@ impl TagForm {
 
     /// The colour the hex field holds: `Ok(None)` when empty, `Err` while it isn't `#RRGGBB`.
     pub fn colour(&self) -> Result<Option<HexColor>, lib_core::HexColorError> {
-        if self.hex.trim().is_empty() {
+        if self.hex.is_blank() {
             return Ok(None);
         }
-        HexColor::parse(&self.hex).map(Some)
+        HexColor::parse(self.hex.text()).map(Some)
     }
 
     /// Whether the hex field holds something that isn't a colour.
@@ -499,10 +507,10 @@ impl TagForm {
     /// Picks "none" (0) or a preset (`1..=6`); anything else is ignored.
     pub fn pick(&mut self, index: usize) {
         match index {
-            0 => self.hex.clear(),
+            0 => self.hex = TextField::default(),
             _ => {
                 if let Some(preset) = swatches().get(index - 1) {
-                    self.hex = preset.as_str().to_string();
+                    self.hex = TextField::new(preset.as_str());
                 }
             }
         }
@@ -522,22 +530,22 @@ impl TagForm {
     /// What the dialog submits, or `None` while the hex field is invalid.
     pub fn draft(&self) -> Option<TagDraft> {
         Some(TagDraft {
-            name: self.name.clone(),
+            name: self.name.text().to_string(),
             color: self.colour().ok()?,
         })
     }
 
-    /// The name's problem, checked live against every other Tag: `own_id` is the Tag being edited.
-    /// An empty name is not reported, only kept from submitting.
-    pub fn name_error(&self, tags: &[Tag], own_id: Option<u32>) -> Option<TagError> {
-        if self.name.trim().is_empty() {
+    /// The name's problem, checked live against every other Tag. An empty name is not reported,
+    /// only kept from submitting.
+    pub fn name_error(&self) -> Option<TagError> {
+        if self.name.is_blank() {
             return None;
         }
-        name_error(tags, own_id, &self.name)
+        name_error(&self.tags, self.own_id, self.name.text())
     }
 
-    pub fn is_valid(&self, tags: &[Tag], own_id: Option<u32>) -> bool {
-        name_error(tags, own_id, &self.name).is_none() && !self.hex_invalid()
+    pub fn is_valid(&self) -> bool {
+        name_error(&self.tags, self.own_id, self.name.text()).is_none() && !self.hex_invalid()
     }
 
     pub fn focus(&mut self, field: TagField) {
@@ -563,55 +571,75 @@ impl TagForm {
         };
         self.focused = order[next];
     }
+}
 
-    /// Types `ch` into the focused text field; the swatch row takes no text.
-    pub fn push_char(&mut self, ch: char) {
-        if ch.is_control() {
-            return;
+impl Dialog for TagForm {
+    /// `Shift-Tab` goes back a field, `←`/`→` step the swatch row and `Space` toggles Active. The
+    /// swatch row and the checkbox take no text, and the hex box stops at `#` plus six digits (any
+    /// more can only be a typo).
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        match (key, self.focused) {
+            (DialogKey::BackTab, _) => self.cycle_focus(true),
+            (DialogKey::Char(' '), TagField::Active) => self.toggle_active(),
+            (DialogKey::Left, TagField::Swatches) => self.step_pick(false),
+            (DialogKey::Right, TagField::Swatches) => self.step_pick(true),
+            (DialogKey::Char(_) | DialogKey::Backspace, TagField::Swatches | TagField::Active) => {}
+            (DialogKey::Char(_), TagField::Hex) if self.hex.text().chars().count() >= 7 => {}
+            _ => return None,
         }
+        Some(DialogOutcome::Handled)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
         match self.focused {
-            TagField::Name => self.name.push(ch),
-            // `#` plus six digits is the longest colour, so anything past it can only be a typo.
-            TagField::Hex if self.hex.chars().count() < 7 => self.hex.push(ch),
-            TagField::Hex | TagField::Swatches | TagField::Active => {}
+            TagField::Name => Some(&mut self.name),
+            TagField::Hex => Some(&mut self.hex),
+            TagField::Swatches | TagField::Active => None,
         }
     }
 
-    pub fn backspace(&mut self) {
-        match self.focused {
-            TagField::Name => {
-                self.name.pop();
-            }
-            TagField::Hex => {
-                self.hex.pop();
-            }
-            TagField::Swatches | TagField::Active => {}
-        }
+    fn cycle_field(&mut self) {
+        self.cycle_focus(false);
+    }
+
+    fn is_valid(&self) -> bool {
+        TagForm::is_valid(self)
     }
 }
 
 /// The 7d Remove dialog's typed-name confirm (#353): only a used Tag asks for it, since removing
 /// an unused one loses nothing but the name.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoveTagForm {
-    pub confirmation_name: String,
+    pub confirmation_name: TextField,
+    /// The Tag's name and Transaction count, copied in when the Dialog opens.
+    name: String,
+    transactions: usize,
 }
 
 impl RemoveTagForm {
-    pub fn push_char(&mut self, ch: char) {
-        if !ch.is_control() {
-            self.confirmation_name.push(ch);
+    pub fn new(name: impl Into<String>, transactions: usize) -> Self {
+        Self {
+            confirmation_name: TextField::default(),
+            name: name.into(),
+            transactions,
         }
-    }
-
-    pub fn backspace(&mut self) {
-        self.confirmation_name.pop();
     }
 
     /// Whether **Remove tag** is live: always for an unused Tag, else once the name is typed
     /// exactly (case-sensitive, as the Payees dialog's).
-    pub fn allows(&self, name: &str, transactions: usize) -> bool {
-        transactions == 0 || self.confirmation_name == name
+    pub fn allows(&self) -> bool {
+        self.transactions == 0 || self.confirmation_name.text() == self.name
+    }
+}
+
+impl Dialog for RemoveTagForm {
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        Some(&mut self.confirmation_name)
+    }
+
+    fn is_valid(&self) -> bool {
+        self.allows()
     }
 }
 
@@ -643,6 +671,46 @@ pub enum TagsDialog {
     Merge(MergeTagsForm),
 }
 
+impl TagsDialog {
+    fn inner(&self) -> &dyn Dialog {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form,
+            Self::Remove(_, form) => form,
+            Self::Merge(form) => form,
+        }
+    }
+
+    fn inner_mut(&mut self) -> &mut dyn Dialog {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form,
+            Self::Remove(_, form) => form,
+            Self::Merge(form) => form,
+        }
+    }
+}
+
+impl Dialog for TagsDialog {
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        self.inner_mut().handle_own_key(key)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        self.inner_mut().focused_text()
+    }
+
+    fn cycle_field(&mut self) {
+        self.inner_mut().cycle_field();
+    }
+
+    fn is_valid(&self) -> bool {
+        self.inner().is_valid()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        self.inner_mut().close_open_select()
+    }
+}
+
 /// A 7e select's option: a Tag and its label, `Shared (9 txns)`. Labels are unique because names
 /// are, so the selects key their value on the label and map it back to the id here.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -666,6 +734,8 @@ pub struct MergeTagsForm {
     pub source: SelectState,
     pub target: SelectState,
     pub focused: MergeField,
+    /// Every Tag and its label in usage order, copied in when the Dialog opens.
+    options: Vec<MergeOption>,
 }
 
 fn label_of(options: &[MergeOption], id: Option<u32>) -> Option<String> {
@@ -686,7 +756,7 @@ fn id_of(options: &[MergeOption], label: Option<&str>) -> Option<u32> {
 
 impl MergeTagsForm {
     /// Opens on `source` and `target` (ignored if equal), focusing the first one still empty.
-    pub fn new(options: &[MergeOption], source: Option<u32>, target: Option<u32>) -> Self {
+    pub fn new(options: Vec<MergeOption>, source: Option<u32>, target: Option<u32>) -> Self {
         let target = target.filter(|target| Some(*target) != source);
         let focused = if source.is_some() && target.is_none() {
             MergeField::Target
@@ -694,25 +764,26 @@ impl MergeTagsForm {
             MergeField::Source
         };
         Self {
-            source: SelectState::new(label_of(options, source)),
-            target: SelectState::new(label_of(options, target)),
+            source: SelectState::new(label_of(&options, source)),
+            target: SelectState::new(label_of(&options, target)),
             focused,
+            options,
         }
     }
 
-    pub fn source_id(&self, options: &[MergeOption]) -> Option<u32> {
-        id_of(options, self.source.value())
+    pub fn source_id(&self) -> Option<u32> {
+        id_of(&self.options, self.source.value())
     }
 
-    pub fn target_id(&self, options: &[MergeOption]) -> Option<u32> {
-        id_of(options, self.target.value())
+    pub fn target_id(&self) -> Option<u32> {
+        id_of(&self.options, self.target.value())
     }
 
     /// The labels `field`'s list offers: every Tag for the source, every Tag but the source for
     /// the target.
-    pub fn labels(&self, options: &[MergeOption], field: MergeField) -> Vec<String> {
-        let source = self.source_id(options);
-        options
+    pub fn labels(&self, field: MergeField) -> Vec<String> {
+        let source = self.source_id();
+        self.options
             .iter()
             .filter(|option| field == MergeField::Source || Some(option.id) != source)
             .map(|option| option.label.clone())
@@ -720,9 +791,9 @@ impl MergeTagsForm {
     }
 
     /// Whether **Merge** is live: both chosen, and different.
-    pub fn pair(&self, options: &[MergeOption]) -> Option<(u32, u32)> {
-        let source = self.source_id(options)?;
-        let target = self.target_id(options)?;
+    pub fn pair(&self) -> Option<(u32, u32)> {
+        let source = self.source_id()?;
+        let target = self.target_id()?;
         (source != target).then_some((source, target))
     }
 
@@ -734,15 +805,15 @@ impl MergeTagsForm {
     }
 
     /// Clears the target once the source has moved onto it.
-    fn settle(&mut self, options: &[MergeOption]) {
-        if self.source_id(options).is_some() && self.source_id(options) == self.target_id(options) {
+    fn settle(&mut self) {
+        if self.source_id().is_some() && self.source_id() == self.target_id() {
             self.target = SelectState::default();
         }
     }
 
     /// Closes whichever list is open, returning whether one was (`Esc`'s first press).
-    pub fn close_open_select(&mut self) -> bool {
-        let was_open = self.source.is_open() || self.target.is_open();
+    fn close_lists(&mut self) -> bool {
+        let was_open = self.is_open();
         self.source.cancel();
         self.target.cancel();
         was_open
@@ -753,11 +824,11 @@ impl MergeTagsForm {
     }
 
     /// `Tab` / `Shift-Tab`: commits an open list's highlight and moves to the other select.
-    pub fn cycle_focus(&mut self, options: &[MergeOption]) {
+    pub fn cycle_focus(&mut self) {
         let field = self.focused;
-        let labels = self.labels(options, field);
+        let labels = self.labels(field);
         self.state_mut(field).commit(&labels);
-        self.settle(options);
+        self.settle();
         self.focused = match field {
             MergeField::Source => MergeField::Target,
             MergeField::Target => MergeField::Source,
@@ -765,40 +836,69 @@ impl MergeTagsForm {
     }
 
     /// `Up`/`Down` on the focused select: moves an open list's highlight, else steps the value.
-    pub fn step(&mut self, options: &[MergeOption], delta: isize) {
+    pub fn step(&mut self, delta: isize) {
         let field = self.focused;
-        let labels = self.labels(options, field);
+        let labels = self.labels(field);
         let state = self.state_mut(field);
         if state.is_open() {
             state.move_highlight(&labels, delta);
         } else {
             state.step(&labels, delta);
         }
-        self.settle(options);
+        self.settle();
     }
 
     /// `Space`, or a click on the closed field: opens the list, or commits the open one.
-    pub fn toggle(&mut self, options: &[MergeOption], field: MergeField) {
+    pub fn toggle(&mut self, field: MergeField) {
         if field != self.focused {
-            self.close_open_select();
+            self.close_lists();
             self.focused = field;
         }
-        let labels = self.labels(options, field);
+        let labels = self.labels(field);
         let state = self.state_mut(field);
         if state.is_open() {
             state.commit(&labels);
         } else {
             state.open(&labels);
         }
-        self.settle(options);
+        self.settle();
     }
 
     /// A click on row `index` of `field`'s open list.
-    pub fn choose(&mut self, options: &[MergeOption], field: MergeField, index: usize) {
-        let labels = self.labels(options, field);
+    pub fn choose(&mut self, field: MergeField, index: usize) {
+        let labels = self.labels(field);
         self.focused = field;
         self.state_mut(field).choose(&labels, index);
-        self.settle(options);
+        self.settle();
+    }
+}
+
+impl Dialog for MergeTagsForm {
+    /// `Tab` commits an open list and moves to the other select (`Shift-Tab` does the same, via
+    /// the shared handling), `↑`/`↓` step the value or an open list's highlight, `Space` opens or
+    /// commits the list and `Enter` commits an open list, else merges. Typing goes nowhere.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        match key {
+            DialogKey::Up => self.step(-1),
+            DialogKey::Down => self.step(1),
+            DialogKey::Char(' ') => self.toggle(self.focused),
+            DialogKey::Enter if self.is_open() => self.toggle(self.focused),
+            DialogKey::Char(_) | DialogKey::Backspace => {}
+            _ => return None,
+        }
+        Some(DialogOutcome::Handled)
+    }
+
+    fn cycle_field(&mut self) {
+        self.cycle_focus();
+    }
+
+    fn is_valid(&self) -> bool {
+        self.pair().is_some()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        self.close_lists()
     }
 }
 
@@ -819,6 +919,7 @@ mod tests {
     use lib_core::TransactionStatus;
 
     use super::*;
+    use crate::dialog_host::handle_key;
     use crate::{
         accounts::default_accounts,
         categories::default_categories,
@@ -1233,7 +1334,7 @@ mod tests {
 
     #[test]
     fn a_new_form_has_no_colour_and_picks_none() {
-        let form = TagForm::new();
+        let form = TagForm::new(default_tags());
         assert_eq!(form.colour(), Ok(None));
         assert_eq!(form.picked(), Some(0));
         assert_eq!(form.focused, TagField::Name);
@@ -1241,13 +1342,13 @@ mod tests {
 
     #[test]
     fn picking_a_swatch_fills_the_hex_field_and_none_empties_it() {
-        let mut form = TagForm::new();
+        let mut form = TagForm::new(default_tags());
         form.pick(4);
-        assert_eq!(form.hex, "#4A7C9E");
+        assert_eq!(form.hex.text(), "#4A7C9E");
         assert_eq!(form.colour(), Ok(Some(swatches()[3].clone())));
         assert_eq!(form.picked(), Some(4));
         form.pick(0);
-        assert_eq!(form.hex, "");
+        assert_eq!(form.hex.text(), "");
         assert_eq!(form.picked(), Some(0));
         form.pick(99);
         assert_eq!(form.picked(), Some(0));
@@ -1255,14 +1356,14 @@ mod tests {
 
     #[test]
     fn stepping_the_pick_stops_at_either_end_and_restarts_from_a_custom_colour() {
-        let mut form = TagForm::new();
+        let mut form = TagForm::new(default_tags());
         form.step_pick(false);
         assert_eq!(form.picked(), Some(0));
         for _ in 0..10 {
             form.step_pick(true);
         }
         assert_eq!(form.picked(), Some(TagForm::PICKS - 1));
-        form.hex = "#123456".to_string();
+        form.hex = TextField::new("#123456");
         assert_eq!(form.picked(), None);
         form.step_pick(true);
         assert_eq!(form.picked(), Some(0));
@@ -1270,24 +1371,23 @@ mod tests {
 
     #[test]
     fn a_typed_hex_is_any_colour_and_an_unfinished_one_blocks_submit() {
-        let tags = default_tags();
-        let mut form = TagForm::new();
+        let mut form = TagForm::new(default_tags());
         for ch in "camping".chars() {
-            form.push_char(ch);
+            type_char(&mut form, ch);
         }
         form.focus(TagField::Hex);
         for ch in "#12ab".chars() {
-            form.push_char(ch);
+            type_char(&mut form, ch);
         }
         assert!(form.hex_invalid());
-        assert!(!form.is_valid(&tags, None));
+        assert!(!form.is_valid());
         assert_eq!(form.draft(), None);
         for ch in "ef99".chars() {
-            form.push_char(ch);
+            type_char(&mut form, ch);
         }
         // Capped at `#` plus six digits.
-        assert_eq!(form.hex, "#12abef");
-        assert!(form.is_valid(&tags, None));
+        assert_eq!(form.hex.text(), "#12abef");
+        assert!(form.is_valid());
         assert_eq!(
             form.draft(),
             Some(TagDraft {
@@ -1295,38 +1395,34 @@ mod tests {
                 color: Some(HexColor::from_rgb(0x12, 0xab, 0xef)),
             })
         );
-        form.backspace();
+        handle_key(&mut form, DialogKey::Backspace);
         assert!(form.hex_invalid());
     }
 
     #[test]
     fn the_name_error_is_live_but_silent_while_empty() {
-        let tags = default_tags();
-        let mut form = TagForm::new();
-        assert_eq!(form.name_error(&tags, None), None);
-        assert!(!form.is_valid(&tags, None));
-        form.name = "Work Trip!".to_string();
+        let mut form = TagForm::new(default_tags());
+        assert_eq!(form.name_error(), None);
+        assert!(!form.is_valid());
+        form.name = TextField::new("Work Trip!");
         assert_eq!(
-            form.name_error(&tags, None),
+            form.name_error(),
             Some(TagError::DuplicateName("work-trip".to_string()))
         );
-        form.name = "--".to_string();
-        assert_eq!(
-            form.name_error(&tags, None),
-            Some(TagError::NoLetterOrDigit)
-        );
-        form.name = "camping".to_string();
-        assert!(form.is_valid(&tags, None));
+        form.name = TextField::new("--");
+        assert_eq!(form.name_error(), Some(TagError::NoLetterOrDigit));
+        form.name = TextField::new("camping");
+        assert!(form.is_valid());
     }
 
     #[test]
     fn tab_cycles_the_fields_and_the_swatch_row_takes_no_text() {
-        let mut form = TagForm::new();
+        let mut form = TagForm::new(default_tags());
         form.cycle_focus(false);
         assert_eq!(form.focused, TagField::Swatches);
-        form.push_char('x');
-        form.backspace();
-        assert_eq!((form.name.as_str(), form.hex.as_str()), ("", ""));
+        type_char(&mut form, 'x');
+        handle_key(&mut form, DialogKey::Backspace);
+        assert_eq!((form.name.text(), form.hex.text()), ("", ""));
         form.cycle_focus(false);
         assert_eq!(form.focused, TagField::Hex);
         form.cycle_focus(false);
@@ -1343,17 +1439,17 @@ mod tests {
             color: Some(swatches()[2].clone()),
             is_active: false,
         };
-        let mut form = TagForm::for_edit(&tag);
-        assert_eq!(form.name, "gift");
+        let mut form = TagForm::for_edit(&tag, default_tags());
+        assert_eq!(form.name.text(), "gift");
         assert_eq!(form.picked(), Some(3));
         assert!(!form.is_active);
         for _ in 0..3 {
             form.cycle_focus(false);
         }
         assert_eq!(form.focused, TagField::Active);
-        form.push_char('x');
-        form.backspace();
-        assert_eq!(form.name, "gift");
+        type_char(&mut form, 'x');
+        handle_key(&mut form, DialogKey::Backspace);
+        assert_eq!(form.name.text(), "gift");
         form.toggle_active();
         assert!(form.is_active);
         form.cycle_focus(false);
@@ -1366,33 +1462,40 @@ mod tests {
     fn an_edit_may_keep_its_own_name_but_not_take_another() {
         let tags = default_tags();
         let shared = find_by_name(&tags, "shared").unwrap();
-        let mut form = TagForm::for_edit(get(&tags, shared).unwrap());
-        assert!(form.is_valid(&tags, Some(shared)));
-        form.name = "Shared!".to_string();
-        assert!(form.is_valid(&tags, Some(shared)));
-        form.name = "GIFT".to_string();
+        let mut form = TagForm::for_edit(get(&tags, shared).unwrap(), tags.clone());
+        assert!(form.is_valid());
+        form.name = TextField::new("Shared!");
+        assert!(form.is_valid());
+        form.name = TextField::new("GIFT");
         assert_eq!(
-            form.name_error(&tags, Some(shared)),
+            form.name_error(),
             Some(TagError::DuplicateName("gift".to_string()))
         );
     }
 
     #[test]
     fn removing_an_unused_tag_needs_no_confirm_but_a_used_one_needs_its_exact_name() {
-        let mut form = RemoveTagForm::default();
-        assert!(form.allows("travel", 0));
-        assert!(!form.allows("travel", 3));
+        let mut unused = RemoveTagForm::new("travel", 0);
+        assert!(unused.allows());
+        assert!(handle_key(&mut unused, DialogKey::Enter) == DialogOutcome::Confirm);
+
+        let mut form = RemoveTagForm::new("travel", 3);
+        assert!(!form.allows());
         for ch in "Travel".chars() {
-            form.push_char(ch);
+            type_char(&mut form, ch);
         }
-        assert!(!form.allows("travel", 3));
-        form.confirmation_name.clear();
-        for ch in "travel\n".chars() {
-            form.push_char(ch);
+        assert!(!form.allows());
+        form.confirmation_name = TextField::default();
+        for ch in "travel".chars() {
+            type_char(&mut form, ch);
         }
-        assert!(form.allows("travel", 3));
-        form.backspace();
-        assert!(!form.allows("travel", 3));
+        assert!(form.allows());
+        handle_key(&mut form, DialogKey::Backspace);
+        assert!(!form.allows());
+    }
+
+    fn type_char(dialog: &mut impl Dialog, ch: char) {
+        handle_key(dialog, DialogKey::Char(ch));
     }
 
     fn merge_options_of(ids: &[u32]) -> Vec<MergeOption> {
@@ -1428,64 +1531,61 @@ mod tests {
     #[test]
     fn a_merge_form_opens_on_its_pair_and_focuses_the_first_empty_select() {
         let options = merge_options_of(&[1, 2, 3]);
-        let both = MergeTagsForm::new(&options, Some(2), Some(1));
-        assert_eq!(both.pair(&options), Some((2, 1)));
+        let both = MergeTagsForm::new(options.clone(), Some(2), Some(1));
+        assert_eq!(both.pair(), Some((2, 1)));
         assert_eq!(both.focused, MergeField::Source);
 
-        let source_only = MergeTagsForm::new(&options, Some(2), None);
-        assert_eq!(source_only.pair(&options), None);
+        let source_only = MergeTagsForm::new(options.clone(), Some(2), None);
+        assert_eq!(source_only.pair(), None);
         assert_eq!(source_only.focused, MergeField::Target);
 
-        let same = MergeTagsForm::new(&options, Some(2), Some(2));
-        assert_eq!(same.target_id(&options), None);
+        let same = MergeTagsForm::new(options.clone(), Some(2), Some(2));
+        assert_eq!(same.target_id(), None);
     }
 
     #[test]
     fn the_target_list_leaves_out_the_source() {
         let options = merge_options_of(&[1, 2, 3]);
-        let form = MergeTagsForm::new(&options, Some(2), None);
-        assert_eq!(form.labels(&options, MergeField::Source).len(), 3);
-        assert_eq!(
-            form.labels(&options, MergeField::Target),
-            ["tag 1", "tag 3"]
-        );
+        let form = MergeTagsForm::new(options.clone(), Some(2), None);
+        assert_eq!(form.labels(MergeField::Source).len(), 3);
+        assert_eq!(form.labels(MergeField::Target), ["tag 1", "tag 3"]);
     }
 
     #[test]
     fn moving_the_source_onto_the_target_clears_the_target() {
         let options = merge_options_of(&[1, 2, 3]);
-        let mut form = MergeTagsForm::new(&options, Some(1), Some(2));
-        form.step(&options, 1);
-        assert_eq!(form.source_id(&options), Some(2));
-        assert_eq!(form.target_id(&options), None);
-        assert_eq!(form.pair(&options), None);
+        let mut form = MergeTagsForm::new(options.clone(), Some(1), Some(2));
+        form.step(1);
+        assert_eq!(form.source_id(), Some(2));
+        assert_eq!(form.target_id(), None);
+        assert_eq!(form.pair(), None);
     }
 
     #[test]
     fn toggling_opens_then_commits_and_choose_picks_a_row() {
         let options = merge_options_of(&[1, 2, 3]);
-        let mut form = MergeTagsForm::new(&options, Some(1), None);
-        form.toggle(&options, MergeField::Target);
+        let mut form = MergeTagsForm::new(options.clone(), Some(1), None);
+        form.toggle(MergeField::Target);
         assert!(form.target.is_open());
-        form.step(&options, 1);
-        form.toggle(&options, MergeField::Target);
+        form.step(1);
+        form.toggle(MergeField::Target);
         assert!(!form.is_open());
-        assert_eq!(form.pair(&options), Some((1, 3)));
+        assert_eq!(form.pair(), Some((1, 3)));
 
-        form.toggle(&options, MergeField::Source);
-        form.choose(&options, MergeField::Source, 2);
-        assert_eq!(form.pair(&options), None);
-        assert_eq!(form.source_id(&options), Some(3));
+        form.toggle(MergeField::Source);
+        form.choose(MergeField::Source, 2);
+        assert_eq!(form.pair(), None);
+        assert_eq!(form.source_id(), Some(3));
     }
 
     #[test]
     fn tab_commits_the_open_list_and_moves_on() {
         let options = merge_options_of(&[1, 2, 3]);
-        let mut form = MergeTagsForm::new(&options, None, None);
-        form.toggle(&options, MergeField::Source);
-        form.cycle_focus(&options);
-        assert_eq!(form.source_id(&options), Some(1));
+        let mut form = MergeTagsForm::new(options.clone(), None, None);
+        form.toggle(MergeField::Source);
+        form.cycle_focus();
+        assert_eq!(form.source_id(), Some(1));
         assert_eq!(form.focused, MergeField::Target);
-        assert!(!form.close_open_select());
+        assert!(!Dialog::close_open_select(&mut form));
     }
 }

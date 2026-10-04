@@ -106,13 +106,13 @@ fn hex_box(
 ) -> impl IntoElement {
     let focused = form.focused == TagField::Hex;
     let caret = if focused { "\u{2502}" } else { "" };
-    let (text, text_color) = if form.hex.is_empty() {
+    let (text, text_color) = if form.hex.text().is_empty() {
         (
             format!("{}{caret}", crate::msg::desktop_tags_hex_placeholder()),
             color::faint_text(cx),
         )
     } else {
-        (format!("{}{caret}", form.hex), color::foreground(cx))
+        (format!("{}{caret}", form.hex.text()), color::foreground(cx))
     };
     let preview = form.colour().ok().flatten();
     div()

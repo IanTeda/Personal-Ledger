@@ -749,9 +749,6 @@ pub struct Shell {
     tags_selected: usize,
     /// The selected row on Settings' Tags page, by Tag id: that page lists A–Z, not by usage.
     settings_tags_selected: Option<u32>,
-    /// The currently open Tags dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
-    /// exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
-    tags_dialog: Option<tags::TagsDialog>,
     /// The Transactions view's stub dataset, newest first (`transactions::default_transactions`).
     /// A real, mutable `Vec`, like [`Self::accounts`]: saved-in-memory state that survives leaving
     /// and re-entering the page. Deleting an account deletes its transactions with it.
@@ -771,7 +768,7 @@ pub struct Shell {
     bills_filters: bill_history::BillFilters,
     bills_filter_focus: Option<(bills_view::filters::FilterField, crate::select::SelectState)>,
     /// The currently open Bills dialog, if any -- `NavState::mode` is `InputMode::Dialog` for
-    /// exactly as long as this is `Some`, following the pattern of `tags_dialog`.
+    /// exactly as long as this is `Some`, following the pattern of `bills_dialog`.
     bills_dialog: Option<bills::BillsDialog>,
     /// The selected row as a position in [`Self::transactions`] (the table shows them in this
     /// order), clamped wherever it is read. Once filters land it becomes a position in the
@@ -927,7 +924,6 @@ impl Shell {
             tags,
             tags_selected: 0,
             settings_tags_selected: None,
-            tags_dialog: None,
             transactions,
             bill_plans: bills_seed.plans,
             bill_entries: bills_seed.entries,
@@ -1306,11 +1302,6 @@ impl Shell {
                 if self.dialog.as_mut().is_some_and(Dialog::close_open_select) {
                     return true;
                 }
-                if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut()
-                    && form.close_open_select()
-                {
-                    return true;
-                }
                 if let Some(form) = self
                     .bills_dialog
                     .as_mut()
@@ -1366,7 +1357,6 @@ impl Shell {
                 }
                 self.transactions_filter_form = None;
                 self.close_dialog();
-                self.tags_dialog = None;
                 self.bills_dialog = None;
                 self.budgets_dialog = None;
                 self.budgets_plan_edit = None;
@@ -2088,9 +2078,6 @@ impl Shell {
                 }
             };
         }
-        if self.tags_dialog.is_some() {
-            return self.handle_tags_dialog_key(keystroke);
-        }
         if self.bills_dialog.is_some() {
             return self.handle_bills_dialog_key(keystroke);
         }
@@ -2133,6 +2120,7 @@ impl Shell {
             OpenDialog::Payees(dialog) => self.apply_payees_dialog(dialog),
             OpenDialog::DocumentTypes(dialog) => self.apply_document_types_dialog(dialog),
             OpenDialog::Inventory(dialog) => self.apply_inventory_dialog(dialog),
+            OpenDialog::Tags(dialog) => self.apply_tags_dialog(dialog),
         }
     }
 
@@ -2188,6 +2176,20 @@ impl Shell {
     fn document_types_dialog_mut(&mut self) -> Option<&mut DocumentTypesDialog> {
         match self.dialog.as_mut()? {
             OpenDialog::DocumentTypes(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn tags_dialog(&self) -> Option<&tags::TagsDialog> {
+        match self.dialog.as_ref()? {
+            OpenDialog::Tags(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn tags_dialog_mut(&mut self) -> Option<&mut tags::TagsDialog> {
+        match self.dialog.as_mut()? {
+            OpenDialog::Tags(dialog) => Some(dialog),
             _ => None,
         }
     }
@@ -6495,104 +6497,50 @@ impl Shell {
     }
 
     fn open_add_tag_dialog(&mut self) {
-        self.tags_dialog = Some(tags::TagsDialog::Add(tags::TagForm::new()));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = tags::TagForm::new(self.tags.clone());
+        self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Add(form)));
     }
 
     /// The form behind the open Add or Edit tag dialog, if that is what's open.
     fn tag_form_mut(&mut self) -> Option<&mut tags::TagForm> {
-        match self.tags_dialog.as_mut() {
+        match self.tags_dialog_mut() {
             Some(tags::TagsDialog::Add(form) | tags::TagsDialog::Edit(_, form)) => Some(form),
             _ => None,
         }
     }
 
-    /// Keys while the Add or Edit tag dialog is open: `tab` moves between Name, the swatch row, the
-    /// hex box and (Edit only) Active, `←`/`→` step the swatch row, `space` toggles Active, and
-    /// `enter` submits from anywhere. `Esc` never reaches here.
-    fn handle_tags_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        if matches!(self.tags_dialog, Some(tags::TagsDialog::Merge(_))) {
-            return self.handle_merge_tags_key(keystroke);
-        }
-        if let Some(tags::TagsDialog::Remove(_, form)) = self.tags_dialog.as_mut() {
-            match keystroke.key.as_str() {
-                "enter" => self.confirm_remove_tag_dialog(),
-                "backspace" => form.backspace(),
-                _ => {
-                    let modifiers = &keystroke.modifiers;
-                    if modifiers.control
-                        || modifiers.alt
-                        || modifiers.platform
-                        || modifiers.function
-                    {
-                        return false;
-                    }
-                    if let Some(text) = keystroke.key_char.as_deref()
-                        && text.chars().count() == 1
-                        && let Some(ch) = text.chars().next()
-                    {
-                        form.push_char(ch);
-                    }
+    /// Applies a confirmed Tags dialog (`Enter` and the confirm button): adds or saves the Tag
+    /// and selects it, removes it, or merges it into another, toasting the last two.
+    fn apply_tags_dialog(&mut self, dialog: tags::TagsDialog) {
+        match dialog {
+            tags::TagsDialog::Add(form) => {
+                let Some(draft) = form.draft() else {
+                    return;
+                };
+                // `is_valid` ran the same name check, so a refusal can only leave the dialog open.
+                match tags::insert_tag(&mut self.tags, &draft) {
+                    Ok(id) => self.select_tag(id),
+                    Err(_) => self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Add(form))),
                 }
             }
-            return true;
-        }
-        let Some(form) = self.tag_form_mut() else {
-            return false;
-        };
-        let modifiers = &keystroke.modifiers;
-        let on_swatches = form.focused == tags::TagField::Swatches;
-        let on_active = form.focused == tags::TagField::Active;
-        match keystroke.key.as_str() {
-            "tab" => form.cycle_focus(modifiers.shift),
-            "space" if on_active => form.toggle_active(),
-            "left" if on_swatches => form.step_pick(false),
-            "right" if on_swatches => form.step_pick(true),
-            "enter" => self.confirm_tags_dialog(),
-            "backspace" => form.backspace(),
-            _ => {
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
+            tags::TagsDialog::Edit(id, form) => {
+                let Some(draft) = form.draft() else {
+                    return;
+                };
+                let saved = tags::edit_tag(&mut self.tags, id, &draft)
+                    .and_then(|()| tags::set_active(&mut self.tags, id, form.is_active));
+                match saved {
+                    Ok(()) => self.select_tag(id),
+                    Err(_) => self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Edit(id, form))),
                 }
-                if let Some(text) = keystroke.key_char.as_deref()
-                    && text.chars().count() == 1
-                    && let Some(ch) = text.chars().next()
-                {
-                    form.push_char(ch);
+            }
+            tags::TagsDialog::Remove(id, _) => self.apply_remove_tag(id),
+            tags::TagsDialog::Merge(form) => {
+                if let Some((source, target)) = form.pair() {
+                    self.apply_merge_tags(source, target);
                 }
             }
         }
-        true
-    }
-
-    /// **Add tag** / **Save** and `enter`: adds or saves the Tag and selects it, closing the
-    /// dialog. A no-op while the name or the hex box is invalid.
-    fn confirm_tags_dialog(&mut self) {
-        let (own_id, form) = match self.tags_dialog.as_ref() {
-            Some(tags::TagsDialog::Add(form)) => (None, form),
-            Some(tags::TagsDialog::Edit(id, form)) => (Some(*id), form),
-            _ => return,
-        };
-        if !form.is_valid(&self.tags, own_id) {
-            return;
-        }
-        let Some(draft) = form.draft() else {
-            return;
-        };
-        let is_active = form.is_active;
-        // `is_valid` ran the same name check, so a refusal here can only leave the dialog open.
-        let saved = match own_id {
-            None => tags::insert_tag(&mut self.tags, &draft),
-            Some(id) => tags::edit_tag(&mut self.tags, id, &draft)
-                .and_then(|()| tags::set_active(&mut self.tags, id, is_active))
-                .map(|()| id),
-        };
-        let Ok(id) = saved else {
-            return;
-        };
-        self.tags_dialog = None;
-        self.nav.exit_mode();
-        self.select_tag(id);
     }
 
     fn handle_tags_dialog_field_click(
@@ -6622,19 +6570,12 @@ impl Shell {
     }
 
     fn handle_tags_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.tags_dialog = None;
-        self.nav.exit_mode();
+        self.close_dialog();
         cx.notify();
     }
 
     fn handle_tags_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        if matches!(self.tags_dialog, Some(tags::TagsDialog::Remove(..))) {
-            self.confirm_remove_tag_dialog();
-        } else if matches!(self.tags_dialog, Some(tags::TagsDialog::Merge(_))) {
-            self.confirm_merge_tags_dialog();
-        } else {
-            self.confirm_tags_dialog();
-        }
+        self.confirm_open_dialog();
         cx.notify();
     }
 
@@ -6642,33 +6583,25 @@ impl Shell {
         let Some(tag) = tags::get(&self.tags, id) else {
             return;
         };
-        self.tags_dialog = Some(tags::TagsDialog::Edit(id, tags::TagForm::for_edit(tag)));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = tags::TagForm::for_edit(tag, self.tags.clone());
+        self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Edit(id, form)));
     }
 
     fn open_remove_tag_dialog(&mut self, id: u32) {
-        if tags::get(&self.tags, id).is_none() {
-            return;
-        }
-        self.tags_dialog = Some(tags::TagsDialog::Remove(id, tags::RemoveTagForm::default()));
-        self.nav.enter_mode(InputMode::Dialog);
-    }
-
-    /// **Remove tag** and `enter`: a no-op until a used Tag's name is typed, then untags every
-    /// Split, deletes the Tag, toasts it and closes the dialog. The selection keeps its position,
-    /// so it lands on the next Tag in usage order (or the new last one).
-    fn confirm_remove_tag_dialog(&mut self) {
-        let Some(tags::TagsDialog::Remove(id, form)) = self.tags_dialog.as_ref() else {
-            return;
-        };
-        let id = *id;
         let Some(tag) = tags::get(&self.tags, id) else {
             return;
         };
-        if !form.allows(&tag.name, tags::transaction_count(&self.transactions, id)) {
+        let form =
+            tags::RemoveTagForm::new(&tag.name, tags::transaction_count(&self.transactions, id));
+        self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Remove(id, form)));
+    }
+
+    /// Untags every Split, deletes the Tag and toasts it. The selection keeps its position, so it
+    /// lands on the next Tag in usage order (or the new last one).
+    fn apply_remove_tag(&mut self, id: u32) {
+        let Some(name) = tags::get(&self.tags, id).map(|tag| tag.name.clone()) else {
             return;
-        }
-        let name = tag.name.clone();
+        };
         let (kind, text) = match tags::remove_tag(&mut self.tags, &mut self.transactions, id) {
             Ok(()) => (
                 ToastKind::Success,
@@ -6683,8 +6616,6 @@ impl Shell {
             ),
         };
         self.raise_toast(kind, text);
-        self.tags_dialog = None;
-        self.nav.exit_mode();
         self.tags_selected = self.tags_selected.min(self.tags.len().saturating_sub(1));
     }
 
@@ -6701,49 +6632,13 @@ impl Shell {
     fn open_merge_tags_dialog(&mut self, source: Option<u32>) {
         let groups = tags::duplicate_groups(&self.tags, &self.transactions);
         let target = source.and_then(|id| tags::duplicate_of(&groups, id));
-        let options = self.merge_tag_options();
-        self.tags_dialog = Some(tags::TagsDialog::Merge(tags::MergeTagsForm::new(
-            &options, source, target,
-        )));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = tags::MergeTagsForm::new(self.merge_tag_options(), source, target);
+        self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Merge(form)));
     }
 
-    /// Keys while 7e is open: `tab` commits an open list and moves to the other select, `↑`/`↓`
-    /// step the value (or an open list's highlight), `space` opens or commits the list, and
-    /// `enter` commits an open list or else merges. `Esc` never reaches here.
-    fn handle_merge_tags_key(&mut self, keystroke: &Keystroke) -> bool {
-        let options = self.merge_tag_options();
-        let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut() else {
-            return false;
-        };
-        match keystroke.key.as_str() {
-            "tab" => form.cycle_focus(&options),
-            "up" => form.step(&options, -1),
-            "down" => form.step(&options, 1),
-            "space" => form.toggle(&options, form.focused),
-            "enter" if form.is_open() => form.toggle(&options, form.focused),
-            "enter" => self.confirm_merge_tags_dialog(),
-            _ => {
-                let modifiers = &keystroke.modifiers;
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-            }
-        }
-        true
-    }
-
-    /// **Merge into "…"** and `enter`: a no-op until both Tags are chosen, then retags the
-    /// source's Splits with the target, deletes the source, toasts it, closes the dialog and
-    /// selects the target.
-    fn confirm_merge_tags_dialog(&mut self) {
-        let options = self.merge_tag_options();
-        let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_ref() else {
-            return;
-        };
-        let Some((source, target)) = form.pair(&options) else {
-            return;
-        };
+    /// Retags the source's Splits with the target, deletes the source, toasts it and selects the
+    /// target.
+    fn apply_merge_tags(&mut self, source: u32, target: u32) {
         let (Some(source_name), Some(target_name)) = (
             tags::get(&self.tags, source).map(|tag| tag.name.clone()),
             tags::get(&self.tags, target).map(|tag| tag.name.clone()),
@@ -6770,8 +6665,6 @@ impl Shell {
                 ),
             };
         self.raise_toast(kind, text);
-        self.tags_dialog = None;
-        self.nav.exit_mode();
         self.select_tag(target);
     }
 
@@ -6780,9 +6673,8 @@ impl Shell {
         field: tags::MergeField,
         cx: &mut Context<'_, Self>,
     ) {
-        let options = self.merge_tag_options();
-        if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut() {
-            form.toggle(&options, field);
+        if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
+            form.toggle(field);
         }
         cx.notify();
     }
@@ -6793,9 +6685,8 @@ impl Shell {
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        let options = self.merge_tag_options();
-        if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog.as_mut() {
-            form.choose(&options, field, index);
+        if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
+            form.choose(field, index);
         }
         cx.notify();
     }
@@ -9589,7 +9480,7 @@ impl Render for Shell {
                 ),
             }),
             Noun::Settings if self.settings_tags_page_has_focus() => Some(PageStatus {
-                hints: match self.tags_dialog {
+                hints: match self.tags_dialog() {
                     Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
                     Some(tags::TagsDialog::Edit(..)) => tag_dialog_hints(true),
                     Some(tags::TagsDialog::Remove(..)) => confirm_dialog_hints(),
@@ -10035,11 +9926,11 @@ impl Render for Shell {
             })
             .children(self.render_document_types_dialog(&entity, cx))
             .children(self.render_inventory_dialog(&entity, cx))
-            .children(match self.tags_dialog.as_ref() {
+            .children(match self.tags_dialog() {
                 Some(tags::TagsDialog::Add(form)) => Some(tags_view::add_dialog::render(
                     form,
-                    form.name_error(&self.tags, None),
-                    form.is_valid(&self.tags, None),
+                    form.name_error(),
+                    form.is_valid(),
                     tags_dialog_handlers,
                     cx,
                 )),
@@ -10048,8 +9939,8 @@ impl Render for Shell {
                         tags_view::edit_dialog::EditTagProps {
                             original_name: &tag.name,
                             form,
-                            name_error: form.name_error(&self.tags, Some(*id)),
-                            valid: form.is_valid(&self.tags, Some(*id)),
+                            name_error: form.name_error(),
+                            valid: form.is_valid(),
                             transactions: tags::transaction_count(&self.transactions, *id),
                             on_toggle_active: tag_plain(Shell::handle_tags_dialog_toggle_active),
                         },
@@ -10070,8 +9961,7 @@ impl Render for Shell {
                     )
                 }),
                 Some(tags::TagsDialog::Merge(form)) => {
-                    let options = self.merge_tag_options();
-                    let source = form.source_id(&options);
+                    let source = form.source_id();
                     let entity = entity.clone();
                     let on_field_click: tags_view::merge_dialog::OnFieldClick = {
                         let entity = entity.clone();
@@ -10090,11 +9980,8 @@ impl Render for Shell {
                     Some(tags_view::merge_dialog::render(
                         tags_view::merge_dialog::MergeTagsProps {
                             form,
-                            options: &options,
                             source: source.and_then(|id| tags::get(&self.tags, id)),
-                            target: form
-                                .target_id(&options)
-                                .and_then(|id| tags::get(&self.tags, id)),
+                            target: form.target_id().and_then(|id| tags::get(&self.tags, id)),
                             transactions: source
                                 .map_or(0, |id| tags::transaction_count(&self.transactions, id)),
                             on_field_click,

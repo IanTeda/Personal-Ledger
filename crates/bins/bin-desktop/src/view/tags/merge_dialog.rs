@@ -12,7 +12,7 @@ use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
 use crate::{
     dialog,
-    tags::{MergeField, MergeOption, MergeTagsForm, Tag},
+    tags::{MergeField, MergeTagsForm, Tag},
     theme::color,
     view::accounts::select_field::{self, SelectFieldProps},
 };
@@ -25,7 +25,6 @@ pub type OnOptionClick = Rc<dyn Fn(MergeField, usize, &mut Window, &mut App)>;
 
 pub struct MergeTagsProps<'a> {
     pub form: &'a MergeTagsForm,
-    pub options: &'a [MergeOption],
     /// The chosen source and target Tags, once each is chosen.
     pub source: Option<&'a Tag>,
     pub target: Option<&'a Tag>,
@@ -40,7 +39,6 @@ pub struct MergeTagsProps<'a> {
 pub fn render(props: MergeTagsProps<'_>, cx: &App) -> AnyElement {
     let MergeTagsProps {
         form,
-        options,
         source,
         target,
         transactions,
@@ -49,8 +47,8 @@ pub fn render(props: MergeTagsProps<'_>, cx: &App) -> AnyElement {
         on_cancel,
         on_confirm,
     } = props;
-    let source_labels = form.labels(options, MergeField::Source);
-    let target_labels = form.labels(options, MergeField::Target);
+    let source_labels = form.labels(MergeField::Source);
+    let target_labels = form.labels(MergeField::Target);
     let field_click = |field: MergeField| -> dialog::OnClick {
         let on_field_click = on_field_click.clone();
         Rc::new(move |window: &mut Window, cx: &mut App| on_field_click(field, window, cx))

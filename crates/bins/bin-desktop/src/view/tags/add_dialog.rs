@@ -56,7 +56,7 @@ pub fn render(
                 .child(text_field(
                     "add-tag-name",
                     label(lib_locale::msg::column_name()),
-                    &form.name,
+                    form.name.text(),
                     &crate::msg::desktop_tags_name_placeholder(),
                     form.focused == TagField::Name,
                     click(TagField::Name),

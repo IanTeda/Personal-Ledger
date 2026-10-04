@@ -56,7 +56,7 @@ pub fn render(props: EditTagProps<'_>, handlers: TagDialogHandlers, cx: &App) ->
                 .child(text_field(
                     "edit-tag-name",
                     label(lib_locale::msg::column_name()),
-                    &form.name,
+                    form.name.text(),
                     &crate::msg::desktop_tags_name_placeholder(),
                     form.focused == TagField::Name,
                     click(TagField::Name),

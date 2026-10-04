@@ -237,16 +237,17 @@ impl Shell {
             dialog = Some(label);
             dialog_name = name;
             dialog_confirm = confirm;
-        } else if let Some(open) = self.tags_dialog.as_ref() {
+        } else if let Some(open) = self.tags_dialog() {
             let (label, name, confirm) = match open {
-                TagsDialog::Add(form) => ("AddTag", Some(form.name.clone()), None),
-                TagsDialog::Edit(_, form) => ("EditTag", Some(form.name.clone()), None),
-                TagsDialog::Remove(_, form) => {
-                    ("RemoveTag", None, Some(form.confirmation_name.clone()))
-                }
+                TagsDialog::Add(form) => ("AddTag", Some(form.name.text().to_string()), None),
+                TagsDialog::Edit(_, form) => ("EditTag", Some(form.name.text().to_string()), None),
+                TagsDialog::Remove(_, form) => (
+                    "RemoveTag",
+                    None,
+                    Some(form.confirmation_name.text().to_string()),
+                ),
                 TagsDialog::Merge(form) => {
-                    let options = self.merge_tag_options();
-                    merge_pair = form.pair(&options).and_then(|(source, target)| {
+                    merge_pair = form.pair().and_then(|(source, target)| {
                         Some((
                             tags::get(&self.tags, source)?.name.clone(),
                             tags::get(&self.tags, target)?.name.clone(),
