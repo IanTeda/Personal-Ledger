@@ -78,7 +78,7 @@ use crate::{
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
-    dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog},
+    dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog, ToastHistoryDialog},
     document_types::{self, DocumentTypeRow, DocumentTypesDialog},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
@@ -593,8 +593,6 @@ pub struct Shell {
     dismiss_toasts_binding: String,
     /// The `[keybindings] toast_history` spec; unbound by default.
     toast_history_binding: Option<String>,
-    /// The session Toast history is open (in `InputMode::Dialog`). Showing Toasts hide behind it.
-    toast_history_open: bool,
     /// Debug builds only: the Kind `F9` raises next, so each can be eyeballed.
     #[cfg(debug_assertions)]
     debug_toast_kind: usize,
@@ -853,7 +851,6 @@ impl Shell {
             toasts_hovered: false,
             dismiss_toasts_binding: key_router::DEFAULT_DISMISS_TOASTS.to_string(),
             toast_history_binding: None,
-            toast_history_open: false,
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
             palette: None,
@@ -988,8 +985,7 @@ impl Shell {
     /// Opens the session Toast history as a modal, which pauses the Toast timers.
     fn open_toast_history(&mut self) {
         self.palette = None;
-        self.toast_history_open = true;
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_dialog(OpenDialog::ToastHistory(ToastHistoryDialog));
     }
 
     /// Sets the Client-scoped Toasts Preference (ADR-0027), held in memory like the Colour Theme
@@ -1311,7 +1307,6 @@ impl Shell {
                 self.transactions_filter_form = None;
                 self.close_dialog();
                 self.budgets_plan_edit = None;
-                self.toast_history_open = false;
                 // `Esc` while searching Transactions clears the search text as well as leaving the
                 // mode (the map's decision: search is cleared by `Esc` or by emptying the box).
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Transactions {
@@ -2014,10 +2009,6 @@ impl Shell {
     /// This tier returns before `route_key`'s `Tab` tier is ever checked, so the shell-wide zones
     /// stay untouched while a dialog is up.
     fn handle_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        // Read-only: `Esc` (handled before this) is its only key; the list scrolls by pointer.
-        if self.toast_history_open {
-            return false;
-        }
         if let Some(dialog) = self.dialog.as_mut() {
             return match dialog_host::handle_key(dialog, dialog_key(keystroke)) {
                 DialogOutcome::Ignored => false,
@@ -2065,6 +2056,8 @@ impl Shell {
             OpenDialog::Bills(dialog) => self.apply_bills_dialog(*dialog),
             OpenDialog::Budgets(dialog) => self.apply_budgets_dialog(*dialog),
             OpenDialog::Documents(dialog) => self.apply_documents_dialog(dialog),
+            // Read-only: it has nothing to apply.
+            OpenDialog::ToastHistory(_) => {}
         }
     }
 
@@ -2176,6 +2169,10 @@ impl Shell {
             BudgetsDialog::Fill { month, source } => self.apply_budgets_fill(month, source),
             BudgetsDialog::Stop(form) => self.apply_budgets_stop(form),
         }
+    }
+
+    fn toast_history_open(&self) -> bool {
+        matches!(self.dialog, Some(OpenDialog::ToastHistory(_)))
     }
 
     fn budgets_dialog(&self) -> Option<&budgets::BudgetsDialog> {
@@ -7899,7 +7896,8 @@ impl Render for Shell {
             })
         };
         // Hidden while the history is open, which lists them in full.
-        let toast_layer = if self.toast_history_open {
+        let toast_history_open = self.toast_history_open();
+        let toast_layer = if toast_history_open {
             None
         } else {
             crate::toast::render(&self.toasts, on_toast_dismiss, on_toast_hover, cx)
@@ -7908,8 +7906,7 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.toast_history_open = false;
-                    shell.nav.exit_mode();
+                    shell.close_dialog();
                     cx.notify();
                 });
             })
@@ -9307,7 +9304,7 @@ impl Render for Shell {
                 .toast_echo(
                     self.toasts
                         .echo()
-                        .filter(|_| !self.toast_history_open)
+                        .filter(|_| !toast_history_open)
                         .map(|toast| (toast.kind(), toast.text().to_string())),
                 )
                 .page(page_status)
@@ -9334,7 +9331,7 @@ impl Render for Shell {
                 sheet.extend(self.documents_cheat_sheet());
                 help_view::render(on_help_close, sheet, cx)
             }))
-            .children(self.toast_history_open.then(|| {
+            .children(toast_history_open.then(|| {
                 toast_history_view::render(self.toasts.history(), on_toast_history_close, cx)
             }))
             .children(self.render_documents_dialog(&entity, cx))

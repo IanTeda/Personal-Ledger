@@ -84,6 +84,18 @@ pub trait Dialog {
     }
 }
 
+/// The session Toast history: read-only, so it takes no key but `Esc`, which the router turns
+/// into closing it. Showing Toasts hide behind it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToastHistoryDialog;
+
+impl Dialog for ToastHistoryDialog {
+    /// The list scrolls by pointer, so every key is left to the shell.
+    fn handle_own_key(&mut self, _key: DialogKey) -> Option<DialogOutcome> {
+        Some(DialogOutcome::Ignored)
+    }
+}
+
 /// The open Dialog, one variant per feature.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
@@ -99,6 +111,7 @@ pub enum OpenDialog {
     /// Boxed: its forms carry their select choices.
     Budgets(Box<BudgetsDialog>),
     Documents(DocumentsDialog),
+    ToastHistory(ToastHistoryDialog),
 }
 
 impl OpenDialog {
@@ -114,6 +127,7 @@ impl OpenDialog {
             Self::Bills(dialog) => &**dialog,
             Self::Budgets(dialog) => &**dialog,
             Self::Documents(dialog) => dialog,
+            Self::ToastHistory(dialog) => dialog,
         }
     }
 
@@ -129,6 +143,7 @@ impl OpenDialog {
             Self::Bills(dialog) => &mut **dialog,
             Self::Budgets(dialog) => &mut **dialog,
             Self::Documents(dialog) => dialog,
+            Self::ToastHistory(dialog) => dialog,
         }
     }
 }
@@ -1923,5 +1938,21 @@ mod tests {
             DialogOutcome::Ignored
         );
         assert_eq!(picker_of(&dialog).doc_type, None);
+    }
+
+    #[test]
+    fn toast_history_ignores_every_key_and_confirms_nothing_by_typing() {
+        let mut dialog = OpenDialog::ToastHistory(ToastHistoryDialog);
+        for key in [
+            DialogKey::Char('x'),
+            DialogKey::Backspace,
+            DialogKey::Tab,
+            DialogKey::BackTab,
+            DialogKey::Enter,
+            DialogKey::Down,
+        ] {
+            assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Ignored);
+        }
+        assert!(!dialog.close_open_select(), "the first Esc closes it");
     }
 }

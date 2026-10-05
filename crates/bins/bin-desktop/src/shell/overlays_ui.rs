@@ -82,7 +82,7 @@ impl Shell {
                     count: entry.count(),
                 })
                 .collect(),
-            history_open: self.toast_history_open,
+            history_open: self.toast_history_open(),
             on: self.toasts.display().toasts_on,
         }
     }
