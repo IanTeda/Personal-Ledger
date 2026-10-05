@@ -15,9 +15,6 @@
 //!
 //! Drawing stays in `crate::dialog` (the chrome) and each feature's view; `Shell::render` matches
 //! on the [`OpenDialog`] variant to draw it.
-//!
-//! Dialogs move into this slot one feature at a time; until they all have, the rest still live in
-//! their own `Shell::*_dialog` fields.
 
 use crate::{
     accounts::AccountsDialog, bills::BillsDialog, budgets::BudgetsDialog,

@@ -662,8 +662,7 @@ pub struct Shell {
     settings_price_sources: Vec<PriceSourceRow>,
     /// The open Dialog in the Dialog host (`crate::dialog_host`), if any. Only
     /// [`Self::open_dialog`]/[`Self::close_dialog`] change it, so `NavState::mode` is
-    /// `InputMode::Dialog` for exactly as long as this is `Some`. The Settings dialogs live here;
-    /// the other features' dialogs still have their own `*_dialog` fields until they move in.
+    /// `InputMode::Dialog` for exactly as long as this is `Some`. Every feature's Dialog lives here.
     dialog: Option<OpenDialog>,
     /// The Institutions section's own table rows (issue #178), seeded from
     /// `settings::default_institutions()` -- same reasoning as [`Self::settings_units`].
@@ -718,8 +717,6 @@ pub struct Shell {
     categories_selected_id: Option<u32>,
     /// Which category nodes are expanded in the tree view.
     categories_expanded: Vec<u32>,
-    /// The currently open Categories dialog, if any -- `NavState::mode` is `InputMode::Dialog`
-    /// for exactly as long as this is `Some`, following the pattern of `accounts_dialog`.
     payees: Vec<Payee>,
     /// The selected row on the Payees page.
     payees_selected: usize,
