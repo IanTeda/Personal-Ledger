@@ -81,7 +81,6 @@ use crate::{
     dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog},
     document_types::{self, DocumentTypeRow, DocumentTypesDialog},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
-    documents_form::DocumentsDialog,
     explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
     field::TextField,
     format,
@@ -799,8 +798,6 @@ pub struct Shell {
     documents_inbox_selected: usize,
     /// The last filing action as a unit, for `u`. Session-only; a new filing action replaces it.
     documents_undo: Option<documents::FilingUndo>,
-    /// The open Documents dialog -- `NavState::mode` is `InputMode::Dialog` while it is `Some`.
-    documents_dialog: Option<DocumentsDialog>,
     /// A file to hand to the OS, taken by the key-down listener, which has the `App` it needs.
     pending_file_action: Option<documents_ui::FileAction>,
 }
@@ -941,7 +938,6 @@ impl Shell {
             documents_scroll: documents_ui::new_scroll(),
             documents_inbox_selected: 0,
             documents_undo: None,
-            documents_dialog: None,
             pending_file_action: None,
         }
     }
@@ -1301,9 +1297,6 @@ impl Shell {
                     }
                     return true;
                 }
-                if self.documents_dialog_close_select() {
-                    return true;
-                }
                 self.palette = None;
                 self.file_explorer = None;
                 // The README's own Dialog lifecycle table: "`esc` closes any dialog without
@@ -1318,7 +1311,6 @@ impl Shell {
                 self.transactions_filter_form = None;
                 self.close_dialog();
                 self.budgets_plan_edit = None;
-                self.documents_dialog = None;
                 self.toast_history_open = false;
                 // `Esc` while searching Transactions clears the search text as well as leaving the
                 // mode (the map's decision: search is cleared by `Esc` or by emptying the box).
@@ -2036,9 +2028,6 @@ impl Shell {
                 }
             };
         }
-        if self.documents_dialog.is_some() {
-            return self.handle_documents_dialog_key(keystroke);
-        }
         false
     }
 
@@ -2075,6 +2064,7 @@ impl Shell {
             OpenDialog::Tags(dialog) => self.apply_tags_dialog(dialog),
             OpenDialog::Bills(dialog) => self.apply_bills_dialog(*dialog),
             OpenDialog::Budgets(dialog) => self.apply_budgets_dialog(*dialog),
+            OpenDialog::Documents(dialog) => self.apply_documents_dialog(dialog),
         }
     }
 
@@ -10001,12 +9991,27 @@ fn dialog_key(keystroke: &Keystroke) -> DialogKey {
         "backspace" => DialogKey::Backspace,
         "tab" if keystroke.modifiers.shift => DialogKey::BackTab,
         "tab" => DialogKey::Tab,
+        "enter" if keystroke.modifiers.control => DialogKey::CtrlEnter,
         "enter" => DialogKey::Enter,
         "up" => DialogKey::Up,
         "down" => DialogKey::Down,
         "left" => DialogKey::Left,
         "right" => DialogKey::Right,
-        _ => typed_char(keystroke).map_or(DialogKey::Other, DialogKey::Char),
+        key => {
+            let modifiers = &keystroke.modifiers;
+            let mut chars = key.chars();
+            match (chars.next(), chars.next()) {
+                (Some(ch), None)
+                    if modifiers.control
+                        && !modifiers.alt
+                        && !modifiers.platform
+                        && !modifiers.function =>
+                {
+                    DialogKey::Ctrl(ch)
+                }
+                _ => typed_char(keystroke).map_or(DialogKey::Other, DialogKey::Char),
+            }
+        }
     }
 }
 

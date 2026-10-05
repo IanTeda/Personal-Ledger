@@ -10,7 +10,9 @@ use chrono::NaiveDate;
 use lib_locale::format::format_date;
 
 use crate::{
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
     documents::{DocumentLink, DocumentType},
+    field::TextField,
     format,
     transactions::Transaction,
     view::documents::model::Lookups,
@@ -94,7 +96,7 @@ impl Purpose {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PickerState {
     pub purpose: Purpose,
-    pub query: String,
+    pub query: TextField,
     pub kind: KindFilter,
     pub selected: usize,
     /// The Inbox's Document Type select, prefilled from the Extracted Facts. `None` until chosen
@@ -103,28 +105,40 @@ pub struct PickerState {
     /// The date Transactions are ranked against: the document date in the Library, the extracted
     /// date in the Inbox.
     pub anchor: NaiveDate,
+    /// The Document Types in Settings order, copied in as the Dialog opens for the Inbox select.
+    type_ids: Vec<DocumentType>,
+    /// What the last key asked `Shell` to do with the live rows, which a Dialog cannot see.
+    pub request: Option<PickerRequest>,
+}
+
+/// What a picker key asks `Shell` to do once it confirms: the rows come from the ledger, so only
+/// `Shell` can say how many there are or what the highlighted one is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PickerRequest {
+    /// `enter`: act on the highlighted row.
+    Pick,
+    /// `↓`/`↑` (and `ctrl+n`/`ctrl+p`): move the highlight, clamped to the rows.
+    Step { down: bool },
 }
 
 impl PickerState {
     pub fn new(purpose: Purpose, anchor: NaiveDate, doc_type: Option<DocumentType>) -> Self {
         Self {
             purpose,
-            query: String::new(),
+            query: TextField::default(),
             kind: KindFilter::All,
             selected: 0,
             doc_type,
             anchor,
+            type_ids: Vec::new(),
+            request: None,
         }
     }
 
-    pub fn push_char(&mut self, ch: char) {
-        self.query.push(ch);
-        self.selected = 0;
-    }
-
-    pub fn backspace(&mut self) {
-        self.query.pop();
-        self.selected = 0;
+    /// The Document Types the Inbox's select steps through.
+    pub fn with_types(mut self, type_ids: Vec<DocumentType>) -> Self {
+        self.type_ids = type_ids;
+        self
     }
 
     pub fn cycle_kind(&mut self) {
@@ -156,6 +170,47 @@ impl PickerState {
             (Some(at), false) => (at + all.len() - 1) % all.len(),
         };
         self.doc_type = Some(all[next]);
+    }
+}
+
+impl Dialog for PickerState {
+    /// Typing goes to the query, `tab` cycles the kind filter and, in the Inbox, `←`/`→` step the
+    /// Document Type select. `↑`/`↓`, `ctrl+n`/`ctrl+p` and `enter` need the live rows, so they
+    /// ask `Shell` through [`PickerRequest`].
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        let request = match key {
+            DialogKey::Enter => PickerRequest::Pick,
+            DialogKey::Down | DialogKey::Ctrl('n') => PickerRequest::Step { down: true },
+            DialogKey::Up | DialogKey::Ctrl('p') => PickerRequest::Step { down: false },
+            DialogKey::Tab | DialogKey::BackTab => {
+                self.kind = self.kind.next();
+                self.selected = 0;
+                return Some(DialogOutcome::Handled);
+            }
+            DialogKey::Left | DialogKey::Right if matches!(self.purpose, Purpose::File(_)) => {
+                let ids = std::mem::take(&mut self.type_ids);
+                self.step_type(&ids, key == DialogKey::Right);
+                self.type_ids = ids;
+                return Some(DialogOutcome::Handled);
+            }
+            DialogKey::Backspace => {
+                self.query.backspace();
+                self.selected = 0;
+                return Some(DialogOutcome::Handled);
+            }
+            DialogKey::Char(ch) if !ch.is_control() => {
+                self.query.push(ch);
+                self.selected = 0;
+                return Some(DialogOutcome::Handled);
+            }
+            _ => return None,
+        };
+        self.request = Some(request);
+        Some(DialogOutcome::Confirm)
+    }
+
+    fn is_valid(&self) -> bool {
+        self.request.is_some()
     }
 }
 
@@ -199,7 +254,7 @@ pub fn rows(state: &PickerState, sources: &Sources<'_>) -> Vec<PickerRow> {
             .collect();
     }
 
-    let needle = state.query.trim().to_lowercase();
+    let needle = state.query.text().trim().to_lowercase();
     let mut out: Vec<PickerRow> = Vec::new();
 
     if matches!(state.purpose, Purpose::File(_)) {
@@ -634,7 +689,7 @@ mod tests {
         };
         for query in [whole.clone(), grouped, format!("-{plain}")] {
             let mut state = state(&world, Purpose::Link(1));
-            state.query = query.clone();
+            state.query = TextField::new(query.clone());
             state.kind = KindFilter::Transaction;
             let listed = rows(
                 &state,
@@ -667,7 +722,7 @@ mod tests {
         )
         .len();
         let mut search = browse.clone();
-        search.query = "20".into();
+        search.query = TextField::new("20");
         let found = rows(
             &search,
             &Sources {

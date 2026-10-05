@@ -354,7 +354,11 @@ impl DocumentTypeForm {
             }
             // A control swallows typing rather than letting it fall through to the shell.
             DialogKey::Char(_) | DialogKey::Backspace | DialogKey::Up | DialogKey::Down => {}
-            DialogKey::Tab | DialogKey::Enter | DialogKey::Other => return None,
+            DialogKey::Tab
+            | DialogKey::Enter
+            | DialogKey::CtrlEnter
+            | DialogKey::Ctrl(_)
+            | DialogKey::Other => return None,
         }
         Some(DialogOutcome::Handled)
     }

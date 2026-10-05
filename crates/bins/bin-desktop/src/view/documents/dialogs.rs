@@ -116,7 +116,7 @@ pub fn render_form(props: FormProps<'_>, cx: &App) -> AnyElement {
             text_field(
                 "document-path",
                 label(crate::msg::desktop_documents_field_path()),
-                &form.path,
+                form.path.text(),
                 &crate::msg::desktop_documents_field_path_placeholder(),
                 focused(DocumentField::Path),
                 click(DocumentField::Path),
@@ -129,7 +129,7 @@ pub fn render_form(props: FormProps<'_>, cx: &App) -> AnyElement {
         text_field(
             "document-title",
             label(crate::msg::desktop_documents_field_title()),
-            &form.title,
+            form.title.text(),
             "",
             focused(DocumentField::Title),
             click(DocumentField::Title),
@@ -149,7 +149,7 @@ pub fn render_form(props: FormProps<'_>, cx: &App) -> AnyElement {
             text_field(
                 "document-date",
                 label(crate::msg::desktop_documents_field_date()),
-                &form.date,
+                form.date.text(),
                 "",
                 focused(DocumentField::Date),
                 click(DocumentField::Date),
@@ -165,12 +165,12 @@ pub fn render_form(props: FormProps<'_>, cx: &App) -> AnyElement {
         &options.key_labels,
         &form.key_kind,
     ));
-    if form.key_kind(options).is_some() {
+    if form.key_kind().is_some() {
         fields.push(with_error(
             text_field(
                 "document-key-date",
                 label(crate::msg::desktop_documents_field_key_date()),
-                &form.key_date,
+                form.key_date.text(),
                 "",
                 focused(DocumentField::KeyDate),
                 click(DocumentField::KeyDate),
@@ -231,7 +231,7 @@ pub fn render_import(props: ImportProps<'_>, cx: &App) -> AnyElement {
         on_cancel,
         on_confirm,
     } = props;
-    let lines = if form.paths.is_empty() {
+    let lines = if form.paths.text().is_empty() {
         div()
             .text_color(color::faint_text(cx))
             .child(format!(
@@ -245,6 +245,7 @@ pub fn render_import(props: ImportProps<'_>, cx: &App) -> AnyElement {
             .flex_col()
             .children(
                 form.paths
+                    .text()
                     .split('\n')
                     .map(|line| div().min_h(px(16.0)).child(line.to_string())),
             )
@@ -411,7 +412,7 @@ pub fn render_facts(props: FactsProps<'_>, cx: &App) -> AnyElement {
         text_field(
             "facts-merchant",
             label(crate::msg::desktop_documents_fact_merchant()),
-            &form.merchant,
+            form.merchant.text(),
             "",
             focused(FactsField::Merchant),
             click(FactsField::Merchant),
@@ -423,7 +424,7 @@ pub fn render_facts(props: FactsProps<'_>, cx: &App) -> AnyElement {
                 text_field(
                     "facts-date",
                     label(crate::msg::desktop_documents_field_date()),
-                    &form.date,
+                    form.date.text(),
                     "",
                     focused(FactsField::Date),
                     click(FactsField::Date),
@@ -435,7 +436,7 @@ pub fn render_facts(props: FactsProps<'_>, cx: &App) -> AnyElement {
                 text_field(
                     "facts-total",
                     label(crate::msg::desktop_documents_fact_total()),
-                    &form.total,
+                    form.total.text(),
                     "",
                     focused(FactsField::Total),
                     click(FactsField::Total),
@@ -563,13 +564,13 @@ pub fn render_picker(props: PickerProps<'_>, cx: &App) -> AnyElement {
         .text_size(px(15.0))
         .text_color(color::foreground(cx))
         .child(div().text_color(color::muted(cx)).child(title))
-        .child(div().flex_1().child(if state.query.is_empty() {
+        .child(div().flex_1().child(if state.query.text().is_empty() {
             div()
                 .font_weight(gpui::FontWeight::NORMAL)
                 .text_color(color::faint_text(cx))
                 .child(crate::msg::desktop_documents_picker_placeholder())
         } else {
-            div().child(state.query.clone())
+            div().child(state.query.text().to_string())
         }))
         .child(div().w(px(8.0)).h(px(17.0)).bg(color::cursor(cx)));
 

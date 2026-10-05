@@ -18,10 +18,12 @@ use lib_locale::format::format_date_input;
 
 use crate::{
     accounts::SelectKey,
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
     document_types::{self, DocumentTypeRow},
     documents::{
         self, Document, DocumentType, FileKind, KeyDate, KeyDateKind, LibraryScope, NewDocument,
     },
+    field::TextField,
     select::SelectState,
     transaction_filter_form::parse_date,
 };
@@ -135,17 +137,22 @@ impl FormProblems {
 /// The Add and Edit forms' live state.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentForm {
-    pub path: String,
-    pub title: String,
+    pub path: TextField,
+    pub title: TextField,
     /// Whether the Title has been typed in, which stops it following the file name.
     pub title_typed: bool,
     pub doc_type: SelectState,
-    pub date: String,
+    pub date: TextField,
     pub key_kind: SelectState,
-    pub key_date: String,
+    pub key_date: TextField,
     pub reminder: bool,
     pub is_edit: bool,
     pub focused: DocumentField,
+    /// What the selects choose from, and what a date is read against, copied in as the Dialog
+    /// opens.
+    pub options: DocumentOptions,
+    today: NaiveDate,
+    date_style: Option<DateStyle>,
 }
 
 impl DocumentForm {
@@ -163,8 +170,8 @@ impl DocumentForm {
         };
         let date = documents::date_for_scope(scope, today);
         Self {
-            path: String::new(),
-            title: String::new(),
+            path: TextField::default(),
+            title: TextField::default(),
             title_typed: false,
             doc_type: SelectState::new(
                 options
@@ -172,16 +179,19 @@ impl DocumentForm {
                     .get(options.type_position(doc_type))
                     .cloned(),
             ),
-            date: if date == today {
+            date: TextField::new(if date == today {
                 lib_locale::msg::date_word_today()
             } else {
                 format_date_input(date, date_style)
-            },
+            }),
             key_kind: SelectState::new(options.key_labels.first().cloned()),
-            key_date: String::new(),
+            key_date: TextField::default(),
             reminder: false,
             is_edit: false,
             focused: DocumentField::Path,
+            options: options.clone(),
+            today,
+            date_style,
         }
     }
 
@@ -189,12 +199,13 @@ impl DocumentForm {
     pub fn for_edit(
         document: &Document,
         options: &DocumentOptions,
+        today: NaiveDate,
         date_style: Option<DateStyle>,
     ) -> Self {
         let key = document.key_date.as_ref();
         Self {
-            path: document.path.to_string_lossy().into_owned(),
-            title: document.title.clone(),
+            path: TextField::new(document.path.to_string_lossy().into_owned()),
+            title: TextField::new(document.title.clone()),
             title_typed: true,
             doc_type: SelectState::new(
                 options
@@ -202,32 +213,36 @@ impl DocumentForm {
                     .get(options.type_position(document.doc_type))
                     .cloned(),
             ),
-            date: format_date_input(document.date, date_style),
+            date: TextField::new(format_date_input(document.date, date_style)),
             key_kind: SelectState::new(
                 options
                     .key_labels
                     .get(key.map_or(0, |key| 1 + key_position(key.kind)))
                     .cloned(),
             ),
-            key_date: key
-                .map(|key| format_date_input(key.date, date_style))
-                .unwrap_or_default(),
+            key_date: TextField::new(
+                key.map(|key| format_date_input(key.date, date_style))
+                    .unwrap_or_default(),
+            ),
             reminder: key.is_some_and(|key| key.reminder),
             is_edit: true,
             focused: DocumentField::Title,
+            options: options.clone(),
+            today,
+            date_style,
         }
     }
 
-    pub fn doc_type(&self, options: &DocumentOptions) -> DocumentType {
-        options
+    pub fn doc_type(&self) -> DocumentType {
+        self.options
             .type_ids
-            .get(options.type_index(self.doc_type.value()))
+            .get(self.options.type_index(self.doc_type.value()))
             .copied()
-            .unwrap_or(options.fallback)
+            .unwrap_or(self.options.fallback)
     }
 
-    pub fn key_kind(&self, options: &DocumentOptions) -> Option<KeyDateKind> {
-        options
+    pub fn key_kind(&self) -> Option<KeyDateKind> {
+        self.options
             .key_index(self.key_kind.value())
             .checked_sub(1)
             .and_then(|index| KEY_KINDS.get(index).copied())
@@ -235,27 +250,20 @@ impl DocumentForm {
 
     /// Whether `field` is on the form: Edit has no Path, and a Key Date's date and reminder only
     /// show once a kind is chosen.
-    pub fn shows(&self, field: DocumentField, options: &DocumentOptions) -> bool {
+    pub fn shows(&self, field: DocumentField) -> bool {
         match field {
             DocumentField::Path => !self.is_edit,
-            DocumentField::KeyDate | DocumentField::Reminder => self.key_kind(options).is_some(),
+            DocumentField::KeyDate | DocumentField::Reminder => self.key_kind().is_some(),
             _ => true,
         }
     }
 
-    fn select_mut(&mut self, field: DocumentField) -> Option<&mut SelectState> {
+    /// The select behind `field` with the labels it lists.
+    fn select_mut(&mut self, field: DocumentField) -> Option<(&mut SelectState, &[String])> {
         match field {
-            DocumentField::Type => Some(&mut self.doc_type),
-            DocumentField::KeyKind => Some(&mut self.key_kind),
+            DocumentField::Type => Some((&mut self.doc_type, &self.options.type_labels)),
+            DocumentField::KeyKind => Some((&mut self.key_kind, &self.options.key_labels)),
             _ => None,
-        }
-    }
-
-    fn select_options(field: DocumentField, options: &DocumentOptions) -> &[String] {
-        match field {
-            DocumentField::Type => &options.type_labels,
-            DocumentField::KeyKind => &options.key_labels,
-            _ => &[],
         }
     }
 
@@ -268,13 +276,6 @@ impl DocumentForm {
         self.key_kind.cancel();
     }
 
-    /// Closes an open list if there is one -- the first `Esc`. Returns whether one was open.
-    pub fn close_open_select(&mut self) -> bool {
-        let open = self.doc_type.is_open() || self.key_kind.is_open();
-        self.close_selects();
-        open
-    }
-
     pub fn focus(&mut self, field: DocumentField) {
         if field != self.focused {
             self.close_selects();
@@ -283,10 +284,10 @@ impl DocumentForm {
     }
 
     /// `Tab` / `Shift-Tab`: commits an open list's highlight, then moves to the next shown field.
-    pub fn cycle_focus(&mut self, backward: bool, options: &DocumentOptions) {
+    pub fn cycle_focus(&mut self, backward: bool) {
         let field = self.focused;
-        if let Some(state) = self.select_mut(field) {
-            state.commit(Self::select_options(field, options));
+        if let Some((state, list)) = self.select_mut(field) {
+            state.commit(list);
         }
         let order = DocumentField::ORDER;
         let mut index = order.iter().position(|f| *f == field).unwrap_or(0);
@@ -296,7 +297,7 @@ impl DocumentForm {
             } else {
                 (index + 1) % order.len()
             };
-            if self.shows(order[index], options) {
+            if self.shows(order[index]) {
                 break;
             }
         }
@@ -304,10 +305,9 @@ impl DocumentForm {
     }
 
     /// A key on the focused select. Returns whether a select is focused (and so took the key).
-    pub fn handle_select_key(&mut self, key: SelectKey, options: &DocumentOptions) -> bool {
+    pub fn handle_select_key(&mut self, key: SelectKey) -> bool {
         let field = self.focused;
-        let list = Self::select_options(field, options);
-        let Some(state) = self.select_mut(field) else {
+        let Some((state, list)) = self.select_mut(field) else {
             return false;
         };
         match (key, state.is_open()) {
@@ -322,10 +322,9 @@ impl DocumentForm {
     }
 
     /// A click on a select's closed field: focuses it and toggles its list.
-    pub fn click_select(&mut self, field: DocumentField, options: &DocumentOptions) {
+    pub fn click_select(&mut self, field: DocumentField) {
         self.focus(field);
-        let list = Self::select_options(field, options);
-        if let Some(state) = self.select_mut(field) {
+        if let Some((state, list)) = self.select_mut(field) {
             if state.is_open() {
                 state.cancel();
             } else {
@@ -335,9 +334,8 @@ impl DocumentForm {
     }
 
     /// A click on row `index` of `field`'s open list.
-    pub fn choose(&mut self, field: DocumentField, index: usize, options: &DocumentOptions) {
-        let list = Self::select_options(field, options);
-        if let Some(state) = self.select_mut(field) {
+    pub fn choose(&mut self, field: DocumentField, index: usize) {
+        if let Some((state, list)) = self.select_mut(field) {
             state.choose(list, index);
         }
     }
@@ -346,66 +344,21 @@ impl DocumentForm {
         self.reminder = !self.reminder;
     }
 
-    /// Types `ch` into the focused text field. The Title stops following the file name once typed.
-    pub fn push_char(&mut self, ch: char) {
-        if ch.is_control() {
-            return;
-        }
-        match self.focused {
-            DocumentField::Path => {
-                self.path.push(ch);
-                self.follow_path();
-            }
-            DocumentField::Title => {
-                self.title.push(ch);
-                self.title_typed = true;
-            }
-            DocumentField::Date => self.date.push(ch),
-            DocumentField::KeyDate => self.key_date.push(ch),
-            _ => {}
-        }
-    }
-
-    pub fn backspace(&mut self) {
-        match self.focused {
-            DocumentField::Path => {
-                self.path.pop();
-                self.follow_path();
-            }
-            DocumentField::Title => {
-                self.title.pop();
-                self.title_typed = true;
-            }
-            DocumentField::Date => {
-                self.date.pop();
-            }
-            DocumentField::KeyDate => {
-                self.key_date.pop();
-            }
-            _ => {}
-        }
-    }
-
     /// Until the Title is typed over, it is the typed path's file name without its extension.
     fn follow_path(&mut self) {
         if !self.title_typed {
-            self.title = documents::default_title(Path::new(self.path.trim()));
+            self.title =
+                TextField::new(documents::default_title(Path::new(self.path.text().trim())));
         }
     }
 
     /// Every field's problem, or none. `library` is checked for a duplicate path (Add only) and
     /// `exists` is the file-system check, passed in so tests need no files.
-    pub fn problems(
-        &self,
-        options: &DocumentOptions,
-        library: &[Document],
-        today: NaiveDate,
-        date_style: Option<DateStyle>,
-        exists: impl Fn(&Path) -> bool,
-    ) -> FormProblems {
+    pub fn problems(&self, library: &[Document], exists: impl Fn(&Path) -> bool) -> FormProblems {
+        let (today, date_style) = (self.today, self.date_style);
         let mut problems = FormProblems::default();
         if !self.is_edit {
-            let typed = self.path.trim();
+            let typed = self.path.text().trim();
             problems.path = if typed.is_empty() {
                 None
             } else {
@@ -421,12 +374,12 @@ impl DocumentForm {
                 }
             };
         }
-        problems.date = match parse_date(&self.date, today, date_style) {
+        problems.date = match parse_date(self.date.text(), today, date_style) {
             Err(hint) => Some(FieldProblem::Date(hint)),
             Ok(_) => None,
         };
-        if self.key_kind(options).is_some() {
-            problems.key_date = match parse_date(&self.key_date, today, date_style) {
+        if self.key_kind().is_some() {
+            problems.key_date = match parse_date(self.key_date.text(), today, date_style) {
                 Err(hint) => Some(FieldProblem::Date(hint)),
                 Ok(None) => Some(FieldProblem::Date(String::new())),
                 Ok(Some(_)) => None,
@@ -437,41 +390,40 @@ impl DocumentForm {
 
     /// Whether the form can be saved: nothing wrong, and the required fields filled.
     pub fn can_save(&self, problems: &FormProblems) -> bool {
-        problems.is_empty()
-            && !self.title.trim().is_empty()
-            && (self.is_edit || !self.path.trim().is_empty())
+        problems.is_empty() && !self.title.is_blank() && (self.is_edit || !self.path.is_blank())
+    }
+
+    /// Whether the fields that need nothing outside the form are filled and readable: the Title,
+    /// the Path (Add), the dates. What a Path points at (a missing, unsupported or duplicate file)
+    /// is `Shell`'s to check, with the Library and the disk, when the form is applied.
+    pub fn is_complete(&self) -> bool {
+        let readable = |field: &TextField| parse_date(field.text(), self.today, self.date_style);
+        !self.title.is_blank()
+            && (self.is_edit || !self.path.is_blank())
+            && readable(&self.date).is_ok()
+            && (self.key_kind().is_none() || matches!(readable(&self.key_date), Ok(Some(_))))
     }
 
     /// The form's values as a [`NewDocument`], or `None` while it cannot be saved.
-    pub fn build(
-        &self,
-        options: &DocumentOptions,
-        today: NaiveDate,
-        date_style: Option<DateStyle>,
-    ) -> Option<NewDocument> {
-        let date = parse_date(&self.date, today, date_style)
+    pub fn build(&self) -> Option<NewDocument> {
+        let date = parse_date(self.date.text(), self.today, self.date_style)
             .ok()?
-            .unwrap_or(today);
+            .unwrap_or(self.today);
         Some(NewDocument {
-            path: documents::resolve_path(&self.path),
-            title: self.title.trim().to_string(),
-            doc_type: self.doc_type(options),
+            path: documents::resolve_path(self.path.text()),
+            title: self.title.text().trim().to_string(),
+            doc_type: self.doc_type(),
             date,
-            key_date: self.key_date_value(options, today, date_style)?,
+            key_date: self.key_date_value()?,
         })
     }
 
     /// The Key Date, `Some(None)` when there is none, and `None` when the chosen one is unreadable.
-    pub fn key_date_value(
-        &self,
-        options: &DocumentOptions,
-        today: NaiveDate,
-        date_style: Option<DateStyle>,
-    ) -> Option<Option<KeyDate>> {
-        let Some(kind) = self.key_kind(options) else {
+    pub fn key_date_value(&self) -> Option<Option<KeyDate>> {
+        let Some(kind) = self.key_kind() else {
             return Some(None);
         };
-        let date = parse_date(&self.key_date, today, date_style).ok()??;
+        let date = parse_date(self.key_date.text(), self.today, self.date_style).ok()??;
         Some(Some(KeyDate {
             kind,
             date,
@@ -491,22 +443,22 @@ fn key_position(kind: KeyDateKind) -> usize {
 /// as one is open, following the other pages' `*_dialog` fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocumentsDialog {
-    Add(DocumentForm),
-    Edit(u32, DocumentForm),
+    Add(Box<DocumentForm>),
+    Edit(u32, Box<DocumentForm>),
     /// The typed paths, and why the last attempt imported none of them.
     Import(ImportForm, Vec<String>),
     /// An Unfiled Document's Extracted Facts, edited from the Inbox.
-    Facts(u32, FactsForm),
+    Facts(u32, Box<FactsForm>),
     /// The count-first confirm for Accept all strong matches: how many it will file.
     AcceptAll(usize),
     /// The link picker: link toggling, filing from the Inbox, or following one of several Links.
-    Picker(crate::documents_picker::PickerState),
+    Picker(Box<crate::documents_picker::PickerState>),
 }
 
 /// The Import dialog's live state: one path per line.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ImportForm {
-    pub paths: String,
+    pub paths: TextField,
 }
 
 /// What an import made of one typed path.
@@ -519,25 +471,17 @@ pub enum ImportOutcome {
 }
 
 impl ImportForm {
-    pub fn push_char(&mut self, ch: char) {
-        if !ch.is_control() {
-            self.paths.push(ch);
-        }
-    }
-
     pub fn newline(&mut self) {
-        if !self.paths.is_empty() && !self.paths.ends_with('\n') {
+        let text = self.paths.text();
+        if !text.is_empty() && !text.ends_with('\n') {
             self.paths.push('\n');
         }
-    }
-
-    pub fn backspace(&mut self) {
-        self.paths.pop();
     }
 
     /// The non-blank typed lines.
     pub fn lines(&self) -> Vec<&str> {
         self.paths
+            .text()
             .lines()
             .map(str::trim)
             .filter(|line| !line.is_empty())
@@ -650,31 +594,41 @@ impl FactsProblems {
 /// be left blank, and a blank total makes the Document Unreadable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FactsForm {
-    pub merchant: String,
-    pub date: String,
-    pub total: String,
+    pub merchant: TextField,
+    pub date: TextField,
+    pub total: TextField,
     pub doc_type: SelectState,
     pub focused: FactsField,
+    /// What the Type select chooses from, and what the date is read against, copied in as the
+    /// Dialog opens.
+    pub options: DocumentOptions,
+    today: NaiveDate,
+    date_style: Option<DateStyle>,
 }
 
 impl FactsForm {
     pub fn new(
         facts: &documents::ExtractedFacts,
         options: &DocumentOptions,
+        today: NaiveDate,
         date_style: Option<DateStyle>,
     ) -> Self {
         let kind = facts.doc_type.unwrap_or(options.fallback);
         Self {
-            merchant: facts.merchant.clone().unwrap_or_default(),
-            date: facts
-                .date
-                .map(|date| format_date_input(date, date_style))
-                .unwrap_or_default(),
-            total: facts
-                .total
-                .as_ref()
-                .map(|total| total.0.abs().with_scale(2).to_string())
-                .unwrap_or_default(),
+            merchant: TextField::new(facts.merchant.clone().unwrap_or_default()),
+            date: TextField::new(
+                facts
+                    .date
+                    .map(|date| format_date_input(date, date_style))
+                    .unwrap_or_default(),
+            ),
+            total: TextField::new(
+                facts
+                    .total
+                    .as_ref()
+                    .map(|total| total.0.abs().with_scale(2).to_string())
+                    .unwrap_or_default(),
+            ),
             doc_type: SelectState::new(
                 options
                     .type_labels
@@ -682,17 +636,14 @@ impl FactsForm {
                     .cloned(),
             ),
             focused: FactsField::Merchant,
+            options: options.clone(),
+            today,
+            date_style,
         }
     }
 
     pub fn is_select(field: FactsField) -> bool {
         field == FactsField::Type
-    }
-
-    pub fn close_open_select(&mut self) -> bool {
-        let open = self.doc_type.is_open();
-        self.doc_type.cancel();
-        open
     }
 
     pub fn focus(&mut self, field: FactsField) {
@@ -702,9 +653,9 @@ impl FactsForm {
         self.focused = field;
     }
 
-    pub fn cycle_focus(&mut self, backward: bool, options: &DocumentOptions) {
+    pub fn cycle_focus(&mut self, backward: bool) {
         if self.focused == FactsField::Type {
-            self.doc_type.commit(&options.type_labels);
+            self.doc_type.commit(&self.options.type_labels);
         }
         let order = FactsField::ORDER;
         let index = order
@@ -720,11 +671,11 @@ impl FactsForm {
     }
 
     /// A key on the Type select. Returns whether the select is focused (and so took the key).
-    pub fn handle_select_key(&mut self, key: SelectKey, options: &DocumentOptions) -> bool {
+    pub fn handle_select_key(&mut self, key: SelectKey) -> bool {
         if self.focused != FactsField::Type {
             return false;
         }
-        let list = &options.type_labels;
+        let list = &self.options.type_labels;
         let state = &mut self.doc_type;
         match (key, state.is_open()) {
             (SelectKey::Up, true) => state.move_highlight(list, -1),
@@ -737,44 +688,23 @@ impl FactsForm {
         true
     }
 
-    pub fn click_select(&mut self, options: &DocumentOptions) {
+    pub fn click_select(&mut self) {
         self.focus(FactsField::Type);
         if self.doc_type.is_open() {
             self.doc_type.cancel();
         } else {
-            self.doc_type.open(&options.type_labels);
+            self.doc_type.open(&self.options.type_labels);
         }
     }
 
-    pub fn choose(&mut self, index: usize, options: &DocumentOptions) {
-        self.doc_type.choose(&options.type_labels, index);
+    pub fn choose(&mut self, index: usize) {
+        self.doc_type.choose(&self.options.type_labels, index);
     }
 
-    pub fn push_char(&mut self, ch: char) {
-        if ch.is_control() {
-            return;
-        }
-        match self.focused {
-            FactsField::Merchant => self.merchant.push(ch),
-            FactsField::Date => self.date.push(ch),
-            FactsField::Total => self.total.push(ch),
-            FactsField::Type => {}
-        }
-    }
-
-    pub fn backspace(&mut self) {
-        match self.focused {
-            FactsField::Merchant => self.merchant.pop(),
-            FactsField::Date => self.date.pop(),
-            FactsField::Total => self.total.pop(),
-            FactsField::Type => None,
-        };
-    }
-
-    pub fn problems(&self, today: NaiveDate, date_style: Option<DateStyle>) -> FactsProblems {
+    pub fn problems(&self) -> FactsProblems {
         FactsProblems {
-            date: parse_date(&self.date, today, date_style).err(),
-            total: !self.total.trim().is_empty() && parse_total(&self.total).is_none(),
+            date: parse_date(self.date.text(), self.today, self.date_style).err(),
+            total: !self.total.is_blank() && parse_total(self.total.text()).is_none(),
         }
     }
 
@@ -783,17 +713,13 @@ impl FactsForm {
     }
 
     /// The form's values as Extracted Facts, or `None` while a field cannot be read.
-    pub fn build(
-        &self,
-        options: &DocumentOptions,
-        today: NaiveDate,
-        date_style: Option<DateStyle>,
-    ) -> Option<documents::ExtractedFacts> {
-        let merchant = self.merchant.trim();
-        let total = self.total.trim();
+    pub fn build(&self) -> Option<documents::ExtractedFacts> {
+        let options = &self.options;
+        let merchant = self.merchant.text().trim();
+        let total = self.total.text().trim();
         Some(documents::ExtractedFacts {
             merchant: (!merchant.is_empty()).then(|| merchant.to_string()),
-            date: parse_date(&self.date, today, date_style).ok()?,
+            date: parse_date(self.date.text(), self.today, self.date_style).ok()?,
             total: if total.is_empty() {
                 None
             } else {
@@ -807,6 +733,203 @@ impl FactsForm {
                     .unwrap_or(options.fallback),
             ),
         })
+    }
+}
+
+/// The text fields are typed into by `dialog_host`; the Title following the Path is the one thing
+/// they need doing around it.
+impl Dialog for DocumentForm {
+    /// `Shift-Tab` goes back a field. On a select `↑`/`↓` step or move the highlight, and `Space`
+    /// and `Enter` open or commit its list; `Space` flips the reminder. Typing the Path keeps an
+    /// untouched Title following the file name, and typing the Title stops that.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        let focused = self.focused;
+        let on_select = Self::is_select(focused);
+        match key {
+            DialogKey::BackTab => self.cycle_focus(true),
+            DialogKey::Up if on_select => {
+                self.handle_select_key(SelectKey::Up);
+            }
+            DialogKey::Down if on_select => {
+                self.handle_select_key(SelectKey::Down);
+            }
+            DialogKey::Char(' ') | DialogKey::Enter if on_select => {
+                self.handle_select_key(SelectKey::Activate);
+            }
+            DialogKey::Char(' ') if focused == DocumentField::Reminder => {
+                self.reminder = !self.reminder
+            }
+            DialogKey::Char(ch) => match focused {
+                DocumentField::Path => {
+                    self.path.push(ch);
+                    self.follow_path();
+                }
+                DocumentField::Title => {
+                    self.title.push(ch);
+                    self.title_typed = true;
+                }
+                DocumentField::Date | DocumentField::KeyDate => return None,
+                _ => {}
+            },
+            DialogKey::Backspace => match focused {
+                DocumentField::Path => {
+                    self.path.backspace();
+                    self.follow_path();
+                }
+                DocumentField::Title => {
+                    self.title.backspace();
+                    self.title_typed = true;
+                }
+                DocumentField::Date | DocumentField::KeyDate => return None,
+                _ => {}
+            },
+            _ => return None,
+        }
+        Some(DialogOutcome::Handled)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        match self.focused {
+            DocumentField::Date => Some(&mut self.date),
+            DocumentField::KeyDate => Some(&mut self.key_date),
+            _ => None,
+        }
+    }
+
+    fn cycle_field(&mut self) {
+        self.cycle_focus(false);
+    }
+
+    fn is_valid(&self) -> bool {
+        self.is_complete()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        let open = self.doc_type.is_open() || self.key_kind.is_open();
+        self.close_selects();
+        open
+    }
+}
+
+impl Dialog for FactsForm {
+    /// `Shift-Tab` goes back a field. On the Type select `↑`/`↓` step or move the highlight, and
+    /// `Space` and `Enter` open or commit its list. The other three fields take text.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        let on_select = self.focused == FactsField::Type;
+        match key {
+            DialogKey::BackTab => self.cycle_focus(true),
+            DialogKey::Up if on_select => {
+                self.handle_select_key(SelectKey::Up);
+            }
+            DialogKey::Down if on_select => {
+                self.handle_select_key(SelectKey::Down);
+            }
+            DialogKey::Char(' ') | DialogKey::Enter if on_select => {
+                self.handle_select_key(SelectKey::Activate);
+            }
+            DialogKey::Char(_) | DialogKey::Backspace if on_select => {}
+            _ => return None,
+        }
+        Some(DialogOutcome::Handled)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        match self.focused {
+            FactsField::Merchant => Some(&mut self.merchant),
+            FactsField::Date => Some(&mut self.date),
+            FactsField::Total => Some(&mut self.total),
+            FactsField::Type => None,
+        }
+    }
+
+    fn cycle_field(&mut self) {
+        self.cycle_focus(false);
+    }
+
+    fn is_valid(&self) -> bool {
+        self.can_save(&self.problems())
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        let open = self.doc_type.is_open();
+        self.doc_type.cancel();
+        open
+    }
+}
+
+impl Dialog for DocumentsDialog {
+    /// Import is a multi-line box: `Enter` types a newline and `Ctrl-Enter` imports, and any
+    /// change clears the last attempt's notes. The count-first confirm takes `Enter` and swallows
+    /// everything else.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        match self {
+            Self::Import(form, notes) => match key {
+                DialogKey::CtrlEnter => Some(if form.can_save() {
+                    DialogOutcome::Confirm
+                } else {
+                    DialogOutcome::Handled
+                }),
+                DialogKey::Enter => {
+                    form.newline();
+                    Some(DialogOutcome::Handled)
+                }
+                DialogKey::Backspace => {
+                    form.paths.backspace();
+                    notes.clear();
+                    Some(DialogOutcome::Handled)
+                }
+                DialogKey::Char(ch) => {
+                    if !ch.is_control() {
+                        form.paths.push(ch);
+                        notes.clear();
+                    }
+                    Some(DialogOutcome::Handled)
+                }
+                DialogKey::Tab | DialogKey::BackTab => Some(DialogOutcome::Handled),
+                _ => None,
+            },
+            Self::AcceptAll(_) => match key {
+                DialogKey::Enter => None,
+                _ => Some(DialogOutcome::Handled),
+            },
+            Self::Picker(state) => state.handle_own_key(key),
+            Self::Add(form) | Self::Edit(_, form) => form.handle_own_key(key),
+            Self::Facts(_, form) => form.handle_own_key(key),
+        }
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form.focused_text(),
+            Self::Facts(_, form) => form.focused_text(),
+            Self::Import(..) | Self::AcceptAll(_) | Self::Picker(_) => None,
+        }
+    }
+
+    fn cycle_field(&mut self) {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form.cycle_field(),
+            Self::Facts(_, form) => form.cycle_field(),
+            Self::Import(..) | Self::AcceptAll(_) | Self::Picker(_) => {}
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form.is_valid(),
+            Self::Facts(_, form) => form.is_valid(),
+            Self::Import(form, _) => form.can_save(),
+            Self::AcceptAll(_) => true,
+            Self::Picker(state) => state.is_valid(),
+        }
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        match self {
+            Self::Add(form) | Self::Edit(_, form) => form.close_open_select(),
+            Self::Facts(_, form) => form.close_open_select(),
+            Self::Import(..) | Self::AcceptAll(_) | Self::Picker(_) => false,
+        }
     }
 }
 
@@ -843,19 +966,24 @@ mod tests {
         DocumentForm::new(&options(), LibraryScope::All, day(2026, 9, 12), None)
     }
 
+    /// Types `text` as a keyboard would: the form's own keys first, then the shared typing.
+    fn type_text(dialog: &mut impl Dialog, text: &str) {
+        for ch in text.chars() {
+            crate::dialog_host::handle_key(dialog, DialogKey::Char(ch));
+        }
+    }
+
     #[test]
     fn title_follows_the_path_until_it_is_typed_over() {
         let mut form = form();
-        for ch in "/tmp/rates-notice.pdf".chars() {
-            form.push_char(ch);
-        }
-        assert_eq!(form.title, "rates-notice");
+        type_text(&mut form, "/tmp/rates-notice.pdf");
+        assert_eq!(form.title.text(), "rates-notice");
 
         form.focus(DocumentField::Title);
-        form.push_char('!');
+        type_text(&mut form, "!");
         form.focus(DocumentField::Path);
-        form.push_char('x');
-        assert_eq!(form.title, "rates-notice!");
+        type_text(&mut form, "x");
+        assert_eq!(form.title.text(), "rates-notice!");
     }
 
     #[test]
@@ -867,7 +995,7 @@ mod tests {
             day(2026, 9, 12),
             None,
         );
-        assert_eq!(by_type.doc_type(&options), DocumentType::INSURANCE);
+        assert_eq!(by_type.doc_type(), DocumentType::INSURANCE);
 
         let by_year = DocumentForm::new(
             &options,
@@ -875,51 +1003,47 @@ mod tests {
             day(2026, 9, 12),
             None,
         );
-        assert_eq!(by_year.doc_type(&options), DocumentType::OTHER);
+        assert_eq!(by_year.doc_type(), DocumentType::OTHER);
         assert_eq!(
-            parse_date(&by_year.date, day(2026, 9, 12), None),
+            parse_date(by_year.date.text(), day(2026, 9, 12), None),
             Ok(Some(day(2025, 6, 30)))
         );
     }
 
     #[test]
     fn a_missing_unsupported_or_duplicate_path_is_a_problem() {
-        let options = options();
         let mut form = form();
-        form.path = "/tmp/missing.pdf".to_string();
-        let problems = form.problems(&options, &[], day(2026, 9, 12), None, |_| false);
+        form.path = TextField::new("/tmp/missing.pdf");
+        let problems = form.problems(&[], |_| false);
         assert_eq!(
             problems.path,
             Some(FieldProblem::PathMissing("/tmp/missing.pdf".to_string()))
         );
 
-        form.path = "/tmp/notes.txt".to_string();
-        let problems = form.problems(&options, &[], day(2026, 9, 12), None, |_| true);
+        form.path = TextField::new("/tmp/notes.txt");
+        let problems = form.problems(&[], |_| true);
         assert_eq!(problems.path, Some(FieldProblem::Unsupported));
 
-        form.path = "/tmp/there.pdf".to_string();
-        let problems = form.problems(&options, &[], day(2026, 9, 12), None, |_| true);
+        form.path = TextField::new("/tmp/there.pdf");
+        let problems = form.problems(&[], |_| true);
         assert!(problems.is_empty());
     }
 
     #[test]
     fn a_key_kind_demands_a_readable_key_date() {
-        let options = options();
         let mut form = form();
-        form.title = "Policy".to_string();
-        form.path = "/tmp/policy.pdf".to_string();
+        form.title = TextField::new("Policy");
+        form.path = TextField::new("/tmp/policy.pdf");
         form.key_kind = SelectState::new(Some("Renews".to_string()));
 
-        let problems = form.problems(&options, &[], day(2026, 9, 12), None, |_| true);
+        let problems = form.problems(&[], |_| true);
         assert!(problems.key_date.is_some());
         assert!(!form.can_save(&problems));
 
-        form.key_date = "2027-01-14".to_string();
-        let problems = form.problems(&options, &[], day(2026, 9, 12), None, |_| true);
+        form.key_date = TextField::new("2027-01-14");
+        let problems = form.problems(&[], |_| true);
         assert!(form.can_save(&problems));
-        let new = form
-            .build(&options, day(2026, 9, 12), None)
-            .expect("the form is complete");
+        let new = form.build().expect("the form is complete");
         assert_eq!(
             new.key_date,
             Some(KeyDate {
@@ -932,12 +1056,11 @@ mod tests {
 
     #[test]
     fn tab_skips_the_key_date_fields_until_a_kind_is_chosen() {
-        let options = options();
         let mut form = form();
         form.focused = DocumentField::Date;
-        form.cycle_focus(false, &options);
+        form.cycle_focus(false);
         assert_eq!(form.focused, DocumentField::KeyKind);
-        form.cycle_focus(false, &options);
+        form.cycle_focus(false);
         assert_eq!(form.focused, DocumentField::Path);
     }
 
@@ -959,11 +1082,11 @@ mod tests {
             filing: documents::Filing::Filed,
             intake: None,
         };
-        let mut form = DocumentForm::for_edit(&document, &options, None);
+        let mut form = DocumentForm::for_edit(&document, &options, day(2026, 9, 12), None);
         assert_eq!(form.focused, DocumentField::Title);
-        assert!(!form.shows(DocumentField::Path, &options));
-        assert_eq!(form.doc_type(&options), DocumentType::TAX);
-        form.cycle_focus(true, &options);
+        assert!(!form.shows(DocumentField::Path));
+        assert_eq!(form.doc_type(), DocumentType::TAX);
+        form.cycle_focus(true);
         // Back from Title wraps past the hidden Path and Key Date fields to the Key Date kind.
         assert_eq!(form.focused, DocumentField::KeyKind);
     }
@@ -972,9 +1095,9 @@ mod tests {
     fn import_reports_each_line() {
         let mut library = Vec::new();
         let form = ImportForm {
-            paths:
-                "/tmp/coles-receipt.jpg\n/tmp/none.pdf\n/tmp/readme.txt\n/tmp/coles-receipt.jpg\n"
-                    .to_string(),
+            paths: TextField::new(
+                "/tmp/coles-receipt.jpg\n/tmp/none.pdf\n/tmp/readme.txt\n/tmp/coles-receipt.jpg\n",
+            ),
         };
         let outcomes = import_all(
             &document_types::default_types(),
@@ -1057,11 +1180,9 @@ mod tests {
     #[test]
     fn the_facts_form_round_trips_what_was_read() {
         let options = options();
-        let form = FactsForm::new(&facts(), &options, Some(DateStyle::Iso));
-        assert_eq!(form.total, "212.40");
-        let built = form
-            .build(&options, day(2026, 10, 2), Some(DateStyle::Iso))
-            .expect("a form of read facts builds");
+        let form = FactsForm::new(&facts(), &options, day(2026, 10, 2), Some(DateStyle::Iso));
+        assert_eq!(form.total.text(), "212.40");
+        let built = form.build().expect("a form of read facts builds");
         assert_eq!(built.merchant, facts().merchant);
         assert_eq!(built.date, facts().date);
         assert_eq!(built.doc_type, Some(DocumentType::RECEIPTS));
@@ -1075,42 +1196,45 @@ mod tests {
     fn clearing_the_total_and_date_builds_blank_facts_and_a_bad_total_is_a_problem() {
         let options = options();
         let style = Some(DateStyle::Iso);
-        let mut form = FactsForm::new(&facts(), &options, style);
-        form.total.clear();
-        form.date.clear();
-        form.merchant = "   ".to_string();
-        let built = form
-            .build(&options, day(2026, 10, 2), style)
-            .expect("blank optional facts build");
+        let mut form = FactsForm::new(&facts(), &options, day(2026, 10, 2), style);
+        form.total = TextField::default();
+        form.date = TextField::default();
+        form.merchant = TextField::new("   ");
+        let built = form.build().expect("blank optional facts build");
         assert_eq!(built.total, None);
         assert_eq!(built.date, None);
         assert_eq!(built.merchant, None);
-        assert!(form.problems(day(2026, 10, 2), style).is_empty());
+        assert!(form.problems().is_empty());
 
-        form.total = "abc".to_string();
-        let problems = form.problems(day(2026, 10, 2), style);
+        form.total = TextField::new("abc");
+        let problems = form.problems();
         assert!(problems.total);
         assert!(!form.can_save(&problems));
-        assert!(form.build(&options, day(2026, 10, 2), style).is_none());
+        assert!(form.build().is_none());
     }
 
     #[test]
     fn the_facts_form_tabs_through_its_four_fields_and_types_into_the_focused_one() {
         let options = options();
-        let mut form = FactsForm::new(&documents::ExtractedFacts::default(), &options, None);
+        let mut form = FactsForm::new(
+            &documents::ExtractedFacts::default(),
+            &options,
+            day(2026, 10, 2),
+            None,
+        );
         assert_eq!(form.focused, FactsField::Merchant);
-        form.push_char('A');
-        form.cycle_focus(false, &options);
+        type_text(&mut form, "A");
+        form.cycle_focus(false);
         assert_eq!(form.focused, FactsField::Date);
-        form.cycle_focus(false, &options);
-        form.push_char('9');
-        assert_eq!(form.total, "9");
-        form.cycle_focus(false, &options);
+        form.cycle_focus(false);
+        type_text(&mut form, "9");
+        assert_eq!(form.total.text(), "9");
+        form.cycle_focus(false);
         assert_eq!(form.focused, FactsField::Type);
-        form.cycle_focus(false, &options);
+        form.cycle_focus(false);
         assert_eq!(form.focused, FactsField::Merchant);
-        form.cycle_focus(true, &options);
+        form.cycle_focus(true);
         assert_eq!(form.focused, FactsField::Type);
-        assert_eq!(form.merchant, "A");
+        assert_eq!(form.merchant.text(), "A");
     }
 }

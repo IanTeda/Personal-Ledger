@@ -10,9 +10,8 @@ use std::rc::Rc;
 use gpui::{Context, Keystroke, ScrollHandle, Window};
 use lib_toast::ToastKind;
 
-use super::{Shell, typed_char};
+use super::{OpenDialog, Shell, typed_char};
 use crate::{
-    accounts::SelectKey,
     documents::{
         self, Document, DocumentLink, DocumentsMode, KeyDateKind, LibraryScope, LibrarySort,
         RailEntry,
@@ -21,7 +20,7 @@ use crate::{
         DocumentField, DocumentForm, DocumentOptions, DocumentsDialog, FactsField, FactsForm,
         ImportForm, ImportOutcome,
     },
-    documents_picker::{self, PickerRow, PickerState, Purpose},
+    documents_picker::{self, PickerRequest, PickerRow, PickerState, Purpose},
     key_router::Movement,
     nav::{FocusZone, InputMode, Noun},
     settings::SettingsSection,
@@ -165,7 +164,7 @@ impl Shell {
             selected_links: self
                 .documents_selected_document()
                 .map_or(0, |document| document.links.len()),
-            dialog: self.documents_dialog.as_ref().map(|dialog| match dialog {
+            dialog: self.documents_dialog().map(|dialog| match dialog {
                 DocumentsDialog::Add(_) => "add",
                 DocumentsDialog::Edit(..) => "edit",
                 DocumentsDialog::Import(..) => "import",
@@ -186,10 +185,10 @@ impl Shell {
                 .map(|toast| toast.text().to_string())
                 .collect(),
             status: self.status_message.clone(),
-            picker: match self.documents_dialog.as_ref() {
+            picker: match self.documents_dialog() {
                 Some(DocumentsDialog::Picker(state)) => Some(PickerSnapshot {
                     kind: state.kind.label(),
-                    query: state.query.clone(),
+                    query: state.query.text().to_string(),
                     selected: state.selected,
                     rows: self
                         .documents_picker_rows(state)
@@ -486,7 +485,7 @@ impl Shell {
         if self.nav.noun() != Noun::Documents {
             return None;
         }
-        let hints = match &self.documents_dialog {
+        let hints = match self.documents_dialog() {
             Some(DocumentsDialog::Import(..)) => dialog_hints(true),
             Some(DocumentsDialog::Picker(_)) => picker_hints(),
             Some(_) => dialog_hints(false),
@@ -852,8 +851,12 @@ impl Shell {
     }
 
     fn open_documents_picker(&mut self, state: PickerState) {
-        self.documents_dialog = Some(DocumentsDialog::Picker(state));
-        self.nav.enter_mode(InputMode::Dialog);
+        let types = self
+            .document_types
+            .iter()
+            .map(|row| documents::DocumentType(row.id))
+            .collect();
+        self.open_documents_dialog(DocumentsDialog::Picker(Box::new(state.with_types(types))));
     }
 
     /// The picker's rows for `state`: derived afresh from the stubs and the Document's Links.
@@ -871,50 +874,10 @@ impl Shell {
         )
     }
 
-    /// Keys while the picker is open, following the command palette's: typing goes to the query,
-    /// `↑`/`↓` (and `ctrl+n`/`ctrl+p`) move, `tab` cycles the kind filter, `enter` picks. In the
-    /// Inbox `←`/`→` step the Document Type select.
-    fn handle_documents_picker_key(&mut self, keystroke: &Keystroke) -> bool {
-        let Some(DocumentsDialog::Picker(state)) = self.documents_dialog.clone() else {
-            return false;
-        };
-        let len = self.documents_picker_rows(&state).len();
-        let modifiers = keystroke.modifiers;
-        let Some(DocumentsDialog::Picker(live)) = self.documents_dialog.as_mut() else {
-            return false;
-        };
-        match keystroke.key.as_str() {
-            "enter" => {
-                let at = state.selected.min(len.saturating_sub(1));
-                self.documents_picker_pick(at);
-            }
-            "down" => live.step(true, len),
-            "up" => live.step(false, len),
-            "n" if modifiers.control => live.step(true, len),
-            "p" if modifiers.control => live.step(false, len),
-            "tab" => live.cycle_kind(),
-            "left" | "right" if matches!(live.purpose, Purpose::File(_)) => {
-                let ids: Vec<_> = self
-                    .document_types
-                    .iter()
-                    .map(|row| documents::DocumentType(row.id))
-                    .collect();
-                live.step_type(&ids, keystroke.key == "right");
-            }
-            "backspace" => live.backspace(),
-            _ => {
-                if let Some(ch) = typed_char(keystroke).filter(|ch| !ch.is_control()) {
-                    live.push_char(ch);
-                }
-            }
-        }
-        true
-    }
-
     /// What `enter` or a click on picker row `index` does: toggles a Link, files the Unfiled
     /// Document, or follows a Link, according to why the picker opened.
     pub(super) fn documents_picker_pick(&mut self, index: usize) {
-        let Some(DocumentsDialog::Picker(state)) = self.documents_dialog.clone() else {
+        let Some(DocumentsDialog::Picker(state)) = self.documents_dialog().cloned() else {
             return;
         };
         let Some(row) = self.documents_picker_rows(&state).get(index).cloned() else {
@@ -1227,11 +1190,10 @@ impl Shell {
             self.status_message = Some(crate::msg::desktop_documents_status_no_strong());
             return;
         }
-        self.documents_dialog = Some(DocumentsDialog::AcceptAll(count));
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_documents_dialog(DocumentsDialog::AcceptAll(count));
     }
 
-    pub(super) fn confirm_documents_accept_all(&mut self) {
+    pub(super) fn apply_documents_accept_all(&mut self) {
         let focus = self
             .documents_selected_document()
             .map(|document| document.id);
@@ -1242,7 +1204,6 @@ impl Shell {
             &self.payees,
             focus,
         );
-        self.close_documents_dialog();
         let Some(batch) = batch else {
             return;
         };
@@ -1269,25 +1230,15 @@ impl Shell {
             .map(|intake| intake.facts.clone())
             .unwrap_or_default();
         let id = document.id;
-        let form = FactsForm::new(&facts, &options, self.settings_date_style);
-        self.documents_dialog = Some(DocumentsDialog::Facts(id, form));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = FactsForm::new(&facts, &options, self.today, self.settings_date_style);
+        self.open_documents_dialog(DocumentsDialog::Facts(id, Box::new(form)));
     }
 
     /// Saves the facts; suggestions recompute on the next render. A no-op while a field is wrong.
-    pub(super) fn confirm_documents_facts(&mut self) {
-        let options = self.documents_options();
-        let (today, style) = (self.today, self.settings_date_style);
-        let Some(DocumentsDialog::Facts(id, form)) = self.documents_dialog.as_ref() else {
+    pub(super) fn apply_documents_facts(&mut self, id: u32, form: &FactsForm) {
+        let Some(facts) = form.build() else {
             return;
         };
-        if !form.can_save(&form.problems(today, style)) {
-            return;
-        }
-        let Some(facts) = form.build(&options, today, style) else {
-            return;
-        };
-        let id = *id;
         let title = documents::get(&self.documents, id)
             .map(|document| document.title.clone())
             .unwrap_or_default();
@@ -1303,7 +1254,6 @@ impl Shell {
             self.documents_inbox_selected = at;
             self.documents_scroll.scroll_to_item(at);
         }
-        self.close_documents_dialog();
         self.raise_toast(
             ToastKind::Success,
             crate::msg::desktop_documents_toast_facts_saved(&title),
@@ -1311,10 +1261,9 @@ impl Shell {
     }
 
     fn handle_facts_field_click(&mut self, field: FactsField, cx: &mut Context<'_, Self>) {
-        let options = self.documents_options();
-        if let Some(DocumentsDialog::Facts(_, form)) = self.documents_dialog.as_mut() {
+        if let Some(DocumentsDialog::Facts(_, form)) = self.documents_dialog_mut() {
             if FactsForm::is_select(field) {
-                form.click_select(&options);
+                form.click_select();
             } else {
                 form.focus(field);
             }
@@ -1323,9 +1272,8 @@ impl Shell {
     }
 
     fn handle_facts_option_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        let options = self.documents_options();
-        if let Some(DocumentsDialog::Facts(_, form)) = self.documents_dialog.as_mut() {
-            form.choose(index, &options);
+        if let Some(DocumentsDialog::Facts(_, form)) = self.documents_dialog_mut() {
+            form.choose(index);
         }
         cx.notify();
     }
@@ -1360,18 +1308,16 @@ impl Shell {
 
     pub(super) fn open_documents_add(&mut self) {
         let options = self.documents_options();
-        self.documents_dialog = Some(DocumentsDialog::Add(DocumentForm::new(
+        self.open_documents_dialog(DocumentsDialog::Add(Box::new(DocumentForm::new(
             &options,
             self.documents_scope,
             self.today,
             self.settings_date_style,
-        )));
-        self.nav.enter_mode(InputMode::Dialog);
+        ))));
     }
 
     pub(super) fn open_documents_import(&mut self) {
-        self.documents_dialog = Some(DocumentsDialog::Import(ImportForm::default(), Vec::new()));
-        self.nav.enter_mode(InputMode::Dialog);
+        self.open_documents_dialog(DocumentsDialog::Import(ImportForm::default(), Vec::new()));
     }
 
     fn open_documents_edit(&mut self) {
@@ -1381,163 +1327,90 @@ impl Shell {
             return;
         };
         let id = document.id;
-        let form = DocumentForm::for_edit(document, &options, self.settings_date_style);
-        self.documents_dialog = Some(DocumentsDialog::Edit(id, form));
-        self.nav.enter_mode(InputMode::Dialog);
+        let form = DocumentForm::for_edit(document, &options, self.today, self.settings_date_style);
+        self.open_documents_dialog(DocumentsDialog::Edit(id, Box::new(form)));
     }
 
     pub(super) fn close_documents_dialog(&mut self) {
-        self.documents_dialog = None;
-        self.nav.exit_mode();
+        self.close_dialog();
     }
 
-    /// The first `Esc` closes an open select list only; the next cancels the dialog.
-    pub(super) fn documents_dialog_close_select(&mut self) -> bool {
-        match self.documents_dialog.as_mut() {
-            Some(DocumentsDialog::Add(form) | DocumentsDialog::Edit(_, form)) => {
-                form.close_open_select()
+    pub(super) fn documents_dialog(&self) -> Option<&DocumentsDialog> {
+        match self.dialog.as_ref()? {
+            OpenDialog::Documents(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn documents_dialog_mut(&mut self) -> Option<&mut DocumentsDialog> {
+        match self.dialog.as_mut()? {
+            OpenDialog::Documents(dialog) => Some(dialog),
+            _ => None,
+        }
+    }
+
+    fn open_documents_dialog(&mut self, dialog: DocumentsDialog) {
+        self.open_dialog(OpenDialog::Documents(dialog));
+    }
+
+    /// Applies a confirmed Documents dialog (`Enter`, `Ctrl-Enter` in Import, and the confirm
+    /// button). A form with a problem only `Shell` can see (a missing file, a duplicate path) and
+    /// an import that took nothing reopen the Dialog, which shows why.
+    pub(super) fn apply_documents_dialog(&mut self, dialog: DocumentsDialog) {
+        match dialog {
+            DocumentsDialog::Add(form) => self.apply_documents_form(None, form),
+            DocumentsDialog::Edit(id, form) => self.apply_documents_form(Some(id), form),
+            DocumentsDialog::Import(form, _) => self.apply_documents_import(form),
+            DocumentsDialog::Facts(id, form) => self.apply_documents_facts(id, &form),
+            DocumentsDialog::AcceptAll(_) => self.apply_documents_accept_all(),
+            DocumentsDialog::Picker(state) => self.apply_documents_picker(*state),
+        }
+    }
+
+    /// A picker key that needed the live rows: moves the highlight over them, or acts on the
+    /// highlighted one.
+    fn apply_documents_picker(&mut self, mut state: PickerState) {
+        let Some(request) = state.request.take() else {
+            return;
+        };
+        let rows = self.documents_picker_rows(&state).len();
+        let at = state.selected.min(rows.saturating_sub(1));
+        match request {
+            PickerRequest::Pick => {
+                self.open_documents_dialog(DocumentsDialog::Picker(Box::new(state)));
+                self.documents_picker_pick(at);
             }
-            Some(DocumentsDialog::Facts(_, form)) => form.close_open_select(),
-            _ => false,
+            PickerRequest::Step { down } => {
+                state.step(down, rows);
+                self.open_documents_dialog(DocumentsDialog::Picker(Box::new(state)));
+            }
         }
     }
 
     fn documents_form_mut(&mut self) -> Option<&mut DocumentForm> {
-        match self.documents_dialog.as_mut() {
+        match self.documents_dialog_mut() {
             Some(DocumentsDialog::Add(form) | DocumentsDialog::Edit(_, form)) => Some(form),
             _ => None,
         }
     }
 
-    /// Keys while a Documents dialog is open. `enter` on a select opens or commits its list and
-    /// anywhere else saves (in Import it types a newline, and `ctrl+enter` saves); `space` flips the
-    /// reminder checkbox. `Esc` never reaches here.
-    pub(super) fn handle_documents_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        if matches!(self.documents_dialog, Some(DocumentsDialog::Picker(_))) {
-            return self.handle_documents_picker_key(keystroke);
-        }
-        let options = self.documents_options();
-        if let Some(DocumentsDialog::Import(form, notes)) = self.documents_dialog.as_mut() {
-            match keystroke.key.as_str() {
-                "enter" if keystroke.modifiers.control => self.confirm_documents_import(),
-                "enter" => form.newline(),
-                "backspace" => {
-                    form.backspace();
-                    notes.clear();
-                }
-                "tab" => {}
-                _ => {
-                    let modifiers = &keystroke.modifiers;
-                    if modifiers.control || modifiers.alt || modifiers.platform {
-                        return false;
-                    }
-                    if let Some(ch) = typed_char(keystroke) {
-                        form.push_char(ch);
-                        notes.clear();
-                    }
-                }
-            }
-            return true;
-        }
-        if let Some(DocumentsDialog::AcceptAll(_)) = self.documents_dialog.as_ref() {
-            if keystroke.key == "enter" {
-                self.confirm_documents_accept_all();
-            }
-            return true;
-        }
-        if let Some(DocumentsDialog::Facts(_, form)) = self.documents_dialog.as_mut() {
-            let modifiers = keystroke.modifiers;
-            match keystroke.key.as_str() {
-                "tab" => form.cycle_focus(modifiers.shift, &options),
-                "up" | "down" if form.focused == FactsField::Type => {
-                    let key = if keystroke.key == "up" {
-                        SelectKey::Up
-                    } else {
-                        SelectKey::Down
-                    };
-                    form.handle_select_key(key, &options);
-                }
-                "space" | "enter" if form.focused == FactsField::Type => {
-                    form.handle_select_key(SelectKey::Activate, &options);
-                }
-                "enter" => self.confirm_documents_facts(),
-                "backspace" => form.backspace(),
-                _ => {
-                    if modifiers.control
-                        || modifiers.alt
-                        || modifiers.platform
-                        || modifiers.function
-                    {
-                        return false;
-                    }
-                    if let Some(ch) = typed_char(keystroke) {
-                        form.push_char(ch);
-                    }
-                }
-            }
-            return true;
-        }
-        let Some(form) = self.documents_form_mut() else {
-            return false;
-        };
-        let focused = form.focused;
-        let on_select = DocumentForm::is_select(focused);
-        let modifiers = keystroke.modifiers;
-        match keystroke.key.as_str() {
-            "tab" => form.cycle_focus(modifiers.shift, &options),
-            "up" | "down" if on_select => {
-                let key = if keystroke.key == "up" {
-                    SelectKey::Up
-                } else {
-                    SelectKey::Down
-                };
-                form.handle_select_key(key, &options);
-            }
-            "space" | "enter" if on_select => {
-                form.handle_select_key(SelectKey::Activate, &options);
-            }
-            "space" if focused == DocumentField::Reminder => form.toggle_reminder(),
-            "enter" => self.confirm_documents_form(),
-            "backspace" => form.backspace(),
-            _ => {
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-                if let Some(ch) = typed_char(keystroke) {
-                    form.push_char(ch);
-                }
-            }
-        }
-        true
-    }
-
     /// **Add document** / **Save** and `enter`: adds a Filed Document (selecting it) or saves the
     /// edit. A no-op while the form has a problem or is incomplete.
-    pub(super) fn confirm_documents_form(&mut self) {
-        let options = self.documents_options();
-        let (today, style) = (self.today, self.settings_date_style);
-        let Some(dialog) = self.documents_dialog.as_ref() else {
-            return;
-        };
-        let (editing, form) = match dialog {
-            DocumentsDialog::Add(form) => (None, form),
-            DocumentsDialog::Edit(id, form) => (Some(*id), form),
-            DocumentsDialog::Import(..)
-            | DocumentsDialog::Facts(..)
-            | DocumentsDialog::Picker(_)
-            | DocumentsDialog::AcceptAll(_) => return,
-        };
-        let problems = form.problems(&options, &self.documents, today, style, exists_on_disk);
-        if !form.can_save(&problems) {
-            return;
-        }
-        let Some(new) = form.build(&options, today, style) else {
+    pub(super) fn apply_documents_form(&mut self, editing: Option<u32>, form: Box<DocumentForm>) {
+        let problems = form.problems(&self.documents, exists_on_disk);
+        let Some(new) = form.can_save(&problems).then(|| form.build()).flatten() else {
+            let dialog = match editing {
+                None => DocumentsDialog::Add(form),
+                Some(id) => DocumentsDialog::Edit(id, form),
+            };
+            self.open_documents_dialog(dialog);
             return;
         };
         let title = new.title.clone();
         match editing {
             None => {
                 let Ok(id) = documents::add_filed(&mut self.documents, new) else {
+                    self.open_documents_dialog(DocumentsDialog::Add(form));
                     return;
                 };
                 self.select_added_document(id);
@@ -1557,6 +1430,7 @@ impl Shell {
                 )
                 .is_err()
                 {
+                    self.open_documents_dialog(DocumentsDialog::Edit(id, form));
                     return;
                 }
                 self.select_added_document(id);
@@ -1566,7 +1440,6 @@ impl Shell {
                 );
             }
         }
-        self.close_documents_dialog();
     }
 
     /// Puts the Library on All documents, clears the search and selects `id`, so a Document just
@@ -1597,14 +1470,7 @@ impl Shell {
 
     /// **Import**: every typed path that exists lands in the Inbox. When none does the dialog stays
     /// open and says why each failed.
-    pub(super) fn confirm_documents_import(&mut self) {
-        let Some(DocumentsDialog::Import(form, _)) = self.documents_dialog.as_ref() else {
-            return;
-        };
-        if !form.can_save() {
-            return;
-        }
-        let form = form.clone();
+    pub(super) fn apply_documents_import(&mut self, form: ImportForm) {
         let outcomes = crate::documents_form::import_all(
             &self.document_types,
             &form,
@@ -1633,9 +1499,7 @@ impl Shell {
             })
             .collect();
         if imported == 0 {
-            if let Some(DocumentsDialog::Import(_, shown)) = self.documents_dialog.as_mut() {
-                *shown = notes;
-            }
+            self.open_documents_dialog(DocumentsDialog::Import(form, notes));
             return;
         }
         let skipped = notes.len();
@@ -1653,7 +1517,6 @@ impl Shell {
             },
         );
         self.set_documents_mode(DocumentsMode::Inbox);
-        self.close_documents_dialog();
     }
 
     /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
@@ -1694,10 +1557,9 @@ impl Shell {
     }
 
     fn handle_documents_field_click(&mut self, field: DocumentField, cx: &mut Context<'_, Self>) {
-        let options = self.documents_options();
         if let Some(form) = self.documents_form_mut() {
             if DocumentForm::is_select(field) {
-                form.click_select(field, &options);
+                form.click_select(field);
             } else if field == DocumentField::Reminder {
                 form.focus(field);
                 form.toggle_reminder();
@@ -1714,9 +1576,8 @@ impl Shell {
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        let options = self.documents_options();
         if let Some(form) = self.documents_form_mut() {
-            form.choose(field, index, &options);
+            form.choose(field, index);
         }
         cx.notify();
     }
@@ -1727,7 +1588,7 @@ impl Shell {
         entity: &gpui::Entity<Shell>,
         cx: &gpui::App,
     ) -> Option<gpui::AnyElement> {
-        let dialog = self.documents_dialog.as_ref()?;
+        let dialog = self.documents_dialog()?;
         let on_cancel: crate::dialog::OnClick = {
             let entity = entity.clone();
             Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
@@ -1741,12 +1602,7 @@ impl Shell {
             let entity = entity.clone();
             Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
                 entity.update(cx, |shell, cx| {
-                    match shell.documents_dialog {
-                        Some(DocumentsDialog::Import(..)) => shell.confirm_documents_import(),
-                        Some(DocumentsDialog::AcceptAll(_)) => shell.confirm_documents_accept_all(),
-                        Some(DocumentsDialog::Facts(..)) => shell.confirm_documents_facts(),
-                        _ => shell.confirm_documents_form(),
-                    }
+                    shell.confirm_open_dialog();
                     cx.notify();
                 });
             })
@@ -1779,8 +1635,7 @@ impl Shell {
                 *count, on_cancel, on_confirm, cx,
             )),
             DocumentsDialog::Facts(_, form) => {
-                let options = self.documents_options();
-                let problems = form.problems(self.today, self.settings_date_style);
+                let problems = form.problems();
                 let on_field_click: dialogs::OnFactsFieldClick = {
                     let entity = entity.clone();
                     Rc::new(move |field, _window, cx| {
@@ -1796,7 +1651,7 @@ impl Shell {
                 Some(dialogs::render_facts(
                     dialogs::FactsProps {
                         form,
-                        options: &options,
+                        options: &form.options,
                         valid: form.can_save(&problems),
                         problems: &problems,
                         on_field_click,
@@ -1818,14 +1673,7 @@ impl Shell {
                 cx,
             )),
             DocumentsDialog::Add(form) | DocumentsDialog::Edit(_, form) => {
-                let options = self.documents_options();
-                let problems = form.problems(
-                    &options,
-                    &self.documents,
-                    self.today,
-                    self.settings_date_style,
-                    exists_on_disk,
-                );
+                let problems = form.problems(&self.documents, exists_on_disk);
                 let on_field_click: dialogs::OnFieldClick = {
                     let entity = entity.clone();
                     Rc::new(move |field, _window, cx| {
@@ -1845,8 +1693,8 @@ impl Shell {
                 Some(dialogs::render_form(
                     dialogs::FormProps {
                         form,
-                        options: &options,
-                        valid: form.can_save(&problems),
+                        options: &form.options,
+                        valid: form.is_complete() && form.can_save(&problems),
                         problems: &problems,
                         handlers: dialogs::FormHandlers {
                             on_field_click,

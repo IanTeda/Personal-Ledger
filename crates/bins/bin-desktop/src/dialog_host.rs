@@ -21,9 +21,9 @@
 
 use crate::{
     accounts::AccountsDialog, bills::BillsDialog, budgets::BudgetsDialog,
-    categories::CategoriesDialog, document_types::DocumentTypesDialog, field::TextField,
-    inventory_form::InventoryDialog, payees::PayeesDialog, settings::SettingsDialog,
-    tags::TagsDialog,
+    categories::CategoriesDialog, document_types::DocumentTypesDialog,
+    documents_form::DocumentsDialog, field::TextField, inventory_form::InventoryDialog,
+    payees::PayeesDialog, settings::SettingsDialog, tags::TagsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -38,8 +38,12 @@ pub enum DialogKey {
     Left,
     Right,
     Enter,
+    /// `Ctrl-Enter`: a multi-line box takes it to save, and any other Dialog treats it as `Enter`.
+    CtrlEnter,
     /// A printable character, typed without Ctrl/Alt/Cmd/Fn.
     Char(char),
+    /// A character chord held with Ctrl alone (`Ctrl-N`), for a list Dialog's own keys.
+    Ctrl(char),
     /// Anything else (arrows, function keys, a modified chord).
     Other,
 }
@@ -94,6 +98,7 @@ pub enum OpenDialog {
     Bills(Box<BillsDialog>),
     /// Boxed: its forms carry their select choices.
     Budgets(Box<BudgetsDialog>),
+    Documents(DocumentsDialog),
 }
 
 impl OpenDialog {
@@ -108,6 +113,7 @@ impl OpenDialog {
             Self::Tags(dialog) => dialog,
             Self::Bills(dialog) => &**dialog,
             Self::Budgets(dialog) => &**dialog,
+            Self::Documents(dialog) => dialog,
         }
     }
 
@@ -122,6 +128,7 @@ impl OpenDialog {
             Self::Tags(dialog) => dialog,
             Self::Bills(dialog) => &mut **dialog,
             Self::Budgets(dialog) => &mut **dialog,
+            Self::Documents(dialog) => dialog,
         }
     }
 }
@@ -167,8 +174,8 @@ pub fn handle_key(dialog: &mut impl Dialog, key: DialogKey) -> DialogOutcome {
             dialog.cycle_field();
             DialogOutcome::Handled
         }
-        DialogKey::Enter if dialog.is_valid() => DialogOutcome::Confirm,
-        DialogKey::Enter => DialogOutcome::Handled,
+        DialogKey::Enter | DialogKey::CtrlEnter if dialog.is_valid() => DialogOutcome::Confirm,
+        DialogKey::Enter | DialogKey::CtrlEnter => DialogOutcome::Handled,
         DialogKey::Char(ch) => match dialog.focused_text() {
             Some(field) => {
                 field.push(ch);
@@ -176,9 +183,12 @@ pub fn handle_key(dialog: &mut impl Dialog, key: DialogKey) -> DialogOutcome {
             }
             None => DialogOutcome::Ignored,
         },
-        DialogKey::Up | DialogKey::Down | DialogKey::Left | DialogKey::Right | DialogKey::Other => {
-            DialogOutcome::Ignored
-        }
+        DialogKey::Up
+        | DialogKey::Down
+        | DialogKey::Left
+        | DialogKey::Right
+        | DialogKey::Ctrl(_)
+        | DialogKey::Other => DialogOutcome::Ignored,
     }
 }
 
@@ -1626,5 +1636,292 @@ mod tests {
             handle_key(&mut dialog, DialogKey::Enter),
             DialogOutcome::Confirm
         );
+    }
+
+    // -- Documents ------------------------------------------------------------------------------
+
+    fn doc_options() -> crate::documents_form::DocumentOptions {
+        crate::documents_form::DocumentOptions::new(&default_types(), |kind| {
+            kind.map_or("None".to_string(), |kind| format!("{kind:?}"))
+        })
+    }
+
+    fn doc_today() -> chrono::NaiveDate {
+        chrono::NaiveDate::from_ymd_opt(2026, 9, 12).unwrap()
+    }
+
+    fn add_document() -> OpenDialog {
+        OpenDialog::Documents(DocumentsDialog::Add(Box::new(
+            crate::documents_form::DocumentForm::new(
+                &doc_options(),
+                crate::documents::LibraryScope::All,
+                doc_today(),
+                None,
+            ),
+        )))
+    }
+
+    fn document_form_of(dialog: &OpenDialog) -> &crate::documents_form::DocumentForm {
+        match dialog {
+            OpenDialog::Documents(DocumentsDialog::Add(form) | DocumentsDialog::Edit(_, form)) => {
+                form
+            }
+            other => panic!("expected a document form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn document_title_follows_the_path_until_it_is_typed_over() {
+        use crate::documents_form::DocumentField;
+        let mut dialog = add_document();
+        type_text(&mut dialog, "/tmp/rates-notice.pdf");
+        assert_eq!(
+            document_form_of(&dialog).path.text(),
+            "/tmp/rates-notice.pdf"
+        );
+        assert_eq!(document_form_of(&dialog).title.text(), "rates-notice");
+
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(document_form_of(&dialog).focused, DocumentField::Title);
+        type_text(&mut dialog, "!");
+        handle_key(&mut dialog, DialogKey::BackTab);
+        type_text(&mut dialog, "x");
+        assert_eq!(document_form_of(&dialog).title.text(), "rates-notice!");
+    }
+
+    #[test]
+    fn document_enter_confirms_only_with_a_path_a_title_and_readable_dates() {
+        use crate::documents_form::DocumentField;
+        let mut dialog = add_document();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "/tmp/policy.pdf");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+
+        // Path, Title, Type, Date: a date the parser rejects refuses Enter.
+        for _ in 0..3 {
+            handle_key(&mut dialog, DialogKey::Tab);
+        }
+        assert_eq!(document_form_of(&dialog).focused, DocumentField::Date);
+        for _ in 0..5 {
+            handle_key(&mut dialog, DialogKey::Backspace);
+        }
+        type_text(&mut dialog, "not a date");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+    }
+
+    #[test]
+    fn document_selects_take_enter_and_the_first_esc_closes_their_list() {
+        use crate::documents_form::DocumentField;
+        let mut dialog = add_document();
+        type_text(&mut dialog, "/tmp/policy.pdf");
+        handle_key(&mut dialog, DialogKey::Tab);
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(document_form_of(&dialog).focused, DocumentField::Type);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Handled,
+            "a select swallows text"
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled,
+            "Enter opens the list rather than confirming"
+        );
+        assert!(document_form_of(&dialog).doc_type.is_open());
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+    }
+
+    fn facts_dialog() -> OpenDialog {
+        OpenDialog::Documents(DocumentsDialog::Facts(
+            1,
+            Box::new(crate::documents_form::FactsForm::new(
+                &crate::documents::ExtractedFacts::default(),
+                &doc_options(),
+                doc_today(),
+                None,
+            )),
+        ))
+    }
+
+    fn facts_form_of(dialog: &OpenDialog) -> &crate::documents_form::FactsForm {
+        match dialog {
+            OpenDialog::Documents(DocumentsDialog::Facts(_, form)) => form,
+            other => panic!("expected the facts form, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn facts_type_into_the_focused_field_and_enter_needs_a_readable_total() {
+        let mut dialog = facts_dialog();
+        type_text(&mut dialog, "Coles");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(facts_form_of(&dialog).merchant.text(), "Cole");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm,
+            "every fact may be blank"
+        );
+
+        // Merchant, Date, Total: a total that is not an amount refuses Enter.
+        handle_key(&mut dialog, DialogKey::Tab);
+        handle_key(&mut dialog, DialogKey::Tab);
+        type_text(&mut dialog, "abc");
+        assert_eq!(facts_form_of(&dialog).total.text(), "abc");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+    }
+
+    #[test]
+    fn facts_type_select_swallows_text_and_the_first_esc_closes_its_list() {
+        let mut dialog = facts_dialog();
+        for _ in 0..3 {
+            handle_key(&mut dialog, DialogKey::Tab);
+        }
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Handled
+        );
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(facts_form_of(&dialog).doc_type.is_open());
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+    }
+
+    fn import_dialog() -> OpenDialog {
+        OpenDialog::Documents(DocumentsDialog::Import(
+            crate::documents_form::ImportForm::default(),
+            vec!["a note".to_string()],
+        ))
+    }
+
+    #[test]
+    fn import_enter_types_a_newline_and_ctrl_enter_imports_once_there_is_a_path() {
+        let mut dialog = import_dialog();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::CtrlEnter),
+            DialogOutcome::Handled,
+            "nothing to import yet"
+        );
+        type_text(&mut dialog, "/tmp/a.pdf");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "/tmp/b.pdf");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Tab),
+            DialogOutcome::Handled
+        );
+        let OpenDialog::Documents(DocumentsDialog::Import(form, notes)) = &dialog else {
+            panic!("expected Import");
+        };
+        assert_eq!(form.paths.text(), "/tmp/a.pdf\n/tmp/b.pdf");
+        assert!(notes.is_empty(), "typing clears the last attempt's notes");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::CtrlEnter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn accept_all_confirms_on_enter_and_swallows_every_other_key() {
+        let mut dialog = OpenDialog::Documents(DocumentsDialog::AcceptAll(4));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Handled
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Tab),
+            DialogOutcome::Handled
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    fn picker(purpose: crate::documents_picker::Purpose) -> OpenDialog {
+        OpenDialog::Documents(DocumentsDialog::Picker(Box::new(
+            crate::documents_picker::PickerState::new(purpose, doc_today(), None).with_types(vec![
+                crate::documents::DocumentType::TAX,
+                crate::documents::DocumentType::OTHER,
+            ]),
+        )))
+    }
+
+    fn picker_of(dialog: &OpenDialog) -> &crate::documents_picker::PickerState {
+        match dialog {
+            OpenDialog::Documents(DocumentsDialog::Picker(state)) => state,
+            other => panic!("expected the picker, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn picker_types_a_query_and_tab_cycles_the_kind_filter() {
+        use crate::documents_picker::{KindFilter, Purpose};
+        let mut dialog = picker(Purpose::Link(1));
+        type_text(&mut dialog, "coles");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(picker_of(&dialog).query.text(), "cole");
+        assert_eq!(picker_of(&dialog).kind, KindFilter::All);
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(picker_of(&dialog).kind, KindFilter::Transaction);
+        assert_eq!(picker_of(&dialog).selected, 0);
+    }
+
+    #[test]
+    fn picker_enter_and_the_arrows_ask_shell_for_the_live_rows() {
+        use crate::documents_picker::{PickerRequest, Purpose};
+        let mut dialog = picker(Purpose::Link(1));
+        assert!(!dialog.is_valid());
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+        assert_eq!(picker_of(&dialog).request, Some(PickerRequest::Pick));
+
+        for (key, down) in [
+            (DialogKey::Down, true),
+            (DialogKey::Up, false),
+            (DialogKey::Ctrl('n'), true),
+            (DialogKey::Ctrl('p'), false),
+        ] {
+            let mut dialog = picker(Purpose::Link(1));
+            assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Confirm);
+            assert_eq!(
+                picker_of(&dialog).request,
+                Some(PickerRequest::Step { down })
+            );
+        }
+    }
+
+    #[test]
+    fn picker_left_and_right_step_the_inbox_document_type_only_when_filing() {
+        use crate::documents::DocumentType;
+        use crate::documents_picker::Purpose;
+        let mut dialog = picker(Purpose::File(1));
+        handle_key(&mut dialog, DialogKey::Right);
+        assert_eq!(picker_of(&dialog).doc_type, Some(DocumentType::TAX));
+        handle_key(&mut dialog, DialogKey::Right);
+        assert_eq!(picker_of(&dialog).doc_type, Some(DocumentType::OTHER));
+
+        let mut dialog = picker(Purpose::Link(1));
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Right),
+            DialogOutcome::Ignored
+        );
+        assert_eq!(picker_of(&dialog).doc_type, None);
     }
 }
