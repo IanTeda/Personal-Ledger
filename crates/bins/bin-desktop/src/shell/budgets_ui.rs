@@ -71,7 +71,7 @@ impl Shell {
                 (budget.name.clone(), rows)
             })
             .unwrap_or_default();
-        let switcher = match self.budgets_dialog.as_ref() {
+        let switcher = match self.budgets_dialog() {
             Some(BudgetsDialog::Switcher(switcher)) => Some(switcher),
             _ => None,
         };
@@ -91,38 +91,38 @@ impl Shell {
                 self.budgets_history_end.year,
                 self.budgets_history_end.month,
             ),
-            dialog: self.budgets_dialog.as_ref().map(|dialog| {
+            dialog: self.budgets_dialog().map(|dialog| {
                 match dialog {
                     BudgetsDialog::Switcher(_) => "Switcher",
                     BudgetsDialog::Budget(_) => "Budget",
-                    BudgetsDialog::Manage { .. } => "Manage",
-                    BudgetsDialog::CategoryDetail { .. } => "Detail",
+                    BudgetsDialog::Manage(_) => "Manage",
+                    BudgetsDialog::CategoryDetail(_) => "Detail",
                     BudgetsDialog::EditLimit(_) => "EditLimit",
                     BudgetsDialog::Fill { .. } => "Fill",
                     BudgetsDialog::Stop(_) => "Stop",
                 }
                 .to_string()
             }),
-            limit_amount: match self.budgets_dialog.as_ref() {
-                Some(BudgetsDialog::EditLimit(form)) => Some(form.amount.clone()),
+            limit_amount: match self.budgets_dialog() {
+                Some(BudgetsDialog::EditLimit(form)) => Some(form.amount.text().to_string()),
                 _ => None,
             },
             switcher_names: switcher.map(|switcher| {
-                budgets::switcher_ids(&self.budgets, &switcher.query)
+                budgets::switcher_ids(&self.budgets, switcher.query.text())
                     .into_iter()
                     .filter_map(|id| self.budgets.get(id).map(|budget| budget.name.clone()))
                     .collect()
             }),
             switcher_selected: switcher.map(|switcher| switcher.selected),
-            budget_name: match self.budgets_dialog.as_ref() {
-                Some(BudgetsDialog::Budget(form)) => Some(form.name.clone()),
+            budget_name: match self.budgets_dialog() {
+                Some(BudgetsDialog::Budget(form)) => Some(form.name.text().to_string()),
                 _ => None,
             },
-            fill_source: match self.budgets_dialog.as_ref() {
+            fill_source: match self.budgets_dialog() {
                 Some(BudgetsDialog::Fill { source, .. }) => Some(format!("{source:?}")),
                 _ => None,
             },
-            stop_category: match self.budgets_dialog.as_ref() {
+            stop_category: match self.budgets_dialog() {
                 Some(BudgetsDialog::Stop(form)) => Some(form.category_id),
                 _ => None,
             },

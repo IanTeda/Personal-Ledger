@@ -265,7 +265,7 @@ pub fn render(props: BudgetDialogProps<'_>, cx: &App) -> AnyElement {
                 .child(text_field(
                     "budgets-new-name",
                     label(crate::msg::desktop_budgets_new_field_name()),
-                    &form.name,
+                    form.name.text(),
                     &crate::msg::desktop_budgets_new_name_placeholder(),
                     form.focused == BudgetField::Name,
                     field_click(BudgetField::Name),

@@ -273,7 +273,7 @@ pub fn render(props: LimitDialogProps<'_>, cx: &App) -> AnyElement {
             .child(text_field(
                 "budgets-limit-amount",
                 label(crate::msg::desktop_budgets_limit_field_amount()),
-                &form.amount,
+                form.amount.text(),
                 "0.00",
                 form.focused == LimitField::Amount,
                 field_click(LimitField::Amount),

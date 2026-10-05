@@ -20,9 +20,10 @@
 //! their own `Shell::*_dialog` fields.
 
 use crate::{
-    accounts::AccountsDialog, bills::BillsDialog, categories::CategoriesDialog,
-    document_types::DocumentTypesDialog, field::TextField, inventory_form::InventoryDialog,
-    payees::PayeesDialog, settings::SettingsDialog, tags::TagsDialog,
+    accounts::AccountsDialog, bills::BillsDialog, budgets::BudgetsDialog,
+    categories::CategoriesDialog, document_types::DocumentTypesDialog, field::TextField,
+    inventory_form::InventoryDialog, payees::PayeesDialog, settings::SettingsDialog,
+    tags::TagsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -91,6 +92,8 @@ pub enum OpenDialog {
     Tags(TagsDialog),
     /// Boxed: the plan form carries its select choices, which would swell every variant.
     Bills(Box<BillsDialog>),
+    /// Boxed: its forms carry their select choices.
+    Budgets(Box<BudgetsDialog>),
 }
 
 impl OpenDialog {
@@ -104,6 +107,7 @@ impl OpenDialog {
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
             Self::Bills(dialog) => &**dialog,
+            Self::Budgets(dialog) => &**dialog,
         }
     }
 
@@ -117,6 +121,7 @@ impl OpenDialog {
             Self::Inventory(dialog) => dialog,
             Self::Tags(dialog) => dialog,
             Self::Bills(dialog) => &mut **dialog,
+            Self::Budgets(dialog) => &mut **dialog,
         }
     }
 }
@@ -1213,5 +1218,413 @@ mod tests {
             DialogOutcome::Confirm
         );
         assert!(!dialog.close_open_select());
+    }
+
+    // -- Budgets --------------------------------------------------------------------------------
+
+    fn budgets_today() -> chrono::NaiveDate {
+        chrono::NaiveDate::from_ymd_opt(2026, 9, 21).unwrap()
+    }
+
+    fn budgets_world() -> (
+        Vec<crate::accounts::Account>,
+        Vec<crate::categories::Category>,
+        crate::budgets::Budgets,
+    ) {
+        let accounts = crate::accounts::default_accounts();
+        let categories = crate::categories::default_categories();
+        let budgets = crate::budgets::default_budgets(&accounts, &categories, budgets_today());
+        (accounts, categories, budgets)
+    }
+
+    fn budgets_dialog(dialog: BudgetsDialog) -> OpenDialog {
+        OpenDialog::Budgets(Box::new(dialog))
+    }
+
+    fn budget_form_of(dialog: &OpenDialog) -> &crate::budget_form::BudgetForm {
+        match dialog {
+            OpenDialog::Budgets(inner) => match &**inner {
+                BudgetsDialog::Budget(form) => form,
+                other => panic!("expected the Budget form, got {other:?}"),
+            },
+            other => panic!("expected Budgets, got {other:?}"),
+        }
+    }
+
+    fn new_budget() -> OpenDialog {
+        let (accounts, _, budgets) = budgets_world();
+        let source = budgets.get(crate::budgets::PERSONAL_SPENDING_ID);
+        budgets_dialog(BudgetsDialog::Budget(crate::budget_form::BudgetForm::new(
+            &accounts, source,
+        )))
+    }
+
+    #[test]
+    fn budget_form_types_into_the_name_only_and_tab_moves_on() {
+        let mut dialog = new_budget();
+        type_text(&mut dialog, "Holiday");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(budget_form_of(&dialog).name.text(), "Holida");
+
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(
+            budget_form_of(&dialog).focused,
+            crate::budget_form::BudgetField::Unit
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Handled,
+            "the Unit select swallows text"
+        );
+        assert_eq!(budget_form_of(&dialog).name.text(), "Holida");
+        handle_key(&mut dialog, DialogKey::BackTab);
+        assert_eq!(
+            budget_form_of(&dialog).focused,
+            crate::budget_form::BudgetField::Name
+        );
+    }
+
+    #[test]
+    fn budget_form_confirms_only_with_a_name_and_a_select_takes_enter_while_open() {
+        let mut dialog = new_budget();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled
+        );
+        type_text(&mut dialog, "Holiday");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+
+        handle_key(&mut dialog, DialogKey::Tab);
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(budget_form_of(&dialog).unit.is_open());
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled,
+            "Enter commits the open list"
+        );
+        assert!(!budget_form_of(&dialog).unit.is_open());
+    }
+
+    #[test]
+    fn budget_form_first_esc_closes_only_the_open_unit_list() {
+        let mut dialog = new_budget();
+        handle_key(&mut dialog, DialogKey::Tab);
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+    }
+
+    fn limit_options(count: usize) -> crate::limit_form::LimitOptions {
+        let (_, categories, mut budgets) = budgets_world();
+        let today = budgets_today();
+        // The seed budgets every Expense leaf, so two are Stopped for the picker to offer.
+        for name in ["Household", "Water"] {
+            let id = crate::categories::find_by_name(&categories, name).unwrap();
+            budgets
+                .stop(
+                    crate::budgets::PERSONAL_SPENDING_ID,
+                    &categories,
+                    id,
+                    crate::bills::Period::of(today),
+                    today,
+                )
+                .unwrap();
+        }
+        let budget = budgets.get(crate::budgets::PERSONAL_SPENDING_ID).unwrap();
+        crate::limit_form::LimitOptions::new(
+            budget,
+            &categories,
+            crate::bills::Period::of(today),
+            count,
+            |month, _| format!("{}-{}", month.year, month.month),
+        )
+    }
+
+    fn limit_form_of(dialog: &OpenDialog) -> &crate::limit_form::LimitForm {
+        match dialog {
+            OpenDialog::Budgets(inner) => match &**inner {
+                BudgetsDialog::EditLimit(form) => form,
+                other => panic!("expected Edit budget, got {other:?}"),
+            },
+            other => panic!("expected Budgets, got {other:?}"),
+        }
+    }
+
+    fn limit_picker() -> OpenDialog {
+        budgets_dialog(BudgetsDialog::EditLimit(
+            crate::limit_form::LimitForm::pick(
+                None,
+                &limit_options(crate::limit_form::START_MONTHS),
+            ),
+        ))
+    }
+
+    #[test]
+    fn limit_form_amount_takes_a_decimal_only_and_tab_moves_on() {
+        let mut dialog = limit_picker();
+        // The picker opens on its Category select, which takes no text.
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('5')),
+            DialogOutcome::Handled
+        );
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert_eq!(
+            limit_form_of(&dialog).focused,
+            crate::limit_form::LimitField::Amount
+        );
+        assert_eq!(limit_form_of(&dialog).amount.text(), "");
+
+        type_text_filtered(&mut dialog, "12.5.0x");
+        assert_eq!(limit_form_of(&dialog).amount.text(), "12.50");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(limit_form_of(&dialog).amount.text(), "12.5");
+    }
+
+    /// Types `text`, letting a Dialog refuse characters it doesn't take.
+    fn type_text_filtered(dialog: &mut OpenDialog, text: &str) {
+        for ch in text.chars() {
+            handle_key(dialog, DialogKey::Char(ch));
+        }
+    }
+
+    #[test]
+    fn limit_form_confirms_only_with_a_category_and_an_amount() {
+        let mut dialog = limit_picker();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled,
+            "nothing to confirm yet"
+        );
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(dialog.close_open_select(), "Space opened the Category list");
+        handle_key(&mut dialog, DialogKey::Down);
+        handle_key(&mut dialog, DialogKey::Tab);
+        assert!(!dialog.is_valid(), "no amount yet");
+        type_text(&mut dialog, "80");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    #[test]
+    fn stop_form_steps_months_and_the_first_esc_closes_its_list() {
+        let options = limit_options(crate::limit_form::STOP_MONTHS);
+        let form = crate::limit_form::StopForm::new(
+            1,
+            crate::bills::Period::of(budgets_today()),
+            &options,
+        );
+        let mut dialog = budgets_dialog(BudgetsDialog::Stop(form));
+        handle_key(&mut dialog, DialogKey::Char('j'));
+        handle_key(&mut dialog, DialogKey::Char(' '));
+        assert!(dialog.close_open_select());
+        assert!(!dialog.close_open_select());
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+    }
+
+    fn switcher_of(dialog: &OpenDialog) -> &crate::budgets::Switcher {
+        match dialog {
+            OpenDialog::Budgets(inner) => match &**inner {
+                BudgetsDialog::Switcher(switcher) => switcher,
+                other => panic!("expected the Switcher, got {other:?}"),
+            },
+            other => panic!("expected Budgets, got {other:?}"),
+        }
+    }
+
+    fn switcher() -> OpenDialog {
+        let (_, _, budgets) = budgets_world();
+        budgets_dialog(BudgetsDialog::Switcher(crate::budgets::Switcher::new(
+            &budgets,
+            crate::budgets::PERSONAL_SPENDING_ID,
+        )))
+    }
+
+    #[test]
+    fn switcher_search_takes_text_until_esc_gives_the_keys_back_to_the_list() {
+        let mut dialog = switcher();
+        // With the list focused, `x` is nobody's key.
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Ignored
+        );
+        handle_key(&mut dialog, DialogKey::Char('/'));
+        assert!(switcher_of(&dialog).searching);
+        type_text(&mut dialog, "per");
+        handle_key(&mut dialog, DialogKey::Backspace);
+        assert_eq!(switcher_of(&dialog).query.text(), "pe");
+        assert_eq!(
+            switcher_of(&dialog).chosen(),
+            Some(crate::budgets::PERSONAL_SPENDING_ID)
+        );
+
+        assert!(
+            dialog.close_open_select(),
+            "the first Esc leaves the search"
+        );
+        assert!(!switcher_of(&dialog).searching);
+        assert!(!dialog.close_open_select(), "the second closes the popover");
+    }
+
+    #[test]
+    fn switcher_enter_opens_the_highlight_only_while_a_row_matches_and_n_asks_for_a_new_budget() {
+        let mut dialog = switcher();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+
+        handle_key(&mut dialog, DialogKey::Char('/'));
+        type_text(&mut dialog, "no such budget");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Handled,
+            "no row, so nothing to open"
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Tab),
+            DialogOutcome::Handled
+        );
+
+        let mut dialog = switcher();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('n')),
+            DialogOutcome::Confirm
+        );
+        assert_eq!(
+            switcher_of(&dialog).request,
+            crate::budgets::SwitcherRequest::New
+        );
+    }
+
+    fn manage() -> OpenDialog {
+        let (_, _, budgets) = budgets_world();
+        budgets_dialog(BudgetsDialog::Manage(crate::budgets::Manage::new(
+            &budgets,
+            crate::budgets::PERSONAL_SPENDING_ID,
+        )))
+    }
+
+    fn manage_request(dialog: &OpenDialog) -> Option<crate::budgets::ManageRequest> {
+        match dialog {
+            OpenDialog::Budgets(inner) => match &**inner {
+                BudgetsDialog::Manage(manage) => manage.request,
+                other => panic!("expected Manage, got {other:?}"),
+            },
+            other => panic!("expected Budgets, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn manage_keys_move_the_cursor_or_ask_shell_for_an_action_on_the_row() {
+        use crate::budgets::{ManageAction, ManageRequest, PERSONAL_SPENDING_ID};
+        let mut dialog = manage();
+        assert!(!dialog.is_valid(), "nothing asked yet");
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
+        assert_eq!(
+            manage_request(&dialog),
+            Some(ManageRequest::Action(
+                PERSONAL_SPENDING_ID,
+                ManageAction::Open
+            ))
+        );
+
+        let mut dialog = manage();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Confirm
+        );
+        assert_eq!(
+            manage_request(&dialog),
+            Some(ManageRequest::Action(
+                PERSONAL_SPENDING_ID,
+                ManageAction::Archive
+            ))
+        );
+
+        let mut dialog = manage();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('n')),
+            DialogOutcome::Confirm
+        );
+        assert_eq!(manage_request(&dialog), Some(ManageRequest::New));
+
+        let mut dialog = manage();
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('q')),
+            DialogOutcome::Ignored
+        );
+    }
+
+    #[test]
+    fn category_detail_moves_its_cursor_and_hands_off_on_t_enter_or_e() {
+        use crate::budgets::{Detail, DetailRequest};
+        let month = crate::bills::Period::of(budgets_today());
+        let mut dialog = budgets_dialog(BudgetsDialog::CategoryDetail(Detail::new(1, month, 3)));
+        handle_key(&mut dialog, DialogKey::Char('j'));
+        handle_key(&mut dialog, DialogKey::Down);
+        handle_key(&mut dialog, DialogKey::Down);
+        handle_key(&mut dialog, DialogKey::Char('k'));
+        let selected = match &dialog {
+            OpenDialog::Budgets(inner) => match &**inner {
+                BudgetsDialog::CategoryDetail(detail) => detail.selected,
+                other => panic!("expected the detail, got {other:?}"),
+            },
+            other => panic!("expected Budgets, got {other:?}"),
+        };
+        assert_eq!(selected, 1, "stops at the last listed row, then steps back");
+
+        assert!(!dialog.is_valid());
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('e')),
+            DialogOutcome::Confirm
+        );
+        let request = match &dialog {
+            OpenDialog::Budgets(inner) => match &**inner {
+                BudgetsDialog::CategoryDetail(detail) => detail.request,
+                _ => None,
+            },
+            _ => None,
+        };
+        assert_eq!(request, Some(DetailRequest::Edit));
+    }
+
+    #[test]
+    fn fill_picks_its_source_with_j_k_and_confirms_on_enter() {
+        use crate::budgets::FillSource;
+        let month = crate::bills::Period::of(budgets_today());
+        let mut dialog = budgets_dialog(BudgetsDialog::Fill {
+            month,
+            source: FillSource::PreviousMonth,
+        });
+        handle_key(&mut dialog, DialogKey::Char('j'));
+        let source = |dialog: &OpenDialog| match dialog {
+            OpenDialog::Budgets(inner) => match &**inner {
+                BudgetsDialog::Fill { source, .. } => *source,
+                other => panic!("expected Fill, got {other:?}"),
+            },
+            other => panic!("expected Budgets, got {other:?}"),
+        };
+        assert_eq!(source(&dialog), FillSource::Average);
+        handle_key(&mut dialog, DialogKey::Char('k'));
+        assert_eq!(source(&dialog), FillSource::PreviousMonth);
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Char('x')),
+            DialogOutcome::Ignored
+        );
+        assert_eq!(
+            handle_key(&mut dialog, DialogKey::Enter),
+            DialogOutcome::Confirm
+        );
     }
 }

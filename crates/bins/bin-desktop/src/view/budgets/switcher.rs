@@ -167,13 +167,16 @@ pub fn render(props: SwitcherProps<'_>, cx: &App) -> AnyElement {
     } = props;
 
     let caret = if state.searching { "\u{2502}" } else { "" };
-    let (search_text, search_colour) = if state.query.is_empty() {
+    let (search_text, search_colour) = if state.query.text().is_empty() {
         (
             format!("{}{caret}", crate::msg::desktop_budgets_switcher_search()),
             color::faint_text(cx),
         )
     } else {
-        (format!("{}{caret}", state.query), color::foreground(cx))
+        (
+            format!("{}{caret}", state.query.text()),
+            color::foreground(cx),
+        )
     };
     let search = div().px(px(14.0)).py(px(12.0)).child(
         div()

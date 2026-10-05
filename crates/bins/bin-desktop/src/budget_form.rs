@@ -15,6 +15,8 @@
 use crate::{
     accounts::{Account, SelectKey},
     budgets::{Budget, BudgetError, NewBudget, StartFrom},
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    field::TextField,
     select::SelectState,
     transactions,
 };
@@ -52,21 +54,32 @@ pub struct BudgetOptions {
     pub accounts: Vec<(u32, String)>,
 }
 
+/// An Account that takes Transactions, as the form needs it: id, name and Unit.
+type Candidate = (u32, String, String);
+
+fn candidates(accounts: &[Account]) -> Vec<Candidate> {
+    accounts
+        .iter()
+        .filter(|a| transactions::takes_transactions(&a.account_type))
+        .map(|a| (a.id, a.name.clone(), a.unit.clone()))
+        .collect()
+}
+
 impl BudgetOptions {
     pub fn new(accounts: &[Account], unit: Option<&str>) -> Self {
-        let takes: Vec<&Account> = accounts
-            .iter()
-            .filter(|a| transactions::takes_transactions(&a.account_type))
-            .collect();
-        let mut units: Vec<String> = takes.iter().map(|a| a.unit.clone()).collect();
+        Self::of(&candidates(accounts), unit)
+    }
+
+    fn of(takes: &[Candidate], unit: Option<&str>) -> Self {
+        let mut units: Vec<String> = takes.iter().map(|(_, _, unit)| unit.clone()).collect();
         units.sort();
         units.dedup();
         Self {
             units,
             accounts: takes
                 .iter()
-                .filter(|a| Some(a.unit.as_str()) == unit)
-                .map(|a| (a.id, a.name.clone()))
+                .filter(|(_, _, each)| Some(each.as_str()) == unit)
+                .map(|(id, name, _)| (*id, name.clone()))
                 .collect(),
         }
     }
@@ -91,7 +104,7 @@ pub enum BudgetDraft {
 pub struct BudgetForm {
     /// The Budget being edited; `None` while creating one.
     pub editing: Option<u32>,
-    pub name: String,
+    pub name: TextField,
     pub unit: SelectState,
     /// The on-budget Accounts, in no particular order.
     pub account_ids: Vec<u32>,
@@ -101,6 +114,9 @@ pub struct BudgetForm {
     /// The Budget "Copy categories from" names: the one on show when the dialog opened, with its
     /// Unit.
     pub copy_source: Option<(u32, String)>,
+    /// The Accounts that take Transactions, copied in as the Dialog opens: the Unit select's
+    /// options and the Accounts on offer are worked out from them as the Unit changes.
+    takes_transactions: Vec<Candidate>,
     pub focused: BudgetField,
     /// A refused save, shown until the next change.
     pub error: Option<BudgetError>,
@@ -117,27 +133,29 @@ impl BudgetForm {
         let options = BudgetOptions::new(accounts, unit.as_deref());
         Self {
             editing: None,
-            name: String::new(),
+            name: TextField::default(),
             unit: SelectState::new(unit),
             account_ids: options.account_ids(),
             account_cursor: 0,
             start_from: StartChoice::Empty,
             copy_source: source.map(|budget| (budget.id, budget.unit.clone())),
+            takes_transactions: candidates(accounts),
             focused: BudgetField::Name,
             error: None,
         }
     }
 
     /// Edit mode, prefilled from `budget`.
-    pub fn from_budget(budget: &Budget) -> Self {
+    pub fn from_budget(budget: &Budget, accounts: &[Account]) -> Self {
         Self {
             editing: Some(budget.id),
-            name: budget.name.clone(),
+            name: TextField::new(budget.name.clone()),
             unit: SelectState::new(Some(budget.unit.clone())),
             account_ids: budget.account_ids.clone(),
             account_cursor: 0,
             start_from: StartChoice::Empty,
             copy_source: None,
+            takes_transactions: candidates(accounts),
             focused: BudgetField::Name,
             error: None,
         }
@@ -149,6 +167,11 @@ impl BudgetForm {
 
     pub fn unit_code(&self) -> Option<&str> {
         self.unit.value()
+    }
+
+    /// The Unit select's options and the Accounts on offer for the form's Unit.
+    pub fn options(&self) -> BudgetOptions {
+        BudgetOptions::of(&self.takes_transactions, self.unit_code())
     }
 
     /// Whether Copy can be chosen: there is a source Budget and it is in the form's Unit.
@@ -194,34 +217,13 @@ impl BudgetForm {
         self.focused = stops[next];
     }
 
-    /// Closes the Unit list, for the first `Esc`. Returns whether it was open.
-    pub fn close_open_select(&mut self) -> bool {
-        let open = self.unit.is_open();
-        self.unit.cancel();
-        open
-    }
-
-    pub fn push_char(&mut self, ch: char) {
-        if self.focused == BudgetField::Name && !ch.is_control() {
-            self.name.push(ch);
-            self.error = None;
-        }
-    }
-
-    pub fn backspace(&mut self) {
-        if self.focused == BudgetField::Name {
-            self.name.pop();
-            self.error = None;
-        }
-    }
-
-    /// A key on the Unit select. Returns whether it is focused (and so took the key). The caller
-    /// follows a change with [`Self::sync_unit`].
-    pub fn handle_select_key(&mut self, key: SelectKey, options: &BudgetOptions) -> bool {
+    /// A key on the Unit select. Returns whether it is focused (and so took the key); a change
+    /// re-selects the Accounts for the new Unit.
+    pub fn handle_select_key(&mut self, key: SelectKey) -> bool {
         if self.focused != BudgetField::Unit || self.is_edit() {
             return false;
         }
-        let list = &options.units;
+        let list = &self.options().units;
         match (key, self.unit.is_open()) {
             (SelectKey::Up, true) => self.unit.move_highlight(list, -1),
             (SelectKey::Down, true) => self.unit.move_highlight(list, 1),
@@ -231,11 +233,12 @@ impl BudgetForm {
             (SelectKey::Activate, false) => self.unit.open(list),
         }
         self.error = None;
+        self.sync_unit();
         true
     }
 
     /// A click on the Unit field: focuses it and toggles its list.
-    pub fn click_unit(&mut self, options: &BudgetOptions) {
+    pub fn click_unit(&mut self) {
         if self.is_edit() {
             return;
         }
@@ -243,23 +246,24 @@ impl BudgetForm {
         if self.unit.is_open() {
             self.unit.cancel();
         } else {
-            self.unit.open(&options.units);
+            self.unit.open(&self.options().units);
         }
     }
 
     /// A click on row `index` of the open Unit list.
-    pub fn choose_unit(&mut self, index: usize, options: &BudgetOptions) {
+    pub fn choose_unit(&mut self, index: usize) {
         if !self.is_edit() {
-            self.unit.choose(&options.units, index);
+            self.unit.choose(&self.options().units, index);
             self.error = None;
+            self.sync_unit();
         }
     }
 
     /// After a Unit change: when the selection holds an Account outside the Unit's list, every
     /// Account in the Unit is selected again, and Copy falls back to Empty once it no longer
-    /// applies. `options` is built for the form's current Unit.
-    pub fn sync_unit(&mut self, options: &BudgetOptions) {
-        let offered = options.account_ids();
+    /// applies.
+    fn sync_unit(&mut self) {
+        let offered = self.options().account_ids();
         if self.account_ids.iter().any(|id| !offered.contains(id)) {
             self.account_ids = offered;
             self.account_cursor = 0;
@@ -271,10 +275,10 @@ impl BudgetForm {
 
     /// `left`/`right` on the Accounts chips or Start from, stopping at either end. Returns
     /// whether one of them is focused.
-    pub fn step(&mut self, forward: bool, options: &BudgetOptions) -> bool {
+    pub fn step(&mut self, forward: bool) -> bool {
         match self.focused {
             BudgetField::Accounts => {
-                let last = options.accounts.len().saturating_sub(1);
+                let last = self.options().accounts.len().saturating_sub(1);
                 self.account_cursor = if forward {
                     (self.account_cursor + 1).min(last)
                 } else {
@@ -304,16 +308,21 @@ impl BudgetForm {
     }
 
     /// `space` on the Accounts chips: toggles the one under the cursor.
-    pub fn toggle_cursor_account(&mut self, options: &BudgetOptions) {
-        if let Some((id, _)) = options.accounts.get(self.account_cursor) {
-            self.toggle_account(*id, options);
+    pub fn toggle_cursor_account(&mut self) {
+        if let Some((id, _)) = self.options().accounts.get(self.account_cursor) {
+            self.toggle_account(*id);
         }
     }
 
     /// A click on an Account chip.
-    pub fn toggle_account(&mut self, id: u32, options: &BudgetOptions) {
+    pub fn toggle_account(&mut self, id: u32) {
         self.focus(BudgetField::Accounts);
-        if let Some(at) = options.accounts.iter().position(|(each, _)| *each == id) {
+        if let Some(at) = self
+            .options()
+            .accounts
+            .iter()
+            .position(|(each, _)| *each == id)
+        {
             self.account_cursor = at;
         }
         if let Some(at) = self.account_ids.iter().position(|each| *each == id) {
@@ -336,7 +345,7 @@ impl BudgetForm {
 
     /// A Budget needs a name, a Unit and at least one on-budget Account.
     pub fn is_valid(&self) -> bool {
-        !self.name.trim().is_empty() && self.unit_code().is_some() && !self.account_ids.is_empty()
+        !self.name.is_blank() && self.unit_code().is_some() && !self.account_ids.is_empty()
     }
 
     /// What confirm submits, or `None` while the form is incomplete.
@@ -344,7 +353,7 @@ impl BudgetForm {
         if !self.is_valid() {
             return None;
         }
-        let name = self.name.trim().to_string();
+        let name = self.name.text().trim().to_string();
         Some(match self.editing {
             Some(id) => BudgetDraft::Edit {
                 id,
@@ -364,6 +373,64 @@ impl BudgetForm {
                 },
             }),
         })
+    }
+}
+
+impl Dialog for BudgetForm {
+    /// `Shift-Tab` goes back a field. On the Unit select `↑`/`↓` step or move the highlight,
+    /// `Space` opens or commits its list and so does `Enter` while the list is open (otherwise
+    /// `Enter` confirms). `←`/`→` walk the Account chips and Start from; `Space` toggles the
+    /// chip under the cursor. The Unit and Start from take no text. Any change clears a stale
+    /// Save error.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        let focused = self.focused;
+        let on_name = focused == BudgetField::Name;
+        match key {
+            DialogKey::BackTab => self.cycle_focus(true),
+            DialogKey::Up if focused == BudgetField::Unit => {
+                self.handle_select_key(SelectKey::Up);
+            }
+            DialogKey::Down if focused == BudgetField::Unit => {
+                self.handle_select_key(SelectKey::Down);
+            }
+            DialogKey::Char(' ') if focused == BudgetField::Unit => {
+                self.handle_select_key(SelectKey::Activate);
+            }
+            DialogKey::Enter if self.unit.is_open() => {
+                self.handle_select_key(SelectKey::Activate);
+            }
+            DialogKey::Char(' ') if focused == BudgetField::Accounts => {
+                self.toggle_cursor_account();
+            }
+            DialogKey::Left | DialogKey::Right if !on_name => {
+                self.step(key == DialogKey::Right);
+            }
+            DialogKey::Char(_) | DialogKey::Backspace if on_name => {
+                self.error = None;
+                return None;
+            }
+            DialogKey::Char(_) | DialogKey::Backspace => {}
+            _ => return None,
+        }
+        Some(DialogOutcome::Handled)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        (self.focused == BudgetField::Name).then_some(&mut self.name)
+    }
+
+    fn cycle_field(&mut self) {
+        self.cycle_focus(false);
+    }
+
+    fn is_valid(&self) -> bool {
+        BudgetForm::is_valid(self)
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        let open = self.unit.is_open();
+        self.unit.cancel();
+        open
     }
 }
 
@@ -392,15 +459,11 @@ mod tests {
         budgets.get(budgets::PERSONAL_SPENDING_ID).unwrap()
     }
 
-    fn options(accounts: &[Account], form: &BudgetForm) -> BudgetOptions {
-        BudgetOptions::new(accounts, form.unit_code())
-    }
-
     #[test]
     fn a_new_form_takes_the_source_unit_and_preselects_its_accounts() {
         let (accounts, budgets) = seeded();
         let form = BudgetForm::new(&accounts, Some(personal(&budgets)));
-        let options = options(&accounts, &form);
+        let options = form.options();
         assert_eq!(form.unit_code(), Some(personal(&budgets).unit.as_str()));
         assert!(!options.accounts.is_empty());
         let mut selected = form.account_ids.clone();
@@ -421,12 +484,9 @@ mod tests {
     fn the_draft_carries_the_name_accounts_and_start_from() {
         let (accounts, budgets) = seeded();
         let mut form = BudgetForm::new(&accounts, Some(personal(&budgets)));
-        let options = options(&accounts, &form);
-        for ch in "  Holiday ".chars() {
-            form.push_char(ch);
-        }
+        form.name = TextField::new("  Holiday ");
         form.focus(BudgetField::StartFrom);
-        form.step(true, &options);
+        form.step(true);
         assert_eq!(form.start_from, StartChoice::Copy);
         let Some(BudgetDraft::Create(new)) = form.draft() else {
             panic!("a complete form drafts a new Budget");
@@ -438,8 +498,8 @@ mod tests {
         );
         assert_eq!(new.account_ids, form.account_ids);
 
-        form.step(true, &options);
-        form.step(true, &options);
+        form.step(true);
+        form.step(true);
         assert_eq!(form.start_from, StartChoice::LastThreeMonths);
         let Some(BudgetDraft::Create(new)) = form.draft() else {
             panic!("a complete form drafts a new Budget");
@@ -451,25 +511,25 @@ mod tests {
     fn accounts_toggle_by_cursor_and_an_empty_set_is_invalid() {
         let (accounts, budgets) = seeded();
         let mut form = BudgetForm::new(&accounts, Some(personal(&budgets)));
-        let options = options(&accounts, &form);
-        form.name = "Holiday".to_string();
+        let options = form.options();
+        form.name = TextField::new("Holiday");
         form.focus(BudgetField::Accounts);
         let first = options.accounts[0].0;
-        form.toggle_cursor_account(&options);
+        form.toggle_cursor_account();
         assert!(!form.account_ids.contains(&first));
-        form.toggle_cursor_account(&options);
+        form.toggle_cursor_account();
         assert!(form.account_ids.contains(&first));
 
-        form.step(false, &options);
+        form.step(false);
         assert_eq!(form.account_cursor, 0, "stops at the first chip");
         for _ in 0..options.accounts.len() + 2 {
-            form.step(true, &options);
+            form.step(true);
         }
         assert_eq!(form.account_cursor, options.accounts.len() - 1);
 
         for (id, _) in &options.accounts {
             if form.account_ids.contains(id) {
-                form.toggle_account(*id, &options);
+                form.toggle_account(*id);
             }
         }
         assert!(!form.is_valid());
@@ -493,9 +553,8 @@ mod tests {
         form.set_start_from(StartChoice::Copy);
         form.focus(BudgetField::Unit);
         let at = all.units.iter().position(|unit| *unit == other).unwrap();
-        form.choose_unit(at, &all);
-        let options = options(&accounts, &form);
-        form.sync_unit(&options);
+        form.choose_unit(at);
+        let options = form.options();
         assert_eq!(form.unit_code(), Some(other.as_str()));
         let mut selected = form.account_ids.clone();
         selected.sort_unstable();
@@ -512,10 +571,9 @@ mod tests {
     fn edit_mode_locks_the_unit_and_drafts_a_rename() {
         let (accounts, budgets) = seeded();
         let budget = personal(&budgets);
-        let mut form = BudgetForm::from_budget(budget);
-        let options = options(&accounts, &form);
+        let mut form = BudgetForm::from_budget(budget, &accounts);
         assert!(form.is_edit());
-        assert_eq!(form.name, budget.name);
+        assert_eq!(form.name.text(), budget.name);
         assert_eq!(form.account_ids, budget.account_ids);
 
         for _ in 0..4 {
@@ -527,13 +585,13 @@ mod tests {
         }
         form.focus(BudgetField::Unit);
         assert_ne!(form.focused, BudgetField::Unit);
-        assert!(!form.handle_select_key(SelectKey::Down, &options));
-        form.click_unit(&options);
+        assert!(!form.handle_select_key(SelectKey::Down));
+        form.click_unit();
         assert!(!form.unit.is_open());
 
         form.focus(BudgetField::Name);
-        form.backspace();
-        form.push_char('!');
+        form.name.backspace();
+        form.name.push('!');
         let Some(BudgetDraft::Edit { id, name, .. }) = form.draft() else {
             panic!("edit mode drafts an edit");
         };

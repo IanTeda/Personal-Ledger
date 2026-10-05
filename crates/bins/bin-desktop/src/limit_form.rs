@@ -21,6 +21,8 @@ use crate::{
     bills::Period,
     budgets::{self, Budget, BudgetError, Budgets, Rollover, Span},
     categories::{self, Category},
+    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    field::TextField,
     select::SelectState,
 };
 
@@ -157,10 +159,12 @@ pub struct LimitForm {
     /// The Category being edited; `None` while the picker chooses it.
     pub fixed_category: Option<u32>,
     pub category: SelectState,
-    pub amount: String,
+    pub amount: TextField,
     pub starting: SelectState,
     pub span: Span,
     pub rollover: Rollover,
+    /// What the selects choose from, copied in as the Dialog opens.
+    pub options: LimitOptions,
     pub focused: LimitField,
     /// A refused save, shown until the next change.
     pub error: Option<BudgetError>,
@@ -177,13 +181,16 @@ impl LimitForm {
         Self {
             fixed_category: Some(category_id),
             category: SelectState::default(),
-            amount: applied
-                .as_ref()
-                .map(|found| found.amount.0.to_string())
-                .unwrap_or_default(),
+            amount: TextField::new(
+                applied
+                    .as_ref()
+                    .map(|found| found.amount.0.to_string())
+                    .unwrap_or_default(),
+            ),
             starting,
             span: Span::Onward,
             rollover: applied.map(|found| found.rollover).unwrap_or_default(),
+            options: options.clone(),
             focused: LimitField::Amount,
             error: None,
         }
@@ -200,10 +207,11 @@ impl LimitForm {
                 LimitField::Category
             },
             category: SelectState::new(label),
-            amount: String::new(),
+            amount: TextField::default(),
             starting: SelectState::new(options.month_labels.first().cloned()),
             span: Span::Onward,
             rollover: Rollover::None,
+            options: options.clone(),
             error: None,
         }
     }
@@ -212,13 +220,13 @@ impl LimitForm {
         self.fixed_category.is_none()
     }
 
-    pub fn category_id(&self, options: &LimitOptions) -> Option<u32> {
+    pub fn category_id(&self) -> Option<u32> {
         self.fixed_category
-            .or_else(|| options.category_id(self.category.value()))
+            .or_else(|| self.options.category_id(self.category.value()))
     }
 
-    pub fn month(&self, options: &LimitOptions) -> Option<Period> {
-        options.month(self.starting.value())
+    pub fn month(&self) -> Option<Period> {
+        self.options.month(self.starting.value())
     }
 
     pub fn focus(&mut self, field: LimitField) {
@@ -252,30 +260,19 @@ impl LimitForm {
         self.starting.cancel();
     }
 
-    /// Closes an open list, for the first `Esc`. Returns whether one was open.
-    pub fn close_open_select(&mut self) -> bool {
-        let open = self.category.is_open() || self.starting.is_open();
-        self.close_selects();
-        open
-    }
-
-    fn select_mut<'a>(
-        &mut self,
-        field: LimitField,
-        options: &'a LimitOptions,
-    ) -> Option<(&mut SelectState, &'a [String])> {
+    fn select_mut(&mut self, field: LimitField) -> Option<(&mut SelectState, &[String])> {
         match field {
-            LimitField::Category if self.is_pick() => {
-                Some((&mut self.category, &options.category_labels))
+            LimitField::Category if self.fixed_category.is_none() => {
+                Some((&mut self.category, &self.options.category_labels))
             }
-            LimitField::Starting => Some((&mut self.starting, &options.month_labels)),
+            LimitField::Starting => Some((&mut self.starting, &self.options.month_labels)),
             _ => None,
         }
     }
 
     /// A key on the focused select. Returns whether a select is focused (and so took the key).
-    pub fn handle_select_key(&mut self, key: SelectKey, options: &LimitOptions) -> bool {
-        let Some((state, list)) = self.select_mut(self.focused, options) else {
+    pub fn handle_select_key(&mut self, key: SelectKey) -> bool {
+        let Some((state, list)) = self.select_mut(self.focused) else {
             return false;
         };
         match (key, state.is_open()) {
@@ -291,9 +288,9 @@ impl LimitForm {
     }
 
     /// A click on a select's closed field: focuses it and toggles its list.
-    pub fn click_select(&mut self, field: LimitField, options: &LimitOptions) {
+    pub fn click_select(&mut self, field: LimitField) {
         self.focus(field);
-        if let Some((state, list)) = self.select_mut(field, options) {
+        if let Some((state, list)) = self.select_mut(field) {
             if state.is_open() {
                 state.cancel();
             } else {
@@ -303,8 +300,8 @@ impl LimitForm {
     }
 
     /// A click on row `index` of `field`'s open list.
-    pub fn choose(&mut self, field: LimitField, index: usize, options: &LimitOptions) {
-        if let Some((state, list)) = self.select_mut(field, options) {
+    pub fn choose(&mut self, field: LimitField, index: usize) {
+        if let Some((state, list)) = self.select_mut(field) {
             state.choose(list, index);
         }
         self.error = None;
@@ -343,27 +340,10 @@ impl LimitForm {
         true
     }
 
-    /// Types into the Amount: digits and one decimal point.
-    pub fn push_char(&mut self, ch: char) {
-        if self.focused != LimitField::Amount {
-            return;
-        }
-        if ch.is_ascii_digit() || (ch == '.' && !self.amount.contains('.')) {
-            self.amount.push(ch);
-            self.error = None;
-        }
-    }
-
-    pub fn backspace(&mut self) {
-        if self.focused == LimitField::Amount {
-            self.amount.pop();
-            self.error = None;
-        }
-    }
-
     /// The typed amount to the cent; 0.00 is a real Budget Amount.
     fn amount_money(&self) -> Option<Money> {
         self.amount
+            .text()
             .trim()
             .parse::<BigDecimal>()
             .ok()
@@ -373,14 +353,14 @@ impl LimitForm {
 
     /// The amount's problem, once something is typed.
     pub fn amount_invalid(&self) -> bool {
-        !self.amount.trim().is_empty() && self.amount_money().is_none()
+        !self.amount.is_blank() && self.amount_money().is_none()
     }
 
     /// What Save writes, or `None` while the form is incomplete.
-    pub fn draft(&self, options: &LimitOptions) -> Option<LimitDraft> {
+    pub fn draft(&self) -> Option<LimitDraft> {
         Some(LimitDraft {
-            category_id: self.category_id(options)?,
-            month: self.month(options)?,
+            category_id: self.category_id()?,
+            month: self.month()?,
             span: self.span,
             amount: self.amount_money()?,
             rollover: self.rollover,
@@ -439,6 +419,8 @@ pub fn preview(
 pub struct StopForm {
     pub category_id: u32,
     pub from: SelectState,
+    /// The months on offer, copied in as the Dialog opens.
+    pub options: LimitOptions,
     /// A refused confirm, shown until the next change.
     pub error: Option<BudgetError>,
 }
@@ -449,16 +431,17 @@ impl StopForm {
         Self {
             category_id,
             from: options.starting(month),
+            options: options.clone(),
             error: None,
         }
     }
 
-    pub fn month(&self, options: &LimitOptions) -> Option<Period> {
-        options.month(self.from.value())
+    pub fn month(&self) -> Option<Period> {
+        self.options.month(self.from.value())
     }
 
-    pub fn handle_select_key(&mut self, key: SelectKey, options: &LimitOptions) {
-        let list = &options.month_labels;
+    pub fn handle_select_key(&mut self, key: SelectKey) {
+        let list = &self.options.month_labels;
         match (key, self.from.is_open()) {
             (SelectKey::Up, true) => self.from.move_highlight(list, -1),
             (SelectKey::Down, true) => self.from.move_highlight(list, 1),
@@ -470,17 +453,100 @@ impl StopForm {
         self.error = None;
     }
 
-    pub fn click_select(&mut self, options: &LimitOptions) {
+    pub fn click_select(&mut self) {
         if self.from.is_open() {
             self.from.cancel();
         } else {
-            self.from.open(&options.month_labels);
+            self.from.open(&self.options.month_labels);
         }
     }
 
-    pub fn choose(&mut self, index: usize, options: &LimitOptions) {
-        self.from.choose(&options.month_labels, index);
+    pub fn choose(&mut self, index: usize) {
+        self.from.choose(&self.options.month_labels, index);
         self.error = None;
+    }
+}
+
+impl Dialog for LimitForm {
+    /// `Shift-Tab` goes back a field. On a select `↑`/`↓` step or move the highlight, and `Space`
+    /// opens or commits its list, as `Enter` does while one is open (otherwise `Enter`
+    /// confirms). `←`/`→` step the focused segmented control. The Amount takes digits and one
+    /// decimal point; nothing else takes text. Any key clears a stale Save error.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        self.error = None;
+        let focused = self.focused;
+        let on_select = matches!(focused, LimitField::Category | LimitField::Starting);
+        let list_open = self.category.is_open() || self.starting.is_open();
+        match key {
+            DialogKey::BackTab => self.cycle_focus(true),
+            DialogKey::Up if on_select => {
+                self.handle_select_key(SelectKey::Up);
+            }
+            DialogKey::Down if on_select => {
+                self.handle_select_key(SelectKey::Down);
+            }
+            DialogKey::Char(' ') if on_select => {
+                self.handle_select_key(SelectKey::Activate);
+            }
+            DialogKey::Enter if list_open => {
+                self.handle_select_key(SelectKey::Activate);
+            }
+            DialogKey::Left | DialogKey::Right => {
+                self.step_segment(key == DialogKey::Right);
+            }
+            DialogKey::Char(ch) if focused == LimitField::Amount => {
+                if ch.is_ascii_digit() || (ch == '.' && !self.amount.text().contains('.')) {
+                    return None;
+                }
+            }
+            DialogKey::Char(_) | DialogKey::Backspace if focused != LimitField::Amount => {}
+            _ => return None,
+        }
+        Some(DialogOutcome::Handled)
+    }
+
+    fn focused_text(&mut self) -> Option<&mut TextField> {
+        (self.focused == LimitField::Amount).then_some(&mut self.amount)
+    }
+
+    fn cycle_field(&mut self) {
+        self.cycle_focus(false);
+    }
+
+    fn is_valid(&self) -> bool {
+        self.draft().is_some()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        let open = self.category.is_open() || self.starting.is_open();
+        self.close_selects();
+        open
+    }
+}
+
+impl Dialog for StopForm {
+    /// `↑`/`↓` (and `j`/`k`) pick the month and `Space` opens or commits its list, as `Enter`
+    /// does while it is open (otherwise `Enter` confirms). Nothing takes text.
+    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
+        let select = match key {
+            DialogKey::Up | DialogKey::Char('k') => SelectKey::Up,
+            DialogKey::Down | DialogKey::Char('j') => SelectKey::Down,
+            DialogKey::Char(' ') => SelectKey::Activate,
+            DialogKey::Enter if self.from.is_open() => SelectKey::Activate,
+            _ => return None,
+        };
+        self.handle_select_key(select);
+        Some(DialogOutcome::Handled)
+    }
+
+    fn is_valid(&self) -> bool {
+        self.month().is_some()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        let open = self.from.is_open();
+        self.from.cancel();
+        open
     }
 }
 
@@ -588,11 +654,11 @@ mod tests {
         let id = world.budgeted();
         let applied = budgets::applied(world.budget().chain(id), sep()).unwrap();
         let mut form = LimitForm::edit(world.budget(), id, sep(), &options);
-        assert_eq!(form.amount, applied.amount.0.to_string());
+        assert_eq!(form.amount.text(), applied.amount.0.to_string());
         assert_eq!(form.rollover, applied.rollover);
         assert_eq!(form.span, Span::Onward);
-        assert_eq!(form.month(&options), Some(sep()));
-        assert_eq!(form.category_id(&options), Some(id));
+        assert_eq!(form.month(), Some(sep()));
+        assert_eq!(form.category_id(), Some(id));
 
         // Tab never lands on the fixed Category.
         for _ in 0..8 {
@@ -601,7 +667,7 @@ mod tests {
         }
         // A closed month isn't offered, so the form falls back to the current one.
         let past = LimitForm::edit(world.budget(), id, sep().prev(), &options);
-        assert_eq!(past.month(&options), Some(sep()));
+        assert_eq!(past.month(), Some(sep()));
     }
 
     #[test]
@@ -612,29 +678,28 @@ mod tests {
         assert_eq!(form.focused, LimitField::Category);
         assert_eq!(form.rollover, Rollover::None);
         assert_eq!(form.span, Span::Onward);
-        assert_eq!(form.month(&options), Some(sep()));
-        assert_eq!(form.draft(&options), None);
+        assert_eq!(form.month(), Some(sep()));
+        assert_eq!(form.draft(), None);
 
-        assert!(form.handle_select_key(SelectKey::Down, &options));
-        assert_eq!(form.category_id(&options), Some(options.category_ids[0]));
-        assert_eq!(form.draft(&options), None, "no amount yet");
+        assert!(form.handle_select_key(SelectKey::Down));
+        assert_eq!(form.category_id(), Some(options.category_ids[0]));
+        assert_eq!(form.draft(), None, "no amount yet");
 
         form.cycle_focus(false);
         assert_eq!(form.focused, LimitField::Amount);
         for ch in "12.5.0x".chars() {
-            form.push_char(ch);
+            if form.handle_own_key(DialogKey::Char(ch)).is_none() {
+                form.focused_text().unwrap().push(ch);
+            }
         }
-        assert_eq!(form.amount, "12.50");
-        let draft = form.draft(&options).unwrap();
+        assert_eq!(form.amount.text(), "12.50");
+        let draft = form.draft().unwrap();
         assert_eq!(draft.amount, money("12.50"));
         assert_eq!(draft.span, Span::Onward);
 
         let preselected = LimitForm::pick(Some(options.category_ids[1]), &options);
         assert_eq!(preselected.focused, LimitField::Amount);
-        assert_eq!(
-            preselected.category_id(&options),
-            Some(options.category_ids[1])
-        );
+        assert_eq!(preselected.category_id(), Some(options.category_ids[1]));
     }
 
     #[test]
@@ -642,8 +707,8 @@ mod tests {
         let world = World::new();
         let options = world.options(START_MONTHS);
         let mut form = LimitForm::pick(Some(options.category_ids[0]), &options);
-        form.push_char('0');
-        assert_eq!(form.draft(&options).unwrap().amount, money("0.00"));
+        form.amount.push('0');
+        assert_eq!(form.draft().unwrap().amount, money("0.00"));
         assert!(!form.step_segment(true), "the Amount is no segment");
 
         form.focus(LimitField::Span);
@@ -668,13 +733,13 @@ mod tests {
             .amount;
         let mut form = LimitForm::edit(world.budget(), id, sep(), &options);
         form.focus(LimitField::Starting);
-        form.handle_select_key(SelectKey::Down, &options);
+        form.handle_select_key(SelectKey::Down);
         let october = sep().next();
-        assert_eq!(form.month(&options), Some(october));
+        assert_eq!(form.month(), Some(october));
         form.focus(LimitField::Amount);
-        form.amount = (before.0.clone() + BigDecimal::from(50)).to_string();
+        form.amount = TextField::new((before.0.clone() + BigDecimal::from(50)).to_string());
         form.set_rollover(Rollover::CarryUnspent);
-        let draft = form.draft(&options).unwrap();
+        let draft = form.draft().unwrap();
 
         let preview = preview(
             &world.budgets,
@@ -723,9 +788,9 @@ mod tests {
             .unwrap()
             .amount;
         let mut form = LimitForm::edit(world.budget(), id, sep(), &options);
-        form.amount = "1".to_string();
+        form.amount = TextField::new("1");
         form.set_span(Span::MonthOnly);
-        let draft = form.draft(&options).unwrap();
+        let draft = form.draft().unwrap();
         let shown = preview(
             &world.budgets,
             budgets::PERSONAL_SPENDING_ID,
@@ -760,8 +825,8 @@ mod tests {
         let options = world.options(START_MONTHS);
         let id = options.category_ids[0];
         let mut form = LimitForm::pick(Some(id), &options);
-        form.amount = "80".to_string();
-        let draft = form.draft(&options).unwrap();
+        form.amount = TextField::new("80");
+        let draft = form.draft().unwrap();
         save(
             &mut world.budgets,
             budgets::PERSONAL_SPENDING_ID,
@@ -785,10 +850,10 @@ mod tests {
         let options = world.options(STOP_MONTHS);
         let id = world.category("Dining");
         let mut form = StopForm::new(id, sep().next(), &options);
-        assert_eq!(form.month(&options), Some(sep().next()));
-        form.handle_select_key(SelectKey::Down, &options);
-        assert_eq!(form.month(&options), Some(sep()), "two months, wrapping");
+        assert_eq!(form.month(), Some(sep().next()));
+        form.handle_select_key(SelectKey::Down);
+        assert_eq!(form.month(), Some(sep()), "two months, wrapping");
         let far = StopForm::new(id, sep().next().next(), &options);
-        assert_eq!(far.month(&options), Some(sep()));
+        assert_eq!(far.month(), Some(sep()));
     }
 }

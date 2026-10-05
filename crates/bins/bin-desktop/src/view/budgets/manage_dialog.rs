@@ -15,6 +15,8 @@ use crate::{
     theme::color,
 };
 
+pub use crate::budgets::ManageAction;
+
 use super::limit_dialog::{error_line, error_text};
 
 /// Wide enough for the table's seven columns.
@@ -26,17 +28,6 @@ const ACCOUNTS_WIDTH: gpui::Pixels = px(90.0);
 const SCOPE_WIDTH: gpui::Pixels = px(110.0);
 const DEFAULT_WIDTH: gpui::Pixels = px(60.0);
 const ACTIONS_WIDTH: gpui::Pixels = px(250.0);
-
-/// What a row's action link does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ManageAction {
-    Open,
-    Edit,
-    Duplicate,
-    SetDefault,
-    Archive,
-    Restore,
-}
 
 /// Called with the Budget's id and the action clicked.
 pub type OnActionClick = Rc<dyn Fn(u32, ManageAction, &mut Window, &mut App)>;
