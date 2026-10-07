@@ -1,7 +1,7 @@
 //! The Settings › Inventory page's Add, Edit and Remove **Property** (#494) and **Room** (#495)
 //! dialogs: opening them,
 //! their keys and clicks, applying the change to the in-memory Inventory and Documents, and
-//! building their elements. The rules live in `inventory` and `inventory_form`; the chrome in
+//! building their elements. The rules live in `inventory` and `inventory::form`; the chrome in
 //! `view::settings::inventory_dialogs`.
 
 use std::rc::Rc;
@@ -13,11 +13,11 @@ use super::Shell;
 use crate::{
     dialog_host::OpenDialog,
     documents,
-    inventory::{self, PropertyError},
-    inventory_form::{
-        self, InventoryDialog, Problem, PropertyContext, PropertyField, PropertyForm,
-        RemovePropertyForm, RemoveRoomForm, RoomForm,
+    inventory::form::{
+        InventoryDialog, Problem, PropertyContext, PropertyField, PropertyForm, RemovePropertyForm,
+        RemoveRoomForm, RoomForm,
     },
+    inventory::{self, PropertyError},
     view::settings::{inventory::InventoryRow, inventory_dialogs as view},
 };
 
@@ -531,7 +531,7 @@ impl Shell {
                 });
             })
         };
-        let suggestions = inventory_form::suggestions(&self.inventory, form.insurer.text());
+        let suggestions = inventory::form::suggestions(&self.inventory, form.insurer.text());
         view::render_form(
             view::FormProps {
                 form,

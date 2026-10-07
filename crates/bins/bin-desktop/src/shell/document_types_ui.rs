@@ -1,6 +1,6 @@
 //! The Settings › Documents page's Add, Edit and Remove dialogs (#481): opening them, their keys
 //! and clicks, applying the change to the in-memory types, and building their elements. The pure
-//! rules live in `document_types`; the chrome in `view::settings::document_type_dialogs`.
+//! rules live in `documents::types`; the chrome in `view::settings::document_type_dialogs`.
 
 use std::rc::Rc;
 
@@ -9,10 +9,10 @@ use gpui::{AnyElement, Context};
 use super::Shell;
 use crate::{
     dialog_host::OpenDialog,
-    document_types::{
-        self, DocumentTypeForm, DocumentTypesDialog, FormField, RemindLead, RemoveForm, TracksDate,
-    },
     documents,
+    documents::types::{
+        DocumentTypeForm, DocumentTypesDialog, FormField, RemindLead, RemoveForm, TracksDate,
+    },
     view::settings::document_type_dialogs as view,
 };
 
@@ -38,7 +38,7 @@ impl Shell {
     }
 
     pub(super) fn open_edit_document_type_dialog(&mut self, id: u32) {
-        let Some(row) = document_types::get(&self.document_types, id) else {
+        let Some(row) = documents::types::get(&self.document_types, id) else {
             return;
         };
         let form = DocumentTypeForm::from_row(row, &self.document_types);
@@ -49,7 +49,7 @@ impl Shell {
 
     /// Other, the Default, has no remove action and gets a notice instead.
     pub(super) fn open_remove_document_type_dialog(&mut self, id: u32) {
-        let Some(row) = document_types::get(&self.document_types, id) else {
+        let Some(row) = documents::types::get(&self.document_types, id) else {
             return;
         };
         let dialog = if row.is_default {
@@ -66,7 +66,7 @@ impl Shell {
     pub(super) fn apply_document_types_dialog(&mut self, dialog: DocumentTypesDialog) {
         match dialog {
             DocumentTypesDialog::Add(form) => {
-                let id = document_types::add_type(
+                let id = documents::types::add_type(
                     &mut self.document_types,
                     &mut self.document_types_next_id,
                     &form,
@@ -74,18 +74,18 @@ impl Shell {
                 self.settings_documents_selected = Some(id);
             }
             DocumentTypesDialog::Edit(id, form) => {
-                document_types::edit_type(&mut self.document_types, id, &form);
+                documents::types::edit_type(&mut self.document_types, id, &form);
                 self.settings_documents_selected = Some(id);
             }
             DocumentTypesDialog::Remove(id, form) => {
                 // Keep the cursor on the neighbour that takes the removed row's place.
-                let position = document_types::position(&self.document_types, id).unwrap_or(0);
+                let position = documents::types::position(&self.document_types, id).unwrap_or(0);
                 let destination = form
                     .select
                     .value()
-                    .and_then(|name| document_types::id_by_name(&self.document_types, name))
+                    .and_then(|name| documents::types::id_by_name(&self.document_types, name))
                     .filter(|destination| *destination != id);
-                if document_types::remove_type(&mut self.document_types, id, form.select.value())
+                if documents::types::remove_type(&mut self.document_types, id, form.select.value())
                     .is_err()
                 {
                     return;
@@ -94,7 +94,7 @@ impl Shell {
                 // chosen destination or else the Default, and a scope on the type falls back to All.
                 let moved_to = documents::DocumentType(
                     destination
-                        .unwrap_or_else(|| document_types::fallback_id(&self.document_types)),
+                        .unwrap_or_else(|| documents::types::fallback_id(&self.document_types)),
                 );
                 for document in &mut self.documents {
                     if document.doc_type == documents::DocumentType(id) {

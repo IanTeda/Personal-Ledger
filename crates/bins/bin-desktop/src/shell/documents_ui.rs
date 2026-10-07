@@ -1,7 +1,7 @@
 //! `Shell`'s side of the Documents destination: the Library's scope, search, sort and selection,
 //! the index-rail and list focus zones, the Add, Import and Edit dialogs, opening a file in the OS
 //! and the page's status legend. A child of `shell` so it reads `Shell`'s private fields, without
-//! growing that file further. The rules themselves are `documents` and `documents_form`; this only
+//! growing that file further. The rules themselves are `documents` and `documents::form`; this only
 //! wires them to keys and clicks.
 
 use std::path::Path;
@@ -12,15 +12,15 @@ use lib_toast::ToastKind;
 
 use super::{OpenDialog, Shell, typed_char};
 use crate::{
+    documents::form::{
+        DocumentField, DocumentForm, DocumentOptions, DocumentsDialog, FactsField, FactsForm,
+        ImportForm, ImportOutcome,
+    },
+    documents::picker::{PickerRequest, PickerRow, PickerState, Purpose},
     documents::{
         self, Document, DocumentLink, DocumentsMode, KeyDateKind, LibraryScope, LibrarySort,
         RailEntry,
     },
-    documents_form::{
-        DocumentField, DocumentForm, DocumentOptions, DocumentsDialog, FactsField, FactsForm,
-        ImportForm, ImportOutcome,
-    },
-    documents_picker::{self, PickerRequest, PickerRow, PickerState, Purpose},
     key_router::Movement,
     nav::{FocusZone, InputMode, Noun},
     settings::SettingsSection,
@@ -773,9 +773,9 @@ impl Shell {
         let current: Vec<DocumentLink> = documents::get(&self.documents, state.purpose.document())
             .map(|document| document.links.clone())
             .unwrap_or_default();
-        documents_picker::rows(
+        documents::picker::rows(
             state,
-            &documents_picker::Sources {
+            &documents::picker::Sources {
                 lookups: &lookups,
                 current: &current,
             },
@@ -923,9 +923,9 @@ impl Shell {
             .unwrap_or_default();
         let state = PickerState::new(Purpose::Follow(id), self.today, None);
         let lookups = self.documents_lookups();
-        documents_picker::rows(
+        documents::picker::rows(
             &state,
-            &documents_picker::Sources {
+            &documents::picker::Sources {
                 lookups: &lookups,
                 current: &[link],
             },
@@ -1379,7 +1379,7 @@ impl Shell {
     /// **Import**: every typed path that exists lands in the Inbox. When none does the dialog stays
     /// open and says why each failed.
     pub(super) fn apply_documents_import(&mut self, form: ImportForm) {
-        let outcomes = crate::documents_form::import_all(
+        let outcomes = documents::form::import_all(
             &self.document_types,
             &form,
             &mut self.documents,
@@ -1430,7 +1430,7 @@ impl Shell {
     /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
     /// where it is: the Toast and the rail badge say what arrived.
     pub fn drop_documents(&mut self, paths: &[std::path::PathBuf]) {
-        let outcomes = crate::documents_form::import_dropped(
+        let outcomes = documents::form::import_dropped(
             &self.document_types,
             paths,
             &mut self.documents,

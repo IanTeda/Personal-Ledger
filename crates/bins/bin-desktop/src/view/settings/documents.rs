@@ -12,7 +12,8 @@ use gpui::{AnyElement, App, Rgba, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::upper;
 
 use crate::{
-    document_types::{self, DocumentTypeRow, RemindLead, TracksDate},
+    documents,
+    documents::types::{DocumentTypeRow, RemindLead, TracksDate},
     theme::color,
 };
 
@@ -39,8 +40,8 @@ pub fn scope_text(types: &[DocumentTypeRow]) -> String {
     crate::msg::desktop_document_types_scope(
         &crate::msg::desktop_document_types_count(count(types.len())),
         &crate::msg::desktop_document_types_files_typed(
-            &document_types::typed_files(types).to_string(),
-            &document_types::all_files(types).to_string(),
+            &documents::types::typed_files(types).to_string(),
+            &documents::types::all_files(types).to_string(),
         ),
     )
 }
@@ -379,7 +380,7 @@ mod tests {
     fn scope_text_reads_the_live_counts() {
         crate::locale::init_for_tests();
         assert_eq!(
-            scope_text(&document_types::default_types()),
+            scope_text(&documents::types::default_types()),
             "9 types \u{b7} 392 of 412 files typed"
         );
     }
@@ -387,7 +388,7 @@ mod tests {
     #[test]
     fn a_single_type_reads_singular() {
         crate::locale::init_for_tests();
-        let one = &document_types::default_types()[..1];
+        let one = &documents::types::default_types()[..1];
         assert!(scope_text(one).starts_with("1 type \u{b7} "));
     }
 

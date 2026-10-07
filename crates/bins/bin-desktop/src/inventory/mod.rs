@@ -6,6 +6,8 @@
 //! removing a Property reports the Items that went and leaves the Documents to drop their Links.
 //! Amounts are in the owning Property's Unit, at two decimal places like the Transaction stubs.
 
+pub(crate) mod form;
+
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::Money;

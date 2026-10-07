@@ -12,7 +12,7 @@ use super::add_unit_dialog::text_field;
 use crate::{
     dialog,
     inventory::NameError,
-    inventory_form::{Problem, PropertyField, PropertyForm, RoomForm},
+    inventory::form::{Problem, PropertyField, PropertyForm, RoomForm},
     select::SelectState,
     theme::color,
     view::accounts::select_field::{self, OnOptionClick, SelectFieldProps},

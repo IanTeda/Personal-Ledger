@@ -9,7 +9,8 @@ use lib_locale::format::{format_date, format_year_month, upper};
 use crate::{
     accounts::Account,
     bills::BillPlan,
-    document_types::{self, DocumentTypeRow},
+    documents,
+    documents::types::DocumentTypeRow,
     documents::{
         CANDIDATE_WINDOW_DAYS, Candidate, Document, DocumentLink, DocumentType, FileKind, KeyDate,
         KeyDateBand, KeyDateKind, LibraryScope, RailEntry, Signals, Source, Suggestion, YearFacet,
@@ -116,7 +117,7 @@ pub fn extension(kind: FileKind) -> &'static str {
 /// that is gone reads as the Default type, as the Document would be filed under it.
 pub fn type_label(types: &[DocumentTypeRow], kind: DocumentType) -> String {
     let kind = kind.or_fallback(types);
-    document_types::get(types, kind.0)
+    documents::types::get(types, kind.0)
         .map(|row| row.name.clone())
         .unwrap_or_default()
 }
@@ -145,13 +146,13 @@ pub fn rail_rows(
     documents: &[Document],
     today: NaiveDate,
 ) -> Vec<RailRow> {
-    crate::documents::rail_entries(types, today)
+    documents::rail_entries(types, today)
         .into_iter()
         .map(|entry| match entry {
             RailEntry::Inbox => RailRow {
                 entry,
                 label: crate::msg::desktop_documents_rail_inbox(),
-                count: crate::documents::inbox_count(documents),
+                count: documents::inbox_count(documents),
             },
             RailEntry::Scope(scope) => RailRow {
                 entry,
@@ -502,7 +503,7 @@ pub fn inbox_row(
     lookups: &Lookups<'_>,
 ) -> InboxRowView {
     let suggestion =
-        crate::documents::suggestion(document, documents, lookups.transactions, lookups.payees);
+        documents::suggestion(document, documents, lookups.transactions, lookups.payees);
     let (state, summary, hint, signals, best) = match &suggestion {
         Suggestion::Unreadable => (
             InboxState::Unreadable,
@@ -554,7 +555,7 @@ pub fn inbox_detail(
     lookups: &Lookups<'_>,
 ) -> InboxDetailView {
     let suggestion =
-        crate::documents::suggestion(document, documents, lookups.transactions, lookups.payees);
+        documents::suggestion(document, documents, lookups.transactions, lookups.payees);
     let facts = document
         .intake
         .as_ref()
@@ -660,7 +661,7 @@ mod tests {
             today,
         );
         World {
-            types: document_types::default_types(),
+            types: documents::types::default_types(),
             accounts,
             payees,
             plans: bills.plans,

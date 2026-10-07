@@ -13,10 +13,7 @@ pub mod colours;
 mod command;
 mod dialog;
 mod dialog_host;
-mod document_types;
 mod documents;
-mod documents_form;
-mod documents_picker;
 mod error;
 mod explorer;
 mod field;
@@ -25,7 +22,6 @@ mod help;
 mod icon;
 mod import;
 mod inventory;
-mod inventory_form;
 #[doc(hidden)]
 pub mod key_router;
 pub mod locale;
@@ -108,7 +104,7 @@ pub fn build_shell(
         documents::DocumentsMode::from_id(persisted.documents_mode.as_deref()),
         documents::LibraryScope::from_id(
             persisted.documents_scope.as_deref().unwrap_or("all"),
-            &document_types::default_types(),
+            &documents::types::default_types(),
             today,
         ),
         documents::LibrarySort::from_id(persisted.documents_sort.as_deref()),

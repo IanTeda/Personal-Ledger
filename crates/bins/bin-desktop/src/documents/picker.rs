@@ -1,7 +1,7 @@
 //! The Documents link picker's rules: what it lists, in what order, and what a query keeps. One
 //! palette-chrome modal searches every record kind a Document can link to (Transaction, Account,
 //! Payee, Bill Plan, Inventory Item), so this is `gpui`-free and unit-tested without a window, the
-//! same split `palette.rs` and `documents.rs` use. `shell/documents_ui.rs` owns the keys and the
+//! same split `palette.rs` and `documents/mod.rs` use. `shell/documents_ui.rs` owns the keys and the
 //! effects of a pick; `view/documents/dialogs.rs` draws it.
 
 use std::ops::Range;
@@ -508,7 +508,7 @@ mod tests {
     use lib_core::DateStyle;
 
     struct World {
-        types: Vec<crate::document_types::DocumentTypeRow>,
+        types: Vec<crate::documents::types::DocumentTypeRow>,
         accounts: Vec<Account>,
         payees: Vec<Payee>,
         plans: Vec<BillPlan>,
@@ -538,7 +538,7 @@ mod tests {
             today,
         );
         World {
-            types: crate::document_types::default_types(),
+            types: crate::documents::types::default_types(),
             accounts,
             payees,
             plans: bills.plans,
@@ -781,7 +781,7 @@ mod tests {
     fn the_type_select_starts_at_the_first_and_wraps() {
         let world = world();
         let mut state = state(&world, Purpose::File(1));
-        let all: Vec<_> = crate::document_types::default_types()
+        let all: Vec<_> = crate::documents::types::default_types()
             .iter()
             .map(|row| DocumentType(row.id))
             .collect();

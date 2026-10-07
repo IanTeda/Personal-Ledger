@@ -19,7 +19,7 @@ use lib_locale::format::format_date_input;
 use crate::{
     accounts::SelectKey,
     dialog_host::{Dialog, DialogKey, DialogOutcome},
-    document_types::{self, DocumentTypeRow},
+    documents::types::DocumentTypeRow,
     documents::{
         self, Document, DocumentType, FileKind, KeyDate, KeyDateKind, LibraryScope, NewDocument,
     },
@@ -70,7 +70,7 @@ impl DocumentOptions {
         Self {
             type_labels: types.iter().map(|row| row.name.clone()).collect(),
             type_ids: types.iter().map(|row| DocumentType(row.id)).collect(),
-            fallback: DocumentType(document_types::fallback_id(types)),
+            fallback: DocumentType(documents::types::fallback_id(types)),
             key_labels: std::iter::once(key_label(None))
                 .chain(KEY_KINDS.into_iter().map(|kind| key_label(Some(kind))))
                 .collect(),
@@ -452,7 +452,7 @@ pub enum DocumentsDialog {
     /// The count-first confirm for Accept all strong matches: how many it will file.
     AcceptAll(usize),
     /// The link picker: link toggling, filing from the Inbox, or following one of several Links.
-    Picker(Box<crate::documents_picker::PickerState>),
+    Picker(Box<documents::picker::PickerState>),
 }
 
 /// The Import dialog's live state: one path per line.
@@ -957,7 +957,7 @@ mod tests {
     }
 
     fn options() -> DocumentOptions {
-        DocumentOptions::new(&document_types::default_types(), |kind| {
+        DocumentOptions::new(&documents::types::default_types(), |kind| {
             kind.map_or("None".to_string(), |kind| format!("{kind:?}"))
         })
     }
@@ -1100,7 +1100,7 @@ mod tests {
             ),
         };
         let outcomes = import_all(
-            &document_types::default_types(),
+            &documents::types::default_types(),
             &form,
             &mut library,
             day(2026, 9, 12),
@@ -1149,7 +1149,7 @@ mod tests {
             PathBuf::from("/tmp/x.txt"),
         ];
         let outcomes = import_dropped(
-            &document_types::default_types(),
+            &documents::types::default_types(),
             &paths,
             &mut library,
             day(2026, 9, 12),

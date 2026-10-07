@@ -16,6 +16,10 @@
 //!   agree on amount or payee, and the date Signal allows [`DATE_SIGNAL_DAYS`].
 //! - Skip is session-only, and undo is one level: [`undo`] reverses the last [`FilingUndo`] whole.
 
+pub(crate) mod form;
+pub(crate) mod picker;
+pub(crate) mod types;
+
 use std::path::{Path, PathBuf};
 
 use bigdecimal::BigDecimal;
@@ -27,7 +31,7 @@ use crate::{
     bills::BillPlan,
     bills::history::{FINANCIAL_YEAR_START_MONTH, financial_year_start},
     categories::{self, Category},
-    document_types::{self, DocumentTypeRow, TracksDate},
+    documents::types::{DocumentTypeRow, TracksDate},
     inventory::Inventory,
     payees::{self, Payee},
     transactions::{Split, Transaction},
@@ -71,19 +75,18 @@ impl DocumentType {
     /// Parses a persisted id, only when `types` still has that type.
     pub fn from_id(id: &str, types: &[DocumentTypeRow]) -> Option<Self> {
         let id = id.parse().ok()?;
-        document_types::position(types, id).map(|_| DocumentType(id))
+        types::position(types, id).map(|_| DocumentType(id))
     }
 
     /// The Default type's id when the Document's own is gone.
     pub fn or_fallback(self, types: &[DocumentTypeRow]) -> Self {
-        document_types::position(types, self.0)
-            .map_or(DocumentType(document_types::fallback_id(types)), |_| self)
+        types::position(types, self.0).map_or(DocumentType(types::fallback_id(types)), |_| self)
     }
 }
 
 /// Whether the type's Financial year flag is on (#476): off for a type that is gone.
 pub fn tracks_financial_year(types: &[DocumentTypeRow], kind: DocumentType) -> bool {
-    document_types::get(types, kind.0).is_some_and(|row| row.financial_year)
+    types::get(types, kind.0).is_some_and(|row| row.financial_year)
 }
 
 /// The kind of a [`KeyDate`].
@@ -246,7 +249,7 @@ impl Document {
     /// date inert (kept, but neither shown nor counted).
     pub fn effective_key_date(&self, types: &[DocumentTypeRow]) -> Option<KeyDate> {
         let stored = self.key_date.as_ref()?;
-        let row = document_types::get(types, self.doc_type.0)?;
+        let row = types::get(types, self.doc_type.0)?;
         let kind = match row.tracks_date? {
             TracksDate::Renews => KeyDateKind::Renews,
             TracksDate::Ends => KeyDateKind::Ends,
@@ -859,7 +862,7 @@ pub fn accept(
         id,
         facts
             .doc_type
-            .unwrap_or(DocumentType(document_types::fallback_id(types))),
+            .unwrap_or(DocumentType(types::fallback_id(types))),
         facts.date.unwrap_or(transaction.date),
         Some(DocumentLink::Transaction(transaction_id)),
     )
@@ -1087,7 +1090,7 @@ pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<u32,
 
 /// The extracted type, matched by name: absent when no type has it (it was renamed or removed).
 fn type_named(types: &[DocumentTypeRow], name: &str) -> Option<DocumentType> {
-    document_types::id_by_name(types, name).map(DocumentType)
+    types::id_by_name(types, name).map(DocumentType)
 }
 
 /// The stub catalogue: files whose "extracted" facts the Inbox can show, in place of reading the
@@ -1139,7 +1142,7 @@ pub fn import_path(
         pages: 1,
         doc_type: facts
             .doc_type
-            .unwrap_or(DocumentType(document_types::fallback_id(types))),
+            .unwrap_or(DocumentType(types::fallback_id(types))),
         date: today,
         key_date: None,
         links: Vec::new(),
@@ -1753,7 +1756,7 @@ mod tests {
     use super::*;
 
     fn types() -> Vec<DocumentTypeRow> {
-        document_types::default_types()
+        types::default_types()
     }
     use crate::{
         accounts::default_accounts, bills::default_bills, categories::default_categories,
@@ -2707,7 +2710,7 @@ mod tests {
     #[test]
     fn the_rail_lists_types_in_settings_order() {
         let mut types = types();
-        document_types::move_by(&mut types, DocumentType::BILLS.0, -7);
+        types::move_by(&mut types, DocumentType::BILLS.0, -7);
         let listed: Vec<_> = rail_entries(&types, today())
             .into_iter()
             .filter_map(|entry| match entry {

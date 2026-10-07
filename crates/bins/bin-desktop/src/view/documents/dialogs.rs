@@ -1,5 +1,5 @@
 //! The Documents dialogs on the shared `crate::dialog` chrome: **Add document**, **Edit document**
-//! and **Import files**. `Shell` owns the live forms (`documents_form`) and every keystroke while
+//! and **Import files**. `Shell` owns the live forms (`documents::form`) and every keystroke while
 //! one is open; this module only draws them.
 
 use std::rc::Rc;
@@ -7,12 +7,12 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
-    dialog,
-    documents_form::{
+    dialog, documents,
+    documents::form::{
         DocumentField, DocumentForm, DocumentOptions, FactsField, FactsForm, FactsProblems,
         FieldProblem, FormProblems, ImportForm,
     },
-    documents_picker::{self, KindFilter, PickerRow, PickerState, Purpose},
+    documents::picker::{KindFilter, PickerRow, PickerState, Purpose},
     theme::color,
     view::accounts::{
         add_dialog::{label, text_field, two_up},
@@ -540,7 +540,7 @@ pub fn render_picker(props: PickerProps<'_>, cx: &App) -> AnyElement {
     } = props;
     let selected = state.selected.min(rows.len().saturating_sub(1));
     let window =
-        documents_picker::visible_window(selected, rows.len(), documents_picker::VISIBLE_ROWS);
+        documents::picker::visible_window(selected, rows.len(), documents::picker::VISIBLE_ROWS);
     let title = match state.purpose {
         Purpose::Link(_) => crate::msg::desktop_documents_picker_title_link(),
         Purpose::File(_) => crate::msg::desktop_documents_picker_title_file(),

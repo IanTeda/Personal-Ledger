@@ -59,14 +59,14 @@ use crate::{
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
     dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog, ToastHistoryDialog},
-    document_types::{self, DocumentTypeRow, DocumentTypesDialog},
+    documents::types::{DocumentTypeRow, DocumentTypesDialog},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
     field::TextField,
     format,
     import::{self, ImportState, RowSelect},
     inventory,
-    inventory_form::InventoryDialog,
+    inventory::form::InventoryDialog,
     key_router::{self, KeyOutcome, Movement, route_key},
     log_view::{LogChange, LogView},
     nav::{FocusZone, InputMode, NavState, Noun},
@@ -818,7 +818,7 @@ impl Shell {
         let budgets_current = seeded_budgets
             .default_budget()
             .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id);
-        let document_types_seed = document_types::default_types();
+        let document_types_seed = documents::types::default_types();
         Self {
             nav,
             focus_handle,
@@ -877,7 +877,7 @@ impl Shell {
             payees,
             payees_selected: 0,
             settings_payees_selected: None,
-            document_types_next_id: document_types::first_free_id(&document_types_seed),
+            document_types_next_id: documents::types::first_free_id(&document_types_seed),
             document_types: document_types_seed,
             settings_documents_selected: None,
             settings_inventory_selected: None,
@@ -2638,7 +2638,7 @@ impl Shell {
     /// row, so the cursor is never lost.
     fn settings_documents_selected_id(&self) -> Option<u32> {
         self.settings_documents_selected
-            .filter(|id| document_types::position(&self.document_types, *id).is_some())
+            .filter(|id| documents::types::position(&self.document_types, *id).is_some())
             .or_else(|| self.document_types.first().map(|row| row.id))
     }
 
@@ -2647,7 +2647,7 @@ impl Shell {
         let len = self.document_types.len();
         let current = self
             .settings_documents_selected_id()
-            .and_then(|id| document_types::position(&self.document_types, id))
+            .and_then(|id| documents::types::position(&self.document_types, id))
             .unwrap_or(0);
         let next = match movement {
             Movement::Next => accounts::step_selection(current, len, 1),
@@ -2707,7 +2707,7 @@ impl Shell {
 
     fn move_selected_document_type(&mut self, delta: isize) {
         if let Some(id) = self.settings_documents_selected_id() {
-            document_types::move_by(&mut self.document_types, id, delta);
+            documents::types::move_by(&mut self.document_types, id, delta);
             self.settings_documents_selected = Some(id);
         }
     }
@@ -2718,7 +2718,7 @@ impl Shell {
         let Some(id) = self.settings_documents_selected_id() else {
             return;
         };
-        let is_default = document_types::position(&self.document_types, id)
+        let is_default = documents::types::position(&self.document_types, id)
             .and_then(|position| self.document_types.get(position))
             .is_some_and(|row| row.is_default);
         if is_default {

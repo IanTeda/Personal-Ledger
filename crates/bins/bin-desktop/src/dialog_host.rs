@@ -18,8 +18,8 @@
 
 use crate::{
     accounts::AccountsDialog, bills::BillsDialog, budgets::BudgetsDialog,
-    categories::CategoriesDialog, document_types::DocumentTypesDialog,
-    documents_form::DocumentsDialog, field::TextField, inventory_form::InventoryDialog,
+    categories::CategoriesDialog, documents::form::DocumentsDialog,
+    documents::types::DocumentTypesDialog, field::TextField, inventory::form::InventoryDialog,
     payees::PayeesDialog, settings::SettingsDialog, tags::TagsDialog,
 };
 
@@ -211,10 +211,10 @@ mod tests {
     use crate::bills::AmountKind;
     use crate::bills::form::BillPlanField;
     use crate::categories::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
-    use crate::document_types::{
+    use crate::documents::types::{
         DocumentTypeForm, DocumentTypesDialog, FormField, RemoveForm, TracksDate, default_types,
     };
-    use crate::inventory_form::{
+    use crate::inventory::form::{
         InventoryDialog, PropertyField, PropertyForm, RemovePropertyForm, RemoveRoomForm,
     };
     use crate::payees::{DeleteAction, DeletePayeeForm, PayeeField, PayeeForm, default_payees};
@@ -797,8 +797,8 @@ mod tests {
         );
     }
 
-    fn property_context() -> crate::inventory_form::PropertyContext {
-        crate::inventory_form::PropertyContext {
+    fn property_context() -> crate::inventory::form::PropertyContext {
+        crate::inventory::form::PropertyContext {
             inventory: crate::inventory::Inventory::default(),
             today: chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a valid date"),
             date_style: None,
@@ -1652,8 +1652,8 @@ mod tests {
 
     // -- Documents ------------------------------------------------------------------------------
 
-    fn doc_options() -> crate::documents_form::DocumentOptions {
-        crate::documents_form::DocumentOptions::new(&default_types(), |kind| {
+    fn doc_options() -> crate::documents::form::DocumentOptions {
+        crate::documents::form::DocumentOptions::new(&default_types(), |kind| {
             kind.map_or("None".to_string(), |kind| format!("{kind:?}"))
         })
     }
@@ -1664,7 +1664,7 @@ mod tests {
 
     fn add_document() -> OpenDialog {
         OpenDialog::Documents(DocumentsDialog::Add(Box::new(
-            crate::documents_form::DocumentForm::new(
+            crate::documents::form::DocumentForm::new(
                 &doc_options(),
                 crate::documents::LibraryScope::All,
                 doc_today(),
@@ -1673,7 +1673,7 @@ mod tests {
         )))
     }
 
-    fn document_form_of(dialog: &OpenDialog) -> &crate::documents_form::DocumentForm {
+    fn document_form_of(dialog: &OpenDialog) -> &crate::documents::form::DocumentForm {
         match dialog {
             OpenDialog::Documents(DocumentsDialog::Add(form) | DocumentsDialog::Edit(_, form)) => {
                 form
@@ -1684,7 +1684,7 @@ mod tests {
 
     #[test]
     fn document_title_follows_the_path_until_it_is_typed_over() {
-        use crate::documents_form::DocumentField;
+        use crate::documents::form::DocumentField;
         let mut dialog = add_document();
         type_text(&mut dialog, "/tmp/rates-notice.pdf");
         assert_eq!(
@@ -1703,7 +1703,7 @@ mod tests {
 
     #[test]
     fn document_enter_confirms_only_with_a_path_a_title_and_readable_dates() {
-        use crate::documents_form::DocumentField;
+        use crate::documents::form::DocumentField;
         let mut dialog = add_document();
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Enter),
@@ -1732,7 +1732,7 @@ mod tests {
 
     #[test]
     fn document_selects_take_enter_and_the_first_esc_closes_their_list() {
-        use crate::documents_form::DocumentField;
+        use crate::documents::form::DocumentField;
         let mut dialog = add_document();
         type_text(&mut dialog, "/tmp/policy.pdf");
         handle_key(&mut dialog, DialogKey::Tab);
@@ -1756,7 +1756,7 @@ mod tests {
     fn facts_dialog() -> OpenDialog {
         OpenDialog::Documents(DocumentsDialog::Facts(
             1,
-            Box::new(crate::documents_form::FactsForm::new(
+            Box::new(crate::documents::form::FactsForm::new(
                 &crate::documents::ExtractedFacts::default(),
                 &doc_options(),
                 doc_today(),
@@ -1765,7 +1765,7 @@ mod tests {
         ))
     }
 
-    fn facts_form_of(dialog: &OpenDialog) -> &crate::documents_form::FactsForm {
+    fn facts_form_of(dialog: &OpenDialog) -> &crate::documents::form::FactsForm {
         match dialog {
             OpenDialog::Documents(DocumentsDialog::Facts(_, form)) => form,
             other => panic!("expected the facts form, got {other:?}"),
@@ -1813,7 +1813,7 @@ mod tests {
 
     fn import_dialog() -> OpenDialog {
         OpenDialog::Documents(DocumentsDialog::Import(
-            crate::documents_form::ImportForm::default(),
+            crate::documents::form::ImportForm::default(),
             vec!["a note".to_string()],
         ))
     }
@@ -1864,16 +1864,18 @@ mod tests {
         );
     }
 
-    fn picker(purpose: crate::documents_picker::Purpose) -> OpenDialog {
+    fn picker(purpose: crate::documents::picker::Purpose) -> OpenDialog {
         OpenDialog::Documents(DocumentsDialog::Picker(Box::new(
-            crate::documents_picker::PickerState::new(purpose, doc_today(), None).with_types(vec![
-                crate::documents::DocumentType::TAX,
-                crate::documents::DocumentType::OTHER,
-            ]),
+            crate::documents::picker::PickerState::new(purpose, doc_today(), None).with_types(
+                vec![
+                    crate::documents::DocumentType::TAX,
+                    crate::documents::DocumentType::OTHER,
+                ],
+            ),
         )))
     }
 
-    fn picker_of(dialog: &OpenDialog) -> &crate::documents_picker::PickerState {
+    fn picker_of(dialog: &OpenDialog) -> &crate::documents::picker::PickerState {
         match dialog {
             OpenDialog::Documents(DocumentsDialog::Picker(state)) => state,
             other => panic!("expected the picker, got {other:?}"),
@@ -1882,7 +1884,7 @@ mod tests {
 
     #[test]
     fn picker_types_a_query_and_tab_cycles_the_kind_filter() {
-        use crate::documents_picker::{KindFilter, Purpose};
+        use crate::documents::picker::{KindFilter, Purpose};
         let mut dialog = picker(Purpose::Link(1));
         type_text(&mut dialog, "coles");
         handle_key(&mut dialog, DialogKey::Backspace);
@@ -1895,7 +1897,7 @@ mod tests {
 
     #[test]
     fn picker_enter_and_the_arrows_ask_shell_for_the_live_rows() {
-        use crate::documents_picker::{PickerRequest, Purpose};
+        use crate::documents::picker::{PickerRequest, Purpose};
         let mut dialog = picker(Purpose::Link(1));
         assert!(!dialog.is_valid());
         assert_eq!(
@@ -1922,7 +1924,7 @@ mod tests {
     #[test]
     fn picker_left_and_right_step_the_inbox_document_type_only_when_filing() {
         use crate::documents::DocumentType;
-        use crate::documents_picker::Purpose;
+        use crate::documents::picker::Purpose;
         let mut dialog = picker(Purpose::File(1));
         handle_key(&mut dialog, DialogKey::Right);
         assert_eq!(picker_of(&dialog).doc_type, Some(DocumentType::TAX));

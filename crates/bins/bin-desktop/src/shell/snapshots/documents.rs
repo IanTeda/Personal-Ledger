@@ -2,8 +2,8 @@
 //! `shell/documents_ui.rs` so the snapshot shape and its accessor sit together.
 
 use crate::documents::Document;
-use crate::documents_form::DocumentsDialog;
-use crate::documents_picker::Purpose;
+use crate::documents::form::DocumentsDialog;
+use crate::documents::picker::Purpose;
 use crate::shell::Shell;
 use crate::view::documents::DocumentsFocus;
 

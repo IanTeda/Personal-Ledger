@@ -14,9 +14,9 @@ use super::{
     field_label,
 };
 use crate::{
-    dialog,
-    document_types::{
-        self, DocumentTypeForm, DocumentTypeRow, FormField, NameError, REMIND_OPTIONS, RemindLead,
+    dialog, documents,
+    documents::types::{
+        DocumentTypeForm, DocumentTypeRow, FormField, NameError, REMIND_OPTIONS, RemindLead,
         TRACKS_OPTIONS, TracksDate,
     },
     select::SelectState,
@@ -75,7 +75,7 @@ fn error_text(error: NameError) -> String {
     match error {
         NameError::Empty => crate::msg::desktop_document_types_error_name_empty(),
         NameError::TooLong => crate::msg::desktop_document_types_error_name_too_long(
-            &document_types::NAME_MAX.to_string(),
+            &documents::types::NAME_MAX.to_string(),
         ),
         NameError::Taken => crate::msg::desktop_document_types_error_name_taken(),
     }
