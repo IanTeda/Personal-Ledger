@@ -1,8 +1,7 @@
 //! `NavState` -- the primary/context rail state machine
 //! (`docs/ux/desktop/README.md`'s "State machine"), ported from the handoff's own Rust
 //! snippet. Deliberately free of any `gpui` dependency: every rule here is a pure state
-//! transition, unit-tested without a window, the same "pure, unit-testable" pattern the
-//! desktop feasibility map used for `feasibility_demo::divergent_bar_bounds`.
+//! transition, unit-tested without a window.
 //!
 //! `Shell` (and the chrome tickets that follow) own the one live `NavState` and re-render
 //! from it; this module only knows how the state itself changes, never how it's drawn.

@@ -4,6 +4,8 @@
 
 We're replacing rather than extending it, the same call ADR-0013 made for the TUI's equivalent swap (`App`/`Screen` → `Shell`/`View`): `DesktopApp` becomes `Shell`, and the existing feasibility-cycle code — `Screen`, the dummy-data generators, `TransactionTableDelegate`, and the Live Categories SQLite demo, tests included — moves into a new `feasibility_demo` module, `#![allow(dead_code)]`, no longer referenced from `main()` but still compiling. This mirrors the TUI's own `app.rs`/`screen/` treatment exactly: dead code, not a live fallback path, until the pieces it proved are individually reused by real tickets on the [Desktop Shell & Navigation](https://github.com/IanTeda/Personal-Ledger/issues/144) map — the `LineChart`/`PieChart` usage in particular is reused as-is for the real Dashboard view's chart band (issue #148).
 
+Update ([#527](https://github.com/IanTeda/Personal-Ledger/issues/527)): with the Dashboard's charts landed, `feasibility_demo` has been deleted. Recover anything else it proved (the `CandlestickChart` and hand-rolled divergent-bar demos, the `Table` delegate, the Live Categories SQLite demo) from Git history at commit `0e116de`.
+
 A `View` trait mirroring `crate::view` in `bin-tui` is deliberately not introduced yet: `Shell` hosts exactly one concrete view (a placeholder) until `NavState` (issue #147) gives it something to actually switch between, and `gpui`'s `Render` trait isn't object-safe the way `bin-tui`'s per-screen `draw(&mut self, frame: &mut Frame)` is — a real `View` type will need `gpui::AnyView` or an equivalent hand-rolled erasure, decided once there's a second view to justify it.
 
 ## Considered Options

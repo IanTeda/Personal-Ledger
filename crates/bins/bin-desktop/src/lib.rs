@@ -3,9 +3,6 @@
 //! does; `main.rs` is only config, tracing and a call to [`run`]. Boots into `Shell`, the
 //! persistent-rail, command-palette-driven navigation chrome `docs/ux/desktop/README.md`
 //! specifies, in place of the feasibility cycle's flat `TabBar` screen-cycling (ADR-0016).
-//! `feasibility_demo` is kept as a module so it still compiles -- see the ADR -- but is no
-//! longer referenced here; its `gpui-component` chart-widget patterns are reused by the real
-//! Dashboard view as that work lands (issue #148).
 
 mod accounts;
 mod assets;
@@ -25,7 +22,6 @@ mod documents_form;
 mod documents_picker;
 mod error;
 mod explorer;
-mod feasibility_demo;
 mod field;
 mod format;
 mod help;

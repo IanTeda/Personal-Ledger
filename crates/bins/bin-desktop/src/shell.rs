@@ -1,6 +1,6 @@
 //! `Shell` -- the desktop window's root render tree (`docs/ux/desktop/README.md`'s
-//! "Component tree"), replacing `feasibility_demo::DesktopApp`'s `TabBar`-driven screen
-//! cycling as the real navigation entry point (ADR-0016).
+//! "Component tree"), replacing the feasibility cycle's `TabBar`-driven screen cycling as the
+//! real navigation entry point (ADR-0016).
 //!
 //! Assembles the static chrome from `docs/ux/desktop/01-shell/README.md`'s "1a"
 //! spec (issue #148) and drives it with real keyboard interaction: `Tab`/`Shift-Tab`
@@ -7822,12 +7822,11 @@ impl Render for Shell {
             1.0
         };
 
-        // Both closures go through an `Entity` handle (mirroring `feasibility_demo`'s own
-        // `TabBar::on_click` wiring) rather than `cx.listener`: `on_click`/`on_hover`'s own
-        // signatures are `Fn(_, &mut Window, &mut App)`, with no `&mut Shell` parameter for
-        // `cx.listener` to supply, and the collapsed rail's `on_row_hover` closure additionally
-        // needs to close over each row's own `Noun` -- `PrimaryRail` curries that in per-row
-        // from the single `Rc` given here.
+        // Both closures go through an `Entity` handle rather than `cx.listener`:
+        // `on_click`/`on_hover`'s own signatures are `Fn(_, &mut Window, &mut App)`, with no
+        // `&mut Shell` parameter for `cx.listener` to supply, and the collapsed rail's
+        // `on_row_hover` closure additionally needs to close over each row's own `Noun` --
+        // `PrimaryRail` curries that in per-row from the single `Rc` given here.
         let entity = cx.entity();
         let on_rail_toggle: topbar::OnRailToggle = {
             let entity = entity.clone();
