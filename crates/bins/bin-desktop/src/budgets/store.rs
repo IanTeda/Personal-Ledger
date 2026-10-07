@@ -76,10 +76,16 @@ pub enum Span {
 /// Every Budget, in creation order.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Budgets {
-    pub(super) list: Vec<Budget>,
+    list: Vec<Budget>,
 }
 
 impl Budgets {
+    /// The seeded store, taken as it is: the seed is authored to the rules, so it skips the checks
+    /// `create` runs.
+    pub(super) fn seeded(list: Vec<Budget>) -> Self {
+        Self { list }
+    }
+
     pub fn all(&self) -> &[Budget] {
         &self.list
     }

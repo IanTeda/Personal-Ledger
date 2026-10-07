@@ -115,28 +115,26 @@ pub fn default_budgets(accounts: &[Account], categories: &[Category], today: Nai
             .map(|a| a.id)
             .collect()
     };
-    Budgets {
-        list: vec![
-            Budget {
-                id: PERSONAL_SPENDING_ID,
-                name: "Personal spending".to_string(),
-                method: Method::Limits,
-                unit: "aud".to_string(),
-                account_ids: on_budget(None),
-                is_default: true,
-                archived_at: None,
-                limits: seeded_limits(&PERSONAL_SPENDING, categories, today),
-            },
-            Budget {
-                id: 2,
-                name: "Joint household".to_string(),
-                method: Method::Limits,
-                unit: "aud".to_string(),
-                account_ids: on_budget(Some(&["ANZ Everyday", "ANZ Offset"])),
-                is_default: false,
-                archived_at: None,
-                limits: seeded_limits(&JOINT_HOUSEHOLD, categories, today),
-            },
-        ],
-    }
+    Budgets::seeded(vec![
+        Budget {
+            id: PERSONAL_SPENDING_ID,
+            name: "Personal spending".to_string(),
+            method: Method::Limits,
+            unit: "aud".to_string(),
+            account_ids: on_budget(None),
+            is_default: true,
+            archived_at: None,
+            limits: seeded_limits(&PERSONAL_SPENDING, categories, today),
+        },
+        Budget {
+            id: 2,
+            name: "Joint household".to_string(),
+            method: Method::Limits,
+            unit: "aud".to_string(),
+            account_ids: on_budget(Some(&["ANZ Everyday", "ANZ Offset"])),
+            is_default: false,
+            archived_at: None,
+            limits: seeded_limits(&JOINT_HOUSEHOLD, categories, today),
+        },
+    ])
 }
