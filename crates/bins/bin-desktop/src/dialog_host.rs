@@ -208,8 +208,8 @@ pub fn handle_key(dialog: &mut impl Dialog, key: DialogKey) -> DialogOutcome {
 mod tests {
     use super::*;
     use crate::accounts::{AccountField, AccountForm, DeleteAccountForm};
-    use crate::bill_form::BillPlanField;
     use crate::bills::AmountKind;
+    use crate::bills::form::BillPlanField;
     use crate::categories::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
     use crate::document_types::{
         DocumentTypeForm, DocumentTypesDialog, FormField, RemoveForm, TracksDate, default_types,
@@ -1008,10 +1008,10 @@ mod tests {
         );
     }
 
-    fn bill_plan_form() -> crate::bill_form::BillPlanForm {
-        use crate::{accounts::default_accounts, bill_form, categories::default_categories};
+    fn bill_plan_form() -> crate::bills::form::BillPlanForm {
+        use crate::{accounts::default_accounts, bills, categories::default_categories};
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
-        let source = bill_form::BillPlanSource::new(
+        let source = bills::form::BillPlanSource::new(
             &default_categories(),
             &default_accounts(),
             &default_payees(),
@@ -1021,10 +1021,10 @@ mod tests {
             today,
             None,
         );
-        bill_form::BillPlanForm::new(source)
+        bills::form::BillPlanForm::new(source)
     }
 
-    fn bill_plan_form_of(dialog: &OpenDialog) -> &crate::bill_form::BillPlanForm {
+    fn bill_plan_form_of(dialog: &OpenDialog) -> &crate::bills::form::BillPlanForm {
         match dialog {
             OpenDialog::Bills(inner) => match &**inner {
                 BillsDialog::Add(form) => form,
@@ -1124,7 +1124,7 @@ mod tests {
         }
     }
 
-    fn pay_form(candidates: usize) -> crate::pay_form::PayForm {
+    fn pay_form(candidates: usize) -> crate::bills::pay_form::PayForm {
         use crate::{
             accounts::default_accounts,
             bills::{EntryId, SplitRef, default_bills},
@@ -1152,10 +1152,10 @@ mod tests {
                 split_index: 0,
             })
             .collect();
-        crate::pay_form::PayForm::new(entry, &plan, candidates, None, today, None)
+        crate::bills::pay_form::PayForm::new(entry, &plan, candidates, None, today, None)
     }
 
-    fn pay_form_of(dialog: &OpenDialog) -> &crate::pay_form::PayForm {
+    fn pay_form_of(dialog: &OpenDialog) -> &crate::bills::pay_form::PayForm {
         match dialog {
             OpenDialog::Bills(inner) => match &**inner {
                 BillsDialog::Pay(form) => form,
@@ -1186,7 +1186,7 @@ mod tests {
         handle_key(&mut dialog, DialogKey::Tab);
         assert_eq!(
             pay_form_of(&dialog).focused,
-            crate::pay_form::PayField::Date
+            crate::bills::pay_form::PayField::Date
         );
         type_text(&mut dialog, "!");
         assert!(pay_form_of(&dialog).date_error().is_some());
@@ -1198,7 +1198,7 @@ mod tests {
 
     #[test]
     fn pay_match_steps_rows_and_none_of_these_switches_panel_instead_of_confirming() {
-        use crate::pay_form::{MatchChoice, PayMode};
+        use crate::bills::pay_form::{MatchChoice, PayMode};
         let mut dialog = OpenDialog::Bills(Box::new(BillsDialog::Pay(pay_form(1))));
         assert_eq!(pay_form_of(&dialog).mode, PayMode::Match);
         assert_eq!(
@@ -1350,7 +1350,7 @@ mod tests {
                     crate::budgets::PERSONAL_SPENDING_ID,
                     &categories,
                     id,
-                    crate::bills::Period::of(today),
+                    crate::period::Period::of(today),
                     today,
                 )
                 .unwrap();
@@ -1359,7 +1359,7 @@ mod tests {
         crate::limit_form::LimitOptions::new(
             budget,
             &categories,
-            crate::bills::Period::of(today),
+            crate::period::Period::of(today),
             count,
             |month, _| format!("{}-{}", month.year, month.month),
         )
@@ -1437,7 +1437,7 @@ mod tests {
         let options = limit_options(crate::limit_form::STOP_MONTHS);
         let form = crate::limit_form::StopForm::new(
             1,
-            crate::bills::Period::of(budgets_today()),
+            crate::period::Period::of(budgets_today()),
             &options,
         );
         let mut dialog = budgets_dialog(BudgetsDialog::Stop(form));
@@ -1591,7 +1591,7 @@ mod tests {
     #[test]
     fn category_detail_moves_its_cursor_and_hands_off_on_t_enter_or_e() {
         use crate::budgets::{Detail, DetailRequest};
-        let month = crate::bills::Period::of(budgets_today());
+        let month = crate::period::Period::of(budgets_today());
         let mut dialog = budgets_dialog(BudgetsDialog::CategoryDetail(Detail::new(1, month, 3)));
         handle_key(&mut dialog, DialogKey::Char('j'));
         handle_key(&mut dialog, DialogKey::Down);
@@ -1624,7 +1624,7 @@ mod tests {
     #[test]
     fn fill_picks_its_source_with_j_k_and_confirms_on_enter() {
         use crate::budgets::FillSource;
-        let month = crate::bills::Period::of(budgets_today());
+        let month = crate::period::Period::of(budgets_today());
         let mut dialog = budgets_dialog(BudgetsDialog::Fill {
             month,
             source: FillSource::PreviousMonth,

@@ -1,6 +1,6 @@
 //! The live forms behind **Edit budget** (9e) and **Stop budgeting** (9g) in
 //! `docs/ux/desktop/14-budgets-v2/README.md`: `gpui`-free and unit-tested, the same split
-//! `pay_form.rs` uses.
+//! `bills/pay_form.rs` uses.
 //!
 //! The behaviour is the Desktop Budgets Surface map's settled decisions (#383, #386):
 //!
@@ -18,11 +18,11 @@ use lib_core::Money;
 
 use crate::{
     accounts::SelectKey,
-    bills::Period,
     budgets::{self, Budget, BudgetError, Budgets, Rollover, Span},
     categories::{self, Category},
     dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
+    period::Period,
     select::SelectState,
 };
 

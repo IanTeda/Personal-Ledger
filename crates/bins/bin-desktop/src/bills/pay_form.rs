@@ -1,5 +1,5 @@
 //! The Pay dialog's live form (`docs/ux/desktop/12-bills/README.md`'s 8d): `gpui`-free and
-//! unit-tested, the same split `bill_form.rs` uses.
+//! unit-tested, the same split `bills/form.rs` uses.
 //!
 //! The behaviour is the Desktop Bills Surface map's settlement decision (#368):
 //!

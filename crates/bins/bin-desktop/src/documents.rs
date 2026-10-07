@@ -24,8 +24,8 @@ use lib_core::{Money, TransactionStatus};
 
 use crate::{
     accounts::Account,
-    bill_history::{FINANCIAL_YEAR_START_MONTH, financial_year_start},
     bills::BillPlan,
+    bills::history::{FINANCIAL_YEAR_START_MONTH, financial_year_start},
     categories::{self, Category},
     document_types::{self, DocumentTypeRow, TracksDate},
     inventory::Inventory,

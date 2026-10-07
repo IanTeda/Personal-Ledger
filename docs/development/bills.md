@@ -22,7 +22,7 @@ The stub records a Match on the entry as a `SplitRef` rather than as a `bill_sch
 
 ## Domain types
 
-None in `lib-core` yet. The desktop model's types (`BillPlan`, `Recurrence`, `AmountKind`, `BillScheduleEntry`, `EntryId`, `SplitRef`, `Resolution`, `BillStatus`) live in `crates/bins/bin-desktop/src/bills.rs` and are the starting point for real domain types.
+None in `lib-core` yet. The desktop model's types (`BillPlan`, `Recurrence`, `AmountKind`, `BillScheduleEntry`, `EntryId`, `SplitRef`, `Resolution`, `BillStatus`) live in `crates/bins/bin-desktop/src/bills/mod.rs` and are the starting point for real domain types.
 
 ## Persistence
 
@@ -31,8 +31,8 @@ Not yet built. No migration exists in `migrations/client/`, and `lib-database` h
 ## UI
 
 - **Desktop** — all on in-memory stubs:
-  - `src/bills.rs` — the `gpui`-free model and rules: recurrence stepping, `populate` and `horizon`, `status`, `needs_attention` and `attention_entries`, `insert_plan`/`edit_plan`/`set_active`, `pay`, `match_candidates`/`preselected_candidate`/`match_split`, `skip`, `unmatch`/`unskip`/`unmatch_transaction`, `carries_bill`, `schedule_rows`, `period_summary` and `planner_order`, plus the `BillsTab` and Shell-owned `BillsDialog` enums. Start here; it is unit-tested without a window.
-  - `src/bill_form.rs` (8c), `src/pay_form.rs` (8d) and `src/bill_history.rs` (the Schedule's `BillFilters` and the stat callout's `plan_stats`) — the dialogs' and filters' pure state.
+  - `src/bills/mod.rs` — the `gpui`-free model and rules: recurrence stepping, `populate` and `horizon`, `status`, `needs_attention` and `attention_entries`, `insert_plan`/`edit_plan`/`set_active`, `pay`, `match_candidates`/`preselected_candidate`/`match_split`, `skip`, `unmatch`/`unskip`/`unmatch_transaction`, `carries_bill`, `schedule_rows`, `period_summary` and `planner_order`, plus the `BillsTab` and Shell-owned `BillsDialog` enums. Start here; it is unit-tested without a window.
+  - `src/bills/form.rs` (8c), `src/bills/pay_form.rs` (8d) and `src/bills/history.rs` (the Schedule's `BillFilters` and the stat callout's `plan_stats`) — the dialogs' and filters' pure state.
   - `src/view/bills/` — `mod.rs` the page chrome and tabs, `schedule.rs` (8a), `planner.rs` (8b), `plan_dialog.rs` (8c), `pay_dialog.rs` (8d), `skip_dialog.rs` (8e), `filters.rs` (the Schedule's filter row and stat callout, from 8f).
   - `src/shell.rs` — `handle_bills_key` (`n`/`e`/`p`/`s`/`[`/`]`/`0`/`f`/`1`–`5`), `handle_bills_tab_key`, `handle_bills_dialog_key`, the `open_*_bill_*_dialog` openers, and `open_bill_transaction`, which hands a Paid row off to its Transaction.
   - `src/rail/primary.rs` — the Bills badge, the Needs Attention count; `src/view/dashboard.rs` — real Bill rows in Needs Attention from `bills::attention_entries`.
@@ -45,11 +45,11 @@ Desktop locations for the ticked requirements.
 
 | Requirement | Desktop location |
 | --- | --- |
-| BIL-001 | `bills::insert_plan`, `bill_form.rs`, `view/bills/plan_dialog.rs` |
+| BIL-001 | `bills::insert_plan`, `bills/form.rs`, `view/bills/plan_dialog.rs` |
 | BIL-003 | `bills::edit_plan`, `view/bills/plan_dialog.rs` |
 | BIL-004 | `bills::set_active`, `view/bills/planner.rs` |
 | BIL-005 | `bills::populate`, `bills::schedule_rows`, `view/bills/schedule.rs` |
-| BIL-006 | `bills::pay`, `bills::match_split`, `pay_form.rs`, `view/bills/pay_dialog.rs` |
+| BIL-006 | `bills::pay`, `bills::match_split`, `bills/pay_form.rs`, `view/bills/pay_dialog.rs` |
 | BIL-007 | `bills::skip`, `view/bills/skip_dialog.rs` |
 | BIL-009 | `budgets::period_figures` (Known Costs), `view/budgets/progress.rs` |
 | BIL-011 | `bill_history::plan_stats`, `view/bills/filters.rs` |

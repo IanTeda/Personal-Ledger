@@ -17,11 +17,7 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*, px};
 
-use crate::{
-    bills::{BillsTab, Period},
-    nav::Noun,
-    theme::color,
-};
+use crate::{bills::BillsTab, nav::Noun, period::Period, theme::color};
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// Called with a row's position in the active tab's order (`bills::schedule_rows` or

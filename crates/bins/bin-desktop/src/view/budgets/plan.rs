@@ -14,9 +14,9 @@ use lib_core::Money;
 use lib_locale::format::{format_month, upper};
 
 use crate::{
-    bills::Period,
     budgets::{PLAN_MONTHS, PLAN_ROLLOVER_COLUMN, Plan, PlanCell, PlanEdit, PlanRow, Rollover},
     format::amount,
+    period::Period,
     theme::color,
     transactions::rows::EMPTY_CELL,
 };

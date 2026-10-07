@@ -53,7 +53,8 @@ use crate::{
         self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
         DeleteAccountForm, NameLookup,
     },
-    bill_form, bill_history, bills, budget_form, budgets,
+    bills::{self, pay_form::PayForm},
+    budget_form, budgets,
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
@@ -71,8 +72,8 @@ use crate::{
     log_view::{LogChange, LogView},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
-    pay_form::{self, PayForm},
     payees::{self, Payee},
+    period::Period,
     rail::{
         self,
         context::ContextRail,
@@ -676,17 +677,17 @@ pub struct Shell {
     budgets_current: u32,
     budgets_tab: budgets::BudgetsTab,
     /// The Progress tab's calendar month; starts at today's.
-    budgets_period: bills::Period,
+    budgets_period: Period,
     /// The selected Progress row (a position in `PeriodFigures::rows`).
     budgets_selected: usize,
     /// The Plan grid's first month; it shows six from here.
-    budgets_plan_start: bills::Period,
+    budgets_plan_start: Period,
     /// The Plan grid's cursor: a row across sections, and a column (the last is ROLLOVER).
     budgets_plan_cursor: (usize, usize),
     /// The Plan cell being typed into; `InputMode::Insert` is on for exactly as long as this is set.
     budgets_plan_edit: Option<budgets::PlanEdit>,
     /// The last month of the History tab's range (9c).
-    budgets_history_end: bills::Period,
+    budgets_history_end: Period,
     /// The History cursor: a row and a month column.
     budgets_history_cursor: (usize, usize),
     /// `x` on the History tab asked for the export; the key-down listener runs it, since the save
@@ -732,10 +733,10 @@ pub struct Shell {
     bills_selected: usize,
     /// The Schedule tab's calendar month; starts at today's. Kept while `bills_all` shows every
     /// row, so the arrows return to it.
-    bills_period: bills::Period,
+    bills_period: Period,
     bills_all: bool,
     /// The Schedule tab's filters, and the filter-row select `f` has focused (open or closed).
-    bills_filters: bill_history::BillFilters,
+    bills_filters: bills::history::BillFilters,
     bills_filter_focus: Option<(bills_view::filters::FilterField, crate::select::SelectState)>,
     /// The selected row as a position in [`Self::transactions`] (the table shows them in this
     /// order), clamped wherever it is read. Once filters land it becomes a position in the
@@ -863,12 +864,12 @@ impl Shell {
             budgets: seeded_budgets,
             budgets_current,
             budgets_tab: budgets::BudgetsTab::default(),
-            budgets_period: bills::Period::of(today),
+            budgets_period: Period::of(today),
             budgets_selected: 0,
             budgets_plan_start: budgets::default_plan_start(today),
             budgets_plan_cursor: (0, 0),
             budgets_plan_edit: None,
-            budgets_history_end: bills::Period::of(today),
+            budgets_history_end: Period::of(today),
             budgets_history_cursor: (0, 0),
             pending_budgets_export: false,
             categories_selected: 0,
@@ -891,9 +892,9 @@ impl Shell {
             bill_entries: bills_seed.entries,
             bills_tab: bills::BillsTab::default(),
             bills_selected: 0,
-            bills_period: bills::Period::of(today),
+            bills_period: Period::of(today),
             bills_all: false,
-            bills_filters: bill_history::BillFilters::default(),
+            bills_filters: bills::history::BillFilters::default(),
             bills_filter_focus: None,
             transactions_selected: 0,
             transactions_scroll: UniformListScrollHandle::new(),
@@ -3811,7 +3812,7 @@ impl Shell {
     }
 
     /// Opens 9d, counting the Transactions it lists now so its `j`/`k` never need the ledger.
-    fn open_budgets_detail(&mut self, category_id: u32, month: bills::Period) {
+    fn open_budgets_detail(&mut self, category_id: u32, month: Period) {
         let listed = self
             .budgets_detail_for(category_id, month)
             .map_or(0, |detail| {
@@ -3833,7 +3834,7 @@ impl Shell {
     fn budgets_detail_for(
         &self,
         category_id: u32,
-        month: bills::Period,
+        month: Period,
     ) -> Option<budgets::CategoryDetail> {
         let budget = self.budgets.get(self.budgets_current)?;
         let ledger = budgets::Ledger {
@@ -3874,7 +3875,7 @@ impl Shell {
         Some(limit_form::LimitOptions::new(
             budget,
             &self.categories,
-            bills::Period::of(self.today),
+            Period::of(self.today),
             count,
             |month, current| {
                 let label = budgets_view::period_label(month);
@@ -3897,14 +3898,14 @@ impl Shell {
     /// Opens 9e on a leaf Category, starting in `month` when that is offered. A Category with no
     /// Budget Amount this month opens the picker with it preselected (9a's `set`); a parent only
     /// rolls up, so it opens nothing.
-    fn open_budgets_limit(&mut self, category_id: u32, month: bills::Period) {
+    fn open_budgets_limit(&mut self, category_id: u32, month: Period) {
         let (Some(budget), Some(options)) = (
             self.budgets_editable(),
             self.budgets_limit_options(limit_form::START_MONTHS),
         ) else {
             return;
         };
-        let current = bills::Period::of(self.today);
+        let current = Period::of(self.today);
         let form = if budgets::applied(budget.chain(category_id), current).is_some() {
             if !categories::is_leaf(&self.categories, category_id) {
                 return;
@@ -3934,7 +3935,7 @@ impl Shell {
     }
 
     /// Opens 9g on a leaf Category that has a Budget Amount this month or in `month`.
-    fn open_budgets_stop(&mut self, category_id: u32, month: bills::Period) {
+    fn open_budgets_stop(&mut self, category_id: u32, month: Period) {
         let (Some(budget), Some(options)) = (
             self.budgets_editable(),
             self.budgets_limit_options(limit_form::STOP_MONTHS),
@@ -3942,7 +3943,7 @@ impl Shell {
             return;
         };
         let chain = budget.chain(category_id);
-        let current = bills::Period::of(self.today);
+        let current = Period::of(self.today);
         if budgets::applied(chain, current).is_none() && budgets::applied(chain, month).is_none() {
             return;
         }
@@ -3954,7 +3955,7 @@ impl Shell {
     }
 
     /// The Category under the cursor on Progress or Plan, with the month its dialog starts in.
-    fn budgets_cursor_category(&self) -> Option<(u32, bills::Period)> {
+    fn budgets_cursor_category(&self) -> Option<(u32, Period)> {
         match self.budgets_tab {
             budgets::BudgetsTab::Progress => {
                 let (_, figures) = self.budgets_figures()?;
@@ -3968,7 +3969,7 @@ impl Shell {
                     .months
                     .get(column)
                     .copied()
-                    .unwrap_or_else(|| bills::Period::of(self.today));
+                    .unwrap_or_else(|| Period::of(self.today));
                 Some((plan.row(row_index)?.category_id, month))
             }
             budgets::BudgetsTab::History => None,
@@ -4104,7 +4105,7 @@ impl Shell {
         self.budgets_plan_edit = None;
         self.budgets_plan_start = budgets::default_plan_start(self.today);
         self.budgets_history_cursor = (0, 0);
-        self.budgets_history_end = bills::Period::of(self.today);
+        self.budgets_history_end = Period::of(self.today);
         self.reset_view_scroll();
     }
 
@@ -4335,7 +4336,7 @@ impl Shell {
             });
             on_click
         };
-        let current = bills::Period::of(self.today);
+        let current = Period::of(self.today);
         let rows = budgets::switcher_ids(&self.budgets, "")
             .into_iter()
             .filter_map(|id| self.budgets.get(id))
@@ -4506,7 +4507,7 @@ impl Shell {
 
     /// The month Fill would target from the Plan cursor: the first open month at or after its
     /// column.
-    fn budgets_fill_target(&self) -> bills::Period {
+    fn budgets_fill_target(&self) -> Period {
         let cursor = self.budgets_plan_data().and_then(|plan| {
             let column = self.budgets_plan_cursor_in(&plan).1;
             plan.months.get(column).copied()
@@ -4527,7 +4528,7 @@ impl Shell {
 
     /// **Fill** and `enter`: writes the chosen source's Month-only amounts. A Fill that would
     /// change nothing stays open, as its disabled button says.
-    fn apply_budgets_fill(&mut self, month: bills::Period, source: budgets::FillSource) {
+    fn apply_budgets_fill(&mut self, month: Period, source: budgets::FillSource) {
         let ledger = budgets::Ledger {
             categories: &self.categories,
             accounts: &self.accounts,
@@ -5085,7 +5086,7 @@ impl Shell {
     fn open_budgets_schedule(&mut self) {
         self.bills_period = self.budgets_period;
         self.bills_all = false;
-        self.bills_filters = bill_history::BillFilters::default();
+        self.bills_filters = bills::history::BillFilters::default();
         self.set_bills_tab(bills::BillsTab::Schedule);
         self.nav.set_noun(Noun::Bills);
         self.reset_view_scroll();
@@ -5213,7 +5214,7 @@ impl Shell {
     }
 
     fn toggle_bills_filter_chip(&mut self, index: usize) {
-        if let Some(status) = bill_history::STATUS_CHIPS.get(index) {
+        if let Some(status) = bills::history::STATUS_CHIPS.get(index) {
             self.bills_filters.toggle(*status);
             self.bills_selected = 0;
         }
@@ -5410,7 +5411,7 @@ impl Shell {
                 .parse::<usize>()
                 .ok()
                 .and_then(|digit| digit.checked_sub(1))
-                .filter(|index| *index < bill_history::STATUS_CHIPS.len())
+                .filter(|index| *index < bills::history::STATUS_CHIPS.len())
         {
             self.toggle_bills_filter_chip(chip);
             return true;
@@ -5443,8 +5444,8 @@ impl Shell {
 
     /// What the Add and Edit bill plan selects choose from, copied into the form as it opens. On
     /// Edit the Plan's own Payee stays listed even if it has since been deactivated.
-    fn bill_plan_source(&self, keep_payee: Option<u32>) -> bill_form::BillPlanSource {
-        bill_form::BillPlanSource::new(
+    fn bill_plan_source(&self, keep_payee: Option<u32>) -> bills::form::BillPlanSource {
+        bills::form::BillPlanSource::new(
             &self.categories,
             &self.accounts,
             &self.payees,
@@ -5457,7 +5458,7 @@ impl Shell {
     }
 
     fn open_add_bill_plan_dialog(&mut self) {
-        let form = bill_form::BillPlanForm::new(self.bill_plan_source(None));
+        let form = bills::form::BillPlanForm::new(self.bill_plan_source(None));
         self.open_dialog(OpenDialog::Bills(Box::new(bills::BillsDialog::Add(form))));
     }
 
@@ -5466,14 +5467,14 @@ impl Shell {
         let Some(plan) = bills::get(&self.bill_plans, id) else {
             return;
         };
-        let form = bill_form::BillPlanForm::from_plan(plan, self.bill_plan_source(plan.payee_id));
+        let form = bills::form::BillPlanForm::from_plan(plan, self.bill_plan_source(plan.payee_id));
         self.open_dialog(OpenDialog::Bills(Box::new(bills::BillsDialog::Edit(
             id, form,
         ))));
     }
 
     /// The form behind the open Add or Edit bill plan dialog, if that is what's open.
-    fn bill_plan_form_mut(&mut self) -> Option<&mut bill_form::BillPlanForm> {
+    fn bill_plan_form_mut(&mut self) -> Option<&mut bills::form::BillPlanForm> {
         self.bills_dialog_mut()
             .and_then(bills::BillsDialog::plan_form_mut)
     }
@@ -5491,7 +5492,7 @@ impl Shell {
     /// **Add bill plan** / **Save**: adds or edits the Plan (Schedule regeneration is
     /// `bills::insert_plan`'s, `edit_plan`'s and `set_active`'s) and selects it on the Planner
     /// tab. A refused Save reopens the dialog with the error shown.
-    fn apply_bill_plan(&mut self, editing: Option<u32>, mut form: bill_form::BillPlanForm) {
+    fn apply_bill_plan(&mut self, editing: Option<u32>, mut form: bills::form::BillPlanForm) {
         let Some(draft) = form.draft() else {
             return;
         };
@@ -5547,17 +5548,17 @@ impl Shell {
 
     fn handle_bill_plan_field_click(
         &mut self,
-        field: bill_form::BillPlanField,
+        field: bills::form::BillPlanField,
         cx: &mut Context<'_, Self>,
     ) {
         if let Some(form) = self.bill_plan_form_mut() {
             match field {
-                bill_form::BillPlanField::Category
-                | bill_form::BillPlanField::Unit
-                | bill_form::BillPlanField::Account
-                | bill_form::BillPlanField::Payee
-                | bill_form::BillPlanField::Recurrence => form.click_select(field),
-                bill_form::BillPlanField::Active => {
+                bills::form::BillPlanField::Category
+                | bills::form::BillPlanField::Unit
+                | bills::form::BillPlanField::Account
+                | bills::form::BillPlanField::Payee
+                | bills::form::BillPlanField::Recurrence => form.click_select(field),
+                bills::form::BillPlanField::Active => {
                     form.focus(field);
                     form.toggle();
                 }
@@ -5569,7 +5570,7 @@ impl Shell {
 
     fn handle_bill_plan_option_click(
         &mut self,
-        field: bill_form::BillPlanField,
+        field: bills::form::BillPlanField,
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
@@ -5644,7 +5645,7 @@ impl Shell {
             return;
         };
         let result = match action {
-            pay_form::PayAction::Pay { amount, date } => bills::pay(
+            bills::pay_form::PayAction::Pay { amount, date } => bills::pay(
                 &self.bill_plans,
                 &mut self.bill_entries,
                 &mut self.transactions,
@@ -5653,7 +5654,7 @@ impl Shell {
                 date,
             )
             .map(|_| ()),
-            pay_form::PayAction::Match(split) => bills::match_split(
+            bills::pay_form::PayAction::Match(split) => bills::match_split(
                 &self.bill_plans,
                 &mut self.bill_entries,
                 &self.transactions,
@@ -5669,7 +5670,11 @@ impl Shell {
         }
     }
 
-    fn handle_pay_bill_mode_click(&mut self, mode: pay_form::PayMode, cx: &mut Context<'_, Self>) {
+    fn handle_pay_bill_mode_click(
+        &mut self,
+        mode: bills::pay_form::PayMode,
+        cx: &mut Context<'_, Self>,
+    ) {
         if let Some(form) = self.pay_form_mut() {
             form.set_mode(mode);
         }
@@ -5678,7 +5683,7 @@ impl Shell {
 
     fn handle_pay_bill_choice_click(
         &mut self,
-        choice: pay_form::MatchChoice,
+        choice: bills::pay_form::MatchChoice,
         cx: &mut Context<'_, Self>,
     ) {
         if let Some(form) = self.pay_form_mut() {
@@ -5689,7 +5694,7 @@ impl Shell {
 
     fn handle_pay_bill_field_click(
         &mut self,
-        field: pay_form::PayField,
+        field: bills::pay_form::PayField,
         cx: &mut Context<'_, Self>,
     ) {
         if let Some(form) = self.pay_form_mut() {
@@ -5862,7 +5867,7 @@ impl Shell {
         self.bills_period = bills::schedule_period(entry, self.today);
         self.bills_all = false;
         // Reset so no filter hides the entry being handed off to.
-        self.bills_filters = bill_history::BillFilters::default();
+        self.bills_filters = bills::history::BillFilters::default();
         self.set_bills_tab(bills::BillsTab::Schedule);
         self.bills_selected = self
             .bills_schedule_rows()
@@ -8474,7 +8479,7 @@ impl Render for Shell {
             budgets::period_figures(
                 budget,
                 &self.budgets_ledger(),
-                bills::Period::of(self.today),
+                Period::of(self.today),
                 self.today,
             )
         });
@@ -8540,7 +8545,7 @@ impl Render for Shell {
                         .plan_id
                         .and_then(|id| bills::get(&self.bill_plans, id))
                         .map(|plan| {
-                            let stats = bill_history::plan_stats(
+                            let stats = bills::history::plan_stats(
                                 plan,
                                 &self.bill_plans,
                                 &self.bill_entries,
@@ -8671,7 +8676,7 @@ impl Render for Shell {
                     .as_ref()
                     .map(|plan| budgets_view::plan::PlanProps {
                         plan,
-                        current: bills::Period::of(self.today),
+                        current: Period::of(self.today),
                         cursor: self.budgets_plan_cursor_in(plan),
                         edit: self.budgets_plan_edit.as_ref(),
                         on_cell_click: {

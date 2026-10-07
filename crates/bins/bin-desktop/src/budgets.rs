@@ -30,12 +30,13 @@ use lib_core::{CategoryTypes, Money};
 
 use crate::{
     accounts::{self, Account},
-    bills::{BillPlan, BillScheduleEntry, Period},
+    bills::{BillPlan, BillScheduleEntry},
     budget_form::BudgetForm,
     categories::{self, Category},
     dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     limit_form::{LimitForm, StopForm},
+    period::Period,
     transactions::{self, Transaction},
 };
 

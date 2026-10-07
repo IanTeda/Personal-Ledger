@@ -2,7 +2,7 @@
 //! over 8f's History pieces in #381): status chips, then the Bill, Category and Account selects,
 //! and the Last paid / Average / Same period last year figures while scoped to one Bill Plan.
 //!
-//! The filters and figures come from `bill_history`; the selects are the dialogs' shared dropdown,
+//! The filters and figures come from `bills::history`; the selects are the dialogs' shared dropdown,
 //! opening inline beneath the filter row.
 
 use std::rc::Rc;
@@ -12,7 +12,7 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::format_month_day;
 
 use crate::{
-    bill_history::{BillFilters, PlanStats, STATUS_CHIPS, SamePeriod},
+    bills::history::{BillFilters, PlanStats, STATUS_CHIPS, SamePeriod},
     bills::{BillPlan, BillStatus, Recurrence},
     select::SelectState,
     theme::color,

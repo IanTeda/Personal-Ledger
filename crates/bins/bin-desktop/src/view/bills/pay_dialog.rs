@@ -1,6 +1,6 @@
 //! Renders the **Pay** dialog (`docs/ux/desktop/12-bills/README.md`'s 8d) on the shared
 //! `crate::dialog` chrome: the segmented switch directly under the title bar, then either the Match
-//! list or the Pay it directly fields. `Shell` owns the live form (`pay_form::PayForm`) and every
+//! list or the Pay it directly fields. `Shell` owns the live form (`bills::pay_form::PayForm`) and every
 //! keystroke while it is open, and hands this the candidates already worded.
 
 use std::rc::Rc;
@@ -10,8 +10,8 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::upper;
 
 use crate::{
+    bills::pay_form::{MatchChoice, PAY_MODES, PayField, PayForm, PayMode},
     dialog,
-    pay_form::{MatchChoice, PAY_MODES, PayField, PayForm, PayMode},
     theme::color,
     view::accounts::add_dialog::{label, text_field, two_up},
 };

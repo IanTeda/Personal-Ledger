@@ -1,5 +1,5 @@
 //! The live form behind **New budget** (11c in `docs/ux/desktop/14-budgets-v2/README.md`) and its
-//! edit mode: `gpui`-free and unit-tested, the same split `bill_form.rs` uses.
+//! edit mode: `gpui`-free and unit-tested, the same split `bills/form.rs` uses.
 //!
 //! The behaviour is the Desktop Budgets Surface map's settled decision (#400):
 //!

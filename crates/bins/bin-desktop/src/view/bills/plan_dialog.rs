@@ -2,14 +2,14 @@
 //! 8c) on the shared `crate::dialog` chrome. One renderer serves both: Edit shows the Unit locked
 //! and the Active checkbox, Add a Unit select and no Active. The body scrolls past 480px, the
 //! handoff's own cap, since this form has more fields than any other dialog. `Shell` owns the live
-//! form (`bill_form::BillPlanForm`) and every keystroke while it is open.
+//! form (`bills::form::BillPlanForm`) and every keystroke while it is open.
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
-    bill_form::{BillPlanField, BillPlanForm, BillPlanOptions, FieldError, FormErrors},
+    bills::form::{BillPlanField, BillPlanForm, BillPlanOptions, FieldError, FormErrors},
     bills::{AmountKind, BillError},
     dialog,
     theme::color,

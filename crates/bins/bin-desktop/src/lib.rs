@@ -6,8 +6,6 @@
 
 mod accounts;
 mod assets;
-mod bill_form;
-mod bill_history;
 mod bills;
 mod budget_form;
 mod budgets;
@@ -36,8 +34,8 @@ pub mod locale;
 mod log_view;
 pub mod nav;
 mod palette;
-mod pay_form;
 mod payees;
+mod period;
 pub mod persistence;
 mod rail;
 mod select;

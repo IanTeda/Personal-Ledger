@@ -24,18 +24,23 @@
 //!
 //! Plan and Transaction ids are the stubs' `u32`s, matching every other desktop stub.
 
+pub(crate) mod form;
+pub(crate) mod history;
+pub(crate) mod pay_form;
+
 use bigdecimal::{BigDecimal, Signed};
 use chrono::{Datelike, Duration, Months, NaiveDate};
 use lib_core::{CategoryTypes, Money, TransactionStatus};
 
 use crate::{
     accounts::Account,
-    bill_form::BillPlanForm,
+    bills::form::BillPlanForm,
+    bills::pay_form::PayForm,
     categories::{self, Category},
     dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
-    pay_form::PayForm,
     payees::{self, Payee},
+    period::Period,
     transactions::query::Total,
     transactions::{self, Split, Transaction},
 };
@@ -249,51 +254,6 @@ pub fn entry(entries: &[BillScheduleEntry], id: EntryId) -> Option<&BillSchedule
 
 fn entry_mut(entries: &mut [BillScheduleEntry], id: EntryId) -> Option<&mut BillScheduleEntry> {
     entries.iter_mut().find(|entry| entry.id() == id)
-}
-
-/// A calendar month: the Schedule tab's period.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Period {
-    pub year: i32,
-    /// 1–12.
-    pub month: u32,
-}
-
-impl Period {
-    pub fn of(date: NaiveDate) -> Self {
-        Self {
-            year: date.year(),
-            month: date.month(),
-        }
-    }
-
-    pub fn first_day(self) -> NaiveDate {
-        NaiveDate::from_ymd_opt(self.year, self.month, 1).unwrap_or(NaiveDate::MIN)
-    }
-
-    pub fn last_day(self) -> NaiveDate {
-        self.next().first_day().pred_opt().unwrap_or(NaiveDate::MAX)
-    }
-
-    pub fn contains(self, date: NaiveDate) -> bool {
-        Self::of(date) == self
-    }
-
-    pub fn next(self) -> Self {
-        self.shift(1)
-    }
-
-    pub fn prev(self) -> Self {
-        self.shift(-1)
-    }
-
-    fn shift(self, months: i32) -> Self {
-        let index = self.year * 12 + self.month as i32 - 1 + months;
-        Self {
-            year: index.div_euclid(12),
-            month: index.rem_euclid(12) as u32 + 1,
-        }
-    }
 }
 
 /// The last date generation reaches: the end of next calendar month.

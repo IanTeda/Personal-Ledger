@@ -1,6 +1,6 @@
 //! The Documents dialogs' live forms (`docs/ux/desktop/04-documents/`; the Add and Import decisions in
 //! the Documents map's `+ Add and Import…` ticket): **Add document**, **Import files** and **Edit
-//! document**. `gpui`-free and unit-tested, the same split `bill_form.rs` uses.
+//! document**. `gpui`-free and unit-tested, the same split `bills/form.rs` uses.
 //!
 //! - **Add** takes a typed Path, a Title that follows the file name until it is typed over, a
 //!   Document Type, the document date (`today` when left alone) and an optional Key Date. Its Links

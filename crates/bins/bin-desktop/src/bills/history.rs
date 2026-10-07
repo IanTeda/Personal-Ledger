@@ -20,9 +20,8 @@ use chrono::{Datelike, Months, NaiveDate};
 use lib_core::Money;
 
 use crate::{
-    bills::{
-        self, BillPlan, BillScheduleEntry, BillStatus, Period, Recurrence, Resolution, ScheduleRow,
-    },
+    bills::{self, BillPlan, BillScheduleEntry, BillStatus, Recurrence, Resolution, ScheduleRow},
+    period::Period,
     transactions::Transaction,
 };
 

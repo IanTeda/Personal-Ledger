@@ -140,7 +140,7 @@ impl TransactionFilters {
     /// detail's "open in Transactions" hands over.
     pub fn for_budget_category(
         category: u32,
-        month: crate::bills::Period,
+        month: crate::period::Period,
         account_ids: &[u32],
     ) -> Self {
         Self {
@@ -1069,7 +1069,7 @@ mod tests {
             .map(|c| c.id)
             .unwrap();
         let anz = world.account("ANZ Everyday");
-        let month = crate::bills::Period::of(today());
+        let month = crate::period::Period::of(today());
         let filters = TransactionFilters::for_budget_category(dining, month, &[anz]);
         assert_eq!(filters.category, Some(dining));
         assert_eq!(filters.from, Some(month.first_day()));

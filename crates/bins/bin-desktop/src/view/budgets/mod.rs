@@ -25,9 +25,9 @@ use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*,
 use lib_locale::format::upper;
 
 use crate::{
-    bills::Period,
     budgets::{BudgetsTab, Method, PeriodFigures},
     categories::Category,
+    period::Period,
     theme::color,
 };
 
