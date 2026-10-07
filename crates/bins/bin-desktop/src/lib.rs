@@ -48,10 +48,6 @@ mod tags;
 mod theme;
 mod toast;
 mod topbar;
-mod transaction_chips;
-mod transaction_filter_form;
-mod transaction_query;
-mod transaction_rows;
 mod transactions;
 mod view;
 

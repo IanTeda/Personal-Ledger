@@ -36,7 +36,7 @@ use crate::{
     field::TextField,
     pay_form::PayForm,
     payees::{self, Payee},
-    transaction_query::Total,
+    transactions::query::Total,
     transactions::{self, Split, Transaction},
 };
 

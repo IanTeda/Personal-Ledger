@@ -297,7 +297,7 @@ fn budget_field(
                     .text_color(color::muted(cx))
                     .opacity(0.6)
                     .child(crate::msg::desktop_categories_budget_archived(
-                        crate::transaction_rows::EMPTY_CELL,
+                        crate::transactions::rows::EMPTY_CELL,
                         budget,
                     )),
             )

@@ -18,7 +18,7 @@ use crate::{
     budgets::{PLAN_MONTHS, PLAN_ROLLOVER_COLUMN, Plan, PlanCell, PlanEdit, PlanRow, Rollover},
     format::amount,
     theme::color,
-    transaction_rows::EMPTY_CELL,
+    transactions::rows::EMPTY_CELL,
 };
 
 const MONTH_WIDTH: gpui::Pixels = px(92.0);

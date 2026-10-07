@@ -20,9 +20,9 @@ use crate::{
     },
     settings::StatusGlyphs,
     theme::color,
-    transaction_query::Total,
-    transaction_rows::EMPTY_CELL,
     transactions::Transaction,
+    transactions::query::Total,
+    transactions::rows::EMPTY_CELL,
 };
 
 use super::{OnPlainClick, OnRowClick, filters};

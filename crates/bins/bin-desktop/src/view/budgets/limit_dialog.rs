@@ -15,7 +15,7 @@ use crate::{
     format::amount,
     limit_form::{LimitField, LimitForm, LimitOptions, LimitPreview, ROLLOVERS, SPANS},
     theme::color,
-    transaction_rows::EMPTY_CELL,
+    transactions::rows::EMPTY_CELL,
     view::accounts::{
         add_dialog::{label, text_field},
         select_field::{self, SelectFieldProps},

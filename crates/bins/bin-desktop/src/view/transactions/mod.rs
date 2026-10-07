@@ -22,7 +22,7 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, Pixels, UniformListScrollHandle, div, prelude::*, px};
 
-use crate::{theme::color, transaction_chips::Footer, transaction_rows::RowView};
+use crate::{theme::color, transactions::chips::Footer, transactions::rows::RowView};
 
 pub struct TransactionsPageProps {
     /// The filter popover is open: the page dims to 55% (no blur in gpui 0.2, so opacity only).

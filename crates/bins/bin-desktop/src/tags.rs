@@ -29,8 +29,8 @@ use crate::{
     dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     select::SelectState,
-    transaction_query::Total,
     transactions::Transaction,
+    transactions::query::Total,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -18,7 +18,7 @@ use crate::{
     categories::{self, Category},
     format::amount,
     theme::color,
-    transaction_rows::EMPTY_CELL,
+    transactions::rows::EMPTY_CELL,
 };
 
 const BUDGET_WIDTH: gpui::Pixels = px(92.0);

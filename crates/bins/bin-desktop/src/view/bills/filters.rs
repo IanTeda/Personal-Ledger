@@ -16,7 +16,7 @@ use crate::{
     bills::{BillPlan, BillStatus, Recurrence},
     select::SelectState,
     theme::color,
-    transaction_rows::EMPTY_CELL,
+    transactions::rows::EMPTY_CELL,
     view::accounts::select_field::{self, SelectFieldProps},
 };
 

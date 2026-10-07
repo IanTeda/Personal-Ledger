@@ -89,11 +89,13 @@ use crate::{
     tags::{self, Tag},
     theme::{color, type_scale},
     topbar::{self, TopBar},
-    transaction_chips::{self, FilterField},
-    transaction_filter_form::{FilterForm, FormField, FormOptions, SelectKey as FilterSelectKey},
-    transaction_query::{self, Ledger, TransactionFilters},
-    transaction_rows::{self, DisplayPrefs},
-    transactions::{self, Transaction},
+    transactions::{
+        self, Transaction,
+        chips::FilterField,
+        filter_form::{FilterForm, FormField, FormOptions, SelectKey as FilterSelectKey},
+        query::{Ledger, TransactionFilters},
+        rows::DisplayPrefs,
+    },
     view::{
         accounts as accounts_view, bills as bills_view,
         budgets::{self as budgets_view, manage_dialog::ManageAction},
@@ -2221,7 +2223,7 @@ impl Shell {
 
     /// How many rows the current filters and search leave visible.
     fn transactions_visible_len(&self) -> usize {
-        transaction_query::query(
+        transactions::query::query(
             &self.transactions_ledger(),
             &self.transactions,
             &self.transactions_filters,
@@ -2242,7 +2244,7 @@ impl Shell {
         if len == 0 {
             return;
         }
-        let selected = transaction_rows::clamp_selection(self.transactions_selected, len);
+        let selected = transactions::rows::clamp_selection(self.transactions_selected, len);
         let last = len - 1;
         let viewport = f32::from(
             self.transactions_scroll
@@ -2253,7 +2255,7 @@ impl Shell {
                 .size
                 .height,
         );
-        let half = transaction_rows::half_page_rows(
+        let half = transactions::rows::half_page_rows(
             viewport,
             format::row_height_px(self.settings_row_density),
         );
@@ -2468,7 +2470,7 @@ impl Shell {
 
     fn handle_filter_status_click(
         &mut self,
-        status: transaction_query::StatusFilter,
+        status: transactions::query::StatusFilter,
         cx: &mut Context<'_, Self>,
     ) {
         if let Some(form) = self.transactions_filter_form.as_mut() {
@@ -2502,7 +2504,7 @@ impl Shell {
 
     /// The `✕` on an accent chip: resets just that filter.
     fn handle_transactions_chip_clear(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
-        transaction_chips::clear_field(&mut self.transactions_filters, field, self.today);
+        transactions::chips::clear_field(&mut self.transactions_filters, field, self.today);
         self.reset_transactions_selection();
         cx.notify();
     }
@@ -5899,7 +5901,7 @@ impl Shell {
         self.transactions_filters = filters;
         self.transactions_search.clear();
         self.transactions_filter_form = None;
-        let index = transaction_query::query(
+        let index = transactions::query::query(
             &self.transactions_ledger(),
             &self.transactions,
             &self.transactions_filters,
@@ -8911,15 +8913,16 @@ impl Render for Shell {
         });
         let transactions_page = (self.nav.noun() == Noun::Transactions).then(|| {
             let ledger = self.transactions_ledger();
-            let visible = transaction_query::query(
+            let visible = transactions::query::query(
                 &ledger,
                 &self.transactions,
                 &self.transactions_filters,
                 &self.transactions_search,
             );
-            let rows = transaction_rows::build_rows(&visible, &ledger, &self.transactions_prefs());
-            let footer = transaction_chips::footer(&visible, &self.transactions_filters, &ledger);
-            let chips = transaction_chips::chips(
+            let rows =
+                transactions::rows::build_rows(&visible, &ledger, &self.transactions_prefs());
+            let footer = transactions::chips::footer(&visible, &self.transactions_filters, &ledger);
+            let chips = transactions::chips::chips(
                 &self.transactions_filters,
                 &ledger,
                 self.today,
@@ -8928,7 +8931,7 @@ impl Render for Shell {
             transactions_view::TransactionsPageProps {
                 dimmed: self.transactions_filter_form.is_some(),
                 header: transactions_view::HeaderProps {
-                    count_line: transaction_chips::count_line(&self.transactions),
+                    count_line: transactions::chips::count_line(&self.transactions),
                     chips,
                     show_clear: !self.transactions_filters.is_default(self.today),
                     search: self.transactions_search.clone(),
@@ -8940,7 +8943,10 @@ impl Render for Shell {
                     on_search_click: on_transactions_search_click,
                     chip_bounds: self.transactions_chip_bounds.clone(),
                 },
-                selected: transaction_rows::clamp_selection(self.transactions_selected, rows.len()),
+                selected: transactions::rows::clamp_selection(
+                    self.transactions_selected,
+                    rows.len(),
+                ),
                 rows: Rc::new(rows),
                 row_height: px(format::row_height_px(self.settings_row_density)),
                 scroll: self.transactions_scroll.clone(),

@@ -26,7 +26,7 @@ None in `lib-core` yet. The desktop model's types (`BillPlan`, `Recurrence`, `Am
 
 ## Persistence
 
-Not yet built. No migration exists in `migrations/client/`, and `lib-database` has no bills module. `bills::default_bills` seeds the stub, with an injectable `today` like `transactions.rs`.
+Not yet built. No migration exists in `migrations/client/`, and `lib-database` has no bills module. `bills::default_bills` seeds the stub, with an injectable `today` like `transactions/mod.rs`.
 
 ## UI
 

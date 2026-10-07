@@ -19,6 +19,11 @@
 //! until an account in another Unit holds transactions; seeding one would mean changing the
 //! Accounts and Settings stubs the earlier maps reconciled to their mockups.
 
+pub(crate) mod chips;
+pub(crate) mod filter_form;
+pub(crate) mod query;
+pub(crate) mod rows;
+
 use bigdecimal::BigDecimal;
 use chrono::{Duration, NaiveDate};
 use lib_core::{AccountType, Money, TransactionStatus};

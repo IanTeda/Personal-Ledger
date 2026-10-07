@@ -1,7 +1,7 @@
 //! The **4b** filter popover (`docs/ux/desktop/03-transactions/README.md`): a 400px card *anchored*
 //! just below the chip row (not centred like the dialogs and the palette), over a transparent
 //! full-window layer that cancels it when clicked. It holds one field per filter dimension and
-//! edits a draft (`transaction_filter_form::FilterForm`); nothing reaches the applied filters until
+//! edits a draft (`transactions::filter_form::FilterForm`); nothing reaches the applied filters until
 //! **apply**.
 //!
 //! Account and Category are the shared dropdown (`view::accounts::select_field`); Payee and Tag are
@@ -17,8 +17,8 @@ use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point,
 use crate::{
     dialog,
     theme::color,
-    transaction_filter_form::{FilterForm, FormField, FormOptions},
-    transaction_query::StatusFilter,
+    transactions::filter_form::{FilterForm, FormField, FormOptions},
+    transactions::query::StatusFilter,
     view::{
         accounts::{
             add_dialog::{label, text_field, two_up},

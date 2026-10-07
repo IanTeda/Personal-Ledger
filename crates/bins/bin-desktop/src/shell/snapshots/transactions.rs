@@ -2,7 +2,7 @@
 //! the snapshot shape and its accessor sit together.
 
 use crate::shell::Shell;
-use crate::{transaction_chips, transaction_query, transaction_rows};
+use crate::transactions;
 
 /// One filter chip as the header shows it.
 #[doc(hidden)]
@@ -41,14 +41,14 @@ impl Shell {
     #[doc(hidden)]
     pub fn transactions_snapshot(&self) -> TransactionsSnapshot {
         let ledger = self.transactions_ledger();
-        let visible = transaction_query::query(
+        let visible = transactions::query::query(
             &ledger,
             &self.transactions,
             &self.transactions_filters,
             &self.transactions_search,
         );
-        let rows = transaction_rows::build_rows(&visible, &ledger, &self.transactions_prefs());
-        let chips = transaction_chips::chips(
+        let rows = transactions::rows::build_rows(&visible, &ledger, &self.transactions_prefs());
+        let chips = transactions::chips::chips(
             &self.transactions_filters,
             &ledger,
             self.today,
@@ -56,7 +56,7 @@ impl Shell {
         );
         TransactionsSnapshot {
             visible: rows.len(),
-            selected: transaction_rows::clamp_selection(self.transactions_selected, rows.len()),
+            selected: transactions::rows::clamp_selection(self.transactions_selected, rows.len()),
             payees: rows.into_iter().map(|row| row.payee).collect(),
             search: self.transactions_search.clone(),
             chips: chips

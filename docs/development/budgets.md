@@ -61,7 +61,7 @@ Desktop locations for the ticked requirements. Paths are under `crates/bins/bin-
 | BUD-012 | `budgets::fill_preview`, `Budgets::fill`, `view/budgets/fill_dialog.rs` | `budgets.rs` |
 | BUD-013 | `budgets::history`, `budgets::history_range`, `view/budgets/history.rs` | `budgets.rs` |
 | BUD-014 | `budgets::history_csv`, `Shell::export_budgets_history` | `budgets.rs` (the CSV text only) |
-| BUD-015 | `Shell::open_budgets_detail_transactions`, `TransactionFilters::for_budget_category` | `transaction_query.rs` |
+| BUD-015 | `Shell::open_budgets_detail_transactions`, `TransactionFilters::for_budget_category` | `transactions/query.rs` |
 | BUD-016 | `rail/primary.rs` (`budget_over`), `budgets::dashboard_bars`, `view/dashboard.rs` | `budgets.rs` |
 | BUD-017 | `Budgets::{monthly_limit, set_monthly_limit}`, `Shell::save_category_budget`, `categories::BudgetLock` | `budgets.rs` |
 

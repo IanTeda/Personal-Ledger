@@ -15,7 +15,7 @@ use crate::{
     bills::{AmountKind, BillPlan, Recurrence},
     categories::Category,
     theme::color,
-    transaction_rows::EMPTY_CELL,
+    transactions::rows::EMPTY_CELL,
 };
 
 use super::OnRowClick;

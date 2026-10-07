@@ -28,8 +28,8 @@ use crate::{
     payees::Payee,
     select::SelectState,
     tags::Tag,
-    transaction_chips::FilterField,
-    transaction_query::{StatusFilter, TransactionFilters},
+    transactions::chips::FilterField,
+    transactions::query::{StatusFilter, TransactionFilters},
 };
 
 /// The Account select's first option, meaning no account filter.

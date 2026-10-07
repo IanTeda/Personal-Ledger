@@ -16,8 +16,8 @@ use lib_core::DateStyle;
 
 use crate::{
     categories, format,
-    transaction_query::{Ledger, Total, TransactionFilters, Visible, this_year},
     transactions::Transaction,
+    transactions::query::{Ledger, Total, TransactionFilters, Visible, this_year},
 };
 
 /// A filter dimension, in the order the chips appear.
@@ -289,8 +289,8 @@ mod tests {
         categories::default_categories,
         payees::default_payees,
         tags::default_tags,
-        transaction_query::{StatusFilter, query},
         transactions::default_transactions,
+        transactions::query::{StatusFilter, query},
     };
     use chrono::Duration;
 

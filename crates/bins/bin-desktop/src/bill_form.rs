@@ -1,5 +1,5 @@
 //! The Add and Edit bill plan dialog's live form (`docs/ux/desktop/12-bills/README.md`'s 8c):
-//! `gpui`-free and unit-tested, the same split `transaction_filter_form.rs` uses.
+//! `gpui`-free and unit-tested, the same split `transactions/filter_form.rs` uses.
 //!
 //! The behaviour is the Desktop Bills Surface map's decisions (#365, #367):
 //!
@@ -30,8 +30,8 @@ use crate::{
     field::TextField,
     payees::Payee,
     select::SelectState,
-    transaction_filter_form::parse_date,
     transactions,
+    transactions::filter_form::parse_date,
 };
 
 /// The dialog's fields, in `Tab` order.

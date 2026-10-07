@@ -14,7 +14,7 @@ use crate::{
     dialog,
     format::{amount, signed_amount},
     theme::color,
-    transaction_rows::EMPTY_CELL,
+    transactions::rows::EMPTY_CELL,
 };
 
 /// The dialog's width: the handoff's 9f.

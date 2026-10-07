@@ -25,7 +25,7 @@ use crate::{
     },
     field::TextField,
     select::SelectState,
-    transaction_filter_form::parse_date,
+    transactions::filter_form::parse_date,
 };
 
 /// The Add and Edit forms' fields, in `Tab` order. Edit has no Path.

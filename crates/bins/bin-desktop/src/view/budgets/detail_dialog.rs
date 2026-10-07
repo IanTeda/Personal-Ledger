@@ -94,7 +94,7 @@ pub fn render(props: DetailDialogProps<'_>, cx: &App) -> AnyElement {
     let budget = figures
         .budget
         .as_ref()
-        .map_or_else(|| crate::transaction_rows::EMPTY_CELL.to_string(), text);
+        .map_or_else(|| crate::transactions::rows::EMPTY_CELL.to_string(), text);
     // OVER when Spent has passed the budget, otherwise what is LEFT.
     let (last_label, last_value, over) = if figures.over {
         let over_by = figures.budget.as_ref().map_or_else(
@@ -110,7 +110,7 @@ pub fn render(props: DetailDialogProps<'_>, cx: &App) -> AnyElement {
         let left = figures.left.as_ref();
         (
             crate::msg::desktop_budgets_detail_stat_left(),
-            left.map_or_else(|| crate::transaction_rows::EMPTY_CELL.to_string(), text),
+            left.map_or_else(|| crate::transactions::rows::EMPTY_CELL.to_string(), text),
             left.is_some_and(|l| l.0.is_negative()),
         )
     };

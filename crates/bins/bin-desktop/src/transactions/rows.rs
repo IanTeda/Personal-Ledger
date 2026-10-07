@@ -14,8 +14,8 @@ use crate::{
     payees::Payee,
     settings::StatusGlyphs,
     tags::Tag,
-    transaction_query::{Ledger, Visible},
     transactions::Transaction,
+    transactions::query::{Ledger, Visible},
 };
 
 /// The mark for an empty PAYEE or TAGS cell.
@@ -189,8 +189,8 @@ mod tests {
         categories::default_categories,
         payees::default_payees,
         tags::default_tags,
-        transaction_query::{TransactionFilters, query},
         transactions::default_transactions,
+        transactions::query::{TransactionFilters, query},
     };
     use chrono::NaiveDate;
     use lib_core::TransactionStatus;

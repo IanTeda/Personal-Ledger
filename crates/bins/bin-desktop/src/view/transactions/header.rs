@@ -14,7 +14,7 @@ use gpui::{AnyElement, App, Bounds, Pixels, SharedString, Window, canvas, div, p
 use crate::{
     nav::Noun,
     theme::color,
-    transaction_chips::{Chip, FilterField},
+    transactions::chips::{Chip, FilterField},
 };
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;

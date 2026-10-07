@@ -22,7 +22,7 @@ use crate::{
     bills::{BillError, BillPlan, EntryId, SplitRef},
     dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
-    transaction_filter_form::parse_date,
+    transactions::filter_form::parse_date,
 };
 
 /// The two settlement paths, in the switch's order.

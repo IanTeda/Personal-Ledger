@@ -20,7 +20,7 @@ use crate::{
         self, CoverDraft, CoverError, Inventory, NameError, Property, PropertyDraft, PropertyError,
     },
     select::SelectState,
-    transaction_filter_form::parse_date,
+    transactions::filter_form::parse_date,
 };
 
 /// The dialog open over Settings › Inventory: Property and Room dialogs.

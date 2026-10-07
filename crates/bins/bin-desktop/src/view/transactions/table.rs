@@ -21,7 +21,7 @@ use gpui_component::scroll::Scrollbar;
 
 use crate::{
     theme::color,
-    transaction_rows::{RowView, TagsCell},
+    transactions::rows::{RowView, TagsCell},
 };
 
 pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
@@ -125,7 +125,7 @@ pub fn rows(
         "transactions-rows",
         count,
         // Called for the visible range, and once for row 0 to measure: a pure function of the
-        // index, with every cell already formatted (see `transaction_rows::build_rows`).
+        // index, with every cell already formatted (see `transactions::rows::build_rows`).
         move |range: Range<usize>, _window: &mut Window, cx: &mut App| {
             range
                 .map(|index| {
@@ -321,7 +321,7 @@ fn tags_cell(
     match tags {
         TagsCell::None => cell
             .text_color(tertiary)
-            .child(crate::transaction_rows::EMPTY_CELL),
+            .child(crate::transactions::rows::EMPTY_CELL),
         TagsCell::Chips { first, color, more } => {
             let chip = div()
                 .min_w(px(0.0))

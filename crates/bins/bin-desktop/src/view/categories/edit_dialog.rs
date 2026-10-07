@@ -299,7 +299,7 @@ fn budget_field(
         Some(categories::BudgetLock::Archived(budget)) => {
             crate::msg::desktop_categories_budget_archived(
                 if value.is_empty() {
-                    crate::transaction_rows::EMPTY_CELL
+                    crate::transactions::rows::EMPTY_CELL
                 } else {
                     value
                 },

@@ -18,7 +18,7 @@ use crate::{
     categories,
     format::amount,
     theme::color,
-    transaction_rows::EMPTY_CELL,
+    transactions::rows::EMPTY_CELL,
 };
 
 use super::{BudgetsPageProps, period_label};
