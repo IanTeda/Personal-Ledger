@@ -1263,7 +1263,7 @@ mod tests {
         OpenDialog::Budgets(Box::new(dialog))
     }
 
-    fn budget_form_of(dialog: &OpenDialog) -> &crate::budget_form::BudgetForm {
+    fn budget_form_of(dialog: &OpenDialog) -> &crate::budgets::form::BudgetForm {
         match dialog {
             OpenDialog::Budgets(inner) => match &**inner {
                 BudgetsDialog::Budget(form) => form,
@@ -1276,9 +1276,9 @@ mod tests {
     fn new_budget() -> OpenDialog {
         let (accounts, _, budgets) = budgets_world();
         let source = budgets.get(crate::budgets::PERSONAL_SPENDING_ID);
-        budgets_dialog(BudgetsDialog::Budget(crate::budget_form::BudgetForm::new(
-            &accounts, source,
-        )))
+        budgets_dialog(BudgetsDialog::Budget(
+            crate::budgets::form::BudgetForm::new(&accounts, source),
+        ))
     }
 
     #[test]
@@ -1291,7 +1291,7 @@ mod tests {
         handle_key(&mut dialog, DialogKey::Tab);
         assert_eq!(
             budget_form_of(&dialog).focused,
-            crate::budget_form::BudgetField::Unit
+            crate::budgets::form::BudgetField::Unit
         );
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Char('x')),
@@ -1302,7 +1302,7 @@ mod tests {
         handle_key(&mut dialog, DialogKey::BackTab);
         assert_eq!(
             budget_form_of(&dialog).focused,
-            crate::budget_form::BudgetField::Name
+            crate::budgets::form::BudgetField::Name
         );
     }
 
@@ -1339,7 +1339,7 @@ mod tests {
         assert!(!dialog.close_open_select());
     }
 
-    fn limit_options(count: usize) -> crate::limit_form::LimitOptions {
+    fn limit_options(count: usize) -> crate::budgets::limit_form::LimitOptions {
         let (_, categories, mut budgets) = budgets_world();
         let today = budgets_today();
         // The seed budgets every Expense leaf, so two are Stopped for the picker to offer.
@@ -1356,7 +1356,7 @@ mod tests {
                 .unwrap();
         }
         let budget = budgets.get(crate::budgets::PERSONAL_SPENDING_ID).unwrap();
-        crate::limit_form::LimitOptions::new(
+        crate::budgets::limit_form::LimitOptions::new(
             budget,
             &categories,
             crate::period::Period::of(today),
@@ -1365,7 +1365,7 @@ mod tests {
         )
     }
 
-    fn limit_form_of(dialog: &OpenDialog) -> &crate::limit_form::LimitForm {
+    fn limit_form_of(dialog: &OpenDialog) -> &crate::budgets::limit_form::LimitForm {
         match dialog {
             OpenDialog::Budgets(inner) => match &**inner {
                 BudgetsDialog::EditLimit(form) => form,
@@ -1377,9 +1377,9 @@ mod tests {
 
     fn limit_picker() -> OpenDialog {
         budgets_dialog(BudgetsDialog::EditLimit(
-            crate::limit_form::LimitForm::pick(
+            crate::budgets::limit_form::LimitForm::pick(
                 None,
-                &limit_options(crate::limit_form::START_MONTHS),
+                &limit_options(crate::budgets::limit_form::START_MONTHS),
             ),
         ))
     }
@@ -1395,7 +1395,7 @@ mod tests {
         handle_key(&mut dialog, DialogKey::Tab);
         assert_eq!(
             limit_form_of(&dialog).focused,
-            crate::limit_form::LimitField::Amount
+            crate::budgets::limit_form::LimitField::Amount
         );
         assert_eq!(limit_form_of(&dialog).amount.text(), "");
 
@@ -1434,8 +1434,8 @@ mod tests {
 
     #[test]
     fn stop_form_steps_months_and_the_first_esc_closes_its_list() {
-        let options = limit_options(crate::limit_form::STOP_MONTHS);
-        let form = crate::limit_form::StopForm::new(
+        let options = limit_options(crate::budgets::limit_form::STOP_MONTHS);
+        let form = crate::budgets::limit_form::StopForm::new(
             1,
             crate::period::Period::of(budgets_today()),
             &options,

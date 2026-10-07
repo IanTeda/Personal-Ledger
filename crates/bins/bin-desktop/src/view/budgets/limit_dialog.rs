@@ -2,7 +2,7 @@
 //! shared `crate::dialog` chrome at the handoff's 480px: the Category picker when opened from
 //! **+ Budget a category**, Amount per month, Starting, the Applies to and Rollover segmented
 //! controls, the before/after summary and the note. `Shell` owns the live form
-//! (`limit_form::LimitForm`) and every keystroke while it is open.
+//! (`budgets::limit_form::LimitForm`) and every keystroke while it is open.
 
 use std::rc::Rc;
 
@@ -10,10 +10,10 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_core::Money;
 
 use crate::{
+    budgets::limit_form::{LimitField, LimitForm, LimitOptions, LimitPreview, ROLLOVERS, SPANS},
     budgets::{BudgetError, Rollover, Span},
     dialog,
     format::amount,
-    limit_form::{LimitField, LimitForm, LimitOptions, LimitPreview, ROLLOVERS, SPANS},
     theme::color,
     transactions::rows::EMPTY_CELL,
     view::accounts::{

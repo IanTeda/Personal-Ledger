@@ -54,7 +54,7 @@ use crate::{
         DeleteAccountForm, NameLookup,
     },
     bills::{self, pay_form::PayForm},
-    budget_form, budgets,
+    budgets,
     categories::{self, Category},
     colours::ColourChange,
     command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
@@ -68,7 +68,6 @@ use crate::{
     inventory,
     inventory_form::InventoryDialog,
     key_router::{self, KeyOutcome, Movement, route_key},
-    limit_form,
     log_view::{LogChange, LogView},
     nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
@@ -3870,9 +3869,9 @@ impl Shell {
     }
 
     /// The Starting / From options for the Budget on show: `count` months from the current one.
-    fn budgets_limit_options(&self, count: usize) -> Option<limit_form::LimitOptions> {
+    fn budgets_limit_options(&self, count: usize) -> Option<budgets::limit_form::LimitOptions> {
         let budget = self.budgets.get(self.budgets_current)?;
-        Some(limit_form::LimitOptions::new(
+        Some(budgets::limit_form::LimitOptions::new(
             budget,
             &self.categories,
             Period::of(self.today),
@@ -3901,7 +3900,7 @@ impl Shell {
     fn open_budgets_limit(&mut self, category_id: u32, month: Period) {
         let (Some(budget), Some(options)) = (
             self.budgets_editable(),
-            self.budgets_limit_options(limit_form::START_MONTHS),
+            self.budgets_limit_options(budgets::limit_form::START_MONTHS),
         ) else {
             return;
         };
@@ -3910,11 +3909,11 @@ impl Shell {
             if !categories::is_leaf(&self.categories, category_id) {
                 return;
             }
-            limit_form::LimitForm::edit(budget, category_id, month, &options)
+            budgets::limit_form::LimitForm::edit(budget, category_id, month, &options)
         } else if budgets::unbudgeted_leaves(budget, &self.categories, current)
             .contains(&category_id)
         {
-            limit_form::LimitForm::pick(Some(category_id), &options)
+            budgets::limit_form::LimitForm::pick(Some(category_id), &options)
         } else {
             return;
         };
@@ -3926,11 +3925,11 @@ impl Shell {
         if self.budgets_editable().is_none() {
             return;
         }
-        let Some(options) = self.budgets_limit_options(limit_form::START_MONTHS) else {
+        let Some(options) = self.budgets_limit_options(budgets::limit_form::START_MONTHS) else {
             return;
         };
         self.open_budgets_dialog(budgets::BudgetsDialog::EditLimit(
-            limit_form::LimitForm::pick(None, &options),
+            budgets::limit_form::LimitForm::pick(None, &options),
         ));
     }
 
@@ -3938,7 +3937,7 @@ impl Shell {
     fn open_budgets_stop(&mut self, category_id: u32, month: Period) {
         let (Some(budget), Some(options)) = (
             self.budgets_editable(),
-            self.budgets_limit_options(limit_form::STOP_MONTHS),
+            self.budgets_limit_options(budgets::limit_form::STOP_MONTHS),
         ) else {
             return;
         };
@@ -3947,11 +3946,9 @@ impl Shell {
         if budgets::applied(chain, current).is_none() && budgets::applied(chain, month).is_none() {
             return;
         }
-        self.open_budgets_dialog(budgets::BudgetsDialog::Stop(limit_form::StopForm::new(
-            category_id,
-            month,
-            &options,
-        )));
+        self.open_budgets_dialog(budgets::BudgetsDialog::Stop(
+            budgets::limit_form::StopForm::new(category_id, month, &options),
+        ));
     }
 
     /// The Category under the cursor on Progress or Plan, with the month its dialog starts in.
@@ -3978,11 +3975,11 @@ impl Shell {
 
     /// **Save budget** and `enter`: writes the record. A refused save reopens the dialog with the
     /// error shown.
-    fn apply_budgets_limit(&mut self, mut form: limit_form::LimitForm) {
+    fn apply_budgets_limit(&mut self, mut form: budgets::limit_form::LimitForm) {
         let Some(draft) = form.draft() else {
             return;
         };
-        let saved = limit_form::save(
+        let saved = budgets::limit_form::save(
             &mut self.budgets,
             self.budgets_current,
             &self.categories,
@@ -3997,7 +3994,7 @@ impl Shell {
 
     /// **Stop budgeting** and `enter`: writes the Stop from the chosen month. A refused one
     /// reopens the dialog with the error shown.
-    fn apply_budgets_stop(&mut self, mut form: limit_form::StopForm) {
+    fn apply_budgets_stop(&mut self, mut form: budgets::limit_form::StopForm) {
         let Some(month) = form.month() else {
             return;
         };
@@ -4119,7 +4116,7 @@ impl Shell {
     /// what "Copy categories from" names.
     fn open_budgets_new(&mut self) {
         let form =
-            budget_form::BudgetForm::new(&self.accounts, self.budgets.get(self.budgets_current));
+            budgets::form::BudgetForm::new(&self.accounts, self.budgets.get(self.budgets_current));
         self.open_budgets_dialog(budgets::BudgetsDialog::Budget(form));
     }
 
@@ -4130,18 +4127,18 @@ impl Shell {
             return;
         };
         self.open_budgets_dialog(budgets::BudgetsDialog::Budget(
-            budget_form::BudgetForm::from_budget(budget, &self.accounts),
+            budgets::form::BudgetForm::from_budget(budget, &self.accounts),
         ));
     }
 
     /// **Create budget** / **Save** and `enter`: creates the Budget and switches to it, or saves
     /// the rename and Accounts. A refused save reopens the dialog with the error shown.
-    fn apply_budgets_form(&mut self, mut form: budget_form::BudgetForm) {
+    fn apply_budgets_form(&mut self, mut form: budgets::form::BudgetForm) {
         let Some(draft) = form.draft() else {
             return;
         };
         let saved = match draft {
-            budget_form::BudgetDraft::Create(new) => {
+            budgets::form::BudgetDraft::Create(new) => {
                 let ledger = budgets::Ledger {
                     categories: &self.categories,
                     accounts: &self.accounts,
@@ -4151,7 +4148,7 @@ impl Shell {
                 };
                 self.budgets.create(&new, &ledger, self.today).map(Some)
             }
-            budget_form::BudgetDraft::Edit {
+            budgets::form::BudgetDraft::Edit {
                 id,
                 name,
                 account_ids,
@@ -4170,7 +4167,7 @@ impl Shell {
         }
     }
 
-    fn budget_form_mut(&mut self) -> Option<&mut budget_form::BudgetForm> {
+    fn budget_form_mut(&mut self) -> Option<&mut budgets::form::BudgetForm> {
         match self.budgets_dialog_mut() {
             Some(budgets::BudgetsDialog::Budget(form)) => Some(form),
             _ => None,
@@ -4208,7 +4205,7 @@ impl Shell {
                 Rc::new(move |field, _window, cx| {
                     entity.update(cx, |shell, cx| {
                         if let Some(form) = shell.budget_form_mut() {
-                            if field == budget_form::BudgetField::Unit {
+                            if field == budgets::form::BudgetField::Unit {
                                 form.click_unit();
                             } else {
                                 form.focus(field);
@@ -4678,7 +4675,7 @@ impl Shell {
         cx.notify();
     }
 
-    fn limit_form_mut(&mut self) -> Option<&mut limit_form::LimitForm> {
+    fn limit_form_mut(&mut self) -> Option<&mut budgets::limit_form::LimitForm> {
         match self.budgets_dialog_mut() {
             Some(budgets::BudgetsDialog::EditLimit(form)) => Some(form),
             _ => None,
@@ -4734,7 +4731,7 @@ impl Shell {
             budgets::BudgetsDialog::EditLimit(form) => {
                 let draft = form.draft();
                 let preview = draft.as_ref().and_then(|draft| {
-                    limit_form::preview(
+                    budgets::limit_form::preview(
                         &self.budgets,
                         self.budgets_current,
                         &self.categories,
@@ -4749,8 +4746,8 @@ impl Shell {
                             entity.update(cx, |shell, cx| {
                                 if let Some(form) = shell.limit_form_mut() {
                                     match field {
-                                        limit_form::LimitField::Category
-                                        | limit_form::LimitField::Starting => {
+                                        budgets::limit_form::LimitField::Category
+                                        | budgets::limit_form::LimitField::Starting => {
                                             form.click_select(field);
                                         }
                                         _ => form.focus(field),

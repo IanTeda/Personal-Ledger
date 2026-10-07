@@ -21,7 +21,7 @@ The parts that are hardest to change later:
 
 ## Domain types
 
-None in `lib-core` for the v2 model yet. The desktop model's types (`Budget`, `Method`, `Rollover`, `Limit`, `LimitRecord`, `Budgets`, `Span`, `NewBudget`, `StartFrom`, `BudgetError`) live in `crates/bins/bin-desktop/src/budgets.rs` and are the starting point for real domain types.
+None in `lib-core` for the v2 model yet. The desktop model's types (`Budget`, `Method`, `Rollover`, `Limit`, `LimitRecord`, `Budgets`, `Span`, `NewBudget`, `StartFrom`, `BudgetError`) live in `crates/bins/bin-desktop/src/budgets/` (`mod.rs` and `store.rs`) and are the starting point for real domain types.
 
 ## Persistence
 
@@ -30,8 +30,8 @@ Not yet built for v2. `budgets::default_budgets` seeds the stub (Personal spendi
 ## UI
 
 - **Desktop** — all on in-memory stubs, under `crates/bins/bin-desktop/`:
-  - `src/budgets.rs` — the `gpui`-free model: `applied` and `effective_budget` (what a month resolves to), `period_figures` (the one shared period query), `health`, `category_detail`, `history`, `history_range` and `history_csv`, `plan` and `PlanEdit`, `fill_target`/`fill_preview`/`Budgets::fill`, `three_month_average`, `unallocated`, `dashboard_bars`, the `Switcher` state and `switcher_ids`, the `Budgets` store (`create`, `edit`, `duplicate`, `archive`, `restore`, `set_default`, `set_amount`, `stop`, `save_cell`, `cycle_rollover`, `set_monthly_limit`), and the `BudgetsTab` and `BudgetsDialog` surface state.
-  - `src/limit_form.rs` (9e and 9g) and `src/budget_form.rs` (11c) — the dialogs' pure state.
+  - `src/budgets/` — the `gpui`-free model, one module per section (`figures`, `detail`, `history`, `plan`, `store`, `surface`, `seed`) re-exported from `mod.rs`: `applied` and `effective_budget` (what a month resolves to), `period_figures` (the one shared period query), `health`, `category_detail`, `history`, `history_range` and `history_csv`, `plan` and `PlanEdit`, `fill_target`/`fill_preview`/`Budgets::fill`, `three_month_average`, `unallocated`, `dashboard_bars`, the `Switcher` state and `switcher_ids`, the `Budgets` store (`create`, `edit`, `duplicate`, `archive`, `restore`, `set_default`, `set_amount`, `stop`, `save_cell`, `cycle_rollover`, `set_monthly_limit`), and the `BudgetsTab` and `BudgetsDialog` surface state.
+  - `src/budgets/limit_form.rs` (9e and 9g) and `src/budgets/form.rs` (11c) — the dialogs' pure state.
   - `src/view/budgets/` — `mod.rs` the shared header and tabs, `progress.rs` (9a), `plan.rs` (9b), `history.rs` (9c), `detail_dialog.rs` (9d), `limit_dialog.rs` (9e), `fill_dialog.rs` (9f), `stop_dialog.rs` (9g), `switcher.rs` (11b), `budget_dialog.rs` (11c), `manage_dialog.rs` (11f).
   - `src/shell.rs` — `handle_budgets_key` (`B`, `n`, `c`, `e`, `s`, `[`, `]`, `1`–`3`, and on History `h`/`l`/`x`), `handle_budgets_plan_key` and `handle_budgets_plan_edit_key` (the grid's Normal and Insert modes), `handle_budgets_tab_key`, `handle_budgets_dialog_key` and its per-dialog handlers, `switch_budget`, `export_budgets_history` (the platform save dialog), `budgets_hints` (the status-line legend) and `save_category_budget` (Categories 5c's write).
   - `src/command.rs` — the `budgets switch|new|edit|manage|duplicate|set-default|archive|restore` palette commands (`BudgetsVerb`).
@@ -47,23 +47,23 @@ Desktop locations for the ticked requirements. Paths are under `crates/bins/bin-
 
 | Requirement | Code | Test |
 | --- | --- | --- |
-| BUD-001 | `budgets::Budget`, `budgets::Budgets` | `budgets.rs` |
-| BUD-002 | `Budgets::create`, `budget_form.rs`, `view/budgets/budget_dialog.rs` | `budgets.rs`, `budget_form.rs` |
-| BUD-003 | `Budgets::edit`, `budget_form::BudgetForm::from_budget` | `budgets.rs`, `budget_form.rs` |
-| BUD-004 | `budgets::Switcher`, `budgets::health`, `view/budgets/switcher.rs`, `Shell::switch_budget` | `budgets.rs` |
-| BUD-005 | `Budgets::{duplicate, set_default, archive, restore}`, `view/budgets/manage_dialog.rs` | `budgets.rs`, `view/budgets/manage_dialog.rs` |
-| BUD-006 | `Budgets::set_amount`, `limit_form.rs`, `view/budgets/limit_dialog.rs` | `budgets.rs`, `limit_form.rs` |
-| BUD-007 | `Budgets::stop`, `limit_form::StopForm`, `view/budgets/stop_dialog.rs` | `budgets.rs`, `limit_form.rs` |
-| BUD-008 | `budgets::period_figures`, `view/budgets/progress.rs` | `budgets.rs` |
-| BUD-009 | `budgets::period_figures` (parent rows, `unbudgeted_spent`) | `budgets.rs` |
-| BUD-010 | `budgets::effective_budget`, `Budgets::cycle_rollover` | `budgets.rs` |
-| BUD-011 | `budgets::plan`, `Budgets::save_cell`, `view/budgets/plan.rs` | `budgets.rs` |
-| BUD-012 | `budgets::fill_preview`, `Budgets::fill`, `view/budgets/fill_dialog.rs` | `budgets.rs` |
-| BUD-013 | `budgets::history`, `budgets::history_range`, `view/budgets/history.rs` | `budgets.rs` |
-| BUD-014 | `budgets::history_csv`, `Shell::export_budgets_history` | `budgets.rs` (the CSV text only) |
+| BUD-001 | `budgets::Budget`, `budgets::Budgets` | `budgets/tests.rs` |
+| BUD-002 | `Budgets::create`, `budgets/form.rs`, `view/budgets/budget_dialog.rs` | `budgets/tests.rs`, `budgets/form.rs` |
+| BUD-003 | `Budgets::edit`, `budgets::form::BudgetForm::from_budget` | `budgets/tests.rs`, `budgets/form.rs` |
+| BUD-004 | `budgets::Switcher`, `budgets::health`, `view/budgets/switcher.rs`, `Shell::switch_budget` | `budgets/tests.rs` |
+| BUD-005 | `Budgets::{duplicate, set_default, archive, restore}`, `view/budgets/manage_dialog.rs` | `budgets/tests.rs`, `view/budgets/manage_dialog.rs` |
+| BUD-006 | `Budgets::set_amount`, `budgets/limit_form.rs`, `view/budgets/limit_dialog.rs` | `budgets/tests.rs`, `budgets/limit_form.rs` |
+| BUD-007 | `Budgets::stop`, `budgets::limit_form::StopForm`, `view/budgets/stop_dialog.rs` | `budgets/tests.rs`, `budgets/limit_form.rs` |
+| BUD-008 | `budgets::period_figures`, `view/budgets/progress.rs` | `budgets/tests.rs` |
+| BUD-009 | `budgets::period_figures` (parent rows, `unbudgeted_spent`) | `budgets/tests.rs` |
+| BUD-010 | `budgets::effective_budget`, `Budgets::cycle_rollover` | `budgets/tests.rs` |
+| BUD-011 | `budgets::plan`, `Budgets::save_cell`, `view/budgets/plan.rs` | `budgets/tests.rs` |
+| BUD-012 | `budgets::fill_preview`, `Budgets::fill`, `view/budgets/fill_dialog.rs` | `budgets/tests.rs` |
+| BUD-013 | `budgets::history`, `budgets::history_range`, `view/budgets/history.rs` | `budgets/tests.rs` |
+| BUD-014 | `budgets::history_csv`, `Shell::export_budgets_history` | `budgets/tests.rs` (the CSV text only) |
 | BUD-015 | `Shell::open_budgets_detail_transactions`, `TransactionFilters::for_budget_category` | `transactions/query.rs` |
-| BUD-016 | `rail/primary.rs` (`budget_over`), `budgets::dashboard_bars`, `view/dashboard.rs` | `budgets.rs` |
-| BUD-017 | `Budgets::{monthly_limit, set_monthly_limit}`, `Shell::save_category_budget`, `categories::BudgetLock` | `budgets.rs` |
+| BUD-016 | `rail/primary.rs` (`budget_over`), `budgets::dashboard_bars`, `view/dashboard.rs` | `budgets/tests.rs` |
+| BUD-017 | `Budgets::{monthly_limit, set_monthly_limit}`, `Shell::save_category_budget`, `categories::BudgetLock` | `budgets/tests.rs` |
 
 ## Decisions
 

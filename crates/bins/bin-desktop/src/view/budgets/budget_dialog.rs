@@ -2,7 +2,7 @@
 //! mode on the shared `crate::dialog` chrome at the handoff's 640px: Name and Unit, the four
 //! method cards, the on-budget Account chips and Start from. Only Category limits is built, so
 //! the other three cards are drawn dimmed and take no click (#400). Edit mode locks the Unit and
-//! leaves Start from out. `Shell` owns the live form (`budget_form::BudgetForm`).
+//! leaves Start from out. `Shell` owns the live form (`budgets::form::BudgetForm`).
 
 use std::rc::Rc;
 
@@ -10,8 +10,8 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::upper;
 
 use crate::{
-    budget_form::{BudgetField, BudgetForm, BudgetOptions, START_CHOICES, StartChoice},
     budgets::BudgetError,
+    budgets::form::{BudgetField, BudgetForm, BudgetOptions, START_CHOICES, StartChoice},
     dialog,
     theme::color,
     view::accounts::{
