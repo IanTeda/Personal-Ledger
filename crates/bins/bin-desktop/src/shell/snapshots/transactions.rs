@@ -1,7 +1,7 @@
 //! What the integration tests read back of the Transactions page, kept apart from `shell.rs` so
 //! the snapshot shape and its accessor sit together.
 
-use super::Shell;
+use crate::shell::Shell;
 use crate::{transaction_chips, transaction_query, transaction_rows};
 
 /// One filter chip as the header shows it.

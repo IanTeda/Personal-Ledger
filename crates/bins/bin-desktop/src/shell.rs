@@ -19,37 +19,16 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
-mod bills_ui;
-mod budgets_ui;
 mod document_types_ui;
 mod documents_ui;
 mod inventory_ui;
-mod overlays_ui;
-mod settings_ui;
-mod transactions_ui;
+mod snapshots;
 #[doc(hidden)]
-pub use bills_ui::{BillRowSnapshot, BillsSnapshot};
-#[doc(hidden)]
-pub use budgets_ui::{BudgetRowSnapshot, BudgetsSnapshot};
-#[doc(hidden)]
-pub use documents_ui::DocumentsSnapshot;
-#[doc(hidden)]
-pub use overlays_ui::{
-    DashboardBillSnapshot, ImportRowSnapshot, ImportSnapshot, ToastSnapshot, ToastsSnapshot,
+pub use snapshots::{
+    AccountFormSnapshot, BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot,
+    ChipSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportRowSnapshot, ImportSnapshot,
+    PaletteSnapshot, SettingsSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
 };
-#[doc(hidden)]
-pub use settings_ui::{AccountFormSnapshot, SettingsSnapshot};
-#[doc(hidden)]
-pub use transactions_ui::{ChipSnapshot, TransactionsSnapshot};
-
-/// What a test can see of an open command palette.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PaletteSnapshot {
-    pub input: String,
-    pub matches: Vec<&'static str>,
-    pub selected: Option<&'static str>,
-}
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -1128,16 +1107,6 @@ impl Shell {
     #[doc(hidden)]
     pub fn empty_inventory_for_test(&mut self) {
         self.inventory = inventory::Inventory::default();
-    }
-
-    /// The command palette's state for a test: `None` while it is closed.
-    #[doc(hidden)]
-    pub fn palette_snapshot(&self) -> Option<PaletteSnapshot> {
-        self.palette.as_ref().map(|palette| PaletteSnapshot {
-            input: palette.input().to_string(),
-            matches: palette.match_names(),
-            selected: palette.selected_command().map(|command| command.name),
-        })
     }
 
     /// The status line's flash message (e.g. "not yet built"), if one is showing.
