@@ -10,7 +10,7 @@ use std::rc::Rc;
 use gpui::{Context, Keystroke, ScrollHandle, Window};
 use lib_toast::ToastKind;
 
-use super::{OpenDialog, Shell, typed_char};
+use super::{OpenDialog, Shell, key_dispatch::typed_char};
 use crate::{
     chrome::statusline::PageStatus,
     documents::form::{
