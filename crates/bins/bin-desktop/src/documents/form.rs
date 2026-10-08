@@ -18,7 +18,7 @@ use lib_locale::format::format_date_input;
 
 use crate::{
     accounts::SelectKey,
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     documents::types::DocumentTypeRow,
     documents::{
         self, Document, DocumentType, FileKind, KeyDate, KeyDateKind, LibraryScope, NewDocument,
@@ -969,7 +969,7 @@ mod tests {
     /// Types `text` as a keyboard would: the form's own keys first, then the shared typing.
     fn type_text(dialog: &mut impl Dialog, text: &str) {
         for ch in text.chars() {
-            crate::dialog_host::handle_key(dialog, DialogKey::Char(ch));
+            crate::chrome::dialog_host::handle_key(dialog, DialogKey::Char(ch));
         }
     }
 

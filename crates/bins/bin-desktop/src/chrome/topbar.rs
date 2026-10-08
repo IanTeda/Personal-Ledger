@@ -97,7 +97,7 @@ fn rail_toggle(on_rail_toggle: OnRailToggle, cx: &App) -> impl IntoElement {
 /// changes with `NavState::noun` -- the status line's own bottom-right breadcrumb used to
 /// duplicate this same fact and was dropped in favour of naming it once, here. The open
 /// Ledger's own file path lives at the status line's own bottom right instead
-/// (`crate::statusline`), not here.
+/// (`crate::chrome::statusline`), not here.
 fn brand_mark(active_noun: Noun, context: Option<String>, cx: &App) -> impl IntoElement {
     div()
         .flex()

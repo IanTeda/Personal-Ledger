@@ -40,7 +40,7 @@ Not yet built. No `tasks` migration, and no query module. Two of the four inputs
 Both Clients render a Needs Attention box on the dashboard from fake data.
 
 - **TUI** — `crates/bins/bin-tui/src/view/dashboard.rs`: `render_needs_attention` draws a heading, an item list and a "more" row, fed by an `AttentionItem` slice from `fake_attention_items()`. Covered by the test `needs_attention_shows_heading_items_and_the_more_row`, which asserts against an 80×10 `TestBackend`.
-- **Desktop** — `crates/bins/bin-desktop/src/view/dashboard.rs`: a `needs_attention()` widget rendering a heading from `msg::desktop_dashboard_needs_attention()` above real Bill rows from `bills::attention_entries` (#377) and stub rows for the rest. `rail/primary.rs` shows the Bill count as the Bills badge.
+- **Desktop** — `crates/bins/bin-desktop/src/view/dashboard.rs`: a `needs_attention()` widget rendering a heading from `msg::desktop_dashboard_needs_attention()` above real Bill rows from `bills::attention_entries` (#377) and stub rows for the rest. `chrome/rail/primary.rs` shows the Bill count as the Bills badge.
 
 Neither reads persisted data, and neither has a dedicated screen — Needs Attention exists only as a dashboard panel.
 

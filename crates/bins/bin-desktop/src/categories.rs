@@ -11,7 +11,7 @@ use chrono::Datelike;
 use lib_core::{CategoryTypes, Money};
 
 use crate::{
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
 };
 

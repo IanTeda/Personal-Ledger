@@ -32,7 +32,7 @@ None in `lib-core`. The pure model is `src/documents/mod.rs` (`gpui`-free and un
 - `src/view/documents/` — `mod.rs` (page and Library), `inbox.rs` (4b), `dialogs.rs`, `model.rs`.
 - `src/shell/documents_ui.rs` — `Shell`'s side: `handle_documents_key` (keys ahead of the global router), search keys, status-line hints, the `?` cheat-sheet group, link navigation and `DocumentsSnapshot` for tests.
 - `src/navigation/command.rs` — `DocumentsVerb` and the `documents` / `documents inbox|library|accept-all|add|import` commands. `Noun::Documents` is bound to `g f`.
-- `src/rail/` — the index rail and count badges.
+- `src/chrome/rail/` — the index rail and count badges.
 - Messages in `i18n/en-US/documents.ftl`.
 
 Link targets: a Transaction row, Settings › Accounts or Payees, Bills › Planner, and the Inventory placeholder. `Open` and `Show in folder` call the real OS when the path exists.

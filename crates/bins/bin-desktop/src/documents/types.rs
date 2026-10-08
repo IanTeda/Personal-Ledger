@@ -6,7 +6,7 @@
 //! stable `id`, so a rename or a reorder never touches a Document.
 
 use crate::{
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     select::SelectState,
 };

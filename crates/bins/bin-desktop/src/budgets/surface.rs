@@ -3,7 +3,7 @@
 
 use crate::{
     accounts,
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     period::Period,
 };

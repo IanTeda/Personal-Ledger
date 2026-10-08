@@ -1,6 +1,6 @@
 //! The Settings index rail (`docs/ux/desktop/16-settings/README.md`'s "2a resting state", "Settings
 //! index rail" component): a list of the Settings pages, each entry swapping the
-//! body to its own page. Deliberately **not** a reuse of `rail::context::ContextRail`'s "1c"
+//! body to its own page. Deliberately **not** a reuse of `chrome::rail::context::ContextRail`'s "1c"
 //! pattern -- that rail is a flat record list with no page-index mode, so this is a separate
 //! mechanism (see issue #173's own ticket body).
 

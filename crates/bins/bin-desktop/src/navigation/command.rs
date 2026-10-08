@@ -1,4 +1,4 @@
-//! The command registry driving `crate::palette::Palette`
+//! The command registry driving `crate::chrome::palette::Palette`
 //! (`docs/ux/desktop/01-shell/README.md`'s "Command registry" section): "every rail
 //! item, every context-rail footer affordance, and every view action registers a command with:
 //! command string, description, kind ... optional binding, and a handler." Mirrors the shape of
@@ -234,7 +234,7 @@ pub fn split_input(input: &str) -> (&str, &str) {
 /// `commands::DOMAINS` order exactly (`bin-tui/src/popup/command/commands/mod.rs`: "Dashboard
 /// first then alphabetical"). One [`CommandEffect::Navigate`] command per rail item (`Noun::ALL`'s
 /// own order, each its own single-command domain), plus the one real footer affordance
-/// (`crate::rail::context::footer`'s "+ new account · :accounts new", grouped under "Accounts"
+/// (`crate::chrome::rail::context::footer`'s "+ new account · :accounts new", grouped under "Accounts"
 /// alongside its own noun's command) and the file-level `open`/`new`/`close` trio under
 /// `Ledger`, which has no noun of its own. The three `accounts <verb>` commands take a typed
 /// account name (see [`split_input`]).

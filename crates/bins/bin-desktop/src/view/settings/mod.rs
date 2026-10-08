@@ -1,5 +1,5 @@
 //! The Settings body (`docs/ux/desktop/16-settings/README.md`'s "2a resting state", "Body"): one page
-//! at a time, not a continuous scroll. The settings index rail (`rail::settings_index`) swaps the
+//! at a time, not a continuous scroll. The settings index rail (`chrome::rail::settings_index`) swaps the
 //! page, and only the selected page is mounted. Each page keeps the same anatomy: one heading
 //! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
 

@@ -20,7 +20,7 @@ use lib_core::Money;
 use crate::{
     accounts::{Account, SelectKey},
     categories::{self, Category},
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     select::SelectState,
     transactions::Transaction,

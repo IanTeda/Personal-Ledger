@@ -11,7 +11,7 @@ use lib_toast::ToastKind;
 
 use super::Shell;
 use crate::{
-    dialog_host::OpenDialog,
+    chrome::dialog_host::OpenDialog,
     documents,
     inventory::form::{
         InventoryDialog, Problem, PropertyContext, PropertyField, PropertyForm, RemovePropertyForm,

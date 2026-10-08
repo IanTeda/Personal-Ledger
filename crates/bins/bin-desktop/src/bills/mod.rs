@@ -37,7 +37,7 @@ use crate::{
     bills::form::BillPlanForm,
     bills::pay_form::PayForm,
     categories::{self, Category},
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     payees::{self, Payee},
     period::Period,

@@ -13,5 +13,4 @@ pub mod import;
 pub mod payees;
 pub mod settings;
 pub mod tags;
-pub mod toast_history;
 pub mod transactions;

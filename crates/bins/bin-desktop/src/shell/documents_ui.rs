@@ -12,6 +12,7 @@ use lib_toast::ToastKind;
 
 use super::{OpenDialog, Shell, typed_char};
 use crate::{
+    chrome::statusline::PageStatus,
     documents::form::{
         DocumentField, DocumentForm, DocumentOptions, DocumentsDialog, FactsField, FactsForm,
         ImportForm, ImportOutcome,
@@ -24,7 +25,6 @@ use crate::{
     navigation::key_router::Movement,
     navigation::nav::{FocusZone, InputMode, Noun},
     settings::SettingsSection,
-    statusline::PageStatus,
     view::documents::{
         self as documents_view, DocumentsFocus, DocumentsPageProps, dialogs,
         model::{self as view_model, Lookups},
@@ -384,7 +384,7 @@ impl Shell {
     fn documents_stored_text(&self) -> String {
         crate::msg::desktop_documents_status_stored(
             &view_model::size_text(documents::total_bytes(&self.documents)),
-            crate::statusline::STUB_LEDGER_FILE,
+            crate::chrome::statusline::STUB_LEDGER_FILE,
         )
     }
 

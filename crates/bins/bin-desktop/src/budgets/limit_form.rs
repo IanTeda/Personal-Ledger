@@ -20,7 +20,7 @@ use crate::{
     accounts::SelectKey,
     budgets::{self, Budget, BudgetError, Budgets, Rollover, Span},
     categories::{self, Category},
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     period::Period,
     select::SelectState,

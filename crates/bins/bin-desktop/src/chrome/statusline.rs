@@ -1,7 +1,7 @@
 //! The shell's status line (`docs/ux/desktop/01-shell/README.md`'s "1a" spec,
 //! "Status line" component): mode badge, hint strip. Its own bottom-right breadcrumb (`ledger ·
 //! <noun>`) was dropped -- the top bar's brand tile now names the active screen instead
-//! (`crate::topbar::brand_mark`), and showing it in both places was a plain duplicate.
+//! (`crate::chrome::topbar::brand_mark`), and showing it in both places was a plain duplicate.
 
 use std::rc::Rc;
 
@@ -308,7 +308,7 @@ fn command_query_echo(query: &str, cx: &App) -> impl IntoElement {
         .child(div().w(px(2.0)).h(px(13.0)).bg(color::cursor(cx)))
 }
 
-/// The open Ledger's own file path, moved here from the top bar's brand tile (`crate::topbar`)
+/// The open Ledger's own file path, moved here from the top bar's brand tile (`crate::chrome::topbar`)
 /// -- representative content, not a real path yet (lands with the sync/open-file tickets,
 /// #164/#165).
 fn file_path() -> impl IntoElement {

@@ -35,7 +35,7 @@ Not yet built. No migration exists in `migrations/client/`, and `lib-database` h
   - `src/bills/form.rs` (8c), `src/bills/pay_form.rs` (8d) and `src/bills/history.rs` (the Schedule's `BillFilters` and the stat callout's `plan_stats`) — the dialogs' and filters' pure state.
   - `src/view/bills/` — `mod.rs` the page chrome and tabs, `schedule.rs` (8a), `planner.rs` (8b), `plan_dialog.rs` (8c), `pay_dialog.rs` (8d), `skip_dialog.rs` (8e), `filters.rs` (the Schedule's filter row and stat callout, from 8f).
   - `src/shell.rs` — `handle_bills_key` (`n`/`e`/`p`/`s`/`[`/`]`/`0`/`f`/`1`–`5`), `handle_bills_tab_key`, `handle_bills_dialog_key`, the `open_*_bill_*_dialog` openers, and `open_bill_transaction`, which hands a Paid row off to its Transaction.
-  - `src/rail/primary.rs` — the Bills badge, the Needs Attention count; `src/view/dashboard.rs` — real Bill rows in Needs Attention from `bills::attention_entries`.
+  - `src/chrome/rail/primary.rs` — the Bills badge, the Needs Attention count; `src/view/dashboard.rs` — real Bill rows in Needs Attention from `bills::attention_entries`.
   - Messages in `i18n/en-US/bills.ftl`.
 - **TUI** — nothing.
 
@@ -53,7 +53,7 @@ Desktop locations for the ticked requirements.
 | BIL-007 | `bills::skip`, `view/bills/skip_dialog.rs` |
 | BIL-009 | `budgets::period_figures` (Known Costs), `view/budgets/progress.rs` |
 | BIL-011 | `bills::history::plan_stats`, `view/bills/filters.rs` |
-| BIL-012 | `bills::needs_attention`, `rail/primary.rs`, `view/dashboard.rs` |
+| BIL-012 | `bills::needs_attention`, `chrome/rail/primary.rs`, `view/dashboard.rs` |
 
 ## Decisions
 

@@ -2,7 +2,7 @@
 //! component table): the full-viewport dimmer + centred bordered card, its header (with a
 //! destructive variant), body, action row, and Cancel/Confirm buttons.
 //!
-//! Extracted by studying `crate::navigation::explorer::FileExplorer` and `crate::palette::Palette`'s own
+//! Extracted by studying `crate::navigation::explorer::FileExplorer` and `crate::chrome::palette::Palette`'s own
 //! hand-rolled floating overlays (issue #174's own ticket body) -- **neither is retrofitted to
 //! use this module**. Both already match a different, already-shipped spec of their own (the
 //! Shell & Navigation README's "1d"/"1e" component tables: a fixed top offset rather than
@@ -24,7 +24,7 @@
 //! no palette dispatch to piggyback on. Issues #184/#185 picked `InputMode::Dialog`
 //! (`Shell::handle_dialog_key`), a new mode alongside `Command`/`Search`.
 //!
-//! Dialog state and the keyboard handling Dialogs share now live in `crate::dialog_host`; this
+//! Dialog state and the keyboard handling Dialogs share now live in `crate::chrome::dialog_host`; this
 //! module still only draws.
 
 use std::rc::Rc;

@@ -1,7 +1,7 @@
 //! The floating "1e" file explorer behind `:open`
 //! (`docs/ux/desktop/01-shell/README.md`) -- browsing real directories to a `.pldb`
 //! ledger file. `Shell` owns `Option<FileExplorer>`, `Some` only while the dialog is open,
-//! mirroring `crate::palette::Palette`'s own split: pure, `gpui`-free state and unit tests
+//! mirroring `crate::chrome::palette::Palette`'s own split: pure, `gpui`-free state and unit tests
 //! here, `render` the one method that touches `gpui`.
 //!
 //! Unlike `Dashboard`'s dummy data, the handoff's own Implementation note 11 is explicit that
@@ -341,7 +341,7 @@ fn format_modified(modified: SystemTime, now: SystemTime) -> String {
 /// A row click: the clicked entry's path and the platform's own click count (`2` for a real
 /// double-click) -- `Shell::handle_explorer_entry_click` opens immediately on a double-click
 /// landing on an already-selected `.pldb` row (README: "double-click a `.pldb` row opens
-/// immediately"), mirroring `rail::primary::OnRowClick`'s own `Rc`-shared-closure shape.
+/// immediately"), mirroring `chrome::rail::primary::OnRowClick`'s own `Rc`-shared-closure shape.
 pub type OnEntryClick = Rc<dyn Fn(PathBuf, usize, &mut Window, &mut App)>;
 pub type OnBreadcrumbClick = Rc<dyn Fn(PathBuf, &mut Window, &mut App)>;
 pub type OnFilterToggle = Rc<dyn Fn(ExplorerFilter, &mut Window, &mut App)>;

@@ -14,7 +14,7 @@ use chrono::NaiveDate;
 use lib_core::{DateStyle, Money};
 
 use crate::{
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     inventory::{
         self, CoverDraft, CoverError, Inventory, NameError, Property, PropertyDraft, PropertyError,
@@ -732,7 +732,7 @@ pub fn suggestions(inventory: &Inventory, typed: &str) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dialog_host::handle_key;
+    use crate::chrome::dialog_host::handle_key;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 10, 2).unwrap()

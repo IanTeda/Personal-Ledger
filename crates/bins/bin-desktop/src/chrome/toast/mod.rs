@@ -5,13 +5,15 @@
 //! as its last child, above dialogs, the palette and their scrim, so an outcome is never hidden
 //! by the surface that caused it.
 
+pub(crate) mod history;
+
 use std::{rc::Rc, time::Duration};
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
 use lib_toast::{Toast, Toasts};
 
 use crate::{
-    statusline,
+    chrome::statusline,
     theme::{color, type_scale},
 };
 

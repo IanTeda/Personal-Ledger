@@ -6,7 +6,7 @@
 //!
 //! Reuses `add_unit_dialog::text_field` for the confirm input, but always `focused: true` with a
 //! no-op click handler: unlike Code/Name in the Add/Edit dialogs, there's only one field here, so
-//! nothing to click into or `Tab` between (`dialog_host::handle_key` swallows `Tab` for every
+//! nothing to click into or `Tab` between (`chrome::dialog_host::handle_key` swallows `Tab` for every
 //! Dialog).
 //!
 //! The warning copy and the reference panel's own numbers ("1 account and 9 transactions",

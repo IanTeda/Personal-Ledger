@@ -641,14 +641,14 @@ pub fn render_picker(props: PickerProps<'_>, cx: &App) -> AnyElement {
 
     div()
         .absolute()
-        .top(crate::palette::TOP_OFFSET)
+        .top(crate::chrome::palette::TOP_OFFSET)
         .left(px(0.0))
         .right(px(0.0))
         .flex()
         .justify_center()
         .child(
             div()
-                .w(crate::palette::WIDTH)
+                .w(crate::chrome::palette::WIDTH)
                 .flex()
                 .flex_col()
                 .bg(color::background(cx))

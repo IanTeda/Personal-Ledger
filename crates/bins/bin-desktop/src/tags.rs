@@ -26,7 +26,7 @@ use lib_core::{HexColor, Money};
 
 use crate::{
     accounts::Account,
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     select::SelectState,
     transactions::Transaction,
@@ -919,7 +919,7 @@ mod tests {
     use lib_core::TransactionStatus;
 
     use super::*;
-    use crate::dialog_host::handle_key;
+    use crate::chrome::dialog_host::handle_key;
     use crate::{
         accounts::default_accounts,
         categories::default_categories,

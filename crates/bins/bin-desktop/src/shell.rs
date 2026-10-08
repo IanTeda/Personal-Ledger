@@ -56,8 +56,18 @@ use crate::{
     bills::{self, pay_form::PayForm},
     budgets,
     categories::{self, Category},
+    chrome::dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog, ToastHistoryDialog},
+    chrome::palette::Palette,
+    chrome::rail::{
+        self,
+        context::ContextRail,
+        primary::PrimaryRail,
+        settings_index::{self, SettingsIndexRail},
+    },
+    chrome::statusline::{self, HintAction, PageStatus, StatusLine},
+    chrome::toast::history as toast_history_view,
+    chrome::topbar::{self, TopBar},
     colours::ColourChange,
-    dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog, ToastHistoryDialog},
     documents::types::{DocumentTypeRow, DocumentTypesDialog},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     field::TextField,
@@ -70,25 +80,16 @@ use crate::{
     navigation::explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
     navigation::key_router::{self, KeyOutcome, Movement, route_key},
     navigation::nav::{FocusZone, InputMode, NavState, Noun},
-    palette::Palette,
     payees::{self, Payee},
     period::Period,
-    rail::{
-        self,
-        context::ContextRail,
-        primary::PrimaryRail,
-        settings_index::{self, SettingsIndexRail},
-    },
     settings::{
         self, AccountType, AddInstitutionForm, AddUnitField, DATE_STYLE_CHOICES,
         DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, DeleteUnitForm, InstitutionRow, PriceSourceRow,
         RowDensity, SettingsDialog, SettingsFocus, SettingsSection, StatusGlyphs, TracingLevel,
         UnitForm, UnitKind, UnitRow, step_choice,
     },
-    statusline::{self, HintAction, PageStatus, StatusLine},
     tags::{self, Tag},
     theme::{color, type_scale},
-    topbar::{self, TopBar},
     transactions::{
         self, Transaction,
         chips::FilterField,
@@ -104,14 +105,14 @@ use crate::{
         documents::{self as documents_view, DocumentsFocus},
         help as help_view, import as import_view, payees as payees_view,
         settings::{self as settings_view, SettingsBodyProps},
-        tags as tags_view, toast_history as toast_history_view, transactions as transactions_view,
+        tags as tags_view, transactions as transactions_view,
     },
 };
 
 /// The collapsed rail's own hover-reveal delay (`docs/ux/desktop/01-shell/README.md`'s
 /// "1c" tooltip spec) -- deliberately the same 500ms `gpui`'s own built-in `.tooltip()` uses,
 /// even though this tooltip is hand-rolled (row-anchored, not cursor-anchored -- see
-/// `rail::primary::collapsed_tooltip`'s doc) rather than that builtin.
+/// `chrome::rail::primary::collapsed_tooltip`'s doc) rather than that builtin.
 const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
 
 /// How long the Tracing page lets a burst of log events settle before redrawing, capping live
@@ -565,7 +566,7 @@ pub struct Shell {
     /// "flash the hint strip" abort message, and the command palette's "not yet built" message
     /// once it closes back to `Normal` (see [`Self::run_command`]).
     status_message: Option<String>,
-    /// The Toasts raised this session (`crate::toast` draws them), stamped with the local time
+    /// The Toasts raised this session (`crate::chrome::toast` draws them), stamped with the local time
     /// for the history. Advanced by [`Self::start_toast_clock`]'s timer.
     toasts: Toasts<DateTime<Local>>,
     /// The pointer is over the Toast stack, which pauses the timers.
@@ -587,7 +588,7 @@ pub struct Shell {
     command_history: Vec<String>,
     /// The collapsed primary rail's row whose hover has settled past
     /// [`TOOLTIP_REVEAL_DELAY`] -- `None` while nothing's hovered, the delay hasn't elapsed
-    /// yet, or the rail isn't collapsed (see `rail::primary::PrimaryRail`, which only wires
+    /// yet, or the rail isn't collapsed (see `chrome::rail::primary::PrimaryRail`, which only wires
     /// hover at all in its collapsed rendering).
     collapsed_rail_tooltip: Option<Noun>,
     /// Bumped on every hover transition; a pending reveal timer checks this against the value
@@ -641,7 +642,7 @@ pub struct Shell {
     /// nothing on this map's own dialog tickets mutates this `Vec` yet (test/edit/delete/add are
     /// all clearly-marked stubs, see `view::settings::units`'s own doc).
     settings_price_sources: Vec<PriceSourceRow>,
-    /// The open Dialog in the Dialog host (`crate::dialog_host`), if any. Only
+    /// The open Dialog in the Dialog host (`crate::chrome::dialog_host`), if any. Only
     /// [`Self::open_dialog`]/[`Self::close_dialog`] change it, so `NavState::mode` is
     /// `InputMode::Dialog` for exactly as long as this is `Some`. Every feature's Dialog lives here.
     dialog: Option<OpenDialog>,
@@ -1033,14 +1034,14 @@ impl Shell {
         }
     }
 
-    /// Starts the Toast clock for the window's life: every [`crate::toast::TICK`] it advances
+    /// Starts the Toast clock for the window's life: every [`crate::chrome::toast::TICK`] it advances
     /// the model by the real time elapsed, paused while the pointer is over the stack or a modal
     /// surface is open, and redraws only when a Toast has gone.
     pub fn start_toast_clock(&self, cx: &mut Context<'_, Self>) {
         cx.spawn(async move |this, cx| {
             let mut last = Instant::now();
             loop {
-                Timer::after(crate::toast::TICK).await;
+                Timer::after(crate::chrome::toast::TICK).await;
                 let now = Instant::now();
                 let elapsed = now - last;
                 last = now;
@@ -1131,7 +1132,7 @@ impl Shell {
         &self.focus_handle
     }
 
-    /// The status line's own COMMAND-mode echo (`crate::statusline::StatusLine`'s
+    /// The status line's own COMMAND-mode echo (`crate::chrome::statusline::StatusLine`'s
     /// `command_echo`): the palette's live input while it's open, or -- once `:open` has been
     /// confirmed and the palette has closed in its favour -- the file explorer's frozen
     /// `"open"` echo, each paired with its own "esc closes ..." hint text.
@@ -1786,7 +1787,7 @@ impl Shell {
     fn apply_context_rail_movement(&mut self, movement: Movement) {
         let count = rail::context::entity_count(self.nav.noun());
         // Every noun besides Dashboard has a placeholder context rail with nothing in it yet
-        // (see `rail::context::entity_count`'s own doc) -- movement is a no-op there, not an
+        // (see `chrome::rail::context::entity_count`'s own doc) -- movement is a no-op there, not an
         // out-of-bounds index.
         if count == 0 {
             return;
@@ -1973,7 +1974,7 @@ impl Shell {
 
     /// Routes a keystroke while `InputMode::Dialog` is active (tier 2, mirroring
     /// [`Self::handle_search_key`]'s shape). A Dialog in the Dialog host goes through
-    /// [`dialog_host::handle_key`]; the dialogs not yet moved there keep their own handlers.
+    /// [`chrome::dialog_host::handle_key`]; the dialogs not yet moved there keep their own handlers.
     /// This tier returns before `route_key`'s `Tab` tier is ever checked, so the shell-wide zones
     /// stay untouched while a dialog is up.
     fn handle_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
@@ -7421,7 +7422,7 @@ impl Shell {
         cx.notify();
     }
 
-    /// A collapsed primary-rail row's raw hover transition (`rail::primary::PrimaryRail`'s
+    /// A collapsed primary-rail row's raw hover transition (`chrome::rail::primary::PrimaryRail`'s
     /// `on_row_hover`). Leaving a row clears any settled tooltip immediately; entering one
     /// only reveals its tooltip after [`TOOLTIP_REVEAL_DELAY`], and only if hover hasn't since
     /// moved elsewhere -- `hover_generation` is the guard: a stale timer whose captured
@@ -7448,7 +7449,7 @@ impl Shell {
         .detach();
     }
 
-    /// A primary-rail row's click (`rail::primary::PrimaryRail`'s `on_row_click`), expanded or
+    /// A primary-rail row's click (`chrome::rail::primary::PrimaryRail`'s `on_row_click`), expanded or
     /// collapsed alike. A direct `NavState::set_noun`, not a browse-then-commit -- the same
     /// call `g`-jump (`Self::handle_key_down`'s pending-`g` arm) and the palette
     /// (`Self::run_command`'s own `CommandEffect::Navigate` arm) both make, so rail click,
@@ -7462,7 +7463,7 @@ impl Shell {
         cx.notify();
     }
 
-    /// The settings index rail's own row click (`rail::settings_index::OnEntryClick`):
+    /// The settings index rail's own row click (`chrome::rail::settings_index::OnEntryClick`):
     /// swaps the settings body to the clicked page and takes the active dark treatment
     /// (`docs/ux/desktop/16-settings/README.md`'s "Navigation" bullet).
     fn handle_settings_index_click(
@@ -7849,7 +7850,7 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_hint_click(action, cx));
             })
         };
-        let on_toast_dismiss: crate::toast::OnDismiss = {
+        let on_toast_dismiss: crate::chrome::toast::OnDismiss = {
             let entity = entity.clone();
             Rc::new(move |index, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -7858,7 +7859,7 @@ impl Render for Shell {
                 });
             })
         };
-        let on_toast_hover: crate::toast::OnHover = {
+        let on_toast_hover: crate::chrome::toast::OnHover = {
             let entity = entity.clone();
             Rc::new(move |hovered, _window, cx| {
                 entity.update(cx, |shell, _cx| shell.toasts_hovered = hovered);
@@ -7869,7 +7870,7 @@ impl Render for Shell {
         let toast_layer = if toast_history_open {
             None
         } else {
-            crate::toast::render(&self.toasts, on_toast_dismiss, on_toast_hover, cx)
+            crate::chrome::toast::render(&self.toasts, on_toast_dismiss, on_toast_hover, cx)
         };
         let on_toast_history_close: toast_history_view::OnClose = {
             let entity = entity.clone();

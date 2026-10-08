@@ -20,7 +20,7 @@ use lib_locale::format::format_date_input;
 
 use crate::{
     bills::{BillError, BillPlan, EntryId, SplitRef},
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     transactions::filter_form::parse_date,
 };
@@ -252,7 +252,7 @@ mod tests {
     use super::*;
     use crate::{
         accounts::default_accounts, bills::default_bills, categories::default_categories,
-        dialog_host::handle_key, payees::default_payees, tags::default_tags,
+        chrome::dialog_host::handle_key, payees::default_payees, tags::default_tags,
         transactions::default_transactions,
     };
 

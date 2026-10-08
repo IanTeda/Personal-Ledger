@@ -26,7 +26,7 @@ use crate::{
     accounts::{Account, SelectKey},
     bills::{AmountKind, BillError, BillPlan, BillPlanDraft, Recurrence},
     categories::{self, Category},
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     payees::Payee,
     select::SelectState,
@@ -675,8 +675,9 @@ impl Dialog for BillPlanForm {
 mod tests {
     use super::*;
     use crate::{
-        accounts::default_accounts, bills, categories::default_categories, dialog_host::handle_key,
-        payees::default_payees, tags::default_tags, transactions::default_transactions,
+        accounts::default_accounts, bills, categories::default_categories,
+        chrome::dialog_host::handle_key, payees::default_payees, tags::default_tags,
+        transactions::default_transactions,
     };
 
     fn today() -> NaiveDate {

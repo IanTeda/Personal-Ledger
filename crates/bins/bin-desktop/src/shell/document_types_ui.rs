@@ -8,7 +8,7 @@ use gpui::{AnyElement, Context};
 
 use super::Shell;
 use crate::{
-    dialog_host::OpenDialog,
+    chrome::dialog_host::OpenDialog,
     documents,
     documents::types::{
         DocumentTypeForm, DocumentTypesDialog, FormField, RemindLead, RemoveForm, TracksDate,

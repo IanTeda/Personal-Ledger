@@ -12,7 +12,7 @@ use lib_core::{AccountType, Money};
 use lib_locale::Label;
 
 use crate::{
-    dialog_host::{Dialog, DialogKey, DialogOutcome},
+    chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     field::TextField,
     select::SelectState,
 };
