@@ -1009,7 +1009,7 @@ a:hover{color:#ae1800}
 </div>
 
 <div class="dv-opt" id="16v">
-<div class="dv-olabel"><a class="dv-oid" href="#16v">16v</a>Settings › AI Connections. Two blocks: the model providers this ledger can call (keys in the OS keychain), and the assistants allowed to read or change it through the local MCP server. Edit and Add open provider and assistant dialogs, not yet drawn.</div>
+<div class="dv-olabel"><a class="dv-oid" href="#16v">16v</a>Settings › AI Connections. Two blocks: the model providers this ledger can call (keys in the OS keychain), and the assistants allowed to read or change it through the local MCP server. Add provider opens 16w, a rejected provider's Edit opens 16x, and Add assistant opens 16y.</div>
 <div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
 
   <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38)">
@@ -2124,6 +2124,153 @@ a:hover{color:#ae1800}
 </div>
 
 <p class="dv-next">Try next: "show the delete confirm for an institution with accounts attached" · "write the Settings handoff for <a class="dv-oid" href="#16a">16a</a>–<a class="dv-oid" href="#16n">16n</a>"</p>
+</div>
+
+<div class="dv-opt" id="16w">
+<div class="dv-olabel"><a class="dv-oid" href="#16w">16w</a>Add provider — pick Claude, OpenAI, Ollama or a custom OpenAI-compatible endpoint, paste a key, choose a model. Test connection checks the key and that the model exists; the key goes to the OS keychain only when Save is pressed.</div>
+<div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
+  <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38);opacity:.38">
+    <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11"></rect><line x1="6" y1="2.5" x2="6" y2="13.5"></line></svg>
+    </div>
+    <span style="font-weight:800;font-size:13.5px">Personal Ledger</span>
+    <span style="color:#9b9797;font-size:12px">settings › ai connections</span>
+    <div style="flex:1"></div>
+    <div style="display:flex;gap:2px"><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div></div>
+  </div>
+  <div style="flex:1;display:flex;min-height:0;position:relative">
+    <div style="width:232px;flex:none;border-right:2px solid rgba(32,30,29,.38);opacity:.30;padding:14px 0">
+      <div style="padding:8px 14px">General</div>
+      <div style="padding:8px 14px">Display</div>
+      <div style="padding:8px 14px">Units</div>
+      <div style="padding:8px 14px">Institutions</div>
+      <div style="padding:8px 14px">Accounts</div>
+      <div style="padding:8px 14px">Categories</div>
+      <div style="padding:8px 14px">Tags</div>
+      <div style="padding:8px 14px">Payees</div>
+      <div style="padding:8px 14px">Documents</div>
+      <div style="padding:8px 14px">Inventory</div>
+      <div style="padding:8px 14px;background:#201e1d;color:#f3f2f2;font-weight:800">AI Connections</div>
+      <div style="padding:8px 14px">Sync Server</div>
+      <div style="padding:8px 14px">Backup</div>
+      <div style="padding:8px 14px">History</div>
+      <div style="padding:8px 14px">Logs</div>
+      <div style="padding:8px 14px">About</div>
+    </div>
+    <div style="flex:1;min-width:0;padding:22px 28px;opacity:.30">
+      <h2 style="margin:0 0 24px;font-size:28px;font-weight:800">Settings – AI Connections</h2>
+      <div style="flex:none;height:2px;background:rgba(32,30,29,.38);margin-bottom:24px"></div>
+      <div style="max-width:640px;display:flex;flex-direction:column;gap:8px"><div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#605d5d;padding-bottom:8px;border-bottom:2px solid rgba(32,30,29,.38)">MODEL PROVIDERS</div><div style="padding:9px 0;font-weight:800">Claude</div><div style="padding:9px 0;font-weight:800">Ollama (local)</div><div style="padding:9px 0;font-weight:800">OpenAI</div></div>
+    </div>
+    <div style="position:absolute;left:0;top:0;right:0;bottom:0;background:rgba(32,30,29,.30);display:flex;align-items:center;justify-content:center;z-index:10">
+      <div style="background:#f3f2f2;border:2px solid #201e1d;box-shadow:0 16px 48px rgba(32,30,29,.40);width:520px;display:flex;flex-direction:column"><div style="padding:18px 20px;border-bottom:2px solid rgba(32,30,29,.30);font:800 16px 'Archivo'">Add provider</div><div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px"><div><label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Provider</label><div style="display:flex;border:1px solid rgba(32,30,29,.30)"><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;background:#201e1d;color:#f3f2f2;font-weight:800">Claude</span><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;border-left:1px solid rgba(32,30,29,.30);">OpenAI</span><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;border-left:1px solid rgba(32,30,29,.30);">Ollama</span><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;border-left:1px solid rgba(32,30,29,.30);">Custom</span></div></div><div><label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">API key</label><input style="width:100%;padding:8px 10px;border:1px solid rgba(32,30,29,.30);font-size:13px;box-sizing:border-box;background:#f3f2f2; letter-spacing:.15em" value="••••••••••••••••••••"><div style="font-size:11.5px;color:#605d5d;margin-top:6px">Stored in the OS keychain, never synced.</div></div><div><label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Model</label><sc-raw-select style="width:100%;padding:8px 10px;border:1px solid rgba(32,30,29,.30);font-size:13px;box-sizing:border-box;background:#f3f2f2"><option>claude-sonnet-5-5</option><option>claude-opus-5-5</option><option>claude-haiku-4-5-20251001</option></sc-raw-select></div><div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="width:14px;height:14px;border:1px solid #201e1d;flex:none;background:#201e1d;color:#f3f2f2;font-size:10px;line-height:14px;text-align:center">✓</span>Use as the default provider</div><div style="display:flex;flex-direction:column;gap:10px"><div><button style="padding:8px 16px;border:1px solid rgba(32,30,29,.30);background:#eae9e9;cursor:pointer;font-weight:800">Test connection</button></div><div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border:1px solid rgba(32,30,29,.30);background:#eae9e9;font-size:12px"><span style="width:6px;height:6px;flex:none;margin-top:5px;background:#2ecc71;border-radius:50%"></span><div style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:800">Connected · 310 ms</span><span style="color:#605d5d">key accepted · claude-sonnet-5-5 available · tested 14:31</span></div></div></div></div><div style="padding:16px 20px;border-top:1px solid #d7d3d3;display:flex;gap:10px;align-items:center"><span style="flex:1;font-size:11.5px;color:#605d5d">Saving stores the key in the OS keychain.</span><button style="padding:8px 16px;border:1px solid rgba(32,30,29,.30);background:transparent;cursor:pointer;font-weight:800">Cancel</button><button style="padding:8px 16px;border:none;background:#201e1d;color:#f3f2f2;cursor:pointer;font-weight:800">Save</button></div></div>
+    </div>
+  </div>
+  <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#605d5d">
+    <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">DIALOG</span>
+    <span><span style="color:#201e1d;font-weight:800">t</span> test · <span style="color:#201e1d;font-weight:800">esc</span> cancel · <span style="color:#201e1d;font-weight:800">enter</span> save</span>
+    <div style="flex:1"></div>
+    <span>test passed</span>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="16x">
+<div class="dv-olabel"><a class="dv-oid" href="#16x">16x</a>Edit provider, key rejected — the reason is named in plain words, the key stays editable, and Save stays disabled until a test passes. Opened from the red provider row in 16v.</div>
+<div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
+  <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38);opacity:.38">
+    <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11"></rect><line x1="6" y1="2.5" x2="6" y2="13.5"></line></svg>
+    </div>
+    <span style="font-weight:800;font-size:13.5px">Personal Ledger</span>
+    <span style="color:#9b9797;font-size:12px">settings › ai connections</span>
+    <div style="flex:1"></div>
+    <div style="display:flex;gap:2px"><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div></div>
+  </div>
+  <div style="flex:1;display:flex;min-height:0;position:relative">
+    <div style="width:232px;flex:none;border-right:2px solid rgba(32,30,29,.38);opacity:.30;padding:14px 0">
+      <div style="padding:8px 14px">General</div>
+      <div style="padding:8px 14px">Display</div>
+      <div style="padding:8px 14px">Units</div>
+      <div style="padding:8px 14px">Institutions</div>
+      <div style="padding:8px 14px">Accounts</div>
+      <div style="padding:8px 14px">Categories</div>
+      <div style="padding:8px 14px">Tags</div>
+      <div style="padding:8px 14px">Payees</div>
+      <div style="padding:8px 14px">Documents</div>
+      <div style="padding:8px 14px">Inventory</div>
+      <div style="padding:8px 14px;background:#201e1d;color:#f3f2f2;font-weight:800">AI Connections</div>
+      <div style="padding:8px 14px">Sync Server</div>
+      <div style="padding:8px 14px">Backup</div>
+      <div style="padding:8px 14px">History</div>
+      <div style="padding:8px 14px">Logs</div>
+      <div style="padding:8px 14px">About</div>
+    </div>
+    <div style="flex:1;min-width:0;padding:22px 28px;opacity:.30">
+      <h2 style="margin:0 0 24px;font-size:28px;font-weight:800">Settings – AI Connections</h2>
+      <div style="flex:none;height:2px;background:rgba(32,30,29,.38);margin-bottom:24px"></div>
+      <div style="max-width:640px;display:flex;flex-direction:column;gap:8px"><div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#605d5d;padding-bottom:8px;border-bottom:2px solid rgba(32,30,29,.38)">MODEL PROVIDERS</div><div style="padding:9px 0;font-weight:800">Claude</div><div style="padding:9px 0;font-weight:800">Ollama (local)</div><div style="padding:9px 0;font-weight:800">OpenAI</div></div>
+    </div>
+    <div style="position:absolute;left:0;top:0;right:0;bottom:0;background:rgba(32,30,29,.30);display:flex;align-items:center;justify-content:center;z-index:10">
+      <div style="background:#f3f2f2;border:2px solid #201e1d;box-shadow:0 16px 48px rgba(32,30,29,.40);width:520px;display:flex;flex-direction:column"><div style="padding:18px 20px;border-bottom:2px solid rgba(32,30,29,.30);font:800 16px 'Archivo'">Edit provider</div><div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px"><div><label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Provider</label><div style="display:flex;border:1px solid rgba(32,30,29,.30)"><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;">Claude</span><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;background:#201e1d;color:#f3f2f2;font-weight:800">OpenAI</span><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;border-left:1px solid rgba(32,30,29,.30);">Ollama</span><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;border-left:1px solid rgba(32,30,29,.30);">Custom</span></div></div><div><label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">API key</label><input style="width:100%;padding:8px 10px;border:1px solid rgba(32,30,29,.30);font-size:13px;box-sizing:border-box;background:#f3f2f2; letter-spacing:.15em" value="••••••••••••••••••••"><div style="font-size:11.5px;color:#605d5d;margin-top:6px">Stored in the OS keychain, never synced.</div></div><div><label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Model</label><sc-raw-select style="width:100%;padding:8px 10px;border:1px solid rgba(32,30,29,.30);font-size:13px;box-sizing:border-box;background:#f3f2f2"><option>gpt-5</option><option>gpt-5-mini</option></sc-raw-select></div><div style="display:flex;align-items:center;gap:8px;font-size:12.5px"><span style="width:14px;height:14px;border:1px solid #201e1d;flex:none;"></span>Use as the default provider</div><div style="display:flex;flex-direction:column;gap:10px"><div><button style="padding:8px 16px;border:1px solid rgba(32,30,29,.30);background:#eae9e9;cursor:pointer;font-weight:800">Test connection</button></div><div style="display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border:1px solid #ae1800;background:#eae9e9;font-size:12px"><span style="width:6px;height:6px;flex:none;margin-top:5px;background:#ae1800;"></span><div style="display:flex;flex-direction:column;gap:3px"><span style="font-weight:800;color:#ae1800">Key rejected · 401</span><span style="color:#605d5d">OpenAI didn't accept this key. Paste a new key from your OpenAI account, then test again.</span></div></div></div></div><div style="padding:16px 20px;border-top:1px solid #d7d3d3;display:flex;gap:10px;align-items:center"><span style="flex:1;font-size:11.5px;color:#605d5d">Save unlocks after a passing test.</span><button style="padding:8px 16px;border:1px solid rgba(32,30,29,.30);background:transparent;cursor:pointer;font-weight:800">Cancel</button><button style="padding:8px 16px;border:none;background:#bab6b6;color:#f3f2f2;font-weight:800" disabled>Save</button></div></div>
+    </div>
+  </div>
+  <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#605d5d">
+    <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">DIALOG</span>
+    <span><span style="color:#201e1d;font-weight:800">t</span> test · <span style="color:#201e1d;font-weight:800">esc</span> cancel</span>
+    <div style="flex:1"></div>
+    <span>test failed</span>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="16y">
+<div class="dv-olabel"><a class="dv-oid" href="#16y">16y</a>Add assistant, after Create — the name and access level are fixed, and the connection details to paste into the assistant's MCP settings are shown once. Closing the dialog hides the token for good; to get another, revoke and add the assistant again.</div>
+<div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
+  <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38);opacity:.38">
+    <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11"></rect><line x1="6" y1="2.5" x2="6" y2="13.5"></line></svg>
+    </div>
+    <span style="font-weight:800;font-size:13.5px">Personal Ledger</span>
+    <span style="color:#9b9797;font-size:12px">settings › ai connections</span>
+    <div style="flex:1"></div>
+    <div style="display:flex;gap:2px"><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div><div style="width:26px;height:26px;background:rgba(32,30,29,.08)"></div></div>
+  </div>
+  <div style="flex:1;display:flex;min-height:0;position:relative">
+    <div style="width:232px;flex:none;border-right:2px solid rgba(32,30,29,.38);opacity:.30;padding:14px 0">
+      <div style="padding:8px 14px">General</div>
+      <div style="padding:8px 14px">Display</div>
+      <div style="padding:8px 14px">Units</div>
+      <div style="padding:8px 14px">Institutions</div>
+      <div style="padding:8px 14px">Accounts</div>
+      <div style="padding:8px 14px">Categories</div>
+      <div style="padding:8px 14px">Tags</div>
+      <div style="padding:8px 14px">Payees</div>
+      <div style="padding:8px 14px">Documents</div>
+      <div style="padding:8px 14px">Inventory</div>
+      <div style="padding:8px 14px;background:#201e1d;color:#f3f2f2;font-weight:800">AI Connections</div>
+      <div style="padding:8px 14px">Sync Server</div>
+      <div style="padding:8px 14px">Backup</div>
+      <div style="padding:8px 14px">History</div>
+      <div style="padding:8px 14px">Logs</div>
+      <div style="padding:8px 14px">About</div>
+    </div>
+    <div style="flex:1;min-width:0;padding:22px 28px;opacity:.30">
+      <h2 style="margin:0 0 24px;font-size:28px;font-weight:800">Settings – AI Connections</h2>
+      <div style="flex:none;height:2px;background:rgba(32,30,29,.38);margin-bottom:24px"></div>
+      <div style="max-width:640px;display:flex;flex-direction:column;gap:8px"><div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#605d5d;padding-bottom:8px;border-bottom:2px solid rgba(32,30,29,.38)">MODEL PROVIDERS</div><div style="padding:9px 0;font-weight:800">Claude</div><div style="padding:9px 0;font-weight:800">Ollama (local)</div><div style="padding:9px 0;font-weight:800">OpenAI</div></div>
+    </div>
+    <div style="position:absolute;left:0;top:0;right:0;bottom:0;background:rgba(32,30,29,.30);display:flex;align-items:center;justify-content:center;z-index:10">
+      <div style="background:#f3f2f2;border:2px solid #201e1d;box-shadow:0 16px 48px rgba(32,30,29,.40);width:520px;display:flex;flex-direction:column"><div style="padding:18px 20px;border-bottom:2px solid rgba(32,30,29,.30);font:800 16px 'Archivo'">Add assistant</div><div style="padding:18px 20px;display:flex;flex-direction:column;gap:14px"><div><label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Name</label><input style="width:100%;padding:8px 10px;border:1px solid rgba(32,30,29,.30);font-size:13px;box-sizing:border-box;background:#f3f2f2" value="Claude Desktop"><div style="font-size:11.5px;color:#605d5d;margin-top:6px">Shown in Connected assistants.</div></div><div><label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Access</label><div style="width:260px"><div style="display:flex;border:1px solid rgba(32,30,29,.30)"><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;background:#201e1d;color:#f3f2f2;font-weight:800">Read only</span><span style="flex:1;text-align:center;padding:7px 8px;font-size:12px;cursor:pointer;border-left:1px solid rgba(32,30,29,.30);">Read &amp; write</span></div></div><div style="font-size:11.5px;color:#605d5d;margin-top:6px">Read only can see accounts, transactions and reports. Read &amp; write can also add and edit.</div></div><div style="display:flex;flex-direction:column;gap:8px"><label style="font-weight:800;font-size:12px">Connection details</label><div style="display:flex;align-items:center;gap:8px;border:1px solid rgba(32,30,29,.30)"><span style="padding:8px 10px;background:#eae9e9;border-right:1px solid rgba(32,30,29,.30);color:#605d5d;font-size:12px;width:62px">Address</span><span style="flex:1;min-width:0;padding:8px 10px;font-size:12px;font-variant-numeric:tabular-nums;overflow:hidden;white-space:nowrap">http://127.0.0.1:7421/mcp</span><span style="padding:8px 12px;font-size:12px;text-decoration:underline;cursor:pointer">Copy</span></div><div style="display:flex;align-items:center;gap:8px;border:1px solid rgba(32,30,29,.30)"><span style="padding:8px 10px;background:#eae9e9;border-right:1px solid rgba(32,30,29,.30);color:#605d5d;font-size:12px;width:62px">Token</span><span style="flex:1;min-width:0;padding:8px 10px;font-size:12px;font-variant-numeric:tabular-nums;overflow:hidden;white-space:nowrap">plk_9f3a…c71e</span><span style="padding:8px 12px;font-size:12px;text-decoration:underline;cursor:pointer">Copy</span></div><div style="font-size:11.5px;color:#ae1800">Shown once. Copy the token now.</div></div></div><div style="padding:16px 20px;border-top:1px solid #d7d3d3;display:flex;gap:10px;align-items:center"><span style="flex:1;font-size:11.5px;color:#605d5d">The assistant now appears under Connected assistants.</span><button style="padding:8px 16px;border:1px solid rgba(32,30,29,.30);background:transparent;cursor:pointer;font-weight:800">Copy token</button><button style="padding:8px 16px;border:none;background:#201e1d;color:#f3f2f2;cursor:pointer;font-weight:800">Done</button></div></div>
+    </div>
+  </div>
+  <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#605d5d">
+    <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">DIALOG</span>
+    <span><span style="color:#201e1d;font-weight:800">c</span> copy token · <span style="color:#201e1d;font-weight:800">esc</span> close</span>
+    <div style="flex:1"></div>
+    <span>token not shown again</span>
+  </div>
+</div>
 </div>
 
 </section>
