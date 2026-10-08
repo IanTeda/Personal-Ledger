@@ -74,6 +74,7 @@ use crate::{
     institutions::{self, AccountType, InstitutionRow, form::AddInstitutionForm},
     inventory,
     inventory::form::InventoryDialog,
+    navigation::active_view::ActiveView,
     navigation::command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
     navigation::explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
     navigation::key_router::{self, KeyOutcome, Movement, route_key},
@@ -1371,16 +1372,43 @@ impl Shell {
                 true
             }
             KeyOutcome::NoOp => {
-                self.handle_accounts_key(keystroke)
-                    || self.handle_categories_key(keystroke)
-                    || self.handle_payees_key(keystroke)
-                    || self.handle_settings_documents_key(keystroke)
-                    || self.handle_settings_inventory_key(keystroke)
-                    || self.handle_tags_key(keystroke)
-                    || self.handle_bills_key(keystroke)
-                    || self.handle_budgets_key(keystroke)
-                    || self.handle_transactions_key(keystroke)
-                    || had_status_message
+                let handled = match self.active_view() {
+                    ActiveView::Settings(SettingsSection::Accounts) => {
+                        self.handle_accounts_key(keystroke)
+                    }
+                    ActiveView::Settings(SettingsSection::Categories) => {
+                        self.handle_categories_key(keystroke)
+                    }
+                    ActiveView::Settings(SettingsSection::Payees) => {
+                        self.handle_payees_key(keystroke)
+                    }
+                    ActiveView::Settings(SettingsSection::Documents) => {
+                        self.handle_settings_documents_key(keystroke)
+                    }
+                    ActiveView::Settings(SettingsSection::Inventory) => {
+                        self.handle_settings_inventory_key(keystroke)
+                    }
+                    ActiveView::Settings(SettingsSection::Tags) => self.handle_tags_key(keystroke),
+                    ActiveView::Settings(
+                        SettingsSection::General
+                        | SettingsSection::Display
+                        | SettingsSection::Units
+                        | SettingsSection::Institutions
+                        | SettingsSection::SyncServer
+                        | SettingsSection::DataBackup
+                        | SettingsSection::Tracing
+                        | SettingsSection::About,
+                    ) => false,
+                    ActiveView::Bills => self.handle_bills_key(keystroke),
+                    ActiveView::Budgets => self.handle_budgets_key(keystroke),
+                    ActiveView::Transactions | ActiveView::Import => {
+                        self.handle_transactions_key(keystroke)
+                    }
+                    ActiveView::Dashboard | ActiveView::Documents | ActiveView::Placeholder(_) => {
+                        false
+                    }
+                };
+                handled || had_status_message
             }
             KeyOutcome::ClearPendingG
             | KeyOutcome::ClosePopupsAndExitMode
@@ -1839,57 +1867,61 @@ impl Shell {
         self.select_settings_page(visible[next]);
     }
 
+    /// Which View owns the keyboard, page status and main pane right now.
+    fn active_view(&self) -> ActiveView {
+        ActiveView::derive(
+            self.nav.noun(),
+            self.settings_selected_section,
+            self.import.is_some(),
+        )
+    }
+
     fn apply_view_movement(&mut self, movement: Movement) {
-        if self.accounts_page_has_focus() {
-            self.apply_accounts_movement(movement);
-            return;
+        let page_focused =
+            self.nav.focus() == FocusZone::View && self.settings_focus == SettingsFocus::Page;
+        match self.active_view() {
+            ActiveView::Settings(SettingsSection::Accounts) if page_focused => {
+                self.apply_accounts_movement(movement);
+            }
+            ActiveView::Settings(SettingsSection::Categories) if page_focused => {
+                self.apply_settings_categories_movement(movement);
+            }
+            ActiveView::Settings(SettingsSection::Tags) if page_focused => {
+                self.apply_settings_tags_movement(movement);
+            }
+            ActiveView::Settings(SettingsSection::Payees) if page_focused => {
+                self.apply_settings_payees_movement(movement);
+            }
+            ActiveView::Settings(SettingsSection::Documents) if page_focused => {
+                self.apply_settings_documents_movement(movement);
+            }
+            ActiveView::Settings(SettingsSection::Inventory) if page_focused => {
+                self.apply_settings_inventory_movement(movement);
+            }
+            ActiveView::Settings(_) => {
+                if self.settings_focus == SettingsFocus::Index
+                    && matches!(
+                        movement,
+                        Movement::Next | Movement::Prev | Movement::First | Movement::Last
+                    )
+                {
+                    self.apply_settings_section_movement(movement);
+                } else {
+                    self.scroll_view(movement);
+                }
+            }
+            // The import step keeps the Transactions movement, as it did before `ActiveView`.
+            ActiveView::Transactions | ActiveView::Import => {
+                self.apply_transactions_movement(movement);
+            }
+            ActiveView::Documents => self.apply_documents_movement(movement),
+            ActiveView::Bills => self.apply_bills_movement(movement),
+            ActiveView::Budgets => self.apply_budgets_movement(movement),
+            ActiveView::Dashboard | ActiveView::Placeholder(_) => self.scroll_view(movement),
         }
-        if self.settings_categories_page_has_focus() {
-            self.apply_settings_categories_movement(movement);
-            return;
-        }
-        if self.settings_tags_page_has_focus() {
-            self.apply_settings_tags_movement(movement);
-            return;
-        }
-        if self.settings_payees_page_has_focus() {
-            self.apply_settings_payees_movement(movement);
-            return;
-        }
-        if self.settings_documents_page_has_focus() {
-            self.apply_settings_documents_movement(movement);
-            return;
-        }
-        if self.settings_inventory_page_has_focus() {
-            self.apply_settings_inventory_movement(movement);
-            return;
-        }
-        if self.nav.noun() == Noun::Transactions {
-            self.apply_transactions_movement(movement);
-            return;
-        }
-        if self.nav.noun() == Noun::Documents {
-            self.apply_documents_movement(movement);
-            return;
-        }
-        if self.nav.noun() == Noun::Bills {
-            self.apply_bills_movement(movement);
-            return;
-        }
-        if self.nav.noun() == Noun::Budgets {
-            self.apply_budgets_movement(movement);
-            return;
-        }
-        if self.nav.noun() == Noun::Settings
-            && self.settings_focus == SettingsFocus::Index
-            && matches!(
-                movement,
-                Movement::Next | Movement::Prev | Movement::First | Movement::Last
-            )
-        {
-            self.apply_settings_section_movement(movement);
-            return;
-        }
+    }
+
+    fn scroll_view(&mut self, movement: Movement) {
         let offset = self.view_scroll_handle.offset();
         let max_height = f32::from(self.view_scroll_handle.max_offset().height);
         let viewport_height = f32::from(self.view_scroll_handle.bounds().size.height);
@@ -8984,15 +9016,15 @@ impl Render for Shell {
         });
         let documents_page =
             (self.nav.noun() == Noun::Documents).then(|| self.documents_page_props(&entity));
-        let page_status = match self.nav.noun() {
-            Noun::Documents => self.documents_page_status(),
-            Noun::Settings if self.accounts_page_has_focus() => Some(PageStatus {
+        let page_status = match self.active_view() {
+            ActiveView::Documents => self.documents_page_status(),
+            ActiveView::Settings(_) if self.accounts_page_has_focus() => Some(PageStatus {
                 hints: accounts_hints(),
                 right: crate::msg::desktop_accounts_count(
                     i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
                 ),
             }),
-            Noun::Settings if self.settings_tags_page_has_focus() => Some(PageStatus {
+            ActiveView::Settings(_) if self.settings_tags_page_has_focus() => Some(PageStatus {
                 hints: match self.tags_dialog() {
                     Some(tags::form::TagsDialog::Add(_)) => tag_dialog_hints(false),
                     Some(tags::form::TagsDialog::Edit(..)) => tag_dialog_hints(true),
@@ -9005,7 +9037,7 @@ impl Render for Shell {
                     &tags::duplicate_groups(&self.tags, &self.transactions),
                 ),
             }),
-            Noun::Settings if self.settings_payees_page_has_focus() => Some(PageStatus {
+            ActiveView::Settings(_) if self.settings_payees_page_has_focus() => Some(PageStatus {
                 hints: match self.payees_dialog() {
                     Some(payees::form::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
                     Some(_) => payee_dialog_hints(),
@@ -9013,28 +9045,36 @@ impl Render for Shell {
                 },
                 right: settings_view::payees::scope_text(&self.payees),
             }),
-            Noun::Settings if self.settings_documents_page_has_focus() => Some(PageStatus {
-                hints: self
-                    .document_types_dialog()
-                    .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
-                right: settings_view::documents::scope_text(&self.document_types),
-            }),
-            Noun::Settings if self.settings_inventory_page_has_focus() => Some(PageStatus {
-                hints: self.inventory_dialog().map_or_else(
-                    || settings_inventory_hints(self.settings_inventory_selected_row()),
-                    inventory_ui::dialog_hints,
-                ),
-                right: inventory_view::scope_text(&self.inventory),
-            }),
-            Noun::Settings if self.settings_categories_page_has_focus() => Some(PageStatus {
-                hints: settings_categories_hints(),
-                right: settings_view::categories::scope_note(&self.categories),
-            }),
-            Noun::Settings if self.nav.focus() == FocusZone::View => Some(PageStatus {
+            ActiveView::Settings(_) if self.settings_documents_page_has_focus() => {
+                Some(PageStatus {
+                    hints: self
+                        .document_types_dialog()
+                        .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
+                    right: settings_view::documents::scope_text(&self.document_types),
+                })
+            }
+            ActiveView::Settings(_) if self.settings_inventory_page_has_focus() => {
+                Some(PageStatus {
+                    hints: self.inventory_dialog().map_or_else(
+                        || settings_inventory_hints(self.settings_inventory_selected_row()),
+                        inventory_ui::dialog_hints,
+                    ),
+                    right: inventory_view::scope_text(&self.inventory),
+                })
+            }
+            ActiveView::Settings(_) if self.settings_categories_page_has_focus() => {
+                Some(PageStatus {
+                    hints: settings_categories_hints(),
+                    right: settings_view::categories::scope_note(&self.categories),
+                })
+            }
+            ActiveView::Settings(_) if self.nav.focus() == FocusZone::View => Some(PageStatus {
                 hints: self.settings_hints(),
                 right: self.settings_selected_section.scope_note(),
             }),
-            Noun::Bills if matches!(self.bills_dialog(), Some(bills::BillsDialog::Pay(_))) => {
+            ActiveView::Bills
+                if matches!(self.bills_dialog(), Some(bills::BillsDialog::Pay(_))) =>
+            {
                 Some(PageStatus {
                     hints: pay_bill_dialog_hints(),
                     right: crate::msg::desktop_bills_status_plans(
@@ -9042,7 +9082,9 @@ impl Render for Shell {
                     ),
                 })
             }
-            Noun::Bills if matches!(self.bills_dialog(), Some(bills::BillsDialog::Skip(_))) => {
+            ActiveView::Bills
+                if matches!(self.bills_dialog(), Some(bills::BillsDialog::Skip(_))) =>
+            {
                 Some(PageStatus {
                     hints: skip_bill_dialog_hints(),
                     right: crate::msg::desktop_bills_status_plans(
@@ -9050,7 +9092,7 @@ impl Render for Shell {
                     ),
                 })
             }
-            Noun::Bills
+            ActiveView::Bills
                 if matches!(
                     self.bills_dialog(),
                     Some(bills::BillsDialog::Add(_) | bills::BillsDialog::Edit(..))
@@ -9063,7 +9105,7 @@ impl Render for Shell {
                     ),
                 })
             }
-            Noun::Bills if self.bills_tab == bills::BillsTab::Schedule => Some(PageStatus {
+            ActiveView::Bills if self.bills_tab == bills::BillsTab::Schedule => Some(PageStatus {
                 hints: bills_schedule_hints(),
                 right: crate::msg::desktop_bills_status_period(
                     &if self.bills_all {
@@ -9075,13 +9117,13 @@ impl Render for Shell {
                     i64::try_from(self.bills_unfiltered_rows().len()).unwrap_or(i64::MAX),
                 ),
             }),
-            Noun::Bills if self.bills_tab == bills::BillsTab::Planner => Some(PageStatus {
+            ActiveView::Bills if self.bills_tab == bills::BillsTab::Planner => Some(PageStatus {
                 hints: bills_planner_hints(),
                 right: crate::msg::desktop_bills_status_plans(
                     i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
                 ),
             }),
-            Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Progress => {
+            ActiveView::Budgets if self.budgets_tab == budgets::BudgetsTab::Progress => {
                 Some(PageStatus {
                     hints: self.budgets_hints(),
                     right: crate::msg::desktop_budgets_status_period(
@@ -9092,16 +9134,18 @@ impl Render for Shell {
                     ),
                 })
             }
-            Noun::Budgets if self.budgets_tab == budgets::BudgetsTab::Plan => Some(PageStatus {
-                hints: self.budgets_hints(),
-                right: budgets_plan.as_ref().map_or_else(String::new, |plan| {
-                    crate::msg::desktop_budgets_status_plan(
-                        &budgets_view::plan::range_label(plan),
-                        i64::try_from(plan.row_count()).unwrap_or(i64::MAX),
-                    )
-                }),
-            }),
-            Noun::Budgets => Some(PageStatus {
+            ActiveView::Budgets if self.budgets_tab == budgets::BudgetsTab::Plan => {
+                Some(PageStatus {
+                    hints: self.budgets_hints(),
+                    right: budgets_plan.as_ref().map_or_else(String::new, |plan| {
+                        crate::msg::desktop_budgets_status_plan(
+                            &budgets_view::plan::range_label(plan),
+                            i64::try_from(plan.row_count()).unwrap_or(i64::MAX),
+                        )
+                    }),
+                })
+            }
+            ActiveView::Budgets => Some(PageStatus {
                 hints: self.budgets_hints(),
                 right: budgets_history
                     .as_ref()
@@ -9112,7 +9156,7 @@ impl Render for Shell {
                         )
                     }),
             }),
-            Noun::Transactions if self.import.is_some() => {
+            ActiveView::Import => {
                 let pending = self
                     .import
                     .as_ref()
@@ -9128,7 +9172,7 @@ impl Render for Shell {
                     },
                 })
             }
-            Noun::Transactions => Some(PageStatus {
+            ActiveView::Transactions => Some(PageStatus {
                 hints: if self.nav.mode() == InputMode::Filter {
                     filter_hints()
                 } else {
@@ -9136,7 +9180,10 @@ impl Render for Shell {
                 },
                 right: format::status_legend(self.settings_status_glyphs),
             }),
-            _ => None,
+            ActiveView::Bills
+            | ActiveView::Settings(_)
+            | ActiveView::Dashboard
+            | ActiveView::Placeholder(_) => None,
         };
 
         div()
@@ -9229,7 +9276,7 @@ impl Render for Shell {
                                 },
                             )
                             .child(render_view(
-                                self.nav.noun(),
+                                self.active_view(),
                                 self.nav.ledger_open(),
                                 focus == FocusZone::View,
                                 &self.view_scroll_handle,
@@ -9781,7 +9828,7 @@ struct SettingsPanelProps<'a> {
     reason = "the view props plus the App the Colour Theme is read from; the remaining sweeps may fold them into one struct"
 )]
 fn render_view(
-    noun: Noun,
+    view: ActiveView,
     ledger_open: bool,
     focused: bool,
     scroll_handle: &ScrollHandle,
@@ -9790,31 +9837,46 @@ fn render_view(
     settings: SettingsPanelProps<'_>,
     cx: &gpui::App,
 ) -> gpui::AnyElement {
-    if noun == Noun::Documents
-        && let Some(documents) = pages.documents
-    {
-        return documents_view::render(focused, documents, cx);
-    }
-    if noun == Noun::Bills {
-        return bills_view::render(focused, scroll_handle, pages.bills, cx);
-    }
-    if noun == Noun::Budgets
-        && let Some(budgets) = pages.budgets
-    {
-        return budgets_view::render(focused, scroll_handle, budgets, cx);
-    }
-    if noun == Noun::Transactions
-        && let Some(import) = pages.import
-    {
-        return import_view::render(focused, scroll_handle, import, cx);
-    }
-    if noun == Noun::Transactions
-        && let Some(transactions) = pages.transactions
-    {
-        return transactions_view::render(focused, transactions, cx);
+    // Each View's props are `Some` exactly while it is active; the placeholder arms keep a missing
+    // one from panicking.
+    match view {
+        ActiveView::Documents => {
+            return match pages.documents {
+                Some(documents) => documents_view::render(focused, documents, cx),
+                None => scrolling_pane(
+                    placeholder_view(Noun::Documents, cx),
+                    focused,
+                    scroll_handle,
+                    cx,
+                ),
+            };
+        }
+        ActiveView::Bills => return bills_view::render(focused, scroll_handle, pages.bills, cx),
+        ActiveView::Budgets => {
+            return match pages.budgets {
+                Some(budgets) => budgets_view::render(focused, scroll_handle, budgets, cx),
+                None => scrolling_pane(
+                    placeholder_view(Noun::Budgets, cx),
+                    focused,
+                    scroll_handle,
+                    cx,
+                ),
+            };
+        }
+        ActiveView::Import => {
+            if let Some(import) = pages.import {
+                return import_view::render(focused, scroll_handle, import, cx);
+            }
+        }
+        ActiveView::Transactions => {
+            if let Some(transactions) = pages.transactions {
+                return transactions_view::render(focused, transactions, cx);
+            }
+        }
+        ActiveView::Settings(_) | ActiveView::Dashboard | ActiveView::Placeholder(_) => {}
     }
 
-    if noun == Noun::Settings {
+    if let ActiveView::Settings(_) = view {
         return div()
             .id("settings")
             .flex_1()
@@ -9884,13 +9946,30 @@ fn render_view(
             .into_any_element();
     }
 
-    let content = match noun {
-        Noun::Dashboard if ledger_open => pages.dashboard.into_any_element(),
-        Noun::Dashboard => empty_state(on_empty_state_command_click, cx),
-        Noun::Settings => unreachable!("handled above"),
-        other => placeholder_view(other, cx),
+    let content = match view {
+        ActiveView::Dashboard if ledger_open => pages.dashboard.into_any_element(),
+        ActiveView::Dashboard => empty_state(on_empty_state_command_click, cx),
+        ActiveView::Placeholder(noun) => placeholder_view(noun, cx),
+        // Import and Transactions land here only without their props, which `Shell` never sends.
+        ActiveView::Transactions | ActiveView::Import => placeholder_view(Noun::Transactions, cx),
+        ActiveView::Documents
+        | ActiveView::Bills
+        | ActiveView::Budgets
+        | ActiveView::Settings(_) => {
+            unreachable!("handled above")
+        }
     };
 
+    scrolling_pane(content, focused, scroll_handle, cx)
+}
+
+/// The scrollable, focus-bordered frame every non-Settings View sits in.
+fn scrolling_pane(
+    content: impl IntoElement,
+    focused: bool,
+    scroll_handle: &ScrollHandle,
+    cx: &gpui::App,
+) -> gpui::AnyElement {
     div()
         .id("view")
         .flex_1()

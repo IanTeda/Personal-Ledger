@@ -2,6 +2,7 @@
 //! command registry (`command`), the key router (`key_router`) and the file explorer
 //! (`explorer`).
 
+pub mod active_view;
 pub(crate) mod command;
 pub(crate) mod explorer;
 #[doc(hidden)]
