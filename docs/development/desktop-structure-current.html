@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Desktop Current Structure</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-paper:   #f5f5f5;
+      --color-ink:     #2d3142;
+      --color-muted:   #4f5d75;
+      --color-accent:  #eb6c36;
+      --font-sans:     'Geist', system-ui, sans-serif;
+      --font-serif:    'Instrument Serif', serif;
+      --font-mono:     'Geist Mono', ui-monospace, monospace;
+    }
+    body { font-family: var(--font-sans); background: var(--color-paper); color: var(--color-ink); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 3rem 1rem; }
+    .frame { max-width: 1160px; width: 100%; }
+    .diagram-container { width: 100%; overflow-x: auto; }
+    .eyebrow { font-family: var(--font-mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--color-muted); margin-bottom: 0.5rem; }
+    h1 { font-family: var(--font-serif); font-size: clamp(1.5rem, 2.4vw + 0.75rem, 2rem); font-weight: 400; letter-spacing: -0.02em; line-height: 1.15; margin-bottom: 1.5rem; }
+    svg { width: 100%; min-width: 1120px; display: block; }
+    .notes { margin-top: 1.5rem; max-width: 760px; font-size: 0.9rem; line-height: 1.55; color: var(--color-muted); }
+    .notes li { margin: 0.35rem 0 0.35rem 1.2rem; }
+    .notes code { font-family: var(--font-mono); font-size: 0.8rem; color: var(--color-ink); }
+    @media print { .diagram-container { overflow-x: visible; } svg { min-width: 0; } }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <p class="eyebrow">Architecture · bin-desktop · as of 2026-10-08 · issue #551</p>
+    <h1>Desktop app: current module structure</h1>
+
+    <div class="diagram-container">
+      <svg viewBox="0 0 1120 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="desktop-structure-current-title desktop-structure-current-desc">
+        <title id="desktop-structure-current-title">Desktop app: current module structure</title>
+        <desc id="desktop-structure-current-desc">The bin-desktop Shell entity is the single render root and owns all UI and domain state, which the chrome, views and navigation modules read, while lib_database is not yet wired in.</desc>
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#eb6c36"/></marker>
+        </defs>
+
+        <rect width="100%" height="100%" fill="#f5f5f5"/>
+
+        <!-- ===== Arrows (drawn before nodes) ===== -->
+        <g font-family="'Geist Mono', monospace" font-size="9" letter-spacing="0.08em">
+          <!-- main -> Shell -->
+          <line x1="220" y1="280" x2="300" y2="280" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+          <rect x="226" y="261" width="68" height="12" fill="#f5f5f5"/>
+          <text x="260" y="270" fill="#4f5d75" text-anchor="middle">BUILD_SHELL</text>
+
+          <!-- Shell -> Chrome -->
+          <path d="M520,260 H552 Q560,260 560,252 V128 Q560,120 568,120 H600" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+          <rect x="506" y="181" width="46" height="12" fill="#f5f5f5"/>
+          <text x="552" y="190" fill="#4f5d75" text-anchor="end">RENDERS</text>
+
+          <!-- Shell -> Views -->
+          <line x1="520" y1="280" x2="600" y2="280" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+          <!-- Shell -> Navigation -->
+          <path d="M520,300 H552 Q560,300 560,308 V432 Q560,440 568,440 H600" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+          <rect x="484" y="363" width="68" height="12" fill="#f5f5f5"/>
+          <text x="552" y="372" fill="#4f5d75" text-anchor="end">ROUTES KEYS</text>
+
+          <!-- Shell -> Domain models (focal) -->
+          <path d="M440,240 V64 Q440,56 448,56 H1012 Q1020,56 1020,64 V240" fill="none" stroke="#eb6c36" stroke-width="1.4" marker-end="url(#arrow-accent)"/>
+          <rect x="692" y="37" width="76" height="12" fill="#f5f5f5"/>
+          <text x="730" y="46" fill="#eb6c36" text-anchor="middle">OWNS STATE</text>
+
+          <!-- Chrome -> Domain models -->
+          <path d="M800,120 H932 Q940,120 940,128 V240" fill="none" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+          <rect x="948" y="181" width="34" height="12" fill="#f5f5f5"/>
+          <text x="948" y="190" fill="#4f5d75">READS</text>
+
+          <!-- Views -> Domain models -->
+          <line x1="800" y1="280" x2="880" y2="280" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+          <rect x="822" y="261" width="36" height="12" fill="#f5f5f5"/>
+          <text x="840" y="270" fill="#4f5d75" text-anchor="middle">READS</text>
+
+          <!-- Navigation -> persistence -->
+          <line x1="800" y1="440" x2="880" y2="440" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+          <rect x="808" y="421" width="64" height="12" fill="#f5f5f5"/>
+          <text x="840" y="430" fill="#4f5d75" text-anchor="middle">SAVES NAV</text>
+
+          <!-- main -> Workspace libs -->
+          <line x1="130" y1="320" x2="130" y2="400" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+          <rect x="138" y="355" width="76" height="12" fill="#f5f5f5"/>
+          <text x="140" y="364" fill="#4f5d75">CONFIG·TRACE</text>
+
+          <!-- Shell -> lib_database (not wired) -->
+          <line x1="410" y1="320" x2="410" y2="400" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3" marker-end="url(#arrow)"/>
+          <rect x="418" y="355" width="58" height="12" fill="#f5f5f5"/>
+          <text x="420" y="364" fill="#4f5d75">NOT WIRED</text>
+        </g>
+
+        <!-- ===== Nodes ===== -->
+        <g font-family="'Geist', sans-serif">
+          <!-- main.rs (input) -->
+          <rect x="40" y="240" width="180" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="40" y="240" width="180" height="80" rx="6" fill="rgba(79,93,117,0.10)" stroke="#7a8399" stroke-width="1"/>
+          <rect x="52" y="250" width="38" height="12" rx="2" fill="#7a8399"/>
+          <text x="71" y="259" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="7" text-anchor="middle" letter-spacing="0.1em">ENTRY</text>
+          <text x="52" y="284" fill="#2d3142" font-size="13" font-weight="600">main.rs + lib.rs</text>
+          <text x="52" y="302" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">opens window · run()</text>
+
+          <!-- Shell (focal) -->
+          <rect x="300" y="240" width="220" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="300" y="240" width="220" height="80" rx="6" fill="rgba(235,108,54,0.08)" stroke="#eb6c36" stroke-width="1.4"/>
+          <rect x="312" y="250" width="68" height="12" rx="2" fill="#eb6c36"/>
+          <text x="346" y="259" fill="#111111" font-family="'Geist Mono', monospace" font-size="7" text-anchor="middle" letter-spacing="0.1em">GPUI ENTITY</text>
+          <text x="312" y="284" fill="#2d3142" font-size="13" font-weight="600">Shell</text>
+          <text x="312" y="300" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">shell.rs + shell/ · ~10.5k lines</text>
+          <text x="312" y="312" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">only Render root · all state</text>
+
+          <!-- Chrome -->
+          <rect x="600" y="80" width="200" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <rect x="612" y="90" width="44" height="12" rx="2" fill="#2d3142"/>
+          <text x="634" y="99" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="7" text-anchor="middle" letter-spacing="0.1em">CHROME</text>
+          <text x="612" y="124" fill="#2d3142" font-size="13" font-weight="600">chrome/</text>
+          <text x="612" y="140" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">topbar · rail · statusline</text>
+          <text x="612" y="152" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">palette · dialog_host · toast</text>
+
+          <!-- Views -->
+          <rect x="600" y="240" width="200" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <rect x="612" y="250" width="38" height="12" rx="2" fill="#2d3142"/>
+          <text x="631" y="259" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="7" text-anchor="middle" letter-spacing="0.1em">VIEWS</text>
+          <text x="612" y="284" fill="#2d3142" font-size="13" font-weight="600">view/ + form/ + theme/</text>
+          <text x="612" y="300" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">render fns per screen</text>
+          <text x="612" y="312" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">dashboard … settings · msg::</text>
+
+          <!-- Navigation -->
+          <rect x="600" y="400" width="200" height="80" rx="6" fill="#ffffff" stroke="#2d3142" stroke-width="1"/>
+          <rect x="612" y="410" width="68" height="12" rx="2" fill="#2d3142"/>
+          <text x="646" y="419" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="7" text-anchor="middle" letter-spacing="0.1em">NAVIGATION</text>
+          <text x="612" y="444" fill="#2d3142" font-size="13" font-weight="600">navigation/</text>
+          <text x="612" y="460" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">nav · command · key_router</text>
+          <text x="612" y="472" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">explorer · NavState</text>
+
+          <!-- Domain models (store) -->
+          <rect x="880" y="240" width="200" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="880" y="240" width="200" height="80" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <rect x="892" y="250" width="38" height="12" rx="2" fill="#4f5d75"/>
+          <text x="911" y="259" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="7" text-anchor="middle" letter-spacing="0.1em">MODEL</text>
+          <text x="892" y="284" fill="#2d3142" font-size="13" font-weight="600">Domain modules</text>
+          <text x="892" y="300" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">accounts · budgets · bills …</text>
+          <text x="892" y="312" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">gpui-free · seeded mock data</text>
+
+          <!-- persistence.rs (store) -->
+          <rect x="880" y="400" width="200" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="880" y="400" width="200" height="80" rx="6" fill="rgba(45,49,66,0.05)" stroke="#4f5d75" stroke-width="1"/>
+          <rect x="892" y="410" width="38" height="12" rx="2" fill="#4f5d75"/>
+          <text x="911" y="419" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="7" text-anchor="middle" letter-spacing="0.1em">STATE</text>
+          <text x="892" y="444" fill="#2d3142" font-size="13" font-weight="600">persistence.rs</text>
+          <text x="892" y="460" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">desktop-state.json</text>
+          <text x="892" y="472" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">noun · rail · window</text>
+
+          <!-- Workspace libs (external) -->
+          <rect x="40" y="400" width="180" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="40" y="400" width="180" height="80" rx="6" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)" stroke-width="1"/>
+          <rect x="52" y="410" width="30" height="12" rx="2" fill="rgba(45,49,66,0.55)"/>
+          <text x="67" y="419" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="7" text-anchor="middle" letter-spacing="0.1em">LIBS</text>
+          <text x="52" y="444" fill="#2d3142" font-size="13" font-weight="600">Workspace libs</text>
+          <text x="52" y="460" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">config · tracing · locale</text>
+          <text x="52" y="472" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">toast · core · colour_theme</text>
+
+          <!-- lib_database (optional / not wired) -->
+          <rect x="300" y="400" width="220" height="80" rx="6" fill="#f5f5f5"/>
+          <rect x="300" y="400" width="220" height="80" rx="6" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.20)" stroke-width="1" stroke-dasharray="4,3"/>
+          <rect x="312" y="410" width="44" height="12" rx="2" fill="rgba(45,49,66,0.35)"/>
+          <text x="334" y="419" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="7" text-anchor="middle" letter-spacing="0.1em">LATER</text>
+          <text x="312" y="444" fill="#2d3142" font-size="13" font-weight="600">lib_database</text>
+          <text x="312" y="460" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">dependency only</text>
+          <text x="312" y="472" fill="#7a8399" font-family="'Geist Mono', monospace" font-size="9">used by error.rs, no queries</text>
+        </g>
+
+        <!-- ===== Legend strip ===== -->
+        <line x1="40" y1="516" x2="1080" y2="516" stroke="rgba(45,49,66,0.12)" stroke-width="1"/>
+        <g font-family="'Geist Mono', monospace" font-size="9" fill="#4f5d75" letter-spacing="0.06em">
+          <rect x="40" y="536" width="16" height="12" rx="2" fill="rgba(235,108,54,0.08)" stroke="#eb6c36"/>
+          <text x="64" y="546">FOCAL · STATE OWNER</text>
+          <rect x="200" y="536" width="16" height="12" rx="2" fill="#ffffff" stroke="#2d3142"/>
+          <text x="224" y="546">UI MODULE</text>
+          <rect x="316" y="536" width="16" height="12" rx="2" fill="rgba(45,49,66,0.05)" stroke="#4f5d75"/>
+          <text x="340" y="546">MODEL / STORE</text>
+          <rect x="456" y="536" width="16" height="12" rx="2" fill="rgba(45,49,66,0.03)" stroke="rgba(45,49,66,0.30)"/>
+          <text x="480" y="546">WORKSPACE CRATE</text>
+          <rect x="604" y="536" width="16" height="12" rx="2" fill="rgba(45,49,66,0.02)" stroke="rgba(45,49,66,0.20)" stroke-dasharray="4,3"/>
+          <text x="628" y="546">NOT YET WIRED</text>
+          <line x1="744" y1="542" x2="772" y2="542" stroke="#4f5d75" stroke-width="1.2" marker-end="url(#arrow)"/>
+          <text x="780" y="546">DEPENDS ON</text>
+          <line x1="876" y1="542" x2="904" y2="542" stroke="#4f5d75" stroke-width="1" stroke-dasharray="4,3"/>
+          <text x="912" y="546">PLANNED</text>
+        </g>
+      </svg>
+    </div>
+
+    <ul class="notes">
+      <li><strong>One Entity owns everything.</strong> <code>Shell</code> is the only <code>impl Render</code> root of substance and holds nav state, toasts, palette, dialogs, every Settings field and the domain data (<code>accounts</code>, <code>categories</code>, <code>budgets</code>, …) as plain fields. <code>shell.rs</code> alone is ~10.3k lines.</li>
+      <li><strong>Views and Chrome are render functions over <code>&amp;Shell</code></strong>, not their own Entities; the Chrome also reaches straight into domain modules (<code>budgets</code>, <code>documents</code>, <code>bills</code>) for rail context.</li>
+      <li><strong>Domain modules are already gpui-free</strong> (no <code>use gpui</code> in accounts, bills, budgets, categories, documents, inventory, payees, tags, transactions) and serve seeded mock data: a clean seam for a later service layer.</li>
+      <li><strong>Persistent state today is UI-only:</strong> <code>persistence.rs</code> writes noun, rail mode and window geometry to <code>desktop-state.json</code>. <code>lib_database</code> is a dependency but nothing queries it yet.</li>
+    </ul>
+  </div>
+</body>
+</html>
