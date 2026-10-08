@@ -1,6 +1,6 @@
 //! Pure Settings-surface domain types (`docs/ux/desktop/16-settings/README.md`'s "2a resting
 //! state" -- "Sections" table) -- `gpui`-free, the same "pure state, chrome renders it" split
-//! `nav.rs` uses between `NavState` and `Shell`'s render tree. `rail::settings_index::SettingsIndexRail`
+//! `navigation/nav.rs` uses between `NavState` and `Shell`'s render tree. `rail::settings_index::SettingsIndexRail`
 //! and `view::settings` are the chrome; this module only knows what pages exist, their index
 //! order, and their label/scope-note/search text.
 
@@ -512,7 +512,7 @@ pub enum AddUnitField {
 }
 
 /// The Add/Edit unit dialogs' own live form state (issues #184/#185) -- pure, `gpui`-free,
-/// mirroring `nav.rs`/`palette.rs`'s "state here, chrome renders it" split. `Shell` owns
+/// mirroring `navigation/nav.rs`/`palette.rs`'s "state here, chrome renders it" split. `Shell` owns
 /// `Option<Self>` wrapped in [`SettingsDialog`]; `None` means no dialog is open. Shared between
 /// both dialogs rather than a separate `EditUnitForm` -- issue #185's own body: "same form as
 /// Add unit" -- so [`Self::is_valid`]/[`Self::cycle_field`] only need writing once.

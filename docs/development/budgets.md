@@ -34,7 +34,7 @@ Not yet built for v2. `budgets::default_budgets` seeds the stub (Personal spendi
   - `src/budgets/limit_form.rs` (9e and 9g) and `src/budgets/form.rs` (11c) — the dialogs' pure state.
   - `src/view/budgets/` — `mod.rs` the shared header and tabs, `progress.rs` (9a), `plan.rs` (9b), `history.rs` (9c), `detail_dialog.rs` (9d), `limit_dialog.rs` (9e), `fill_dialog.rs` (9f), `stop_dialog.rs` (9g), `switcher.rs` (11b), `budget_dialog.rs` (11c), `manage_dialog.rs` (11f).
   - `src/shell.rs` — `handle_budgets_key` (`B`, `n`, `c`, `e`, `s`, `[`, `]`, `1`–`3`, and on History `h`/`l`/`x`), `handle_budgets_plan_key` and `handle_budgets_plan_edit_key` (the grid's Normal and Insert modes), `handle_budgets_tab_key`, `handle_budgets_dialog_key` and its per-dialog handlers, `switch_budget`, `export_budgets_history` (the platform save dialog), `budgets_hints` (the status-line legend) and `save_category_budget` (Categories 5c's write).
-  - `src/command.rs` — the `budgets switch|new|edit|manage|duplicate|set-default|archive|restore` palette commands (`BudgetsVerb`).
+  - `src/navigation/command.rs` — the `budgets switch|new|edit|manage|duplicate|set-default|archive|restore` palette commands (`BudgetsVerb`).
   - `src/rail/primary.rs` — the Budgets badge (the default Budget's over count); `src/view/dashboard.rs` — the budget list, from `budgets::dashboard_bars`.
   - Messages in `i18n/en-US/budgets.ftl`.
 - **TUI** — a wireframe placeholder, `crates/bins/bin-tui/src/view/budgets.rs`.

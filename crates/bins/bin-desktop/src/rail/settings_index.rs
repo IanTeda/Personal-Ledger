@@ -55,7 +55,7 @@ impl RenderOnce for SettingsIndexRail {
                     .flex()
                     .flex_col()
                     .child(rail_label(
-                        &lib_locale::format::upper(&crate::nav::Noun::Settings.label()),
+                        &lib_locale::format::upper(&crate::navigation::nav::Noun::Settings.label()),
                         cx,
                     ))
                     .children(SettingsSection::ALL.into_iter().map(|section| {

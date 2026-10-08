@@ -12,7 +12,7 @@
 use bin_desktop::{
     ShellBindings, ShellLogs, build_shell, colours,
     locale::init_for_tests,
-    nav::Noun,
+    navigation::nav::Noun,
     persistence::PersistedState,
     shell::{
         AccountFormSnapshot, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot,

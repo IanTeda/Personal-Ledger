@@ -21,8 +21,8 @@ use crate::{
         self, Document, DocumentLink, DocumentsMode, KeyDateKind, LibraryScope, LibrarySort,
         RailEntry,
     },
-    key_router::Movement,
-    nav::{FocusZone, InputMode, Noun},
+    navigation::key_router::Movement,
+    navigation::nav::{FocusZone, InputMode, Noun},
     settings::SettingsSection,
     statusline::PageStatus,
     view::documents::{
@@ -1191,8 +1191,11 @@ impl Shell {
     // -----------------------------------------------------------------------------------------
 
     /// A `documents <verb>` palette command.
-    pub(super) fn run_documents_command(&mut self, verb: crate::command::DocumentsVerb) {
-        use crate::command::DocumentsVerb;
+    pub(super) fn run_documents_command(
+        &mut self,
+        verb: crate::navigation::command::DocumentsVerb,
+    ) {
+        use crate::navigation::command::DocumentsVerb;
         let noun_before = self.nav.noun();
         self.nav.set_noun(Noun::Documents);
         if noun_before != Noun::Documents {

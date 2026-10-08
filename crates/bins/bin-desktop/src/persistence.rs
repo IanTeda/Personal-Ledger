@@ -12,8 +12,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    explorer::ExplorerFilters,
-    nav::{Noun, RailMode},
+    navigation::explorer::ExplorerFilters,
+    navigation::nav::{Noun, RailMode},
 };
 
 /// Directory name under the platform's state directory, mirroring `lib_config`'s own

@@ -20,7 +20,7 @@ use std::rc::Rc;
 use gpui::{App, ClickEvent, Window, div, prelude::*, px};
 use gpui_component::Sizable;
 
-use crate::{icon::DesktopIcon, nav::Noun, theme::color};
+use crate::{icon::DesktopIcon, navigation::nav::Noun, theme::color};
 
 /// Band height: `docs/ux/desktop/01-shell/README.md`'s "Layout" table.
 pub const HEIGHT: gpui::Pixels = px(48.0);

@@ -2,7 +2,7 @@
 //! component table): the full-viewport dimmer + centred bordered card, its header (with a
 //! destructive variant), body, action row, and Cancel/Confirm buttons.
 //!
-//! Extracted by studying `crate::explorer::FileExplorer` and `crate::palette::Palette`'s own
+//! Extracted by studying `crate::navigation::explorer::FileExplorer` and `crate::palette::Palette`'s own
 //! hand-rolled floating overlays (issue #174's own ticket body) -- **neither is retrofitted to
 //! use this module**. Both already match a different, already-shipped spec of their own (the
 //! Shell & Navigation README's "1d"/"1e" component tables: a fixed top offset rather than

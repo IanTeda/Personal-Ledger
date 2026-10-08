@@ -3,7 +3,7 @@
 
 mod common;
 
-use bin_desktop::nav::{InputMode, Noun};
+use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
 use gpui::TestAppContext;
 

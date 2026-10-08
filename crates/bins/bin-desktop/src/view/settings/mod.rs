@@ -31,7 +31,7 @@ use gpui::{AnyElement, App, ScrollHandle, SharedString, div, prelude::*, px};
 use lib_core::DateStyle;
 
 use crate::{
-    nav::Noun,
+    navigation::nav::Noun,
     settings::{
         InstitutionRow, PriceSourceRow, RowDensity, SettingsSection, StatusGlyphs, UnitRow,
     },

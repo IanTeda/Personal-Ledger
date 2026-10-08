@@ -2,7 +2,7 @@
 //! window. An About-style card: project facts on the left, the shortcut cheat-sheet on the right
 //! (the shared grammar lives in `docs/navigation-design.md`).
 
-use crate::key_router::JUMPS;
+use crate::navigation::key_router::JUMPS;
 
 /// The tagline under the header.
 pub fn description() -> String {

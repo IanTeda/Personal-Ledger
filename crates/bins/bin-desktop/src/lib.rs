@@ -10,23 +10,19 @@ mod bills;
 mod budgets;
 mod categories;
 pub mod colours;
-mod command;
 mod dialog;
 mod dialog_host;
 mod documents;
 mod error;
-mod explorer;
 mod field;
 mod format;
 mod help;
 mod icon;
 mod import;
 mod inventory;
-#[doc(hidden)]
-pub mod key_router;
 pub mod locale;
 mod log_view;
-pub mod nav;
+pub mod navigation;
 mod palette;
 mod payees;
 mod period;
@@ -93,10 +89,10 @@ pub fn build_shell(
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Shell>,
 ) -> Shell {
-    let mut nav = nav::NavState::new();
+    let mut nav = navigation::nav::NavState::new();
     nav.set_noun(persisted.noun);
     nav.set_primary_rail(if persisted.start_sidebar_minimised {
-        nav::RailMode::Collapsed
+        navigation::nav::RailMode::Collapsed
     } else {
         persisted.primary_rail
     });
@@ -140,7 +136,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
     let dismiss_toasts_binding = config
         .keybindings_config()
         .key_for("dismiss_toasts")
-        .unwrap_or(key_router::DEFAULT_DISMISS_TOASTS)
+        .unwrap_or(navigation::key_router::DEFAULT_DISMISS_TOASTS)
         .to_string();
     let toast_history_binding = config
         .keybindings_config()

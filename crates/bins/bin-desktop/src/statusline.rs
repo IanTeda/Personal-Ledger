@@ -9,7 +9,7 @@ use gpui::{App, Window, div, prelude::*, px};
 
 use lib_toast::ToastKind;
 
-use crate::{nav::InputMode, theme::color};
+use crate::{navigation::nav::InputMode, theme::color};
 
 /// Band height: `docs/ux/desktop/01-shell/README.md`'s "Layout" table.
 pub const HEIGHT: gpui::Pixels = px(28.0);

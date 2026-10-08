@@ -394,7 +394,7 @@ impl NavState {
         }
     }
 
-    /// The `:open`/`:new` command handlers' stand-in effect (`crate::command`): flips the "1a"
+    /// The `:open`/`:new` command handlers' stand-in effect (`crate::navigation::command`): flips the "1a"
     /// empty state off. Real file I/O (a native file picker, `lib_database` wiring) is separate
     /// future work -- see issue #144's "Out of scope" -- so this is the whole of what either
     /// command does today, just enough to demonstrate the empty-state -> populated-Dashboard

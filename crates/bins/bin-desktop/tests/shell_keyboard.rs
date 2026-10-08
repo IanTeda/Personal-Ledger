@@ -4,7 +4,7 @@
 
 mod common;
 
-use bin_desktop::nav::{FocusZone, InputMode, Noun, RailMode};
+use bin_desktop::navigation::nav::{FocusZone, InputMode, Noun, RailMode};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -34,7 +34,7 @@ fn starts_on_dashboard_in_normal_mode_with_focus_in_the_view(app: &mut TestAppCo
 fn every_g_jump_lands_on_its_noun(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
 
-    for (key, noun) in bin_desktop::key_router::JUMPS {
+    for (key, noun) in bin_desktop::navigation::key_router::JUMPS {
         ui.press(&format!("g {key}"));
         assert_eq!(ui.noun(), noun, "g {key}");
     }

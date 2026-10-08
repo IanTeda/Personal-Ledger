@@ -10,7 +10,7 @@
 
 mod common;
 
-use bin_desktop::nav::Noun;
+use bin_desktop::navigation::nav::Noun;
 use common::Harness;
 use gpui::TestAppContext;
 

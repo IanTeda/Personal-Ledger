@@ -7,7 +7,7 @@
 
 use gpui::{App, Window, div, prelude::*, px};
 
-use crate::{nav::Noun, theme::color};
+use crate::{navigation::nav::Noun, theme::color};
 
 /// Fixed column width: `docs/ux/desktop/01-shell/README.md`'s "Layout" table.
 pub const WIDTH: gpui::Pixels = px(238.0);

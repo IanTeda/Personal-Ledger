@@ -13,7 +13,7 @@ use gpui_component::Sizable;
 
 use crate::{
     icon::DesktopIcon,
-    nav::{Noun, RailMode},
+    navigation::nav::{Noun, RailMode},
     theme::color,
 };
 

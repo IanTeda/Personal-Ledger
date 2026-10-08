@@ -57,19 +57,19 @@ use crate::{
     budgets,
     categories::{self, Category},
     colours::ColourChange,
-    command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
     dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog, ToastHistoryDialog},
     documents::types::{DocumentTypeRow, DocumentTypesDialog},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
-    explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
     field::TextField,
     format,
     import::{self, ImportState, RowSelect},
     inventory,
     inventory::form::InventoryDialog,
-    key_router::{self, KeyOutcome, Movement, route_key},
     log_view::{LogChange, LogView},
-    nav::{FocusZone, InputMode, NavState, Noun},
+    navigation::command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
+    navigation::explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
+    navigation::key_router::{self, KeyOutcome, Movement, route_key},
+    navigation::nav::{FocusZone, InputMode, NavState, Noun},
     palette::Palette,
     payees::{self, Payee},
     period::Period,
@@ -4475,8 +4475,8 @@ impl Shell {
             .collect();
         // The page's left edge: past the primary rail and the context rail, inside its gutter.
         let rail = match self.nav.primary_rail() {
-            crate::nav::RailMode::Expanded => rail::primary::WIDTH,
-            crate::nav::RailMode::Collapsed => rail::primary::COLLAPSED_WIDTH,
+            crate::navigation::nav::RailMode::Expanded => rail::primary::WIDTH,
+            crate::navigation::nav::RailMode::Collapsed => rail::primary::COLLAPSED_WIDTH,
         };
         Some(budgets_view::switcher::render(
             budgets_view::switcher::SwitcherProps {

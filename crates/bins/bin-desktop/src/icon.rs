@@ -4,7 +4,7 @@
 
 use gpui_component::Icon;
 
-use crate::nav::Noun;
+use crate::navigation::nav::Noun;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DesktopIcon {

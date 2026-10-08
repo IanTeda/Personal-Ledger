@@ -3,7 +3,7 @@
 
 mod common;
 
-use bin_desktop::nav::{FocusZone, Noun, RailMode};
+use bin_desktop::navigation::nav::{FocusZone, Noun, RailMode};
 use common::Harness;
 use gpui::TestAppContext;
 

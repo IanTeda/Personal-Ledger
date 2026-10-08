@@ -26,7 +26,10 @@
 
 use lib_colour_theme::ColourAppearance;
 
-use crate::{colours::ColourChange, explorer::ExplorerMode, nav::Noun, settings::SettingsSection};
+use crate::{
+    colours::ColourChange, navigation::explorer::ExplorerMode, navigation::nav::Noun,
+    settings::SettingsSection,
+};
 
 /// What running a command does -- the palette's, and `Shell::run_command`'s, one source of
 /// truth. Every variant is a real effect: there's no `None`/`Option` case standing in for "not

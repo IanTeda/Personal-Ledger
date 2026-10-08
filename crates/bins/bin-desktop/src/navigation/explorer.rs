@@ -8,7 +8,7 @@
 //! row eligibility must be "type-driven, not name-driven... gate selectability on the actual
 //! file extension read from the filesystem" -- so [`FileExplorer`] walks the real filesystem
 //! (`std::fs::read_dir`), not fixture data. "Opening" the selection itself stays a stand-in
-//! (`crate::nav::NavState::open_ledger`, from issue #164): real `.pldb` parsing is separate
+//! (`crate::navigation::nav::NavState::open_ledger`, from issue #164): real `.pldb` parsing is separate
 //! future work, out of scope for this map (issue #144).
 
 use std::{

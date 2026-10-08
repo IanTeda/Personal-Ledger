@@ -1,6 +1,6 @@
 //! Pure key-routing decisions for `Shell`'s `Normal`-mode keymap
 //! (`docs/ux/desktop/01-shell/README.md`'s "Keyboard" section) -- `gpui`-free, the
-//! same "pure state, `Shell` applies it" split `nav.rs`/`palette.rs`/`explorer.rs` already use.
+//! same "pure state, `Shell` applies it" split `navigation/nav.rs`/`palette.rs`/`navigation/explorer.rs` already use.
 //!
 //! Extracted from `Shell::handle_key_down` (issue #144's own architecture review, "pull Shell's
 //! key-routing tiers out from behind its render loop"): that method mixes nine sequential,
@@ -14,7 +14,7 @@
 //! palette's own per-keystroke handling (`Shell::handle_palette_key`) isn't broken and doesn't
 //! share this risk, so it stays where it is.
 
-use crate::nav::{InputMode, Noun};
+use crate::navigation::nav::{InputMode, Noun};
 
 /// A single semantic movement, parsed once from a keystroke and then dispatched against
 /// whichever zone is focused -- the same physical keys mean different things per zone, but

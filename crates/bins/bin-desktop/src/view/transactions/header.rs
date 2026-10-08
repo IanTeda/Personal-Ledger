@@ -12,7 +12,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use gpui::{AnyElement, App, Bounds, Pixels, SharedString, Window, canvas, div, prelude::*, px};
 
 use crate::{
-    nav::Noun,
+    navigation::nav::Noun,
     theme::color,
     transactions::chips::{Chip, FilterField},
 };

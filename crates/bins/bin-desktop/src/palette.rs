@@ -5,18 +5,18 @@
 //! shell should reuse that shape, not invent a second one").
 //!
 //! Ranking, filtering and selection are `gpui`-free (unit-tested without a window), the same
-//! split `nav.rs` uses between pure state and its `RenderOnce` chrome; `render` is the one
+//! split `navigation/nav.rs` uses between pure state and its `RenderOnce` chrome; `render` is the one
 //! method that touches `gpui`.
 
 use gpui::{App, BoxShadow, div, point, prelude::*, px};
 
 use crate::{
-    command::{self, Command, Domain},
+    navigation::command::{self, Command, Domain},
     theme::color,
 };
 
 /// Fixed width. Narrower than the "1d" spec's own `820px` -- another deliberate override (see
-/// `crate::command`'s own module doc for the domain-grouping one): now that the binding sits
+/// `crate::navigation::command`'s own module doc for the domain-grouping one): now that the binding sits
 /// right next to the name instead of pushed to the row's far edge, 820px left the description
 /// column far wider than the registry's own longest description ever needs, sized instead to
 /// comfortably fit that longest description ("the tags every transaction can carry any number
@@ -38,7 +38,7 @@ const BINDING_COLUMN_WIDTH: gpui::Pixels = px(64.0);
 /// Caps the row list at roughly the height the registry's 14 commands took up before domain
 /// headers existed (issue #144's domain-grouping change) -- rendering every header on top of
 /// every command made the resting-state list noticeably taller than before, so it scrolls past
-/// this instead of growing further. Mirrors `crate::explorer::MAX_ROWS_HEIGHT`'s own reasoning.
+/// this instead of growing further. Mirrors `crate::navigation::explorer::MAX_ROWS_HEIGHT`'s own reasoning.
 const MAX_ROWS_HEIGHT: gpui::Pixels = px(448.0);
 
 /// One row of the resting/filtered list: a domain header (resting state only) or a command
@@ -50,7 +50,7 @@ enum Row {
 
 /// State for the floating command palette: its input buffer and result selection. Filtering and
 /// ranking are recomputed from `input`/`COMMANDS` on every call rather than cached, matching
-/// `nav.rs`'s own "never tracked as its own field, so it can never drift out of sync" idiom --
+/// `navigation/nav.rs`'s own "never tracked as its own field, so it can never drift out of sync" idiom --
 /// the registry is small enough that this costs nothing.
 #[derive(Default)]
 pub struct Palette {

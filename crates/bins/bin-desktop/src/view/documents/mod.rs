@@ -282,7 +282,7 @@ fn list_pane(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoEl
 fn list_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
     let library = props.mode == DocumentsMode::Library;
     let title = if library {
-        crate::nav::Noun::Documents.label()
+        crate::navigation::nav::Noun::Documents.label()
     } else {
         crate::msg::desktop_documents_inbox_title()
     };
