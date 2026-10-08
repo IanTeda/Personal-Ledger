@@ -1,11 +1,21 @@
 # Handoff: Settings (paged) — v5
 
-> **Package 16 of 20 · Settings** — 16 frames: pages 16a, 16f, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16k, 16l, 16m, 16n, then dialogs 16c, 16d, 16e. Open `Settings.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
+> **Package 16 of 20 · Settings** — 20 frames: pages 16a, 16f, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16k, 16l, 16m, 16u, 16n, then dialogs 16c, 16d, 16e, 16r, 16s, 16t. Open `Settings.dc.html` in a browser from this folder. Frame numbers match the master file `Ledger Desktop Shell.dc.html`; links to other frames open the sibling package. Shared shell, rail, tokens and the package index are in `../README.md`.
 
 ## Overview
 Personal Ledger's **Settings** destination. Each section of the settings index opens its own page, and modal dialogs handle unit and institution management. Reference data that used to live in the primary rail now lives here: Accounts, Categories, Tags and Payees.
 
-This package supersedes `design_handoff_settings_v4/` and older (v3, v2, single-scroll). Frame ids run 16a–16q with gaps (16b is retired); Settings is section 16 of the master `Ledger Desktop Shell.dc.html`.
+This package supersedes `design_handoff_settings_v4/` and older (v3, v2, single-scroll). Frame ids run 16a–16u with gaps (16b is retired); Settings is section 16 of the master `Ledger Desktop Shell.dc.html`.
+
+### Changes in v6 (9 October 2026)
+- **Data & backup is now Backup (16l)**, with a second block, **Git backup**, that commits the store to a remote repository on a schedule. The local block shows Store location, Last snapshot, **Back up now** and **Export ledger (CSV)**. **Set up / Edit** opens 16t.
+- **Tracing (Logs) is now Logs (16m).** Behaviour is unchanged.
+- **New page: History (16u)**, between Backup and Logs. Every change to the ledger, newest first, as one linear undo stack. Undo / Redo (`u` / `ctrl r`, anywhere in the app) step the marker one change; undone changes stay greyed above the marker until a new edit discards them; **Restore to here** jumps several steps; synced changes undo on every device.
+- **New dialogs:** 16r Edit sync server (URL and access token, inline **Test connection**), 16s Test failed (Save stays disabled until a test passes), 16t Set up Git backup (remote, SSH key or access token, dry-run **Test**; the first push commits the whole store). Sync server (16k) **Edit** opens 16r.
+- **Index** is now: General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync server, Backup, History, Logs, About.
+- **Inventory (16q):** adding a room is explicit in two places: a bold **+ room** on every property row (works collapsed, and expands it) and a dashed **+ Add room** row closing each room list. `r` does the same on the selected property.
+- **Header:** the back / forward buttons (`alt ←` / `alt →`) are gone from every frame.
+- Layout specs for 16r–16u are in the page table (16u) and the dialog table (16r–16t) below.
 
 ### Changes since v4 (4 October 2026)
 - **The design hasn't changed.** `Settings.dc.html` was re-checked against the master and matches it frame for frame.
@@ -36,7 +46,7 @@ Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px.
 
 - **Header breadcrumb:** `settings › <page>` (lower case). The right of the header reads `synced 14:22`.
 - **Status bar:** the NORMAL chip, then per-page hints on the left and a status on the right.
-  - Form pages (General, Display, Units, Institutions, Sync server, Data & backup, Tracing, About): `j/k section · tab next field · b collapse sidebar · q back to dashboard` · right `saved automatically`.
+  - Form pages (General, Display, Units, Institutions, Sync server, Backup, Logs, About): `j/k section · tab next field · b collapse sidebar · q back to dashboard` · right `saved automatically`.
   - List pages show their own keys (listed in the Pages table) · right `saved automatically`. On Accounts the right side reads `7 accounts`.
 - **Primary rail (206px):** Settings is active, pinned at the bottom below a 2px rule. Groups:
   - LEDGER: Dashboard, Transactions, Documents, Events, Notifications (red count badge `#ec3013`, 10px 800, `padding:1px 5px`)
@@ -52,7 +62,7 @@ Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px.
 - **Configuration vs Preferences stays visible.** Each page header carries a scope note on the right.
 
 ### Index (canonical order)
-`General · Display · Units · Institutions · Accounts · Categories · Tags · Payees · Documents · Inventory · Sync server · Data & backup · Tracing (Logs) · About`
+`General · Display · Units · Institutions · Accounts · Categories · Tags · Payees · Documents · Inventory · Sync server · Backup · History · Logs · About`
 
 - **Rail chrome:** 214px wide, `border-right:2px solid rgba(32,30,29,.38)`, `padding:0 0 10px`. There is no filter box.
 - **Index rows:** the `SETTINGS` label (`padding:24px 14px 8px; 800 10px/1 Archivo; .11em; #9b9797`) sits directly above the entries. Entries are `padding:8px 14px`; the active one is `background:#201e1d; color:#f3f2f2; 800`.
@@ -61,7 +71,7 @@ Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px.
 ### Page anatomy (all pages)
 - **Body:** `flex:1; min-width:0; padding:22px 28px; overflow:auto`.
 - **Page heading (one per page):** a flex row, `align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:24px` (16px on Categories).
-  - Left: `h2` **"Settings – <Page>"** (28px/800, en dash with spaces), e.g. "Settings – General", "Settings – Data & backup".
+  - Left: `h2` **"Settings – <Page>"** (28px/800, en dash with spaces), e.g. "Settings – General", "Settings – Backup".
   - Right: a single combined note (11.5px #9b9797, right-aligned). It is the scope note followed by the page meta, joined with " · ", duplicates dropped (see the Pages table).
   - Then one 2px rule `rgba(32,30,29,.38)`, `flex:none`, `margin-bottom:24px` (16px on Categories).
   - There is no separate h4 section heading and no second rule.
@@ -81,9 +91,11 @@ Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px.
 | — | Payees | ledger data · synced | **Indexed but not yet drawn.** Build it to the same pattern as 16j: a kicker A–Z + **+ Add payee**, then name · default category · match rules · actions (edit · delete), reusing the Payees management view in section 20 (20a) with its count and spend columns dropped. |
 | **16p** | Documents | ledger data · synced · 7 types · 392 of 412 files typed | Kicker IN TYPE-FILTER ORDER + **+ Add type**. Table: TYPE flex (800) · TRACKS DATE 150 (Renews / Ends / Expires, or — in #9b9797) · REMIND 130 ("30 days before", or —) · TAX YEAR 90 (Yes / No) · FILES 60 (right, tabular) · ACTIONS 118 (edit · remove). Rows `padding:6px 14px; gap:14px; 12.5px`; selected row inverted (`#201e1d`/`#f3f2f2`, light-bordered buttons). Rows (TYPE · TRACKS DATE · REMIND · TAX YEAR · FILES): Receipts — — Yes 186 · Statements — — Yes 94 · Tax — — Yes 31 · **Insurance Renews 30 days before No 18 (selected)** · Warranties & manuals Ends 30 days before No 42 · Contracts Ends 60 days before No 9 · Identity Expires 6 months before No 6. Below, three 12px #605d5d notes (max 640px) explaining Tracks date, Tax year and removal (20 untyped files stay in the Inbox). Row order is the order of the Documents Type filter; reorder with `J`/`K`. Removing a type that still has files asks where to move them. Keys: `j/k`, `e`, `x`, `n`. |
 | **16q** | Inventory | ledger data · synced · 2 properties · 11 rooms · 232 items | Kicker PROPERTIES + **+ Add property**. A collapsible properties table: disclosure 14 · PROPERTY flex (name 800 over an 11px #605d5d address) · POLICY 170 (insurer · policy no.) · SUM INSURED 90 · ITEM LIMIT 80 · ITEMS 46 (all right-aligned, tabular) · ACTIONS 150 (+ room · edit · remove). Header row `padding:6px 14px`; property rows `padding:8px 14px; 12.5px`. An expanded property (▾) shows an indented rooms sub-table — ROOM flex · ITEMS · VALUE · ACTIONS (edit · remove) — in room-tab order, ending with **+ Add room**. Sample: **12 Elm St contents** (12 Elm St, Ainslie ACT · NRMA HC-4471902 · 150,000 · 2,000 · 214 items), expanded with Living 38 · 24,150 / Kitchen 46 · 22,310 / Bedroom 1 24 · 18,420 / Bedroom 2 16 · 8,060 / Bedroom 3 12 · 5,540 / **Office 19 · 15,240 (selected, inverted)** / Garage 27 · 15,060 / Laundry 11 · 3,120 / Bathroom 9 · 1,880 / Outdoor & shed 12 · 49,700 — values sum to **163,480**, the 8a total. **Storage unit** (Kennards, Unit 114 · Mitchell ACT · NRMA HC-4471902 away cover · 20,000 · 1,000 · 18 items) is shown collapsed (▸). Below, 12px #605d5d notes: each property is one Inventory register (switch with `o`) and its rooms are the room tabs, in this order; Sum insured and Item limit drive the cover check and over-limit flag; removing a room with items asks where to move them; removing a property keeps its items' transactions and documents. Keys: `j/k`, `→/←`, `e`, `x`, `n` new property, `r` new room. |
-| **16k** | Sync server | this device · synced · every 30 seconds | Server URL `sync.ledger.localhost`, Status (green dot `#2ecc71` + "connected"), Last sync `14 sep 2026 · 09:14`, **Sync now**. |
-| **16l** | Data & backup | this device · local files · aud · 2.84 mb | Store location `~/.ledger/personal`, Last backup `12 sep 2026 · 23:10`, **Backup now**, **Export ledger (CSV)**. |
-| **16m** | Tracing (Logs) | this device · diagnostic · last 1000 entries | The page body is a flex column (`overflow:hidden`). A `flex:none` row (`space-between; gap:12px; margin-bottom:10px`) holds the level radios (error / warn / info / debug) on the left and **Clear logs** (`.btn.btn-secondary`, 32px) on the right. Below it the log box fills the remaining width and height (`flex:1; min-height:0`): `border:1px solid rgba(32,30,29,.30); #eae9e9; padding:10px 12px`, monospace 11px/1.6 #605d5d, newest first, `overflow-y:scroll` with an always-visible scroll bar (`scrollbar-color:#605d5d #d7d3d3`). Entries are `[hh:mm:ss] <subsystem>: <message>`, using the subsystems sync, txn, budget, import, docs, price, bills, events, notify, store, loans and cards. In GPUI, use a virtualised list with a persistent scroll bar. |
+| **16k** | Sync server | this device · synced · every 30 seconds | Server URL `sync.ledger.localhost`, Status (green dot `#2ecc71` + "connected"), Last sync `14 sep 2026 · 09:14`, **Sync now**. **Edit** opens 16r; a failed **Test connection** shows 16s. |
+| **16l** | Backup (was Data & backup) | this device · local files · aud · 2.84 mb | LOCAL block: Store location `~/.ledger/personal`, Last snapshot `12 sep 2026 · 23:10`, **Back up now**, **Export ledger (CSV)**. GIT BACKUP block under it, same row treatment (label left #605d5d, value right 800 12px; `padding:8px 0`, 1px `#d7d3d3` rules), caps header `GIT BACKUP` with an underlined **Edit** at the right over a 2px rule: Remote `git@github.com:teda/ledger-backup.git` (11px), Branch `main`, Visibility (green dot + `private · checked 14:00`), Authentication `SSH key · ~/.ssh/id_ed25519`, Schedule `after changes · at most hourly`, and Commit message as a read-only prefix chip `2026-09-14 14:00 ·` (#eae9e9, tabular) beside the editable text `ledger backup`. **Set up / Edit** opens 16t. |
+| **16m** | Logs (was Tracing) | this device · diagnostic · last 1000 entries | The page body is a flex column (`overflow:hidden`). A `flex:none` row (`space-between; gap:12px; margin-bottom:10px`) holds the level radios (error / warn / info / debug) on the left and **Clear logs** (`.btn.btn-secondary`, 32px) on the right. Below it the log box fills the remaining width and height (`flex:1; min-height:0`): `border:1px solid rgba(32,30,29,.30); #eae9e9; padding:10px 12px`, monospace 11px/1.6 #605d5d, newest first, `overflow-y:scroll` with an always-visible scroll bar (`scrollbar-color:#605d5d #d7d3d3`). Entries are `[hh:mm:ss] <subsystem>: <message>`, using the subsystems sync, txn, budget, import, docs, price, bills, events, notify, store, loans and cards. In GPUI, use a virtualised list with a persistent scroll bar. |
+| **16u** | History | every change · newest first | One linear undo stack, newest first, with a marker. **Undo / Redo** move the marker one change; undone changes are greyed above it until a new edit discards them; **Restore to here** jumps several steps. Shared with `u` / `ctrl r` app-wide; synced changes undo on every device. See the frame for layout. |
+| **16u** | History | all devices · last 30 days · 214 changes | Flex column (`overflow:hidden`). A `flex:none` toolbar (`gap:8px; margin-bottom:12px`): **Undo** `u` and **Redo** `ctrl r` buttons (`padding:8px 14px; #eae9e9; border:1px solid rgba(32,30,29,.30)`, 800, key hint 400 11px #605d5d), then `Next undo: <b>Added Camera House −4,380.00</b>` (12px #605d5d), then a spacer and an area filter select (All areas / Transactions / Budgets / Settings, 12px). Below it a bordered list fills the rest (`flex:1; min-height:0; border:1px solid rgba(32,30,29,.30)`). Header row `#eae9e9`, `800 10px/1`, `.11em`, #605d5d: TIME 56 · AREA 110 · CHANGE flex · DEVICE 96 · action 120. Rows `padding:9px 12px; gap:12px`, 1px `#d7d3d3` rule, time tabular, area #605d5d, device #605d5d 12px (`this device`, `laptop`), newest first. **Undone rows** sit above the marker: all text `#9b9797`, the change struck through, action **Redo to here** (underlined, 12px). The **marker** is a dark band between them (`#201e1d`, `#f3f2f2`, `800 10px`, `.11em`): `▸ CURRENT STATE`, a hairline, then `2 changes can be redone · a new edit clears them` (11px #bab6b6). Applied rows below the marker carry the action **Restore to here**. Sample: 14:21 Transactions *Recategorised Woolworths −86.40 → Groceries* and 14:19 Budgets *Dining limit 400.00 → 350.00* are undone; 14:12 *Added Camera House −4,380.00 · Everyday*, 14:05 *Renamed tag holiday → travel*, 13:58 Bills *Marked Rates Q1 paid · 612.00* (laptop), 13:51 *Split Bunnings −142.75 three ways*, 13:44 *Added room Garage · 12 Elm St*, 13:30 *Imported 6 rows · anz-sep.qif*, 12:02 Accounts *Created ANZ Offset · aud* (laptop), 11:47 *Deleted duplicate Netflix −22.99*, 11:40 Budgets *Rollover applied · September*. Undo / Redo step the marker one change; **Redo to here** and **Restore to here** move it several. A new edit discards the greyed rows. Synced changes undo on every device. Keys: `u` undo, `ctrl r` redo, anywhere in the app. |
 | **16n** | About | version info | Flex column. Tagline (13px #605d5d, max 720px), 1px rule `rgba(32,30,29,.30)`, then **Personal Ledger v0.1.0** (800 13px) "(08 September 2026)", "Built with Rust + GPUI + SQLite" (12.5px #9b9797). Then labelled entries — caps label (`800 10px/1, .11em, #605d5d; margin:18px 0 8px`) over a 13px link in `#ae1800` (no underline; opens in the browser): AUTHOR Ian Teda · REPOSITORY github.com/IanTeda/personal-ledger · DOCUMENTATION ianteda.github.io/personal-ledger · REPORT AN ISSUE …/issues · LICENSE "Distributed under the **GPL-3.0 License**". A spacer pushes a 1px rule and "© 2025–2026 Ian Teda. All rights reserved." (11.5px #9b9797) to the bottom. Version, date and links come from build metadata. |
 
 ### Dialogs
@@ -102,6 +114,16 @@ All dialogs are 420px, `border:2px solid #201e1d`, with the shadow `0 16px 48px 
 
 ---
 
+
+
+### Dialogs added in v6 (16r–16t)
+All three share the dialog treatment of 16c–16e: dimmer `rgba(32,30,29,.30)` over the Settings page, panel `#f3f2f2; border:2px solid #201e1d; box-shadow:0 16px 48px rgba(32,30,29,.40)`, column flex. Title bar `padding:18px 20px; 800 16px Archivo; border-bottom:2px solid rgba(32,30,29,.30)`. Body `padding:20px` (18px on 16t), field `gap:16px` (14px on 16t). Labels `800 12px; margin-bottom:6px`; inputs `padding:8px 10px; border:1px solid rgba(32,30,29,.30); 13px; #f3f2f2`; help text 11.5px #605d5d, `margin-top:6px`. Footer `padding:16px 20px; border-top:1px solid #d7d3d3`: a 11.5px #605d5d note (flex 1), **Cancel** (transparent, 1px border), primary (`#201e1d` fill, `#f3f2f2`). Buttons `padding:8px 16px; 800`. The status bar shows the DIALOG chip, key hints and a right-hand state.
+
+| Frame | Dialog | Content |
+| --- | --- | --- |
+| **16r** | Edit sync server (480px) | **Server URL** `https://sync.ledger.localhost` (help: https:// is required; include the port if it isn't 443). **Access token**, masked, `letter-spacing:.15em` (help: from the server's admin page, stored in the OS keychain, never synced). **Test again** button (`#eae9e9`, 1px border), then a result box (`padding:10px 12px; #eae9e9; 12px`): green dot `#2ecc71`, **Connected · 42 ms**, then `server v1.4.2 · token accepted · tested 14:23` in #605d5d. Footer note "Saving reconnects and syncs this device."; **Save** primary. Status bar: `t test · esc cancel · enter save`, right `test passed`. Opened from 16k **Edit**. |
+| **16s** | Edit sync server, test failed | Same dialog with URL `https://sync.ledger.home:8443`, button label **Test connection**, and the result box in the error treatment: border and square (not round) marker in `#ae1800`, headline `#ae1800` **Couldn't connect · connection refused**, then `sync.ledger.home:8443 didn't answer. Check the address and port, and that the server is running.` The URL stays editable. Footer note "Save unlocks after a passing test."; **Save** is disabled (`disabled`, fill `#bab6b6`, no pointer cursor). Status bar right `test failed`. Name the cause in plain words for each failure (refused, timed out, bad certificate, token rejected). |
+| **16t** | Set up Git backup (540px) | **Remote URL** `git@github.com:teda/ledger-backup.git` (help: use a private repository, SSH `git@…` or HTTPS). A two-column row (`minmax(0,1fr) minmax(0,1.6fr)`, `gap:12px`): **Branch** `main`, and **Authentication** as a two-segment toggle, **SSH key** (active, inverted) / **Access token**. Below, the credential field follows the toggle: for SSH key a select (`~/.ssh/id_ed25519`, `~/.ssh/id_rsa`, `Generate a new key…`). **Push schedule**: four-segment toggle After changes (active) / Hourly / Daily / Manual, help "After changes waits for 5 minutes of quiet, then pushes at most hourly." **Commit message**: fixed prefix chip `yyyy-mm-dd hh:mm ·` (#eae9e9, tabular, not editable) beside an input `ledger backup`; help "The push's date and time is added in front automatically, e.g. 2026-09-14 14:00 · ledger backup." **Test connection** does a dry-run push; the result box shows green dot, **Ready · repository is empty**, `authenticated as teda · repository is private · dry-run push to main succeeded`. Footer note "Saving makes the first push (2.84 mb)."; primary **Save & push**. Opened from 16l **Set up / Edit**. |
 
 ## Keyboard
 | Key | Action |
@@ -155,11 +177,12 @@ Palette commands: `:settings <page>` jumps straight to a page, e.g. `:settings a
 ```
 settings
   page: General | Display | Units | Institutions | Accounts | Categories | Tags | Payees | Documents | Inventory
-      | SyncServer | DataBackup | Tracing | About
+      | SyncServer | Backup | History | Logs | About
   dialog: None | AddUnit | EditUnit(id) | DeleteUnit(id) | AddInstitution
         | AddAccount | EditAccount(id) | AddCategory(parent?) | AddTag | MergeTags(a,b) | AddPayee
         | AddDocType | EditDocType(id) | RemoveDocType(id, moveTo?)
         | AddProperty | EditProperty(id) | RemoveProperty(id)
+        | EditSyncServer | SetupGitBackup
         | AddRoom(propertyId) | EditRoom(id) | RemoveRoom(id, moveTo?)
   confirmInput: String
 preferences   // ledger-scoped, sync as Change Sets
@@ -214,7 +237,7 @@ Build to the intent, not the literal mockup:
 13. **Inventory counts are derived.** ITEMS and VALUE come from the inventory items; never store them. Rooms order = the room tabs in Inventory (8a).
 
 ## Files
-- `Settings.dc.html` — design reference (section 16): 16a, 16f, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16k–16n, then dialogs 16c–16e. Links to other sections point to the sibling package folders.
+- `Settings.dc.html` — design reference (section 16): 16a, 16f, 16g, 16h, 16o, 16i, 16j, 16p, 16q, 16k–16n, then 16u, then dialogs 16c–16e and 16r–16t. Links to other sections point to the sibling package folders.
 - `styles.css`, `_ds_bundle.js` — Modernist tokens and components.
 - `support.js` — runtime for viewing the reference.
 - `README.md` — this document.

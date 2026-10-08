@@ -40,14 +40,6 @@ a:hover{color:#ae1800}
     <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer" title="toggle sidebar">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11"></rect><line x1="6" y1="2.5" x2="6" y2="13.5"></line></svg>
     </div>
-    <div style="display:flex;align-items:center;gap:2px">
-      <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer" title="back (alt ←)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#201e1d" stroke-width="2" stroke-linecap="square"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-      </div>
-      <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:default;opacity:.35" title="forward (alt →)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#201e1d" stroke-width="2" stroke-linecap="square"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-      </div>
-    </div>
     <div style="display:flex;align-items:baseline;gap:8px">
       <span style="font-weight:800;font-size:13.5px;letter-spacing:-.01em">Personal Ledger</span>
       <span style="color:#9b9797;font-size:13.5px">|</span>
@@ -115,7 +107,7 @@ a:hover{color:#ae1800}
 </div>
 
 <div class="dv-opt" id="1b">
-<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>The active dashboard: net worth, cash/investments/liabilities at a glance, and what needs action today. The second rail becomes a persistent "accounts at a glance" panel rather than a record list — Dashboard has no records of its own, but this is exactly where a quick-jump account list earns its keep.</div>
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>The active dashboard: net worth, cash/investments/liabilities at a glance, and what needs action today. The second rail is a persistent "accounts at a glance" panel rather than a record list — Dashboard has no records of its own, so nothing is selected; <code>j/k</code> + <code>enter</code> jumps into an account.</div>
 <div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
 
   <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38)">
@@ -123,7 +115,9 @@ a:hover{color:#ae1800}
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11"></rect><line x1="6" y1="2.5" x2="6" y2="13.5"></line></svg>
     </div>
     <div style="display:flex;align-items:baseline;gap:8px">
-      <span style="font-weight:800;font-size:13.5px">Personal Ledger</span>
+      <span style="font-weight:800;font-size:13.5px;letter-spacing:-.01em">Personal Ledger</span>
+      <span style="color:#9b9797;font-size:13.5px">|</span>
+      <span style="font-weight:600;font-size:13.5px">Dashboard</span>
     </div>
     <div style="flex:1"></div>
     <div style="display:flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid rgba(32,30,29,.30);color:#605d5d;font-size:12px"><span style="font-weight:800;color:#201e1d">:</span><span>run a command</span></div>
@@ -167,9 +161,9 @@ a:hover{color:#ae1800}
         <input class="input" style="height:30px;min-height:30px;font-size:12.5px" placeholder="/ filter accounts">
       </div>
       <div style="padding:10px 12px 4px;font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">BANK</div>
-      <div style="padding:8px 12px;border-bottom:2px solid rgba(32,30,29,.38);background:#201e1d;color:#f3f2f2;display:flex;flex-direction:column;gap:2px">
-        <div style="display:flex;justify-content:space-between"><span style="font-weight:800">ANZ Everyday</span><span style="font-variant-numeric:tabular-nums;font-weight:800">4,182.55</span></div>
-        <div style="font-size:11px;color:#bab6b6">aud · 312 transactions</div>
+      <div style="padding:8px 12px;display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;justify-content:space-between"><span>ANZ Everyday</span><span style="font-variant-numeric:tabular-nums">4,182.55</span></div>
+        <div style="font-size:11px;color:#9b9797">aud · 312 transactions</div>
       </div>
       <div style="padding:8px 12px;display:flex;flex-direction:column;gap:2px">
         <div style="display:flex;justify-content:space-between"><span>ANZ Offset</span><span style="font-variant-numeric:tabular-nums">61,204.10</span></div>
@@ -198,71 +192,47 @@ a:hover{color:#ae1800}
       <div style="padding:10px 12px;border-top:1px solid #d7d3d3;color:#605d5d;font-size:11.5px">7 accounts · <span style="color:#201e1d;font-weight:800">n</span> new</div>
     </div>
 
-    <div style="flex:1;min-width:0;display:flex;flex-direction:column">
-      <div style="padding:16px 22px 12px;border-bottom:2px solid rgba(32,30,29,.38)">
-        <div style="display:flex;align-items:flex-end;justify-content:space-between">
-          <div>
-            <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;margin-bottom:6px">BANK · AUD · OPENED MAR 2019</div>
-            <h4 style="margin:0;font-size:22px">ANZ Everyday</h4>
-          </div>
-          <div style="display:flex;align-items:flex-end;gap:20px">
-            <div style="text-align:right">
-              <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;margin-bottom:5px">BALANCE</div>
-              <div style="font:800 26px/1 'Archivo';font-variant-numeric:tabular-nums">4,182.55</div>
-            </div>
-            <button class="btn btn-secondary" style="height:32px">reconcile <span style="color:#9b9797;margin-left:4px">:reconcile</span></button>
-            <button class="btn btn-primary" style="height:32px">add transaction <span style="margin-left:4px;opacity:.75">a</span></button>
-          </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:16px 22px 14px;border-bottom:2px solid rgba(32,30,29,.38);display:flex;align-items:flex-end;justify-content:space-between">
+        <div>
+          <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;margin-bottom:6px">NET WORTH · 12 SEP 2026</div>
+          <div style="display:flex;align-items:baseline;gap:12px"><span style="font:800 34px/1 'Archivo';letter-spacing:-.02em;font-variant-numeric:tabular-nums">218,940.12</span><span style="font-size:12px;color:#605d5d">aud · <span style="color:#201e1d;font-weight:800">+3,412.80</span> this month</span></div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary" style="height:32px">reports <span style="color:#9b9797;margin-left:4px">g r</span></button>
+          <button class="btn btn-primary" style="height:32px">add transaction <span style="margin-left:4px;opacity:.75">a</span></button>
         </div>
       </div>
-
-      <div style="display:flex;align-items:center;gap:10px;padding:9px 22px;border-bottom:1px solid #d7d3d3;font-size:11.5px;color:#605d5d">
-        <span class="tag tag-outline" style="padding:2px 8px">all statuses</span>
-        <span class="tag tag-outline" style="padding:2px 8px">this year</span>
-        <span class="tag tag-outline" style="padding:2px 8px">any category</span>
-        <div style="flex:1"></div>
-        <span>312 transactions · <span style="color:#ae1800;font-weight:800">14</span> unreconciled</span>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border-bottom:2px solid rgba(32,30,29,.38);margin-right:-2px">
+        <div style="padding:14px 18px;display:flex;flex-direction:column;gap:6px;border-right:2px solid rgba(32,30,29,.38)"><div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">CASH</div><div style="font:800 22px/1 'Archivo';font-variant-numeric:tabular-nums">65,386.65</div><div style="font-size:11.5px;color:#605d5d">2 bank accounts</div></div>
+        <div style="padding:14px 18px;display:flex;flex-direction:column;gap:6px;border-right:2px solid rgba(32,30,29,.38)"><div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">INVESTMENTS</div><div style="font:800 22px/1 'Archivo';font-variant-numeric:tabular-nums">537,183.25</div><div style="font-size:11.5px;color:#605d5d">VAS · BTC · last price 14:00</div></div>
+        <div style="padding:14px 18px;display:flex;flex-direction:column;gap:6px;border-right:2px solid rgba(32,30,29,.38)"><div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">LIABILITIES</div><div style="font:800 22px/1 'Archivo';font-variant-numeric:tabular-nums;color:#ae1800">−383,629.78</div><div style="font-size:11.5px;color:#605d5d">home loan · amex</div></div>
       </div>
-
-      <div style="flex:1;overflow:hidden">
-        <div style="display:flex;padding:8px 22px;font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;border-bottom:1px solid #d7d3d3">
-          <span style="width:20px"></span><span style="width:84px">DATE</span><span style="flex:1">PAYEE</span><span style="width:120px">CATEGORY</span><span style="width:104px;text-align:right">AMOUNT</span><span style="width:110px;text-align:right">BALANCE</span>
+      <div style="flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)">
+        <div style="border-right:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;min-height:0">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 18px 8px;border-bottom:1px solid #d7d3d3"><span style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">NEEDS ACTION</span><span style="font-size:11.5px;color:#605d5d">5 items</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid #eae9e9"><span class="tag tag-accent" style="padding:2px 7px;width:64px">overdue</span><div style="flex:1;min-width:0"><div style="font-weight:800">Origin Energy</div><div style="font-size:11.5px;color:#605d5d">bill · due 10 sep</div></div><span style="font-variant-numeric:tabular-nums;width:92px;text-align:right">188.40</span><span style="font-size:11px;color:#9b9797;width:52px;text-align:right">enter</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid #eae9e9"><span class="tag tag-accent" style="padding:2px 7px;width:64px">due today</span><div style="flex:1;min-width:0"><div style="font-weight:800">Amex Platinum</div><div style="font-size:11.5px;color:#605d5d">card payment · from ANZ Everyday</div></div><span style="font-variant-numeric:tabular-nums;width:92px;text-align:right">2,318.44</span><span style="font-size:11px;color:#9b9797;width:52px;text-align:right">enter</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid #eae9e9"><span class="tag tag-neutral" style="padding:2px 7px;width:64px">reconcile</span><div style="flex:1;min-width:0"><div style="font-weight:800">ANZ Everyday</div><div style="font-size:11.5px;color:#605d5d">14 unreconciled since 1 sep</div></div><span style="font-variant-numeric:tabular-nums;width:92px;text-align:right"></span><span style="font-size:11px;color:#9b9797;width:52px;text-align:right">R</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid #eae9e9"><span class="tag tag-neutral" style="padding:2px 7px;width:64px">review</span><div style="flex:1;min-width:0"><div style="font-weight:800">3 imported transactions</div><div style="font-size:11.5px;color:#605d5d">uncategorised · ANZ Offset</div></div><span style="font-variant-numeric:tabular-nums;width:92px;text-align:right"></span><span style="font-size:11px;color:#9b9797;width:52px;text-align:right">g l</span></div>
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid #eae9e9"><span class="tag tag-outline" style="padding:2px 7px;width:64px">in 4 days</span><div style="flex:1;min-width:0"><div style="font-weight:800">Telstra</div><div style="font-size:11.5px;color:#605d5d">bill · 16 sep</div></div><span style="font-variant-numeric:tabular-nums;width:92px;text-align:right">99.00</span><span style="font-size:11px;color:#9b9797;width:52px;text-align:right">enter</span></div>
+          <div style="flex:1"></div>
+          <div style="padding:12px 18px;border-top:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;justify-content:space-between"><span style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">SEPTEMBER BUDGET</span><span style="font-size:11.5px;color:#605d5d;font-variant-numeric:tabular-nums">2,184 of 4,600 · 18 days left</span></div>
+            <div style="height:8px;background:#eae9e9;display:flex"><div style="width:47%;background:#201e1d"></div></div>
+            <div style="font-size:11.5px;color:#605d5d">dining over by <span style="color:#ae1800;font-weight:800">42.60</span> · everything else on track</div>
+          </div>
         </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;background:#201e1d;color:#f3f2f2;font-variant-numeric:tabular-nums">
-          <span style="width:20px">○</span><span style="width:84px">12 sep</span><span style="flex:1;font-weight:800">Woolworths Metro</span><span style="width:120px;color:#d7d3d3">groceries</span><span style="width:104px;text-align:right">−86.40</span><span style="width:110px;text-align:right">4,182.55</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px">○</span><span style="width:84px">12 sep</span><span style="flex:1">Ampol Foodary</span><span style="width:120px;color:#605d5d">transport</span><span style="width:104px;text-align:right">−94.11</span><span style="width:110px;text-align:right">4,268.95</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px;color:#ec3013">⚑</span><span style="width:84px">11 sep</span><span style="flex:1">Bunnings Warehouse</span><span style="width:120px;color:#605d5d">home</span><span style="width:104px;text-align:right">−312.80</span><span style="width:110px;text-align:right">4,363.06</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px">◐</span><span style="width:84px">10 sep</span><span style="flex:1">Telstra</span><span style="width:120px;color:#605d5d">utilities</span><span style="width:104px;text-align:right">−99.00</span><span style="width:110px;text-align:right">4,675.86</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px">◐</span><span style="width:84px">09 sep</span><span style="flex:1">Dept of Education</span><span style="width:120px;color:#605d5d">salary</span><span style="width:104px;text-align:right;font-weight:800">+4,210.00</span><span style="width:110px;text-align:right">4,774.86</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px">●</span><span style="width:84px">08 sep</span><span style="flex:1">Coles Online</span><span style="width:120px;color:#605d5d">groceries</span><span style="width:104px;text-align:right">−184.22</span><span style="width:110px;text-align:right">564.86</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px">●</span><span style="width:84px">07 sep</span><span style="flex:1">Anytime Fitness</span><span style="width:120px;color:#605d5d">health</span><span style="width:104px;text-align:right">−21.95</span><span style="width:110px;text-align:right">749.08</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px">●</span><span style="width:84px">05 sep</span><span style="flex:1">ANZ Home Loan</span><span style="width:120px;color:#605d5d">housing</span><span style="width:104px;text-align:right">−2,410.00</span><span style="width:110px;text-align:right">771.03</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px">●</span><span style="width:84px">04 sep</span><span style="flex:1">Kmart AU</span><span style="width:120px;color:#605d5d">household</span><span style="width:104px;text-align:right">−58.00</span><span style="width:110px;text-align:right">3,181.03</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px">●</span><span style="width:84px">03 sep</span><span style="flex:1">Uber Eats</span><span style="width:120px;color:#605d5d">dining</span><span style="width:104px;text-align:right">−44.60</span><span style="width:110px;text-align:right">3,239.03</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9">
-          <span style="width:20px">●</span><span style="width:84px">02 sep</span><span style="flex:1">Origin Energy</span><span style="width:120px;color:#605d5d">utilities</span><span style="width:104px;text-align:right">−188.40</span><span style="width:110px;text-align:right">3,283.63</span>
-        </div>
-        <div style="display:flex;align-items:center;padding:9px 22px;font-variant-numeric:tabular-nums">
-          <span style="width:20px">●</span><span style="width:84px">01 sep</span><span style="flex:1">Woolworths Metro</span><span style="width:120px;color:#605d5d">groceries</span><span style="width:104px;text-align:right">−63.15</span><span style="width:110px;text-align:right">3,472.03</span>
+        <div style="display:flex;flex-direction:column;min-height:0">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 18px 8px;border-bottom:1px solid #d7d3d3"><span style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">RECENT</span><span style="font-size:11.5px;color:#605d5d">all accounts · <span style="color:#201e1d;font-weight:800">g l</span></span></div>
+          <div style="display:flex;align-items:center;padding:9px 18px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9"><span style="width:56px;color:#605d5d">12 sep</span><span style="flex:1;min-width:0">Woolworths Metro</span><span style="width:96px;color:#605d5d;font-size:12px">ANZ Everyday</span><span style="width:84px;text-align:right">−86.40</span></div>
+          <div style="display:flex;align-items:center;padding:9px 18px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9"><span style="width:56px;color:#605d5d">12 sep</span><span style="flex:1;min-width:0">Ampol Foodary</span><span style="width:96px;color:#605d5d;font-size:12px">ANZ Everyday</span><span style="width:84px;text-align:right">−94.11</span></div>
+          <div style="display:flex;align-items:center;padding:9px 18px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9"><span style="width:56px;color:#605d5d">11 sep</span><span style="flex:1;min-width:0">Bunnings Warehouse</span><span style="width:96px;color:#605d5d;font-size:12px">ANZ Everyday</span><span style="width:84px;text-align:right">−312.80</span></div>
+          <div style="display:flex;align-items:center;padding:9px 18px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9"><span style="width:56px;color:#605d5d">11 sep</span><span style="flex:1;min-width:0">Qantas</span><span style="width:96px;color:#605d5d;font-size:12px">Amex</span><span style="width:84px;text-align:right">−684.00</span></div>
+          <div style="display:flex;align-items:center;padding:9px 18px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9"><span style="width:56px;color:#605d5d">10 sep</span><span style="flex:1;min-width:0">Telstra</span><span style="width:96px;color:#605d5d;font-size:12px">ANZ Everyday</span><span style="width:84px;text-align:right">−99.00</span></div>
+          <div style="display:flex;align-items:center;padding:9px 18px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9"><span style="width:56px;color:#605d5d">09 sep</span><span style="flex:1;min-width:0">Dept of Education</span><span style="width:96px;color:#605d5d;font-size:12px">ANZ Everyday</span><span style="width:84px;text-align:right;font-weight:800">+4,210.00</span></div>
+          <div style="display:flex;align-items:center;padding:9px 18px;font-variant-numeric:tabular-nums;border-bottom:1px solid #eae9e9"><span style="width:56px;color:#605d5d">08 sep</span><span style="flex:1;min-width:0">Coles Online</span><span style="width:96px;color:#605d5d;font-size:12px">ANZ Everyday</span><span style="width:84px;text-align:right">−184.22</span></div>
+          <div style="display:flex;align-items:center;padding:9px 18px;font-variant-numeric:tabular-nums"><span style="width:56px;color:#605d5d">05 sep</span><span style="flex:1;min-width:0">ANZ Home Loan</span><span style="width:96px;color:#605d5d;font-size:12px">Home Loan</span><span style="width:84px;text-align:right">−2,410.00</span></div>
         </div>
       </div>
     </div>
@@ -270,9 +240,9 @@ a:hover{color:#ae1800}
 
   <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#605d5d">
     <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">NORMAL</span>
-    <span><span style="color:#201e1d;font-weight:800">j/k</span> row · <span style="color:#201e1d;font-weight:800">e</span> edit · <span style="color:#201e1d;font-weight:800">c</span> clear · <span style="color:#201e1d;font-weight:800">R</span> reconcile · <span style="color:#201e1d;font-weight:800">f</span> flag · <span style="color:#201e1d;font-weight:800">d</span> delete</span>
+    <span><span style="color:#201e1d;font-weight:800">j/k</span> item · <span style="color:#201e1d;font-weight:800">enter</span> open · <span style="color:#201e1d;font-weight:800">tab</span> next panel · <span style="color:#201e1d;font-weight:800">a</span> add transaction</span>
     <div style="flex:1"></div>
-    <span>○ open · ◐ cleared · ● reconciled · ⚑ flagged</span>
+    <span>ledger · dashboard</span>
   </div>
 </div>
 </div>
@@ -355,8 +325,9 @@ a:hover{color:#ae1800}
       <div style="padding:8px 14px">Tags</div>
       <div style="padding:8px 14px;background:#201e1d;color:#f3f2f2;font-weight:800">Display</div>
       <div style="padding:8px 14px">Sync server</div>
-      <div style="padding:8px 14px">Data &amp; backup</div>
-      <div style="padding:8px 14px">Tracing (Logs)</div>
+      <div style="padding:8px 14px">Backup</div>
+      <div style="padding:8px 14px">History</div>
+      <div style="padding:8px 14px">Logs</div>
       <div style="padding:8px 14px">About</div>
       <div style="flex:1"></div>
       <div style="padding:10px 14px;border-top:1px solid #d7d3d3;color:#9b9797;font-size:11px">preferences sync · display is local</div>
@@ -516,7 +487,6 @@ a:hover{color:#ae1800}
 
 </div>
 
-</div>
 <div class="dv-opt" id="1e">
 <div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Same empty shell as <a class="dv-oid" href="#1a">1a</a>, with the <code>:open</code> command's file explorer floated over it — browsing to a <code>.pldb</code> file. Path bar, sortable list, and a disabled Open until a <code>.pldb</code> row is selected.</div>
 <div class="dv-card" style="width:1280px;height:800px;position:relative;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
@@ -727,8 +697,9 @@ a:hover{color:#ae1800}
 </div>
 </div>
 
-</div>
+
 <p class="dv-next">Try next: "go with <a class="dv-oid" href="#1b">1b</a>'s second rail but <a class="dv-oid" href="#1a">1a</a>'s grouped nav" · "show the rails at 1024px wide" · "write the gpui handoff for <a class="dv-oid" href="#1a">1a</a>" · "add the same explorer to <a class="dv-oid" href="#1e">1e</a>'s <code>:new</code> flow"</p>
+
 </section>
 </x-dc>
 </body>

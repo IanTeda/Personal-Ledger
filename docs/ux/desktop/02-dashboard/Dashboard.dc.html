@@ -32,20 +32,12 @@ a:hover{color:#ae1800}
 <div class="dv-thd"><span class="dv-tid">2</span><span class="dv-tname">Dashboard: no ledger open, then three views of the same morning — Today, Net worth, This month</span></div>
 <div class="dv-opts">
 <div class="dv-opt" id="2a">
-<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><b>No ledger open</b>: the Dashboard before any file is loaded, the same empty shell as <a class="dv-oid" href="../01-shell/Shell.dc.html#1a">1a</a>. The view switcher is hidden because there's nothing to show. <code>:open</code> or <code>:new</code> loads a ledger, and the Dashboard opens on the last view used (<a class="dv-oid" href="#2b">2b</a> the first time).</div>
+<div class="dv-olabel"><a class="dv-oid" href="#2a">2a</a><b>No ledger open</b>: the Dashboard before any file is loaded, the same empty shell as <a class="dv-oid" href="#1a">1a</a>. The view switcher is hidden because there's nothing to show. <code>:open</code> or <code>:new</code> loads a ledger, and the Dashboard opens on the last view used (<a class="dv-oid" href="#2b">2b</a> the first time).</div>
 <div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
 
   <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38)">
     <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer" title="toggle sidebar">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11"></rect><line x1="6" y1="2.5" x2="6" y2="13.5"></line></svg>
-    </div>
-    <div style="display:flex;align-items:center;gap:2px">
-      <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer" title="back (alt ←)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#201e1d" stroke-width="2" stroke-linecap="square"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-      </div>
-      <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:default;opacity:.35" title="forward (alt →)">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#201e1d" stroke-width="2" stroke-linecap="square"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
-      </div>
     </div>
     <div style="display:flex;align-items:baseline;gap:8px">
       <span style="font-weight:800;font-size:13.5px;letter-spacing:-.01em">Personal Ledger</span>
@@ -102,16 +94,17 @@ a:hover{color:#ae1800}
   <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#605d5d">
     <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">NORMAL</span>
     <span style="display:flex;align-items:center;gap:6px">
-      <a href="../01-shell/Shell.dc.html#1d" style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border:1px solid rgba(32,30,29,.28);color:#605d5d;text-decoration:none;cursor:pointer" title="open command palette"><span style="color:#201e1d;font-weight:800">:</span>command</a>
+      <a href="#1d" style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border:1px solid rgba(32,30,29,.28);color:#605d5d;text-decoration:none;cursor:pointer" title="open command palette"><span style="color:#201e1d;font-weight:800">:</span>command</a>
       <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border:1px solid rgba(32,30,29,.28);cursor:pointer" title="focus search"><span style="color:#201e1d;font-weight:800">/</span>search</span>
       <span style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border:1px solid rgba(32,30,29,.28);cursor:pointer" title="toggle sidebar"><span style="color:#201e1d;font-weight:800">b</span>toggle sidebar</span>
-      <a href="../01-shell/Shell.dc.html#1f" style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border:1px solid rgba(32,30,29,.28);color:#605d5d;text-decoration:none;cursor:pointer" title="open help"><span style="color:#201e1d;font-weight:800">?</span>help</a>
+      <a href="#1f" style="display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border:1px solid rgba(32,30,29,.28);color:#605d5d;text-decoration:none;cursor:pointer" title="open help"><span style="color:#201e1d;font-weight:800">?</span>help</a>
     </span>
     <div style="flex:1"></div>
     <span>ledger · dashboard</span>
   </div>
 </div>
 </div>
+
 <div class="dv-opt" id="2b">
 <div class="dv-olabel"><a class="dv-oid" href="#2b">2b</a><b>Today</b> (<code>1</code>, the default). Puts the next action first. The three items under <b>Needs you</b> are the unresolved Notifications, each with its own button. Beside them are the next 14 days of instant cash, ending at payday. Recent transactions show the import still waiting for categories. The four headline figures come from Cash, Budgets, Net worth and Bills, so nothing on this page is calculated only here.</div>
 <div class="dv-card" style="width:1280px;height:800px;position:relative;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
@@ -245,7 +238,7 @@ a:hover{color:#ae1800}
     </div><div style="flex:1;min-width:0;padding:22px 28px;overflow:hidden;display:flex;flex-direction:column"><div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px"><div><h2 style="margin:0 0 4px;font-size:28px;font-weight:800">Dashboard</h2><div style="font-size:11.5px;color:#9b9797">monday 14 september 2026 · aud · 9 accounts</div></div><div style="display:flex"><div style="padding:6px 12px;border:1px solid rgba(32,30,29,.30);color:#605d5d;font-size:12px">Today <span style="opacity:.6;margin-left:3px">1</span></div><div style="padding:6px 12px;border:1px solid #201e1d;background:#201e1d;color:#f3f2f2;font-weight:800;font-size:12px;margin-left:-1px">Net worth <span style="opacity:.6;margin-left:3px">2</span></div><div style="padding:6px 12px;border:1px solid rgba(32,30,29,.30);color:#605d5d;font-size:12px;margin-left:-1px">This month <span style="opacity:.6;margin-left:3px">3</span></div></div></div>
 <div style="flex:none;height:2px;background:rgba(32,30,29,.38)"></div><div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:2px solid rgba(32,30,29,.38);margin-bottom:16px"><div style="padding:10px 16px 10px 0px;display:flex;flex-direction:column;gap:8px;min-width:0"><span style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">NET WORTH</span><span style="font-size:24px;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1">955,366.31</span><span style="font-size:11.5px;color:#605d5d;text-wrap:pretty">+4,120.55 since 1 sep · +43,266 over 12 months</span></div><div style="padding:10px 16px 10px 16px;border-left:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;gap:8px;min-width:0"><span style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">LIQUID NET WORTH</span><span style="font-size:24px;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1">310,524.16</span><span style="font-size:11.5px;color:#605d5d;text-wrap:pretty">cash and investments, less cards — no home, no contents</span></div><div style="padding:10px 16px 10px 16px;border-left:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;gap:8px;min-width:0"><span style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">DEBT TO ASSETS</span><span style="font-size:24px;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1">35.2%</span><span style="font-size:11.5px;color:#605d5d;text-wrap:pretty">519,076.29 owed against 1,474,442.60</span></div><div style="padding:10px 16px 10px 16px;border-left:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;gap:8px;min-width:0"><span style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">HOME EQUITY</span><span style="font-size:24px;font-weight:800;letter-spacing:-.01em;font-variant-numeric:tabular-nums;line-height:1">603,242.15</span><span style="font-size:11.5px;color:#605d5d;text-wrap:pretty">1,120,000 valuation less the 516,757.85 loan</span></div></div>
 <div style="position:relative;height:150px;margin-bottom:16px">
-<svg width="100%" height="132" viewBox="0 0 1000 180" preserveAspectRatio="none" style="display:block">
+<svg width="100%" height="132" viewBox="0 0 1000 180" sc-camel-preserve-aspect-ratio="none" style="display:block">
 <line x1="0" y1="10" x2="1000" y2="10" stroke="#d7d3d3" stroke-width="1" vector-effect="non-scaling-stroke"></line>
 <line x1="0" y1="63.3" x2="1000" y2="63.3" stroke="#d7d3d3" stroke-width="1" vector-effect="non-scaling-stroke"></line>
 <line x1="0" y1="116.7" x2="1000" y2="116.7" stroke="#d7d3d3" stroke-width="1" vector-effect="non-scaling-stroke"></line>
@@ -351,7 +344,7 @@ a:hover{color:#ae1800}
 </div><div style="flex:5;min-width:0;display:flex;flex-direction:column">
 <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px"><span style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797">CUMULATIVE SPEND</span><span style="font-size:11.5px;color:#9b9797">september vs august</span></div>
 <div style="position:relative;height:146px;margin-bottom:14px">
-<svg width="100%" height="128" viewBox="0 0 1000 180" preserveAspectRatio="none" style="display:block">
+<svg width="100%" height="128" viewBox="0 0 1000 180" sc-camel-preserve-aspect-ratio="none" style="display:block">
 <line x1="0" y1="19.3" x2="1000" y2="19.3" stroke="#605d5d" stroke-width="1" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"></line>
 <line x1="0" y1="170" x2="1000" y2="170" stroke="rgba(32,30,29,.38)" stroke-width="2" vector-effect="non-scaling-stroke"></line>
 <line x1="0" y1="170" x2="1000" y2="19.3" stroke="#bab6b6" stroke-width="1" vector-effect="non-scaling-stroke"></line>
@@ -380,6 +373,7 @@ a:hover{color:#ae1800}
 
 </div>
 <p class="dv-next">Try next: "a calendar view of the month with bills and paydays on the days" · "let me pin which view opens by default in Settings › General"</p>
+
 </section>
 </x-dc>
 </body>

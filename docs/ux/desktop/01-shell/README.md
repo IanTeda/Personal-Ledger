@@ -36,23 +36,24 @@ All four variants are drawn at **1280 × 800** — the reference desktop window 
 
 **Why it matters**: The rail stays fully populated and legible with no ledger loaded — navigation is app structure, not document content. Only the main pane and the header's file label are empty.
 
-### 1b — Flat primary rail + records rail (list–detail)
-**Purpose**: List–detail. The second rail holds the **records of the current noun**, so an account's ledger is one selection away. Rail one is flat (no group headings); the noun's own actions sit in the view header, not the rail.
+### 1b — Dashboard with an accounts-at-a-glance rail
+**Purpose**: The active dashboard: net worth, cash / investments / liabilities at a glance, and what needs action today. The second rail is a persistent "accounts at a glance" panel rather than a record list. Dashboard has no records of its own, so nothing is selected; `j/k` + `enter` jumps into an account.
 
 **Layout**:
-- Header breadcrumb: `accounts › ANZ Everyday`
+- Header: `Personal Ledger | Dashboard`
 - Primary rail (206px): flat list, Dashboard active
-- Secondary rail: filterable account list — `/ filter accounts` box at top, account rows with name + balance, selected row in the dark treatment
-- Main pane: the selected account's transaction ledger
+- Secondary rail: accounts at a glance (e.g. ANZ Everyday 4,182.55, `aud · 312 transactions`)
+- Main pane: NET WORTH (218,940.12, `+3,412.80 this month`) with CASH, INVESTMENTS and LIABILITIES tiles; NEEDS ACTION (5 items: overdue, due today, reconcile, review, in 4 days); SEPTEMBER BUDGET; RECENT transactions across all accounts
+- Status line: `j/k item · enter open · tab next panel · a add transaction`
 
-**Alignment note**: the rule under the `/ filter accounts` box lines up with the rule under the view header — the two rails share one horizontal datum.
+**Changed 9 October 2026**: 1b previously showed one account's ledger (`accounts › ANZ Everyday`). The ledger view now lives in Transactions (package 03).
 
 ### 1c — Collapsed icon rail + section index
 **Purpose**: Rail one collapsed to icons (`b` toggles; hover reveals label + binding). The second rail becomes the screen's own table of contents — here, the settings index.
 
 **Layout**:
 - Primary rail: icon-only, ~48px wide
-- Secondary rail (214px): filter box, `SETTINGS` label, then the settings pages — General, Ledger & units, Units, Institutions, Display, Sync server, Data & backup, Tracing (Logs), About
+- Secondary rail (214px): filter box, `SETTINGS` label, then the settings pages — General, Ledger & units, Units, Institutions, Display, Sync server, Backup, History, Logs, About
 - Main pane: the selected settings pane (Display shown)
 
 ### 1d — Command palette
@@ -231,3 +232,8 @@ fileExplorer
 - `Shell.dc.html` — the prototype, section 1 only (1a–1f, incl. 1f Help & About), with the current rail (Events added). Other destinations link to the sibling package folders.
 - `styles.css`, `_ds_bundle.js`, `support.js` — Modernist tokens/components and the viewer runtime
 - `README.md` — this document
+
+## Changes (9 October 2026)
+- **Header:** the back / forward buttons (`alt ←` / `alt →`) are removed from every frame; the header is panel toggle, wordmark, breadcrumb, `:` command affordance, sync status, window controls.
+- **1b** is now the Dashboard (see above).
+- **Settings rail** lists Backup, History and Logs in place of Data & backup and Tracing (Logs).

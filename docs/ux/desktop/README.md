@@ -2,7 +2,7 @@
 
 High-fidelity design references for the Personal Ledger desktop app, to be rebuilt in **Rust + GPUI**. Each package holds one destination: a design file (`*.dc.html`, open it in a browser) and a `README.md` spec. Every design file is taken from the current master, `Ledger Desktop Shell.dc.html`, so the frame numbers here match the master.
 
-Generated 3 October 2026. This set replaces all earlier `design_handoff_*` folders.
+Generated 3 October 2026; per-view frames re-synced to the new master on 9 October 2026 (header back / forward removed, 1b is the Dashboard, Settings gains Backup, History, Logs and dialogs 16r–16t). This set replaces all earlier `design_handoff_*` folders.
 
 ## How to use
 1. Read this file for the shell, the rail and the tokens that every destination shares.
@@ -29,7 +29,7 @@ Generated 3 October 2026. This set replaces all earlier `design_handoff_*` folde
 | `13-budgets` | Budgets v1: Progress, Plan, History | 13a–13g | PLAN · `g b` |
 | `14-budgets-v2` | Budgets v2: multiple budgets, four methods | 14a–14f | PLAN · `g b` |
 | `15-reports` | Reports | 15a–15i | PLAN · `g r` |
-| `16-settings` | Settings, one page per section | 16a–16q, dialogs 16c–16e | pinned · `g s` |
+| `16-settings` | Settings, one page per section | 16a–16u, dialogs 16c–16e, 16r–16t | pinned · `g s` |
 | `17-accounts` | Account management & forms | 17a–17d | Settings › Accounts |
 | `18-categories` | Category dialogs | 18a–18d | Settings › Categories |
 | `19-tags` | Tag dialogs & merge | 19a–19e | Settings › Tags |
