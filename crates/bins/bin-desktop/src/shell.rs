@@ -19,13 +19,17 @@
 //! (`NavState::focus`), not `gpui`'s native focus system, which we only need once, to receive
 //! keystrokes at all.
 
+mod dialogs;
 mod document_types_ui;
 mod documents_ui;
+mod explorer;
 mod inventory_ui;
 mod log_feed;
+mod rail;
 mod snapshots;
 mod toasts;
 
+use explorer::explorer_start_dir;
 pub use log_feed::LOG_COALESCE;
 use log_feed::{LOG_LINE_STEP, LOG_LIST_OVERDRAW};
 #[doc(hidden)]
@@ -36,7 +40,6 @@ pub use snapshots::{
 };
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -44,8 +47,8 @@ use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
 
 use gpui::{
     Context, ExternalPaths, FocusHandle, Focusable, KeyDownEvent, Keystroke, ListAlignment,
-    ListState, ScrollHandle, ScrollStrategy, SharedString, Timer, UniformListScrollHandle, Window,
-    div, point, prelude::*, px,
+    ListState, ScrollHandle, ScrollStrategy, SharedString, UniformListScrollHandle, Window, div,
+    point, prelude::*, px,
 };
 
 use chrono::{DateTime, Local};
@@ -63,7 +66,7 @@ use crate::{
     chrome::dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog},
     chrome::palette::Palette,
     chrome::rail::{
-        self,
+        self as chrome_rail,
         context::ContextRail,
         primary::PrimaryRail,
         settings_index::{self, SettingsIndexRail},
@@ -71,16 +74,15 @@ use crate::{
     chrome::statusline::{self, HintAction, PageStatus, StatusLine},
     chrome::toast::history as toast_history_view,
     chrome::topbar::{self, TopBar},
-    documents::types::{DocumentTypeRow, DocumentTypesDialog},
+    documents::types::DocumentTypeRow,
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     form::field::TextField,
     import::{self, ImportState, RowSelect},
     institutions::{self, AccountType, InstitutionRow, form::AddInstitutionForm},
     inventory,
-    inventory::form::InventoryDialog,
     navigation::active_view::ActiveView,
     navigation::command::{self, AccountsVerb, BudgetsVerb, Command, CommandEffect},
-    navigation::explorer::{self, ExplorerFilter, ExplorerFilters, ExplorerMode, FileExplorer},
+    navigation::explorer::{self as explorer_view, ExplorerFilters, ExplorerMode, FileExplorer},
     navigation::key_router::{self, KeyOutcome, Movement, route_key},
     navigation::nav::{FocusZone, InputMode, NavState, Noun},
     payees::{self, Payee},
@@ -133,13 +135,6 @@ const PENDING_G_TIMEOUT: Duration = Duration::from_millis(1000);
 /// name (`"open"` or `"new"`), looked up in `command::COMMANDS` and run exactly as the palette's
 /// own `enter` key would (see [`Shell::handle_empty_state_command_click`]).
 type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut gpui::App)>;
-
-/// Where `:open`'s file explorer starts browsing -- the handoff names no default starting
-/// directory of its own, so the platform home directory is the reasonable stand-in, falling
-/// back to the current directory on a platform/sandbox with no resolvable home.
-fn explorer_start_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
-}
 
 /// Records `name` as just-run in `history`, most-recent-first: drops any earlier occurrence
 /// first so re-running a command moves it to the top rather than piling up a duplicate. Free
@@ -1677,7 +1672,7 @@ impl Shell {
     }
 
     fn apply_context_rail_movement(&mut self, movement: Movement) {
-        let count = rail::context::entity_count(self.nav.noun());
+        let count = chrome_rail::context::entity_count(self.nav.noun());
         // Every noun besides Dashboard has a placeholder context rail with nothing in it yet
         // (see `chrome::rail::context::entity_count`'s own doc) -- movement is a no-op there, not an
         // out-of-bounds index.
@@ -1887,115 +1882,6 @@ impl Shell {
         false
     }
 
-    /// Opens `dialog` in the Dialog host, entering `InputMode::Dialog` with it.
-    fn open_dialog(&mut self, dialog: OpenDialog) {
-        self.dialog = Some(dialog);
-        self.nav.enter_mode(InputMode::Dialog);
-    }
-
-    /// Closes the Dialog host's Dialog, if one is open, without applying it.
-    fn close_dialog(&mut self) {
-        if self.dialog.take().is_some() {
-            self.nav.exit_mode();
-        }
-    }
-
-    /// `Enter` and the confirm button both land here: applies the open Dialog if its form is
-    /// valid, then closes it. A no-op while the form is invalid, leaving the Dialog open.
-    fn confirm_open_dialog(&mut self) {
-        if !self.dialog.as_ref().is_some_and(Dialog::is_valid) {
-            return;
-        }
-        let Some(dialog) = self.dialog.take() else {
-            return;
-        };
-        self.nav.exit_mode();
-        match dialog {
-            OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog),
-            OpenDialog::Accounts(dialog) => self.apply_accounts_dialog(dialog),
-            OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog),
-            OpenDialog::Payees(dialog) => self.apply_payees_dialog(dialog),
-            OpenDialog::DocumentTypes(dialog) => self.apply_document_types_dialog(dialog),
-            OpenDialog::Inventory(dialog) => self.apply_inventory_dialog(dialog),
-            OpenDialog::Tags(dialog) => self.apply_tags_dialog(dialog),
-            OpenDialog::Bills(dialog) => self.apply_bills_dialog(*dialog),
-            OpenDialog::Budgets(dialog) => self.apply_budgets_dialog(*dialog),
-            OpenDialog::Documents(dialog) => self.apply_documents_dialog(dialog),
-            // Read-only: it has nothing to apply.
-            OpenDialog::ToastHistory(_) => {}
-        }
-    }
-
-    fn settings_dialog(&self) -> Option<&SettingsDialog> {
-        match self.dialog.as_ref()? {
-            OpenDialog::Settings(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn settings_dialog_mut(&mut self) -> Option<&mut SettingsDialog> {
-        match self.dialog.as_mut()? {
-            OpenDialog::Settings(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn categories_dialog(&self) -> Option<&categories::form::CategoriesDialog> {
-        match self.dialog.as_ref()? {
-            OpenDialog::Categories(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn categories_dialog_mut(&mut self) -> Option<&mut categories::form::CategoriesDialog> {
-        match self.dialog.as_mut()? {
-            OpenDialog::Categories(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn document_types_dialog(&self) -> Option<&DocumentTypesDialog> {
-        match self.dialog.as_ref()? {
-            OpenDialog::DocumentTypes(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn inventory_dialog(&self) -> Option<&InventoryDialog> {
-        match self.dialog.as_ref()? {
-            OpenDialog::Inventory(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn inventory_dialog_mut(&mut self) -> Option<&mut InventoryDialog> {
-        match self.dialog.as_mut()? {
-            OpenDialog::Inventory(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn document_types_dialog_mut(&mut self) -> Option<&mut DocumentTypesDialog> {
-        match self.dialog.as_mut()? {
-            OpenDialog::DocumentTypes(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn bills_dialog(&self) -> Option<&bills::BillsDialog> {
-        match self.dialog.as_ref()? {
-            OpenDialog::Bills(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn bills_dialog_mut(&mut self) -> Option<&mut bills::BillsDialog> {
-        match self.dialog.as_mut()? {
-            OpenDialog::Bills(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
     /// Applies a confirmed Budgets dialog (`Enter` and the confirm button). The list dialogs
     /// answer with a request: a Dialog that stays open afterwards (Manage's `*`/`x`, 9d's
     /// handoffs that find nothing to open) goes back into the slot first, so the same code runs
@@ -2036,64 +1922,8 @@ impl Shell {
         }
     }
 
-    fn budgets_dialog(&self) -> Option<&budgets::BudgetsDialog> {
-        match self.dialog.as_ref()? {
-            OpenDialog::Budgets(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn budgets_dialog_mut(&mut self) -> Option<&mut budgets::BudgetsDialog> {
-        match self.dialog.as_mut()? {
-            OpenDialog::Budgets(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
     fn open_budgets_dialog(&mut self, dialog: budgets::BudgetsDialog) {
         self.open_dialog(OpenDialog::Budgets(Box::new(dialog)));
-    }
-
-    fn tags_dialog(&self) -> Option<&tags::form::TagsDialog> {
-        match self.dialog.as_ref()? {
-            OpenDialog::Tags(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn tags_dialog_mut(&mut self) -> Option<&mut tags::form::TagsDialog> {
-        match self.dialog.as_mut()? {
-            OpenDialog::Tags(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn payees_dialog(&self) -> Option<&payees::form::PayeesDialog> {
-        match self.dialog.as_ref()? {
-            OpenDialog::Payees(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn payees_dialog_mut(&mut self) -> Option<&mut payees::form::PayeesDialog> {
-        match self.dialog.as_mut()? {
-            OpenDialog::Payees(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn accounts_dialog(&self) -> Option<&AccountsDialog> {
-        match self.dialog.as_ref()? {
-            OpenDialog::Accounts(dialog) => Some(dialog),
-            _ => None,
-        }
-    }
-
-    fn accounts_dialog_mut(&mut self) -> Option<&mut AccountsDialog> {
-        match self.dialog.as_mut()? {
-            OpenDialog::Accounts(dialog) => Some(dialog),
-            _ => None,
-        }
     }
 
     /// The reference data the Transactions engine reads, borrowed from the shared stubs.
@@ -4369,14 +4199,14 @@ impl Shell {
             .collect();
         // The page's left edge: past the primary rail and the context rail, inside its gutter.
         let rail = match self.nav.primary_rail() {
-            crate::navigation::nav::RailMode::Expanded => rail::primary::WIDTH,
-            crate::navigation::nav::RailMode::Collapsed => rail::primary::COLLAPSED_WIDTH,
+            crate::navigation::nav::RailMode::Expanded => chrome_rail::primary::WIDTH,
+            crate::navigation::nav::RailMode::Collapsed => chrome_rail::primary::COLLAPSED_WIDTH,
         };
         Some(budgets_view::switcher::render(
             budgets_view::switcher::SwitcherProps {
                 state: switcher,
                 rows,
-                left: rail + rail::context::WIDTH + px(28.0),
+                left: rail + chrome_rail::context::WIDTH + px(28.0),
                 top: BUDGETS_SWITCHER_TOP,
                 on_search_click: plain(Shell::handle_budgets_switcher_search_click),
                 on_budget_click: {
@@ -7323,55 +7153,6 @@ impl Shell {
         }
     }
 
-    /// The TopBar's own rail-toggle button (`Shell::render`'s `on_rail_toggle` closure) --
-    /// same action as the `b` key, see [`Self::handle_key_down`].
-    fn handle_toggle_rail(&mut self, cx: &mut Context<'_, Self>) {
-        self.nav.toggle_primary_rail();
-        self.collapsed_rail_tooltip = None;
-        cx.notify();
-    }
-
-    /// A collapsed primary-rail row's raw hover transition (`chrome::rail::primary::PrimaryRail`'s
-    /// `on_row_hover`). Leaving a row clears any settled tooltip immediately; entering one
-    /// only reveals its tooltip after [`TOOLTIP_REVEAL_DELAY`], and only if hover hasn't since
-    /// moved elsewhere -- `hover_generation` is the guard: a stale timer whose captured
-    /// generation no longer matches the current one simply does nothing.
-    fn handle_rail_hover(&mut self, noun: Noun, hovered: bool, cx: &mut Context<'_, Self>) {
-        self.hover_generation += 1;
-        if !hovered {
-            self.collapsed_rail_tooltip = None;
-            cx.notify();
-            return;
-        }
-
-        let generation = self.hover_generation;
-        cx.spawn(async move |this, cx| {
-            Timer::after(TOOLTIP_REVEAL_DELAY).await;
-            this.update(cx, |shell, cx| {
-                if shell.hover_generation == generation {
-                    shell.collapsed_rail_tooltip = Some(noun);
-                    cx.notify();
-                }
-            })
-            .ok();
-        })
-        .detach();
-    }
-
-    /// A primary-rail row's click (`chrome::rail::primary::PrimaryRail`'s `on_row_click`), expanded or
-    /// collapsed alike. A direct `NavState::set_noun`, not a browse-then-commit -- the same
-    /// call `g`-jump (`Self::handle_key_down`'s pending-`g` arm) and the palette
-    /// (`Self::run_command`'s own `CommandEffect::Navigate` arm) both make, so rail click,
-    /// `g`-jump and the palette land in the same state per acceptance criterion 1.
-    fn handle_rail_click(&mut self, noun: Noun, cx: &mut Context<'_, Self>) {
-        let noun_before = self.nav.noun();
-        self.nav.set_noun(noun);
-        if self.nav.noun() != noun_before {
-            self.reset_view_scroll();
-        }
-        cx.notify();
-    }
-
     /// The settings index rail's own row click (`chrome::rail::settings_index::OnEntryClick`):
     /// swaps the settings body to the clicked page and takes the active dark treatment
     /// (`docs/ux/desktop/16-settings/README.md`'s "Navigation" bullet).
@@ -7551,106 +7332,8 @@ impl Shell {
         self.open_dialog(OpenDialog::Settings(SettingsDialog::ClearLogs));
     }
 
-    /// A file explorer row click (`explorer::OnEntryClick`): applies it to `FileExplorer`'s own
-    /// state, then -- README's "double-click a `.pldb` row opens immediately" -- confirms the
-    /// open immediately when `click_count` reports a real double-click landing on a row that
-    /// (as of the resulting state) is the current selection. A single click on a not-yet-open
-    /// `.pldb` row only selects it; a second, separate click completing the double-click is
-    /// what actually opens it.
-    fn handle_explorer_entry_click(
-        &mut self,
-        path: PathBuf,
-        click_count: usize,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let Some(explorer) = self.file_explorer.as_mut() else {
-            return;
-        };
-        explorer.click_entry(&path);
-        if click_count >= 2 && explorer.selected() == Some(path.as_path()) {
-            self.confirm_explorer_open(cx);
-            return;
-        }
-        cx.notify();
-    }
-
-    /// A breadcrumb segment click (`explorer::OnBreadcrumbClick`).
-    fn handle_explorer_breadcrumb_click(&mut self, path: PathBuf, cx: &mut Context<'_, Self>) {
-        if let Some(explorer) = self.file_explorer.as_mut() {
-            explorer.navigate_to(path);
-            cx.notify();
-        }
-    }
-
-    /// A footer checkbox click (`explorer::OnFilterToggle`): re-filters the open dialog and keeps
-    /// the new state for the next one and for the quit-time save.
-    fn handle_explorer_filter_toggle(
-        &mut self,
-        filter: ExplorerFilter,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(explorer) = self.file_explorer.as_mut() {
-            explorer.toggle_filter(filter);
-            self.explorer_filters = explorer.filters();
-            cx.notify();
-        }
-    }
-
-    /// The explorer dialog's own Cancel button: closes without opening anything, leaving
-    /// Command mode the same way the palette's own `esc` does.
-    fn handle_explorer_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.file_explorer = None;
-        self.nav.exit_mode();
-        cx.notify();
-    }
-
     /// The help overlay's own Close button.
     fn handle_help_close(&mut self, cx: &mut Context<'_, Self>) {
-        self.nav.exit_mode();
-        cx.notify();
-    }
-
-    /// The explorer dialog's own Open button.
-    fn handle_explorer_open(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_explorer_open(cx);
-    }
-
-    /// Confirms the explorer's current selection and closes the dialog. In `ExplorerMode::Open`
-    /// this is the stand-in "opening" effect (`NavState::open_ledger`, from issue #164) -- real
-    /// `.pldb` parsing stays out of scope for this map. In `ExplorerMode::New` (issue #167) it
-    /// closes without touching `NavState::ledger_open` at all: the dialog is a literal copy of
-    /// Open's for now, but confirming an *existing* file was never what "new" means, even as a
-    /// stand-in -- the real "create a fresh `.pldb`" workflow is still fog. A no-op if nothing
-    /// is selected (Open/New is only clickable once `FileExplorer::can_open` is true, but a
-    /// double-click can also reach here -- see [`Self::handle_explorer_entry_click`] -- so this
-    /// re-checks rather than trusting the caller).
-    fn confirm_explorer_open(&mut self, cx: &mut Context<'_, Self>) {
-        let Some(explorer) = self.file_explorer.as_ref() else {
-            return;
-        };
-        if !explorer.can_open() {
-            return;
-        }
-        let name = explorer
-            .selected()
-            .and_then(|path| path.file_name())
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        // Neither mode can fail yet (no real `.pldb` I/O), so `toast-ledger-open-failed` waits
-        // for the ticket that parses and creates ledger files.
-        if explorer.mode() == ExplorerMode::Open {
-            self.nav.open_ledger();
-            self.raise_toast(
-                ToastKind::Success,
-                lib_locale::msg::toast_ledger_opened(&name),
-            );
-        } else {
-            self.raise_toast(
-                ToastKind::Success,
-                lib_locale::msg::toast_ledger_created(&name),
-            );
-        }
-        self.file_explorer = None;
         self.nav.exit_mode();
         cx.notify();
     }
@@ -7717,19 +7400,19 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_toggle_rail(cx));
             })
         };
-        let on_row_hover: rail::primary::OnRowHover = {
+        let on_row_hover: chrome_rail::primary::OnRowHover = {
             let entity = entity.clone();
             Rc::new(move |noun, hovered, _window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_rail_hover(noun, hovered, cx));
             })
         };
-        let on_row_click: rail::primary::OnRowClick = {
+        let on_row_click: chrome_rail::primary::OnRowClick = {
             let entity = entity.clone();
             Rc::new(move |noun, _window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_rail_click(noun, cx));
             })
         };
-        let on_explorer_entry_click: explorer::OnEntryClick = {
+        let on_explorer_entry_click: explorer_view::OnEntryClick = {
             let entity = entity.clone();
             Rc::new(move |path, click_count, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -7737,7 +7420,7 @@ impl Render for Shell {
                 });
             })
         };
-        let on_explorer_breadcrumb_click: explorer::OnBreadcrumbClick = {
+        let on_explorer_breadcrumb_click: explorer_view::OnBreadcrumbClick = {
             let entity = entity.clone();
             Rc::new(move |path, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -7745,7 +7428,7 @@ impl Render for Shell {
                 });
             })
         };
-        let on_explorer_filter_toggle: explorer::OnFilterToggle = {
+        let on_explorer_filter_toggle: explorer_view::OnFilterToggle = {
             let entity = entity.clone();
             Rc::new(move |filter, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -7796,13 +7479,13 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_help_close(cx));
             })
         };
-        let on_explorer_cancel: explorer::OnCancel = {
+        let on_explorer_cancel: explorer_view::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_explorer_cancel(cx));
             })
         };
-        let on_explorer_open: explorer::OnOpen = {
+        let on_explorer_open: explorer_view::OnOpen = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_explorer_open(cx));
