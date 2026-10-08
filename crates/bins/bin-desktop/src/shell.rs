@@ -23,10 +23,12 @@ mod dialogs;
 mod document_types_ui;
 mod documents_ui;
 mod explorer;
+mod focus;
 mod inventory_ui;
 mod log_feed;
 mod rail;
 mod snapshots;
+mod status;
 mod toasts;
 
 use explorer::explorer_start_dir;
@@ -71,7 +73,7 @@ use crate::{
         primary::PrimaryRail,
         settings_index::{self, SettingsIndexRail},
     },
-    chrome::statusline::{self, HintAction, PageStatus, StatusLine},
+    chrome::statusline::{self, StatusLine},
     chrome::toast::history as toast_history_view,
     chrome::topbar::{self, TopBar},
     documents::types::DocumentTypeRow,
@@ -144,10 +146,6 @@ fn record_history(history: &mut Vec<String>, name: &str) {
     history.retain(|entry| entry != name);
     history.insert(0, name.to_string());
 }
-
-/// The primary rail has a fixed 10-row list, not a real "page" of variable-height content --
-/// half of that is a reasonable stand-in for `Ctrl-d`/`Ctrl-u` there.
-const PRIMARY_RAIL_HALF_PAGE: usize = 5;
 
 /// A single `j`/`k`/`Down`/`Up` step in the `View` zone's own scroll, in logical pixels --
 /// there's no literal "row height" for a dashboard of charts and figures, so this is a plain
@@ -1397,51 +1395,6 @@ impl Shell {
         self.palette = Some(Palette::with_history(self.command_history.clone()));
     }
 
-    /// A click on the status line's hint strip: the same action as the matching `Normal`-mode key,
-    /// and ignored in any other mode (where those keys aren't live either).
-    fn handle_hint_click(&mut self, action: HintAction, cx: &mut Context<'_, Self>) {
-        if self.nav.mode() != InputMode::Normal {
-            return;
-        }
-        self.status_message = None;
-        self.pending_g = None;
-        match action {
-            HintAction::Command => self.open_palette(),
-            HintAction::Search => self.nav.enter_mode(InputMode::Search),
-            HintAction::Help => self.nav.enter_mode(InputMode::Help),
-            HintAction::ToggleRail => {
-                self.nav.toggle_primary_rail();
-                self.collapsed_rail_tooltip = None;
-            }
-        }
-        cx.notify();
-    }
-
-    fn apply_movement(&mut self, movement: Movement) {
-        let noun_before = self.nav.noun();
-        match self.nav.focus() {
-            FocusZone::PrimaryRail => self.apply_primary_rail_movement(movement),
-            FocusZone::ContextRail => self.apply_context_rail_movement(movement),
-            FocusZone::View => self.apply_view_movement(movement),
-        }
-        if self.nav.noun() != noun_before {
-            self.reset_view_scroll();
-        }
-    }
-
-    /// A new noun's view is a different (usually much shorter) length -- carrying over the
-    /// old scroll offset could leave it scrolled past all its content, rendering blank. Every
-    /// fresh noun starts scrolled to the top. Also puts
-    /// Settings' focus back on the index (`g s` "lands on the index"); the page on show is the
-    /// last-visited one and stays.
-    fn reset_view_scroll(&mut self) {
-        self.view_scroll_handle.set_offset(gpui::Point::default());
-        self.settings_focus = SettingsFocus::default();
-        self.colour_theme_focus = None;
-        // `g f` and the palette land on the Documents list, unlike Settings' index.
-        self.documents_focus = DocumentsFocus::List;
-    }
-
     /// Swaps the Settings page on show. Each page starts at its top.
     /// Opens a Settings page with focus in it -- what `:settings <page>`, the old `:accounts` /
     /// `:categories` / `:payees` / `:tags` aliases and every hand-off to a moved noun land on
@@ -1651,53 +1604,6 @@ impl Shell {
         }
     }
 
-    fn apply_primary_rail_movement(&mut self, movement: Movement) {
-        match movement {
-            Movement::Next => self.nav.move_primary_highlight_next(),
-            Movement::Prev => self.nav.move_primary_highlight_prev(),
-            Movement::First => self.nav.move_primary_highlight_first(),
-            Movement::Last => self.nav.move_primary_highlight_last(),
-            Movement::HalfPageDown => {
-                for _ in 0..PRIMARY_RAIL_HALF_PAGE {
-                    self.nav.move_primary_highlight_next();
-                }
-            }
-            Movement::HalfPageUp => {
-                for _ in 0..PRIMARY_RAIL_HALF_PAGE {
-                    self.nav.move_primary_highlight_prev();
-                }
-            }
-            Movement::Enter => self.nav.commit_primary_highlight(),
-        }
-    }
-
-    fn apply_context_rail_movement(&mut self, movement: Movement) {
-        let count = chrome_rail::context::entity_count(self.nav.noun());
-        // Every noun besides Dashboard has a placeholder context rail with nothing in it yet
-        // (see `chrome::rail::context::entity_count`'s own doc) -- movement is a no-op there, not an
-        // out-of-bounds index.
-        if count == 0 {
-            return;
-        }
-        let half_page = (count / 2).max(1);
-        let current = self.nav.context().unwrap_or(0);
-        let next = match movement {
-            Movement::Next => (current + 1).min(count - 1),
-            Movement::Prev => current.saturating_sub(1),
-            Movement::First => 0,
-            Movement::Last => count - 1,
-            Movement::HalfPageDown => (current + half_page).min(count - 1),
-            Movement::HalfPageUp => current.saturating_sub(half_page),
-            // The handoff's own "Movement" bullet: `Enter` "selects the entity and leaves
-            // focus where it is" -- but movement here already updates `context` directly
-            // (rule 2 guarantees that's side-effect-free), so there's nothing left for
-            // `Enter` to additionally commit until a real per-entity detail view exists
-            // (out of scope for this map, per issue #144).
-            Movement::Enter => current,
-        };
-        self.nav.set_context(Some(next));
-    }
-
     /// `j`/`k`/`g g`/`G` on the Settings index step the highlight through the pages
     /// and swap the page live, like an index click.
     fn apply_settings_section_movement(&mut self, movement: Movement) {
@@ -1727,51 +1633,6 @@ impl Shell {
         )
     }
 
-    fn apply_view_movement(&mut self, movement: Movement) {
-        let page_focused =
-            self.nav.focus() == FocusZone::View && self.settings_focus == SettingsFocus::Page;
-        match self.active_view() {
-            ActiveView::Settings(SettingsSection::Accounts) if page_focused => {
-                self.apply_accounts_movement(movement);
-            }
-            ActiveView::Settings(SettingsSection::Categories) if page_focused => {
-                self.apply_settings_categories_movement(movement);
-            }
-            ActiveView::Settings(SettingsSection::Tags) if page_focused => {
-                self.apply_settings_tags_movement(movement);
-            }
-            ActiveView::Settings(SettingsSection::Payees) if page_focused => {
-                self.apply_settings_payees_movement(movement);
-            }
-            ActiveView::Settings(SettingsSection::Documents) if page_focused => {
-                self.apply_settings_documents_movement(movement);
-            }
-            ActiveView::Settings(SettingsSection::Inventory) if page_focused => {
-                self.apply_settings_inventory_movement(movement);
-            }
-            ActiveView::Settings(_) => {
-                if self.settings_focus == SettingsFocus::Index
-                    && matches!(
-                        movement,
-                        Movement::Next | Movement::Prev | Movement::First | Movement::Last
-                    )
-                {
-                    self.apply_settings_section_movement(movement);
-                } else {
-                    self.scroll_view(movement);
-                }
-            }
-            // The import step keeps the Transactions movement, as it did before `ActiveView`.
-            ActiveView::Transactions | ActiveView::Import => {
-                self.apply_transactions_movement(movement);
-            }
-            ActiveView::Documents => self.apply_documents_movement(movement),
-            ActiveView::Bills => self.apply_bills_movement(movement),
-            ActiveView::Budgets => self.apply_budgets_movement(movement),
-            ActiveView::Dashboard | ActiveView::Placeholder(_) => self.scroll_view(movement),
-        }
-    }
-
     fn scroll_view(&mut self, movement: Movement) {
         let offset = self.view_scroll_handle.offset();
         let max_height = f32::from(self.view_scroll_handle.max_offset().height);
@@ -1795,7 +1656,7 @@ impl Shell {
     }
 
     /// Routes a keystroke while the palette is open (tier 2, "popup-owned keys" -- mirroring
-    /// `docs/ux/tui/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
+    /// `docs/ux/mockups/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
     /// selection, `Tab` completes to the selected result's full name, `Ctrl-r` cycles backward
     /// through previously run commands, `Enter` runs the selected command (see
     /// [`Self::run_command`]), and any other unmodified, printable key is typed into the query.
@@ -6978,7 +6839,7 @@ impl Shell {
     /// [`CommandEffect::Navigate`] resets the view's scroll when it lands on a different noun,
     /// matching every other navigation entry point (`g`-jumps, rail `Enter`).
     /// [`CommandEffect::NotYetBuilt`] shows the same "not yet built" message
-    /// `docs/ux/tui/navigation.md` describes for its own popup, reusing the status line's
+    /// `docs/ux/mockups/navigation.md` describes for its own popup, reusing the status line's
     /// existing `status_message` slot (the "1d" spec's own COMMAND-mode status line has no
     /// message slot of its own, and the palette has already closed by the time this runs -- see
     /// the `enter` arm of [`Self::handle_palette_key`]).
@@ -8551,175 +8412,11 @@ impl Render for Shell {
         });
         let documents_page =
             (self.nav.noun() == Noun::Documents).then(|| self.documents_page_props(&entity));
-        let page_status = match self.active_view() {
-            ActiveView::Documents => self.documents_page_status(),
-            ActiveView::Settings(_) if self.accounts_page_has_focus() => Some(PageStatus {
-                hints: accounts_hints(),
-                right: crate::msg::desktop_accounts_count(
-                    i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
-                ),
-            }),
-            ActiveView::Settings(_) if self.settings_tags_page_has_focus() => Some(PageStatus {
-                hints: match self.tags_dialog() {
-                    Some(tags::form::TagsDialog::Add(_)) => tag_dialog_hints(false),
-                    Some(tags::form::TagsDialog::Edit(..)) => tag_dialog_hints(true),
-                    Some(tags::form::TagsDialog::Remove(..)) => confirm_dialog_hints(),
-                    Some(tags::form::TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
-                    None => settings_tags_hints(),
-                },
-                right: settings_view::tags::scope_text(
-                    &self.tags,
-                    &tags::duplicate_groups(&self.tags, &self.transactions),
-                ),
-            }),
-            ActiveView::Settings(_) if self.settings_payees_page_has_focus() => Some(PageStatus {
-                hints: match self.payees_dialog() {
-                    Some(payees::form::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
-                    Some(_) => payee_dialog_hints(),
-                    None => settings_payees_hints(),
-                },
-                right: settings_view::payees::scope_text(&self.payees),
-            }),
-            ActiveView::Settings(_) if self.settings_documents_page_has_focus() => {
-                Some(PageStatus {
-                    hints: self
-                        .document_types_dialog()
-                        .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
-                    right: settings_view::documents::scope_text(&self.document_types),
-                })
-            }
-            ActiveView::Settings(_) if self.settings_inventory_page_has_focus() => {
-                Some(PageStatus {
-                    hints: self.inventory_dialog().map_or_else(
-                        || settings_inventory_hints(self.settings_inventory_selected_row()),
-                        inventory_ui::dialog_hints,
-                    ),
-                    right: inventory_view::scope_text(&self.inventory),
-                })
-            }
-            ActiveView::Settings(_) if self.settings_categories_page_has_focus() => {
-                Some(PageStatus {
-                    hints: settings_categories_hints(),
-                    right: settings_view::categories::scope_note(&self.categories),
-                })
-            }
-            ActiveView::Settings(_) if self.nav.focus() == FocusZone::View => Some(PageStatus {
-                hints: self.settings_hints(),
-                right: self.settings_selected_section.scope_note(),
-            }),
-            ActiveView::Bills
-                if matches!(self.bills_dialog(), Some(bills::BillsDialog::Pay(_))) =>
-            {
-                Some(PageStatus {
-                    hints: pay_bill_dialog_hints(),
-                    right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
-                    ),
-                })
-            }
-            ActiveView::Bills
-                if matches!(self.bills_dialog(), Some(bills::BillsDialog::Skip(_))) =>
-            {
-                Some(PageStatus {
-                    hints: skip_bill_dialog_hints(),
-                    right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
-                    ),
-                })
-            }
-            ActiveView::Bills
-                if matches!(
-                    self.bills_dialog(),
-                    Some(bills::BillsDialog::Add(_) | bills::BillsDialog::Edit(..))
-                ) =>
-            {
-                Some(PageStatus {
-                    hints: payee_dialog_hints(),
-                    right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
-                    ),
-                })
-            }
-            ActiveView::Bills if self.bills_tab == bills::BillsTab::Schedule => Some(PageStatus {
-                hints: bills_schedule_hints(),
-                right: crate::msg::desktop_bills_status_period(
-                    &if self.bills_all {
-                        crate::msg::desktop_bills_period_all()
-                    } else {
-                        bills_view::period_label(self.bills_period)
-                    },
-                    &self.bills_schedule_rows().len().to_string(),
-                    i64::try_from(self.bills_unfiltered_rows().len()).unwrap_or(i64::MAX),
-                ),
-            }),
-            ActiveView::Bills if self.bills_tab == bills::BillsTab::Planner => Some(PageStatus {
-                hints: bills_planner_hints(),
-                right: crate::msg::desktop_bills_status_plans(
-                    i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
-                ),
-            }),
-            ActiveView::Budgets if self.budgets_tab == budgets::BudgetsTab::Progress => {
-                Some(PageStatus {
-                    hints: self.budgets_hints(),
-                    right: crate::msg::desktop_budgets_status_period(
-                        &budgets_view::period_label(self.budgets_period),
-                        budgets_figures.as_ref().map_or(0, |(_, figures)| {
-                            i64::try_from(figures.rows.len()).unwrap_or(i64::MAX)
-                        }),
-                    ),
-                })
-            }
-            ActiveView::Budgets if self.budgets_tab == budgets::BudgetsTab::Plan => {
-                Some(PageStatus {
-                    hints: self.budgets_hints(),
-                    right: budgets_plan.as_ref().map_or_else(String::new, |plan| {
-                        crate::msg::desktop_budgets_status_plan(
-                            &budgets_view::plan::range_label(plan),
-                            i64::try_from(plan.row_count()).unwrap_or(i64::MAX),
-                        )
-                    }),
-                })
-            }
-            ActiveView::Budgets => Some(PageStatus {
-                hints: self.budgets_hints(),
-                right: budgets_history
-                    .as_ref()
-                    .map_or_else(String::new, |history| {
-                        crate::msg::desktop_budgets_status_history(
-                            i64::try_from(history.leaves_ever_budgeted).unwrap_or(i64::MAX),
-                            &history.leaves_shown.to_string(),
-                        )
-                    }),
-            }),
-            ActiveView::Import => {
-                let pending = self
-                    .import
-                    .as_ref()
-                    .map_or(0, |state| import::summary(&state.rows).needs_review);
-                Some(PageStatus {
-                    hints: import_hints(),
-                    right: if pending == 0 {
-                        crate::msg::desktop_import_status_ready()
-                    } else {
-                        crate::msg::desktop_import_status_pending(
-                            i64::try_from(pending).unwrap_or(i64::MAX),
-                        )
-                    },
-                })
-            }
-            ActiveView::Transactions => Some(PageStatus {
-                hints: if self.nav.mode() == InputMode::Filter {
-                    filter_hints()
-                } else {
-                    transactions_hints()
-                },
-                right: format::status_legend(self.settings_status_glyphs),
-            }),
-            ActiveView::Bills
-            | ActiveView::Settings(_)
-            | ActiveView::Dashboard
-            | ActiveView::Placeholder(_) => None,
-        };
+        let page_status = self.page_status(
+            budgets_figures.as_ref(),
+            budgets_plan.as_ref(),
+            budgets_history.as_ref(),
+        );
 
         div()
             .size_full()
