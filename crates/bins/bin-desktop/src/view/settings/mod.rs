@@ -31,11 +31,11 @@ use gpui::{AnyElement, App, ScrollHandle, SharedString, div, prelude::*, px};
 use lib_core::DateStyle;
 
 use crate::{
+    institutions::InstitutionRow,
     navigation::nav::Noun,
-    settings::{
-        InstitutionRow, PriceSourceRow, RowDensity, SettingsSection, StatusGlyphs, UnitRow,
-    },
+    settings::{RowDensity, SettingsSection, StatusGlyphs},
     theme::color,
+    units::{PriceSourceRow, UnitRow},
 };
 
 /// Interactive bits a section's own content needs, gathered in one bundle so `render`'s own

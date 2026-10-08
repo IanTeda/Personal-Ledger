@@ -71,6 +71,7 @@ use crate::{
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     form::field::TextField,
     import::{self, ImportState, RowSelect},
+    institutions::{self, AccountType, InstitutionRow, form::AddInstitutionForm},
     inventory,
     inventory::form::InventoryDialog,
     log_view::{LogChange, LogView},
@@ -81,10 +82,8 @@ use crate::{
     payees::{self, Payee},
     period::Period,
     settings::{
-        self, AccountType, AddInstitutionForm, AddUnitField, DATE_STYLE_CHOICES,
-        DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, DeleteUnitForm, InstitutionRow, PriceSourceRow,
-        RowDensity, SettingsDialog, SettingsFocus, SettingsSection, StatusGlyphs, TracingLevel,
-        UnitForm, UnitKind, UnitRow, step_choice,
+        DATE_STYLE_CHOICES, DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, RowDensity, SettingsDialog,
+        SettingsFocus, SettingsSection, StatusGlyphs, TracingLevel, step_choice,
     },
     tags::{self, Tag},
     theme::colours::ColourChange,
@@ -95,6 +94,10 @@ use crate::{
         filter_form::{FilterForm, FormField, FormOptions, SelectKey as FilterSelectKey},
         query::{Ledger, TransactionFilters},
         rows::DisplayPrefs,
+    },
+    units::{
+        self, PriceSourceRow, UnitKind, UnitRow,
+        form::{AddUnitField, DeleteUnitForm, UnitForm},
     },
     view::format,
     view::{
@@ -630,7 +633,7 @@ pub struct Shell {
     /// The `:open` explorer's footer checkboxes, kept here so they outlive each dialog and reach
     /// `persistence::PersistedState` at quit.
     explorer_filters: ExplorerFilters,
-    /// The Units section's own table rows (issue #177), seeded from `settings::default_units()`.
+    /// The Units section's own table rows (issue #177), seeded from `units::default_units()`.
     /// A real, mutable `Vec` so the Add/Edit/Delete unit dialogs (issues #184-#186) can
     /// push/update/remove rows once they land -- unlike
     /// [`Self::settings_selected_section`], not reset by
@@ -638,7 +641,7 @@ pub struct Shell {
     /// state, so it must survive leaving and re-entering Settings the way real saved data would.
     settings_units: Vec<UnitRow>,
     /// The same section's own "Price Sources" subsection rows (issue #189), seeded from
-    /// `settings::default_price_sources()` -- same reasoning as [`Self::settings_units`], though
+    /// `units::default_price_sources()` -- same reasoning as [`Self::settings_units`], though
     /// nothing on this map's own dialog tickets mutates this `Vec` yet (test/edit/delete/add are
     /// all clearly-marked stubs, see `view::settings::units`'s own doc).
     settings_price_sources: Vec<PriceSourceRow>,
@@ -647,7 +650,7 @@ pub struct Shell {
     /// `InputMode::Dialog` for exactly as long as this is `Some`. Every feature's Dialog lives here.
     dialog: Option<OpenDialog>,
     /// The Institutions section's own table rows (issue #178), seeded from
-    /// `settings::default_institutions()` -- same reasoning as [`Self::settings_units`].
+    /// `institutions::default_institutions()` -- same reasoning as [`Self::settings_units`].
     settings_institutions: Vec<InstitutionRow>,
     /// The Tracing page's mirror of the live log capture and its level filter (session only).
     settings_log: LogView,
@@ -850,10 +853,10 @@ impl Shell {
             settings_status_glyphs: StatusGlyphs::default(),
             settings_start_sidebar_minimised: false,
             explorer_filters: ExplorerFilters::default(),
-            settings_units: settings::default_units(),
-            settings_price_sources: settings::default_price_sources(),
+            settings_units: units::default_units(),
+            settings_price_sources: units::default_price_sources(),
             dialog: None,
-            settings_institutions: settings::default_institutions(),
+            settings_institutions: institutions::default_institutions(),
             // A private, empty capture until `set_log_capture` hands over the real one.
             settings_log: LogView::new(
                 lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),

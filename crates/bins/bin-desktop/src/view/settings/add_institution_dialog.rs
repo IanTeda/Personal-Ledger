@@ -22,8 +22,9 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
     dialog,
-    settings::{AccountType, AddInstitutionForm, UnitRow},
+    institutions::{AccountType, form::AddInstitutionForm},
     theme::color,
+    units::UnitRow,
 };
 
 use super::{add_unit_dialog::text_field, field_label};

@@ -1,6 +1,6 @@
 //! Renders the **Edit unit** dialog (issue #185's own "2c"), on the shared `crate::dialog`
 //! chrome. Same form and field-editing rules as [`super::add_unit_dialog`] (see that module's
-//! own doc) -- both wrap the same `settings::UnitForm`, so the only real differences here are
+//! own doc) -- both wrap the same `units::form::UnitForm`, so the only real differences here are
 //! the dynamic title, the pre-filled starting values (`Shell::handle_unit_edit_click`, via
 //! `UnitForm::from_row`), the usage-notice info panel, and the "Save" button label.
 //!
@@ -15,7 +15,7 @@ use gpui::{AnyElement, div, prelude::*};
 
 use crate::{
     dialog,
-    settings::{AddUnitField, UnitForm},
+    units::form::{AddUnitField, UnitForm},
 };
 
 use super::add_unit_dialog::{

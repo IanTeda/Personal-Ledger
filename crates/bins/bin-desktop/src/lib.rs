@@ -16,6 +16,7 @@ mod error;
 mod form;
 mod help;
 mod import;
+mod institutions;
 mod inventory;
 pub mod locale;
 mod log_view;
@@ -28,6 +29,7 @@ pub mod shell;
 mod tags;
 pub mod theme;
 mod transactions;
+mod units;
 mod view;
 
 /// This bin's own Messages, generated at build time from `i18n/<locale>/*.ftl`.

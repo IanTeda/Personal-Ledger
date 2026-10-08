@@ -489,15 +489,14 @@ mod tests {
     use super::*;
     use crate::accounts::date;
     use crate::accounts::{default_accounts, group_accounts};
-    use crate::settings;
 
     fn add_options() -> AccountOptions {
         AccountOptions::new(
-            settings::default_institutions()
+            crate::institutions::default_institutions()
                 .into_iter()
                 .map(|institution| institution.name)
                 .collect(),
-            settings::default_units()
+            crate::units::default_units()
                 .into_iter()
                 .map(|unit| unit.code)
                 .collect(),

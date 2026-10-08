@@ -1,7 +1,7 @@
 //! Renders the **Delete unit** destructive-confirm dialog (issue #186's own "2d"), on the shared
 //! `crate::dialog` chrome's destructive variant (`overlay(true, ...)`/`header(_, true)`).
 //! References are named, and the unit's own code must be typed back exactly
-//! (`settings::DeleteUnitForm::is_valid`, case-sensitive) before the confirm button enables --
+//! (`units::form::DeleteUnitForm::is_valid`, case-sensitive) before the confirm button enables --
 //! deletion can't happen by muscle memory.
 //!
 //! Reuses `add_unit_dialog::text_field` for the confirm input, but always `focused: true` with a
@@ -22,7 +22,7 @@ use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
 use crate::{
     dialog,
-    settings::{DeleteUnitForm, UnitRow},
+    units::{UnitRow, form::DeleteUnitForm},
 };
 
 use super::add_unit_dialog::text_field;

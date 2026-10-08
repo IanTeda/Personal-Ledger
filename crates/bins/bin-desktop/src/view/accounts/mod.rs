@@ -11,7 +11,7 @@ use std::rc::Rc;
 
 use gpui::{App, Window};
 
-use crate::{accounts::Account, settings::UnitRow};
+use crate::{accounts::Account, units::UnitRow};
 
 /// Called with an account's [`Account::id`].
 pub type OnAccountClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;

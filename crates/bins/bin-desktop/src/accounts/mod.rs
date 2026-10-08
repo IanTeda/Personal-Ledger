@@ -13,7 +13,7 @@ use chrono::NaiveDate;
 use lib_core::{AccountType, Money};
 /// The Institution a Cash account links to. The glossary gives every Account a mandatory
 /// Institution, and Cash has no real one, so it points at a system-seeded placeholder. It is
-/// deliberately absent from `settings::default_institutions()`: it is not a user-managed row.
+/// deliberately absent from `institutions::default_institutions()`: it is not a user-managed row.
 ///
 /// This is a stable key, never display text: the row syncs between Clients, so storing a rendered
 /// name would show one Client's Locale on another. Render it with [`institution_label`].
@@ -334,7 +334,6 @@ mod tests {
     use lib_locale::Label;
 
     use super::*;
-    use crate::settings;
 
     fn account(id: u32, name: &str, account_type: AccountType) -> Account {
         Account {
@@ -438,8 +437,8 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), accounts.len(), "ids must be unique");
 
-        let units = settings::default_units();
-        let institutions = settings::default_institutions();
+        let units = crate::units::default_units();
+        let institutions = crate::institutions::default_institutions();
         for account in &accounts {
             assert!(
                 units.iter().any(|unit| unit.code == account.unit),
@@ -464,7 +463,7 @@ mod tests {
 
     #[test]
     fn seeded_base_unit_rows_sum_to_the_mockups_net_worth() {
-        let base = settings::default_units()
+        let base = crate::units::default_units()
             .into_iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code)

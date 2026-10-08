@@ -46,7 +46,7 @@ The one cross-domain behaviour worth knowing: `Preferences::get_or_create_defaul
 
 ## UI
 
-- **Desktop** — the most complete Unit surface in the codebase. `crates/bins/bin-desktop/src/view/settings/units.rs` renders a UNITS table (CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS) with per-row edit and delete buttons and a "+ Add unit" button, plus a Price Sources subsection (NAME / SOURCE / LAST UPDATED / ACTIONS) added by issue #189. The dialogs are real and live beside it: `add_unit_dialog.rs`, `edit_unit_dialog.rs`, `delete_unit_dialog.rs` (issues #184–#186). The table is seeded from `crate::settings::default_units()`, not from `lib-database`. This section absorbed the removed "Ledger & units" section's "Default unit for new entries" control, which is now a `default` pill in the FLAGS column rather than a standalone control. Spec: `docs/ux/desktop/16-settings/README.md`.
+- **Desktop** — the most complete Unit surface in the codebase. `crates/bins/bin-desktop/src/view/settings/units.rs` renders a UNITS table (CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS) with per-row edit and delete buttons and a "+ Add unit" button, plus a Price Sources subsection (NAME / SOURCE / LAST UPDATED / ACTIONS) added by issue #189. The dialogs are real and live beside it: `add_unit_dialog.rs`, `edit_unit_dialog.rs`, `delete_unit_dialog.rs` (issues #184–#186). The table is seeded from `crate::units::default_units()`, not from `lib-database`. This section absorbed the removed "Ledger & units" section's "Default unit for new entries" control, which is now a `default` pill in the FLAGS column rather than a standalone control. Spec: `docs/ux/desktop/16-settings/README.md`.
 - **TUI** — `crates/bins/bin-tui/src/view/units.rs` is still at wireframe stage: four labelled, bordered placeholder boxes matching the pane structure and proportions of `docs/ux/tui/units/README.md` §4a — unit list and summary in a roughly 36-column left column, weekly close candlestick and weekly prices filling the rest. The candlestick uses the `chandelier` crate. No list, summary detail, price table or forms are built yet. There is an older `screen/unit_detail.rs` from the pre-[ADR-0013](../adr/0013-shell-view-replaces-breadcrumb-app-screen-nav.md) layout which does use `lib_database`, still compiling but disconnected from `main.rs`.
 
 ## Traceability
@@ -64,6 +64,6 @@ Omitted: [units.md](../units.md) is a design document and carries no requirement
 
 - **Price sources are UI-only.** The desktop's Price Sources table and "+ Add price source" button have no persistence behind them, and there is no pricing table by design. Investment Account market value, cost basis and capital gains are all blocked on this.
 - **The TUI Units screen is a wireframe**, so the candlestick and price panes render placeholder content.
-- **Neither Client's Unit list reads `lib-database`** — the desktop reads `settings::default_units()`, and the TUI's only database-backed Unit code is the disconnected `screen/unit_detail.rs`.
+- **Neither Client's Unit list reads `lib-database`** — the desktop reads `units::default_units()`, and the TUI's only database-backed Unit code is the disconnected `screen/unit_detail.rs`.
 - **`unit_kind` is unconstrained at the storage layer**, unlike the comparable `categories.category_type`.
 - **No Change Set emission**, so Unit writes do not sync.

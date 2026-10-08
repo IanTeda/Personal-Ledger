@@ -222,8 +222,12 @@ mod tests {
         default_payees,
         form::{DeleteAction, DeletePayeeForm, PayeeField, PayeeForm},
     };
-    use crate::settings::{
-        AccountType, AddInstitutionForm, AddUnitField, DeleteUnitForm, UnitForm, default_units,
+    use crate::{
+        institutions::{AccountType, form::AddInstitutionForm},
+        units::{
+            default_units,
+            form::{AddUnitField, DeleteUnitForm, UnitForm},
+        },
     };
 
     fn type_text(dialog: &mut OpenDialog, text: &str) {

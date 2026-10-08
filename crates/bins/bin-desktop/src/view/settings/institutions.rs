@@ -1,5 +1,5 @@
 //! The **Institutions** section (`docs/ux/desktop/16-settings/README.md`'s "2a resting state"): a
-//! table (INSTITUTION / ACCOUNT TYPE) seeded from `crate::settings::default_institutions()`,
+//! table (INSTITUTION / ACCOUNT TYPE) seeded from `crate::institutions::default_institutions()`,
 //! per-row edit/delete buttons, and a "+ Add institution" button below it -- same shape as
 //! `view::settings::units`, just a two-column table instead of three.
 //!
@@ -14,7 +14,7 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
-use crate::{settings::InstitutionRow, theme::color};
+use crate::{institutions::InstitutionRow, theme::color};
 
 pub type OnRowIndexClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
 pub type OnAddClick = Rc<dyn Fn(&mut Window, &mut App)>;

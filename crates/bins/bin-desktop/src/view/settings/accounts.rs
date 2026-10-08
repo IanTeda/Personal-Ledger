@@ -14,8 +14,8 @@ use lib_locale::{Label, format::upper};
 
 use crate::{
     accounts::{self, Account},
-    settings::UnitRow,
     theme::color,
+    units::UnitRow,
 };
 
 /// Called with an account's [`Account::id`].
@@ -331,7 +331,7 @@ mod tests {
         crate::locale::init_for_tests();
         let note = scope_note(
             &accounts::default_accounts(),
-            &crate::settings::default_units(),
+            &crate::units::default_units(),
         );
         assert_eq!(
             note,
@@ -343,7 +343,7 @@ mod tests {
     fn scope_note_with_no_accounts_says_so() {
         crate::locale::init_for_tests();
         assert_eq!(
-            scope_note(&[], &crate::settings::default_units()),
+            scope_note(&[], &crate::units::default_units()),
             "no accounts yet"
         );
     }

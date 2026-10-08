@@ -1,5 +1,5 @@
 //! Renders the **Add unit** dialog (issue #184's own "2b"), on the shared `crate::dialog`
-//! chrome. `Shell` owns the live form state (`settings::UnitForm`) and every keystroke while
+//! chrome. `Shell` owns the live form state (`units::form::UnitForm`) and every keystroke while
 //! it's open (`InputMode::Dialog`, `Shell::handle_dialog_key`) -- this module is a pure
 //! render-helper, the same split every other `view::settings` submodule already uses.
 //!
@@ -31,8 +31,11 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
     dialog,
-    settings::{AddUnitField, UnitForm, UnitKind},
     theme::color,
+    units::{
+        UnitKind,
+        form::{AddUnitField, UnitForm},
+    },
 };
 
 use super::field_label;

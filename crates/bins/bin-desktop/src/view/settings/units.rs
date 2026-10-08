@@ -1,6 +1,6 @@
 //! The **Units** section (`docs/ux/desktop/16-settings/README.md`'s "2a resting state", revised by
 //! issue #189): a "UNITS" table title, a table (CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS)
-//! seeded from `crate::settings::default_units()`, per-row edit/delete buttons, a "+ Add unit"
+//! seeded from `crate::units::default_units()`, per-row edit/delete buttons, a "+ Add unit"
 //! button, and (new in #189) a **Price Sources** subsection with its own NAME/SOURCE/LAST
 //! UPDATED/ACTIONS table and "+ Add price source" button. This section absorbed the removed
 //! "Ledger & units" section's own "Default unit for new entries" control, now the FLAGS
@@ -26,8 +26,8 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use crate::{
-    settings::{PriceSourceRow, UnitRow},
     theme::color,
+    units::{PriceSourceRow, UnitRow},
     view::settings::SettingsSection,
 };
 
