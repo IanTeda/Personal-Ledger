@@ -1,5 +1,5 @@
 //! The "move" popup — `m` on a Categories tree row, or `:category move <cat> <parent>`
-//! (`docs/ux/tui/categories/README.md` "5b — Move"). Genuinely interactive and genuinely
+//! (`docs/ux/mockups/categories/README.md` "5b — Move"). Genuinely interactive and genuinely
 //! mutates the tree, unlike `popup::unit`'s forms (still wireframe-only) — the only thing
 //! stopping this popup being wireframe-only too is that "Categories: fixture data seam and
 //! mutable View state pattern" already built a real, mutable tree for it to act on.

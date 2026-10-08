@@ -1,5 +1,5 @@
 //! Category-domain popups: floating overlays acting on the Category tree
-//! (`docs/ux/tui/categories/README.md`), hosted by `Shell` the same way `crate::popup::unit`
+//! (`docs/ux/mockups/categories/README.md`), hosted by `Shell` the same way `crate::popup::unit`
 //! is. `move_popup` (5b), `new_popup` (5c) and `edit_popup` (5d) — every popup this map's
 //! Destination named is now built.
 //!

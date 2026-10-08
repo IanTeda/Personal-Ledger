@@ -4,7 +4,7 @@
 //! the left pane.
 //!
 //! **The right pane** (issue #133, "Tags right pane" map, issue #131) fills what that first
-//! map deliberately left blank, against `docs/ux/tui/tags/README.md`'s own `9a` right-pane
+//! map deliberately left blank, against `docs/ux/mockups/tags/README.md`'s own `9a` right-pane
 //! spec — three widgets, all reading from the fixture-simulated data "Tags: right-pane fixture
 //! data" (issue #132) landed: **Tagged spend** (a monthly sparkline, mirroring `view::
 //! accounts::render_balance_chart`), **Where it lands** (the category breakdown as proportional
@@ -90,7 +90,7 @@ const SPEND_MONTHS: usize = 24;
 const TAGGED_SPEND_HEIGHT: u16 = 12;
 
 /// How many category rows "Where it lands" shows before rolling the rest into an "N more" row
-/// — per `docs/ux/tui/tags/README.md`'s own "top 4 plus an `N more` roll-up".
+/// — per `docs/ux/mockups/tags/README.md`'s own "top 4 plus an `N more` roll-up".
 const CATEGORY_ROWS_SHOWN: usize = 4;
 
 /// Height of the "Where it lands" section: heading, rule, up to `CATEGORY_ROWS_SHOWN + 1` bar

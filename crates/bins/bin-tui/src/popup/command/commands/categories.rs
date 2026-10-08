@@ -1,4 +1,4 @@
-//! The Categories domain — the `:category` grammar `docs/ux/tui/categories/README.md`
+//! The Categories domain — the `:category` grammar `docs/ux/mockups/categories/README.md`
 //! "Command grammar" specifies (that doc's own text writes it as `:cat`; the command name is
 //! `:category`, matching every other domain's own full-word convention — `unit`, `budget`,
 //! `payee`, none abbreviated), grounded in what `view::categories::CategoriesView` and its

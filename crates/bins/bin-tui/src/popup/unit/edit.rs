@@ -1,4 +1,4 @@
-//! The "edit unit" popup — `:unit edit <code>`, or `e` from the Units view (`docs/ux/tui/
+//! The "edit unit" popup — `:unit edit <code>`, or `e` from the Units view (`docs/ux/mockups/
 //! units/README.md` §4c, "Edit"). Wireframe stage, same as `popup::unit::new`: every field
 //! renders the mockup's placeholder content verbatim — including a unit already mid-edit, with
 //! its lowered `qty precision` warning already showing — rather than a real, editable draft.
@@ -22,12 +22,12 @@ use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
-/// The lock glyph marking a field `docs/ux/tui/units/README.md` §4c locks against editing —
-/// shares the `docs/ux/tui/units/README.md` "Style" section's `🔒` with the summary box
+/// The lock glyph marking a field `docs/ux/mockups/units/README.md` §4c locks against editing —
+/// shares the `docs/ux/mockups/units/README.md` "Style" section's `🔒` with the summary box
 /// (`view/units.rs` is fake-data only there, so it doesn't render one yet).
 const LOCK: &str = "🔒";
 
-/// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per `docs/ux/tui/units/README.md`
+/// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per `docs/ux/mockups/units/README.md`
 /// "The forms" ("~88% width on the drawing") — matches `popup::unit::new`'s own width.
 const POPUP_WIDTH_PERCENT: u32 = 88;
 
@@ -46,7 +46,7 @@ const CONTENT_ROWS: u16 = 1 + 1 + 7 + 1 + 1 + 1 + 1;
 /// Total popup height: content plus its top/bottom border.
 const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
 
-/// The "edit unit" popup: `docs/ux/tui/units/README.md` §4c as a centred floating overlay,
+/// The "edit unit" popup: `docs/ux/mockups/units/README.md` §4c as a centred floating overlay,
 /// same window treatment as `popup::unit::new`. No draft state yet — every field is the
 /// mockup's own placeholder content, not a real value read from the edited `Unit`.
 #[derive(Default)]

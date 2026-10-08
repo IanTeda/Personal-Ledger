@@ -42,11 +42,11 @@ date: 2026-09-13T05:27:54Z
 
 | Screen / option | Built from |
 | --- | --- |
-| 1a Dashboard, two rails expanded | docs/ux/tui/README.md (dashboard priority order), docs/product-requirements.md FR.34–38 |
+| 1a Dashboard, two rails expanded | docs/ux/mockups/README.md (dashboard priority order), docs/product-requirements.md FR.34–38 |
 | 1b Account ledger, list–detail rail | CONTEXT.md (Account, Transaction Status, Flagged), FR.16–20 |
 | 1c Settings, collapsed icon rail | CONTEXT.md (Preference vs Configuration), CC-DESKTOP-001 |
-| 1d Command palette over the shell | docs/ux/tui/README.md §3a, action registry + command grammar |
-| docs/ux/desktop/README.md (handoff) | `Ledger Desktop Shell.dc.html` option 1a, ADR-0007, ADR-0013, docs/ux/tui/README.md |
-| docs/ux/desktop/ (folder shape) | docs/ux/tui/ — README + mockup + support.js, self-contained |
-| 10a–10i Reports | crates/bins/bin-tui/src/screen/reports.rs, docs/product-requirements.md FR.34–38, docs/ux/tui/README.md (`:report` grammar) |
+| 1d Command palette over the shell | docs/ux/mockups/README.md §3a, action registry + command grammar |
+| docs/ux/desktop/README.md (handoff) | `Ledger Desktop Shell.dc.html` option 1a, ADR-0007, ADR-0013, docs/ux/mockups/README.md |
+| docs/ux/desktop/ (folder shape) | docs/ux/mockups/ — README + mockup + support.js, self-contained |
+| 10a–10i Reports | crates/bins/bin-tui/src/screen/reports.rs, docs/product-requirements.md FR.34–38, docs/ux/mockups/README.md (`:report` grammar) |
 | 8a–8f Bills (Schedule/Planner/History) | docs/bills.md, ADR-0019 (Bill Schedule as persisted rows linked to a Transaction) |

@@ -1,5 +1,5 @@
 //! The Settings `View`, hosted by `Shell` (ADR-0013). Wireframe stage: the two-pane layout
-//! from `docs/ux/tui/settings/README.md` §4a ("Settings at rest") — a fixed left pane (groups
+//! from `docs/ux/mockups/settings/README.md` §4a ("Settings at rest") — a fixed left pane (groups
 //! list, "where values live" box, reset block) beside a `Min(0)` right pane (settings list,
 //! selected explainer, settings table, command hint row) — so the overall pane structure and
 //! proportions can be checked before the database-backed registry behind it is built out. The

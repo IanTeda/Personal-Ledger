@@ -1,5 +1,5 @@
 //! The "new payee" popup — `n` on the Payees list, or `:payee new <name>`
-//! (`docs/ux/tui/payees/README.md` "8b — New"). Genuinely interactive and genuinely creates a
+//! (`docs/ux/mockups/payees/README.md` "8b — New"). Genuinely interactive and genuinely creates a
 //! Payee in the fixture, following `popup::account::new`'s structural shape.
 //!
 //! **This form is the rare path, not the main one** — a Payee is auto-created the first time

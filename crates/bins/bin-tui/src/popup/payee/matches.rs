@@ -1,4 +1,4 @@
-//! The "rename matches" popup — `m` on a Payees list row (`docs/ux/tui/payees/README.md`
+//! The "rename matches" popup — `m` on a Payees list row (`docs/ux/mockups/payees/README.md`
 //! "8d — Rename matches"). A list-inside-an-overlay with its own state, not crammed into the
 //! edit form — the closest thing this codebase has built before is a plain field-by-field
 //! form (`popup::account::new`/`edit`), so this popup is its own shape: a navigable list of a

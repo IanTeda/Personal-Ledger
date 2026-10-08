@@ -1,6 +1,6 @@
 //! The Units `View`, hosted by `Shell` (ADR-0013). Wireframe stage: four labelled, bordered
 //! placeholder boxes matching the pane structure and proportions from
-//! `docs/ux/tui/units/README.md` §4a — unit list and summary in a ~36-col left column,
+//! `docs/ux/mockups/units/README.md` §4a — unit list and summary in a ~36-col left column,
 //! weekly close candlestick and weekly prices filling the rest — so the screen's overall
 //! layout can be checked and adjusted before any one region's real widget content (list,
 //! summary detail, candlestick chart, price table, forms) is built out.
@@ -123,7 +123,7 @@ impl UnitsView {
 
 impl View for UnitsView {
     /// `n` opens the "new unit" popup, `e` the "edit unit" popup, `d` the "delete unit" popup
-    /// (`docs/ux/tui/units/README.md` §4a's own `n new` / `e edit` / `d delete` key hints) —
+    /// (`docs/ux/mockups/units/README.md` §4a's own `n new` / `e edit` / `d delete` key hints) —
     /// everything else falls through to `Shell`'s global keys.
     fn handle_key(&mut self, key: KeyEvent) -> Option<Action> {
         match key.code {
@@ -180,7 +180,7 @@ fn render_left_column(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 }
 
 /// One row in the unit list — matches §4a's own example rows
-/// (`docs/ux/tui/units/README.md`): base currency, another currency, the selected unit, two
+/// (`docs/ux/mockups/units/README.md`): base currency, another currency, the selected unit, two
 /// more units, then an inactive one.
 struct UnitListRow {
     code: &'static str,

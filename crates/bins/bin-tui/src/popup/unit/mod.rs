@@ -1,5 +1,5 @@
 //! Unit-domain popups: floating overlays for creating, editing and deleting a `Unit`
-//! (`docs/ux/tui/units/README.md` "The forms"), hosted by `Shell` the same way
+//! (`docs/ux/mockups/units/README.md` "The forms"), hosted by `Shell` the same way
 //! `crate::popup::command` is. `new` (§4b), `edit` (§4c) and `delete` (§4e, the allowed
 //! variant only — §4d's refused variant is later work) exist so far.
 

@@ -1,4 +1,4 @@
-//! The Quit domain — a single command, exiting the app (`docs/ux/tui/README.md`'s global `Q`).
+//! The Quit domain — a single command, exiting the app (`docs/ux/mockups/README.md`'s global `Q`).
 
 use crossterm::event::KeyCode;
 

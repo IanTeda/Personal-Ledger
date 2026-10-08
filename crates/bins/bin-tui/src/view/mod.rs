@@ -92,22 +92,22 @@ pub enum Action {
     /// behaviour). A no-op against an empty history.
     CommandPopupHistoryRecall,
     /// `Ctrl+U`, or `Enter` on the command popup's `unit` command — opens the placeholder
-    /// Units view (`docs/ux/tui/units/README.md`), the first domain to land a real (if still
+    /// Units view (`docs/ux/mockups/units/README.md`), the first domain to land a real (if still
     /// wireframe-stage) destination behind the command popup's `unit` entry.
     OpenUnits,
     /// `n` on the Units view, or `Enter` on the command popup's `unit new <code> <type>`
-    /// command — opens the "new unit" popup (`docs/ux/tui/units/README.md` §4b).
+    /// command — opens the "new unit" popup (`docs/ux/mockups/units/README.md` §4b).
     OpenNewUnitPopup,
     /// `e` on the Units view, or `Enter` on the command popup's `unit edit <code>` command —
-    /// opens the "edit unit" popup (`docs/ux/tui/units/README.md` §4c).
+    /// opens the "edit unit" popup (`docs/ux/mockups/units/README.md` §4c).
     OpenEditUnitPopup,
     /// `d` on the Units view, or `Enter` on the command popup's `unit delete <code>` command —
-    /// opens the "delete unit" popup (`docs/ux/tui/units/README.md` §4d/§4e).
+    /// opens the "delete unit" popup (`docs/ux/mockups/units/README.md` §4d/§4e).
     OpenDeleteUnitPopup,
     /// `Esc` while a unit popup (new, edit or delete) is open — closes it without saving or
     /// deleting anything.
     CloseUnitPopup,
-    /// `g d` (the `docs/ux/tui/README.md` "Jumps" table's chord), or `Enter` on the command
+    /// `g d` (the `docs/ux/mockups/README.md` "Jumps" table's chord), or `Enter` on the command
     /// popup's `dashboard` command — returns to the Dashboard view.
     OpenDashboard,
     /// `g a`, or `Enter` on the command popup's `account list` command — opens the
@@ -132,14 +132,14 @@ pub enum Action {
     /// Reports view.
     OpenReports,
     /// `g s`, or `Enter` on the command popup's `settings` command — opens the Settings view
-    /// (`docs/ux/tui/settings/README.md` §4a — the "at rest" wireframe, plus the §4b/§4c popups
+    /// (`docs/ux/mockups/settings/README.md` §4a — the "at rest" wireframe, plus the §4b/§4c popups
     /// below; the database-backed registry behind either is later work).
     OpenSettings,
     /// `e` on the Settings view — opens the in-place editor popup over the `general.negatives`
-    /// worked example (`docs/ux/tui/settings/README.md` §4b, "Editing in place").
+    /// worked example (`docs/ux/mockups/settings/README.md` §4b, "Editing in place").
     OpenEditSettingPopup,
     /// `enter` on the Settings view — opens the base-unit guard overlay over the `general.
-    /// base_unit` worked example (`docs/ux/tui/settings/README.md` §4c, "Base unit guard").
+    /// base_unit` worked example (`docs/ux/mockups/settings/README.md` §4c, "Base unit guard").
     /// Bound to a key of its own rather than reached by committing an §4b edit, since there is
     /// no real "currently selected setting" state yet to route a generic commit through —
     /// `view::settings::SettingsView`'s own module doc says more.

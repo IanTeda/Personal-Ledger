@@ -1,5 +1,5 @@
 //! The "delete account" popup — `d` on an Accounts list row, or `:acct delete <acct> [into
-//! <acct>]` (`docs/ux/tui/accounts/README.md` "7d — Delete"), the only irreversible operation
+//! <acct>]` (`docs/ux/mockups/accounts/README.md` "7d — Delete"), the only irreversible operation
 //! in this view. Genuinely interactive and genuinely mutates the fixture (transfers, then
 //! deletes), the same as `crate::popup::category`'s popups — there's no Category precedent
 //! for a typed-name delete confirmation yet (Category's own delete is still "Not yet

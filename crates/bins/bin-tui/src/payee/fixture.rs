@@ -1,5 +1,5 @@
 //! [`PayeeFixture`]: the in-memory [`PayeeStore`] every ticket in the "Payees screen, views and
-//! popup" map (issue #134) builds against, seeded with `docs/ux/tui/payees/README.md`'s own
+//! popup" map (issue #134) builds against, seeded with `docs/ux/mockups/payees/README.md`'s own
 //! mock payees and amounts (§*8a*'s Sunrise Payroll/Home Loan Direct/Woolworths/Coles Central/
 //! Origin Energy/Telstra/WOOLIES rows, §*8a*'s Woolworths record/mix example).
 //!

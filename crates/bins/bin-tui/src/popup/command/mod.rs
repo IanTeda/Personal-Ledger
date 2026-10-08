@@ -1,9 +1,9 @@
-//! The command popup — the shell's own floating command window (`docs/ux/tui/README.md` §3a,
+//! The command popup — the shell's own floating command window (`docs/ux/mockups/README.md` §3a,
 //! where it's specified as the "command palette"), opened with `Ctrl+;` from anywhere.
 //! `view/mod.rs` calls this out as later work over the `View` trait: the popup overlays
 //! whatever `View` is active rather than being one itself, so `Shell` owns it directly instead
 //! of hosting it through `View`. It was the first tenant of `crate::popup`; `popup::unit::new`
-//! (`docs/ux/tui/units/README.md` §4b) now shares its `Dim` overlay treatment and
+//! (`docs/ux/mockups/units/README.md` §4b) now shares its `Dim` overlay treatment and
 //! `REFERENCE_TERMINAL_WIDTH` baseline.
 //!
 //! The command list itself (`commands`) is real, grouped by domain, each with a fixed

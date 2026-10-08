@@ -1,4 +1,4 @@
-//! Settings-domain popups: the in-place editor (`docs/ux/tui/settings/README.md` §4b) and the
+//! Settings-domain popups: the in-place editor (`docs/ux/mockups/settings/README.md` §4b) and the
 //! base-unit guard (§4c), hosted by `Shell` the same way `crate::popup::unit` is. Wireframe
 //! stage, same fidelity as the rest of `view::settings` and `popup::unit`: every field renders
 //! §4a/§4b/§4c's own worked examples verbatim rather than a real, editable draft against the

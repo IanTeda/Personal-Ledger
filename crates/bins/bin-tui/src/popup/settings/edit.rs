@@ -1,4 +1,4 @@
-//! The in-place editor popup — `e` from the Settings view, or `:set <key>` (`docs/ux/tui/
+//! The in-place editor popup — `e` from the Settings view, or `:set <key>` (`docs/ux/mockups/
 //! settings/README.md` §4b, "Editing in place"). Wireframe stage, same as `popup::unit::edit`:
 //! every field renders §4b's own `general.negatives` worked example verbatim — including the
 //! candidate already chosen (`minus`) and its resolved preview/on-accept lines — rather than a
@@ -42,7 +42,7 @@ const CONTENT_ROWS: u16 = 1 + 1 + 1 + 4 + 1 + 1 + 1 + 3 + 1 + 5 + 1 + 1 + 1;
 /// Total popup height: content plus its top/bottom border.
 const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
 
-/// The in-place editor popup: `docs/ux/tui/settings/README.md` §4b as a centred floating
+/// The in-place editor popup: `docs/ux/mockups/settings/README.md` §4b as a centred floating
 /// overlay (see this module's own doc comment for why, over §4b's literal "in the row's
 /// position"). No draft state yet — every field is the mockup's own placeholder content, not a
 /// real candidate value.

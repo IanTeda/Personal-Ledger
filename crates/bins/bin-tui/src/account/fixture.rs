@@ -1,5 +1,5 @@
 //! [`AccountFixture`]: the in-memory [`AccountStore`] every ticket in the "Accounts screen,
-//! views and popup" map builds against, seeded with `docs/ux/tui/accounts/README.md`'s own
+//! views and popup" map builds against, seeded with `docs/ux/mockups/accounts/README.md`'s own
 //! mock accounts and amounts (`§7a`'s CASH/BANK/CREDIT CARD/INVESTMENT/LOAN rows, `§7c`'s
 //! Everyday Spending summary-box example, `§7d`'s delete-into-Mortgage-Offset example).
 //!

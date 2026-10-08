@@ -1,5 +1,5 @@
 //! [`CategoryFixture`]: the in-memory [`CategoryStore`] every ticket in the "Categories
-//! screen, views and popup" map builds against, seeded with `docs/ux/tui/categories/
+//! screen, views and popup" map builds against, seeded with `docs/ux/mockups/categories/
 //! README.md`'s own mock tree and amounts. Where the handoff draws a folded branch without
 //! showing its children (e.g. `Housing`, `Transport`, `Health`), this fixture invents
 //! plausible leaf children rather than leaving the parent childless — the tree needs real

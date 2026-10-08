@@ -1,6 +1,6 @@
 //! The Budgets domain — commands grounded in what the retired `screen::budgets_list`/
 //! `budget_detail` actually support (list/new/edit/delete); bindings and wording follow
-//! `docs/ux/tui/README.md`'s own `:help` window example for this domain almost verbatim
+//! `docs/ux/mockups/README.md`'s own `:help` window example for this domain almost verbatim
 //! (`g b`, `n`, `e`, `x` for deactivate — realised here as delete, since the real screen has
 //! no separate deactivate verb).
 

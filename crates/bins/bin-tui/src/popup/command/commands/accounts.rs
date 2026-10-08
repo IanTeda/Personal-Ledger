@@ -1,4 +1,4 @@
-//! The Accounts domain — the `:account` grammar `docs/ux/tui/accounts/README.md` "Command
+//! The Accounts domain — the `:account` grammar `docs/ux/mockups/accounts/README.md` "Command
 //! grammar" specifies (that doc's own text writes it as `:acct`; the command name is
 //! `:account`, matching every other domain's own full-word convention — `unit`, `category`,
 //! `budget`, `payee`, none abbreviated), grounded in what `view::accounts::AccountsView` and
@@ -109,5 +109,5 @@ fn delete_preview() -> String {
 
 /// `:account check` has no design yet, so its preview points at the doc that will carry one.
 fn check_preview() -> String {
-    crate::msg::tui_command_preview_account_check("docs/ux/tui/accounts/README.md")
+    crate::msg::tui_command_preview_account_check("docs/ux/mockups/accounts/README.md")
 }

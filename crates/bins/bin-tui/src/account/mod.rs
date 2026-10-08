@@ -16,7 +16,7 @@
 //! `handle_key`/`update` — never routed through `crate::view::Action`, mirroring
 //! `crate::category`'s own decision.
 //!
-//! `docs/ux/tui/accounts/README.md` is the authority on the model this mirrors: five fixed
+//! `docs/ux/mockups/accounts/README.md` is the authority on the model this mirrors: five fixed
 //! `AccountType`s, exactly one Unit per account fixed at creation, Balance computed on read
 //! (`starting_balance + Σ transactions`, never stored), and `is_active` a soft-delete flag.
 
@@ -49,7 +49,7 @@ pub struct AccountBalanceCheck {
     pub asserted: Money,
 }
 
-/// One Account — a place value is held or owed, per `docs/ux/tui/accounts/README.md`.
+/// One Account — a place value is held or owed, per `docs/ux/mockups/accounts/README.md`.
 /// `transaction_count`/`open_count`/`first_posted`/`last_posted` summarise a ledger that
 /// [`fixture::ledger_for`] generates on demand (date/payee/amount/status rows, deterministically
 /// seeded from `id`) rather than storing individually — the same "generate on demand, don't

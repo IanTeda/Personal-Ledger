@@ -1,4 +1,4 @@
-//! The "new unit" popup — `:unit new`, or `n` from the Units view (`docs/ux/tui/units/
+//! The "new unit" popup — `:unit new`, or `n` from the Units view (`docs/ux/mockups/units/
 //! README.md` §4b, "Add"). Wireframe stage: every field renders the mockup's placeholder
 //! content verbatim rather than a real, editable draft — `Shell` wires up opening and closing
 //! it (`Esc`) so the navigation path exists before field editing, source testing (`^t`) and
@@ -21,7 +21,7 @@ use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
-/// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per `docs/ux/tui/units/README.md`
+/// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per `docs/ux/mockups/units/README.md`
 /// "The forms" ("~88% width on the drawing") — wider than `popup::command`'s 78%, since a form
 /// carries a label column plus a hint on most rows.
 const POPUP_WIDTH_PERCENT: u32 = 88;
@@ -41,7 +41,7 @@ const CONTENT_ROWS: u16 = 1 + 1 + 9 + 1 + 1 + 1 + 1;
 /// Total popup height: content plus its top/bottom border.
 const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
 
-/// The "new unit" popup: `docs/ux/tui/units/README.md` §4b as a centred floating overlay,
+/// The "new unit" popup: `docs/ux/mockups/units/README.md` §4b as a centred floating overlay,
 /// same window treatment as `popup::command`. No draft state yet — every field is the
 /// mockup's own placeholder content, not a real value the user has typed.
 #[derive(Default)]

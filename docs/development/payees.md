@@ -73,7 +73,7 @@ Anything that accepts a typed Payee name should call this rather than inserting 
 
 Neither Client reads Payees from `lib-database`.
 
-- **TUI** — `crates/bins/bin-tui/src/payee/` (`mod.rs`, `fixture.rs`) supplies in-memory Payees; the screen is `view/payees.rs`. Spec: `docs/ux/tui/payees/README.md`.
+- **TUI** — `crates/bins/bin-tui/src/payee/` (`mod.rs`, `fixture.rs`) supplies in-memory Payees; the screen is `view/payees.rs`. Spec: `docs/ux/mockups/payees/README.md`.
 - **Desktop** — the Payees surface (handoff `docs/ux/desktop/20-payees/`, screens 6a–6e), all on in-memory stubs:
   - `src/payees/mod.rs` — `gpui`-free model and rules: the seeded `Payee` (`id: u32`, `name`, `aliases`, `default_category`, `is_active`), `normalise_alias`, `alias_owner`, `match_alias` (longest alias wins), `insert_payee`/`edit_payee`/`delete_payee`/`set_active`, `usage` (Split count and base-Unit total, computed live from the Transactions stub), and the counts. The dialogs' form state (`PayeeForm`/`PayeeOptions` and `DeleteAction`, which is delete, deactivate or reactivate) is in `src/payees/form.rs`. Start here; it is unit-tested without a window.
   - `src/view/payees/` — `mod.rs` the list (6a), `add_dialog.rs` the Add and Edit dialogs (6b, 6c), `rules_field.rs` the match-rule chips and input, `delete_dialog.rs` the Delete/Deactivate/Reactivate dialog (6d).

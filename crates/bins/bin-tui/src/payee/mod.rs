@@ -23,7 +23,7 @@
 //! `handle_key`/`update` — never routed through `crate::view::Action`, mirroring every other
 //! domain module's own decision.
 //!
-//! `docs/ux/tui/payees/README.md` is the authority on the model this mirrors: a Payee is
+//! `docs/ux/mockups/payees/README.md` is the authority on the model this mirrors: a Payee is
 //! curated, not created by hand; renaming always leaves a `source = Rename` alias, protected
 //! from removal; a hand-authored (`source = Manual`) alias can collide with another Payee's
 //! own name or pattern, resolving arbitrarily — [`PayeeStore::conflict_partners`] and
@@ -40,7 +40,7 @@ use lib_core::{Money, RowID};
 pub use crate::account::TransactionStatus;
 
 /// Where a Payee Alias came from — `Rename` is protected (only a rename itself, never a user
-/// action, can remove it); `Manual` is the hand-authored kind `docs/ux/tui/payees/README.md`'s
+/// action, can remove it); `Manual` is the hand-authored kind `docs/ux/mockups/payees/README.md`'s
 /// 8d introduces, and the only kind [`PayeeStore::remove_alias`] will ever remove.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AliasSource {

@@ -1,5 +1,5 @@
 //! The Units domain — commands grounded in what the retired `screen::units_list`/`unit_detail`
-//! actually support (list/new/edit/delete); bindings are `docs/ux/tui/README.md`'s own
+//! actually support (list/new/edit/delete); bindings are `docs/ux/mockups/README.md`'s own
 //! documented scheme for this domain (`g u`, and `n` for `:unit new` verbatim from its
 //! `:help` window example).
 

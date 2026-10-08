@@ -1,5 +1,5 @@
 //! The "new" popup — `n` (child of the selection) / `N` (sibling of it) on a Categories tree
-//! row, or `:category new <name> [parent]` (`docs/ux/tui/categories/README.md` "5c — New").
+//! row, or `:category new <name> [parent]` (`docs/ux/mockups/categories/README.md` "5c — New").
 //! Genuinely interactive and genuinely mutates the tree, the same as `move_popup` (see its own
 //! module doc for the full `Shell`/`CategoriesView` round trip this popup follows too) — the
 //! `parent` field reuses `super::path` verbatim, per the handoff's own "same widget as 5b".

@@ -2,7 +2,7 @@
 //! `App`/`Screen` stack had actually implemented (Units, Categories, Accounts, Transactions,
 //! Payees, Balance Checks, Budgets, Reports, CSV import), grouped one file per domain,
 //! rather than
-//! `docs/ux/tui/README.md`'s aspirational grammar where nothing yet backs it (`sync`,
+//! `docs/ux/mockups/README.md`'s aspirational grammar where nothing yet backs it (`sync`,
 //! `price`).
 //!
 //! This is data only: no action registry, no `:help`/footer/keymap generation, and (bar

@@ -1,5 +1,5 @@
 //! The "edit payee" popup — `e` on a Payees list row, or `:payee edit <payee>`
-//! (`docs/ux/tui/payees/README.md` "8c — Edit"). Genuinely interactive and genuinely mutates
+//! (`docs/ux/mockups/payees/README.md` "8c — Edit"). Genuinely interactive and genuinely mutates
 //! the fixture, following `popup::account::edit`'s structural shape.
 //!
 //! **`name` is a rename, and the form never lets that be a surprise**: boxed and focused by

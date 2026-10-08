@@ -1,5 +1,5 @@
 //! The "new account" popup — `n` on the Accounts list, or `:acct new <name> <type> <unit>`
-//! (`docs/ux/tui/accounts/README.md` "7b — New"). Genuinely interactive and genuinely creates
+//! (`docs/ux/mockups/accounts/README.md` "7b — New"). Genuinely interactive and genuinely creates
 //! an account in the fixture, the same as `crate::popup::category`'s own new/edit/move popups
 //! — unlike `crate::popup::unit::new`, still wireframe-only ("no draft state yet"), whose
 //! module/enum-variant/`render()` *structure* this still follows per that ticket's own

@@ -1,4 +1,4 @@
-//! The Payees domain — the `:payee` grammar `docs/ux/tui/payees/README.md` "Command grammar"
+//! The Payees domain — the `:payee` grammar `docs/ux/mockups/payees/README.md` "Command grammar"
 //! specifies, grounded in what `view::payees::PayeesView` and its four popups
 //! (`crate::popup::payee`) actually support now that all of "Payees screen, views and popup"
 //! (issue #134) is built. Bindings are the list's own real keys (`g p`, `n`, `e`, `m`, `a`,

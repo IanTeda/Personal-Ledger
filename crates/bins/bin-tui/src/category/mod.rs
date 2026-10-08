@@ -11,7 +11,7 @@
 //! "open the move popup for this category"); it never needs to carry owned Category data, so
 //! its `#[derive(Copy)]` stays as-is.
 //!
-//! `docs/ux/tui/categories/README.md` is the authority on the model this mirrors: two fixed,
+//! `docs/ux/mockups/categories/README.md` is the authority on the model this mirrors: two fixed,
 //! non-deletable roots (`income`/`expenses`), kind inherited from the root and never stored
 //! per node, unlimited depth, and every node carrying both a direct amount (posted to it) and
 //! a rollup (itself plus every descendant, computed — never stored).

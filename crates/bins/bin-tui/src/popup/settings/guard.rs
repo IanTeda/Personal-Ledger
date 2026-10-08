@@ -1,5 +1,5 @@
 //! The base-unit guard overlay — `enter` from the Settings view on `general.base_unit`
-//! (`docs/ux/tui/settings/README.md` §4c, "Base unit guard"). Wireframe stage, same as
+//! (`docs/ux/mockups/settings/README.md` §4c, "Base unit guard"). Wireframe stage, same as
 //! `popup::settings::edit`: every field renders §4c's own `AUD → USD` worked example verbatim
 //! — including the resolved impact figures and the typed confirmation — rather than a real
 //! query against the (not yet built) settings registry and database. `Shell` wires up opening
@@ -41,7 +41,7 @@ const CONTENT_ROWS: u16 = 1 + 1 + 3 + 1 + 6 + 1 + 4 + 3 + 1 + 1;
 /// Total popup height: content plus its top/bottom border.
 const POPUP_HEIGHT: u16 = CONTENT_ROWS + 2;
 
-/// The base-unit guard: `docs/ux/tui/settings/README.md` §4c as a centred floating overlay,
+/// The base-unit guard: `docs/ux/mockups/settings/README.md` §4c as a centred floating overlay,
 /// same window treatment as `popup::command` and `popup::unit`. No real resolver yet — every
 /// figure is the mockup's own placeholder content, not a query against the user's data.
 #[derive(Default)]
