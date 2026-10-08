@@ -1,6 +1,6 @@
 # Document Types are user-managed Ledger data
 
-Settings v4 adds a Document types page (`docs/ux/desktop/16-settings/`, frame 16p) where the user adds, edits, removes and reorders the kinds of Document, and the Documents Type filter lists them in that order. The glossary said a Document Type was one of a fixed eight, not user-editable, and the code models it as an enum with `Receipt` as a hard-coded fallback. We're making a **Document Type** user-managed Ledger data, synced as Change Sets like Tags and Payees, and dropping any fixed kind behind it. We chose pure user types over mapping each user type onto a hidden built-in kind because two parallel concepts would leak into every form, filter and extraction rule, and a household's kinds of paperwork genuinely differ.
+Settings v4 adds a Document types page (`docs/ux/desktop-mockups/16-settings/`, frame 16p) where the user adds, edits, removes and reorders the kinds of Document, and the Documents Type filter lists them in that order. The glossary said a Document Type was one of a fixed eight, not user-editable, and the code models it as an enum with `Receipt` as a hard-coded fallback. We're making a **Document Type** user-managed Ledger data, synced as Change Sets like Tags and Payees, and dropping any fixed kind behind it. We chose pure user types over mapping each user type onto a hidden built-in kind because two parallel concepts would leak into every form, filter and extraction rule, and a household's kinds of paperwork genuinely differ.
 
 ## Consequences
 

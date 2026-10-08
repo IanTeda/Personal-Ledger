@@ -4,7 +4,7 @@ End-user documentation: [Documents](../documents.md).
 
 ## Overview
 
-Documents is a desktop-only surface built against in-memory stubs, from the handoff `docs/ux/desktop/04-documents/` (frames 4a Library and 4b Inbox) under the Desktop Documents Surface map ([#430](https://github.com/IanTeda/Personal-Ledger/issues/430)). Everything lives in `crates/bins/bin-desktop`. There is no `lib-core` type, no table and no TUI screen, and nothing persists except the last mode, scope and sort.
+Documents is a desktop-only surface built against in-memory stubs, from the handoff `docs/ux/desktop-mockups/04-documents/` (frames 4a Library and 4b Inbox) under the Desktop Documents Surface map ([#430](https://github.com/IanTeda/Personal-Ledger/issues/430)). Everything lives in `crates/bins/bin-desktop`. There is no `lib-core` type, no table and no TUI screen, and nothing persists except the last mode, scope and sort.
 
 ## Data model
 

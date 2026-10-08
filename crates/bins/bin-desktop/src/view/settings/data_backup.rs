@@ -1,4 +1,4 @@
-//! The **Data & backup** section (`docs/ux/desktop/16-settings/README.md`'s "2a resting state"): a
+//! The **Data & backup** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state"): a
 //! 300px column of label/value rows (Store location, Last backup), then two buttons -- **Backup
 //! now** and **Export ledger (CSV)** -- same plain, unbordered row shape as
 //! `view::settings::sync_server` (a distinct component from `general::summary_panel`'s bordered

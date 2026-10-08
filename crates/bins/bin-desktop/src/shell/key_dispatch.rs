@@ -183,7 +183,7 @@ impl Shell {
             _ => {}
         }
 
-        // The handoff's own precedent for hint-strip messages (`docs/ux/desktop/README.md`'s
+        // The handoff's own precedent for hint-strip messages (`docs/ux/desktop-mockups/README.md`'s
         // "Loading and error states"): any keypress clears one, not just a timer.
         let had_status_message = self.status_message.take().is_some();
 
@@ -301,7 +301,7 @@ impl Shell {
     }
 
     /// Routes a keystroke while the palette is open (tier 2, "popup-owned keys" -- mirroring
-    /// `docs/ux/mockups/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
+    /// `docs/ux/tui-mockups/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
     /// selection, `Tab` completes to the selected result's full name, `Ctrl-r` cycles backward
     /// through previously run commands, `Enter` runs the selected command (see
     /// [`Self::run_command`]), and any other unmodified, printable key is typed into the query.

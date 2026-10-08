@@ -1,4 +1,4 @@
-//! Shared stub Categories -- a tree, seeded from the sample tree in `docs/ux/desktop/18-categories/`
+//! Shared stub Categories -- a tree, seeded from the sample tree in `docs/ux/desktop-mockups/18-categories/`
 //! (Housing, Food, Transport, Household, Salary, Interest and their children: 12 categories, three
 //! levels deep). `gpui`-free, deliberately grows from the Transactions map's need for paths, leaves
 //! and descendants to support budgets, spent rollups, tree navigation with expand/collapse, and editing.

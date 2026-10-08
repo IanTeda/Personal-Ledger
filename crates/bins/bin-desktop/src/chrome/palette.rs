@@ -1,7 +1,7 @@
-//! The floating command palette (`docs/ux/desktop/01-shell/README.md`'s "1d" spec,
+//! The floating command palette (`docs/ux/desktop-mockups/01-shell/README.md`'s "1d" spec,
 //! the shell's `:`/`InputMode::Command` state) -- `Shell` owns `Option<Palette>`, `Some` only
 //! while that mode is active, mirroring how `bin-tui`'s own `Shell` owns
-//! `Option<popup::command::CommandPopup>` (`docs/ux/desktop/README.md`'s Notes: "the desktop
+//! `Option<popup::command::CommandPopup>` (`docs/ux/desktop-mockups/README.md`'s Notes: "the desktop
 //! shell should reuse that shape, not invent a second one").
 //!
 //! Ranking, filtering and selection are `gpui`-free (unit-tested without a window), the same

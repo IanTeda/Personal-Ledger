@@ -1,5 +1,5 @@
 //! The Bills Schedule tab's filters and the history figures behind its stat callout
-//! (`docs/ux/desktop/12-bills/README.md`'s 8a, which absorbed 8f's History tab in #381) --
+//! (`docs/ux/desktop-mockups/12-bills/README.md`'s 8a, which absorbed 8f's History tab in #381) --
 //! `gpui`-free and unit-tested, like `bills/mod.rs`.
 //!
 //! The rules are the Desktop Bills Surface map's History decisions (#369), as carried into the

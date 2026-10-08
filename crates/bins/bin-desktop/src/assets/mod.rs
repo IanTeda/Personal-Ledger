@@ -2,7 +2,7 @@
 //! no SVG files by default (its README: "you can add any icons you need to your project"),
 //! so this registers the app's bundled Lucide icons
 //! (`crates/bins/bin-desktop/assets/icons/`, see that directory's own `LICENSE`) as `gpui`'s
-//! `AssetSource` -- resolving the icon sourcing question `docs/ux/desktop/README.md` left
+//! `AssetSource` -- resolving the icon sourcing question `docs/ux/desktop-mockups/README.md` left
 //! open.
 
 pub(crate) mod icon;

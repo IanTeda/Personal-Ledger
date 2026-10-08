@@ -1,4 +1,4 @@
-//! The **Accounts** page (`docs/ux/desktop/16-settings/README.md`'s 2o): a kicker (BY TYPE) with
+//! The **Accounts** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 2o): a kicker (BY TYPE) with
 //! **+ Add account** over one bordered table per account type in `accounts::GROUP_ORDER`
 //! (NAME / INSTITUTION / UNIT / ACTIONS). It reuses the Accounts model and dialogs;
 //! only the table is reduced to the handoff's columns and `padding:8px 16px` rows.

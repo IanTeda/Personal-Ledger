@@ -1,4 +1,4 @@
-//! The **Documents** page (`docs/ux/desktop/16-settings/README.md`'s 16p, as amended by #479): a
+//! The **Documents** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16p, as amended by #479): a
 //! kicker with **+ Add document type** over one bordered table of the Ledger's Document Types in
 //! type-filter order, then four one-sentence notes. Other carries a `default` outline tag and no
 //! **remove** button.

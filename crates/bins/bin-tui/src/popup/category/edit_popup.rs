@@ -1,5 +1,5 @@
 //! The "edit" popup — `e` on a Categories tree row, or `:category edit <cat>`
-//! (`docs/ux/mockups/categories/README.md` "5d — Edit"). Genuinely interactive and genuinely
+//! (`docs/ux/tui-mockups/03-categories/README.md` "5d — Edit"). Genuinely interactive and genuinely
 //! mutates the tree, the same as `move_popup`/`new_popup` (see `move_popup`'s own module doc
 //! for the full `Shell`/`CategoriesView` round trip every Category popup follows).
 //!

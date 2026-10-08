@@ -1,4 +1,4 @@
-//! The **9a** Progress tab (`docs/ux/desktop/14-budgets-v2/README.md`): the header's meta line,
+//! The **9a** Progress tab (`docs/ux/desktop-mockups/14-budgets-v2/README.md`): the header's meta line,
 //! the legend, the four-cell stat strip and the Category table, all read from one
 //! `budgets::period_figures`.
 //!

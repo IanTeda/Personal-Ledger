@@ -1,5 +1,5 @@
 //! The Categories `View`, hosted by `Shell` (ADR-0013). Per
-//! `docs/ux/mockups/categories/README.md` "5a — Categories screen": the left pane is the tree
+//! `docs/ux/tui-mockups/03-categories/README.md` "5a — Categories screen": the left pane is the tree
 //! (box-drawing guides, session-local fold state, `N`/`12M` columns) and the summary box for
 //! whichever node is selected ("Categories: 5a screen — tree pane and summary box (left
 //! pane)"); the right pane, built here, is that same selection's direct-spend line chart and
@@ -690,7 +690,7 @@ impl CategoriesView {
     }
 
     /// The summary box beneath the tree, for whichever node is selected — see the handoff's
-    /// own worked example (`docs/ux/mockups/categories/README.md` "Summary box").
+    /// own worked example (`docs/ux/tui-mockups/03-categories/README.md` "Summary box").
     fn render_summary(
         &self,
         frame: &mut Frame<'_>,

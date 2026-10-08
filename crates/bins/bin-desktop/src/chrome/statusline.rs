@@ -1,4 +1,4 @@
-//! The shell's status line (`docs/ux/desktop/01-shell/README.md`'s "1a" spec,
+//! The shell's status line (`docs/ux/desktop-mockups/01-shell/README.md`'s "1a" spec,
 //! "Status line" component): mode badge, hint strip. Its own bottom-right breadcrumb (`ledger ·
 //! <noun>`) was dropped -- the top bar's brand tile now names the active screen instead
 //! (`crate::chrome::topbar::brand_mark`), and showing it in both places was a plain duplicate.
@@ -11,7 +11,7 @@ use lib_toast::ToastKind;
 
 use crate::{navigation::nav::InputMode, theme::color};
 
-/// Band height: `docs/ux/desktop/01-shell/README.md`'s "Layout" table.
+/// Band height: `docs/ux/desktop-mockups/01-shell/README.md`'s "Layout" table.
 pub const HEIGHT: gpui::Pixels = px(28.0);
 
 /// A page's own status-line content, replacing the shell-wide hint strip and file path while that
@@ -47,13 +47,13 @@ pub struct StatusLine {
     status_message: Option<String>,
     /// The active command-mode echo text and its own "esc closes ..." hint, `Some` while
     /// `InputMode::Command` has something other than the ordinary hint strip to show: either
-    /// the palette's live input (`docs/ux/desktop/01-shell/README.md`'s "1d" spec:
+    /// the palette's live input (`docs/ux/desktop-mockups/01-shell/README.md`'s "1d" spec:
     /// "Status line in COMMAND mode: ... the live query echoes ...; right side reads 'esc close
     /// command window'"), or -- once `:open` is confirmed -- the "1e" file explorer's own
     /// frozen `"open"` echo and "esc close file explorer" hint, since `Shell` keeps `mode` at
     /// `Command` for as long as that dialog is open (see `Shell::run_command`'s own doc).
     command_echo: Option<(String, String)>,
-    /// `Some` while a page with its own legend is showing (`docs/ux/desktop/17-accounts/README.md`'s
+    /// `Some` while a page with its own legend is showing (`docs/ux/desktop-mockups/17-accounts/README.md`'s
     /// 3a status bar). Ignored in command mode, which owns the whole line.
     page: Option<PageStatus>,
     /// The status-line echo (ADR-0027): the Toast carried here while Toasts are off. Below

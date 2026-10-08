@@ -1,6 +1,6 @@
 //! Floating overlay windows hosted by `Shell` on top of whatever `View` is active — the
-//! "centred floating overlay" treatment `docs/ux/mockups/README.md` §3a specifies for the command
-//! popup and `docs/ux/mockups/units/README.md` "The forms" reuses verbatim for the unit add/edit/
+//! "centred floating overlay" treatment `docs/ux/tui-mockups/01-chrome/README.md` §3a specifies for the command
+//! popup and `docs/ux/tui-mockups/07-units/README.md` "The forms" reuses verbatim for the unit add/edit/
 //! delete dialogs ("same window treatment as the command palette"). Each popup gets its own
 //! module here with its own state struct, the same way each `View` gets its own module under
 //! `view/`.
@@ -23,10 +23,10 @@ use ratatui::{
     widgets::Widget,
 };
 
-/// Reference terminal width `docs/ux/mockups/README.md` draws its wireframes against — every
+/// Reference terminal width `docs/ux/tui-mockups/01-chrome/README.md` draws its wireframes against — every
 /// popup's fixed width is computed from this rather than from whatever terminal the user
 /// happens to be running, so opening one looks the same at 96 columns and at 300. Shared so
-/// `popup::command`'s ~78% and a unit form's ~88% (`docs/ux/mockups/units/README.md` "The forms")
+/// `popup::command`'s ~78% and a unit form's ~88% (`docs/ux/tui-mockups/07-units/README.md` "The forms")
 /// scale off the same baseline.
 pub const REFERENCE_TERMINAL_WIDTH: u16 = 96;
 

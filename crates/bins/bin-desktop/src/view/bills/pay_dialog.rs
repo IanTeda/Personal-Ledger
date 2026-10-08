@@ -1,4 +1,4 @@
-//! Renders the **Pay** dialog (`docs/ux/desktop/12-bills/README.md`'s 8d) on the shared
+//! Renders the **Pay** dialog (`docs/ux/desktop-mockups/12-bills/README.md`'s 8d) on the shared
 //! `crate::dialog` chrome: the segmented switch directly under the title bar, then either the Match
 //! list or the Pay it directly fields. `Shell` owns the live form (`bills::pay_form::PayForm`) and every
 //! keystroke while it is open, and hands this the candidates already worded.

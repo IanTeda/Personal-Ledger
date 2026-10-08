@@ -1,9 +1,9 @@
 //! The command registry driving `crate::chrome::palette::Palette`
-//! (`docs/ux/desktop/01-shell/README.md`'s "Command registry" section): "every rail
+//! (`docs/ux/desktop-mockups/01-shell/README.md`'s "Command registry" section): "every rail
 //! item, every context-rail footer affordance, and every view action registers a command with:
 //! command string, description, kind ... optional binding, and a handler." Mirrors the shape of
 //! `bin-tui`'s own per-domain registry (`crates/bins/bin-tui/src/popup/command/commands/`,
-//! `docs/ux/mockups/navigation.md`'s "Commands" section) -- plain, hand-authored data, one flat
+//! `docs/ux/tui-mockups/navigation.md`'s "Commands" section) -- plain, hand-authored data, one flat
 //! array rather than domain modules (the desktop registry is small enough not to need
 //! splitting the way the TUI's much larger one does), but each `Command` now carries a
 //! `domain` field so the palette's own resting-state list can group by it the same way.
@@ -70,7 +70,7 @@ pub enum CommandEffect {
     Documents(DocumentsVerb),
     /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
     Import,
-    /// No real behaviour behind this command yet (`docs/ux/mockups/README.md`'s commitment: "a
+    /// No real behaviour behind this command yet (`docs/ux/tui-mockups/01-chrome/README.md`'s commitment: "a
     /// command that has no real behaviour yet says so explicitly when run") --
     /// `Shell::run_command` turns this into the status-line flash.
     NotYetBuilt,

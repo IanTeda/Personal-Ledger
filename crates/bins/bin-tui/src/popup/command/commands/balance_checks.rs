@@ -1,6 +1,6 @@
 //! The Balance Checks domain — commands grounded in what
 //! the retired `screen::balance_checks_list`/`balance_check_detail` actually supported
-//! (list/new/edit/delete/import); `docs/ux/mockups/README.md` calls this domain "reconcile" in
+//! (list/new/edit/delete/import); `docs/ux/tui-mockups/01-chrome/README.md` calls this domain "reconcile" in
 //! its navigation jump (`g k`) but "check" in its command grammar — the real screen's own
 //! `i` import key (CSV import, FR.33) has no README precedent, so it's carried over as-is.
 

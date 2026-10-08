@@ -3,7 +3,7 @@
 
 pub(crate) mod form;
 
-/// One row of the **Institutions** section's table (`docs/ux/desktop/16-settings/README.md`'s "2a
+/// One row of the **Institutions** section's table (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a
 /// resting state" markup: INSTITUTION / ACCOUNT TYPE columns). Owned `String` fields, not
 /// `&'static str` -- issue #187's own Add institution dialog produces real typed text, same
 /// reasoning as [`UnitRow`]'s own migration for issue #184.
@@ -54,7 +54,7 @@ pub fn default_institutions() -> Vec<InstitutionRow> {
 }
 
 /// The Add institution dialog's own Account types multi-select chips
-/// (`docs/ux/desktop/16-settings/README.md`'s "2e — Add institution": savings / credit card /
+/// (`docs/ux/desktop-mockups/16-settings/README.md`'s "2e — Add institution": savings / credit card /
 /// offset / loan / investment).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccountType {

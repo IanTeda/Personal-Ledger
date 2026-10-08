@@ -1,4 +1,4 @@
-//! The Budgets page (`docs/ux/desktop/14-budgets-v2/`): the shared header (the Budget's name as the
+//! The Budgets page (`docs/ux/desktop-mockups/14-budgets-v2/`): the shared header (the Budget's name as the
 //! switcher's title with its method tag, the meta line, the primary action), the tab strip with
 //! its legend and the `‹ month ›` period nav, a 2px rule, then the active tab's body.
 //!

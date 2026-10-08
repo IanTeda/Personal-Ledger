@@ -1,4 +1,4 @@
-//! Renders the **Edit budget** dialog (`docs/ux/desktop/14-budgets-v2/README.md`'s 9e) on the
+//! Renders the **Edit budget** dialog (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 9e) on the
 //! shared `crate::dialog` chrome at the handoff's 480px: the Category picker when opened from
 //! **+ Budget a category**, Amount per month, Starting, the Applies to and Rollover segmented
 //! controls, the before/after summary and the note. `Shell` owns the live form

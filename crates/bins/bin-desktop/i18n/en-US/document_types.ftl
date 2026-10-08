@@ -1,4 +1,4 @@
-## The Settings › Documents page (`docs/ux/desktop/16-settings/`, frame 16p, as amended by #479):
+## The Settings › Documents page (`docs/ux/desktop-mockups/16-settings/`, frame 16p, as amended by #479):
 ## the Ledger's user-managed Document Types.
 
 ## The heading's meta. `$typed` is Filed Documents, `$all` every Document.

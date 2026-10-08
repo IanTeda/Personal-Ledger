@@ -1,4 +1,4 @@
-//! Renders the **Add payee** and **Edit payee** dialogs (`docs/ux/desktop/20-payees/README.md`'s 6b
+//! Renders the **Add payee** and **Edit payee** dialogs (`docs/ux/desktop-mockups/20-payees/README.md`'s 6b
 //! and 6c) on the shared `crate::dialog` chrome: Name, Default category (the shared `select_field`
 //! dropdown, "none" then the leaf Categories), the shared Match rules field, and a callout. The two
 //! differ only in title, rule placeholder, submit label and callout, so they share one renderer

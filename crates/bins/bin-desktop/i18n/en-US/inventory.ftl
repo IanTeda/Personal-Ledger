@@ -1,4 +1,4 @@
-## The Settings › Inventory page (`docs/ux/desktop/16-settings/`, frame 16q, as settled on #491):
+## The Settings › Inventory page (`docs/ux/desktop-mockups/16-settings/`, frame 16q, as settled on #491):
 ## Properties, each with the Rooms of its Inventory register.
 
 ## The heading's meta, "2 properties · 11 rooms · 232 items". Zeros are shown.

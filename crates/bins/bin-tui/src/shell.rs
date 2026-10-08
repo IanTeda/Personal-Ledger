@@ -1,7 +1,7 @@
 //! `Shell` — owns terminal lifecycle, the async event loop, and hosts one active `View`
 //! (ADR-0013, `docs/adr/0013-shell-view-replaces-breadcrumb-app-screen-nav.md`). Replaces the
 //! now-deleted breadcrumb-stack `App` (see the ADR, and Git history for the old code) for the
-//! shell chrome and dashboard being rebuilt against `docs/ux/mockups/README.md`: a status line,
+//! shell chrome and dashboard being rebuilt against `docs/ux/tui-mockups/01-chrome/README.md`: a status line,
 //! one full-bleed view region, and a keybind hint bar — no breadcrumb, no navigation stack.
 
 use std::time::Duration;
@@ -80,7 +80,7 @@ pub struct Shell {
     /// Kept so a view swap (e.g. [`Action::OpenUnits`]) can hand the freshly-hosted view its
     /// own clone, the same way `new()` hands one to the initial Dashboard view.
     action_tx: mpsc::UnboundedSender<Action>,
-    /// The command popup overlay (`docs/ux/mockups/README.md` §3a) — `Some` while open. Owned
+    /// The command popup overlay (`docs/ux/tui-mockups/01-chrome/README.md` §3a) — `Some` while open. Owned
     /// here rather than by the active `View`: it floats over whatever view is on screen and
     /// intercepts keys before the view sees them, per `view/mod.rs`'s "shell's own command
     /// window" note.
@@ -91,7 +91,7 @@ pub struct Shell {
     /// open and history must survive the popup being closed and reopened. Session-only (lost
     /// on quit), capped and deduplicated by `popup::command::record_history`.
     command_history: Vec<String>,
-    /// Whichever unit-domain form (`docs/ux/mockups/units/README.md` "The forms") is open —
+    /// Whichever unit-domain form (`docs/ux/tui-mockups/07-units/README.md` "The forms") is open —
     /// `Some` while one is. Owned here for the same reason as `command_popup`: it floats over
     /// whatever view is on screen and intercepts keys before the view sees them. Mutually
     /// exclusive with `command_popup` (opening one closes the other), and with itself — only
@@ -124,7 +124,7 @@ pub struct Shell {
     /// every other popup field.
     payee_popup: Option<PayeePopup>,
     /// `true` after a lone `g` keypress with no completing chord yet — the leader half of the
-    /// `g <letter>` jump chords in `docs/ux/mockups/README.md`'s "Jumps" table (e.g. `g d`
+    /// `g <letter>` jump chords in `docs/ux/tui-mockups/01-chrome/README.md`'s "Jumps" table (e.g. `g d`
     /// dashboard). Cleared by the very next key regardless of whether it completed a known
     /// chord, so an aborted chord never leaks into later keypresses.
     pending_leader: bool,
@@ -1754,7 +1754,7 @@ impl Shell {
     }
 
     /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
-    /// keybind hint bar — around the active view, per `docs/ux/mockups/README.md`.
+    /// keybind hint bar — around the active view, per `docs/ux/tui-mockups/01-chrome/README.md`.
     fn draw(&mut self, frame: &mut Frame<'_>) {
         // The frame size is only known here, so this is where a view shrinking under 40×8
         // hands its Toasts to the status-line echo, and back again.
@@ -1790,11 +1790,11 @@ impl Shell {
         let payee_popup_open = self.payee_popup.is_some();
 
         // Header Frame — the status line names the mode whenever it isn't the resting
-        // NORMAL state, per `docs/ux/mockups/README.md`'s "show the mode ... whenever it is not
+        // NORMAL state, per `docs/ux/tui-mockups/01-chrome/README.md`'s "show the mode ... whenever it is not
         // NORMAL" — `COMMAND` for the command popup, `INSERT` for a unit form or the Category
         // popup (it has a text field too), per "Modal, vim-flavoured ... INSERT only inside
         // forms ... COMMAND while the palette is open". `EDIT`/`CONFIRM` for the settings popups
-        // match `docs/ux/mockups/settings/README.md` §4b's own "`EDIT · uncommitted`" and §4c's own
+        // match `docs/ux/tui-mockups/05-settings/README.md` §4b's own "`EDIT · uncommitted`" and §4c's own
         // "`confirm base unit`" status line text (the `uncommitted`/`base unit` half of each
         // isn't reproduced here — the shell's status line is a flat title, not the design's own
         // breadcrumb, the same simplification every other view already makes).
@@ -1984,7 +1984,7 @@ fn is_hard_quit(key: KeyEvent) -> bool {
 }
 
 /// `Ctrl+U` — opens the placeholder Units view directly, alongside the command popup's own
-/// `unit` / `g u` route (`docs/ux/mockups/units/README.md`).
+/// `unit` / `g u` route (`docs/ux/tui-mockups/07-units/README.md`).
 fn is_open_units(key: KeyEvent) -> bool {
     key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('u'))
 }
@@ -2050,7 +2050,7 @@ fn key_binding_matches(key: KeyEvent, spec: &str) -> bool {
 }
 
 /// `Q` — quits the app from anywhere the command popup/unit forms aren't intercepting keys,
-/// matching the footer's `docs/ux/mockups/README.md` global keybind table (`Q` quit, distinct from
+/// matching the footer's `docs/ux/tui-mockups/01-chrome/README.md` global keybind table (`Q` quit, distinct from
 /// its still-unbuilt lowercase `q` "close view" sibling) and the popup's own `quit` command.
 /// Unlike [`is_hard_quit`] (`Ctrl+C`), this doesn't fire mid-chord or while a popup is open —
 /// there, `Q` is ordinary filter/chord input instead.
@@ -2068,7 +2068,7 @@ fn is_graceful_quit(key: KeyEvent) -> bool {
 }
 
 /// Routes a key while a unit form (new, edit or delete) is open. Only `Esc` does anything yet — no
-/// field is editable until each form's fields land (`docs/ux/mockups/units/README.md` §4b/§4c);
+/// field is editable until each form's fields land (`docs/ux/tui-mockups/07-units/README.md` §4b/§4c);
 /// every other key is swallowed, since the popup owns every key while it's up (mirroring
 /// `Shell::map_command_popup_key`). A free function rather than a method — unlike the command
 /// popup, there's no draft state yet to consult, and `Esc` behaves the same regardless of
@@ -3906,7 +3906,7 @@ mod tests {
 
     #[test]
     fn selecting_the_settings_command_and_pressing_enter_opens_the_settings_view() {
-        // `settings` is real, wireframe-stage content (`docs/ux/mockups/settings/README.md` §4a),
+        // `settings` is real, wireframe-stage content (`docs/ux/tui-mockups/05-settings/README.md` §4a),
         // so it's dispatched from `Enter` alongside `unit`/`dashboard`, unlike the 8 empty
         // placeholder boxes.
         let mut shell = Shell::new();

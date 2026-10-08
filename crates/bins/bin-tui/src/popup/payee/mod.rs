@@ -1,5 +1,5 @@
 //! Payee-domain popups: floating overlays for creating, editing, matching and deleting a
-//! `Payee` (`docs/ux/mockups/payees/README.md` "8b"/"8c"/"8d"/"8e"), hosted by `Shell` the same way
+//! `Payee` (`docs/ux/tui-mockups/04-payees/README.md` "8b"/"8c"/"8d"/"8e"), hosted by `Shell` the same way
 //! `crate::popup::account`/`crate::popup::tag` are. `new` (8b), `edit` (8c), `matches` (8d)
 //! and `delete` (8e) — every popup this map's destination named — now exist.
 

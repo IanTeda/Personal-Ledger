@@ -3,11 +3,12 @@
 ## Overview
 The application shell, its navigation model and its help window for `personal-ledger` — a keyboard-only, local-first personal finance ledger (single user, SQLite, no auth, no cloud dependency), built against `docs/product-requirements.md` in `IanTeda/Personal-Ledger`.
 
-Four states are specified, and together they are the entire navigation model:
+Five states are specified, and together they are the entire navigation model:
 
 | id | state |
 | --- | --- |
-| `1a` | **Shell at rest** — status line, full-bleed chart-led dashboard, idle command line, keybind hints |
+| `1a` | **Chrome at rest, no ledger loaded** — status line, a centred note pointing at `:new` / `:open`, idle command line, keybind hints |
+| `1b` | **Chrome with a ledger loaded** — status line, full-bleed chart-led dashboard, idle command line, keybind hints |
 | `2a` | **`:help` window** — search + the full command list, at rest |
 | `2b` | **`:help` window** — filtered by a search term |
 | `3a` | **Command palette** — floating fuzzy-find window, the only way to navigate |
@@ -17,7 +18,7 @@ The command palette is included even though the ask was "shell and help": with n
 The remaining screens (account ledger, transaction form, accounts, categories, budgets, reconcile, spending report, units) are wireframed separately and re-host inside this same shell.
 
 ## About the design files
-`Ledger TUI Shell.dc.html` (open in a browser; `support.js` must sit beside it) is a **design reference drawn in HTML**. It is not code to port. HTML was only a fast way to draw a character-grid interface — the target is **Rust + [ratatui](https://ratatui.rs) + crossterm**, using the repo's existing crate layout, domain types and SQLite access layer.
+`Ledger TUI Chrome.dc.html` (open in a browser; `support.js` must sit beside it) is a **design reference drawn in HTML**. It is not code to port. HTML was only a fast way to draw a character-grid interface — the target is **Rust + [ratatui](https://ratatui.rs) + crossterm**, using the repo's existing crate layout, domain types and SQLite access layer.
 
 Every px value in the HTML is an artifact of drawing. Read the geometry in **terminal cells** only.
 
@@ -43,9 +44,15 @@ Degrade below 96 columns in this order: drop sparkline columns → drop the righ
 
 ---
 
-## 1a — Shell at rest (dashboard / financial position)
+## 1a — Chrome at rest, no ledger loaded
 
-The default view. Chart-led by design: the tables live on their own screens, and this one answers "where do I stand" in one glance. Priority order, top to bottom:
+The state on cold start and after `:close`: status line (`Personal Ledger` on the left, only the date on the right) and a right-aligned `no file` label at the end of the key-hint bar, a single centred note in the view region, the idle command line and the key hints (`: command · ? help`). No dashboard, no other views.
+
+Note copy, two lines, centred horizontally and vertically in the view region: `No Personal Ledger file loaded.` then `Use :new to create a new ledger or :open to open an existing ledger.` Only `:new` and `:open` (and `:help`) are live commands until a ledger loads; the command line hint reads `type a command — :new, :open, :help`.
+
+## 1b — Chrome with a ledger loaded (dashboard / financial position)
+
+The default view once a ledger is open. Chart-led by design: the tables live on their own screens, and this one answers "where do I stand" in one glance. Priority order, top to bottom:
 
 **1. Headline row** — 3 rows. Net position as a large figure (bold, flush left), then 30-day delta, assets, liabilities as label-over-value pairs on one line. Labels dim and uppercase; values bold. Liabilities render in the accent.
 
@@ -72,7 +79,7 @@ Marker contrast matters: fill is dim, the marker is full-strength ink, so it sta
 
 **6. Needs attention** — 2–3 lines only, each naming the command that resolves it (`14 unreconciled transactions → :reconcile`). Deliberately last, and deliberately not a table.
 
-**Footer hints (1a):** `: command · / search · a add txn · ? help` plus the dim note `no persistent nav — ↑ recalls history`.
+**Footer hints (1b):** `: command · / search · a add txn · ? help` plus the dim note `no persistent nav — ↑ recalls history`.
 
 ---
 
@@ -204,8 +211,8 @@ One accent only. Never rely on color alone: negatives also carry `−`, over-bud
 `○` open · `◐` cleared · `●` reconciled · `⚑` flagged (independent of status). Provide an ASCII fallback (`o` `/` `x` `!`) behind a config flag for terminals without the glyphs — the same flag should cover the `│` budget marker and the `🔒` locked-field glyph used on the unit forms.
 
 ## Files
-- `Ledger TUI Shell.dc.html` — turns 1 (shell), 2 (help) and 3 (command palette). Open in a browser with `support.js` beside it.
+- `Ledger TUI Chrome.dc.html` — turns 1 (shell), 2 (help) and 3 (command palette). Open in a browser with `support.js` beside it.
 - `support.js` — runtime for the HTML file, not part of the deliverable.
 
 ## Suggested Claude Code prompt
-> Read `docs/ux/mockups/README.md` and open `docs/ux/mockups/Ledger TUI Shell.dc.html` in a browser for reference. Build, in this order: (1) the action registry described in the README, since the palette, help window, keymap and footer hints all generate from it; (2) the shell — status line, single full-bleed view region, command line, keybind hint bar, mode handling; (3) the floating command palette with its fuzzy matcher and argument-preview row; (4) the `:help` window over the same registry; (5) the chart-led dashboard view. Follow the existing crate layout and SQLite layer, put the shell, each window and each view in their own modules with their own state structs, and use Colour Roles (`docs/colour-themes-design.md`) rather than the hex values. The budget bar is a custom track with a period-progress marker cell, not a `Gauge`.
+> Read `docs/ux/tui-mockups/01-chrome/README.md` and open `docs/ux/tui-mockups/01-chrome/Ledger TUI Chrome.dc.html` in a browser for reference. Build, in this order: (1) the action registry described in the README, since the palette, help window, keymap and footer hints all generate from it; (2) the shell — status line, single full-bleed view region, command line, keybind hint bar, mode handling; (3) the floating command palette with its fuzzy matcher and argument-preview row; (4) the `:help` window over the same registry; (5) the chart-led dashboard view. Follow the existing crate layout and SQLite layer, put the shell, each window and each view in their own modules with their own state structs, and use Colour Roles (`docs/colour-themes-design.md`) rather than the hex values. The budget bar is a custom track with a period-progress marker cell, not a `Gauge`.

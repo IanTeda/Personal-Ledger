@@ -171,7 +171,7 @@ pub fn account_type_from_label(label: &str) -> Option<AccountType> {
         .cloned()
 }
 
-/// The Add and Edit account dialogs' live form state (`docs/ux/desktop/17-accounts/README.md`'s 3b) -- pure,
+/// The Add and Edit account dialogs' live form state (`docs/ux/desktop-mockups/17-accounts/README.md`'s 3b) -- pure,
 /// `gpui`-free. Name, Opening balance and Account number are typed into (append/pop only, like
 /// the Settings dialogs); Institution, Type and Unit are [`SelectState`]s.
 ///

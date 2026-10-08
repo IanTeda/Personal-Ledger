@@ -1,4 +1,4 @@
-//! Pure Accounts-surface domain types (`docs/ux/desktop/17-accounts/README.md`, section 3) --
+//! Pure Accounts-surface domain types (`docs/ux/desktop-mockups/17-accounts/README.md`, section 3) --
 //! `gpui`-free, the same "pure state, chrome renders it" split `settings.rs` uses. `view::accounts`
 //! and its dialogs are the chrome; this module only knows what an account row holds, the fixed
 //! order the page groups them in, and the stub rows the page is seeded with.

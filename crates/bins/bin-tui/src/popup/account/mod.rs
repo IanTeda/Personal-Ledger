@@ -1,5 +1,5 @@
 //! Account-domain popups: floating overlays for creating, editing and deleting an `Account`
-//! (`docs/ux/mockups/accounts/README.md` "7b"/"7c"/"7d"), hosted by `Shell` the same way
+//! (`docs/ux/tui-mockups/02-accounts/README.md` "7b"/"7c"/"7d"), hosted by `Shell` the same way
 //! `crate::popup::unit`/`crate::popup::category` are. `new` (7b) exists so far — unlike
 //! `popup::unit`'s own forms ("no draft state yet"), it's genuinely interactive and genuinely
 //! mutates the fixture, mirroring `popup::category`'s own new/edit/move popups.

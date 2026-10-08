@@ -1,4 +1,4 @@
-//! Renders the **Merge tags** dialog (`docs/ux/desktop/19-tags/README.md`'s 7e) on the shared
+//! Renders the **Merge tags** dialog (`docs/ux/desktop-mockups/19-tags/README.md`'s 7e) on the shared
 //! `crate::dialog` chrome at the handoff's 460px: two selects with a `→` between them (the source
 //! keeps its accent border, marking the Tag that goes), the red-bordered irreversible callout with
 //! live counts and names, and a primary button whose label follows the target.

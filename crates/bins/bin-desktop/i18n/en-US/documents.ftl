@@ -1,4 +1,4 @@
-## The Documents surface (`docs/ux/desktop/04-documents/`): the Library, its index rail and detail pane,
+## The Documents surface (`docs/ux/desktop-mockups/04-documents/`): the Library, its index rail and detail pane,
 ## and the Add, Import and Edit dialogs.
 
 ## The status line's legend. The Library list's strings are the handoff's own; the index rail's are

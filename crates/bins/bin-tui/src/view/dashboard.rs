@@ -1,6 +1,6 @@
 //! The Dashboard `View`, hosted by `Shell` (ADR-0013). Wireframe stage: labelled, bordered
 //! placeholder boxes matching the pane structure and proportions from
-//! `docs/ux/mockups/README.md` §2a — net position and its 30-day delta / assets / liabilities
+//! `docs/ux/tui-mockups/01-chrome/README.md` §2a — net position and its 30-day delta / assets / liabilities
 //! trio (item 1, split across two boxes), net worth, income vs expense, where it went,
 //! budgets this period, needs attention — so the dashboard's overall layout can be checked
 //! and adjusted before any one region's real widget content is built out.
@@ -43,7 +43,7 @@ const BOX_CHAR_WIDTH: u16 = 4;
 const MONTH_LABEL_WIDTH: u16 = 4;
 
 /// Width of the category-label column in the budget rows — wide enough for the longest fake
-/// category (`"subscriptions"`, 13 chars) plus a trailing space; `docs/ux/mockups/README.md`
+/// category (`"subscriptions"`, 13 chars) plus a trailing space; `docs/ux/tui-mockups/01-chrome/README.md`
 /// suggests 12 cols, sized for shorter real category names.
 const BUDGET_LABEL_WIDTH: u16 = 14;
 
@@ -55,7 +55,7 @@ const BUDGET_VALUE_WIDTH: u16 = 14;
 const ATTENTION_ACTION_WIDTH: u16 = 10;
 
 /// Rows the needs-attention box always spends on non-item content: the heading, the rule
-/// below it, and the trailing "...more" row. Item rows (2-3 per `docs/ux/mockups/README.md`)
+/// below it, and the trailing "...more" row. Item rows (2-3 per `docs/ux/tui-mockups/01-chrome/README.md`)
 /// are added on top of this.
 const ATTENTION_FIXED_ROWS: u16 = 3;
 
@@ -106,7 +106,7 @@ impl View for DashboardView {
 /// POSITION" label over the box-text figure) on the left, and the 30-day delta / assets /
 /// liabilities label-over-value trio, bottom-aligned to match, on the right. A terminal has
 /// no literal font size, so the box-text figure stands in for the handoff's "double-height
-/// or bold" net position treatment from `docs/ux/mockups/README.md`.
+/// or bold" net position treatment from `docs/ux/tui-mockups/01-chrome/README.md`.
 fn render_headline(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
     let box_text_width = NET_POSITION.chars().count() as u16 * BOX_CHAR_WIDTH;
     let columns = Layout::default()
@@ -577,7 +577,7 @@ fn render_lower_band(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
 }
 
 /// One category's fake 30-day spending share, feeding the pie chart. Largest first,
-/// "other" always last, per `docs/ux/mockups/README.md`'s legend ordering.
+/// "other" always last, per `docs/ux/tui-mockups/01-chrome/README.md`'s legend ordering.
 struct SpendingSlice {
     category: &'static str,
     percent: f64,
@@ -634,7 +634,7 @@ fn render_where_it_went(frame: &mut Frame<'_>, area: Rect, slices: &[SpendingSli
 /// survey), shaded with `PIE_CHAR_LIGHT` (from the crate's `symbols_shades_bars` example) —
 /// this needs `Resolution::Standard`, since the crate's `Braille` mode builds its own dot-
 /// pattern glyphs and ignores `pie_char` entirely. The crate's own legend is switched off —
-/// `render_spending_legend` already matches `docs/ux/mockups/README.md`'s exact
+/// `render_spending_legend` already matches `docs/ux/tui-mockups/01-chrome/README.md`'s exact
 /// `swatch category NN%` format (whole-number percentages), which the crate's built-in
 /// legend doesn't (it renders one decimal place).
 fn render_pie_chart(frame: &mut Frame<'_>, area: Rect, slices: &[SpendingSlice]) {
@@ -728,7 +728,7 @@ fn capped_budgets(budgets: &[BudgetCategory]) -> &[BudgetCategory] {
 /// Item 5 — "Budgets this period": up to 5 category rows (label, ratio bar, `actual / limit`
 /// figures), largest-first with "other" last, matching the pie chart's legend ordering. Each
 /// bar fills by `actual / limit`, clamping full and flipping to `negative` when over budget
-/// (`docs/ux/mockups/README.md`'s over-budget rule). A `│` marks how far the period has
+/// (`docs/ux/tui-mockups/01-chrome/README.md`'s over-budget rule). A `│` marks how far the period has
 /// elapsed at the same column across every bar, independent of that row's own fill. The
 /// 5-item cap itself is enforced by the caller ([`capped_budgets`]), not here -- this function
 /// renders however many `budgets` it's handed, which the isolated-rendering unit tests below
@@ -956,7 +956,7 @@ struct AttentionItem {
 }
 
 /// Item 6 — "Needs attention": 2-3 lines only, each naming the command (or context) that
-/// resolves it, right-aligned — deliberately not a table (`docs/ux/mockups/README.md`). A
+/// resolves it, right-aligned — deliberately not a table (`docs/ux/tui-mockups/01-chrome/README.md`). A
 /// trailing "...more" row hints at a fuller to-do list beyond what fits here.
 fn render_needs_attention(frame: &mut Frame<'_>, area: Rect, items: &[AttentionItem], c: &Colours) {
     let rows = Layout::default()
@@ -1056,7 +1056,7 @@ fn render_attention_row(
 
 /// The fake needs-attention items — an unreconciled-transactions count paired with the
 /// command to clear it, and an over-variance balance check paired with the date it was
-/// flagged, per `docs/ux/mockups/README.md`'s own examples.
+/// flagged, per `docs/ux/tui-mockups/01-chrome/README.md`'s own examples.
 fn fake_attention_items() -> Vec<AttentionItem> {
     vec![
         AttentionItem {
@@ -1107,7 +1107,7 @@ mod tests {
         render_at(view, 30, c)
     }
 
-    /// The 96x30 minimum from `docs/ux/mockups/README.md` cuts the lower band off, so anything below
+    /// The 96x30 minimum from `docs/ux/tui-mockups/01-chrome/README.md` cuts the lower band off, so anything below
     /// the trend band needs a taller backend to appear at all.
     fn render_tall(view: &DashboardView, c: &Colours) -> String {
         render_at(view, 50, c)
@@ -1241,7 +1241,7 @@ mod tests {
     #[test]
     fn shows_all_seven_headline_regions() {
         let c = &Colours::default();
-        // The 96x30 minimum from `docs/ux/mockups/README.md` doesn't leave enough height for
+        // The 96x30 minimum from `docs/ux/tui-mockups/01-chrome/README.md` doesn't leave enough height for
         // both the "Budgets this period" and "Needs attention" boxes once the latter grows
         // to 3 content lines — the same pre-existing space crunch as
         // `where_it_went_legend_shows_all_five_slices`, so this uses the same taller
@@ -1432,7 +1432,7 @@ mod tests {
     #[test]
     fn where_it_went_legend_shows_all_five_slices() {
         let c = &Colours::default();
-        // The 96x30 minimum from `docs/ux/mockups/README.md` doesn't leave enough height for
+        // The 96x30 minimum from `docs/ux/tui-mockups/01-chrome/README.md` doesn't leave enough height for
         // the full 5-row legend once the headline and trend band grow to their current
         // sizes, so this uses a taller backend to check the legend content itself is
         // correct, independent of that pre-existing space crunch.

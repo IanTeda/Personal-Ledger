@@ -7,7 +7,7 @@
 //! a fixed column, and a long body wraps under the level tag, not under the time.
 //!
 //! Element ids are namespaced `tracing-level-*`/`settings-clear-logs`
-//! (`docs/ux/desktop/16-settings/README.md`'s implementation note 11: "namespace radio groups per
+//! (`docs/ux/desktop-mockups/16-settings/README.md`'s implementation note 11: "namespace radio groups per
 //! instance").
 
 use std::{rc::Rc, sync::Arc};

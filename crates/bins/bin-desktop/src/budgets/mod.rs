@@ -1,4 +1,4 @@
-//! Pure Budgets-surface domain types and the stub dataset behind them (`docs/ux/desktop/14-budgets-v2/`,
+//! Pure Budgets-surface domain types and the stub dataset behind them (`docs/ux/desktop-mockups/14-budgets-v2/`,
 //! ADR-0028 and ADR-0029) -- `gpui`-free and in-memory, the same "pure state, chrome renders it"
 //! split `bills/` uses. Nothing here reads `lib_database`.
 //!

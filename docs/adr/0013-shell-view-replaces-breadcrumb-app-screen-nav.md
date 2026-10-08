@@ -1,6 +1,6 @@
 # `Shell`/`View` replaces the breadcrumb-stack `App`/`Screen` navigation model
 
-`docs/ux/mockups/README.md` (a Claude Design handoff) specifies a modal, command-driven shell —
+`docs/ux/tui-mockups/01-chrome/README.md` (a Claude Design handoff) specifies a modal, command-driven shell —
 status line, one full-bleed view region, command line, keybind hint bar — with a floating `:`
 command window as the *only* navigation affordance and no persistent nav chrome. This is a
 different shape from the breadcrumb `Vec<Box<dyn Screen>>` stack `App` locked in under

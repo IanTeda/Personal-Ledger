@@ -1,4 +1,4 @@
-//! The Dashboard view interior (`docs/ux/desktop/01-shell/README.md`'s "1a" spec,
+//! The Dashboard view interior (`docs/ux/desktop-mockups/01-shell/README.md`'s "1a" spec,
 //! "View area (Dashboard)" component) -- frame only, per the handoff's own fidelity note:
 //! match the headers, column widths, and rules, not the sample data. Every figure below is
 //! representative content matching the handoff's own mockup, not real `lib_database` data --

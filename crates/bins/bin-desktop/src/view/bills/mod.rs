@@ -1,4 +1,4 @@
-//! The Bills page (`docs/ux/desktop/12-bills/README.md`'s 8a–8f): a header row (title, the active
+//! The Bills page (`docs/ux/desktop-mockups/12-bills/README.md`'s 8a–8f): a header row (title, the active
 //! tab's meta line, **+ Add bill plan**), the Schedule / Planner tab row with the Schedule tab's
 //! period nav at its right, a 2px rule, then the active tab's body.
 //!

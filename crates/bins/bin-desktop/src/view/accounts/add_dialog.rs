@@ -1,4 +1,4 @@
-//! Renders the **Add account** dialog (`docs/ux/desktop/17-accounts/README.md`'s 3b) on the shared
+//! Renders the **Add account** dialog (`docs/ux/desktop-mockups/17-accounts/README.md`'s 3b) on the shared
 //! `crate::dialog` chrome. `Shell` owns the live form (`accounts::form::AccountForm`) and every
 //! keystroke while it is open (`InputMode::Dialog`); this module only draws it.
 //!
@@ -21,7 +21,7 @@ use crate::{
     theme::color,
 };
 
-/// The dialog's width: `docs/ux/desktop/17-accounts/README.md`'s "Dialog" row.
+/// The dialog's width: `docs/ux/desktop-mockups/17-accounts/README.md`'s "Dialog" row.
 pub const WIDTH: gpui::Pixels = px(440.0);
 
 pub type OnFieldClick = Rc<dyn Fn(AccountField, &mut Window, &mut App)>;

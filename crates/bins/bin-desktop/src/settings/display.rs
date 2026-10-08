@@ -49,7 +49,7 @@ impl RowDensity {
 
     /// The PREVIEW table's own row vertical padding at this density -- the mockup only draws the
     /// `regular` state (`padding:8px 12px`), so `compact`/`roomy` step by the design tokens' own
-    /// 4px rhythm (`docs/ux/desktop/16-settings/README.md`'s Spacing token list) either side of it,
+    /// 4px rhythm (`docs/ux/desktop-mockups/16-settings/README.md`'s Spacing token list) either side of it,
     /// the same "reflects the currently-selected values" the README's own field list promises
     /// for this control.
     pub fn preview_row_padding_y(self) -> f32 {
@@ -83,7 +83,7 @@ impl StatusGlyphs {
     }
 }
 
-/// One PREVIEW-table row's transaction status (`docs/ux/desktop/16-settings/README.md`'s own three
+/// One PREVIEW-table row's transaction status (`docs/ux/desktop-mockups/16-settings/README.md`'s own three
 /// drawn rows: cleared, pending, flagged) -- distinct from [`StatusGlyphs`], which picks *how* a
 /// status renders, not *which* status a row has.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,7 +111,7 @@ impl PreviewStatus {
 }
 
 /// One PREVIEW-table row -- the mockup's own three seeded rows
-/// (`docs/ux/desktop/16-settings/README.md`'s "2a resting state" markup), keyed on a real
+/// (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state" markup), keyed on a real
 /// `(year, month, day)` and integer cents rather than pre-formatted strings so
 /// [`format_preview_date`]/[`format_preview_amount`] can re-render them under any selected
 /// [`DateFormat`]/[`DecimalSeparator`].

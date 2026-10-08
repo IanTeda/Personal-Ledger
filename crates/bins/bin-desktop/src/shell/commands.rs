@@ -34,7 +34,7 @@ impl Shell {
     /// [`CommandEffect::Navigate`] resets the view's scroll when it lands on a different noun,
     /// matching every other navigation entry point (`g`-jumps, rail `Enter`).
     /// [`CommandEffect::NotYetBuilt`] shows the same "not yet built" message
-    /// `docs/ux/mockups/navigation.md` describes for its own popup, reusing the status line's
+    /// `docs/ux/tui-mockups/navigation.md` describes for its own popup, reusing the status line's
     /// existing `status_message` slot (the "1d" spec's own COMMAND-mode status line has no
     /// message slot of its own, and the palette has already closed by the time this runs -- see
     /// the `enter` arm of [`Self::handle_palette_key`]).

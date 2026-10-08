@@ -1,4 +1,4 @@
-//! Renders the **Add bill plan** and **Edit bill plan** dialogs (`docs/ux/desktop/12-bills/README.md`'s
+//! Renders the **Add bill plan** and **Edit bill plan** dialogs (`docs/ux/desktop-mockups/12-bills/README.md`'s
 //! 8c) on the shared `crate::dialog` chrome. One renderer serves both: Edit shows the Unit locked
 //! and the Active checkbox, Add a Unit select and no Active. The body scrolls past 480px, the
 //! handoff's own cap, since this form has more fields than any other dialog. `Shell` owns the live

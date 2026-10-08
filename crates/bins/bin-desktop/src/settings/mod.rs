@@ -1,4 +1,4 @@
-//! Pure Settings-surface domain types (`docs/ux/desktop/16-settings/README.md`'s "2a resting
+//! Pure Settings-surface domain types (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting
 //! state" -- "Sections" table) -- `gpui`-free, the same "pure state, chrome renders it" split
 //! `navigation/nav.rs` uses between `NavState` and `Shell`'s render tree. `chrome::rail::settings_index::SettingsIndexRail`
 //! and `view::settings` are the chrome; this module only knows what pages exist, their index

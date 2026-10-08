@@ -1,4 +1,4 @@
-//! The **Display** section (`docs/ux/desktop/16-settings/README.md`'s "2a resting state", moved
+//! The **Display** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", moved
 //! directly after General by issue #189's own reorder): a column of three segmented
 //! controls (Date format, Row density) plus a read-only Locale and a dot-style Status
 //! glyphs radio group, beside a live **PREVIEW** table that re-renders the mockup's own three
@@ -11,7 +11,7 @@
 //! `crate::settings::display::RowDensity::preview_row_padding_y`'s own doc for why row density gets a
 //! real visual effect here despite this map's data otherwise being static/dummy).
 //!
-//! Configuration, not Preferences (`docs/ux/desktop/16-settings/README.md`'s Overview) -- like
+//! Configuration, not Preferences (`docs/ux/desktop-mockups/16-settings/README.md`'s Overview) -- like
 //! every other click in this map, a selection is "saved" only in `Shell`-owned in-memory state,
 //! not written to `personal-ledger.conf`.
 

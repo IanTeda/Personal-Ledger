@@ -1,6 +1,6 @@
 //! Restart persistence for the shell's `noun`, `primary_rail`, and window geometry --
 //! everything else in `NavState` (and the window's own transient state) resets on every
-//! launch, per `docs/ux/desktop/README.md`'s "Persistence" note. A small dedicated JSON file,
+//! launch, per `docs/ux/desktop-mockups/README.md`'s "Persistence" note. A small dedicated JSON file,
 //! not `lib_config`'s layered INI config: that config is for static, user-editable settings,
 //! this is transient UI state a user never hand-edits.
 

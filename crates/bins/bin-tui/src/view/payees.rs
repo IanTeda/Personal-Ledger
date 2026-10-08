@@ -1,4 +1,4 @@
-//! The Payees `View`, hosted by `Shell` (ADR-0013). Per `docs/ux/mockups/payees/README.md`
+//! The Payees `View`, hosted by `Shell` (ADR-0013). Per `docs/ux/tui-mockups/04-payees/README.md`
 //! "8a — Payees screen": the left pane is the spend-ordered curation-queue list and the
 //! selected Payee's six-line record box ("Payees: 8a screen — list pane and record box (left
 //! pane)"); the right pane, built here, is that same selection's category mix and transactions
@@ -601,7 +601,7 @@ impl PayeesView {
     }
 
     /// The record box beneath the list, for whichever Payee is selected — see the handoff's
-    /// own worked Woolworths example (`docs/ux/mockups/payees/README.md` "the selected payee's
+    /// own worked Woolworths example (`docs/ux/tui-mockups/04-payees/README.md` "the selected payee's
     /// record").
     fn render_record(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let block = Block::bordered().padding(Padding::horizontal(1));

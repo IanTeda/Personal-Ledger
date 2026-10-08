@@ -1,4 +1,4 @@
-//! The 4a table itself (`docs/ux/desktop/03-transactions/README.md`): the column header and the
+//! The 4a table itself (`docs/ux/desktop-mockups/03-transactions/README.md`): the column header and the
 //! virtualised rows. Rows are `gpui::uniform_list` items (the research ticket's recommendation:
 //! hand-rolled, not `gpui_component::Table`, because the row height follows the Display density
 //! preference and the keyboard model is the shell's own), so only the visible ones are built.

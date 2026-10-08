@@ -1,4 +1,4 @@
-//! The stubbed **6e** Import "match payees" step (`docs/ux/desktop/20-payees/README.md`): the
+//! The stubbed **6e** Import "match payees" step (`docs/ux/desktop-mockups/20-payees/README.md`): the
 //! stepper, heading and subline, a scrolling table (RAW DESCRIPTION / PAYEE / CATEGORY / STATUS /
 //! AMOUNT), and a footer bar with the summary, the "remember new payees' rules" checkbox, **back**
 //! and **continue**. Shown in place of the Transactions page while `Shell` holds an

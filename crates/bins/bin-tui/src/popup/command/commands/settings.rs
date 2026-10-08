@@ -1,4 +1,4 @@
-//! The Settings domain — a single command, opening `crate::view::settings` (`docs/ux/mockups/
+//! The Settings domain — a single command, opening `crate::view::settings` (`docs/ux/tui-mockups/
 //! settings/README.md` §4a). That view, and the `e`/`enter` popups it opens
 //! (`crate::popup::settings`, §4b/§4c), are wireframe-stage: the database-backed registry the
 //! README's own command grammar assumes (`:set <key> <value>`, `:settings log`, `:settings

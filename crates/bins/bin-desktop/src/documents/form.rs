@@ -1,4 +1,4 @@
-//! The Documents dialogs' live forms (`docs/ux/desktop/04-documents/`; the Add and Import decisions in
+//! The Documents dialogs' live forms (`docs/ux/desktop-mockups/04-documents/`; the Add and Import decisions in
 //! the Documents map's `+ Add and Import…` ticket): **Add document**, **Import files** and **Edit
 //! document**. `gpui`-free and unit-tested, the same split `bills/form.rs` uses.
 //!

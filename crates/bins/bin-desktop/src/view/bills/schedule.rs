@@ -1,4 +1,4 @@
-//! The **8a** Schedule tab (`docs/ux/desktop/12-bills/README.md`), which absorbed 8f's History tab
+//! The **8a** Schedule tab (`docs/ux/desktop-mockups/12-bills/README.md`), which absorbed 8f's History tab
 //! (#381): the filter row and stat callout (`filters`), then the rows in one bordered table (BILL /
 //! ACCOUNT / PLANNED / ACTUAL / DUE / PAID / STATUS / ACTIONS) and a footnote, with the header's
 //! meta line.

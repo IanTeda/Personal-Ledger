@@ -1,4 +1,4 @@
-//! The "delete unit" popup — `:unit delete <code>`, or `d` from the Units view (`docs/ux/mockups/
+//! The "delete unit" popup — `:unit delete <code>`, or `d` from the Units view (`docs/ux/tui-mockups/
 //! units/README.md` §4d/§4e, "Delete"). Wireframe stage, same as `popup::unit::new`/`edit`:
 //! every field renders one of two hardcoded mockup examples verbatim rather than a real,
 //! reference-count-driven draft — `Shell` wires up opening and closing it (`Esc`) so the
@@ -26,7 +26,7 @@ use ratatui::{
 use crate::colours::Colours;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
 
-/// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per `docs/ux/mockups/units/README.md`
+/// Fraction of `REFERENCE_TERMINAL_WIDTH` the popup takes, per `docs/ux/tui-mockups/07-units/README.md`
 /// "The forms" ("~88% width on the drawing") — matches `popup::unit::new`/`edit`'s own width.
 const POPUP_WIDTH_PERCENT: u32 = 88;
 
@@ -49,7 +49,7 @@ const ALLOWED_CONTENT_ROWS: u16 = 1 + 1 + 3 + 1 + 1 + 1 + 3 + 1 + 1 + 1;
 /// deactivate-instead box, the footer's rule, then the footer itself.
 const REFUSED_CONTENT_ROWS: u16 = 1 + 1 + 1 + 4 + 1 + 4 + 1 + 1;
 
-/// The "delete unit" popup: `docs/ux/mockups/units/README.md` §4d/§4e as a centred floating
+/// The "delete unit" popup: `docs/ux/tui-mockups/07-units/README.md` §4d/§4e as a centred floating
 /// overlay, same window treatment as `popup::unit::new`/`edit`. No draft state yet — every
 /// field is one of the two mockups' own placeholder content, not resolved against a real
 /// `Unit`'s reference counts.

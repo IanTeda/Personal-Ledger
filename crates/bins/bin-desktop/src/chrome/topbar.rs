@@ -1,4 +1,4 @@
-//! The shell's top bar (`docs/ux/desktop/01-shell/README.md`'s "1a" spec, "Top
+//! The shell's top bar (`docs/ux/desktop-mockups/01-shell/README.md`'s "1a" spec, "Top
 //! bar" component): rail toggle, brand mark, sync indicator, window controls. The rail toggle
 //! is clickable (issue #152). The spec's own `:` palette-hint box was dropped from here --
 //! palette entry is keyboard-only (`:`), and the status line's own hint strip already names it.
@@ -22,7 +22,7 @@ use gpui_component::Sizable;
 
 use crate::{assets::icon::DesktopIcon, navigation::nav::Noun, theme::color};
 
-/// Band height: `docs/ux/desktop/01-shell/README.md`'s "Layout" table.
+/// Band height: `docs/ux/desktop-mockups/01-shell/README.md`'s "Layout" table.
 pub const HEIGHT: gpui::Pixels = px(48.0);
 
 /// The rail-toggle button's own click, reported raw -- `Shell::handle_toggle_rail` owns what

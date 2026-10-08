@@ -1,4 +1,4 @@
-//! Pure Bills-surface domain types and the stub dataset behind them (`docs/ux/desktop/12-bills/`,
+//! Pure Bills-surface domain types and the stub dataset behind them (`docs/ux/desktop-mockups/12-bills/`,
 //! `docs/bills.md`, ADR-0019 and its amendments) -- `gpui`-free and in-memory, the same "pure
 //! state, chrome renders it" split `tags/mod.rs` uses. Nothing here reads `lib_database`.
 //!

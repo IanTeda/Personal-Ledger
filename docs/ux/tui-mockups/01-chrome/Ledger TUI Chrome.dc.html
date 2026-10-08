@@ -100,13 +100,28 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 </style></helmet>
 
 <section class="dv-turn {{ themeClass }}" id="t1">
-<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Shell — resting state</span></div>
-<p class="dv-sub">The chosen direction: zero-chrome command shell. Status line, one full-bleed view, an idle <code>:</code> command line, keybind hints. The default view is the chart-led dashboard — the four FC-06 widgets first, tables demoted to the "needs attention" list. Drawn at 96 × 30 cells; every other screen re-hosts inside this frame.</p>
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Chrome — resting state</span></div>
+<p class="dv-sub">The chosen direction: zero-chrome command shell. The resting state is no ledger loaded (1a); the chart-led dashboard (1b) appears once <code>:open</code> or <code>:new</code> loads a file. Status line, one full-bleed view, an idle <code>:</code> command line, keybind hints. Once a ledger is loaded the default view is the chart-led dashboard — the four FC-06 widgets first, tables demoted to the "needs attention" list. Drawn at 96 × 30 cells; every other screen re-hosts inside this frame.</p>
 
 <div class="dv-opts">
 
 <div class="dv-opt" id="1a">
-<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a><span><b>Resting state.</b> Command line idle at the bottom; every widget is a jump target by name.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a><span><b>Resting state — no ledger loaded.</b> Cold start and after <code>:close</code>. A centred note names the two ways forward; the command line is idle.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>21 sep 2026</span></div>
+  <div class="pane" style="padding:10px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px">
+    <div style="font-weight:700">No Personal Ledger file loaded.</div>
+    <div class="mut">Use <b>:new</b> to create a new ledger or <b>:open</b> to open an existing ledger.</div>
+  </div>
+  <div class="cmd">: <span class="mut">type a command — :new, :open, :help</span></div>
+  <div class="tk"><span><span class="k">:</span>command</span><span><span class="k">?</span>help</span><span class="mut">no persistent nav — ↑ recalls history</span><span style="margin-left:auto">no file</span></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a><span><b>Dashboard — ledger loaded.</b> Command line idle at the bottom; every widget is a jump target by name.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px">
   <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; position</span><span>245 824 AUD &nbsp;·&nbsp; ✓ 14:02 &nbsp;·&nbsp; 21 sep 2026</span></div>
@@ -172,7 +187,7 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 </div>
 
 </div>
-<p class="dv-next">Every screen below sits in this shell. Earlier shell explorations are kept as turn <a class="dv-oid" href="#t5">5</a>.</p>
+<p class="dv-next">Every screen below sits in this chrome. Earlier shell explorations are kept as turn <a class="dv-oid" href="#t5">5</a>.</p>
 </section>
 
 <section class="dv-turn {{ themeClass }}" id="t2">

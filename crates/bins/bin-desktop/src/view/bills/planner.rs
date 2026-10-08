@@ -1,4 +1,4 @@
-//! The **8b** Planner tab (`docs/ux/desktop/12-bills/README.md`): the Bill Plans themselves in one
+//! The **8b** Planner tab (`docs/ux/desktop-mockups/12-bills/README.md`): the Bill Plans themselves in one
 //! bordered table (NAME / CATEGORY / ACCOUNT / PLANNED / RECURS / LEAD / ACTIVE / ACTIONS) and a
 //! footnote, with the header's meta line. Not period-scoped, so no period nav.
 //!

@@ -1,5 +1,5 @@
 //! The Accounts `View`, hosted by `Shell` (ADR-0013). Per
-//! `docs/ux/mockups/accounts/README.md` "7a — Accounts screen": the left pane is the
+//! `docs/ux/tui-mockups/02-accounts/README.md` "7a — Accounts screen": the left pane is the
 //! `AccountType`-grouped list and the summary box for whichever account is selected
 //! ("Accounts: 7a screen — list pane and summary box (left pane)"); the right pane, built
 //! here, is that same selection's month-end balance chart and its inline ledger list
@@ -106,9 +106,9 @@ const LEDGER_AMOUNT_WIDTH: u16 = 9;
 const LEDGER_BALANCE_WIDTH: u16 = 10;
 
 /// The Unit the footer's `net` line is stated in. A placeholder: `general.base_unit`
-/// (`docs/ux/mockups/settings/README.md`) is the real source for this, but `view::settings` has
+/// (`docs/ux/tui-mockups/05-settings/README.md`) is the real source for this, but `view::settings` has
 /// no live backend yet (still wireframe-stage) — hardcoded to match every worked example in
-/// `docs/ux/mockups/accounts/README.md`, which is itself stated in AUD throughout.
+/// `docs/ux/tui-mockups/02-accounts/README.md`, which is itself stated in AUD throughout.
 const BASE_UNIT_CODE: &str = "AUD";
 
 /// One visible line in the rendered list: a type header (with its group's count and
@@ -538,7 +538,7 @@ impl AccountsView {
     }
 
     /// The summary box beneath the list, for whichever account is selected — see the
-    /// handoff's own worked example (`docs/ux/mockups/accounts/README.md` "Summary box").
+    /// handoff's own worked example (`docs/ux/tui-mockups/02-accounts/README.md` "Summary box").
     fn render_summary(&self, frame: &mut Frame<'_>, area: Rect, c: &Colours) {
         let block = Block::bordered().padding(Padding::horizontal(1));
         let inner = block.inner(area);

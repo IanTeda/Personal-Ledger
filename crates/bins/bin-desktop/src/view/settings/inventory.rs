@@ -1,4 +1,4 @@
-//! The **Inventory** page (`docs/ux/desktop/16-settings/README.md`'s 16q, as settled on #491): a
+//! The **Inventory** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16q, as settled on #491): a
 //! kicker with **+ Add property** over one bordered table of Properties in creation order. An
 //! expanded Property shows its Rooms in a sub-table that ends in a clickable **+ Add room** row.
 //!

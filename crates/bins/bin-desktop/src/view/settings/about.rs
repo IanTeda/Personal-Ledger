@@ -1,4 +1,4 @@
-//! The **About** section (`docs/ux/desktop/16-settings/README.md`'s "2a resting state"): static
+//! The **About** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state"): static
 //! project info, no interactive elements beyond the links -- no `Shell` state or click handlers
 //! to thread through, unlike every other real section built so far.
 //!

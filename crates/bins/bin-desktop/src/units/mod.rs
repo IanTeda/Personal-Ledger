@@ -3,7 +3,7 @@
 
 pub(crate) mod form;
 
-/// One row of the **Units** section's table (`docs/ux/desktop/16-settings/README.md`'s "2a resting
+/// One row of the **Units** section's table (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting
 /// state" markup: CODE / NAME / FLAGS / SOURCE / TYPE / ACTIONS columns as of issue #189, up
 /// from CODE / NAME / TYPE). Owned `String` fields, not `&'static str` --
 /// issue #184's own Add unit dialog is this crate's first real typed-text input, so a row can
@@ -93,7 +93,7 @@ pub fn default_price_sources() -> Vec<PriceSourceRow> {
     ]
 }
 
-/// The Add/Edit unit dialogs' own "Type" selector (`docs/ux/desktop/16-settings/README.md`'s "2b —
+/// The Add/Edit unit dialogs' own "Type" selector (`docs/ux/desktop-mockups/16-settings/README.md`'s "2b —
 /// Add unit": "Type (select: currency / cryptocurrency / custom)") -- rendered as a segmented
 /// control (like [`TracingLevel`]), not a real `<select>` dropdown, same reasoning as every
 /// other "pick one of a few options" control this map has built: dropdown-open behaviour has no

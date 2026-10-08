@@ -1,5 +1,5 @@
 //! The "edit account" popup — `e` on an Accounts list row, or `:acct edit <acct>`
-//! (`docs/ux/mockups/accounts/README.md` "7c — Edit"). Genuinely interactive and genuinely
+//! (`docs/ux/tui-mockups/02-accounts/README.md` "7c — Edit"). Genuinely interactive and genuinely
 //! mutates the fixture, the same as `crate::popup::category::edit_popup` — unlike
 //! `crate::popup::unit::edit`, still wireframe-only ("no draft state yet"), whose
 //! module/enum-variant/`render()` *structure* this still follows per that ticket's own

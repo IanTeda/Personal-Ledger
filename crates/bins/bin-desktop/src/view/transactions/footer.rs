@@ -1,4 +1,4 @@
-//! The 4a footer bar (`docs/ux/desktop/03-transactions/README.md`): `N of M … transactions shown` on the
+//! The 4a footer bar (`docs/ux/desktop-mockups/03-transactions/README.md`): `N of M … transactions shown` on the
 //! left, and on the right the RUNNING TOTAL -- the figure the last row's running column ends on --
 //! or `mixed units` when the visible rows span more than one Unit and no sum exists (the map's
 //! no-cross-Unit rule).

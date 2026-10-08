@@ -1,4 +1,4 @@
-//! The **4b** filter popover (`docs/ux/desktop/03-transactions/README.md`): a 400px card *anchored*
+//! The **4b** filter popover (`docs/ux/desktop-mockups/03-transactions/README.md`): a 400px card *anchored*
 //! just below the chip row (not centred like the dialogs and the palette), over a transparent
 //! full-window layer that cancels it when clicked. It holds one field per filter dimension and
 //! edits a draft (`transactions::filter_form::FilterForm`); nothing reaches the applied filters until

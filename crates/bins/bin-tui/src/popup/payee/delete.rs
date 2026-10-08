@@ -1,5 +1,5 @@
 //! The "delete payee" popup — `d` on a Payees list row, or `^d` from the edit popup (8c)
-//! (`docs/ux/mockups/payees/README.md` "8e — Delete"). One struct whose content varies with
+//! (`docs/ux/tui-mockups/04-payees/README.md` "8e — Delete"). One struct whose content varies with
 //! whether the Payee is referenced, mirroring `popup::account::delete`'s own "varies with
 //! emptiness" shape rather than a fixed two-variant enum — simpler here than Account's own,
 //! since nothing about a Payee's delete needs a variable-length transfer sub-form; only the

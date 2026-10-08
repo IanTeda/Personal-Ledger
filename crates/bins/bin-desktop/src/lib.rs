@@ -1,7 +1,7 @@
 //! Personal Ledger desktop library. Everything the `desktop` binary does lives here so the
 //! integration tests under `tests/` can build `Shell` through the same [`build_shell`] the app
 //! does; `main.rs` is only config, tracing and a call to [`run`]. Boots into `Shell`, the
-//! persistent-rail, command-palette-driven navigation chrome `docs/ux/desktop/README.md`
+//! persistent-rail, command-palette-driven navigation chrome `docs/ux/desktop-mockups/README.md`
 //! specifies, in place of the feasibility cycle's flat `TabBar` screen-cycling (ADR-0016).
 
 mod accounts;
@@ -158,14 +158,14 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
                 tracing::error!(%error, "Failed to register the bundled Archivo fonts");
             }
 
-            // `noun`/`primary_rail`/window geometry survive restart (`docs/ux/desktop/README.md`'s
+            // `noun`/`primary_rail`/window geometry survive restart (`docs/ux/desktop-mockups/README.md`'s
             // "State machine"); everything else in `NavState` starts fresh every launch, so there's
             // nothing else to seed here.
             let persisted = persistence::load();
             let window_geometry = persisted.window;
 
             // Restore the last saved window geometry; otherwise 1280x800 centered, the handoff's
-            // own window size (`docs/ux/desktop/01-shell/README.md`, option 1a).
+            // own window size (`docs/ux/desktop-mockups/01-shell/README.md`, option 1a).
             let bounds = match window_geometry {
                 Some(WindowGeometry {
                     x,
