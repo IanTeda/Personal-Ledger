@@ -3,7 +3,7 @@
 //! newest first. The box is a virtualised `list` (rows wrap, so heights vary) with an
 //! always-visible scroll bar; `Shell` owns its `ListState` and splices it as entries arrive.
 //!
-//! One entry is `[hh:mm:ss] LEVEL subsystem: message key=value` (`crate::log_view`): the time is
+//! One entry is `[hh:mm:ss] LEVEL subsystem: message key=value` (`crate::settings::tracing_log`): the time is
 //! a fixed column, and a long body wraps under the level tag, not under the time.
 //!
 //! Element ids are namespaced `tracing-level-*`/`settings-clear-logs`
@@ -20,7 +20,10 @@ use gpui_component::scroll::{Scrollbar, ScrollbarShow};
 use lib_tracing::LogEntry;
 use tracing::Level;
 
-use crate::{log_view, settings::TracingLevel, theme::color};
+use crate::{
+    settings::tracing_log::{self, TracingLevel},
+    theme::color,
+};
 
 pub type OnLevelClick = Rc<dyn Fn(TracingLevel, &mut Window, &mut App)>;
 pub type OnClearLogsClick = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -205,8 +208,8 @@ fn log_box(log: &LogBoxProps, cx: &App) -> impl IntoElement {
 /// One entry: the time in a fixed column, then the level tag (coloured) and body as one wrapping
 /// run, so continuation lines hang under the level tag.
 fn entry_row(index: usize, entry: &LogEntry, cx: &App) -> AnyElement {
-    let tag = log_view::level_tag(entry.level);
-    let text = format!("{tag} {}", log_view::body(entry));
+    let tag = tracing_log::level_tag(entry.level);
+    let text = format!("{tag} {}", tracing_log::body(entry));
     let highlight = HighlightStyle {
         color: Some(level_colour(entry.level, cx).into()),
         font_weight: (entry.level <= Level::WARN).then_some(gpui::FontWeight::EXTRA_BOLD),
@@ -221,7 +224,7 @@ fn entry_row(index: usize, entry: &LogEntry, cx: &App) -> AnyElement {
             div()
                 .flex_none()
                 .text_color(color::faint_text(cx))
-                .child(log_view::timestamp(entry.time)),
+                .child(tracing_log::timestamp(entry.time)),
         )
         .child(
             div()

@@ -12,8 +12,6 @@ use chrono::{DateTime, Local};
 use lib_tracing::{LogBuffer, LogEntry};
 use tracing::Level;
 
-use crate::settings::TracingLevel;
-
 /// The 5-wide upper-case level tag, padded so messages line up.
 pub fn level_tag(level: Level) -> &'static str {
     match level {
@@ -153,6 +151,57 @@ impl LogView {
                 .cloned()
                 .collect(),
         );
+    }
+}
+
+/// The **Tracing (Logs)** page's level radios: the most verbose level the log box shows. A view
+/// filter over what the capture already holds (it records at `debug`), so changing it is instant
+/// and retroactive. Session only, not a Preference (issue #501). There is no `trace` or `off`:
+/// the capture never records `trace`, and `off` would only ever show the empty state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TracingLevel {
+    Error,
+    Warn,
+    /// `lib_tracing::init`'s own default when no `log` level is configured.
+    #[default]
+    Info,
+    Debug,
+}
+
+impl TracingLevel {
+    pub const ALL: [TracingLevel; 4] = [Self::Error, Self::Warn, Self::Info, Self::Debug];
+
+    pub fn label(self) -> String {
+        match self {
+            Self::Error => crate::msg::desktop_settings_tracing_level_error(),
+            Self::Warn => crate::msg::desktop_settings_tracing_level_warn(),
+            Self::Info => crate::msg::desktop_settings_tracing_level_info(),
+            Self::Debug => crate::msg::desktop_settings_tracing_level_debug(),
+        }
+    }
+
+    /// The radio the page opens on: the configured `log` level, clamped to the four offered, so
+    /// the page starts by showing what the console and log file show.
+    pub fn from_configured(level: Option<lib_tracing::Levels>) -> Self {
+        use lib_tracing::Levels;
+        match level {
+            Some(Levels::OFF | Levels::ERROR) => Self::Error,
+            Some(Levels::WARN) => Self::Warn,
+            Some(Levels::INFO) | None => Self::Info,
+            Some(Levels::DEBUG | Levels::TRACE) => Self::Debug,
+        }
+    }
+
+    /// Whether an entry at `level` shows under this filter.
+    pub fn admits(self, level: Level) -> bool {
+        let most_verbose = match self {
+            Self::Error => Level::ERROR,
+            Self::Warn => Level::WARN,
+            Self::Info => Level::INFO,
+            Self::Debug => Level::DEBUG,
+        };
+        // `tracing` orders levels by verbosity: `ERROR` is the least.
+        level <= most_verbose
     }
 }
 
@@ -308,5 +357,39 @@ mod tests {
         buffer.push(entry(Level::INFO, "new"));
         view.pull();
         assert_eq!(messages(&view), ["new"]);
+    }
+
+    #[test]
+    fn tracing_level_starts_from_the_configured_level_clamped() {
+        use lib_tracing::Levels;
+        let cases = [
+            (Some(Levels::OFF), TracingLevel::Error),
+            (Some(Levels::ERROR), TracingLevel::Error),
+            (Some(Levels::WARN), TracingLevel::Warn),
+            (Some(Levels::INFO), TracingLevel::Info),
+            (None, TracingLevel::Info),
+            (Some(Levels::DEBUG), TracingLevel::Debug),
+            (Some(Levels::TRACE), TracingLevel::Debug),
+        ];
+        for (configured, expected) in cases {
+            assert_eq!(TracingLevel::from_configured(configured), expected);
+        }
+    }
+
+    #[test]
+    fn tracing_level_admits_its_own_level_and_anything_more_severe() {
+        use tracing::Level;
+        assert!(TracingLevel::Warn.admits(Level::ERROR));
+        assert!(TracingLevel::Warn.admits(Level::WARN));
+        assert!(!TracingLevel::Warn.admits(Level::INFO));
+        assert!(TracingLevel::Debug.admits(Level::DEBUG));
+        assert!(!TracingLevel::Debug.admits(Level::TRACE));
+        assert!(!TracingLevel::Error.admits(Level::WARN));
+    }
+
+    #[test]
+    fn tracing_level_label_comes_from_the_catalogue() {
+        crate::locale::init_for_tests();
+        assert_eq!(TracingLevel::Warn.label(), "warn");
     }
 }

@@ -33,7 +33,10 @@ use lib_core::DateStyle;
 use crate::{
     institutions::InstitutionRow,
     navigation::nav::Noun,
-    settings::{RowDensity, SettingsSection, StatusGlyphs},
+    settings::{
+        SettingsSection,
+        display::{RowDensity, StatusGlyphs},
+    },
     theme::color,
     units::{PriceSourceRow, UnitRow},
 };

@@ -18,7 +18,7 @@ use crate::{
     bills::{
         self, AmountKind, BillPlan, BillScheduleEntry, BillStatus, PeriodSummary, ScheduleRow,
     },
-    settings::StatusGlyphs,
+    settings::display::StatusGlyphs,
     theme::color,
     transactions::Transaction,
     transactions::query::Total,

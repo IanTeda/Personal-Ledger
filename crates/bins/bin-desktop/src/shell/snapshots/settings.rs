@@ -421,7 +421,7 @@ impl Shell {
                 .settings_log
                 .visible()
                 .iter()
-                .map(|entry| crate::log_view::body(entry))
+                .map(|entry| crate::settings::tracing_log::body(entry))
                 .collect(),
             log_hidden_count: self.settings_log.hidden_count(),
             log_scroll_top: self.settings_log_list.logical_scroll_top().item_ix,

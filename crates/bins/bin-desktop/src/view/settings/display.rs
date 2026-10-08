@@ -8,7 +8,7 @@
 //! fields at once -- General's/Units' own interactive bits (issues #175/#177) are either static
 //! or scoped to one table, but here every field click re-formats the PREVIEW table's date,
 //! amount, and glyph columns, and shifts its row padding (see
-//! `crate::settings::RowDensity::preview_row_padding_y`'s own doc for why row density gets a
+//! `crate::settings::display::RowDensity::preview_row_padding_y`'s own doc for why row density gets a
 //! real visual effect here despite this map's data otherwise being static/dummy).
 //!
 //! Configuration, not Preferences (`docs/ux/desktop/16-settings/README.md`'s Overview) -- like
@@ -22,9 +22,11 @@ use lib_core::DateStyle;
 
 use crate::{
     settings::{
-        DATE_STYLE_CHOICES, DEFAULT_DISPLAY_PREVIEW_ROWS, DISPLAY_FIELD_SIDEBAR, DisplayPreviewRow,
-        PreviewStatus, RowDensity, StatusGlyphs, date_style_label, format_preview_amount,
-        format_preview_date,
+        DISPLAY_FIELD_SIDEBAR,
+        display::{
+            DATE_STYLE_CHOICES, DEFAULT_DISPLAY_PREVIEW_ROWS, DisplayPreviewRow, PreviewStatus,
+            RowDensity, StatusGlyphs, date_style_label, format_preview_amount, format_preview_date,
+        },
     },
     theme::color,
 };

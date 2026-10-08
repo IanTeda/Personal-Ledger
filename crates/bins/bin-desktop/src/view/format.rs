@@ -5,7 +5,7 @@
 //! renders from one place and the Display section's PREVIEW table keeps matching what the app
 //! actually shows.
 //!
-//! The Settings preview has its own primitive-argument helpers (`settings::format_preview_date` and
+//! The Settings preview has its own primitive-argument helpers (`settings::display::format_preview_date` and
 //! `format_preview_amount`); these take the real types (`NaiveDate`, `Money`, `TransactionStatus`)
 //! and route through the same Locale formatting, so the two cannot disagree.
 
@@ -13,7 +13,7 @@ use chrono::NaiveDate;
 use lib_core::{DateStyle, Money, TransactionStatus};
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 
-use crate::settings::{RowDensity, StatusGlyphs};
+use crate::settings::display::{RowDensity, StatusGlyphs};
 
 /// A date in the chosen style, or in the Locale's default form when there is none. `Iso` is
 /// always `2026-09-12`; the others follow the Locale (`12 Sept 2026` in `en-AU`).
@@ -124,10 +124,10 @@ mod tests {
     #[test]
     fn dates_agree_with_the_settings_previews_helper() {
         with_locale(Locale::EnGb, || {
-            for style in crate::settings::DATE_STYLE_CHOICES {
+            for style in crate::settings::display::DATE_STYLE_CHOICES {
                 assert_eq!(
                     date(day(2026, 9, 12), style),
-                    crate::settings::format_preview_date(2026, 9, 12, style)
+                    crate::settings::display::format_preview_date(2026, 9, 12, style)
                 );
             }
         });
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn amounts_agree_with_the_settings_previews_helper_apart_from_the_plus() {
-        let expected = crate::settings::format_preview_amount(-864_050);
+        let expected = crate::settings::display::format_preview_amount(-864_050);
         assert_eq!(amount(&money("-8640.50")).1, expected);
     }
 
@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(signed_amount(&money("0.00")), (false, "0.00".to_string()));
         assert_eq!(
             signed_amount(&money("4210.00")).1,
-            crate::settings::format_preview_amount(421_000)
+            crate::settings::display::format_preview_amount(421_000)
         );
     }
 

@@ -19,7 +19,6 @@ mod import;
 mod institutions;
 mod inventory;
 pub mod locale;
-mod log_view;
 pub mod navigation;
 mod payees;
 mod period;
@@ -114,7 +113,7 @@ pub fn build_shell(
     shell.start_toast_clock(cx);
     shell.set_log_capture(
         logs.buffer,
-        settings::TracingLevel::from_configured(logs.configured_level),
+        settings::tracing_log::TracingLevel::from_configured(logs.configured_level),
         cx,
     );
     shell

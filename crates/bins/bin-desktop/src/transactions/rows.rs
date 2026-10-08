@@ -12,7 +12,7 @@ use lib_core::{DateStyle, HexColor};
 use crate::{
     categories,
     payees::Payee,
-    settings::StatusGlyphs,
+    settings::display::StatusGlyphs,
     tags::Tag,
     transactions::Transaction,
     transactions::query::{Ledger, Visible},

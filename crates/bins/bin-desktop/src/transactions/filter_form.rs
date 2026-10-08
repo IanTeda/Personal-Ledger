@@ -570,7 +570,7 @@ mod tests {
     #[test]
     fn iso_is_accepted_whatever_the_preference() {
         au(|| {
-            for style in crate::settings::DATE_STYLE_CHOICES {
+            for style in crate::settings::display::DATE_STYLE_CHOICES {
                 assert_eq!(
                     parse_date("2026-09-12", today(), style),
                     Ok(Some(day(2026, 9, 12)))
@@ -634,7 +634,7 @@ mod tests {
         filters.from = Some(day(2025, 3, 4));
         filters.to = Some(day(2026, 8, 30));
         au(|| {
-            for style in crate::settings::DATE_STYLE_CHOICES {
+            for style in crate::settings::display::DATE_STYLE_CHOICES {
                 let form = FilterForm::from_filters(&filters, &options(), today(), style);
                 assert_eq!(
                     form.to_filters(&options(), today(), style),
