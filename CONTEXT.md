@@ -89,6 +89,10 @@ _Avoid_: level, type, severity (alone).
 A blocking panel a Client opens over the current view to add, edit, remove or confirm something. While it is open it takes every key; it ends by being confirmed, which applies it, or cancelled, which discards whatever was typed. `Enter` confirms only once the form is valid. The first `Esc` closes an open select inside it; the next cancels the Dialog. Only one Dialog is open at a time. Distinct from a Toast, which never blocks, and from the command palette, which navigates rather than edits.
 _Avoid_: modal (as a noun), popup, window.
 
+**Chrome**:
+The always-present frame the Desktop Client draws around the current view: the top bar, the rails, the status line, the command palette, Toasts and the host that opens Dialogs. It stays the same whichever view is showing; the view's own content is never Chrome.
+_Avoid_: shell (the whole application, not just its frame), frame, layout.
+
 **Colour Theme**:
 A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides individual Colour Roles on that one Client (it cannot choose the Colour Theme or Colour Appearance itself).
 _Avoid_: theme (alone), palette — "palette" already names the command palette; "theme" alone is ambiguous with typography and spacing.
