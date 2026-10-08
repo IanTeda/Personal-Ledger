@@ -20,7 +20,7 @@ use std::{
 use gpui::{App, BoxShadow, SharedString, Window, div, point, prelude::*, px};
 use gpui_component::Sizable;
 
-use crate::{icon::DesktopIcon, msg, theme::color};
+use crate::{assets::icon::DesktopIcon, msg, theme::color};
 
 /// Dialog width: the "1e" spec's own `640px`.
 pub const WIDTH: gpui::Pixels = px(640.0);

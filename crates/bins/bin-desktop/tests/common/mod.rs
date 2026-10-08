@@ -10,7 +10,7 @@
 )]
 
 use bin_desktop::{
-    ShellBindings, ShellLogs, build_shell, colours,
+    ShellBindings, ShellLogs, build_shell,
     locale::init_for_tests,
     navigation::nav::Noun,
     persistence::PersistedState,
@@ -19,6 +19,7 @@ use bin_desktop::{
         DocumentsSnapshot, ImportSnapshot, SettingsSnapshot, Shell, ToastsSnapshot,
         TransactionsSnapshot,
     },
+    theme,
 };
 use chrono::NaiveDate;
 use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
@@ -59,7 +60,7 @@ impl<'a> Harness<'a> {
         init_for_tests();
         app.update(|cx| {
             gpui_component::init(cx);
-            colours::init(ThemeOverrides::default(), cx);
+            theme::colours::init(ThemeOverrides::default(), cx);
         });
         let (shell, cx) = app.add_window_view(|window, cx| {
             let focus_handle = cx.focus_handle();
@@ -153,7 +154,7 @@ impl<'a> Harness<'a> {
     /// The Colour Theme id and Appearance now chosen, read from the colours Global.
     pub fn colour_choice(&mut self) -> (Option<String>, Option<String>) {
         self.cx.read(|cx| {
-            let state = colours::colours(cx);
+            let state = theme::colours::colours(cx);
             (
                 state.colour_theme().map(str::to_string),
                 state.colour_appearance().map(|a| format!("{a:?}")),

@@ -2,7 +2,7 @@
 
 Amended by [ADR-0026](0026-toast-kinds-colour-their-marks-from-colour-roles.md): `negative` also colours the bar and glyph of an Error Toast.
 
-Colour Themes (see Colour Theme, Colour Role, Colour Variant and Colour Appearance in `CONTEXT.md`) need a fixed set of Colour Roles that every Colour Theme defines and that a `[theme]` Configuration section can override on one Client. Today the Desktop has 25 fixed Modernist constants in `bin-desktop/src/theme.rs`, many of them alpha shades of one ink, and the TUI draws almost everything in one `Color::Red` accent plus `DIM` and `REVERSED`. In both Clients the red accent is overloaded: it marks negative amounts, focus, over-budget, validation errors, a chart series and brand marks at once.
+Colour Themes (see Colour Theme, Colour Role, Colour Variant and Colour Appearance in `CONTEXT.md`) need a fixed set of Colour Roles that every Colour Theme defines and that a `[theme]` Configuration section can override on one Client. Today the Desktop has 25 fixed Modernist constants in `bin-desktop/src/theme/mod.rs`, many of them alpha shades of one ink, and the TUI draws almost everything in one `Color::Red` accent plus `DIM` and `REVERSED`. In both Clients the red accent is overloaded: it marks negative amounts, focus, over-budget, validation errors, a chart series and brand marks at once.
 
 We're storing exactly seven Colour Roles per Colour Variant, shared by both Clients: `foreground`, `background`, `accent`, `cursor`, `muted`, `positive` and `negative`. Their snake_case names are also the `[theme]` keys, with hex values. Every other colour is calculated from them by fixed rules in code:
 - borders, hairlines, hover, the scrim and shadows are `foreground` over `background` at fixed transparencies

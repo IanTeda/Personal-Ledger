@@ -27,8 +27,8 @@
 use lib_colour_theme::ColourAppearance;
 
 use crate::{
-    colours::ColourChange, navigation::explorer::ExplorerMode, navigation::nav::Noun,
-    settings::SettingsSection,
+    navigation::explorer::ExplorerMode, navigation::nav::Noun, settings::SettingsSection,
+    theme::colours::ColourChange,
 };
 
 /// What running a command does -- the palette's, and `Shell::run_command`'s, one source of

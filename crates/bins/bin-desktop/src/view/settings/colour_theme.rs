@@ -3,7 +3,7 @@
 //! of mini-ledger preview cards, one per built-in Colour Theme, each drawn through `resolve` with
 //! this Client's `[theme]` overrides so it shows what would actually appear.
 //!
-//! Reads and writes the `crate::colours::Colours` Global directly: the Preferences live there,
+//! Reads and writes the `crate::theme::colours::Colours` Global directly: the Preferences live there,
 //! not on `Shell`. Only the keyboard focus inside the grid is `Shell` state, since `Shell` owns
 //! every keystroke; focus and hover never preview, only a click or Enter selects.
 
@@ -13,8 +13,8 @@ use gpui::{AnyElement, App, FontWeight, Rgba, SharedString, Window, div, prelude
 use lib_colour_theme::{ColourAppearance, ColourTheme, ColourVariant, ResolvedColours};
 
 use crate::{
-    colours::{self, ColourChange, to_gpui},
     theme::color,
+    theme::colours::{self, ColourChange, to_gpui},
 };
 
 use super::add_unit_dialog::{UNIFORM_OPTION_WIDTH, segmented_control_sized};

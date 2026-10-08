@@ -5,17 +5,19 @@
 //! `AssetSource` -- resolving the icon sourcing question `docs/ux/desktop/README.md` left
 //! open.
 
+pub(crate) mod icon;
+
 use std::borrow::Cow;
 
 use gpui::{AssetSource, Result, SharedString};
 
 /// Embeds one bundled icon at `path` (relative to `assets/icons/`) under the asset path
-/// `crate::icon::DesktopIcon::path` hands to `gpui_component::Icon::path`.
+/// `crate::assets::icon::DesktopIcon::path` hands to `gpui_component::Icon::path`.
 macro_rules! icon {
     ($name:literal) => {
         (
             concat!("icons/", $name, ".svg"),
-            include_bytes!(concat!("../assets/icons/", $name, ".svg")) as &[u8],
+            include_bytes!(concat!("../../assets/icons/", $name, ".svg")) as &[u8],
         )
     };
 }

@@ -8,15 +8,17 @@
 //! encode, and adding a `RADIUS` constant would invite someone to eventually pass it a
 //! non-zero value.
 
+pub mod colours;
+
 use gpui::{FontWeight, Pixels, px};
 
 /// The resolved Colour Theme's colours, one accessor per Colour Role and calculated colour
-/// (`docs/colour-themes-design.md`), read from the `crate::colours::Colours` Global.
+/// (`docs/colour-themes-design.md`), read from the `crate::theme::colours::Colours` Global.
 pub mod color {
     use gpui::{App, Rgba};
     use lib_colour_theme::ResolvedColours;
 
-    use crate::colours::{resolved, to_gpui};
+    use crate::theme::colours::{resolved, to_gpui};
 
     macro_rules! accessors {
         ($($(#[$doc:meta])* $name:ident => |$c:ident| $value:expr;)*) => {

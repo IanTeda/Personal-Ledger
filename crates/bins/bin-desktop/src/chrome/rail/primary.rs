@@ -12,7 +12,7 @@ use gpui::{App, BoxShadow, Window, div, point, prelude::*, px};
 use gpui_component::Sizable;
 
 use crate::{
-    icon::DesktopIcon,
+    assets::icon::DesktopIcon,
     navigation::nav::{Noun, RailMode},
     theme::color,
 };

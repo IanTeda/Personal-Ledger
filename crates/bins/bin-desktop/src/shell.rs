@@ -67,7 +67,6 @@ use crate::{
     chrome::statusline::{self, HintAction, PageStatus, StatusLine},
     chrome::toast::history as toast_history_view,
     chrome::topbar::{self, TopBar},
-    colours::ColourChange,
     documents::types::{DocumentTypeRow, DocumentTypesDialog},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     field::TextField,
@@ -89,6 +88,7 @@ use crate::{
         UnitForm, UnitKind, UnitRow, step_choice,
     },
     tags::{self, Tag},
+    theme::colours::ColourChange,
     theme::{color, type_scale},
     transactions::{
         self, Transaction,

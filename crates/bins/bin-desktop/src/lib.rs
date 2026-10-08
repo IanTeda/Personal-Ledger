@@ -10,14 +10,12 @@ mod bills;
 mod budgets;
 mod categories;
 mod chrome;
-pub mod colours;
 mod dialog;
 mod documents;
 mod error;
 mod field;
 mod format;
 mod help;
-mod icon;
 mod import;
 mod inventory;
 pub mod locale;
@@ -30,7 +28,7 @@ mod select;
 mod settings;
 pub mod shell;
 mod tags;
-mod theme;
+pub mod theme;
 mod transactions;
 mod view;
 
@@ -147,7 +145,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
         .run(move |cx: &mut App| {
             gpui_component::init(cx);
             gpui_component::set_locale(locale::gpui_component_tag(locale));
-            colours::init(theme_overrides, cx);
+            theme::colours::init(theme_overrides, cx);
 
             // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
             // .. }` request resolves against the bundled weights rather than a fallback.
@@ -206,7 +204,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
                     // life, which is the app's, hence `detach()`.
                     window
                         .observe_window_appearance(|window, cx| {
-                            colours::set_system(window.appearance(), cx);
+                            theme::colours::set_system(window.appearance(), cx);
                         })
                         .detach();
                     cx.new(|cx| {
