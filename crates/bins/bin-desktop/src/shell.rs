@@ -22,7 +22,12 @@
 mod document_types_ui;
 mod documents_ui;
 mod inventory_ui;
+mod log_feed;
 mod snapshots;
+mod toasts;
+
+pub use log_feed::LOG_COALESCE;
+use log_feed::{LOG_LINE_STEP, LOG_LIST_OVERDRAW};
 #[doc(hidden)]
 pub use snapshots::{
     AccountFormSnapshot, BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot,
@@ -33,15 +38,14 @@ pub use snapshots::{
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
 
 use gpui::{
     Context, ExternalPaths, FocusHandle, Focusable, KeyDownEvent, Keystroke, ListAlignment,
-    ListOffset, ListState, ScrollHandle, ScrollStrategy, SharedString, Timer,
-    UniformListScrollHandle, Window, div, point, prelude::*, px,
+    ListState, ScrollHandle, ScrollStrategy, SharedString, Timer, UniformListScrollHandle, Window,
+    div, point, prelude::*, px,
 };
 
 use chrono::{DateTime, Local};
@@ -56,7 +60,7 @@ use crate::{
     bills::{self, pay_form::PayForm},
     budgets,
     categories::{self, Category},
-    chrome::dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog, ToastHistoryDialog},
+    chrome::dialog_host::{self, Dialog, DialogKey, DialogOutcome, OpenDialog},
     chrome::palette::Palette,
     chrome::rail::{
         self,
@@ -81,7 +85,7 @@ use crate::{
     navigation::nav::{FocusZone, InputMode, NavState, Noun},
     payees::{self, Payee},
     period::Period,
-    settings::tracing_log::{LogChange, LogView},
+    settings::tracing_log::LogView,
     settings::{
         DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, SettingsDialog, SettingsFocus, SettingsSection,
         display::{DATE_STYLE_CHOICES, RowDensity, StatusGlyphs},
@@ -120,17 +124,6 @@ use crate::{
 /// even though this tooltip is hand-rolled (row-anchored, not cursor-anchored -- see
 /// `chrome::rail::primary::collapsed_tooltip`'s doc) rather than that builtin.
 const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
-
-/// How long the Tracing page lets a burst of log events settle before redrawing, capping live
-/// updates at about ten a second. Public so the headless tests advance past exactly this.
-#[doc(hidden)]
-pub const LOG_COALESCE: Duration = Duration::from_millis(100);
-
-/// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
-const LOG_LIST_OVERDRAW: gpui::Pixels = px(200.0);
-
-/// One `j`/`k` step in the Tracing log box: a line of its 11px/1.6 monospace.
-const LOG_LINE_STEP: gpui::Pixels = px(17.6);
 
 /// The handoff's own "Jumps" timeout: a `g` with no completing chord within this window is
 /// abandoned rather than left waiting indefinitely.
@@ -968,143 +961,6 @@ impl Shell {
 
     pub fn set_toast_history_binding(&mut self, spec: Option<String>) {
         self.toast_history_binding = spec;
-    }
-
-    /// Opens the session Toast history as a modal, which pauses the Toast timers.
-    fn open_toast_history(&mut self) {
-        self.palette = None;
-        self.open_dialog(OpenDialog::ToastHistory(ToastHistoryDialog));
-    }
-
-    /// Sets the Client-scoped Toasts Preference (ADR-0027), held in memory like the Colour Theme
-    /// Preferences. The Desktop can always draw a Toast, so only `toasts_on` ever changes.
-    pub fn set_toasts_on(&mut self, on: bool) {
-        self.toasts.set_display(lib_toast::Display {
-            toasts_on: on,
-            ..self.toasts.display()
-        });
-    }
-
-    /// Raises a Toast whose Message the caller has already resolved to text.
-    pub fn raise_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
-        self.toasts.raise(kind, text, Local::now());
-    }
-
-    /// Hands the Tracing page the app's live log capture, opening on `level`, and starts the
-    /// feed that pulls new entries in. Called once, by `build_shell`.
-    pub fn set_log_capture(
-        &mut self,
-        buffer: lib_tracing::LogBuffer,
-        level: TracingLevel,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let notify = Arc::new(tokio::sync::Notify::new());
-        let waker = notify.clone();
-        // Runs on whichever thread logged: only signal. One stored permit absorbs a burst.
-        buffer.set_waker(move || waker.notify_one());
-        self.settings_log = LogView::new(buffer, level);
-        self.settings_log_list
-            .reset(self.settings_log.visible().len());
-        cx.spawn(async move |this, cx| {
-            loop {
-                notify.notified().await;
-                // The executor's timer, not `Timer::after`, so headless tests can advance it.
-                cx.background_executor().timer(LOG_COALESCE).await;
-                // Stops once the window, and with it the Shell, has gone.
-                if this
-                    .update(cx, |shell, cx| {
-                        let change = shell.settings_log.pull();
-                        if change != LogChange::default() {
-                            shell.apply_log_change(change);
-                            cx.notify();
-                        }
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        })
-        .detach();
-    }
-
-    /// Mirrors a pull onto the list: evicted rows leave the bottom, new ones arrive at the top.
-    /// A reader at the very top keeps seeing the newest; one scrolled down stays where they are.
-    fn apply_log_change(&mut self, change: LogChange) {
-        let list = &self.settings_log_list;
-        let top = list.logical_scroll_top();
-        let at_top = top.item_ix == 0 && top.offset_in_item <= px(0.0);
-        let count = list.item_count();
-        let evicted = change.evicted.min(count);
-        list.splice(count - evicted..count, 0);
-        list.splice(0..0, change.added);
-        if at_top {
-            list.scroll_to(ListOffset::default());
-        }
-    }
-
-    /// Starts the Toast clock for the window's life: every [`crate::chrome::toast::TICK`] it advances
-    /// the model by the real time elapsed, paused while the pointer is over the stack or a modal
-    /// surface is open, and redraws only when a Toast has gone.
-    pub fn start_toast_clock(&self, cx: &mut Context<'_, Self>) {
-        cx.spawn(async move |this, cx| {
-            let mut last = Instant::now();
-            loop {
-                Timer::after(crate::chrome::toast::TICK).await;
-                let now = Instant::now();
-                let elapsed = now - last;
-                last = now;
-                // Stops once the window, and with it the Shell, has gone.
-                if this
-                    .update(cx, |shell, cx| {
-                        if shell.advance_toasts(elapsed) {
-                            cx.notify();
-                        }
-                    })
-                    .is_err()
-                {
-                    break;
-                }
-            }
-        })
-        .detach();
-    }
-
-    /// One clock tick; `true` when the stack changed and needs a redraw.
-    fn advance_toasts(&mut self, elapsed: Duration) -> bool {
-        let before = (
-            self.toasts.visible().len(),
-            self.toasts.more_count(),
-            self.toasts.echo().is_some(),
-        );
-        if before.0 == 0 {
-            // A dismissed stack never reports the pointer leaving it.
-            self.toasts_hovered = false;
-            return false;
-        }
-        if self.toasts_hovered || self.modal_open() {
-            self.toasts.pause();
-        } else {
-            self.toasts.resume();
-        }
-        self.toasts.advance(elapsed);
-        before
-            != (
-                self.toasts.visible().len(),
-                self.toasts.more_count(),
-                self.toasts.echo().is_some(),
-            )
-    }
-
-    /// Whether a modal surface is open -- the palette, the file explorer, a dialog, the filter
-    /// popover or the help overlay -- which pauses the Toast timers.
-    fn modal_open(&self) -> bool {
-        self.palette.is_some()
-            || self.file_explorer.is_some()
-            || matches!(
-                self.nav.mode(),
-                InputMode::Command | InputMode::Dialog | InputMode::Filter | InputMode::Help
-            )
     }
 
     /// Stands in for opening a ledger, so a test can reach the context rail without the file
@@ -2178,10 +2034,6 @@ impl Shell {
             BudgetsDialog::Fill { month, source } => self.apply_budgets_fill(month, source),
             BudgetsDialog::Stop(form) => self.apply_budgets_stop(form),
         }
-    }
-
-    fn toast_history_open(&self) -> bool {
-        matches!(self.dialog, Some(OpenDialog::ToastHistory(_)))
     }
 
     fn budgets_dialog(&self) -> Option<&budgets::BudgetsDialog> {
