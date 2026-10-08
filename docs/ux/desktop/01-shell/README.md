@@ -53,7 +53,7 @@ All four variants are drawn at **1280 × 800** — the reference desktop window 
 
 **Layout**:
 - Primary rail: icon-only, ~48px wide
-- Secondary rail (214px): filter box, `SETTINGS` label, then the settings pages — General, Ledger & units, Units, Institutions, Display, Sync server, Backup, History, Logs, About
+- Secondary rail (214px): filter box, `SETTINGS` label, then the settings pages — General, Ledger & units, Units, Institutions, Display, AI Connections, Sync Server, Backup, History, Logs, About
 - Main pane: the selected settings pane (Display shown)
 
 ### 1d — Command palette

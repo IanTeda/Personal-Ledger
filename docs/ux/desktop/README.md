@@ -29,7 +29,7 @@ Generated 3 October 2026; per-view frames re-synced to the new master on 9 Octob
 | `13-budgets` | Budgets v1: Progress, Plan, History | 13a–13g | PLAN · `g b` |
 | `14-budgets-v2` | Budgets v2: multiple budgets, four methods | 14a–14f | PLAN · `g b` |
 | `15-reports` | Reports | 15a–15i | PLAN · `g r` |
-| `16-settings` | Settings, one page per section | 16a–16u, dialogs 16c–16e, 16r–16t | pinned · `g s` |
+| `16-settings` | Settings, one page per section | 16a–16v, dialogs 16c–16e, 16r–16t | pinned · `g s` |
 | `17-accounts` | Account management & forms | 17a–17d | Settings › Accounts |
 | `18-categories` | Category dialogs | 18a–18d | Settings › Categories |
 | `19-tags` | Tag dialogs & merge | 19a–19e | Settings › Tags |
