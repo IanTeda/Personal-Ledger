@@ -10,7 +10,10 @@ use lib_core::CategoryTypes;
 
 use super::DialogHandlers;
 use crate::{
-    categories::{self, CategoryField, CategoryForm},
+    categories::{
+        self,
+        form::{CategoryField, CategoryForm},
+    },
     dialog,
     theme::color,
 };
@@ -284,19 +287,19 @@ fn parent_field(
 fn budget_field(
     value: &str,
     focused: bool,
-    lock: Option<&categories::BudgetLock>,
+    lock: Option<&categories::form::BudgetLock>,
     on_field_click: OnFieldClick,
     cx: &App,
 ) -> AnyElement {
     let is_parent = lock.is_some();
     let locked_text = match lock {
-        Some(categories::BudgetLock::Parent) if value.is_empty() => {
+        Some(categories::form::BudgetLock::Parent) if value.is_empty() => {
             crate::msg::desktop_categories_parent_budget_rollup()
         }
-        Some(categories::BudgetLock::Parent) => {
+        Some(categories::form::BudgetLock::Parent) => {
             crate::msg::desktop_categories_parent_budget_rollup_sum(value)
         }
-        Some(categories::BudgetLock::Archived(budget)) => {
+        Some(categories::form::BudgetLock::Archived(budget)) => {
             crate::msg::desktop_categories_budget_archived(
                 if value.is_empty() {
                     crate::transactions::rows::EMPTY_CELL

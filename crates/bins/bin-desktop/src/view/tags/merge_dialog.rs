@@ -12,7 +12,10 @@ use gpui::{AnyElement, App, Window, div, prelude::*, px};
 
 use crate::{
     dialog,
-    tags::{MergeField, MergeTagsForm, Tag},
+    tags::{
+        Tag,
+        form::{MergeField, MergeTagsForm},
+    },
     theme::color,
     view::accounts::select_field::{self, SelectFieldProps},
 };

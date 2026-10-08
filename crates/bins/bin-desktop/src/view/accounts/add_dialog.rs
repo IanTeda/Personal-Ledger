@@ -1,5 +1,5 @@
 //! Renders the **Add account** dialog (`docs/ux/desktop/17-accounts/README.md`'s 3b) on the shared
-//! `crate::dialog` chrome. `Shell` owns the live form (`accounts::AccountForm`) and every
+//! `crate::dialog` chrome. `Shell` owns the live form (`accounts::form::AccountForm`) and every
 //! keystroke while it is open (`InputMode::Dialog`); this module only draws it.
 //!
 //! Width is 440px rather than `dialog::WIDTH`'s 420px, the README's own note: only because the
@@ -13,7 +13,10 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
 use super::select_field::{self, SelectFieldProps};
 use crate::{
-    accounts::{self, AccountField, AccountForm, AccountOptions, NO_INSTITUTION},
+    accounts::{
+        self, NO_INSTITUTION,
+        form::{AccountField, AccountForm, AccountOptions},
+    },
     dialog,
     theme::color,
 };

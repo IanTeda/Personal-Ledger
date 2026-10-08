@@ -1,6 +1,6 @@
 //! Pure Bills-surface domain types and the stub dataset behind them (`docs/ux/desktop/12-bills/`,
 //! `docs/bills.md`, ADR-0019 and its amendments) -- `gpui`-free and in-memory, the same "pure
-//! state, chrome renders it" split `tags.rs` uses. Nothing here reads `lib_database`.
+//! state, chrome renders it" split `tags/mod.rs` uses. Nothing here reads `lib_database`.
 //!
 //! The rules are the Desktop Bills Surface map's settled decisions (#365–#368):
 //!

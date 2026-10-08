@@ -19,7 +19,10 @@ use super::{
     select_field::{self, SelectFieldProps},
 };
 use crate::{
-    accounts::{self, Account, AccountField, AccountForm, AccountOptions, NO_INSTITUTION},
+    accounts::{
+        self, Account, NO_INSTITUTION,
+        form::{AccountField, AccountForm, AccountOptions},
+    },
     dialog,
     theme::color,
 };

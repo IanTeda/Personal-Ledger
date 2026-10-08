@@ -8,7 +8,7 @@ use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
 use crate::{
     dialog,
-    tags::{RemoveTagForm, Tag},
+    tags::{Tag, form::RemoveTagForm},
     theme::color,
 };
 

@@ -8,7 +8,7 @@ use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
 use super::add_dialog::WIDTH;
 use crate::{
-    categories::{self, DeleteCategoryForm},
+    categories::{self, form::DeleteCategoryForm},
     dialog,
     theme::color,
 };

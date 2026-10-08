@@ -23,7 +23,7 @@ use lib_core::{CategoryTypes, DateStyle, Money};
 use lib_locale::format::format_date_input;
 
 use crate::{
-    accounts::{Account, SelectKey},
+    accounts::{Account, form::SelectKey},
     bills::{AmountKind, BillError, BillPlan, BillPlanDraft, Recurrence},
     categories::{self, Category},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},

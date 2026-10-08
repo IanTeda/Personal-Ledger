@@ -10,7 +10,10 @@ use lib_core::CategoryTypes;
 
 use super::DialogHandlers;
 use crate::{
-    categories::{self, CategoryField, CategoryForm},
+    categories::{
+        self,
+        form::{CategoryField, CategoryForm},
+    },
     dialog,
     theme::color,
 };
@@ -274,11 +277,11 @@ fn parent_field(
 fn budget_field(
     value: &str,
     focused: bool,
-    lock: Option<&categories::BudgetLock>,
+    lock: Option<&categories::form::BudgetLock>,
     on_field_click: OnFieldClick,
     cx: &App,
 ) -> AnyElement {
-    if let Some(categories::BudgetLock::Archived(budget)) = lock {
+    if let Some(categories::form::BudgetLock::Archived(budget)) = lock {
         return div()
             .child(suffixed_label(
                 crate::msg::desktop_categories_field_monthly_budget(),

@@ -15,7 +15,7 @@ use lib_core::{Money, TransactionStatus};
 
 use crate::{
     form::select::SelectState,
-    payees::{self, Payee, PayeeDraft, PayeeOptions},
+    payees::{self, Payee, PayeeDraft, form::PayeeOptions},
     transactions::{Split, Transaction},
 };
 

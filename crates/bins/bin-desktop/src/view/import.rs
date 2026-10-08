@@ -17,7 +17,7 @@ use lib_locale::format::upper;
 use crate::{
     form::select::SelectState,
     import::{self, ImportRow, ImportState, PayeeChoices, RowPayee, RowSelect, RowStatus},
-    payees::{self, Payee, PayeeOptions},
+    payees::{self, Payee, form::PayeeOptions},
     theme::color,
 };
 

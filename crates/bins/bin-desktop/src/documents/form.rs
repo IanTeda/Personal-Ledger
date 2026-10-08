@@ -17,7 +17,7 @@ use lib_core::DateStyle;
 use lib_locale::format::format_date_input;
 
 use crate::{
-    accounts::SelectKey,
+    accounts::form::SelectKey,
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     documents::types::DocumentTypeRow,
     documents::{

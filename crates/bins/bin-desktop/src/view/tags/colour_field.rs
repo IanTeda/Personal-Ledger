@@ -1,6 +1,6 @@
 //! The Add and Edit tag dialogs' **Colour** field (#352): a "none" chip, the handoff's six preset
 //! swatches (`26×26`, `gap 8px`, the pick outlined `2px`) and a free hex box that takes any other
-//! colour. `tags::TagForm` keeps the hex box as the one source of the colour, so this only draws
+//! colour. `tags::form::TagForm` keeps the hex box as the one source of the colour, so this only draws
 //! it and reports clicks.
 
 use std::rc::Rc;
@@ -10,7 +10,10 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use super::swatch;
 use crate::{
     dialog,
-    tags::{self, TagField, TagForm},
+    tags::{
+        self,
+        form::{TagField, TagForm},
+    },
     theme::color,
     view::accounts::add_dialog::optional_label,
 };

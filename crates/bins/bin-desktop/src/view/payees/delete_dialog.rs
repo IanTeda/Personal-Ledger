@@ -9,7 +9,10 @@ use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 
 use crate::{
     dialog,
-    payees::{DeleteAction, DeletePayeeForm, Payee},
+    payees::{
+        Payee,
+        form::{DeleteAction, DeletePayeeForm},
+    },
     theme::color,
 };
 

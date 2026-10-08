@@ -1,6 +1,6 @@
 //! Pure Transactions-surface domain types and the stub dataset behind them
 //! (`docs/ux/desktop/03-transactions/README.md`) -- `gpui`-free, the same "pure state, chrome renders
-//! it" split `accounts.rs` uses. All data is stubbed and in-memory (the Desktop Transactions
+//! it" split `accounts/mod.rs` uses. All data is stubbed and in-memory (the Desktop Transactions
 //! Surface map's Destination): nothing here reads `lib_database`.
 //!
 //! **The shape runs ahead of the persisted model on purpose.** The glossary makes every Transaction

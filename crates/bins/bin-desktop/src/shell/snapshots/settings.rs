@@ -4,12 +4,12 @@
 use crate::inventory::form::InventoryDialog;
 use crate::shell::Shell;
 use crate::{
-    accounts::{self, AccountsDialog},
-    categories::CategoriesDialog,
+    accounts::{self, form::AccountsDialog},
+    categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
-    payees::{self, PayeesDialog},
+    payees::{self, form::PayeesDialog},
     settings::{SettingsDialog, SettingsFocus},
-    tags::{self, TagsDialog},
+    tags::{self, form::TagsDialog},
 };
 
 /// The Settings pages' state: plain values, so the private form types stay private.

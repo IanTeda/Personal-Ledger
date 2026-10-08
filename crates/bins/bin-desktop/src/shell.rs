@@ -50,8 +50,8 @@ use lib_toast::{ToastKind, Toasts};
 
 use crate::{
     accounts::{
-        self, Account, AccountField, AccountForm, AccountOptions, AccountsDialog,
-        DeleteAccountForm, NameLookup,
+        self, Account, NameLookup,
+        form::{AccountField, AccountForm, AccountOptions, AccountsDialog, DeleteAccountForm},
     },
     bills::{self, pay_form::PayForm},
     budgets,
@@ -2047,14 +2047,14 @@ impl Shell {
         }
     }
 
-    fn categories_dialog(&self) -> Option<&categories::CategoriesDialog> {
+    fn categories_dialog(&self) -> Option<&categories::form::CategoriesDialog> {
         match self.dialog.as_ref()? {
             OpenDialog::Categories(dialog) => Some(dialog),
             _ => None,
         }
     }
 
-    fn categories_dialog_mut(&mut self) -> Option<&mut categories::CategoriesDialog> {
+    fn categories_dialog_mut(&mut self) -> Option<&mut categories::form::CategoriesDialog> {
         match self.dialog.as_mut()? {
             OpenDialog::Categories(dialog) => Some(dialog),
             _ => None,
@@ -2165,28 +2165,28 @@ impl Shell {
         self.open_dialog(OpenDialog::Budgets(Box::new(dialog)));
     }
 
-    fn tags_dialog(&self) -> Option<&tags::TagsDialog> {
+    fn tags_dialog(&self) -> Option<&tags::form::TagsDialog> {
         match self.dialog.as_ref()? {
             OpenDialog::Tags(dialog) => Some(dialog),
             _ => None,
         }
     }
 
-    fn tags_dialog_mut(&mut self) -> Option<&mut tags::TagsDialog> {
+    fn tags_dialog_mut(&mut self) -> Option<&mut tags::form::TagsDialog> {
         match self.dialog.as_mut()? {
             OpenDialog::Tags(dialog) => Some(dialog),
             _ => None,
         }
     }
 
-    fn payees_dialog(&self) -> Option<&payees::PayeesDialog> {
+    fn payees_dialog(&self) -> Option<&payees::form::PayeesDialog> {
         match self.dialog.as_ref()? {
             OpenDialog::Payees(dialog) => Some(dialog),
             _ => None,
         }
     }
 
-    fn payees_dialog_mut(&mut self) -> Option<&mut payees::PayeesDialog> {
+    fn payees_dialog_mut(&mut self) -> Option<&mut payees::form::PayeesDialog> {
         match self.dialog.as_mut()? {
             OpenDialog::Payees(dialog) => Some(dialog),
             _ => None,
@@ -3096,14 +3096,17 @@ impl Shell {
     /// Why the Categories dialogs' Monthly budget field is read-only for `category_id` (`None`
     /// for a Category being added): the Personal spending Budget it reads and writes is archived,
     /// or the Category is a parent and so only rolls up.
-    fn categories_budget_lock(&self, category_id: Option<u32>) -> Option<categories::BudgetLock> {
+    fn categories_budget_lock(
+        &self,
+        category_id: Option<u32>,
+    ) -> Option<categories::form::BudgetLock> {
         if category_id.is_some_and(|id| !categories::is_leaf(&self.categories, id)) {
-            return Some(categories::BudgetLock::Parent);
+            return Some(categories::form::BudgetLock::Parent);
         }
         self.budgets
             .get(budgets::PERSONAL_SPENDING_ID)
             .filter(|budget| budget.is_archived())
-            .map(|budget| categories::BudgetLock::Archived(budget.name.clone()))
+            .map(|budget| categories::form::BudgetLock::Archived(budget.name.clone()))
     }
 
     /// Opens the Add categories dialog pre-scoped to parent_id (None for top-level).
@@ -3117,18 +3120,17 @@ impl Shell {
                 .map(|c| c.category_type.clone()),
             None => Some(CategoryTypes::Expense),
         };
-        let form = categories::CategoryForm {
+        let form = categories::form::CategoryForm {
             name: TextField::default(),
             parent_id,
             category_type,
             budget: TextField::default(),
             budget_lock: self.categories_budget_lock(None),
-            focused: categories::CategoryField::Name,
+            focused: categories::form::CategoryField::Name,
         };
-        self.open_dialog(OpenDialog::Categories(categories::CategoriesDialog::Add {
-            parent_id,
-            form,
-        }));
+        self.open_dialog(OpenDialog::Categories(
+            categories::form::CategoriesDialog::Add { parent_id, form },
+        ));
     }
 
     /// Opens the Edit categories dialog on `id`, pre-filled. Monthly budget shows the current
@@ -3145,18 +3147,17 @@ impl Shell {
                 )
                 .map(|amount| amount.0.to_string())
                 .unwrap_or_default();
-            let form = categories::CategoryForm {
+            let form = categories::form::CategoryForm {
                 name: TextField::new(category.name.as_str()),
                 parent_id: category.parent,
                 category_type: Some(category.category_type.clone()),
                 budget: TextField::new(budget_str),
                 budget_lock: self.categories_budget_lock(Some(category_id)),
-                focused: categories::CategoryField::Name,
+                focused: categories::form::CategoryField::Name,
             };
-            self.open_dialog(OpenDialog::Categories(categories::CategoriesDialog::Edit(
-                category_id,
-                form,
-            )));
+            self.open_dialog(OpenDialog::Categories(
+                categories::form::CategoriesDialog::Edit(category_id, form),
+            ));
         }
     }
 
@@ -3166,7 +3167,7 @@ impl Shell {
     fn save_category_budget(
         &mut self,
         category_id: u32,
-        form: &categories::CategoryForm,
+        form: &categories::form::CategoryForm,
         clears: bool,
     ) {
         if form.budget_lock.is_some() {
@@ -5987,33 +5988,35 @@ impl Shell {
     }
 
     fn open_add_tag_dialog(&mut self) {
-        let form = tags::TagForm::new(self.tags.clone());
-        self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Add(form)));
+        let form = tags::form::TagForm::new(self.tags.clone());
+        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Add(form)));
     }
 
     /// The form behind the open Add or Edit tag dialog, if that is what's open.
-    fn tag_form_mut(&mut self) -> Option<&mut tags::TagForm> {
+    fn tag_form_mut(&mut self) -> Option<&mut tags::form::TagForm> {
         match self.tags_dialog_mut() {
-            Some(tags::TagsDialog::Add(form) | tags::TagsDialog::Edit(_, form)) => Some(form),
+            Some(tags::form::TagsDialog::Add(form) | tags::form::TagsDialog::Edit(_, form)) => {
+                Some(form)
+            }
             _ => None,
         }
     }
 
     /// Applies a confirmed Tags dialog (`Enter` and the confirm button): adds or saves the Tag
     /// and selects it, removes it, or merges it into another, toasting the last two.
-    fn apply_tags_dialog(&mut self, dialog: tags::TagsDialog) {
+    fn apply_tags_dialog(&mut self, dialog: tags::form::TagsDialog) {
         match dialog {
-            tags::TagsDialog::Add(form) => {
+            tags::form::TagsDialog::Add(form) => {
                 let Some(draft) = form.draft() else {
                     return;
                 };
                 // `is_valid` ran the same name check, so a refusal can only leave the dialog open.
                 match tags::insert_tag(&mut self.tags, &draft) {
                     Ok(id) => self.select_tag(id),
-                    Err(_) => self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Add(form))),
+                    Err(_) => self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Add(form))),
                 }
             }
-            tags::TagsDialog::Edit(id, form) => {
+            tags::form::TagsDialog::Edit(id, form) => {
                 let Some(draft) = form.draft() else {
                     return;
                 };
@@ -6021,11 +6024,13 @@ impl Shell {
                     .and_then(|()| tags::set_active(&mut self.tags, id, form.is_active));
                 match saved {
                     Ok(()) => self.select_tag(id),
-                    Err(_) => self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Edit(id, form))),
+                    Err(_) => {
+                        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Edit(id, form)))
+                    }
                 }
             }
-            tags::TagsDialog::Remove(id, _) => self.apply_remove_tag(id),
-            tags::TagsDialog::Merge(form) => {
+            tags::form::TagsDialog::Remove(id, _) => self.apply_remove_tag(id),
+            tags::form::TagsDialog::Merge(form) => {
                 if let Some((source, target)) = form.pair() {
                     self.apply_merge_tags(source, target);
                 }
@@ -6035,7 +6040,7 @@ impl Shell {
 
     fn handle_tags_dialog_field_click(
         &mut self,
-        field: tags::TagField,
+        field: tags::form::TagField,
         cx: &mut Context<'_, Self>,
     ) {
         if let Some(form) = self.tag_form_mut() {
@@ -6046,7 +6051,7 @@ impl Shell {
 
     fn handle_tags_dialog_pick(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         if let Some(form) = self.tag_form_mut() {
-            form.focus(tags::TagField::Swatches);
+            form.focus(tags::form::TagField::Swatches);
             form.pick(index);
         }
         cx.notify();
@@ -6073,17 +6078,19 @@ impl Shell {
         let Some(tag) = tags::get(&self.tags, id) else {
             return;
         };
-        let form = tags::TagForm::for_edit(tag, self.tags.clone());
-        self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Edit(id, form)));
+        let form = tags::form::TagForm::for_edit(tag, self.tags.clone());
+        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Edit(id, form)));
     }
 
     fn open_remove_tag_dialog(&mut self, id: u32) {
         let Some(tag) = tags::get(&self.tags, id) else {
             return;
         };
-        let form =
-            tags::RemoveTagForm::new(&tag.name, tags::transaction_count(&self.transactions, id));
-        self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Remove(id, form)));
+        let form = tags::form::RemoveTagForm::new(
+            &tag.name,
+            tags::transaction_count(&self.transactions, id),
+        );
+        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Remove(id, form)));
     }
 
     /// Untags every Split, deletes the Tag and toasts it. The selection keeps its position, so it
@@ -6110,8 +6117,8 @@ impl Shell {
     }
 
     /// The 7e selects' options, labelled `Shared (9 txns)`.
-    fn merge_tag_options(&self) -> Vec<tags::MergeOption> {
-        tags::merge_options(&self.tags, &self.transactions, |name, count| {
+    fn merge_tag_options(&self) -> Vec<tags::form::MergeOption> {
+        tags::form::merge_options(&self.tags, &self.transactions, |name, count| {
             crate::msg::desktop_tags_merge_option(name, i64::try_from(count).unwrap_or(i64::MAX))
         })
     }
@@ -6122,8 +6129,8 @@ impl Shell {
     fn open_merge_tags_dialog(&mut self, source: Option<u32>) {
         let groups = tags::duplicate_groups(&self.tags, &self.transactions);
         let target = source.and_then(|id| tags::duplicate_of(&groups, id));
-        let form = tags::MergeTagsForm::new(self.merge_tag_options(), source, target);
-        self.open_dialog(OpenDialog::Tags(tags::TagsDialog::Merge(form)));
+        let form = tags::form::MergeTagsForm::new(self.merge_tag_options(), source, target);
+        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Merge(form)));
     }
 
     /// Retags the source's Splits with the target, deletes the source, toasts it and selects the
@@ -6160,10 +6167,10 @@ impl Shell {
 
     fn handle_merge_tags_field_click(
         &mut self,
-        field: tags::MergeField,
+        field: tags::form::MergeField,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
+        if let Some(tags::form::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
             form.toggle(field);
         }
         cx.notify();
@@ -6171,11 +6178,11 @@ impl Shell {
 
     fn handle_merge_tags_option_click(
         &mut self,
-        field: tags::MergeField,
+        field: tags::form::MergeField,
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(tags::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
+        if let Some(tags::form::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
             form.choose(field, index);
         }
         cx.notify();
@@ -6270,8 +6277,8 @@ impl Shell {
     }
 
     /// The Category select's options on 6e: "choose category…", then every leaf.
-    fn import_category_options(&self) -> payees::PayeeOptions {
-        payees::PayeeOptions::new(
+    fn import_category_options(&self) -> payees::form::PayeeOptions {
+        payees::form::PayeeOptions::new(
             &self.categories,
             crate::msg::desktop_import_choose_category(),
         )
@@ -6451,22 +6458,25 @@ impl Shell {
         cx.notify();
     }
 
-    fn payee_dialog_options(&self) -> payees::PayeeOptions {
-        payees::PayeeOptions::new(&self.categories, crate::msg::desktop_payees_category_none())
+    fn payee_dialog_options(&self) -> payees::form::PayeeOptions {
+        payees::form::PayeeOptions::new(
+            &self.categories,
+            crate::msg::desktop_payees_category_none(),
+        )
     }
 
     fn open_add_payee_dialog(&mut self) {
-        let form = payees::PayeeForm::new(&self.payee_dialog_options(), &self.payees);
-        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Add(form)));
+        let form = payees::form::PayeeForm::new(&self.payee_dialog_options(), &self.payees);
+        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Add(form)));
     }
 
     /// Applies a confirmed Payees dialog (reached through [`Self::confirm_open_dialog`] from the
     /// **Add payee** / **Save** / **Delete** buttons or `Enter`). Add and Edit store the Payee and
     /// select it; a refused submit reopens the dialog with the error shown. Delete applies its
-    /// [`payees::DeleteAction`], toasts the outcome and keeps the selection in range.
-    fn apply_payees_dialog(&mut self, dialog: payees::PayeesDialog) {
+    /// [`payees::form::DeleteAction`], toasts the outcome and keeps the selection in range.
+    fn apply_payees_dialog(&mut self, dialog: payees::form::PayeesDialog) {
         match dialog {
-            payees::PayeesDialog::Delete(id, form) => {
+            payees::form::PayeesDialog::Delete(id, form) => {
                 let Some(name) = payees::get(&self.payees, id).map(|p| p.name.clone()) else {
                     return;
                 };
@@ -6480,13 +6490,13 @@ impl Shell {
                     Ok(()) => (
                         ToastKind::Success,
                         match action {
-                            payees::DeleteAction::Delete => {
+                            payees::form::DeleteAction::Delete => {
                                 lib_locale::msg::toast_payee_deleted(&name)
                             }
-                            payees::DeleteAction::Deactivate => {
+                            payees::form::DeleteAction::Deactivate => {
                                 lib_locale::msg::toast_payee_deactivated(&name)
                             }
-                            payees::DeleteAction::Reactivate => {
+                            payees::form::DeleteAction::Reactivate => {
                                 lib_locale::msg::toast_payee_reactivated(&name)
                             }
                         },
@@ -6504,21 +6514,23 @@ impl Shell {
                     .payees_selected
                     .min(self.payees.len().saturating_sub(1));
             }
-            payees::PayeesDialog::Add(mut form) => {
+            payees::form::PayeesDialog::Add(mut form) => {
                 match payees::insert_payee(&mut self.payees, &form.draft()) {
                     Ok(id) => self.select_payee(id),
                     Err(error) => {
                         form.error = Some(error);
-                        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Add(form)));
+                        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Add(form)));
                     }
                 }
             }
-            payees::PayeesDialog::Edit(id, mut form) => {
+            payees::form::PayeesDialog::Edit(id, mut form) => {
                 match payees::edit_payee(&mut self.payees, id, &form.draft()) {
                     Ok(()) => self.select_payee(id),
                     Err(error) => {
                         form.error = Some(error);
-                        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Edit(id, form)));
+                        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Edit(
+                            id, form,
+                        )));
                     }
                 }
             }
@@ -6528,11 +6540,11 @@ impl Shell {
     fn with_payee_form(
         &mut self,
         cx: &mut Context<'_, Self>,
-        change: impl FnOnce(&mut payees::PayeeForm),
+        change: impl FnOnce(&mut payees::form::PayeeForm),
     ) {
         if let Some(form) = self
             .payees_dialog_mut()
-            .and_then(payees::PayeesDialog::form_mut)
+            .and_then(payees::form::PayeesDialog::form_mut)
         {
             change(form);
         }
@@ -6541,11 +6553,11 @@ impl Shell {
 
     fn handle_payees_dialog_field_click(
         &mut self,
-        field: payees::PayeeField,
+        field: payees::form::PayeeField,
         cx: &mut Context<'_, Self>,
     ) {
         self.with_payee_form(cx, |form| {
-            if field == payees::PayeeField::DefaultCategory {
+            if field == payees::form::PayeeField::DefaultCategory {
                 form.click_select();
             } else {
                 form.focus(field);
@@ -6559,7 +6571,7 @@ impl Shell {
 
     fn handle_payees_dialog_add_rule(&mut self, cx: &mut Context<'_, Self>) {
         self.with_payee_form(cx, |form| {
-            form.focus(payees::PayeeField::Rule);
+            form.focus(payees::form::PayeeField::Rule);
             form.add_rule();
         });
     }
@@ -6583,8 +6595,11 @@ impl Shell {
         let Some(payee) = payees::get(&self.payees, id) else {
             return;
         };
-        let form = payees::PayeeForm::from_payee(payee, &self.payee_dialog_options(), &self.payees);
-        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Edit(id, form)));
+        let form =
+            payees::form::PayeeForm::from_payee(payee, &self.payee_dialog_options(), &self.payees);
+        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Edit(
+            id, form,
+        )));
     }
 
     /// Opens the Delete dialog on Payee `id`, copying its name and action in so the form validates
@@ -6593,14 +6608,16 @@ impl Shell {
         let Some(payee) = payees::get(&self.payees, id) else {
             return;
         };
-        let action = payees::DeleteAction::for_payee(payee, &self.transactions);
-        let form = payees::DeletePayeeForm::new(payee, action);
-        self.open_dialog(OpenDialog::Payees(payees::PayeesDialog::Delete(id, form)));
+        let action = payees::form::DeleteAction::for_payee(payee, &self.transactions);
+        let form = payees::form::DeletePayeeForm::new(payee, action);
+        self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Delete(
+            id, form,
+        )));
     }
 
     /// The Payee the Delete dialog is open on and what confirming it would do (#283).
-    fn delete_payee_target(&self) -> Option<(&Payee, payees::DeleteAction)> {
-        let Some(payees::PayeesDialog::Delete(id, form)) = self.payees_dialog() else {
+    fn delete_payee_target(&self) -> Option<(&Payee, payees::form::DeleteAction)> {
+        let Some(payees::form::PayeesDialog::Delete(id, form)) = self.payees_dialog() else {
             return None;
         };
         Some((payees::get(&self.payees, *id)?, form.action()))
@@ -6939,15 +6956,15 @@ impl Shell {
         let Some(category) = self.categories.iter().find(|c| c.id == category_id) else {
             return;
         };
-        let form = categories::DeleteCategoryForm::new(category.name.as_str());
+        let form = categories::form::DeleteCategoryForm::new(category.name.as_str());
         self.open_dialog(OpenDialog::Categories(
-            categories::CategoriesDialog::Delete(category_id, form),
+            categories::form::CategoriesDialog::Delete(category_id, form),
         ));
     }
 
     fn handle_categories_dialog_field_click(
         &mut self,
-        field: categories::CategoryField,
+        field: categories::form::CategoryField,
         cx: &mut Context<'_, Self>,
     ) {
         if let Some(dialog) = self.categories_dialog_mut()
@@ -6987,8 +7004,8 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         let can_change_type = match self.categories_dialog() {
-            Some(categories::CategoriesDialog::Add { form, .. }) => form.parent_id.is_none(),
-            Some(categories::CategoriesDialog::Edit(id, _)) => self
+            Some(categories::form::CategoriesDialog::Add { form, .. }) => form.parent_id.is_none(),
+            Some(categories::form::CategoriesDialog::Edit(id, _)) => self
                 .categories
                 .iter()
                 .find(|c| c.id == *id)
@@ -6999,7 +7016,7 @@ impl Shell {
             return;
         }
         let edited_id = match self.categories_dialog() {
-            Some(categories::CategoriesDialog::Edit(id, _)) => Some(*id),
+            Some(categories::form::CategoriesDialog::Edit(id, _)) => Some(*id),
             _ => None,
         };
         if let Some(dialog) = self.categories_dialog_mut()
@@ -7028,9 +7045,9 @@ impl Shell {
     /// the Add/Save/Delete button or `Enter`): Add inserts the category and saves its Monthly
     /// budget; Edit renames, re-parents and saves the budget; Delete removes it and keeps the
     /// selection in range. The form has already validated.
-    fn apply_categories_dialog(&mut self, dialog: categories::CategoriesDialog) {
+    fn apply_categories_dialog(&mut self, dialog: categories::form::CategoriesDialog) {
         match dialog {
-            categories::CategoriesDialog::Add { form, .. } => {
+            categories::form::CategoriesDialog::Add { form, .. } => {
                 let category_type = form.category_type.clone().unwrap_or(CategoryTypes::Expense);
                 // A rejected insert (e.g. depth) closes the dialog without adding anything.
                 if let Ok(category_id) = categories::insert_category(
@@ -7042,7 +7059,7 @@ impl Shell {
                     self.save_category_budget(category_id, &form, false);
                 }
             }
-            categories::CategoriesDialog::Edit(id, form) => {
+            categories::form::CategoriesDialog::Edit(id, form) => {
                 let _ = categories::edit_category(
                     &mut self.categories,
                     id,
@@ -7052,7 +7069,7 @@ impl Shell {
                 let _ = categories::move_category(&mut self.categories, id, form.parent_id);
                 self.save_category_budget(id, &form, true);
             }
-            categories::CategoriesDialog::Delete(category_id, _) => {
+            categories::form::CategoriesDialog::Delete(category_id, _) => {
                 let (kind, text) = delete_category(
                     &mut self.categories,
                     &mut self.transactions,
@@ -8972,10 +8989,10 @@ impl Render for Shell {
             }),
             Noun::Settings if self.settings_tags_page_has_focus() => Some(PageStatus {
                 hints: match self.tags_dialog() {
-                    Some(tags::TagsDialog::Add(_)) => tag_dialog_hints(false),
-                    Some(tags::TagsDialog::Edit(..)) => tag_dialog_hints(true),
-                    Some(tags::TagsDialog::Remove(..)) => confirm_dialog_hints(),
-                    Some(tags::TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
+                    Some(tags::form::TagsDialog::Add(_)) => tag_dialog_hints(false),
+                    Some(tags::form::TagsDialog::Edit(..)) => tag_dialog_hints(true),
+                    Some(tags::form::TagsDialog::Remove(..)) => confirm_dialog_hints(),
+                    Some(tags::form::TagsDialog::Merge(_)) => merge_tags_dialog_hints(),
                     None => settings_tags_hints(),
                 },
                 right: settings_view::tags::scope_text(
@@ -8985,7 +9002,7 @@ impl Render for Shell {
             }),
             Noun::Settings if self.settings_payees_page_has_focus() => Some(PageStatus {
                 hints: match self.payees_dialog() {
-                    Some(payees::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
+                    Some(payees::form::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
                     Some(_) => payee_dialog_hints(),
                     None => settings_payees_hints(),
                 },
@@ -9361,17 +9378,19 @@ impl Render for Shell {
             .children(self.render_budgets_form_dialog(&entity, cx))
             .children(self.render_budgets_manage_dialog(&entity, cx))
             .children(match self.payees_dialog() {
-                Some(payees::PayeesDialog::Add(form)) => Some(payees_view::add_dialog::render(
-                    payees_view::add_dialog::PayeeDialogMode::Add,
-                    form,
-                    form.options(),
-                    form.name_error(),
-                    form.is_valid(),
-                    payees_dialog_handlers,
-                    cx,
-                )),
-                Some(payees::PayeesDialog::Edit(id, form)) => {
-                    payees::get(&self.payees, *id).map(|payee| {
+                Some(payees::form::PayeesDialog::Add(form)) => {
+                    Some(payees_view::add_dialog::render(
+                        payees_view::add_dialog::PayeeDialogMode::Add,
+                        form,
+                        form.options(),
+                        form.name_error(),
+                        form.is_valid(),
+                        payees_dialog_handlers,
+                        cx,
+                    ))
+                }
+                Some(payees::form::PayeesDialog::Edit(id, form)) => payees::get(&self.payees, *id)
+                    .map(|payee| {
                         payees_view::add_dialog::render(
                             payees_view::add_dialog::PayeeDialogMode::Edit {
                                 name: &payee.name,
@@ -9390,9 +9409,8 @@ impl Render for Shell {
                             payees_dialog_handlers,
                             cx,
                         )
-                    })
-                }
-                Some(payees::PayeesDialog::Delete(id, form)) => {
+                    }),
+                Some(payees::form::PayeesDialog::Delete(id, form)) => {
                     self.delete_payee_target().map(|(payee, action)| {
                         payees_view::delete_dialog::render(
                             payees_view::delete_dialog::DeletePayeeProps {
@@ -9418,40 +9436,46 @@ impl Render for Shell {
             .children(self.render_document_types_dialog(&entity, cx))
             .children(self.render_inventory_dialog(&entity, cx))
             .children(match self.tags_dialog() {
-                Some(tags::TagsDialog::Add(form)) => Some(tags_view::add_dialog::render(
+                Some(tags::form::TagsDialog::Add(form)) => Some(tags_view::add_dialog::render(
                     form,
                     form.name_error(),
                     form.is_valid(),
                     tags_dialog_handlers,
                     cx,
                 )),
-                Some(tags::TagsDialog::Edit(id, form)) => tags::get(&self.tags, *id).map(|tag| {
-                    tags_view::edit_dialog::render(
-                        tags_view::edit_dialog::EditTagProps {
-                            original_name: &tag.name,
-                            form,
-                            name_error: form.name_error(),
-                            valid: form.is_valid(),
-                            transactions: tags::transaction_count(&self.transactions, *id),
-                            on_toggle_active: tag_plain(Shell::handle_tags_dialog_toggle_active),
-                        },
-                        tags_dialog_handlers,
-                        cx,
-                    )
-                }),
-                Some(tags::TagsDialog::Remove(id, form)) => tags::get(&self.tags, *id).map(|tag| {
-                    tags_view::remove_dialog::render(
-                        tags_view::remove_dialog::RemoveTagProps {
-                            tag,
-                            form,
-                            transactions: tags::transaction_count(&self.transactions, *id),
-                            on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
-                            on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
-                        },
-                        cx,
-                    )
-                }),
-                Some(tags::TagsDialog::Merge(form)) => {
+                Some(tags::form::TagsDialog::Edit(id, form)) => {
+                    tags::get(&self.tags, *id).map(|tag| {
+                        tags_view::edit_dialog::render(
+                            tags_view::edit_dialog::EditTagProps {
+                                original_name: &tag.name,
+                                form,
+                                name_error: form.name_error(),
+                                valid: form.is_valid(),
+                                transactions: tags::transaction_count(&self.transactions, *id),
+                                on_toggle_active: tag_plain(
+                                    Shell::handle_tags_dialog_toggle_active,
+                                ),
+                            },
+                            tags_dialog_handlers,
+                            cx,
+                        )
+                    })
+                }
+                Some(tags::form::TagsDialog::Remove(id, form)) => {
+                    tags::get(&self.tags, *id).map(|tag| {
+                        tags_view::remove_dialog::render(
+                            tags_view::remove_dialog::RemoveTagProps {
+                                tag,
+                                form,
+                                transactions: tags::transaction_count(&self.transactions, *id),
+                                on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
+                                on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
+                            },
+                            cx,
+                        )
+                    })
+                }
+                Some(tags::form::TagsDialog::Merge(form)) => {
                     let source = form.source_id();
                     let entity = entity.clone();
                     let on_field_click: tags_view::merge_dialog::OnFieldClick = {
@@ -9486,7 +9510,7 @@ impl Render for Shell {
                 None => None,
             })
             .children(self.categories_dialog().map(|dialog| match dialog {
-                categories::CategoriesDialog::Add { form, .. } => {
+                categories::form::CategoriesDialog::Add { form, .. } => {
                     let parent_options: Vec<_> = self
                         .categories
                         .iter()
@@ -9516,7 +9540,7 @@ impl Render for Shell {
                         cx,
                     )
                 }
-                categories::CategoriesDialog::Edit(category_id, form) => {
+                categories::form::CategoriesDialog::Edit(category_id, form) => {
                     let category = self.categories.iter().find(|c| c.id == *category_id);
                     let descendants = category
                         .map(|_| categories::descendants_inclusive(&self.categories, *category_id))
@@ -9576,7 +9600,7 @@ impl Render for Shell {
                         cx,
                     )
                 }
-                categories::CategoriesDialog::Delete(category_id, form) => {
+                categories::form::CategoriesDialog::Delete(category_id, form) => {
                     let category = self
                         .categories
                         .iter()

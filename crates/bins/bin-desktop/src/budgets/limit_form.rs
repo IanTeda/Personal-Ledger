@@ -17,7 +17,7 @@ use bigdecimal::{BigDecimal, RoundingMode, Signed};
 use lib_core::Money;
 
 use crate::{
-    accounts::SelectKey,
+    accounts::form::SelectKey,
     budgets::{self, Budget, BudgetError, Budgets, Rollover, Span},
     categories::{self, Category},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},

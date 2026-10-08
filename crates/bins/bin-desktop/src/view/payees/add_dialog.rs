@@ -2,7 +2,7 @@
 //! and 6c) on the shared `crate::dialog` chrome: Name, Default category (the shared `select_field`
 //! dropdown, "none" then the leaf Categories), the shared Match rules field, and a callout. The two
 //! differ only in title, rule placeholder, submit label and callout, so they share one renderer
-//! keyed by [`PayeeDialogMode`]. `Shell` owns the live form (`payees::PayeeForm`) and every
+//! keyed by [`PayeeDialogMode`]. `Shell` owns the live form (`payees::form::PayeeForm`) and every
 //! keystroke while it is open.
 
 use std::rc::Rc;
@@ -12,7 +12,10 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use super::rules_field::{self, OnRemoveRule, RulesFieldProps};
 use crate::{
     dialog,
-    payees::{PayeeError, PayeeField, PayeeForm, PayeeOptions},
+    payees::{
+        PayeeError,
+        form::{PayeeField, PayeeForm, PayeeOptions},
+    },
     theme::color,
     view::accounts::{
         add_dialog::{label, text_field},

@@ -13,7 +13,7 @@
 //!   Budget or change its Accounts.
 
 use crate::{
-    accounts::{Account, SelectKey},
+    accounts::{Account, form::SelectKey},
     budgets::{Budget, BudgetError, NewBudget, StartFrom},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,

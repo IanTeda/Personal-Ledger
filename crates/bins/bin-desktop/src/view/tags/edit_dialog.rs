@@ -14,7 +14,10 @@ use super::{
 };
 use crate::{
     dialog,
-    tags::{TagError, TagField, TagForm},
+    tags::{
+        TagError,
+        form::{TagField, TagForm},
+    },
     theme::color,
     view::accounts::add_dialog::{label, text_field},
 };

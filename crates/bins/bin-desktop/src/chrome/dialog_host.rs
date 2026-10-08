@@ -17,11 +17,11 @@
 //! on the [`OpenDialog`] variant to draw it.
 
 use crate::{
-    accounts::AccountsDialog, bills::BillsDialog, budgets::BudgetsDialog,
-    categories::CategoriesDialog, documents::form::DocumentsDialog,
+    accounts::form::AccountsDialog, bills::BillsDialog, budgets::BudgetsDialog,
+    categories::form::CategoriesDialog, documents::form::DocumentsDialog,
     documents::types::DocumentTypesDialog, form::field::TextField,
-    inventory::form::InventoryDialog, payees::PayeesDialog, settings::SettingsDialog,
-    tags::TagsDialog,
+    inventory::form::InventoryDialog, payees::form::PayeesDialog, settings::SettingsDialog,
+    tags::form::TagsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.
@@ -208,17 +208,20 @@ pub fn handle_key(dialog: &mut impl Dialog, key: DialogKey) -> DialogOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::accounts::{AccountField, AccountForm, DeleteAccountForm};
+    use crate::accounts::form::{AccountField, AccountForm, DeleteAccountForm};
     use crate::bills::AmountKind;
     use crate::bills::form::BillPlanField;
-    use crate::categories::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
+    use crate::categories::form::{BudgetLock, CategoryField, CategoryForm, DeleteCategoryForm};
     use crate::documents::types::{
         DocumentTypeForm, DocumentTypesDialog, FormField, RemoveForm, TracksDate, default_types,
     };
     use crate::inventory::form::{
         InventoryDialog, PropertyField, PropertyForm, RemovePropertyForm, RemoveRoomForm,
     };
-    use crate::payees::{DeleteAction, DeletePayeeForm, PayeeField, PayeeForm, default_payees};
+    use crate::payees::{
+        default_payees,
+        form::{DeleteAction, DeletePayeeForm, PayeeField, PayeeForm},
+    };
     use crate::settings::{
         AccountType, AddInstitutionForm, AddUnitField, DeleteUnitForm, UnitForm, default_units,
     };
@@ -332,8 +335,8 @@ mod tests {
         );
     }
 
-    fn account_options() -> crate::accounts::AccountOptions {
-        crate::accounts::AccountOptions::new(
+    fn account_options() -> crate::accounts::form::AccountOptions {
+        crate::accounts::form::AccountOptions::new(
             vec!["ANZ".to_string(), "CBA".to_string()],
             vec!["aud".to_string(), "btc".to_string()],
         )
@@ -546,8 +549,11 @@ mod tests {
         );
     }
 
-    fn payee_options() -> crate::payees::PayeeOptions {
-        crate::payees::PayeeOptions::new(&crate::categories::default_categories(), "none".into())
+    fn payee_options() -> crate::payees::form::PayeeOptions {
+        crate::payees::form::PayeeOptions::new(
+            &crate::categories::default_categories(),
+            "none".into(),
+        )
     }
 
     fn add_payee() -> OpenDialog {
@@ -912,11 +918,11 @@ mod tests {
         );
     }
 
-    fn tag_options() -> Vec<crate::tags::MergeOption> {
+    fn tag_options() -> Vec<crate::tags::form::MergeOption> {
         ["a", "b", "c"]
             .iter()
             .zip(1..)
-            .map(|(label, id)| crate::tags::MergeOption {
+            .map(|(label, id)| crate::tags::form::MergeOption {
                 id,
                 label: (*label).to_string(),
             })
@@ -924,12 +930,12 @@ mod tests {
     }
 
     fn add_tag() -> OpenDialog {
-        OpenDialog::Tags(TagsDialog::Add(crate::tags::TagForm::new(
+        OpenDialog::Tags(TagsDialog::Add(crate::tags::form::TagForm::new(
             crate::tags::default_tags(),
         )))
     }
 
-    fn tag_form(dialog: &OpenDialog) -> &crate::tags::TagForm {
+    fn tag_form(dialog: &OpenDialog) -> &crate::tags::form::TagForm {
         match dialog {
             OpenDialog::Tags(TagsDialog::Add(form) | TagsDialog::Edit(_, form)) => form,
             other => panic!("expected a tag form, got {other:?}"),
@@ -957,7 +963,10 @@ mod tests {
         type_text(&mut dialog, "#12abef99");
         assert_eq!(tag_form(&dialog).hex.text(), "#12abef");
         handle_key(&mut dialog, DialogKey::BackTab);
-        assert_eq!(tag_form(&dialog).focused, crate::tags::TagField::Swatches);
+        assert_eq!(
+            tag_form(&dialog).focused,
+            crate::tags::form::TagField::Swatches
+        );
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Enter),
             DialogOutcome::Confirm
@@ -974,7 +983,7 @@ mod tests {
     fn remove_tag_with_transactions_confirms_only_on_the_typed_name() {
         let mut dialog = OpenDialog::Tags(TagsDialog::Remove(
             1,
-            crate::tags::RemoveTagForm::new("travel", 3),
+            crate::tags::form::RemoveTagForm::new("travel", 3),
         ));
         type_text(&mut dialog, "trav");
         assert_eq!(
@@ -990,11 +999,9 @@ mod tests {
 
     #[test]
     fn merge_tags_first_esc_closes_the_select_and_enter_needs_a_pair() {
-        let mut dialog = OpenDialog::Tags(TagsDialog::Merge(crate::tags::MergeTagsForm::new(
-            tag_options(),
-            Some(1),
-            None,
-        )));
+        let mut dialog = OpenDialog::Tags(TagsDialog::Merge(
+            crate::tags::form::MergeTagsForm::new(tag_options(), Some(1), None),
+        ));
         assert_eq!(
             handle_key(&mut dialog, DialogKey::Enter),
             DialogOutcome::Handled
