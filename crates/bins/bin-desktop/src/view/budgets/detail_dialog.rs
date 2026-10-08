@@ -7,7 +7,7 @@ use bigdecimal::{BigDecimal, Signed, ToPrimitive, Zero};
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_core::Money;
 
-use crate::{budgets::CategoryDetail, dialog, format::amount, theme::color};
+use crate::{budgets::CategoryDetail, dialog, theme::color, view::format::amount};
 
 /// The dialog's width: the handoff's 9d.
 pub const WIDTH: gpui::Pixels = px(600.0);

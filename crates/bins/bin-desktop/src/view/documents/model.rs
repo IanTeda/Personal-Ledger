@@ -16,10 +16,10 @@ use crate::{
         KeyDateBand, KeyDateKind, LibraryScope, RailEntry, Signals, Source, Suggestion, YearFacet,
         band, scope_count, tracks_financial_year,
     },
-    format,
     inventory::Inventory,
     payees::Payee,
     transactions::Transaction,
+    view::format,
 };
 
 /// The shared stubs a Document's Links point into, and the clock they are read against.

@@ -19,8 +19,9 @@
 use crate::{
     accounts::AccountsDialog, bills::BillsDialog, budgets::BudgetsDialog,
     categories::CategoriesDialog, documents::form::DocumentsDialog,
-    documents::types::DocumentTypesDialog, field::TextField, inventory::form::InventoryDialog,
-    payees::PayeesDialog, settings::SettingsDialog, tags::TagsDialog,
+    documents::types::DocumentTypesDialog, form::field::TextField,
+    inventory::form::InventoryDialog, payees::PayeesDialog, settings::SettingsDialog,
+    tags::TagsDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Shell`.

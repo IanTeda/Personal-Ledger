@@ -15,11 +15,11 @@ use lib_core::{DateStyle, Money};
 
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    field::TextField,
+    form::field::TextField,
+    form::select::SelectState,
     inventory::{
         self, CoverDraft, CoverError, Inventory, NameError, Property, PropertyDraft, PropertyError,
     },
-    select::SelectState,
     transactions::filter_form::parse_date,
 };
 

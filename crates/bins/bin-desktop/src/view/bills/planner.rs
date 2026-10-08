@@ -91,7 +91,7 @@ fn planned_text(
     kind: AmountKind,
     base_unit: Option<&str>,
 ) -> String {
-    let mut text = crate::format::amount(amount).1;
+    let mut text = crate::view::format::amount(amount).1;
     if Some(unit) != base_unit {
         text = format!("{text} {unit}");
     }

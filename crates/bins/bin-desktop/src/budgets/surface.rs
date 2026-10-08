@@ -4,7 +4,7 @@
 use crate::{
     accounts,
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    field::TextField,
+    form::field::TextField,
     period::Period,
 };
 

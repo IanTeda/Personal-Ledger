@@ -12,10 +12,10 @@ use lib_locale::format::format_date;
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     documents::{DocumentLink, DocumentType},
-    field::TextField,
-    format,
+    form::field::TextField,
     transactions::Transaction,
     view::documents::model::Lookups,
+    view::format,
 };
 
 /// Days either side of the Document's date in which a Transaction is offered before any search.

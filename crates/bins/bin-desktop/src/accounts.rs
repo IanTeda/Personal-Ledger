@@ -13,8 +13,8 @@ use lib_locale::Label;
 
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    field::TextField,
-    select::SelectState,
+    form::field::TextField,
+    form::select::SelectState,
 };
 
 /// The Institution a Cash account links to. The glossary gives every Account a mandatory
@@ -1252,7 +1252,7 @@ mod tests {
         assert_eq!(account.unit, "aud");
         assert_eq!(account.account_number, None);
         assert_eq!((account.transaction_count, account.budget_count), (0, 0));
-        assert_eq!(crate::format::amount(&account.balance).1, "1,500.00");
+        assert_eq!(crate::view::format::amount(&account.balance).1, "1,500.00");
     }
 
     #[test]
@@ -1262,7 +1262,7 @@ mod tests {
         form.unit = SelectState::new(Some("vas".to_string()));
         form.opening_balance = TextField::new("10");
         let account = form.into_account(9, date(2026, 9), false).expect("valid");
-        assert_eq!(crate::format::amount(&account.balance).1, "10");
+        assert_eq!(crate::view::format::amount(&account.balance).1, "10");
     }
 
     #[test]
@@ -1272,7 +1272,7 @@ mod tests {
         form.opening_balance = TextField::new("-250.005");
         let account = form.into_account(9, date(2026, 9), true).expect("valid");
         assert_eq!(
-            crate::format::amount(&account.balance),
+            crate::view::format::amount(&account.balance),
             (true, "\u{2212}250.005".to_string())
         );
     }

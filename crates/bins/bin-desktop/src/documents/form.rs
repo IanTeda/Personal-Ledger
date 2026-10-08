@@ -23,8 +23,8 @@ use crate::{
     documents::{
         self, Document, DocumentType, FileKind, KeyDate, KeyDateKind, LibraryScope, NewDocument,
     },
-    field::TextField,
-    select::SelectState,
+    form::field::TextField,
+    form::select::SelectState,
     transactions::filter_form::parse_date,
 };
 

@@ -64,7 +64,7 @@ pub fn render_form(props: FormProps<'_>, cx: &App) -> AnyElement {
                   text: SharedString,
                   field: DocumentField,
                   list: &[String],
-                  state: &crate::select::SelectState| {
+                  state: &crate::form::select::SelectState| {
         let on_option_click = on_option_click.clone();
         select_field::render(
             SelectFieldProps {

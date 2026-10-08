@@ -19,7 +19,7 @@ use crate::{
         DocumentTypeForm, DocumentTypeRow, FormField, NameError, REMIND_OPTIONS, RemindLead,
         TRACKS_OPTIONS, TracksDate,
     },
-    select::SelectState,
+    form::select::SelectState,
     theme::color,
     view::accounts::select_field::{self, OnOptionClick, SelectFieldProps},
 };

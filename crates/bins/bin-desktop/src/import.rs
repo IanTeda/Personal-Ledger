@@ -14,8 +14,8 @@ use chrono::{Duration, NaiveDate};
 use lib_core::{Money, TransactionStatus};
 
 use crate::{
+    form::select::SelectState,
     payees::{self, Payee, PayeeDraft, PayeeOptions},
-    select::SelectState,
     transactions::{Split, Transaction},
 };
 

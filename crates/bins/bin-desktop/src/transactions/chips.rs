@@ -15,9 +15,10 @@ use chrono::NaiveDate;
 use lib_core::DateStyle;
 
 use crate::{
-    categories, format,
+    categories,
     transactions::Transaction,
     transactions::query::{Ledger, Total, TransactionFilters, Visible, this_year},
+    view::format,
 };
 
 /// A filter dimension, in the order the chips appear.

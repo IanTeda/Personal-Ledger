@@ -6,7 +6,7 @@
 
 use lib_core::DateStyle;
 
-use crate::{chrome::dialog_host::Dialog, field::TextField};
+use crate::{chrome::dialog_host::Dialog, form::field::TextField};
 
 /// The twelve pages of Settings, in the settings index rail's own row order. Settings is paged,
 /// not one continuous scroll: each entry swaps the body to its own page. Accounts, Categories,
@@ -356,7 +356,7 @@ pub fn format_preview_date(year: u32, month: u32, day: u32, style: Option<DateSt
     i32::try_from(year)
         .ok()
         .and_then(|year| chrono::NaiveDate::from_ymd_opt(year, month, day))
-        .map(|date| crate::format::date(date, style))
+        .map(|date| crate::view::format::date(date, style))
         .unwrap_or_else(|| "???".to_string())
 }
 
@@ -370,7 +370,7 @@ pub fn format_preview_amount(amount_cents: i64) -> String {
         amount_cents.unsigned_abs() % 100
     );
     text.parse::<lib_core::Money>()
-        .map(|money| crate::format::signed_amount(&money).1)
+        .map(|money| crate::view::format::signed_amount(&money).1)
         .unwrap_or_default()
 }
 

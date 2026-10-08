@@ -168,9 +168,11 @@ fn total_text(total: &Total, base_unit: Option<&str>) -> Option<String> {
     match total {
         Total::Empty => None,
         Total::Mixed => Some(crate::msg::desktop_bills_total_mixed()),
-        Total::Single { unit, amount } => {
-            Some(with_unit(crate::format::amount(amount).1, unit, base_unit))
-        }
+        Total::Single { unit, amount } => Some(with_unit(
+            crate::view::format::amount(amount).1,
+            unit,
+            base_unit,
+        )),
     }
 }
 
@@ -191,7 +193,7 @@ fn planned_text(row: &ScheduleRow, plan: &BillPlan, props: &ScheduleProps<'_>) -
         _ => plan.planned_amount.clone(),
     };
     let text = with_unit(
-        crate::format::amount(&amount).1,
+        crate::view::format::amount(&amount).1,
         &plan.unit,
         props.base_unit,
     );
@@ -212,7 +214,7 @@ fn actual_text(row: &ScheduleRow, plan: &BillPlan, props: &ScheduleProps<'_>) ->
             || EMPTY_CELL.to_string(),
             |amount| {
                 with_unit(
-                    crate::format::amount(&amount).1,
+                    crate::view::format::amount(&amount).1,
                     &plan.unit,
                     props.base_unit,
                 )
@@ -524,7 +526,7 @@ fn status_cell(
     cx: &App,
 ) -> AnyElement {
     let flag = if row.needs_attention {
-        format!("{} ", crate::format::flag_glyph(glyphs))
+        format!("{} ", crate::view::format::flag_glyph(glyphs))
     } else {
         String::new()
     };

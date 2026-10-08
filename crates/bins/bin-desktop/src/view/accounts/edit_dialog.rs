@@ -122,7 +122,7 @@ pub fn render(
                         crate::msg::desktop_field_fixed(),
                         cx,
                     ),
-                    crate::format::amount(&account.balance).1,
+                    crate::view::format::amount(&account.balance).1,
                     cx,
                 ),
             ]),

@@ -16,8 +16,8 @@ use crate::{
     accounts::{Account, SelectKey},
     budgets::{Budget, BudgetError, NewBudget, StartFrom},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    field::TextField,
-    select::SelectState,
+    form::field::TextField,
+    form::select::SelectState,
     transactions,
 };
 

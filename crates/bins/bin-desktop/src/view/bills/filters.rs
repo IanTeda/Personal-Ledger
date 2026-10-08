@@ -14,7 +14,7 @@ use lib_locale::format::format_month_day;
 use crate::{
     bills::history::{BillFilters, PlanStats, STATUS_CHIPS, SamePeriod},
     bills::{BillPlan, BillStatus, Recurrence},
-    select::SelectState,
+    form::select::SelectState,
     theme::color,
     transactions::rows::EMPTY_CELL,
     view::accounts::select_field::{self, SelectFieldProps},
@@ -193,7 +193,7 @@ fn stat_callout(
     cx: &App,
 ) -> impl IntoElement {
     let money = |amount: &lib_core::Money| {
-        with_unit(crate::format::amount(amount).1, &plan.unit, base_unit)
+        with_unit(crate::view::format::amount(amount).1, &plan.unit, base_unit)
     };
     let stat = |label: String, figure: Option<String>, note: Option<String>| {
         div()

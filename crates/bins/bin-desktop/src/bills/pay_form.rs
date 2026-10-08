@@ -21,7 +21,7 @@ use lib_locale::format::format_date_input;
 use crate::{
     bills::{BillError, BillPlan, EntryId, SplitRef},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    field::TextField,
+    form::field::TextField,
     transactions::filter_form::parse_date,
 };
 

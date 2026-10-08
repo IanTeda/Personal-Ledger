@@ -10,12 +10,13 @@
 use lib_core::{DateStyle, HexColor};
 
 use crate::{
-    categories, format,
+    categories,
     payees::Payee,
     settings::StatusGlyphs,
     tags::Tag,
     transactions::Transaction,
     transactions::query::{Ledger, Visible},
+    view::format,
 };
 
 /// The mark for an empty PAYEE or TAGS cell.

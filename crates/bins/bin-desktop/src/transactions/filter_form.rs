@@ -25,8 +25,8 @@ use lib_locale::format::{
 use crate::{
     accounts::Account,
     categories::{self, Category},
+    form::select::SelectState,
     payees::Payee,
-    select::SelectState,
     tags::Tag,
     transactions::chips::FilterField,
     transactions::query::{StatusFilter, TransactionFilters},

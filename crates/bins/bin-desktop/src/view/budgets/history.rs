@@ -16,9 +16,9 @@ use lib_locale::format::{format_month, upper};
 use crate::{
     budgets::{History, HistoryCell, HistoryMonth, HistoryRow},
     categories::{self, Category},
-    format::amount,
     theme::color,
     transactions::rows::EMPTY_CELL,
+    view::format::amount,
 };
 
 const BUDGET_WIDTH: gpui::Pixels = px(92.0);

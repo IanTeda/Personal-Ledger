@@ -12,7 +12,7 @@ use lib_core::{CategoryTypes, Money};
 
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    field::TextField,
+    form::field::TextField,
 };
 
 /// Joins a category's ancestors in a path label: `Food › Groceries`.

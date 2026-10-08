@@ -15,9 +15,9 @@ use gpui::{AnyElement, App, Rgba, ScrollHandle, SharedString, Window, div, prelu
 use lib_locale::format::upper;
 
 use crate::{
+    form::select::SelectState,
     import::{self, ImportRow, ImportState, PayeeChoices, RowPayee, RowSelect, RowStatus},
     payees::{self, Payee, PayeeOptions},
-    select::SelectState,
     theme::color,
 };
 
@@ -264,7 +264,7 @@ fn render_row(index: usize, row: &ImportRow, props: &ImportPageProps<'_>, cx: &A
             .child(category_text(row, props.categories).unwrap_or_default())
             .into_any_element()
     };
-    let (negative, amount) = crate::format::amount(&row.amount);
+    let (negative, amount) = crate::view::format::amount(&row.amount);
 
     div()
         .debug_selector(move || format!("import-row-{index}"))

@@ -69,7 +69,7 @@ pub fn render(
 fn balance_text(account: &Account) -> String {
     format!(
         "{} {}",
-        crate::format::amount(&account.balance).1,
+        crate::view::format::amount(&account.balance).1,
         account.unit
     )
 }

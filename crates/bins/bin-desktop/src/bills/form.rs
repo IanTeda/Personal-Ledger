@@ -27,9 +27,9 @@ use crate::{
     bills::{AmountKind, BillError, BillPlan, BillPlanDraft, Recurrence},
     categories::{self, Category},
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    field::TextField,
+    form::field::TextField,
+    form::select::SelectState,
     payees::Payee,
-    select::SelectState,
     transactions,
     transactions::filter_form::parse_date,
 };

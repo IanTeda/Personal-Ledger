@@ -69,8 +69,7 @@ use crate::{
     chrome::topbar::{self, TopBar},
     documents::types::{DocumentTypeRow, DocumentTypesDialog},
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
-    field::TextField,
-    format,
+    form::field::TextField,
     import::{self, ImportState, RowSelect},
     inventory,
     inventory::form::InventoryDialog,
@@ -97,6 +96,7 @@ use crate::{
         query::{Ledger, TransactionFilters},
         rows::DisplayPrefs,
     },
+    view::format,
     view::{
         accounts as accounts_view, bills as bills_view,
         budgets::{self as budgets_view, manage_dialog::ManageAction},
@@ -737,7 +737,10 @@ pub struct Shell {
     bills_all: bool,
     /// The Schedule tab's filters, and the filter-row select `f` has focused (open or closed).
     bills_filters: bills::history::BillFilters,
-    bills_filter_focus: Option<(bills_view::filters::FilterField, crate::select::SelectState)>,
+    bills_filter_focus: Option<(
+        bills_view::filters::FilterField,
+        crate::form::select::SelectState,
+    )>,
     /// The selected row as a position in [`Self::transactions`] (the table shows them in this
     /// order), clamped wherever it is read. Once filters land it becomes a position in the
     /// filtered list.
@@ -5301,9 +5304,9 @@ impl Shell {
     fn bills_filter_select_state(
         &self,
         field: bills_view::filters::FilterField,
-    ) -> crate::select::SelectState {
+    ) -> crate::form::select::SelectState {
         let (options, index) = self.bills_filter_options(field);
-        crate::select::SelectState::new(options.get(index).cloned())
+        crate::form::select::SelectState::new(options.get(index).cloned())
     }
 
     /// `f` steps focus along the filter row's selects, then off it.

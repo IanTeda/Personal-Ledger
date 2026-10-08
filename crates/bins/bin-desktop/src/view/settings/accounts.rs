@@ -51,7 +51,7 @@ pub fn scope_note(accounts: &[Account], units: &[UnitRow]) -> String {
 
     let mut parts = vec![net.count_text()];
     if let Some(base) = &net.base_unit {
-        let (negative, figure) = crate::format::amount(&net.base_net);
+        let (negative, figure) = crate::view::format::amount(&net.base_net);
         let sign = if negative { "-" } else { "" };
         parts.push(format!(
             "{} {sign}{figure} {base}",

@@ -12,9 +12,9 @@ use lib_locale::format::upper;
 use crate::{
     budgets::{FillPreview, FillSource},
     dialog,
-    format::{amount, signed_amount},
     theme::color,
     transactions::rows::EMPTY_CELL,
+    view::format::{amount, signed_amount},
 };
 
 /// The dialog's width: the handoff's 9f.

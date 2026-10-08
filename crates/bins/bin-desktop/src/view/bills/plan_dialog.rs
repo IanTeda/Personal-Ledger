@@ -89,7 +89,7 @@ pub fn render(props: PlanDialogProps<'_>, cx: &App) -> AnyElement {
                   label: SharedString,
                   field: BillPlanField,
                   list: &[String],
-                  state: &crate::select::SelectState,
+                  state: &crate::form::select::SelectState,
                   read_only: Option<SharedString>| {
         select_field::render(
             SelectFieldProps {

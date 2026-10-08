@@ -11,9 +11,9 @@ use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 use super::add_unit_dialog::text_field;
 use crate::{
     dialog,
+    form::select::SelectState,
     inventory::NameError,
     inventory::form::{Problem, PropertyField, PropertyForm, RoomForm},
-    select::SelectState,
     theme::color,
     view::accounts::select_field::{self, OnOptionClick, SelectFieldProps},
 };

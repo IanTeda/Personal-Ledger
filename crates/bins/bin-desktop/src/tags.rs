@@ -27,8 +27,8 @@ use lib_core::{HexColor, Money};
 use crate::{
     accounts::Account,
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    field::TextField,
-    select::SelectState,
+    form::field::TextField,
+    form::select::SelectState,
     transactions::Transaction,
     transactions::query::Total,
 };

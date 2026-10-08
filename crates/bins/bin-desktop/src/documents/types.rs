@@ -7,8 +7,8 @@
 
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    field::TextField,
-    select::SelectState,
+    form::field::TextField,
+    form::select::SelectState,
 };
 
 /// The kind of Key Date a type tracks (`CONTEXT.md`'s Key Date).
