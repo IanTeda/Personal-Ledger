@@ -261,3 +261,34 @@ fn choosing_an_account_with_the_keys_filters_to_it(app: &mut TestAppContext) {
     assert!(page.chips[0].active, "the account chip turns accent");
     assert!(page.visible < all);
 }
+
+#[gpui::test]
+fn escape_after_an_apply_keeps_the_applied_filter_and_reopening_shows_it(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+    ui.press("f tab tab k u r a enter");
+    let applied = ui.transactions();
+    assert!(applied.filters_changed);
+
+    // Type a different payee into the draft, then cancel it.
+    ui.press("f tab tab escape");
+    ui.press("f tab tab shift-tab");
+    ui.press("escape");
+
+    let closed = ui.transactions();
+    assert!(!closed.filter_open);
+    assert_eq!(
+        closed.visible, applied.visible,
+        "cancel keeps the applied rows"
+    );
+
+    ui.press("f");
+    assert_eq!(
+        ui.transactions().filter_focus.as_deref(),
+        Some("Account"),
+        "the popover reopens on the first field"
+    );
+    assert!(
+        ui.transactions().chips[2].active,
+        "the applied payee chip stays"
+    );
+}

@@ -40,28 +40,25 @@ impl Shell {
     /// The Transactions page for a test, built the way the render builds its rows.
     #[doc(hidden)]
     pub fn transactions_snapshot(&self, cx: &gpui::App) -> TransactionsSnapshot {
+        // The rows and the page state come from their Entities, the way the render reads them;
+        // only the reference data and the Display preferences are still `Shell` fields.
+        let transactions = self.transactions_store.read(cx).transactions();
+        let state = self.transactions_view.read(cx).state();
         let ledger = self.transactions_ledger(cx);
-        let visible = transactions::query::query(
-            &ledger,
-            self.transactions(cx),
-            &self.transactions_state(cx).filters,
-            &self.transactions_state(cx).search,
-        );
+        let visible =
+            transactions::query::query(&ledger, transactions, &state.filters, &state.search);
         let rows = transactions::rows::build_rows(&visible, &ledger, &self.transactions_prefs());
         let chips = transactions::chips::chips(
-            &self.transactions_state(cx).filters,
+            &state.filters,
             &ledger,
             self.today,
             self.settings_date_style,
         );
         TransactionsSnapshot {
             visible: rows.len(),
-            selected: transactions::rows::clamp_selection(
-                self.transactions_state(cx).selected,
-                rows.len(),
-            ),
+            selected: transactions::rows::clamp_selection(state.selected, rows.len()),
             payees: rows.into_iter().map(|row| row.payee).collect(),
-            search: self.transactions_state(cx).search.clone(),
+            search: state.search.clone(),
             chips: chips
                 .into_iter()
                 .map(|chip| ChipSnapshot {
@@ -69,8 +66,8 @@ impl Shell {
                     active: chip.active,
                 })
                 .collect(),
-            filters_changed: !self.transactions_state(cx).filters.is_default(self.today),
-            filter_open: self.transactions_state(cx).filter_form.is_some(),
+            filters_changed: !state.filters.is_default(self.today),
+            filter_open: state.filter_form.is_some(),
             filter_focus: self
                 .transactions_state(cx)
                 .filter_form
