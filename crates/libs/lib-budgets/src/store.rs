@@ -5,14 +5,11 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed, Zero};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, Money};
+use lib_core::{CategoryTypes, Money, Period};
 
-use crate::{
-    accounts::Account,
-    categories::{self, Category},
-    period::Period,
-    transactions,
-};
+use lib_accounts::Account;
+use lib_categories::{self as categories, Category};
+use lib_transactions as transactions;
 
 use super::figures::{Ledger, expense_leaves};
 use super::plan::{FillSource, fill_preview, three_month_averages};
@@ -568,7 +565,7 @@ impl Budgets {
     }
 }
 
-pub(super) fn check_leaf(categories: &[Category], category_id: u32) -> Result<(), BudgetError> {
+pub fn check_leaf(categories: &[Category], category_id: u32) -> Result<(), BudgetError> {
     let expense = categories
         .iter()
         .any(|c| c.id == category_id && c.category_type == CategoryTypes::Expense);
@@ -587,11 +584,7 @@ fn check_open_month(month: Period, today: NaiveDate) -> Result<(), BudgetError> 
     }
 }
 
-pub(super) fn check_accounts(
-    accounts: &[Account],
-    unit: &str,
-    ids: &[u32],
-) -> Result<(), BudgetError> {
+pub fn check_accounts(accounts: &[Account], unit: &str, ids: &[u32]) -> Result<(), BudgetError> {
     for id in ids {
         let account = accounts
             .iter()

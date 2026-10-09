@@ -109,3 +109,17 @@ fn clicking_a_closed_plan_cell_only_moves_the_cursor(app: &mut TestAppContext) {
     assert_eq!(page.plan_cursor, (1, 0));
     assert_eq!(page.plan_edit, None);
 }
+
+#[gpui::test]
+fn the_known_costs_link_opens_the_bills_schedule_on_the_period_shown(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    ui.click("budgets-period-prev");
+    let shown = ui.budgets().period;
+    ui.click("budgets-known-schedule");
+
+    assert_eq!(ui.noun(), Noun::Bills);
+    let bills = ui.bills();
+    assert_eq!(bills.tab, "Schedule");
+    assert_eq!(bills.period, shown);
+}

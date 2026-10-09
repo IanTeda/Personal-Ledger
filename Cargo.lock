@@ -718,6 +718,7 @@ dependencies = [
  "gpui-component",
  "lib_accounts",
  "lib_bills",
+ "lib_budgets",
  "lib_categories",
  "lib_colour_theme",
  "lib_config",
@@ -4676,6 +4677,20 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "lib_accounts",
+ "lib_categories",
+ "lib_core",
+ "lib_transactions",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "lib_budgets"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_accounts",
+ "lib_bills",
  "lib_categories",
  "lib_core",
  "lib_transactions",

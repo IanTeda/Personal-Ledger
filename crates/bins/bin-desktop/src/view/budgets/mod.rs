@@ -16,6 +16,7 @@ pub mod limit_dialog;
 pub mod manage_dialog;
 pub mod plan;
 pub mod progress;
+pub mod state;
 pub mod stop_dialog;
 pub mod switcher;
 

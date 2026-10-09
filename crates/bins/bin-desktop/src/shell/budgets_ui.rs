@@ -21,7 +21,11 @@ use crate::{
     view::format,
     view::{
         accounts as accounts_view,
-        budgets::{self as budgets_view, manage_dialog::ManageAction},
+        budgets::{
+            self as budgets_view,
+            manage_dialog::ManageAction,
+            state::{BudgetsEvent, BudgetsState},
+        },
     },
 };
 
@@ -148,6 +152,46 @@ pub(super) fn budgets_stop_hints() -> Vec<(&'static str, String)> {
 }
 
 impl Shell {
+    /// The shared Budgets, read from their store Entity.
+    pub(super) fn budgets<'a>(&self, cx: &'a gpui::App) -> &'a budgets::Budgets {
+        self.budgets_store.read(cx).budgets()
+    }
+
+    /// Applies `change` to the shared Budgets, notifying every reader.
+    pub(super) fn mutate_budgets<R>(
+        &self,
+        cx: &mut gpui::App,
+        change: impl FnOnce(&mut budgets::Budgets) -> R,
+    ) -> R {
+        self.budgets_store
+            .update(cx, |store, cx| store.mutate(cx, change))
+    }
+
+    /// The Budgets page's state, read from its view Entity.
+    pub(super) fn budgets_state<'a>(&self, cx: &'a gpui::App) -> &'a BudgetsState {
+        self.budgets_view.read(cx).state()
+    }
+
+    /// Edits the Budgets page's state.
+    pub(super) fn edit_budgets_state<R>(
+        &self,
+        cx: &mut gpui::App,
+        change: impl FnOnce(&mut BudgetsState) -> R,
+    ) -> R {
+        self.budgets_view
+            .update(cx, |view, cx| view.edit(cx, change))
+    }
+
+    /// Carries out what the Budgets page asked for. The page holds only its state; the save
+    /// dialog and the jump to Bills are `Shell`'s.
+    pub(super) fn handle_budgets_event(&mut self, event: BudgetsEvent, cx: &mut Context<'_, Self>) {
+        match event {
+            BudgetsEvent::ExportHistory => self.export_budgets_history(cx),
+            BudgetsEvent::OpenSchedule => self.open_budgets_schedule(cx),
+        }
+        cx.notify();
+    }
+
     /// Applies a confirmed Budgets dialog (`Enter` and the confirm button). The list dialogs
     /// answer with a request: a Dialog that stays open afterwards (Manage's `*`/`x`, 9d's
     /// handoffs that find nothing to open) goes back into the slot first, so the same code runs
@@ -162,7 +206,7 @@ impl Shell {
             BudgetsDialog::Switcher(switcher) => match switcher.request {
                 SwitcherRequest::Choose => {
                     if let Some(id) = switcher.chosen() {
-                        self.choose_budgets_switcher(id);
+                        self.choose_budgets_switcher(id, cx);
                     }
                 }
                 SwitcherRequest::New => self.open_budgets_new(cx),
@@ -182,13 +226,13 @@ impl Shell {
                 };
                 self.open_budgets_dialog(BudgetsDialog::CategoryDetail(detail));
                 match request {
-                    DetailRequest::Transactions => self.open_budgets_detail_transactions(),
-                    DetailRequest::Edit => self.open_budgets_detail_limit(),
+                    DetailRequest::Transactions => self.open_budgets_detail_transactions(cx),
+                    DetailRequest::Edit => self.open_budgets_detail_limit(cx),
                 }
             }
-            BudgetsDialog::EditLimit(form) => self.apply_budgets_limit(form),
+            BudgetsDialog::EditLimit(form) => self.apply_budgets_limit(form, cx),
             BudgetsDialog::Fill { month, source } => self.apply_budgets_fill(month, source, cx),
-            BudgetsDialog::Stop(form) => self.apply_budgets_stop(form),
+            BudgetsDialog::Stop(form) => self.apply_budgets_stop(form, cx),
         }
     }
 
@@ -197,15 +241,15 @@ impl Shell {
     }
 
     /// The Budget the Budgets surface shows and its figures for `budgets_period`, as of today.
-    pub(super) fn budgets_figures(
-        &self,
-        cx: &gpui::App,
-    ) -> Option<(&budgets::Budget, budgets::PeriodFigures)> {
-        let budget = self.budgets.get(self.budgets_state.current)?;
+    pub(super) fn budgets_figures<'a>(
+        &'a self,
+        cx: &'a gpui::App,
+    ) -> Option<(&'a budgets::Budget, budgets::PeriodFigures)> {
+        let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
         let figures = budgets::period_figures(
             budget,
             &self.budgets_ledger(cx),
-            self.budgets_state.period,
+            self.budgets_state(cx).period,
             self.today,
         );
         Some((budget, figures))
@@ -223,44 +267,43 @@ impl Shell {
 
     /// The Plan tab's grid for the range in view.
     pub(super) fn budgets_plan_data(&self, cx: &gpui::App) -> Option<budgets::Plan> {
-        let budget = self.budgets.get(self.budgets_state.current)?;
+        let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
         Some(budgets::plan(
             budget,
             &self.budgets_ledger(cx),
-            self.budgets_state.plan_start,
+            self.budgets_state(cx).plan_start,
             self.today,
         ))
     }
 
     /// The cursor held inside the grid, so a row that vanished can't leave it dangling.
-    pub(super) fn budgets_plan_cursor_in(&self, plan: &budgets::Plan) -> (usize, usize) {
+    pub(super) fn budgets_plan_cursor_in(
+        &self,
+        plan: &budgets::Plan,
+        cx: &gpui::App,
+    ) -> (usize, usize) {
+        let cursor = self.budgets_state(cx).plan_cursor;
         (
-            self.budgets_state
-                .plan_cursor
-                .0
-                .min(plan.row_count().saturating_sub(1)),
-            self.budgets_state
-                .plan_cursor
-                .1
-                .min(budgets::PLAN_ROLLOVER_COLUMN),
+            cursor.0.min(plan.row_count().saturating_sub(1)),
+            cursor.1.min(budgets::PLAN_ROLLOVER_COLUMN),
         )
     }
 
     /// Steps the Plan range a month, inside the Budget's bounds.
-    pub(super) fn shift_budgets_plan_range(&mut self, forward: bool) -> bool {
-        let Some(budget) = self.budgets.get(self.budgets_state.current) else {
+    pub(super) fn shift_budgets_plan_range(&mut self, forward: bool, cx: &mut gpui::App) -> bool {
+        let Some(budget) = self.budgets(cx).get(self.budgets_state(cx).current) else {
             return false;
         };
         let (earliest, latest) = budgets::plan_start_bounds(budget, self.today);
         let target = if forward {
-            self.budgets_state.plan_start.next()
+            self.budgets_state(cx).plan_start.next()
         } else {
-            self.budgets_state.plan_start.prev()
+            self.budgets_state(cx).plan_start.prev()
         };
         if target < earliest || target > latest {
             return false;
         }
-        self.budgets_state.plan_start = target;
+        self.edit_budgets_state(cx, |state| state.plan_start = target);
         true
     }
 
@@ -269,33 +312,29 @@ impl Shell {
         let Some(plan) = self.budgets_plan_data(cx) else {
             return;
         };
-        let (row_index, column) = self.budgets_plan_cursor_in(&plan);
+        let (row_index, column) = self.budgets_plan_cursor_in(&plan, cx);
         let Some(row) = plan.row(row_index) else {
             return;
         };
         if column == budgets::PLAN_ROLLOVER_COLUMN {
-            let _ = self.budgets.cycle_rollover(
-                self.budgets_state.current,
-                row.category_id,
-                self.today,
-            );
+            let current = self.budgets_state(cx).current;
+            let _ = self.mutate_budgets(cx, |budgets| {
+                budgets.cycle_rollover(current, row.category_id, self.today)
+            });
             return;
         }
         let Some(cell) = row.cells.get(column) else {
             return;
         };
         let archived = self
-            .budgets
-            .get(self.budgets_state.current)
+            .budgets(cx)
+            .get(self.budgets_state(cx).current)
             .is_none_or(budgets::Budget::is_archived);
         if cell.closed || archived {
             return;
         }
-        self.budgets_state.plan_edit = Some(budgets::PlanEdit::new(
-            row.category_id,
-            cell.month,
-            cell.amount.as_ref(),
-        ));
+        let edit = budgets::PlanEdit::new(row.category_id, cell.month, cell.amount.as_ref());
+        self.edit_budgets_state(cx, |state| state.plan_edit = Some(edit));
         self.nav.enter_mode(InputMode::Insert);
     }
 
@@ -308,36 +347,39 @@ impl Shell {
         step: i32,
         cx: &mut Context<'_, Self>,
     ) {
-        let Some(edit) = self.budgets_state.plan_edit.take() else {
+        let Some(edit) = self.edit_budgets_state(cx, |state| state.plan_edit.take()) else {
             return;
         };
-        let saved = self.budgets.save_cell(
-            self.budgets_state.current,
-            &self.categories,
-            edit.category_id,
-            edit.month,
-            span,
-            &edit.text,
-            self.today,
-        );
+        let current = self.budgets_state(cx).current;
+        let saved = self.mutate_budgets(cx, |budgets| {
+            budgets.save_cell(
+                current,
+                &self.categories,
+                edit.category_id,
+                edit.month,
+                span,
+                &edit.text,
+                self.today,
+            )
+        });
         if saved == Err(budgets::BudgetError::InvalidAmount) {
-            self.budgets_state.plan_edit = Some(edit);
+            self.edit_budgets_state(cx, |state| state.plan_edit = Some(edit));
             return;
         }
         self.nav.exit_mode();
         if step == 0 {
             return;
         }
-        let column = self.budgets_state.plan_cursor.1;
+        let column = self.budgets_state(cx).plan_cursor.1;
         if step > 0 {
             if column + 1 < budgets::PLAN_MONTHS {
-                self.budgets_state.plan_cursor.1 += 1;
-            } else if !self.shift_budgets_plan_range(true) {
+                self.edit_budgets_state(cx, |state| state.plan_cursor.1 += 1);
+            } else if !self.shift_budgets_plan_range(true, cx) {
                 return;
             }
         } else if column > 0 {
-            self.budgets_state.plan_cursor.1 -= 1;
-        } else if !self.shift_budgets_plan_range(false) {
+            self.edit_budgets_state(cx, |state| state.plan_cursor.1 -= 1);
+        } else if !self.shift_budgets_plan_range(false, cx) {
             return;
         }
         self.start_budgets_plan_edit(cx);
@@ -349,22 +391,25 @@ impl Shell {
         let Some(plan) = self.budgets_plan_data(cx) else {
             return;
         };
-        let (row_index, column) = self.budgets_plan_cursor_in(&plan);
+        let (row_index, column) = self.budgets_plan_cursor_in(&plan, cx);
         let Some(row) = plan.row(row_index) else {
             return;
         };
         let Some(cell) = row.cells.get(column).filter(|cell| !cell.closed) else {
             return;
         };
-        let _ = self.budgets.save_cell(
-            self.budgets_state.current,
-            &self.categories,
-            row.category_id,
-            cell.month,
-            budgets::Span::Onward,
-            text,
-            self.today,
-        );
+        let current = self.budgets_state(cx).current;
+        let _ = self.mutate_budgets(cx, |budgets| {
+            budgets.save_cell(
+                current,
+                &self.categories,
+                row.category_id,
+                cell.month,
+                budgets::Span::Onward,
+                text,
+                self.today,
+            )
+        });
     }
 
     /// Keys typed into a Plan cell (`docs/ux/desktop-mockups/14-budgets-v2/README.md`'s 9b, Insert
@@ -376,7 +421,7 @@ impl Shell {
     ) -> bool {
         if self.nav.mode() != InputMode::Insert
             || self.nav.noun() != Noun::Budgets
-            || self.budgets_state.plan_edit.is_none()
+            || self.budgets_state(cx).plan_edit.is_none()
         {
             return false;
         }
@@ -396,19 +441,23 @@ impl Shell {
                 self.commit_budgets_plan_edit(budgets::Span::Onward, if shift { -1 } else { 1 }, cx)
             }
             "backspace" => {
-                if let Some(edit) = self.budgets_state.plan_edit.as_mut() {
-                    edit.backspace();
-                }
+                self.edit_budgets_state(cx, |state| {
+                    if let Some(edit) = state.plan_edit.as_mut() {
+                        edit.backspace();
+                    }
+                });
             }
             _ => {
-                if let (Some(edit), Some(text), false) = (
-                    self.budgets_state.plan_edit.as_mut(),
-                    keystroke.key_char.as_deref(),
-                    keystroke.modifiers.control,
-                ) {
-                    for c in text.chars() {
-                        edit.type_char(c);
-                    }
+                if let (Some(text), false) =
+                    (keystroke.key_char.as_deref(), keystroke.modifiers.control)
+                {
+                    self.edit_budgets_state(cx, |state| {
+                        if let Some(edit) = state.plan_edit.as_mut() {
+                            for c in text.chars() {
+                                edit.type_char(c);
+                            }
+                        }
+                    });
                 }
             }
         }
@@ -423,33 +472,35 @@ impl Shell {
     ) -> bool {
         match key {
             "h" | "left" => {
-                self.budgets_state.plan_cursor.1 =
-                    self.budgets_state.plan_cursor.1.saturating_sub(1);
+                self.edit_budgets_state(cx, |state| {
+                    state.plan_cursor.1 = state.plan_cursor.1.saturating_sub(1);
+                });
             }
             "l" | "right" => {
-                self.budgets_state.plan_cursor.1 =
-                    (self.budgets_state.plan_cursor.1 + 1).min(budgets::PLAN_ROLLOVER_COLUMN);
+                self.edit_budgets_state(cx, |state| {
+                    state.plan_cursor.1 =
+                        (state.plan_cursor.1 + 1).min(budgets::PLAN_ROLLOVER_COLUMN);
+                });
             }
             "i" => self.start_budgets_plan_edit(cx),
             "r" => {
                 if let Some(plan) = self.budgets_plan_data(cx)
-                    && let Some(row) = plan.row(self.budgets_plan_cursor_in(&plan).0)
+                    && let Some(row) = plan.row(self.budgets_plan_cursor_in(&plan, cx).0)
                 {
-                    let _ = self.budgets.cycle_rollover(
-                        self.budgets_state.current,
-                        row.category_id,
-                        self.today,
-                    );
+                    let current = self.budgets_state(cx).current;
+                    let _ = self.mutate_budgets(cx, |budgets| {
+                        budgets.cycle_rollover(current, row.category_id, self.today)
+                    });
                 }
             }
             "f" => self.open_budgets_fill(cx),
             "x" | "backspace" => self.write_budgets_plan_cell("", cx),
             "0" => self.write_budgets_plan_cell("0", cx),
             "[" => {
-                self.shift_budgets_plan_range(false);
+                self.shift_budgets_plan_range(false, cx);
             }
             "]" => {
-                self.shift_budgets_plan_range(true);
+                self.shift_budgets_plan_range(true, cx);
             }
             _ => return false,
         }
@@ -462,13 +513,13 @@ impl Shell {
         movement: Movement,
         cx: &mut Context<'_, Self>,
     ) {
-        if self.budgets_state.tab == budgets::BudgetsTab::Plan {
+        if self.budgets_state(cx).tab == budgets::BudgetsTab::Plan {
             let Some(plan) = self.budgets_plan_data(cx) else {
                 return;
             };
             let len = plan.row_count();
-            let selected = self.budgets_plan_cursor_in(&plan).0;
-            self.budgets_state.plan_cursor.0 = match movement {
+            let selected = self.budgets_plan_cursor_in(&plan, cx).0;
+            let moved = match movement {
                 Movement::Next => accounts::step_selection(selected, len, 1),
                 Movement::Prev => accounts::step_selection(selected, len, -1),
                 Movement::First => 0,
@@ -480,20 +531,21 @@ impl Shell {
                     accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE)
                 }
                 Movement::Enter => {
-                    self.budgets_state.plan_cursor.0 = selected;
+                    self.edit_budgets_state(cx, |state| state.plan_cursor.0 = selected);
                     self.start_budgets_plan_edit(cx);
                     selected
                 }
             };
+            self.edit_budgets_state(cx, |state| state.plan_cursor.0 = moved);
             return;
         }
-        if self.budgets_state.tab == budgets::BudgetsTab::History {
+        if self.budgets_state(cx).tab == budgets::BudgetsTab::History {
             let Some(history) = self.budgets_history_data(cx) else {
                 return;
             };
             let len = history.rows.len();
-            let selected = self.budgets_history_cursor_in(&history).0;
-            self.budgets_state.history_cursor.0 = match movement {
+            let selected = self.budgets_history_cursor_in(&history, cx).0;
+            let moved = match movement {
                 Movement::Next => accounts::step_selection(selected, len, 1),
                 Movement::Prev => accounts::step_selection(selected, len, -1),
                 Movement::First => 0,
@@ -509,13 +561,14 @@ impl Shell {
                     selected
                 }
             };
+            self.edit_budgets_state(cx, |state| state.history_cursor.0 = moved);
             return;
         }
         let len = self
             .budgets_figures(cx)
             .map_or(0, |(_, figures)| figures.rows.len());
-        let selected = self.budgets_state.selected.min(len.saturating_sub(1));
-        self.budgets_state.selected = match movement {
+        let selected = self.budgets_state(cx).selected.min(len.saturating_sub(1));
+        let moved = match movement {
             Movement::Next => accounts::step_selection(selected, len, 1),
             Movement::Prev => accounts::step_selection(selected, len, -1),
             Movement::First => 0,
@@ -527,13 +580,14 @@ impl Shell {
                 selected
             }
         };
+        self.edit_budgets_state(cx, |state| state.selected = moved);
     }
 
     /// The History tab's chart and table for the range in view.
     pub(super) fn budgets_history_data(&self, cx: &gpui::App) -> Option<budgets::History> {
-        let budget = self.budgets.get(self.budgets_state.current)?;
+        let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
         let (first, last) =
-            budgets::history_range(budget, self.budgets_state.history_end, self.today)?;
+            budgets::history_range(budget, self.budgets_state(cx).history_end, self.today)?;
         Some(budgets::history(
             budget,
             &self.budgets_ledger(cx),
@@ -544,33 +598,32 @@ impl Shell {
     }
 
     /// The cursor held inside the table, so a shorter range can't leave it dangling.
-    pub(super) fn budgets_history_cursor_in(&self, history: &budgets::History) -> (usize, usize) {
+    pub(super) fn budgets_history_cursor_in(
+        &self,
+        history: &budgets::History,
+        cx: &gpui::App,
+    ) -> (usize, usize) {
+        let cursor = self.budgets_state(cx).history_cursor;
         (
-            self.budgets_state
-                .history_cursor
-                .0
-                .min(history.rows.len().saturating_sub(1)),
-            self.budgets_state
-                .history_cursor
-                .1
-                .min(history.months.len().saturating_sub(1)),
+            cursor.0.min(history.rows.len().saturating_sub(1)),
+            cursor.1.min(history.months.len().saturating_sub(1)),
         )
     }
 
     /// Steps the History range a month, inside the Budget's bounds.
-    pub(super) fn shift_budgets_history_range(&mut self, forward: bool) {
-        let Some(budget) = self.budgets.get(self.budgets_state.current) else {
+    pub(super) fn shift_budgets_history_range(&mut self, forward: bool, cx: &mut gpui::App) {
+        let Some(budget) = self.budgets(cx).get(self.budgets_state(cx).current) else {
             return;
         };
         // Step from where the range really ends, not from a stale out-of-bounds end.
         let Some((_, last)) =
-            budgets::history_range(budget, self.budgets_state.history_end, self.today)
+            budgets::history_range(budget, self.budgets_state(cx).history_end, self.today)
         else {
             return;
         };
         let target = if forward { last.next() } else { last.prev() };
         if let Some((_, held)) = budgets::history_range(budget, target, self.today) {
-            self.budgets_state.history_end = held;
+            self.edit_budgets_state(cx, |state| state.history_end = held);
         }
     }
 
@@ -579,13 +632,13 @@ impl Shell {
         let Some(history) = self.budgets_history_data(cx) else {
             return;
         };
-        let (row, column) = self.budgets_history_cursor_in(&history);
+        let (row, column) = self.budgets_history_cursor_in(&history, cx);
         let column = if forward {
             (column + 1).min(history.months.len().saturating_sub(1))
         } else {
             column.saturating_sub(1)
         };
-        self.budgets_state.history_cursor = (row, column);
+        self.edit_budgets_state(cx, |state| state.history_cursor = (row, column));
     }
 
     /// `enter` on a History cell: 9d for that Category and month (a parent shows its rollup).
@@ -593,7 +646,7 @@ impl Shell {
         let Some(history) = self.budgets_history_data(cx) else {
             return;
         };
-        let (row, column) = self.budgets_history_cursor_in(&history);
+        let (row, column) = self.budgets_history_cursor_in(&history, cx);
         let (Some(row), Some(month)) = (history.rows.get(row), history.months.get(column)) else {
             return;
         };
@@ -662,8 +715,8 @@ impl Shell {
         column: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        let was_here = self.budgets_state.history_cursor == (row, column);
-        self.budgets_state.history_cursor = (row, column);
+        let was_here = self.budgets_state(cx).history_cursor == (row, column);
+        self.edit_budgets_state(cx, |state| state.history_cursor = (row, column));
         if was_here {
             self.open_budgets_history_detail(cx);
         }
@@ -678,7 +731,7 @@ impl Shell {
         else {
             return;
         };
-        self.open_budgets_detail(category_id, self.budgets_state.period, cx);
+        self.open_budgets_detail(category_id, self.budgets_state(cx).period, cx);
     }
 
     /// Opens 9d, counting the Transactions it lists now so its `j`/`k` never need the ledger.
@@ -712,7 +765,7 @@ impl Shell {
         month: Period,
         cx: &gpui::App,
     ) -> Option<budgets::CategoryDetail> {
-        let budget = self.budgets.get(self.budgets_state.current)?;
+        let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
         let ledger = budgets::Ledger {
             categories: &self.categories,
             accounts: self.accounts.read(cx).accounts(),
@@ -725,15 +778,15 @@ impl Shell {
 
     /// 9d's `open in Transactions →`: Transactions filtered to the Category, the month and the
     /// Budget's on-budget Accounts, following [`Self::open_payee_transactions`].
-    pub(super) fn open_budgets_detail_transactions(&mut self) {
+    pub(super) fn open_budgets_detail_transactions(&mut self, cx: &gpui::App) {
         let Some(budgets::BudgetsDialog::CategoryDetail(detail)) = self.budgets_dialog() else {
             return;
         };
         let (category_id, month) = (detail.category_id, detail.month);
         self.close_dialog();
         let account_ids = self
-            .budgets
-            .get(self.budgets_state.current)
+            .budgets(cx)
+            .get(self.budgets_state(cx).current)
             .map(|budget| budget.account_ids.clone())
             .unwrap_or_default();
         self.transactions_filters =
@@ -749,8 +802,9 @@ impl Shell {
     pub(super) fn budgets_limit_options(
         &self,
         count: usize,
+        cx: &gpui::App,
     ) -> Option<budgets::limit_form::LimitOptions> {
-        let budget = self.budgets.get(self.budgets_state.current)?;
+        let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
         Some(budgets::limit_form::LimitOptions::new(
             budget,
             &self.categories,
@@ -768,19 +822,19 @@ impl Shell {
     }
 
     /// The Budget on show when it takes edits: an archived one is read-only.
-    pub(super) fn budgets_editable(&self) -> Option<&budgets::Budget> {
-        self.budgets
-            .get(self.budgets_state.current)
+    pub(super) fn budgets_editable<'a>(&self, cx: &'a gpui::App) -> Option<&'a budgets::Budget> {
+        self.budgets(cx)
+            .get(self.budgets_state(cx).current)
             .filter(|budget| !budget.is_archived())
     }
 
     /// Opens 9e on a leaf Category, starting in `month` when that is offered. A Category with no
     /// Budget Amount this month opens the picker with it preselected (9a's `set`); a parent only
     /// rolls up, so it opens nothing.
-    pub(super) fn open_budgets_limit(&mut self, category_id: u32, month: Period) {
+    pub(super) fn open_budgets_limit(&mut self, category_id: u32, month: Period, cx: &gpui::App) {
         let (Some(budget), Some(options)) = (
-            self.budgets_editable(),
-            self.budgets_limit_options(budgets::limit_form::START_MONTHS),
+            self.budgets_editable(cx),
+            self.budgets_limit_options(budgets::limit_form::START_MONTHS, cx),
         ) else {
             return;
         };
@@ -801,11 +855,12 @@ impl Shell {
     }
 
     /// **+ Budget a category**: 9e with its Category picker.
-    pub(super) fn open_budgets_limit_picker(&mut self) {
-        if self.budgets_editable().is_none() {
+    pub(super) fn open_budgets_limit_picker(&mut self, cx: &gpui::App) {
+        if self.budgets_editable(cx).is_none() {
             return;
         }
-        let Some(options) = self.budgets_limit_options(budgets::limit_form::START_MONTHS) else {
+        let Some(options) = self.budgets_limit_options(budgets::limit_form::START_MONTHS, cx)
+        else {
             return;
         };
         self.open_budgets_dialog(budgets::BudgetsDialog::EditLimit(
@@ -814,10 +869,10 @@ impl Shell {
     }
 
     /// Opens 9g on a leaf Category that has a Budget Amount this month or in `month`.
-    pub(super) fn open_budgets_stop(&mut self, category_id: u32, month: Period) {
+    pub(super) fn open_budgets_stop(&mut self, category_id: u32, month: Period, cx: &gpui::App) {
         let (Some(budget), Some(options)) = (
-            self.budgets_editable(),
-            self.budgets_limit_options(budgets::limit_form::STOP_MONTHS),
+            self.budgets_editable(cx),
+            self.budgets_limit_options(budgets::limit_form::STOP_MONTHS, cx),
         ) else {
             return;
         };
@@ -833,15 +888,15 @@ impl Shell {
 
     /// The Category under the cursor on Progress or Plan, with the month its dialog starts in.
     pub(super) fn budgets_cursor_category(&self, cx: &gpui::App) -> Option<(u32, Period)> {
-        match self.budgets_state.tab {
+        match self.budgets_state(cx).tab {
             budgets::BudgetsTab::Progress => {
                 let (_, figures) = self.budgets_figures(cx)?;
-                let row = figures.rows.get(self.budgets_state.selected)?;
-                (!row.is_parent).then_some((row.category_id, self.budgets_state.period))
+                let row = figures.rows.get(self.budgets_state(cx).selected)?;
+                (!row.is_parent).then_some((row.category_id, self.budgets_state(cx).period))
             }
             budgets::BudgetsTab::Plan => {
                 let plan = self.budgets_plan_data(cx)?;
-                let (row_index, column) = self.budgets_plan_cursor_in(&plan);
+                let (row_index, column) = self.budgets_plan_cursor_in(&plan, cx);
                 let month = plan
                     .months
                     .get(column)
@@ -855,17 +910,18 @@ impl Shell {
 
     /// **Save budget** and `enter`: writes the record. A refused save reopens the dialog with the
     /// error shown.
-    pub(super) fn apply_budgets_limit(&mut self, mut form: budgets::limit_form::LimitForm) {
+    pub(super) fn apply_budgets_limit(
+        &mut self,
+        mut form: budgets::limit_form::LimitForm,
+        cx: &mut gpui::App,
+    ) {
         let Some(draft) = form.draft() else {
             return;
         };
-        let saved = budgets::limit_form::save(
-            &mut self.budgets,
-            self.budgets_state.current,
-            &self.categories,
-            &draft,
-            self.today,
-        );
+        let current = self.budgets_state(cx).current;
+        let saved = self.mutate_budgets(cx, |budgets| {
+            budgets::limit_form::save(budgets, current, &self.categories, &draft, self.today)
+        });
         if let Err(error) = saved {
             form.error = Some(error);
             self.open_budgets_dialog(budgets::BudgetsDialog::EditLimit(form));
@@ -874,17 +930,24 @@ impl Shell {
 
     /// **Stop budgeting** and `enter`: writes the Stop from the chosen month. A refused one
     /// reopens the dialog with the error shown.
-    pub(super) fn apply_budgets_stop(&mut self, mut form: budgets::limit_form::StopForm) {
+    pub(super) fn apply_budgets_stop(
+        &mut self,
+        mut form: budgets::limit_form::StopForm,
+        cx: &mut gpui::App,
+    ) {
         let Some(month) = form.month() else {
             return;
         };
-        let stopped = self.budgets.stop(
-            self.budgets_state.current,
-            &self.categories,
-            form.category_id,
-            month,
-            self.today,
-        );
+        let current = self.budgets_state(cx).current;
+        let stopped = self.mutate_budgets(cx, |budgets| {
+            budgets.stop(
+                current,
+                &self.categories,
+                form.category_id,
+                month,
+                self.today,
+            )
+        });
         if let Err(error) = stopped {
             form.error = Some(error);
             self.open_budgets_dialog(budgets::BudgetsDialog::Stop(form));
@@ -892,20 +955,20 @@ impl Shell {
     }
 
     /// 9e's footer link: swaps Edit budget for Stop budgeting on the same Category and month.
-    pub(super) fn open_budgets_stop_from_limit(&mut self) {
+    pub(super) fn open_budgets_stop_from_limit(&mut self, cx: &gpui::App) {
         let Some(budgets::BudgetsDialog::EditLimit(form)) = self.budgets_dialog() else {
             return;
         };
         let (Some(category_id), Some(month)) = (form.fixed_category, form.month()) else {
             return;
         };
-        self.open_budgets_stop(category_id, month);
+        self.open_budgets_stop(category_id, month, cx);
     }
 
     /// The Budgets page's status-line legend: the open dialog's keys, else the tab's.
-    pub(super) fn budgets_hints(&self) -> Vec<(&'static str, String)> {
+    pub(super) fn budgets_hints(&self, cx: &gpui::App) -> Vec<(&'static str, String)> {
         use budgets::{BudgetsDialog, BudgetsTab};
-        match (self.budgets_dialog(), self.budgets_state.tab) {
+        match (self.budgets_dialog(), self.budgets_state(cx).tab) {
             (Some(BudgetsDialog::Switcher(_)), _) => budgets_switcher_hints(),
             (Some(BudgetsDialog::EditLimit(_) | BudgetsDialog::Budget(_)), _) => {
                 budgets_limit_hints()
@@ -915,7 +978,7 @@ impl Shell {
             (Some(BudgetsDialog::Fill { .. }), _) => budgets_fill_hints(),
             (Some(_), _) => budgets_detail_hints(),
             (None, BudgetsTab::Progress) => budgets_progress_hints(),
-            (None, BudgetsTab::Plan) if self.budgets_state.plan_edit.is_some() => {
+            (None, BudgetsTab::Plan) if self.budgets_state(cx).plan_edit.is_some() => {
                 budgets_plan_insert_hints()
             }
             (None, BudgetsTab::Plan) => budgets_plan_hints(),
@@ -924,33 +987,34 @@ impl Shell {
     }
 
     /// `B` or a click on the title: opens 11b with the Budget on show highlighted.
-    pub(super) fn open_budgets_switcher(&mut self) {
-        self.open_budgets_dialog(budgets::BudgetsDialog::Switcher(budgets::Switcher::new(
-            &self.budgets,
-            self.budgets_state.current,
-        )));
+    pub(super) fn open_budgets_switcher(&mut self, cx: &gpui::App) {
+        let switcher = budgets::Switcher::new(self.budgets(cx), self.budgets_state(cx).current);
+        self.open_budgets_dialog(budgets::BudgetsDialog::Switcher(switcher));
     }
 
     /// Shows Budget `id` on the surface, keeping the active tab (every method built has all
     /// three) and putting each tab's cursor and range back at its start.
-    pub(super) fn switch_budget(&mut self, id: u32) {
-        if self.budgets.get(id).is_none() {
+    pub(super) fn switch_budget(&mut self, id: u32, cx: &mut gpui::App) {
+        if self.budgets(cx).get(id).is_none() {
             return;
         }
-        self.budgets_state.current = id;
-        self.budgets_state.selected = 0;
-        self.budgets_state.plan_cursor = (0, 0);
-        self.budgets_state.plan_edit = None;
-        self.budgets_state.plan_start = budgets::default_plan_start(self.today);
-        self.budgets_state.history_cursor = (0, 0);
-        self.budgets_state.history_end = Period::of(self.today);
+        let today = self.today;
+        self.edit_budgets_state(cx, |state| {
+            state.current = id;
+            state.selected = 0;
+            state.plan_cursor = (0, 0);
+            state.plan_edit = None;
+            state.plan_start = budgets::default_plan_start(today);
+            state.history_cursor = (0, 0);
+            state.history_end = Period::of(today);
+        });
         self.reset_view_scroll();
     }
 
     /// `enter` or a click on a Switcher row: switches to it and closes the popover.
-    pub(super) fn choose_budgets_switcher(&mut self, id: u32) {
+    pub(super) fn choose_budgets_switcher(&mut self, id: u32, cx: &mut gpui::App) {
         self.close_dialog();
-        self.switch_budget(id);
+        self.switch_budget(id, cx);
     }
 
     /// `n` on the Budgets page and the Switcher's `+ New budget`: 11c, with the Budget on show as
@@ -958,7 +1022,7 @@ impl Shell {
     pub(super) fn open_budgets_new(&mut self, cx: &mut Context<'_, Self>) {
         let form = budgets::form::BudgetForm::new(
             self.accounts.read(cx).accounts(),
-            self.budgets.get(self.budgets_state.current),
+            self.budgets(cx).get(self.budgets_state(cx).current),
         );
         self.open_budgets_dialog(budgets::BudgetsDialog::Budget(form));
     }
@@ -966,7 +1030,11 @@ impl Shell {
     /// 11c's edit mode on Budget `id`: rename it or change its Accounts. An archived Budget is
     /// read-only, so it opens nothing.
     pub(super) fn open_budgets_edit(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        let Some(budget) = self.budgets.get(id).filter(|budget| !budget.is_archived()) else {
+        let Some(budget) = self
+            .budgets(cx)
+            .get(id)
+            .filter(|budget| !budget.is_archived())
+        else {
             return;
         };
         self.open_budgets_dialog(budgets::BudgetsDialog::Budget(
@@ -984,28 +1052,33 @@ impl Shell {
         let Some(draft) = form.draft() else {
             return;
         };
+        // Copied out so the store can be written while the Accounts are read.
+        let accounts = self.accounts.read(cx).accounts().to_vec();
         let saved = match draft {
             budgets::form::BudgetDraft::Create(new) => {
                 let ledger = budgets::Ledger {
                     categories: &self.categories,
-                    accounts: self.accounts.read(cx).accounts(),
+                    accounts: &accounts,
                     transactions: &self.transactions,
                     plans: &self.bill_plans,
                     entries: &self.bill_entries,
                 };
-                self.budgets.create(&new, &ledger, self.today).map(Some)
+                self.mutate_budgets(cx, |budgets| {
+                    budgets.create(&new, &ledger, self.today).map(Some)
+                })
             }
             budgets::form::BudgetDraft::Edit {
                 id,
                 name,
                 account_ids,
-            } => self
-                .budgets
-                .edit(id, &name, account_ids, self.accounts.read(cx).accounts())
-                .map(|()| None),
+            } => self.mutate_budgets(cx, |budgets| {
+                budgets
+                    .edit(id, &name, account_ids, &accounts)
+                    .map(|()| None)
+            }),
         };
         match saved {
-            Ok(Some(id)) => self.switch_budget(id),
+            Ok(Some(id)) => self.switch_budget(id, cx),
             Ok(None) => {}
             Err(error) => {
                 form.error = Some(error);
@@ -1103,7 +1176,7 @@ impl Shell {
                 form,
                 options: &options,
                 budget_name: named
-                    .and_then(|id| self.budgets.get(id))
+                    .and_then(|id| self.budgets(cx).get(id))
                     .map(|budget| budget.name.clone()),
                 handlers,
             },
@@ -1112,11 +1185,9 @@ impl Shell {
     }
 
     /// The Switcher's `Manage budgets…`: 11f, with the Budget on show under the cursor.
-    pub(super) fn open_budgets_manage(&mut self) {
-        self.open_budgets_dialog(budgets::BudgetsDialog::Manage(budgets::Manage::new(
-            &self.budgets,
-            self.budgets_state.current,
-        )));
+    pub(super) fn open_budgets_manage(&mut self, cx: &gpui::App) {
+        let manage = budgets::Manage::new(self.budgets(cx), self.budgets_state(cx).current);
+        self.open_budgets_dialog(budgets::BudgetsDialog::Manage(manage));
     }
 
     /// Runs one of 11f's actions on Budget `id`. Open and Edit leave Manage budgets; Duplicate
@@ -1130,20 +1201,24 @@ impl Shell {
     ) {
         let outcome = match action {
             ManageAction::Open => {
-                self.choose_budgets_switcher(id);
+                self.choose_budgets_switcher(id, cx);
                 return;
             }
             ManageAction::Edit => {
                 self.open_budgets_edit(id, cx);
                 return;
             }
-            ManageAction::Duplicate => self.budgets.duplicate(id).map(|copy| {
-                self.switch_budget(copy);
-                self.open_budgets_edit(copy, cx);
-            }),
-            ManageAction::SetDefault => self.budgets.set_default(id),
-            ManageAction::Archive => self.budgets.archive(id, self.today),
-            ManageAction::Restore => self.budgets.restore(id),
+            ManageAction::Duplicate => self
+                .mutate_budgets(cx, |budgets| budgets.duplicate(id))
+                .map(|copy| {
+                    self.switch_budget(copy, cx);
+                    self.open_budgets_edit(copy, cx);
+                }),
+            ManageAction::SetDefault => self.mutate_budgets(cx, |budgets| budgets.set_default(id)),
+            ManageAction::Archive => {
+                self.mutate_budgets(cx, |budgets| budgets.archive(id, self.today))
+            }
+            ManageAction::Restore => self.mutate_budgets(cx, |budgets| budgets.restore(id)),
         };
         let refused = outcome.err();
         match self.chrome.dialog.as_mut() {
@@ -1152,7 +1227,7 @@ impl Shell {
             {
                 if let budgets::BudgetsDialog::Manage(manage) = &mut **dialog {
                     // Archiving or restoring moves the row between the two sections: follow it.
-                    manage.refresh(&self.budgets, id);
+                    manage.refresh(self.budgets_store.read(cx).budgets(), id);
                     manage.error = refused;
                 }
             }
@@ -1186,9 +1261,9 @@ impl Shell {
             on_click
         };
         let current = Period::of(self.today);
-        let rows = budgets::switcher_ids(&self.budgets, "")
+        let rows = budgets::switcher_ids(self.budgets(cx), "")
             .into_iter()
-            .filter_map(|id| self.budgets.get(id))
+            .filter_map(|id| self.budgets(cx).get(id))
             .map(|budget| budgets_view::manage_dialog::ManageRow {
                 id: budget.id,
                 name: budget.name.clone(),
@@ -1212,10 +1287,10 @@ impl Shell {
         Some(budgets_view::manage_dialog::render(
             budgets_view::manage_dialog::ManageDialogProps {
                 counts: crate::msg::desktop_budgets_manage_counts(
-                    &self.budgets.active().count().to_string(),
-                    &self.budgets.archived().count().to_string(),
+                    &self.budgets(cx).active().count().to_string(),
+                    &self.budgets(cx).archived().count().to_string(),
                     &self
-                        .budgets
+                        .budgets(cx)
                         .default_budget()
                         .map(|budget| budget.name.clone())
                         .unwrap_or_default(),
@@ -1253,7 +1328,7 @@ impl Shell {
     }
 
     pub(super) fn handle_budgets_title_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_budgets_switcher();
+        self.open_budgets_switcher(cx);
         cx.notify();
     }
 
@@ -1270,7 +1345,7 @@ impl Shell {
     }
 
     pub(super) fn handle_budgets_manage_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_budgets_manage();
+        self.open_budgets_manage(cx);
         cx.notify();
     }
 
@@ -1312,14 +1387,14 @@ impl Shell {
             });
             on_click
         };
-        let rows = budgets::switcher_ids(&self.budgets, switcher.query.text())
+        let rows = budgets::switcher_ids(self.budgets(cx), switcher.query.text())
             .into_iter()
-            .filter_map(|id| self.budgets.get(id))
+            .filter_map(|id| self.budgets(cx).get(id))
             .map(|budget| budgets_view::switcher::SwitcherRow {
                 id: budget.id,
                 name: budget.name.clone(),
                 is_default: budget.is_default,
-                is_current: budget.id == self.budgets_state.current,
+                is_current: budget.id == self.budgets_state(cx).current,
                 archived: budget.is_archived(),
                 summary: self.budgets_summary(budget, cx),
                 method: budget.method,
@@ -1341,7 +1416,7 @@ impl Shell {
                     let entity = entity.clone();
                     Rc::new(move |id, _window, cx| {
                         entity.update(cx, |shell, cx| {
-                            shell.choose_budgets_switcher(id);
+                            shell.choose_budgets_switcher(id, cx);
                             cx.notify();
                         });
                     })
@@ -1358,7 +1433,7 @@ impl Shell {
     /// column.
     pub(super) fn budgets_fill_target(&self, cx: &gpui::App) -> Period {
         let cursor = self.budgets_plan_data(cx).and_then(|plan| {
-            let column = self.budgets_plan_cursor_in(&plan).1;
+            let column = self.budgets_plan_cursor_in(&plan, cx).1;
             plan.months.get(column).copied()
         });
         budgets::fill_target(cursor, self.today)
@@ -1366,7 +1441,7 @@ impl Shell {
 
     /// **Fill … from…** and `f` on the Plan tab: opens 9f on the cursor's target month.
     pub(super) fn open_budgets_fill(&mut self, cx: &mut Context<'_, Self>) {
-        if self.budgets_editable().is_none() {
+        if self.budgets_editable(cx).is_none() {
             return;
         }
         self.open_budgets_dialog(budgets::BudgetsDialog::Fill {
@@ -1383,20 +1458,19 @@ impl Shell {
         source: budgets::FillSource,
         cx: &mut Context<'_, Self>,
     ) {
+        // Copied out so the store can be written while the Accounts are read.
+        let accounts = self.accounts.read(cx).accounts().to_vec();
         let ledger = budgets::Ledger {
             categories: &self.categories,
-            accounts: self.accounts.read(cx).accounts(),
+            accounts: &accounts,
             transactions: &self.transactions,
             plans: &self.bill_plans,
             entries: &self.bill_entries,
         };
-        let wrote = self.budgets.fill(
-            self.budgets_state.current,
-            &ledger,
-            month,
-            source,
-            self.today,
-        );
+        let current = self.budgets_state(cx).current;
+        let wrote = self.mutate_budgets(cx, |budgets| {
+            budgets.fill(current, &ledger, month, source, self.today)
+        });
         if !matches!(wrote, Ok(count) if count > 0) {
             self.open_budgets_dialog(budgets::BudgetsDialog::Fill { month, source });
         }
@@ -1427,7 +1501,7 @@ impl Shell {
         let Some(&budgets::BudgetsDialog::Fill { month, source }) = self.budgets_dialog() else {
             return None;
         };
-        let budget = self.budgets.get(self.budgets_state.current)?;
+        let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
         let ledger = self.budgets_ledger(cx);
         let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
@@ -1500,16 +1574,16 @@ impl Shell {
     }
 
     /// 9d's **Edit budget**: 9e on the detail's Category and month. A parent's rollup has none.
-    pub(super) fn open_budgets_detail_limit(&mut self) {
+    pub(super) fn open_budgets_detail_limit(&mut self, cx: &gpui::App) {
         if let Some(budgets::BudgetsDialog::CategoryDetail(detail)) = self.budgets_dialog() {
             let (category_id, month) = (detail.category_id, detail.month);
-            self.open_budgets_limit(category_id, month);
+            self.open_budgets_limit(category_id, month, cx);
         }
     }
 
     /// Whether 9d offers Edit budget: a leaf Expense Category in a Budget that takes edits.
-    pub(super) fn budgets_detail_editable(&self, category_id: u32) -> bool {
-        self.budgets_editable().is_some()
+    pub(super) fn budgets_detail_editable(&self, category_id: u32, cx: &gpui::App) -> bool {
+        self.budgets_editable(cx).is_some()
             && categories::is_leaf(&self.categories, category_id)
             && self.categories.iter().any(|category| {
                 category.id == category_id && category.category_type == CategoryTypes::Expense
@@ -1527,7 +1601,7 @@ impl Shell {
     }
 
     pub(super) fn handle_budgets_limit_stop(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_budgets_stop_from_limit();
+        self.open_budgets_stop_from_limit(cx);
         cx.notify();
     }
 
@@ -1551,20 +1625,20 @@ impl Shell {
     }
 
     pub(super) fn handle_budgets_detail_edit(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_budgets_detail_limit();
+        self.open_budgets_detail_limit(cx);
         cx.notify();
     }
 
     pub(super) fn handle_budgets_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_budgets_limit_picker();
+        self.open_budgets_limit_picker(cx);
         cx.notify();
     }
 
     /// A Progress row's `edit` or `set`.
     pub(super) fn handle_budgets_action_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.budgets_state.selected = index;
+        self.edit_budgets_state(cx, |state| state.selected = index);
         if let Some((category_id, month)) = self.budgets_cursor_category(cx) {
-            self.open_budgets_limit(category_id, month);
+            self.open_budgets_limit(category_id, month, cx);
         }
         cx.notify();
     }
@@ -1593,8 +1667,8 @@ impl Shell {
                 let draft = form.draft();
                 let preview = draft.as_ref().and_then(|draft| {
                     budgets::limit_form::preview(
-                        &self.budgets,
-                        self.budgets_state.current,
+                        self.budgets(cx),
+                        self.budgets_state(cx).current,
                         &self.categories,
                         draft,
                         self.today,
@@ -1669,7 +1743,7 @@ impl Shell {
                             .as_ref()
                             .map(|preview| budgets_view::period_label(preview.month))
                             .unwrap_or_default(),
-                        mirrors_category_field: self.budgets_state.current
+                        mirrors_category_field: self.budgets_state(cx).current
                             == budgets::PERSONAL_SPENDING_ID,
                         valid: draft.is_some(),
                         handlers,
@@ -1721,7 +1795,7 @@ impl Shell {
     }
 
     pub(super) fn handle_budgets_detail_transactions(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_budgets_detail_transactions();
+        self.open_budgets_detail_transactions(cx);
         cx.notify();
     }
 
@@ -1830,7 +1904,7 @@ impl Shell {
                 on_close: plain(Shell::handle_budgets_detail_close),
                 on_open_transactions: plain(Shell::handle_budgets_detail_transactions),
                 on_edit: self
-                    .budgets_detail_editable(detail.category_id)
+                    .budgets_detail_editable(detail.category_id, cx)
                     .then(|| plain(Shell::handle_budgets_detail_edit)),
             },
             cx,
@@ -1838,7 +1912,11 @@ impl Shell {
     }
 
     /// `tab` on the Budgets page switches its tab rather than cycling focus, as on Bills.
-    pub(super) fn handle_budgets_tab_key(&mut self, keystroke: &Keystroke) -> bool {
+    pub(super) fn handle_budgets_tab_key(
+        &mut self,
+        keystroke: &Keystroke,
+        cx: &mut gpui::App,
+    ) -> bool {
         let pending_g_active = self
             .pending_g
             .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
@@ -1855,25 +1933,30 @@ impl Shell {
         {
             return false;
         }
-        self.set_budgets_tab(self.budgets_state.tab.next());
+        let next = self.budgets_state(cx).tab.next();
+        self.set_budgets_tab(next, cx);
         true
     }
 
-    pub(super) fn set_budgets_tab(&mut self, tab: budgets::BudgetsTab) {
-        self.budgets_state.tab = tab;
-        self.budgets_state.selected = 0;
+    pub(super) fn set_budgets_tab(&mut self, tab: budgets::BudgetsTab, cx: &mut gpui::App) {
+        self.edit_budgets_state(cx, |state| {
+            state.tab = tab;
+            state.selected = 0;
+        });
         self.chrome.status_message = None;
         self.reset_view_scroll();
     }
 
     /// Steps the period a calendar month. The Plan and History range navs are their own tickets'.
-    pub(super) fn shift_budgets_period(&mut self, forward: bool) {
-        self.budgets_state.period = if forward {
-            self.budgets_state.period.next()
-        } else {
-            self.budgets_state.period.prev()
-        };
-        self.budgets_state.selected = 0;
+    pub(super) fn shift_budgets_period(&mut self, forward: bool, cx: &mut gpui::App) {
+        self.edit_budgets_state(cx, |state| {
+            state.period = if forward {
+                state.period.next()
+            } else {
+                state.period.prev()
+            };
+            state.selected = 0;
+        });
     }
 
     /// `B` opens the Switcher and `n` New budget; `[`/`]` step the period and `1`/`2`/`3` pick the
@@ -1893,7 +1976,7 @@ impl Shell {
         // Bare `b` stays the rail toggle, so the Switcher takes the shifted key (#400).
         if modifiers.shift {
             if keystroke.key.eq_ignore_ascii_case("b") {
-                self.open_budgets_switcher();
+                self.open_budgets_switcher(cx);
                 return true;
             }
             return false;
@@ -1905,50 +1988,52 @@ impl Shell {
             .filter(|_| keystroke.key.chars().count() == 1)
             .and_then(budgets::BudgetsTab::from_digit)
         {
-            self.set_budgets_tab(tab);
+            self.set_budgets_tab(tab, cx);
             return true;
         }
         match keystroke.key.as_str() {
-            "c" if self.budgets_state.tab != budgets::BudgetsTab::History => {
-                self.open_budgets_limit_picker();
+            "c" if self.budgets_state(cx).tab != budgets::BudgetsTab::History => {
+                self.open_budgets_limit_picker(cx);
                 return true;
             }
             "n" => {
                 self.open_budgets_new(cx);
                 return true;
             }
-            "e" | "s" if self.budgets_state.tab == budgets::BudgetsTab::Progress => {
+            "e" | "s" if self.budgets_state(cx).tab == budgets::BudgetsTab::Progress => {
                 if let Some((category_id, month)) = self.budgets_cursor_category(cx) {
                     if keystroke.key == "e" {
-                        self.open_budgets_limit(category_id, month);
+                        self.open_budgets_limit(category_id, month, cx);
                     } else {
-                        self.open_budgets_stop(category_id, month);
+                        self.open_budgets_stop(category_id, month, cx);
                     }
                 }
                 return true;
             }
             _ => {}
         }
-        if self.budgets_state.tab == budgets::BudgetsTab::Plan {
+        if self.budgets_state(cx).tab == budgets::BudgetsTab::Plan {
             return self.handle_budgets_plan_key(keystroke.key.as_str(), cx);
         }
-        let history = self.budgets_state.tab == budgets::BudgetsTab::History;
+        let history = self.budgets_state(cx).tab == budgets::BudgetsTab::History;
         match keystroke.key.as_str() {
-            "[" if history => self.shift_budgets_history_range(false),
-            "]" if history => self.shift_budgets_history_range(true),
+            "[" if history => self.shift_budgets_history_range(false, cx),
+            "]" if history => self.shift_budgets_history_range(true, cx),
             "h" | "left" if history => self.step_budgets_history_month(false, cx),
             "l" | "right" if history => self.step_budgets_history_month(true, cx),
-            "x" if history => self.budgets_state.export_pending = true,
-            "[" => self.shift_budgets_period(false),
-            "]" => self.shift_budgets_period(true),
+            "x" if history => self
+                .budgets_view
+                .update(cx, |view, cx| view.request_export(cx)),
+            "[" => self.shift_budgets_period(false, cx),
+            "]" => self.shift_budgets_period(true, cx),
             _ => return false,
         }
         true
     }
 
     /// The KNOWN COSTS stat's link: the Bills Schedule on the period being shown.
-    pub(super) fn open_budgets_schedule(&mut self) {
-        self.bills_period = self.budgets_state.period;
+    pub(super) fn open_budgets_schedule(&mut self, cx: &mut gpui::App) {
+        self.bills_period = self.budgets_state(cx).period;
         self.bills_all = false;
         self.bills_filters = bills::history::BillFilters::default();
         self.set_bills_tab(bills::BillsTab::Schedule);
@@ -1961,39 +2046,39 @@ impl Shell {
         tab: budgets::BudgetsTab,
         cx: &mut Context<'_, Self>,
     ) {
-        self.set_budgets_tab(tab);
+        self.set_budgets_tab(tab, cx);
         cx.notify();
     }
 
     pub(super) fn handle_budgets_period_prev(&mut self, cx: &mut Context<'_, Self>) {
-        self.shift_budgets_period(false);
+        self.shift_budgets_period(false, cx);
         cx.notify();
     }
 
     pub(super) fn handle_budgets_period_next(&mut self, cx: &mut Context<'_, Self>) {
-        self.shift_budgets_period(true);
+        self.shift_budgets_period(true, cx);
         cx.notify();
     }
 
     pub(super) fn handle_budgets_edit_plan_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.set_budgets_tab(budgets::BudgetsTab::Plan);
+        self.set_budgets_tab(budgets::BudgetsTab::Plan, cx);
         cx.notify();
     }
 
     pub(super) fn handle_budgets_range_prev(&mut self, cx: &mut Context<'_, Self>) {
-        if self.budgets_state.tab == budgets::BudgetsTab::History {
-            self.shift_budgets_history_range(false);
+        if self.budgets_state(cx).tab == budgets::BudgetsTab::History {
+            self.shift_budgets_history_range(false, cx);
         } else {
-            self.shift_budgets_plan_range(false);
+            self.shift_budgets_plan_range(false, cx);
         }
         cx.notify();
     }
 
     pub(super) fn handle_budgets_range_next(&mut self, cx: &mut Context<'_, Self>) {
-        if self.budgets_state.tab == budgets::BudgetsTab::History {
-            self.shift_budgets_history_range(true);
+        if self.budgets_state(cx).tab == budgets::BudgetsTab::History {
+            self.shift_budgets_history_range(true, cx);
         } else {
-            self.shift_budgets_plan_range(true);
+            self.shift_budgets_plan_range(true, cx);
         }
         cx.notify();
     }
@@ -2006,23 +2091,27 @@ impl Shell {
         column: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        if self.budgets_state.plan_edit.take().is_some() {
+        if self
+            .edit_budgets_state(cx, |state| state.plan_edit.take())
+            .is_some()
+        {
             self.nav.exit_mode();
         }
-        self.budgets_state.plan_cursor = (row, column);
+        self.edit_budgets_state(cx, |state| state.plan_cursor = (row, column));
         self.start_budgets_plan_edit(cx);
         cx.notify();
     }
 
     pub(super) fn handle_budgets_known_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_budgets_schedule();
+        self.budgets_view
+            .update(cx, |view, cx| view.request_schedule(cx));
         cx.notify();
     }
 
     /// A click selects a row; clicking the selected row opens its detail.
     pub(super) fn handle_budgets_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        let was_selected = self.budgets_state.selected == index;
-        self.budgets_state.selected = index;
+        let was_selected = self.budgets_state(cx).selected == index;
+        self.edit_budgets_state(cx, |state| state.selected = index);
         if was_selected {
             self.open_budgets_detail_at(index, cx);
         }

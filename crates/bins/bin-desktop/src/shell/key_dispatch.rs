@@ -155,7 +155,7 @@ impl Shell {
                 }
                 self.transactions_filter_form = None;
                 self.close_dialog();
-                self.budgets_state.plan_edit = None;
+                self.edit_budgets_state(cx, |state| state.plan_edit = None);
                 // `Esc` while searching Transactions clears the search text as well as leaving the
                 // mode (the map's decision: search is cleared by `Esc` or by emptying the box).
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Transactions {
@@ -252,7 +252,7 @@ impl Shell {
                         self.handle_accounts_key(keystroke, cx)
                     }
                     ActiveView::Settings(SettingsSection::Categories) => {
-                        self.handle_categories_key(keystroke)
+                        self.handle_categories_key(keystroke, cx)
                     }
                     ActiveView::Settings(SettingsSection::Payees) => {
                         self.handle_payees_key(keystroke)
@@ -423,9 +423,6 @@ impl Shell {
     /// Runs what the key handlers left pending for after the `cx.notify()` -- effects that need
     /// the `gpui::App` rather than just `Shell`'s own state.
     pub(super) fn run_pending_effects(&mut self, cx: &mut Context<'_, Self>) {
-        if std::mem::take(&mut self.budgets_state.export_pending) {
-            self.export_budgets_history(cx);
-        }
         if let Some(change) = self.pending_colour_change.take() {
             change.apply(cx);
         }

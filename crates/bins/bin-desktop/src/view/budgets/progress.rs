@@ -278,6 +278,7 @@ fn stat_strip(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
                 )),
                 div()
                     .id("budgets-known-schedule")
+                    .debug_selector(|| "budgets-known-schedule".to_string())
                     .cursor_pointer()
                     .text_size(px(11.0))
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)

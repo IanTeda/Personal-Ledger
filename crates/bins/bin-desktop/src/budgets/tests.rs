@@ -1,6 +1,9 @@
 //! The Budgets model's unit tests, kept beside `mod.rs` so the model's sections stay short.
 
-use lib_core::{CategoryTypes, TransactionStatus};
+use std::collections::BTreeMap;
+
+use chrono::NaiveDate;
+use lib_core::{CategoryTypes, Money, Period, TransactionStatus};
 
 use super::*;
 use crate::{
@@ -11,6 +14,7 @@ use crate::{
     tags::default_tags,
     transactions::{Split, Transaction, default_transactions},
 };
+use lib_budgets::{cents_money, check_accounts, check_leaf, put, zero};
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, d).unwrap_or_default()

@@ -761,7 +761,7 @@ impl Render for Shell {
             })
         };
         // The default Budget's current month: the rail badge and the Dashboard's budget list.
-        let default_budget_figures = self.budgets.default_budget().map(|budget| {
+        let default_budget_figures = self.budgets(cx).default_budget().map(|budget| {
             budgets::period_figures(
                 budget,
                 &self.budgets_ledger(cx),
@@ -937,11 +937,11 @@ impl Render for Shell {
             .then(|| self.budgets_figures(cx))
             .flatten();
         let budgets_plan = (self.nav.noun() == Noun::Budgets
-            && self.budgets_state.tab == budgets::BudgetsTab::Plan)
+            && self.budgets_state(cx).tab == budgets::BudgetsTab::Plan)
             .then(|| self.budgets_plan_data(cx))
             .flatten();
         let budgets_history = (self.nav.noun() == Noun::Budgets
-            && self.budgets_state.tab == budgets::BudgetsTab::History)
+            && self.budgets_state(cx).tab == budgets::BudgetsTab::History)
             .then(|| self.budgets_history_data(cx))
             .flatten();
         let budgets_page = budgets_figures.as_ref().map(|(budget, figures)| {
@@ -955,16 +955,16 @@ impl Render for Shell {
             budgets_view::BudgetsPageProps {
                 name: &budget.name,
                 method: budget.method,
-                tab: self.budgets_state.tab,
-                period: self.budgets_state.period,
+                tab: self.budgets_state(cx).tab,
+                period: self.budgets_state(cx).period,
                 figures,
                 plan: budgets_plan
                     .as_ref()
                     .map(|plan| budgets_view::plan::PlanProps {
                         plan,
                         current: Period::of(self.today),
-                        cursor: self.budgets_plan_cursor_in(plan),
-                        edit: self.budgets_state.plan_edit.as_ref(),
+                        cursor: self.budgets_plan_cursor_in(plan, cx),
+                        edit: self.budgets_state(cx).plan_edit.as_ref(),
                         on_cell_click: {
                             let entity = entity.clone();
                             Rc::new(move |row, column, _window, cx| {
@@ -978,7 +978,7 @@ impl Render for Shell {
                     budgets_view::history::HistoryProps {
                         history,
                         categories: &self.categories,
-                        cursor: self.budgets_history_cursor_in(history),
+                        cursor: self.budgets_history_cursor_in(history, cx),
                         on_cell_click: {
                             let entity = entity.clone();
                             Rc::new(move |row, column, _window, cx| {
@@ -994,7 +994,7 @@ impl Render for Shell {
                 on_range_next: plain(Shell::handle_budgets_range_next),
                 categories: &self.categories,
                 selected: (!figures.rows.is_empty())
-                    .then(|| self.budgets_state.selected.min(figures.rows.len() - 1)),
+                    .then(|| self.budgets_state(cx).selected.min(figures.rows.len() - 1)),
                 on_tab_click: {
                     let entity = entity.clone();
                     Rc::new(move |tab, _window, cx| {
@@ -1275,7 +1275,7 @@ impl Render for Shell {
                     || this.handle_settings_focus_key(&event.keystroke)
                     || this.handle_colour_theme_grid_key(&event.keystroke)
                     || this.handle_bills_tab_key(&event.keystroke)
-                    || this.handle_budgets_tab_key(&event.keystroke)
+                    || this.handle_budgets_tab_key(&event.keystroke, cx)
                     || this.handle_key_down(event, cx)
                 {
                     cx.notify();
@@ -1754,7 +1754,7 @@ impl Render for Shell {
                                 .count();
 
                         // Count budgets attached to this category
-                        let budget_count = self.budgets.limit_count(*category_id);
+                        let budget_count = self.budgets(cx).limit_count(*category_id);
 
                         categories_view::delete_dialog::render(
                             &category,

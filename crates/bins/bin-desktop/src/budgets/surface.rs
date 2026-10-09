@@ -10,8 +10,8 @@ use crate::{
 
 use super::form::BudgetForm;
 use super::limit_form::{LimitForm, StopForm};
-use super::plan::FillSource;
-use super::store::{BudgetError, Budgets};
+use lib_budgets::FillSource;
+use lib_budgets::{BudgetError, Budgets};
 
 /// Which tab of the Budgets surface shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

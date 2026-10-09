@@ -5,15 +5,12 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed, Zero};
 use chrono::{Datelike, NaiveDate};
-use lib_core::{CategoryTypes, Money};
+use lib_core::{CategoryTypes, Money, Period};
 
-use crate::{
-    accounts::Account,
-    bills::{BillPlan, BillScheduleEntry},
-    categories::{self, Category},
-    period::Period,
-    transactions::Transaction,
-};
+use lib_accounts::Account;
+use lib_bills::{BillPlan, BillScheduleEntry};
+use lib_categories::{self as categories, Category};
+use lib_transactions::Transaction;
 
 use super::{Budget, LimitRecord, Rollover, applied, cents_money, zero};
 
@@ -155,7 +152,7 @@ pub(super) fn known_costs(
     let mut total = zero();
     let mut count = 0;
     for entry in ledger.entries.iter().filter(|entry| entry.is_open()) {
-        let Some(plan) = crate::bills::get(ledger.plans, entry.plan_id) else {
+        let Some(plan) = lib_bills::get(ledger.plans, entry.plan_id) else {
             continue;
         };
         if plan.category_id != category_id || !budget.account_ids.contains(&plan.account_id) {

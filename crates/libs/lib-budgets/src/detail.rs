@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, Money};
+use lib_core::{CategoryTypes, Money, Period};
 
-use crate::{categories, period::Period};
+use lib_categories as categories;
 
 use super::figures::{
     CategoryFigures, Elapsed, LeafFigures, Ledger, SpentIndex, effective, elapsed, known_costs,

@@ -76,30 +76,30 @@ impl Shell {
             _ => None,
         };
         BudgetsSnapshot {
-            tab: format!("{:?}", self.budgets_state.tab),
+            tab: format!("{:?}", self.budgets_state(cx).tab),
             budget,
             period: (
-                self.budgets_state.period.year,
-                self.budgets_state.period.month,
+                self.budgets_state(cx).period.year,
+                self.budgets_state(cx).period.month,
             ),
             selected: self
-                .budgets_state
+                .budgets_state(cx)
                 .selected
                 .min(rows.len().saturating_sub(1)),
             rows,
             plan_start: (
-                self.budgets_state.plan_start.year,
-                self.budgets_state.plan_start.month,
+                self.budgets_state(cx).plan_start.year,
+                self.budgets_state(cx).plan_start.month,
             ),
-            plan_cursor: self.budgets_state.plan_cursor,
+            plan_cursor: self.budgets_state(cx).plan_cursor,
             plan_edit: self
-                .budgets_state
+                .budgets_state(cx)
                 .plan_edit
                 .as_ref()
                 .map(|edit| edit.text.clone()),
             history_end: (
-                self.budgets_state.history_end.year,
-                self.budgets_state.history_end.month,
+                self.budgets_state(cx).history_end.year,
+                self.budgets_state(cx).history_end.month,
             ),
             dialog: self.budgets_dialog().map(|dialog| {
                 match dialog {
@@ -118,9 +118,9 @@ impl Shell {
                 _ => None,
             },
             switcher_names: switcher.map(|switcher| {
-                budgets::switcher_ids(&self.budgets, switcher.query.text())
+                budgets::switcher_ids(self.budgets(cx), switcher.query.text())
                     .into_iter()
-                    .filter_map(|id| self.budgets.get(id).map(|budget| budget.name.clone()))
+                    .filter_map(|id| self.budgets(cx).get(id).map(|budget| budget.name.clone()))
                     .collect()
             }),
             switcher_selected: switcher.map(|switcher| switcher.selected),

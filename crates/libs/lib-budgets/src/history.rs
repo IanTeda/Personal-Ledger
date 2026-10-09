@@ -4,12 +4,9 @@ use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, Money};
+use lib_core::{CategoryTypes, Money, Period};
 
-use crate::{
-    categories::{self, Category},
-    period::Period,
-};
+use lib_categories::{self as categories, Category};
 
 use super::figures::{Ledger, SpentIndex, effective, expense_leaves};
 use super::{Budget, Limit, zero};

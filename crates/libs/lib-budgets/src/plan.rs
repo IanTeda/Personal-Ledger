@@ -2,12 +2,9 @@
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed};
 use chrono::NaiveDate;
-use lib_core::{CategoryTypes, Money};
+use lib_core::{CategoryTypes, Money, Period};
 
-use crate::{
-    categories::{self, Category},
-    period::Period,
-};
+use lib_categories::{self as categories, Category};
 
 use super::figures::{Ledger, SpentIndex, expense_leaves};
 use super::{AVERAGE_MONTHS, Budget, Rollover, applied, zero};

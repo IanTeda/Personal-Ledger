@@ -185,20 +185,20 @@ impl Shell {
                     i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
                 ),
             }),
-            ActiveView::Budgets if self.budgets_state.tab == budgets::BudgetsTab::Progress => {
+            ActiveView::Budgets if self.budgets_state(cx).tab == budgets::BudgetsTab::Progress => {
                 Some(PageStatus {
-                    hints: self.budgets_hints(),
+                    hints: self.budgets_hints(cx),
                     right: crate::msg::desktop_budgets_status_period(
-                        &budgets_view::period_label(self.budgets_state.period),
+                        &budgets_view::period_label(self.budgets_state(cx).period),
                         budgets_figures.map_or(0, |(_, figures)| {
                             i64::try_from(figures.rows.len()).unwrap_or(i64::MAX)
                         }),
                     ),
                 })
             }
-            ActiveView::Budgets if self.budgets_state.tab == budgets::BudgetsTab::Plan => {
+            ActiveView::Budgets if self.budgets_state(cx).tab == budgets::BudgetsTab::Plan => {
                 Some(PageStatus {
-                    hints: self.budgets_hints(),
+                    hints: self.budgets_hints(cx),
                     right: budgets_plan.map_or_else(String::new, |plan| {
                         crate::msg::desktop_budgets_status_plan(
                             &budgets_view::plan::range_label(plan),
@@ -208,7 +208,7 @@ impl Shell {
                 })
             }
             ActiveView::Budgets => Some(PageStatus {
-                hints: self.budgets_hints(),
+                hints: self.budgets_hints(cx),
                 right: budgets_history
                     .as_ref()
                     .map_or_else(String::new, |history| {

@@ -41,7 +41,7 @@ impl Shell {
         match dialog {
             OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog),
             OpenDialog::Accounts(dialog) => self.apply_accounts_dialog(dialog, cx),
-            OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog),
+            OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog, cx),
             OpenDialog::Payees(dialog) => self.apply_payees_dialog(dialog),
             OpenDialog::DocumentTypes(dialog) => self.apply_document_types_dialog(dialog),
             OpenDialog::Inventory(dialog) => self.apply_inventory_dialog(dialog),

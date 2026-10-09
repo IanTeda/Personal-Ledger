@@ -77,6 +77,7 @@ use lib_toast::{ToastKind, Toasts};
 use crate::view::accounts::state::{
     ACCOUNTS_HALF_PAGE, AccountsEvent, AccountsStore, AccountsView,
 };
+use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, BudgetsView};
 use crate::{
     accounts::{
         self, NameLookup,
@@ -241,12 +242,14 @@ pub struct Shell {
     /// The shared stub Categories tree, Payees and Tags. Owned here so the Categories, Payees and
     /// Tags views the later maps build can read and grow the same data the Transactions view uses.
     categories: Vec<Category>,
-    /// The shared stub Budgets, seeded from `budgets::default_budgets()`. Owned here so the
-    /// Budgets surface and Categories 5c read and write the same Category Limits, and so they
-    /// survive leaving and re-entering either view.
-    budgets: budgets::Budgets,
-    /// The Budgets destination's own view state (Budget, tab, month, cursors).
-    budgets_state: budgets::BudgetsState,
+    /// The shared stub Budgets, seeded from `budgets::default_budgets()`, owned by their store
+    /// Entity and read through it (ADR-0032). Shared so the Budgets surface and Categories 5c
+    /// read and write the same Category Limits, and so they survive leaving and re-entering
+    /// either view.
+    budgets_store: Entity<BudgetsStore>,
+    /// The Budgets page's state (Budget, tab, month, cursors). Its events are handled in
+    /// `handle_budgets_event`.
+    budgets_view: Entity<BudgetsView>,
     /// The selected category row in the tree view (the position in a depth-first enumeration).
     categories_selected: usize,
     /// The selected category ID for keyboard navigation, if any.
@@ -385,6 +388,12 @@ impl Shell {
         let budgets_current = seeded_budgets
             .default_budget()
             .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id);
+        let budgets_store = cx.new(|_| BudgetsStore::new(seeded_budgets));
+        let budgets_view = cx.new(|_| BudgetsView::new(BudgetsState::new(budgets_current, today)));
+        let budgets_subscription =
+            cx.subscribe(&budgets_view, |shell, _view, event: &BudgetsEvent, cx| {
+                shell.handle_budgets_event(*event, cx);
+            });
         let document_types_seed = documents::types::default_types();
         Self {
             nav,
@@ -429,8 +438,8 @@ impl Shell {
             accounts_view,
             today,
             categories,
-            budgets: seeded_budgets,
-            budgets_state: budgets::BudgetsState::new(budgets_current, today),
+            budgets_store,
+            budgets_view,
             categories_selected: 0,
             categories_selected_id: None,
             categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
@@ -474,7 +483,7 @@ impl Shell {
             documents_inbox_selected: 0,
             documents_undo: None,
             pending_file_action: None,
-            view_subscriptions: vec![accounts_subscription],
+            view_subscriptions: vec![accounts_subscription, budgets_subscription],
         }
     }
 
@@ -1741,7 +1750,7 @@ impl Shell {
     /// Keyboard input while on the Categories page: `n` adds a top-level category, `N` (shift+n)
     /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it,
     /// `enter` opens Transactions filtered to the selected category.
-    fn handle_categories_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_categories_key(&mut self, keystroke: &Keystroke, cx: &App) -> bool {
         let on_settings_page = self.settings_categories_page_has_focus();
         if !on_settings_page {
             return false;
@@ -1762,17 +1771,17 @@ impl Shell {
                 if shift {
                     // N (shift+n): add sub-category to selected
                     if let Some(category) = selected_category {
-                        self.open_add_categories_dialog(Some(category.id));
+                        self.open_add_categories_dialog(Some(category.id), cx);
                     }
                 } else {
                     // n: add top-level category
-                    self.open_add_categories_dialog(None);
+                    self.open_add_categories_dialog(None, cx);
                 }
                 true
             }
             "e" => {
                 if let Some(category) = selected_category {
-                    self.open_edit_categories_dialog(category.id);
+                    self.open_edit_categories_dialog(category.id, cx);
                 }
                 true
             }
@@ -1809,18 +1818,19 @@ impl Shell {
     fn categories_budget_lock(
         &self,
         category_id: Option<u32>,
+        cx: &App,
     ) -> Option<categories::form::BudgetLock> {
         if category_id.is_some_and(|id| !categories::is_leaf(&self.categories, id)) {
             return Some(categories::form::BudgetLock::Parent);
         }
-        self.budgets
+        self.budgets(cx)
             .get(budgets::PERSONAL_SPENDING_ID)
             .filter(|budget| budget.is_archived())
             .map(|budget| categories::form::BudgetLock::Archived(budget.name.clone()))
     }
 
     /// Opens the Add categories dialog pre-scoped to parent_id (None for top-level).
-    fn open_add_categories_dialog(&mut self, parent_id: Option<u32>) {
+    fn open_add_categories_dialog(&mut self, parent_id: Option<u32>, cx: &App) {
         // A child takes its parent's type, locked in the form; a top-level one starts as Expense.
         let category_type = match parent_id {
             Some(id) => self
@@ -1835,7 +1845,7 @@ impl Shell {
             parent_id,
             category_type,
             budget: TextField::default(),
-            budget_lock: self.categories_budget_lock(None),
+            budget_lock: self.categories_budget_lock(None, cx),
             focused: categories::form::CategoryField::Name,
         };
         self.open_dialog(OpenDialog::Categories(
@@ -1845,10 +1855,10 @@ impl Shell {
 
     /// Opens the Edit categories dialog on `id`, pre-filled. Monthly budget shows the current
     /// month's amount in the Personal spending Budget (a parent's is its children's sum).
-    fn open_edit_categories_dialog(&mut self, category_id: u32) {
+    fn open_edit_categories_dialog(&mut self, category_id: u32, cx: &App) {
         if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
             let budget_str = self
-                .budgets
+                .budgets(cx)
                 .monthly_limit(
                     budgets::PERSONAL_SPENDING_ID,
                     &self.categories,
@@ -1862,7 +1872,7 @@ impl Shell {
                 parent_id: category.parent,
                 category_type: Some(category.category_type.clone()),
                 budget: TextField::new(budget_str),
-                budget_lock: self.categories_budget_lock(Some(category_id)),
+                budget_lock: self.categories_budget_lock(Some(category_id), cx),
                 focused: categories::form::CategoryField::Name,
             };
             self.open_dialog(OpenDialog::Categories(
@@ -1879,6 +1889,7 @@ impl Shell {
         category_id: u32,
         form: &categories::form::CategoryForm,
         clears: bool,
+        cx: &mut App,
     ) {
         if form.budget_lock.is_some() {
             return;
@@ -1895,13 +1906,15 @@ impl Shell {
             }
         };
         // A Category that can't hold a Budget Amount (an Income one) is left without one.
-        let _ = self.budgets.set_monthly_limit(
-            budgets::PERSONAL_SPENDING_ID,
-            &self.categories,
-            category_id,
-            amount,
-            self.today,
-        );
+        let _ = self.mutate_budgets(cx, |budgets| {
+            budgets.set_monthly_limit(
+                budgets::PERSONAL_SPENDING_ID,
+                &self.categories,
+                category_id,
+                amount,
+                self.today,
+            )
+        });
     }
 
     /// Opens Transactions pre-filtered to the account `id`: fresh defaults plus that account, the
@@ -3916,20 +3929,20 @@ impl Shell {
     }
 
     fn handle_categories_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_add_categories_dialog(None);
+        self.open_add_categories_dialog(None, cx);
         cx.notify();
     }
 
     fn handle_categories_add_sub_click(&mut self, parent_id: u32, cx: &mut Context<'_, Self>) {
         self.categories_selected_id = Some(parent_id);
-        self.open_add_categories_dialog(Some(parent_id));
+        self.open_add_categories_dialog(Some(parent_id), cx);
         cx.notify();
     }
 
     fn handle_categories_edit_click(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
         if self.categories.iter().any(|c| c.id == category_id) {
             self.categories_selected_id = Some(category_id);
-            self.open_edit_categories_dialog(category_id);
+            self.open_edit_categories_dialog(category_id, cx);
             cx.notify();
         }
     }
@@ -4040,7 +4053,11 @@ impl Shell {
     /// the Add/Save/Delete button or `Enter`): Add inserts the category and saves its Monthly
     /// budget; Edit renames, re-parents and saves the budget; Delete removes it and keeps the
     /// selection in range. The form has already validated.
-    fn apply_categories_dialog(&mut self, dialog: categories::form::CategoriesDialog) {
+    fn apply_categories_dialog(
+        &mut self,
+        dialog: categories::form::CategoriesDialog,
+        cx: &mut Context<'_, Self>,
+    ) {
         match dialog {
             categories::form::CategoriesDialog::Add { form, .. } => {
                 let category_type = form.category_type.clone().unwrap_or(CategoryTypes::Expense);
@@ -4051,7 +4068,7 @@ impl Shell {
                     form.parent_id,
                     category_type,
                 ) {
-                    self.save_category_budget(category_id, &form, false);
+                    self.save_category_budget(category_id, &form, false, cx);
                 }
             }
             categories::form::CategoriesDialog::Edit(id, form) => {
@@ -4062,15 +4079,19 @@ impl Shell {
                 );
                 // `None` moves it to top level when the parent was cleared.
                 let _ = categories::move_category(&mut self.categories, id, form.parent_id);
-                self.save_category_budget(id, &form, true);
+                self.save_category_budget(id, &form, true, cx);
             }
             categories::form::CategoriesDialog::Delete(category_id, _) => {
-                let (kind, text) = delete_category(
-                    &mut self.categories,
-                    &mut self.transactions,
-                    &mut self.budgets,
-                    category_id,
-                );
+                let (kind, text) = self.budgets_store.update(cx, |store, cx| {
+                    store.mutate(cx, |budgets| {
+                        delete_category(
+                            &mut self.categories,
+                            &mut self.transactions,
+                            budgets,
+                            category_id,
+                        )
+                    })
+                });
                 self.raise_toast(kind, text);
                 // Keep the selection in range
                 let tree_rows = categories::tree_rows(&self.categories, &self.categories_expanded);
