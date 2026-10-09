@@ -21,6 +21,10 @@
 //! Matching an entry to a Transaction Split, and everything that reads Accounts, Categories or
 //! Payees, stays with the Client that owns those records.
 
+pub mod bills;
+
+pub use bills::*;
+
 use chrono::{Datelike, Duration, Months, NaiveDate};
 use lib_core::Money;
 

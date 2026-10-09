@@ -11,10 +11,15 @@ doctest = false
 
 [dependencies]
 ## -- Internal Dependencies --
+lib_accounts = { path = "../lib-accounts" }
+lib_categories = { path = "../lib-categories" }
 lib_core = { path = "../lib-core" }
+lib_transactions = { path = "../lib-transactions" }
 
 ## -- Workspace Dependencies --
+bigdecimal = { workspace = true }
 chrono = { workspace = true }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true
