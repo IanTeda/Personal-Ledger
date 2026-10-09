@@ -257,7 +257,7 @@ impl Shell {
                         self.handle_categories_key(keystroke, cx)
                     }
                     ActiveView::Settings(SettingsSection::Payees) => {
-                        self.handle_payees_key(keystroke)
+                        self.handle_payees_key(keystroke, cx)
                     }
                     ActiveView::Settings(SettingsSection::Documents) => {
                         self.handle_settings_documents_key(keystroke, cx)
@@ -265,7 +265,9 @@ impl Shell {
                     ActiveView::Settings(SettingsSection::Inventory) => {
                         self.handle_settings_inventory_key(keystroke, cx)
                     }
-                    ActiveView::Settings(SettingsSection::Tags) => self.handle_tags_key(keystroke),
+                    ActiveView::Settings(SettingsSection::Tags) => {
+                        self.handle_tags_key(keystroke, cx)
+                    }
                     ActiveView::Settings(
                         SettingsSection::General
                         | SettingsSection::Display

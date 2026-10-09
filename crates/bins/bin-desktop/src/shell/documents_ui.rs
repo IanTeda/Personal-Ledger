@@ -174,7 +174,7 @@ impl Shell {
             plans: &self.bill_plans,
             types: self.document_types(cx),
             inventory: &self.inventory,
-            transactions: &self.transactions,
+            transactions: self.transactions(cx),
             today: self.today,
             date_style: self.settings_date_style,
         }
@@ -407,7 +407,7 @@ impl Shell {
             inbox_detail,
             inbox_strong: documents::strong_count(
                 self.documents(cx),
-                &self.transactions,
+                self.transactions(cx),
                 &self.payees,
             ),
             inbox_hints: inbox_hints(),
@@ -953,7 +953,7 @@ impl Shell {
                 let suggestion = documents::suggestion(
                     document,
                     self.documents(cx),
-                    &self.transactions,
+                    self.transactions(cx),
                     &self.payees,
                 );
                 if let Some(best) = suggestion.best() {
@@ -1056,7 +1056,7 @@ impl Shell {
         let suggestion = documents::suggestion(
             document,
             self.documents(cx),
-            &self.transactions,
+            self.transactions(cx),
             &self.payees,
         );
         match suggestion.best() {
@@ -1068,11 +1068,13 @@ impl Shell {
     /// Files `id` under `transaction_id`, remembers it for `u` and moves focus to the next row.
     pub(super) fn documents_accept(&mut self, id: u32, transaction_id: u32, cx: &mut gpui::App) {
         let before = self.documents_before_filing(id, cx);
+        // Copied out so the Documents can be written while the Transactions are read.
+        let transactions = self.transactions(cx).to_vec();
         let Ok(entry) = self.mutate_documents(cx, |data| {
             documents::accept(
                 &data.types,
                 &mut data.documents,
-                &self.transactions,
+                &transactions,
                 id,
                 transaction_id,
             )
@@ -1191,7 +1193,8 @@ impl Shell {
 
     /// `Y`, **Accept all strong matches** and `:documents accept-all`: asks first, with the count.
     pub(super) fn open_documents_accept_all(&mut self, cx: &gpui::App) {
-        let count = documents::strong_count(self.documents(cx), &self.transactions, &self.payees);
+        let count =
+            documents::strong_count(self.documents(cx), self.transactions(cx), &self.payees);
         if count == 0 {
             self.chrome.status_message = Some(crate::msg::desktop_documents_status_no_strong());
             return;
@@ -1203,11 +1206,13 @@ impl Shell {
         let focus = self
             .documents_selected_document(cx)
             .map(|document| document.id);
+        // Copied out so the Documents can be written while the Transactions are read.
+        let transactions = self.transactions(cx).to_vec();
         let batch = self.mutate_documents(cx, |data| {
             documents::accept_all_strong(
                 &data.types,
                 &mut data.documents,
-                &self.transactions,
+                &transactions,
                 &self.payees,
                 focus,
             )

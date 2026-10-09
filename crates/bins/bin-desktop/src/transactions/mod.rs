@@ -29,6 +29,9 @@ use chrono::{Duration, NaiveDate};
 use lib_core::{Money, TransactionStatus};
 
 pub use lib_transactions::{Split, Transaction, takes_transactions};
+pub use store::{TransactionsStore, edit_transactions};
+
+pub mod store;
 
 use crate::{
     accounts::Account,

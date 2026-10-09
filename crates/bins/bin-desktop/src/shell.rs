@@ -113,8 +113,9 @@ use crate::{
     tags::{self, Tag},
     theme::colours::ColourChange,
     transactions::{
-        self, Transaction,
+        self, Transaction, TransactionsStore,
         chips::FilterField,
+        edit_transactions,
         filter_form::{FilterForm, FormField, FormOptions, SelectKey as FilterSelectKey},
         query::{Ledger, TransactionFilters},
         rows::DisplayPrefs,
@@ -274,10 +275,10 @@ pub struct Shell {
     tags_selected: usize,
     /// The selected row on Settings' Tags page, by Tag id: that page lists A–Z, not by usage.
     settings_tags_selected: Option<u32>,
-    /// The Transactions view's stub dataset, newest first (`transactions::default_transactions`).
-    /// A real, mutable `Vec`, like [`Self::accounts`]: saved-in-memory state that survives leaving
-    /// and re-entering the page. Deleting an account deletes its transactions with it.
-    transactions: Vec<Transaction>,
+    /// The Transactions, owned by their store Entity and read through it (ADR-0032). Seeded from
+    /// `transactions::default_transactions`; saved-in-memory state that survives leaving and
+    /// re-entering the page. Deleting an account deletes its transactions with it.
+    transactions_store: Entity<TransactionsStore>,
     /// The Bills surface's stub Bill Plans and Bill Schedule, seeded by `bills::default_bills`
     /// (which also writes their settling Transactions into [`Self::transactions`]).
     bill_plans: Vec<bills::BillPlan>,
@@ -369,6 +370,7 @@ impl Shell {
             &mut transactions,
             today,
         );
+        let transactions_store = cx.new(|_| TransactionsStore::new(transactions));
         let seeded_budgets = budgets::default_budgets(&seeded_accounts, &categories, today);
         let budgets_current = seeded_budgets
             .default_budget()
@@ -447,7 +449,7 @@ impl Shell {
             tags,
             tags_selected: 0,
             settings_tags_selected: None,
-            transactions,
+            transactions_store,
             bill_plans: bills_seed.plans,
             bill_entries: bills_seed.entries,
             bills_tab: bills::BillsTab::default(),
@@ -935,6 +937,11 @@ impl Shell {
             .set_offset(point(offset.x, px(clamped_y)));
     }
 
+    /// The Transactions, read through their store (ADR-0032).
+    fn transactions<'a>(&self, cx: &'a App) -> &'a [Transaction] {
+        self.transactions_store.read(cx).transactions()
+    }
+
     /// The reference data the Transactions engine reads, borrowed from the shared stubs.
     fn transactions_ledger<'a>(&'a self, cx: &'a App) -> Ledger<'a> {
         Ledger {
@@ -957,7 +964,7 @@ impl Shell {
     fn transactions_visible_len(&self, cx: &App) -> usize {
         transactions::query::query(
             &self.transactions_ledger(cx),
-            &self.transactions,
+            self.transactions(cx),
             &self.transactions_filters,
             &self.transactions_search,
         )
@@ -1955,20 +1962,20 @@ impl Shell {
     }
 
     /// The selected Tag: `tags_selected` indexes the page's usage order, not `self.tags`.
-    fn selected_tag_id(&self) -> Option<u32> {
+    fn selected_tag_id(&self, cx: &App) -> Option<u32> {
         if self.settings_tags_page_has_focus() {
             return self.settings_tags_selected_id();
         }
-        let sorted = tags::sorted_by_usage(&self.tags, &self.transactions);
+        let sorted = tags::sorted_by_usage(&self.tags, self.transactions(cx));
         sorted
             .get(self.tags_selected.min(sorted.len().saturating_sub(1)))
             .map(|tag| tag.id)
     }
 
     /// Selects the Tag with `id`, if it still exists.
-    fn select_tag(&mut self, id: u32) {
+    fn select_tag(&mut self, id: u32, cx: &App) {
         self.settings_tags_selected = Some(id);
-        if let Some(index) = tags::sorted_by_usage(&self.tags, &self.transactions)
+        if let Some(index) = tags::sorted_by_usage(&self.tags, self.transactions(cx))
             .iter()
             .position(|tag| tag.id == id)
         {
@@ -1978,7 +1985,7 @@ impl Shell {
 
     /// The Tags page's own `n`/`e`/`x`/`m` (only while it is the active noun and the view has
     /// focus, in `Normal` mode).
-    fn handle_tags_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_tags_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if !self.settings_tags_page_has_focus() {
             return false;
         }
@@ -1989,18 +1996,18 @@ impl Shell {
         match keystroke.key.as_str() {
             "n" => self.open_add_tag_dialog(),
             "e" => {
-                if let Some(id) = self.selected_tag_id() {
+                if let Some(id) = self.selected_tag_id(cx) {
                     self.open_edit_tag_dialog(id);
                 }
             }
             "x" => {
-                if let Some(id) = self.selected_tag_id() {
-                    self.open_remove_tag_dialog(id);
+                if let Some(id) = self.selected_tag_id(cx) {
+                    self.open_remove_tag_dialog(id, cx);
                 }
             }
             "m" => {
-                if let Some(id) = self.selected_tag_id() {
-                    self.open_merge_tags_dialog(Some(id));
+                if let Some(id) = self.selected_tag_id(cx) {
+                    self.open_merge_tags_dialog(Some(id), cx);
                 }
             }
             _ => return false,
@@ -2593,12 +2600,12 @@ impl Shell {
         let candidates = bills::match_candidates(
             &self.bill_plans,
             &self.bill_entries,
-            &self.transactions,
+            self.transactions(cx),
             self.accounts.read(cx).accounts(),
             &self.categories,
             row.id,
         );
-        let preselected = bills::preselected_candidate(plan, &candidates, &self.transactions);
+        let preselected = bills::preselected_candidate(plan, &candidates, self.transactions(cx));
         let form = PayForm::new(
             row.id,
             plan,
@@ -2626,19 +2633,23 @@ impl Shell {
             return;
         };
         let result = match action {
-            bills::pay_form::PayAction::Pay { amount, date } => bills::pay(
-                &self.bill_plans,
-                &mut self.bill_entries,
-                &mut self.transactions,
-                entry,
-                &amount,
-                date,
-            )
-            .map(|_| ()),
+            bills::pay_form::PayAction::Pay { amount, date } => {
+                edit_transactions(&self.transactions_store, cx, |transactions| {
+                    bills::pay(
+                        &self.bill_plans,
+                        &mut self.bill_entries,
+                        transactions,
+                        entry,
+                        &amount,
+                        date,
+                    )
+                    .map(|_| ())
+                })
+            }
             bills::pay_form::PayAction::Match(split) => bills::match_split(
                 &self.bill_plans,
                 &mut self.bill_entries,
-                &self.transactions,
+                self.transactions_store.read(cx).transactions(),
                 self.accounts.read(cx).accounts(),
                 &self.categories,
                 entry,
@@ -2769,7 +2780,7 @@ impl Shell {
             .iter()
             .filter_map(|split_ref| {
                 let transaction = self
-                    .transactions
+                    .transactions(cx)
                     .iter()
                     .find(|t| t.id == split_ref.transaction_id)?;
                 let split = transaction.splits.get(split_ref.split_index)?;
@@ -2882,7 +2893,7 @@ impl Shell {
     /// when it falls outside this year's. A no-op when the Transaction has gone.
     fn open_transaction_row(&mut self, transaction_id: u32, cx: &mut Context<'_, Self>) {
         let Some(date) = self
-            .transactions
+            .transactions(cx)
             .iter()
             .find(|t| t.id == transaction_id)
             .map(|t| t.date)
@@ -2897,7 +2908,7 @@ impl Shell {
         self.transactions_filter_form = None;
         let index = transactions::query::query(
             &self.transactions_ledger(cx),
-            &self.transactions,
+            self.transactions(cx),
             &self.transactions_filters,
             &self.transactions_search,
         )
@@ -2991,7 +3002,7 @@ impl Shell {
 
     /// Applies a confirmed Tags dialog (`Enter` and the confirm button): adds or saves the Tag
     /// and selects it, removes it, or merges it into another, toasting the last two.
-    fn apply_tags_dialog(&mut self, dialog: tags::form::TagsDialog) {
+    fn apply_tags_dialog(&mut self, dialog: tags::form::TagsDialog, cx: &mut Context<'_, Self>) {
         match dialog {
             tags::form::TagsDialog::Add(form) => {
                 let Some(draft) = form.draft() else {
@@ -2999,7 +3010,7 @@ impl Shell {
                 };
                 // `is_valid` ran the same name check, so a refusal can only leave the dialog open.
                 match tags::insert_tag(&mut self.tags, &draft) {
-                    Ok(id) => self.select_tag(id),
+                    Ok(id) => self.select_tag(id, cx),
                     Err(_) => self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Add(form))),
                 }
             }
@@ -3010,16 +3021,16 @@ impl Shell {
                 let saved = tags::edit_tag(&mut self.tags, id, &draft)
                     .and_then(|()| tags::set_active(&mut self.tags, id, form.is_active));
                 match saved {
-                    Ok(()) => self.select_tag(id),
+                    Ok(()) => self.select_tag(id, cx),
                     Err(_) => {
                         self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Edit(id, form)))
                     }
                 }
             }
-            tags::form::TagsDialog::Remove(id, _) => self.apply_remove_tag(id),
+            tags::form::TagsDialog::Remove(id, _) => self.apply_remove_tag(id, cx),
             tags::form::TagsDialog::Merge(form) => {
                 if let Some((source, target)) = form.pair() {
-                    self.apply_merge_tags(source, target);
+                    self.apply_merge_tags(source, target, cx);
                 }
             }
         }
@@ -3069,24 +3080,27 @@ impl Shell {
         self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Edit(id, form)));
     }
 
-    fn open_remove_tag_dialog(&mut self, id: u32) {
+    fn open_remove_tag_dialog(&mut self, id: u32, cx: &App) {
         let Some(tag) = tags::get(&self.tags, id) else {
             return;
         };
         let form = tags::form::RemoveTagForm::new(
             &tag.name,
-            tags::transaction_count(&self.transactions, id),
+            tags::transaction_count(self.transactions(cx), id),
         );
         self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Remove(id, form)));
     }
 
     /// Untags every Split, deletes the Tag and toasts it. The selection keeps its position, so it
     /// lands on the next Tag in usage order (or the new last one).
-    fn apply_remove_tag(&mut self, id: u32) {
+    fn apply_remove_tag(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         let Some(name) = tags::get(&self.tags, id).map(|tag| tag.name.clone()) else {
             return;
         };
-        let (kind, text) = match tags::remove_tag(&mut self.tags, &mut self.transactions, id) {
+        let removed = edit_transactions(&self.transactions_store, cx, |transactions| {
+            tags::remove_tag(&mut self.tags, transactions, id)
+        });
+        let (kind, text) = match removed {
             Ok(()) => (
                 ToastKind::Success,
                 lib_locale::msg::toast_tag_deleted(&name),
@@ -3104,8 +3118,8 @@ impl Shell {
     }
 
     /// The 7e selects' options, labelled `Shared (9 txns)`.
-    fn merge_tag_options(&self) -> Vec<tags::form::MergeOption> {
-        tags::form::merge_options(&self.tags, &self.transactions, |name, count| {
+    fn merge_tag_options(&self, cx: &App) -> Vec<tags::form::MergeOption> {
+        tags::form::merge_options(&self.tags, self.transactions(cx), |name, count| {
             crate::msg::desktop_tags_merge_option(name, i64::try_from(count).unwrap_or(i64::MAX))
         })
     }
@@ -3113,43 +3127,44 @@ impl Shell {
     /// Opens 7e with `source` as the source Tag and, when it is flagged as a likely duplicate, its
     /// suggested target (#354). `None` (the palette's `tags merge`, or the subline link with
     /// nothing flagged) leaves both selects empty.
-    fn open_merge_tags_dialog(&mut self, source: Option<u32>) {
-        let groups = tags::duplicate_groups(&self.tags, &self.transactions);
+    fn open_merge_tags_dialog(&mut self, source: Option<u32>, cx: &App) {
+        let groups = tags::duplicate_groups(&self.tags, self.transactions(cx));
         let target = source.and_then(|id| tags::duplicate_of(&groups, id));
-        let form = tags::form::MergeTagsForm::new(self.merge_tag_options(), source, target);
+        let form = tags::form::MergeTagsForm::new(self.merge_tag_options(cx), source, target);
         self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Merge(form)));
     }
 
     /// Retags the source's Splits with the target, deletes the source, toasts it and selects the
     /// target.
-    fn apply_merge_tags(&mut self, source: u32, target: u32) {
+    fn apply_merge_tags(&mut self, source: u32, target: u32, cx: &mut Context<'_, Self>) {
         let (Some(source_name), Some(target_name)) = (
             tags::get(&self.tags, source).map(|tag| tag.name.clone()),
             tags::get(&self.tags, target).map(|tag| tag.name.clone()),
         ) else {
             return;
         };
-        let transactions = tags::transaction_count(&self.transactions, source);
-        let (kind, text) =
-            match tags::merge_tags(&mut self.tags, &mut self.transactions, source, target) {
-                Ok(()) => (
-                    ToastKind::Success,
-                    lib_locale::msg::toast_tag_merged(
-                        &source_name,
-                        &target_name,
-                        i64::try_from(transactions).unwrap_or(i64::MAX),
-                    ),
+        let transactions = tags::transaction_count(self.transactions(cx), source);
+        let (kind, text) = match edit_transactions(&self.transactions_store, cx, |transactions| {
+            tags::merge_tags(&mut self.tags, transactions, source, target)
+        }) {
+            Ok(()) => (
+                ToastKind::Success,
+                lib_locale::msg::toast_tag_merged(
+                    &source_name,
+                    &target_name,
+                    i64::try_from(transactions).unwrap_or(i64::MAX),
                 ),
-                Err(error) => (
-                    ToastKind::Error,
-                    lib_locale::msg::toast_save_failed(
-                        &lib_locale::msg::toast_entity_tag(),
-                        &error.to_string(),
-                    ),
+            ),
+            Err(error) => (
+                ToastKind::Error,
+                lib_locale::msg::toast_save_failed(
+                    &lib_locale::msg::toast_entity_tag(),
+                    &error.to_string(),
                 ),
-            };
+            ),
+        };
         self.raise_toast(kind, text);
-        self.select_tag(target);
+        self.select_tag(target, cx);
     }
 
     fn handle_merge_tags_field_click(
@@ -3182,26 +3197,26 @@ impl Shell {
 
     /// A click on a row of Settings' Tags list: selects it and moves focus into the page.
     fn handle_settings_tags_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_tag(id);
+        self.select_tag(id, cx);
         self.focus_settings_page();
         cx.notify();
     }
 
     fn handle_tags_duplicate_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_tag(id);
-        self.open_merge_tags_dialog(Some(id));
+        self.select_tag(id, cx);
+        self.open_merge_tags_dialog(Some(id), cx);
         cx.notify();
     }
 
     fn handle_tags_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_tag(id);
+        self.select_tag(id, cx);
         self.open_edit_tag_dialog(id);
         cx.notify();
     }
 
     fn handle_tags_remove_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_tag(id);
-        self.open_remove_tag_dialog(id);
+        self.select_tag(id, cx);
+        self.open_remove_tag_dialog(id, cx);
         cx.notify();
     }
 
@@ -3227,7 +3242,7 @@ impl Shell {
 
     /// The Payees page's own `n`/`e`/`d` (only while it is the active noun and the view has focus,
     /// in `Normal` mode): the Add, Edit and Delete dialogs.
-    fn handle_payees_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_payees_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if !self.settings_payees_page_has_focus() {
             return false;
         }
@@ -3244,7 +3259,7 @@ impl Shell {
             }
             "d" => {
                 if let Some(id) = self.selected_payee_id() {
-                    self.open_delete_payee_dialog(id);
+                    self.open_delete_payee_dialog(id, cx);
                 }
             }
             _ => return false,
@@ -3343,13 +3358,16 @@ impl Shell {
         let Some(state) = self.import.as_ref() else {
             return;
         };
-        match import::commit(
-            &state.rows,
-            state.remember,
-            import::EVERYDAY_ACCOUNT_ID,
-            &mut self.payees,
-            &mut self.transactions,
-        ) {
+        let committed = edit_transactions(&self.transactions_store, cx, |transactions| {
+            import::commit(
+                &state.rows,
+                state.remember,
+                import::EVERYDAY_ACCOUNT_ID,
+                &mut self.payees,
+                transactions,
+            )
+        });
+        match committed {
             Ok(committed) => {
                 let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);
                 self.accounts.update(cx, |store, cx| {
@@ -3461,7 +3479,11 @@ impl Shell {
     /// **Add payee** / **Save** / **Delete** buttons or `Enter`). Add and Edit store the Payee and
     /// select it; a refused submit reopens the dialog with the error shown. Delete applies its
     /// [`payees::form::DeleteAction`], toasts the outcome and keeps the selection in range.
-    fn apply_payees_dialog(&mut self, dialog: payees::form::PayeesDialog) {
+    fn apply_payees_dialog(
+        &mut self,
+        dialog: payees::form::PayeesDialog,
+        cx: &mut Context<'_, Self>,
+    ) {
         match dialog {
             payees::form::PayeesDialog::Delete(id, form) => {
                 let Some(name) = payees::get(&self.payees, id).map(|p| p.name.clone()) else {
@@ -3470,7 +3492,7 @@ impl Shell {
                 let action = form.action();
                 let (kind, text) = match payees::apply_delete_action(
                     &mut self.payees,
-                    &self.transactions,
+                    self.transactions_store.read(cx).transactions(),
                     id,
                     action,
                 ) {
@@ -3591,11 +3613,11 @@ impl Shell {
 
     /// Opens the Delete dialog on Payee `id`, copying its name and action in so the form validates
     /// without `Shell`. A no-op if the Payee is gone.
-    fn open_delete_payee_dialog(&mut self, id: u32) {
+    fn open_delete_payee_dialog(&mut self, id: u32, cx: &App) {
         let Some(payee) = payees::get(&self.payees, id) else {
             return;
         };
-        let action = payees::form::DeleteAction::for_payee(payee, &self.transactions);
+        let action = payees::form::DeleteAction::for_payee(payee, self.transactions(cx));
         let form = payees::form::DeletePayeeForm::new(payee, action);
         self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Delete(
             id, form,
@@ -3728,7 +3750,7 @@ impl Shell {
 
     fn handle_payees_delete_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_payee(id);
-        self.open_delete_payee_dialog(id);
+        self.open_delete_payee_dialog(id, cx);
         cx.notify();
     }
 
@@ -3861,10 +3883,13 @@ impl Shell {
                 })
             }),
             AccountsDialog::Delete(id, _) => {
+                let removed = edit_transactions(&self.transactions_store, cx, |transactions| {
+                    let before = transactions.len();
+                    transactions.retain(|transaction| transaction.account_id != id);
+                    before - transactions.len()
+                });
                 let (kind, text) = self.accounts.update(cx, |store, cx| {
-                    store.mutate(cx, |service| {
-                        delete_account(service, &mut self.transactions, id)
-                    })
+                    store.mutate(cx, |service| delete_account(service, removed, id))
                 });
                 self.raise_toast(kind, text);
                 // Keep the selection in range, so it lands on the account that slid into the
@@ -4076,16 +4101,26 @@ impl Shell {
                 self.save_category_budget(id, &form, true, cx);
             }
             categories::form::CategoriesDialog::Delete(category_id, _) => {
-                let (kind, text) = self.budgets_store.update(cx, |store, cx| {
-                    store.mutate(cx, |budgets| {
-                        delete_category(
-                            &mut self.categories,
-                            &mut self.transactions,
-                            budgets,
-                            category_id,
-                        )
-                    })
-                });
+                let (kind, text) = match prepare_category_delete(&mut self.categories, category_id)
+                {
+                    Err(refusal) => refusal,
+                    Ok(uncategorised_id) => {
+                        let moved =
+                            edit_transactions(&self.transactions_store, cx, |transactions| {
+                                move_category_splits(transactions, category_id, uncategorised_id)
+                            });
+                        self.budgets_store.update(cx, |store, cx| {
+                            store.mutate(cx, |budgets| {
+                                finish_category_delete(
+                                    &mut self.categories,
+                                    budgets,
+                                    category_id,
+                                    moved,
+                                )
+                            })
+                        })
+                    }
+                };
                 self.raise_toast(kind, text);
                 // Keep the selection in range
                 let tree_rows = categories::tree_rows(&self.categories, &self.categories_expanded);
@@ -4521,7 +4556,7 @@ impl Focusable for Shell {
 /// returning the Success Toast that counts them.
 fn delete_account(
     accounts: &mut AccountService,
-    transactions: &mut Vec<Transaction>,
+    deleted_transactions: usize,
     id: u32,
 ) -> (ToastKind, String) {
     let name = accounts
@@ -4529,57 +4564,78 @@ fn delete_account(
         .map(|account| account.name.clone())
         .unwrap_or_default();
     accounts.remove(id);
-    let before = transactions.len();
-    transactions.retain(|transaction| transaction.account_id != id);
-    let deleted = i64::try_from(before - transactions.len()).unwrap_or(i64::MAX);
+    let deleted = i64::try_from(deleted_transactions).unwrap_or(i64::MAX);
     (
         ToastKind::Success,
         lib_locale::msg::toast_account_deleted(&name, deleted),
     )
 }
 
-/// Deletes category `id`, re-pointing its splits to Uncategorised and dropping its budget,
-/// and returns the Toast: Success counting the moved splits, or the `toast-save-failed` Error
-/// if the store refuses (the dialog only opens on a leaf, so that means the tree changed
-/// underneath it). Nothing is touched on a refusal.
-fn delete_category(
+/// The refusal Toast for a category delete that the store will not make.
+fn category_refused(error: categories::CategoryError) -> (ToastKind, String) {
+    (
+        ToastKind::Error,
+        lib_locale::msg::toast_save_failed(
+            &lib_locale::msg::toast_entity_category(),
+            &error.to_string(),
+        ),
+    )
+}
+
+/// The checks a category delete makes before it moves any Splits: the Category must exist and be a
+/// leaf. Returns the Uncategorised Category its Splits move to, or the refusal Toast. The store's
+/// own refusal can still come after the Splits have moved, as it did before this split.
+fn prepare_category_delete(
     categories: &mut Vec<Category>,
-    transactions: &mut [Transaction],
-    budgets: &mut budgets::Budgets,
     id: u32,
-) -> (ToastKind, String) {
-    let refused = |error: categories::CategoryError| {
-        (
-            ToastKind::Error,
-            lib_locale::msg::toast_save_failed(
-                &lib_locale::msg::toast_entity_category(),
-                &error.to_string(),
-            ),
-        )
-    };
+) -> Result<u32, (ToastKind, String)> {
     let Some(category) = categories.iter().find(|c| c.id == id) else {
-        return refused(categories::CategoryError::NotFound);
+        return Err(category_refused(categories::CategoryError::NotFound));
     };
     if !categories::is_leaf(categories, id) {
-        return refused(categories::CategoryError::NonLeafDeletion);
+        return Err(category_refused(categories::CategoryError::NonLeafDeletion));
     }
-    let name = category.name.clone();
     let category_type = category.category_type.clone();
-    let uncategorised_id = categories::get_or_create_uncategorised(categories, category_type);
+    Ok(categories::get_or_create_uncategorised(
+        categories,
+        category_type,
+    ))
+}
+
+/// Re-points every Split on category `from` to `to`, returning how many moved. Runs on the
+/// Transactions store, so it borrows no Category or Budget state.
+fn move_category_splits(transactions: &mut [Transaction], from: u32, to: u32) -> i64 {
     let mut moved = 0_i64;
     for split in transactions.iter_mut().flat_map(|t| t.splits.iter_mut()) {
-        if split.category_id == id {
-            split.category_id = uncategorised_id;
+        if split.category_id == from {
+            split.category_id = to;
             moved += 1;
         }
     }
+    moved
+}
+
+/// Drops category `id`'s budget and the Category itself, and returns the Toast counting the
+/// `moved` Splits: Success, or the `toast-save-failed` Error if the store refuses (the dialog
+/// only opens on a leaf, so that means the tree changed underneath it).
+fn finish_category_delete(
+    categories: &mut Vec<Category>,
+    budgets: &mut budgets::Budgets,
+    id: u32,
+    moved: i64,
+) -> (ToastKind, String) {
+    let name = categories
+        .iter()
+        .find(|c| c.id == id)
+        .map(|c| c.name.clone())
+        .unwrap_or_default();
     budgets.remove_category(id);
     match categories::delete_category(categories, id) {
         Ok(()) => (
             ToastKind::Success,
             lib_locale::msg::toast_category_deleted(&name, moved),
         ),
-        Err(error) => refused(error),
+        Err(error) => category_refused(error),
     }
 }
 
@@ -4600,6 +4656,23 @@ mod tests {
             Local::now().date_naive(),
         );
         (accounts, categories, transactions)
+    }
+
+    /// The category delete the Shell runs, in its order: check, re-point the Splits, then drop the
+    /// budget and the Category.
+    fn delete_category(
+        categories: &mut Vec<Category>,
+        transactions: &mut [Transaction],
+        budgets: &mut budgets::Budgets,
+        id: u32,
+    ) -> (ToastKind, String) {
+        match prepare_category_delete(categories, id) {
+            Err(refusal) => refusal,
+            Ok(uncategorised) => {
+                let moved = move_category_splits(transactions, id, uncategorised);
+                finish_category_delete(categories, budgets, id, moved)
+            }
+        }
     }
 
     #[test]
@@ -4632,7 +4705,9 @@ mod tests {
             .iter()
             .filter(|t| t.account_id == account.id)
             .count();
-        let (kind, text) = delete_account(&mut accounts, &mut transactions, account.id);
+        let before = transactions.len();
+        transactions.retain(|t| t.account_id != account.id);
+        let (kind, text) = delete_account(&mut accounts, before - transactions.len(), account.id);
         assert_eq!(kind, ToastKind::Success);
         assert_eq!(
             text,

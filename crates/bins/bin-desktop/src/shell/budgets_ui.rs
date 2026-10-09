@@ -259,7 +259,7 @@ impl Shell {
         budgets::Ledger {
             categories: &self.categories,
             accounts: self.accounts.read(cx).accounts(),
-            transactions: &self.transactions,
+            transactions: self.transactions(cx),
             plans: &self.bill_plans,
             entries: &self.bill_entries,
         }
@@ -769,7 +769,7 @@ impl Shell {
         let ledger = budgets::Ledger {
             categories: &self.categories,
             accounts: self.accounts.read(cx).accounts(),
-            transactions: &self.transactions,
+            transactions: self.transactions(cx),
             plans: &self.bill_plans,
             entries: &self.bill_entries,
         };
@@ -1052,14 +1052,15 @@ impl Shell {
         let Some(draft) = form.draft() else {
             return;
         };
-        // Copied out so the store can be written while the Accounts are read.
+        // Copied out so the store can be written while the Accounts and Transactions are read.
         let accounts = self.accounts.read(cx).accounts().to_vec();
+        let transactions = self.transactions(cx).to_vec();
         let saved = match draft {
             budgets::form::BudgetDraft::Create(new) => {
                 let ledger = budgets::Ledger {
                     categories: &self.categories,
                     accounts: &accounts,
-                    transactions: &self.transactions,
+                    transactions: &transactions,
                     plans: &self.bill_plans,
                     entries: &self.bill_entries,
                 };
@@ -1458,12 +1459,13 @@ impl Shell {
         source: budgets::FillSource,
         cx: &mut Context<'_, Self>,
     ) {
-        // Copied out so the store can be written while the Accounts are read.
+        // Copied out so the store can be written while the Accounts and Transactions are read.
         let accounts = self.accounts.read(cx).accounts().to_vec();
+        let transactions = self.transactions(cx).to_vec();
         let ledger = budgets::Ledger {
             categories: &self.categories,
             accounts: &accounts,
-            transactions: &self.transactions,
+            transactions: &transactions,
             plans: &self.bill_plans,
             entries: &self.bill_entries,
         };

@@ -710,7 +710,7 @@ impl Render for Shell {
                 on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
             }
         };
-        let tag_groups = tags::duplicate_groups(&self.tags, &self.transactions);
+        let tag_groups = tags::duplicate_groups(&self.tags, self.transactions(cx));
         let settings_tags_page = settings_view::tags::TagsPageProps {
             tags: &self.tags,
             selected: self.settings_tags_selected_id(),
@@ -729,7 +729,7 @@ impl Render for Shell {
             &bills_rows,
             &self.bill_plans,
             &self.bill_entries,
-            &self.transactions,
+            self.transactions(cx),
         );
         let bills_planner_plans = bills::planner_order(&self.bill_plans);
         let bills_base_unit = self
@@ -775,7 +775,7 @@ impl Render for Shell {
                 .filter_map(|id| {
                     let entry = bills::entry(&self.bill_entries, id)?;
                     let plan = bills::get(&self.bill_plans, id.plan_id)?;
-                    let amount = bills::amount(entry, &self.bill_plans, &self.transactions)?;
+                    let amount = bills::amount(entry, &self.bill_plans, self.transactions(cx))?;
                     Some(dashboard::AttentionBill {
                         id,
                         plan: plan.name.clone(),
@@ -835,7 +835,7 @@ impl Render for Shell {
                                 plan,
                                 &self.bill_plans,
                                 &self.bill_entries,
-                                &self.transactions,
+                                self.transactions(cx),
                                 self.today,
                             );
                             (plan, stats)
@@ -863,7 +863,7 @@ impl Render for Shell {
                 plans: &self.bill_plans,
                 entries: &self.bill_entries,
                 accounts: self.accounts.read(cx).accounts(),
-                transactions: &self.transactions,
+                transactions: self.transactions(cx),
                 base_unit: bills_base_unit,
                 glyphs: self.settings_status_glyphs,
                 selected: (!bills_rows.is_empty())
@@ -1206,7 +1206,7 @@ impl Render for Shell {
             let ledger = self.transactions_ledger(cx);
             let visible = transactions::query::query(
                 &ledger,
-                &self.transactions,
+                self.transactions(cx),
                 &self.transactions_filters,
                 &self.transactions_search,
             );
@@ -1222,7 +1222,7 @@ impl Render for Shell {
             transactions_view::TransactionsPageProps {
                 dimmed: self.transactions_filter_form.is_some(),
                 header: transactions_view::HeaderProps {
-                    count_line: transactions::chips::count_line(&self.transactions),
+                    count_line: transactions::chips::count_line(self.transactions(cx)),
                     chips,
                     show_clear: !self.transactions_filters.is_default(self.today),
                     search: self.transactions_search.clone(),
@@ -1529,7 +1529,7 @@ impl Render for Shell {
                             payees_view::add_dialog::PayeeDialogMode::Edit {
                                 name: &payee.name,
                                 splits: payees::usage(
-                                    &self.transactions,
+                                    self.transactions(cx),
                                     self.accounts.read(cx).accounts(),
                                     None,
                                     *id,
@@ -1552,7 +1552,7 @@ impl Render for Shell {
                                 action,
                                 form,
                                 splits: payees::usage(
-                                    &self.transactions,
+                                    self.transactions(cx),
                                     self.accounts.read(cx).accounts(),
                                     None,
                                     *id,
@@ -1585,7 +1585,7 @@ impl Render for Shell {
                                 form,
                                 name_error: form.name_error(),
                                 valid: form.is_valid(),
-                                transactions: tags::transaction_count(&self.transactions, *id),
+                                transactions: tags::transaction_count(self.transactions(cx), *id),
                                 on_toggle_active: tag_plain(
                                     Shell::handle_tags_dialog_toggle_active,
                                 ),
@@ -1601,7 +1601,7 @@ impl Render for Shell {
                             tags_view::remove_dialog::RemoveTagProps {
                                 tag,
                                 form,
-                                transactions: tags::transaction_count(&self.transactions, *id),
+                                transactions: tags::transaction_count(self.transactions(cx), *id),
                                 on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
                                 on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
                             },
@@ -1632,7 +1632,7 @@ impl Render for Shell {
                             source: source.and_then(|id| tags::get(&self.tags, id)),
                             target: form.target_id().and_then(|id| tags::get(&self.tags, id)),
                             transactions: source
-                                .map_or(0, |id| tags::transaction_count(&self.transactions, id)),
+                                .map_or(0, |id| tags::transaction_count(self.transactions(cx), id)),
                             on_field_click,
                             on_option_click,
                             on_cancel: tag_plain(Shell::handle_tags_dialog_cancel),
@@ -1709,7 +1709,7 @@ impl Render for Shell {
                         categories::descendants_inclusive(&self.categories, *category_id)
                             .iter()
                             .flat_map(|cat_id| {
-                                self.transactions.iter().flat_map(move |t| {
+                                self.transactions(cx).iter().flat_map(move |t| {
                                     t.splits.iter().filter(move |s| s.category_id == *cat_id)
                                 })
                             })
@@ -1747,7 +1747,7 @@ impl Render for Shell {
                             categories::descendants_inclusive(&self.categories, *category_id)
                                 .iter()
                                 .flat_map(|cat_id| {
-                                    self.transactions.iter().flat_map(move |t| {
+                                    self.transactions(cx).iter().flat_map(move |t| {
                                         t.splits.iter().filter(move |s| s.category_id == *cat_id)
                                     })
                                 })

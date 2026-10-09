@@ -96,7 +96,7 @@ impl Shell {
                 },
                 right: settings_view::tags::scope_text(
                     &self.tags,
-                    &tags::duplicate_groups(&self.tags, &self.transactions),
+                    &tags::duplicate_groups(&self.tags, self.transactions(cx)),
                 ),
             }),
             ActiveView::Settings(_) if self.settings_payees_page_has_focus() => Some(PageStatus {

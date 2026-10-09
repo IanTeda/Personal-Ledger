@@ -43,7 +43,7 @@ impl Shell {
         let ledger = self.transactions_ledger(cx);
         let visible = transactions::query::query(
             &ledger,
-            &self.transactions,
+            self.transactions(cx),
             &self.transactions_filters,
             &self.transactions_search,
         );
