@@ -325,6 +325,38 @@ pub fn supersede_from(entries: &mut [BillScheduleEntry], plan_id: u32, today: Na
     }
 }
 
+/// The Bill Plans and their Bill Schedule, held together because every write to one can touch
+/// the other (an edit supersedes entries, a new Plan populates them). Mutations go through
+/// [`BillService::edit`] so every write is one closure a store can notify around.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct BillService {
+    plans: Vec<BillPlan>,
+    entries: Vec<BillScheduleEntry>,
+}
+
+impl BillService {
+    pub fn from_rows(plans: Vec<BillPlan>, entries: Vec<BillScheduleEntry>) -> Self {
+        Self { plans, entries }
+    }
+
+    pub fn plans(&self) -> &[BillPlan] {
+        &self.plans
+    }
+
+    pub fn entries(&self) -> &[BillScheduleEntry] {
+        &self.entries
+    }
+
+    /// Edits the Plans and entries in one closure, so a caller can make a multi-step change (an
+    /// insert that populates, a pay that settles) without a second borrow.
+    pub fn edit<R>(
+        &mut self,
+        change: impl FnOnce(&mut Vec<BillPlan>, &mut Vec<BillScheduleEntry>) -> R,
+    ) -> R {
+        change(&mut self.plans, &mut self.entries)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,6 +376,18 @@ mod tests {
             resolution: Resolution::Unresolved,
             superseded: false,
         }
+    }
+
+    #[test]
+    fn service_edit_changes_plans_and_entries_together() {
+        let mut service = BillService::from_rows(Vec::new(), vec![open(date(2026, 9, 20))]);
+        let superseded = service.edit(|_plans, entries| {
+            supersede_from(entries, 1, today());
+            entries.iter().filter(|e| e.superseded).count()
+        });
+        assert_eq!(superseded, 1);
+        assert!(service.plans().is_empty());
+        assert!(service.entries()[0].superseded);
     }
 
     #[test]

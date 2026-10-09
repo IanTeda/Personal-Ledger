@@ -131,7 +131,7 @@ fn a_planner_edit_button_opens_the_edit_dialog(app: &mut TestAppContext) {
     let mut ui = on_bills(app);
     ui.click("bills-tab-Planner");
 
-    let first = ui.read(|s| s.bills_snapshot().plans.len());
+    let first = ui.bills().plans.len();
     assert!(first > 0);
     ui.click("bills-plan-row-1");
     ui.click("bills-plan-edit-1");

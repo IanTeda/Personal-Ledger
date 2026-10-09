@@ -140,7 +140,7 @@ impl Shell {
                 Some(PageStatus {
                     hints: pay_bill_dialog_hints(),
                     right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
+                        i64::try_from(self.bill_plans(cx).len()).unwrap_or(i64::MAX),
                     ),
                 })
             }
@@ -150,7 +150,7 @@ impl Shell {
                 Some(PageStatus {
                     hints: skip_bill_dialog_hints(),
                     right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
+                        i64::try_from(self.bill_plans(cx).len()).unwrap_or(i64::MAX),
                     ),
                 })
             }
@@ -163,28 +163,32 @@ impl Shell {
                 Some(PageStatus {
                     hints: payee_dialog_hints(),
                     right: crate::msg::desktop_bills_status_plans(
-                        i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
+                        i64::try_from(self.bill_plans(cx).len()).unwrap_or(i64::MAX),
                     ),
                 })
             }
-            ActiveView::Bills if self.bills_tab == bills::BillsTab::Schedule => Some(PageStatus {
-                hints: bills_schedule_hints(),
-                right: crate::msg::desktop_bills_status_period(
-                    &if self.bills_all {
-                        crate::msg::desktop_bills_period_all()
-                    } else {
-                        bills_view::period_label(self.bills_period)
-                    },
-                    &self.bills_schedule_rows().len().to_string(),
-                    i64::try_from(self.bills_unfiltered_rows().len()).unwrap_or(i64::MAX),
-                ),
-            }),
-            ActiveView::Bills if self.bills_tab == bills::BillsTab::Planner => Some(PageStatus {
-                hints: bills_planner_hints(),
-                right: crate::msg::desktop_bills_status_plans(
-                    i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
-                ),
-            }),
+            ActiveView::Bills if self.bills_state(cx).tab == bills::BillsTab::Schedule => {
+                Some(PageStatus {
+                    hints: bills_schedule_hints(),
+                    right: crate::msg::desktop_bills_status_period(
+                        &if self.bills_state(cx).all {
+                            crate::msg::desktop_bills_period_all()
+                        } else {
+                            bills_view::period_label(self.bills_state(cx).period)
+                        },
+                        &self.bills_schedule_rows(cx).len().to_string(),
+                        i64::try_from(self.bills_unfiltered_rows(cx).len()).unwrap_or(i64::MAX),
+                    ),
+                })
+            }
+            ActiveView::Bills if self.bills_state(cx).tab == bills::BillsTab::Planner => {
+                Some(PageStatus {
+                    hints: bills_planner_hints(),
+                    right: crate::msg::desktop_bills_status_plans(
+                        i64::try_from(self.bill_plans(cx).len()).unwrap_or(i64::MAX),
+                    ),
+                })
+            }
             ActiveView::Budgets if self.budgets_state(cx).tab == budgets::BudgetsTab::Progress => {
                 Some(PageStatus {
                     hints: self.budgets_hints(cx),

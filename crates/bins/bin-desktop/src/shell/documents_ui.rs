@@ -171,7 +171,7 @@ impl Shell {
         Lookups {
             accounts: self.accounts.read(cx).accounts(),
             payees: &self.payees,
-            plans: &self.bill_plans,
+            plans: self.bill_plans(cx),
             types: self.document_types(cx),
             inventory: &self.inventory,
             transactions: self.transactions(cx),
@@ -978,7 +978,7 @@ impl Shell {
                 self.select_payee(id);
             }
             DocumentLink::BillPlan(id) => {
-                let at = crate::bills::planner_order(&self.bill_plans)
+                let at = crate::bills::planner_order(self.bill_plans(cx))
                     .iter()
                     .position(|plan| plan.id == id);
                 let Some(at) = at else {
@@ -986,7 +986,7 @@ impl Shell {
                 };
                 self.nav.set_noun(Noun::Bills);
                 self.set_bills_tab(crate::bills::BillsTab::Planner, cx);
-                self.bills_selected = at;
+                self.edit_bills_state(cx, |state| state.selected = at);
             }
             DocumentLink::InventoryItem(_) => {
                 self.nav.set_noun(Noun::Inventory);

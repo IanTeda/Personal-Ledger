@@ -519,9 +519,10 @@ impl Render for Shell {
         let bills_dialog_element = self.bills_dialog().and_then(|dialog| {
             let (editing, form) = match dialog {
                 bills::BillsDialog::Add(form) => (None, form),
-                bills::BillsDialog::Edit(id, form) => {
-                    (Some(bills::get(&self.bill_plans, *id)?.name.as_str()), form)
-                }
+                bills::BillsDialog::Edit(id, form) => (
+                    Some(bills::get(self.bill_plans(cx), *id)?.name.as_str()),
+                    form,
+                ),
                 bills::BillsDialog::Pay(form) => {
                     return self.render_pay_bill_dialog(form, &entity, cx);
                 }
@@ -721,17 +722,18 @@ impl Render for Shell {
             on_edit_click: tag_click(Shell::handle_tags_edit_click),
             on_remove_click: tag_click(Shell::handle_tags_remove_click),
         };
-        let bills_unfiltered = self.bills_unfiltered_rows();
+        let bills_unfiltered = self.bills_unfiltered_rows(cx);
         let bills_rows = self
-            .bills_filters
-            .apply(&bills_unfiltered, &self.bill_plans);
+            .bills_state(cx)
+            .filters
+            .apply(&bills_unfiltered, self.bill_plans(cx));
         let bills_summary = bills::period_summary(
             &bills_rows,
-            &self.bill_plans,
-            &self.bill_entries,
+            self.bill_plans(cx),
+            self.bill_entries(cx),
             self.transactions(cx),
         );
-        let bills_planner_plans = bills::planner_order(&self.bill_plans);
+        let bills_planner_plans = bills::planner_order(self.bill_plans(cx));
         let bills_base_unit = self
             .settings_units
             .iter()
@@ -770,12 +772,12 @@ impl Render for Shell {
             )
         });
         let dashboard = Dashboard::new(
-            bills::attention_entries(&self.bill_plans, &self.bill_entries, self.today)
+            bills::attention_entries(self.bill_plans(cx), self.bill_entries(cx), self.today)
                 .into_iter()
                 .filter_map(|id| {
-                    let entry = bills::entry(&self.bill_entries, id)?;
-                    let plan = bills::get(&self.bill_plans, id.plan_id)?;
-                    let amount = bills::amount(entry, &self.bill_plans, self.transactions(cx))?;
+                    let entry = bills::entry(self.bill_entries(cx), id)?;
+                    let plan = bills::get(self.bill_plans(cx), id.plan_id)?;
+                    let amount = bills::amount(entry, self.bill_plans(cx), self.transactions(cx))?;
                     Some(dashboard::AttentionBill {
                         id,
                         plan: plan.name.clone(),
@@ -799,20 +801,21 @@ impl Render for Shell {
                 .unwrap_or_default(),
         );
         let bills_page = bills_view::BillsPageProps {
-            tab: self.bills_tab,
-            period: self.bills_period,
-            all: self.bills_all,
+            tab: self.bills_state(cx).tab,
+            period: self.bills_state(cx).period,
+            all: self.bills_state(cx).all,
             schedule: bills_view::schedule::ScheduleProps {
                 rows: &bills_rows,
                 total: bills_unfiltered.len(),
-                all: self.bills_all,
+                all: self.bills_state(cx).all,
                 filters: bills_view::filters::FilterProps {
-                    filters: &self.bills_filters,
+                    filters: &self.bills_state(cx).filters,
                     selects: bills_view::filters::FilterField::ORDER
                         .into_iter()
                         .map(|field| {
                             let focused = self
-                                .bills_filter_focus
+                                .bills_state(cx)
+                                .filter_focus
                                 .as_ref()
                                 .filter(|(focused, _)| *focused == field);
                             bills_view::filters::FilterSelect {
@@ -827,14 +830,15 @@ impl Render for Shell {
                         })
                         .collect(),
                     stats: self
-                        .bills_filters
+                        .bills_state(cx)
+                        .filters
                         .plan_id
-                        .and_then(|id| bills::get(&self.bill_plans, id))
+                        .and_then(|id| bills::get(self.bill_plans(cx), id))
                         .map(|plan| {
                             let stats = bills::history::plan_stats(
                                 plan,
-                                &self.bill_plans,
-                                &self.bill_entries,
+                                self.bill_plans(cx),
+                                self.bill_entries(cx),
                                 self.transactions(cx),
                                 self.today,
                             );
@@ -860,14 +864,14 @@ impl Render for Shell {
                     },
                 },
                 summary: &bills_summary,
-                plans: &self.bill_plans,
-                entries: &self.bill_entries,
+                plans: self.bill_plans(cx),
+                entries: self.bill_entries(cx),
                 accounts: self.accounts.read(cx).accounts(),
                 transactions: self.transactions(cx),
                 base_unit: bills_base_unit,
                 glyphs: self.settings_status_glyphs,
                 selected: (!bills_rows.is_empty())
-                    .then(|| self.bills_selected.min(bills_rows.len() - 1)),
+                    .then(|| self.bills_state(cx).selected.min(bills_rows.len() - 1)),
                 on_row_click: bills_indexed(Shell::handle_bills_row_click),
                 on_pay_click: bills_indexed(Shell::handle_bills_pay_click),
                 on_skip_click: bills_indexed(Shell::handle_bills_skip_click),
@@ -877,12 +881,15 @@ impl Render for Shell {
             },
             planner: bills_view::planner::PlannerProps {
                 plans: &bills_planner_plans,
-                inactive: bills::inactive_count(&self.bill_plans),
+                inactive: bills::inactive_count(self.bill_plans(cx)),
                 categories: &self.categories,
                 accounts: self.accounts.read(cx).accounts(),
                 base_unit: bills_base_unit,
-                selected: (!bills_planner_plans.is_empty())
-                    .then(|| self.bills_selected.min(bills_planner_plans.len() - 1)),
+                selected: (!bills_planner_plans.is_empty()).then(|| {
+                    self.bills_state(cx)
+                        .selected
+                        .min(bills_planner_plans.len() - 1)
+                }),
                 on_row_click: bills_indexed(Shell::handle_bills_row_click),
                 on_edit_click: bills_indexed(Shell::handle_bills_edit_plan_click),
             },
@@ -1325,8 +1332,8 @@ impl Render for Shell {
                                 )
                                 .bill_attention(
                                     bills::attention_entries(
-                                        &self.bill_plans,
-                                        &self.bill_entries,
+                                        self.bill_plans(cx),
+                                        self.bill_entries(cx),
                                         self.today,
                                     )
                                     .len(),

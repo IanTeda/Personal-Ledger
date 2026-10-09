@@ -132,7 +132,7 @@ impl<'a> Harness<'a> {
 
     /// The Bills page's state, read back for assertions.
     pub fn bills(&mut self) -> BillsSnapshot {
-        self.read(Shell::bills_snapshot)
+        self.read_app(Shell::bills_snapshot)
     }
 
     /// The Budgets page's state, read back for assertions.
@@ -179,7 +179,7 @@ impl<'a> Harness<'a> {
 
     /// The Dashboard's Needs Attention Bill rows.
     pub fn dashboard_bills(&mut self) -> Vec<DashboardBillSnapshot> {
-        self.read(Shell::dashboard_bills_snapshot)
+        self.read_app(Shell::dashboard_bills_snapshot)
     }
 
     /// Raises a Toast the way a call site would, then settles.

@@ -78,6 +78,7 @@ use lib_toast::{ToastKind, Toasts};
 use crate::view::accounts::state::{
     ACCOUNTS_HALF_PAGE, AccountsEvent, AccountsStore, AccountsView,
 };
+use crate::view::bills::state::{BillsEvent, BillsState, BillsView};
 use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, BudgetsView};
 use crate::view::documents::state::{
     DocumentsEvent, DocumentsState, DocumentsStore, DocumentsView,
@@ -87,7 +88,7 @@ use crate::{
         self, NameLookup,
         form::{AccountField, AccountForm, AccountOptions, AccountsDialog, DeleteAccountForm},
     },
-    bills::{self, pay_form::PayForm},
+    bills::{self, BillsStore, edit_bills, edit_bills_and_transactions, pay_form::PayForm},
     budgets,
     categories::{self, Category},
     chrome::dialog_host::OpenDialog,
@@ -103,7 +104,6 @@ use crate::{
     navigation::key_router::{self, Movement},
     navigation::nav::{FocusZone, InputMode, NavState, Noun},
     payees::{self, Payee},
-    period::Period,
     settings::tracing_log::LogView,
     settings::{
         DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, SettingsDialog, SettingsFocus, SettingsSection,
@@ -279,23 +279,13 @@ pub struct Shell {
     /// `transactions::default_transactions`; saved-in-memory state that survives leaving and
     /// re-entering the page. Deleting an account deletes its transactions with it.
     transactions_store: Entity<TransactionsStore>,
-    /// The Bills surface's stub Bill Plans and Bill Schedule, seeded by `bills::default_bills`
-    /// (which also writes their settling Transactions into [`Self::transactions`]).
-    bill_plans: Vec<bills::BillPlan>,
-    bill_entries: Vec<bills::BillScheduleEntry>,
-    /// Which Bills tab shows, and the selected row on each (a position in that tab's list).
-    bills_tab: bills::BillsTab,
-    bills_selected: usize,
-    /// The Schedule tab's calendar month; starts at today's. Kept while `bills_all` shows every
-    /// row, so the arrows return to it.
-    bills_period: Period,
-    bills_all: bool,
-    /// The Schedule tab's filters, and the filter-row select `f` has focused (open or closed).
-    bills_filters: bills::history::BillFilters,
-    bills_filter_focus: Option<(
-        bills_view::filters::FilterField,
-        crate::form::select::SelectState,
-    )>,
+    /// The Bill Plans and Bill Schedule, owned by their store Entity and read through it
+    /// (ADR-0032). Seeded by `bills::default_bills`, which also writes their settling
+    /// Transactions into the Transactions store.
+    bills_store: Entity<BillsStore>,
+    /// The Bills page's state (tab, selection, period, All, filters and filter focus), owned by
+    /// its Entity. Its events are handled in `handle_bills_event`.
+    bills_view: Entity<BillsView>,
     /// The Transactions page's state (selection, scroll, filters, search and the popover draft),
     /// owned by its Entity (ADR-0032).
     transactions_view: Entity<TransactionsView>,
@@ -377,6 +367,12 @@ impl Shell {
             cx.subscribe(&budgets_view, |shell, _view, event: &BudgetsEvent, cx| {
                 shell.handle_budgets_event(*event, cx);
             });
+        let bills_store = cx.new(|_| BillsStore::new(bills_seed.plans, bills_seed.entries));
+        let bills_view = cx.new(|_| BillsView::new(bills_store.clone(), today));
+        let bills_subscription =
+            cx.subscribe(&bills_view, |shell, _view, event: &BillsEvent, cx| {
+                shell.handle_bills_event(*event, cx);
+            });
         let documents_store = cx.new(|_| {
             DocumentsStore::new(documents_seed.documents, documents::types::default_types())
         });
@@ -447,20 +443,15 @@ impl Shell {
             settings_tags_selected: None,
             transactions_store,
             transactions_view,
-            bill_plans: bills_seed.plans,
-            bill_entries: bills_seed.entries,
-            bills_tab: bills::BillsTab::default(),
-            bills_selected: 0,
-            bills_period: Period::of(today),
-            bills_all: false,
-            bills_filters: bills::history::BillFilters::default(),
-            bills_filter_focus: None,
+            bills_store,
+            bills_view,
             documents_store,
             documents_view,
             inventory,
             view_subscriptions: vec![
                 accounts_subscription,
                 budgets_subscription,
+                bills_subscription,
                 documents_subscription,
             ],
         }
@@ -2008,73 +1999,75 @@ impl Shell {
         true
     }
 
+    /// The Bill Plans, read through their store.
+    fn bill_plans<'a>(&self, cx: &'a App) -> &'a [bills::BillPlan] {
+        self.bills_store.read(cx).plans()
+    }
+
+    /// The Bill Schedule entries, read through their store.
+    fn bill_entries<'a>(&self, cx: &'a App) -> &'a [bills::BillScheduleEntry] {
+        self.bills_store.read(cx).entries()
+    }
+
+    /// The Bills page's state, read through its Entity.
+    fn bills_state<'a>(&self, cx: &'a App) -> &'a BillsState {
+        self.bills_view.read(cx).state()
+    }
+
+    /// Edits the Bills page's state through its Entity, which notifies.
+    fn edit_bills_state<R>(&self, cx: &mut App, change: impl FnOnce(&mut BillsState) -> R) -> R {
+        self.bills_view.update(cx, |view, cx| view.edit(cx, change))
+    }
+
     /// The Schedule tab's rows for the shown period (or All), before its filters.
-    fn bills_unfiltered_rows(&self) -> Vec<bills::ScheduleRow> {
-        bills::schedule_rows(
-            &self.bill_plans,
-            &self.bill_entries,
-            (!self.bills_all).then_some(self.bills_period),
-            self.today,
-        )
+    fn bills_unfiltered_rows(&self, cx: &App) -> Vec<bills::ScheduleRow> {
+        self.bills_view.read(cx).unfiltered_rows(cx)
     }
 
     /// The Schedule tab's rows as shown: the period's (or All's), through its filters.
-    fn bills_schedule_rows(&self) -> Vec<bills::ScheduleRow> {
-        self.bills_filters
-            .apply(&self.bills_unfiltered_rows(), &self.bill_plans)
+    fn bills_schedule_rows(&self, cx: &App) -> Vec<bills::ScheduleRow> {
+        self.bills_view.read(cx).schedule_rows(cx)
     }
 
     /// The selected Schedule row, its stored position clamped to the rows now shown.
-    fn selected_bill_row(&self) -> Option<bills::ScheduleRow> {
-        let rows = self.bills_schedule_rows();
-        rows.get(self.bills_selected.min(rows.len().saturating_sub(1)))
-            .copied()
+    fn selected_bill_row(&self, cx: &App) -> Option<bills::ScheduleRow> {
+        self.bills_view.read(cx).selected_row(cx)
     }
 
     /// The Planner tab's selected Bill Plan's id, its stored position clamped to the Plans.
-    fn selected_bill_plan(&self) -> Option<u32> {
-        let plans = bills::planner_order(&self.bill_plans);
-        plans
-            .get(self.bills_selected.min(plans.len().saturating_sub(1)))
-            .map(|plan| plan.id)
+    fn selected_bill_plan(&self, cx: &App) -> Option<u32> {
+        self.bills_view.read(cx).selected_plan(cx)
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the active Bills tab's row selection; `Enter` on a
     /// Paid Schedule row opens its Transaction, and on a Planner row edits its Bill Plan. While `f`
     /// has a Schedule filter select focused, they drive the select instead.
     fn apply_bills_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
-        if self.bills_tab == bills::BillsTab::Schedule && self.bills_filter_focus.is_some() {
+        let state = self.bills_state(cx);
+        if state.tab == bills::BillsTab::Schedule && state.filter_focus.is_some() {
             self.apply_bills_filter_select_movement(movement, cx);
             return;
         }
-        let len = match self.bills_tab {
-            bills::BillsTab::Schedule => self.bills_schedule_rows().len(),
-            bills::BillsTab::Planner => self.bill_plans.len(),
-        };
-        let selected = self.bills_selected.min(len.saturating_sub(1));
-        self.bills_selected = match movement {
-            Movement::Next => accounts::step_selection(selected, len, 1),
-            Movement::Prev => accounts::step_selection(selected, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
-            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
-            Movement::Enter => {
-                match self.bills_tab {
-                    bills::BillsTab::Planner => {
-                        if let Some(id) = self.selected_bill_plan() {
-                            self.open_edit_bill_plan_dialog(id, cx);
-                        }
-                    }
-                    bills::BillsTab::Schedule => {
-                        if let Some(row) = self.selected_bill_row() {
-                            self.open_bill_transaction(row.id, cx);
-                        }
-                    }
-                }
-                selected
+        self.bills_view
+            .update(cx, |view, cx| view.apply_movement(movement, cx));
+    }
+
+    /// Carries out what the Bills page asked for. The page holds only its own state; the dialogs,
+    /// the Transaction jump and the filter choices are `Shell`'s.
+    fn handle_bills_event(&mut self, event: BillsEvent, cx: &mut Context<'_, Self>) {
+        match event {
+            BillsEvent::AddPlan => self.open_add_bill_plan_dialog(cx),
+            BillsEvent::EditPlan(id) => self.open_edit_bill_plan_dialog(id, cx),
+            BillsEvent::Pay(row) => self.open_pay_bill_dialog(row, cx),
+            BillsEvent::Skip(row) => self.open_skip_bill_dialog(row, cx),
+            BillsEvent::OpenTransaction(id) => self.open_bill_transaction(id, cx),
+            BillsEvent::FocusNextFilter => self.cycle_bills_filter_focus(cx),
+            BillsEvent::TabChanged => {
+                self.chrome.status_message = None;
+                self.reset_view_scroll(cx);
             }
-        };
+        }
+        cx.notify();
     }
 
     /// The Dashboard's budget list, worded from the default Budget's current-month figures.
@@ -2136,43 +2129,13 @@ impl Shell {
         {
             return false;
         }
-        self.set_bills_tab(self.bills_tab.next(), cx);
+        let next = self.bills_state(cx).tab.next();
+        self.set_bills_tab(next, cx);
         true
     }
 
     fn set_bills_tab(&mut self, tab: bills::BillsTab, cx: &mut App) {
-        self.bills_tab = tab;
-        self.bills_selected = 0;
-        self.bills_filter_focus = None;
-        self.chrome.status_message = None;
-        self.reset_view_scroll(cx);
-    }
-
-    /// Steps the Schedule tab's period a calendar month; from All, returns to the month last viewed.
-    fn shift_bills_period(&mut self, forward: bool) {
-        if std::mem::take(&mut self.bills_all) {
-            self.bills_selected = 0;
-            return;
-        }
-        self.bills_period = if forward {
-            self.bills_period.next()
-        } else {
-            self.bills_period.prev()
-        };
-        self.bills_selected = 0;
-    }
-
-    /// `0` toggles the Schedule between its month and All.
-    fn toggle_bills_all(&mut self) {
-        self.bills_all = !self.bills_all;
-        self.bills_selected = 0;
-    }
-
-    fn toggle_bills_filter_chip(&mut self, index: usize) {
-        if let Some(status) = bills::history::STATUS_CHIPS.get(index) {
-            self.bills_filters.toggle(*status);
-            self.bills_selected = 0;
-        }
+        self.bills_view.update(cx, |view, cx| view.set_tab(tab, cx));
     }
 
     /// A Schedule filter select's options, and the index of its current value. Category and
@@ -2183,7 +2146,7 @@ impl Shell {
         cx: &App,
     ) -> (Vec<String>, usize) {
         use bills_view::filters::FilterField;
-        let filters = &self.bills_filters;
+        let filters = &self.bills_state(cx).filters;
         let scoped = |all: String, choices: Vec<(u32, String)>, current: Option<u32>| {
             let index = current
                 .and_then(|id| choices.iter().position(|(choice, _)| *choice == id))
@@ -2220,9 +2183,10 @@ impl Shell {
         cx: &App,
     ) -> Vec<(u32, String)> {
         use bills_view::filters::FilterField;
+        let plans = self.bill_plans(cx);
         let mut choices: Vec<(u32, String)> = match field {
             FilterField::Plan => {
-                return bills::planner_order(&self.bill_plans)
+                return bills::planner_order(plans)
                     .into_iter()
                     .map(|plan| (plan.id, plan.name.clone()))
                     .collect();
@@ -2230,7 +2194,7 @@ impl Shell {
             FilterField::Category => self
                 .categories
                 .iter()
-                .filter(|c| self.bill_plans.iter().any(|p| p.category_id == c.id))
+                .filter(|c| plans.iter().any(|p| p.category_id == c.id))
                 .map(|c| (c.id, c.name.clone()))
                 .collect(),
             FilterField::Account => self
@@ -2238,7 +2202,7 @@ impl Shell {
                 .read(cx)
                 .accounts()
                 .iter()
-                .filter(|a| self.bill_plans.iter().any(|p| p.account_id == a.id))
+                .filter(|a| plans.iter().any(|p| p.account_id == a.id))
                 .map(|a| (a.id, a.name.clone()))
                 .collect(),
         };
@@ -2259,13 +2223,15 @@ impl Shell {
                 .get(i)
                 .map(|(id, _)| *id)
         });
-        let filters = &mut self.bills_filters;
-        match field {
-            FilterField::Plan => filters.plan_id = id,
-            FilterField::Category => filters.category_id = id,
-            FilterField::Account => filters.account_id = id,
-        }
-        self.bills_selected = 0;
+        self.edit_bills_state(cx, |state| {
+            let filters = &mut state.filters;
+            match field {
+                FilterField::Plan => filters.plan_id = id,
+                FilterField::Category => filters.category_id = id,
+                FilterField::Account => filters.account_id = id,
+            }
+            state.selected = 0;
+        });
     }
 
     /// A closed select state on a field's current value.
@@ -2281,7 +2247,12 @@ impl Shell {
     /// `f` steps focus along the filter row's selects, then off it.
     fn cycle_bills_filter_focus(&mut self, cx: &mut Context<'_, Self>) {
         use bills_view::filters::FilterField;
-        let next = match self.bills_filter_focus.as_ref().map(|(field, _)| *field) {
+        let focused = self
+            .bills_state(cx)
+            .filter_focus
+            .as_ref()
+            .map(|(field, _)| *field);
+        let next = match focused {
             None => Some(FilterField::Plan),
             Some(field) => FilterField::ORDER
                 .iter()
@@ -2289,8 +2260,8 @@ impl Shell {
                 .and_then(|i| FilterField::ORDER.get(i + 1))
                 .copied(),
         };
-        self.bills_filter_focus =
-            next.map(|field| (field, self.bills_filter_select_state(field, cx)));
+        let focus = next.map(|field| (field, self.bills_filter_select_state(field, cx)));
+        self.edit_bills_state(cx, |state| state.filter_focus = focus);
     }
 
     /// `j`/`k` on a focused select: step its value while closed (applying it at once), move the
@@ -2300,7 +2271,7 @@ impl Shell {
         movement: Movement,
         cx: &mut Context<'_, Self>,
     ) {
-        let Some((field, mut state)) = self.bills_filter_focus.take() else {
+        let Some((field, mut state)) = self.edit_bills_state(cx, |s| s.filter_focus.take()) else {
             return;
         };
         let (options, _) = self.bills_filter_options(field, cx);
@@ -2330,11 +2301,12 @@ impl Shell {
         {
             self.apply_bills_filter_option(field, index, cx);
         }
-        self.bills_filter_focus = Some((field, state));
+        self.edit_bills_state(cx, |s| s.filter_focus = Some((field, state)));
     }
 
     fn handle_bills_filter_chip_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.toggle_bills_filter_chip(index);
+        self.bills_view
+            .update(cx, |view, cx| view.toggle_filter_chip(index, cx));
         cx.notify();
     }
 
@@ -2345,7 +2317,8 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         let open_here = self
-            .bills_filter_focus
+            .bills_state(cx)
+            .filter_focus
             .as_ref()
             .is_some_and(|(focused, state)| *focused == field && state.is_open());
         let mut state = self.bills_filter_select_state(field, cx);
@@ -2353,7 +2326,7 @@ impl Shell {
             let (options, _) = self.bills_filter_options(field, cx);
             state.open(&options);
         }
-        self.bills_filter_focus = Some((field, state));
+        self.edit_bills_state(cx, |s| s.filter_focus = Some((field, state)));
         cx.notify();
     }
 
@@ -2364,7 +2337,8 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         self.apply_bills_filter_option(field, index, cx);
-        self.bills_filter_focus = Some((field, self.bills_filter_select_state(field, cx)));
+        let state = self.bills_filter_select_state(field, cx);
+        self.edit_bills_state(cx, |s| s.filter_focus = Some((field, state)));
         cx.notify();
     }
 
@@ -2378,43 +2352,9 @@ impl Shell {
         if modifiers.control || modifiers.alt || modifiers.platform {
             return false;
         }
-        let schedule = self.bills_tab == bills::BillsTab::Schedule;
-        let planner = self.bills_tab == bills::BillsTab::Planner;
-        if schedule
-            && let Some(chip) = keystroke
-                .key
-                .parse::<usize>()
-                .ok()
-                .and_then(|digit| digit.checked_sub(1))
-                .filter(|index| *index < bills::history::STATUS_CHIPS.len())
-        {
-            self.toggle_bills_filter_chip(chip);
-            return true;
-        }
-        match keystroke.key.as_str() {
-            "n" if !modifiers.shift => self.open_add_bill_plan_dialog(cx),
-            "f" if schedule && !modifiers.shift => self.cycle_bills_filter_focus(cx),
-            "0" if schedule => self.toggle_bills_all(),
-            "e" if planner && !modifiers.shift => {
-                if let Some(id) = self.selected_bill_plan() {
-                    self.open_edit_bill_plan_dialog(id, cx);
-                }
-            }
-            "p" if schedule && !modifiers.shift => {
-                if let Some(row) = self.selected_bill_row() {
-                    self.open_pay_bill_dialog(row, cx);
-                }
-            }
-            "s" if schedule && !modifiers.shift => {
-                if let Some(row) = self.selected_bill_row() {
-                    self.open_skip_bill_dialog(row);
-                }
-            }
-            "[" if schedule => self.shift_bills_period(false),
-            "]" if schedule => self.shift_bills_period(true),
-            _ => return false,
-        }
-        true
+        let shift = modifiers.shift;
+        self.bills_view
+            .update(cx, |view, cx| view.handle_key(&keystroke.key, shift, cx))
     }
 
     /// What the Add and Edit bill plan selects choose from, copied into the form as it opens. On
@@ -2439,7 +2379,7 @@ impl Shell {
 
     /// Opens the Edit dialog pre-filled from Bill Plan `id`.
     fn open_edit_bill_plan_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        let Some(plan) = bills::get(&self.bill_plans, id) else {
+        let Some(plan) = bills::get(self.bill_plans(cx), id) else {
             return;
         };
         let form =
@@ -2461,7 +2401,7 @@ impl Shell {
             bills::BillsDialog::Add(form) => self.apply_bill_plan(None, form, cx),
             bills::BillsDialog::Edit(id, form) => self.apply_bill_plan(Some(id), form, cx),
             bills::BillsDialog::Pay(form) => self.apply_pay_bill(form, cx),
-            bills::BillsDialog::Skip(entry) => self.apply_skip_bill(entry),
+            bills::BillsDialog::Skip(entry) => self.apply_skip_bill(entry, cx),
         }
     }
 
@@ -2478,42 +2418,22 @@ impl Shell {
             return;
         };
         let (today, is_active) = (self.today, form.is_active);
-        let result = match editing {
-            None => bills::insert_plan(
-                &mut self.bill_plans,
-                &mut self.bill_entries,
-                &draft,
-                &self.categories,
-                self.accounts.read(cx).accounts(),
-                today,
-            ),
-            Some(id) => bills::edit_plan(
-                &mut self.bill_plans,
-                &mut self.bill_entries,
-                id,
-                &draft,
-                &self.categories,
-                self.accounts.read(cx).accounts(),
-                today,
-            )
-            .and_then(|()| {
-                bills::set_active(
-                    &mut self.bill_plans,
-                    &mut self.bill_entries,
-                    id,
-                    is_active,
-                    today,
-                )
-            })
-            .map(|()| id),
-        };
+        let accounts = self.accounts.read(cx).accounts().to_vec();
+        let categories = &self.categories;
+        let result = edit_bills(&self.bills_store, cx, |plans, entries| match editing {
+            None => bills::insert_plan(plans, entries, &draft, categories, &accounts, today),
+            Some(id) => bills::edit_plan(plans, entries, id, &draft, categories, &accounts, today)
+                .and_then(|()| bills::set_active(plans, entries, id, is_active, today))
+                .map(|()| id),
+        });
         match result {
             Ok(id) => {
-                if self.bills_tab == bills::BillsTab::Planner {
-                    self.bills_selected = bills::planner_order(&self.bill_plans)
+                if self.bills_state(cx).tab == bills::BillsTab::Planner {
+                    let at = bills::planner_order(self.bill_plans(cx))
                         .iter()
                         .position(|plan| plan.id == id)
                         .unwrap_or(0);
+                    self.edit_bills_state(cx, |state| state.selected = at);
                 }
             }
             Err(error) => {
@@ -2585,14 +2505,14 @@ impl Shell {
     /// Opens the Pay dialog (8d) on an open Schedule row, with its Match candidates worked out now;
     /// a row with nothing to pay says so instead.
     fn open_pay_bill_dialog(&mut self, row: bills::ScheduleRow, cx: &mut Context<'_, Self>) {
-        let plan = bills::get(&self.bill_plans, row.id.plan_id);
+        let plan = bills::get(self.bill_plans(cx), row.id.plan_id);
         let Some(plan) = plan.filter(|_| row.is_actionable()) else {
             self.chrome.status_message = Some(crate::msg::desktop_status_bill_not_actionable());
             return;
         };
         let candidates = bills::match_candidates(
-            &self.bill_plans,
-            &self.bill_entries,
+            self.bill_plans(cx),
+            self.bill_entries(cx),
             self.transactions(cx),
             self.accounts.read(cx).accounts(),
             &self.categories,
@@ -2625,30 +2545,27 @@ impl Shell {
         let Some(action) = form.action() else {
             return;
         };
-        let result = match action {
-            bills::pay_form::PayAction::Pay { amount, date } => {
-                edit_transactions(&self.transactions_store, cx, |transactions| {
-                    bills::pay(
-                        &self.bill_plans,
-                        &mut self.bill_entries,
-                        transactions,
-                        entry,
-                        &amount,
-                        date,
-                    )
-                    .map(|_| ())
-                })
-            }
-            bills::pay_form::PayAction::Match(split) => bills::match_split(
-                &self.bill_plans,
-                &mut self.bill_entries,
-                self.transactions_store.read(cx).transactions(),
-                self.accounts.read(cx).accounts(),
-                &self.categories,
-                entry,
-                split,
-            ),
-        };
+        let accounts = self.accounts.read(cx).accounts().to_vec();
+        let categories = &self.categories;
+        let result = edit_bills_and_transactions(
+            &self.bills_store,
+            &self.transactions_store,
+            cx,
+            |plans, entries, transactions| match action {
+                bills::pay_form::PayAction::Pay { amount, date } => {
+                    bills::pay(plans, entries, transactions, entry, &amount, date).map(|_| ())
+                }
+                bills::pay_form::PayAction::Match(split) => bills::match_split(
+                    plans,
+                    entries,
+                    transactions,
+                    &accounts,
+                    categories,
+                    entry,
+                    split,
+                ),
+            },
+        );
         if let Err(error) = result {
             form.error = Some(error);
             self.open_dialog(OpenDialog::Bills(Box::new(bills::BillsDialog::Pay(form))));
@@ -2695,7 +2612,7 @@ impl Shell {
         entity: &Entity<Self>,
         cx: &App,
     ) -> Option<gpui::AnyElement> {
-        let plan = bills::get(&self.bill_plans, form.entry.plan_id)?;
+        let plan = bills::get(self.bill_plans(cx), form.entry.plan_id)?;
         let on_mode_click: bills_view::pay_dialog::OnModeClick = {
             let entity = entity.clone();
             Rc::new(move |mode, _window, cx| {
@@ -2805,8 +2722,8 @@ impl Shell {
 
     /// Opens the Skip dialog (8e) on an open Schedule row; a row with nothing to skip says so
     /// instead.
-    fn open_skip_bill_dialog(&mut self, row: bills::ScheduleRow) {
-        if !row.is_actionable() || bills::get(&self.bill_plans, row.id.plan_id).is_none() {
+    fn open_skip_bill_dialog(&mut self, row: bills::ScheduleRow, cx: &App) {
+        if !row.is_actionable() || bills::get(self.bill_plans(cx), row.id.plan_id).is_none() {
             self.chrome.status_message = Some(crate::msg::desktop_status_bill_not_actionable());
             return;
         }
@@ -2818,8 +2735,11 @@ impl Shell {
     /// **Skip this cycle**: resolves the entry through `bills::skip`. The dialog carries no form
     /// to show an error on, so a refused skip (the entry resolved or superseded underneath it)
     /// closes with the reason in the status line.
-    fn apply_skip_bill(&mut self, entry: bills::EntryId) {
-        if bills::skip(&self.bill_plans, &mut self.bill_entries, entry).is_err() {
+    fn apply_skip_bill(&mut self, entry: bills::EntryId, cx: &mut App) {
+        let skipped = edit_bills(&self.bills_store, cx, |plans, entries| {
+            bills::skip(plans, entries, entry)
+        });
+        if skipped.is_err() {
             self.chrome.status_message = Some(crate::msg::desktop_bills_skip_error_gone());
         }
     }
@@ -2831,7 +2751,7 @@ impl Shell {
         entity: &Entity<Self>,
         cx: &App,
     ) -> Option<gpui::AnyElement> {
-        let plan = bills::get(&self.bill_plans, entry.plan_id)?;
+        let plan = bills::get(self.bill_plans(cx), entry.plan_id)?;
         let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
             let on_click: crate::dialog::OnClick = Rc::new(move |_window, cx| {
@@ -2854,19 +2774,23 @@ impl Shell {
     /// A Dashboard Needs Attention Bill row's hand-off: the Bills Schedule tab, on the period that
     /// shows the entry, with it selected.
     fn open_bill_entry(&mut self, id: bills::EntryId, cx: &mut App) {
-        let Some(entry) = bills::entry(&self.bill_entries, id) else {
+        let Some(entry) = bills::entry(self.bill_entries(cx), id) else {
             return;
         };
-        self.bills_period = bills::schedule_period(entry, self.today);
-        self.bills_all = false;
-        // Reset so no filter hides the entry being handed off to.
-        self.bills_filters = bills::history::BillFilters::default();
+        let period = bills::schedule_period(entry, self.today);
         self.set_bills_tab(bills::BillsTab::Schedule, cx);
-        self.bills_selected = self
-            .bills_schedule_rows()
+        self.edit_bills_state(cx, |state| {
+            state.period = period;
+            state.all = false;
+            // Reset so no filter hides the entry being handed off to.
+            state.filters = bills::history::BillFilters::default();
+        });
+        let at = self
+            .bills_schedule_rows(cx)
             .iter()
             .position(|row| row.id == id)
             .unwrap_or(0);
+        self.edit_bills_state(cx, |state| state.selected = at);
         self.nav.set_noun(Noun::Bills);
         self.reset_view_scroll(cx);
     }
@@ -2875,7 +2799,7 @@ impl Shell {
     /// the date range widened to reach it when it falls before this year. A no-op for any other row.
     fn open_bill_transaction(&mut self, id: bills::EntryId, cx: &mut Context<'_, Self>) {
         let Some(bills::Resolution::Paid(split)) =
-            bills::entry(&self.bill_entries, id).map(|entry| entry.resolution.clone())
+            bills::entry(self.bill_entries(cx), id).map(|entry| entry.resolution.clone())
         else {
             return;
         };
@@ -2928,52 +2852,54 @@ impl Shell {
     }
 
     fn handle_bills_period_prev(&mut self, cx: &mut Context<'_, Self>) {
-        self.shift_bills_period(false);
+        self.bills_view
+            .update(cx, |view, cx| view.shift_period(false, cx));
         cx.notify();
     }
 
     fn handle_bills_period_next(&mut self, cx: &mut Context<'_, Self>) {
-        self.shift_bills_period(true);
+        self.bills_view
+            .update(cx, |view, cx| view.shift_period(true, cx));
         cx.notify();
     }
 
     fn handle_bills_all_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.toggle_bills_all();
+        self.bills_view.update(cx, |view, cx| view.toggle_all(cx));
         cx.notify();
     }
 
     fn handle_bills_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.bills_selected = index;
+        self.edit_bills_state(cx, |state| state.selected = index);
         cx.notify();
     }
 
     fn handle_bills_edit_plan_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.bills_selected = index;
-        if let Some(id) = self.selected_bill_plan() {
+        self.edit_bills_state(cx, |state| state.selected = index);
+        if let Some(id) = self.selected_bill_plan(cx) {
             self.open_edit_bill_plan_dialog(id, cx);
         }
         cx.notify();
     }
 
     fn handle_bills_pay_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.bills_selected = index;
-        if let Some(row) = self.selected_bill_row() {
+        self.edit_bills_state(cx, |state| state.selected = index);
+        if let Some(row) = self.selected_bill_row(cx) {
             self.open_pay_bill_dialog(row, cx);
         }
         cx.notify();
     }
 
     fn handle_bills_skip_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.bills_selected = index;
-        if let Some(row) = self.selected_bill_row() {
-            self.open_skip_bill_dialog(row);
+        self.edit_bills_state(cx, |state| state.selected = index);
+        if let Some(row) = self.selected_bill_row(cx) {
+            self.open_skip_bill_dialog(row, cx);
         }
         cx.notify();
     }
 
     fn handle_bills_view_transaction_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.bills_selected = index;
-        if let Some(row) = self.selected_bill_row() {
+        self.edit_bills_state(cx, |state| state.selected = index);
+        if let Some(row) = self.selected_bill_row(cx) {
             self.open_bill_transaction(row.id, cx);
         }
         cx.notify();

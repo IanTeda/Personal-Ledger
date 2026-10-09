@@ -260,8 +260,8 @@ impl Shell {
             categories: &self.categories,
             accounts: self.accounts.read(cx).accounts(),
             transactions: self.transactions(cx),
-            plans: &self.bill_plans,
-            entries: &self.bill_entries,
+            plans: self.bill_plans(cx),
+            entries: self.bill_entries(cx),
         }
     }
 
@@ -770,8 +770,8 @@ impl Shell {
             categories: &self.categories,
             accounts: self.accounts.read(cx).accounts(),
             transactions: self.transactions(cx),
-            plans: &self.bill_plans,
-            entries: &self.bill_entries,
+            plans: self.bill_plans(cx),
+            entries: self.bill_entries(cx),
         };
         budgets::category_detail(budget, &ledger, category_id, month, self.today)
     }
@@ -1053,17 +1053,19 @@ impl Shell {
         let Some(draft) = form.draft() else {
             return;
         };
-        // Copied out so the store can be written while the Accounts and Transactions are read.
+        // Copied out so the store can be written while the Accounts, Transactions and Bills are read.
         let accounts = self.accounts.read(cx).accounts().to_vec();
         let transactions = self.transactions(cx).to_vec();
+        let plans = self.bill_plans(cx).to_vec();
+        let entries = self.bill_entries(cx).to_vec();
         let saved = match draft {
             budgets::form::BudgetDraft::Create(new) => {
                 let ledger = budgets::Ledger {
                     categories: &self.categories,
                     accounts: &accounts,
                     transactions: &transactions,
-                    plans: &self.bill_plans,
-                    entries: &self.bill_entries,
+                    plans: &plans,
+                    entries: &entries,
                 };
                 self.mutate_budgets(cx, |budgets| {
                     budgets.create(&new, &ledger, self.today).map(Some)
@@ -1460,15 +1462,17 @@ impl Shell {
         source: budgets::FillSource,
         cx: &mut Context<'_, Self>,
     ) {
-        // Copied out so the store can be written while the Accounts and Transactions are read.
+        // Copied out so the store can be written while the Accounts, Transactions and Bills are read.
         let accounts = self.accounts.read(cx).accounts().to_vec();
         let transactions = self.transactions(cx).to_vec();
+        let plans = self.bill_plans(cx).to_vec();
+        let entries = self.bill_entries(cx).to_vec();
         let ledger = budgets::Ledger {
             categories: &self.categories,
             accounts: &accounts,
             transactions: &transactions,
-            plans: &self.bill_plans,
-            entries: &self.bill_entries,
+            plans: &plans,
+            entries: &entries,
         };
         let current = self.budgets_state(cx).current;
         let wrote = self.mutate_budgets(cx, |budgets| {
@@ -1775,7 +1779,7 @@ impl Shell {
                         form,
                         options: &form.options,
                         bill_plans: self
-                            .bill_plans
+                            .bill_plans(cx)
                             .iter()
                             .filter(|plan| plan.category_id == form.category_id && plan.is_active)
                             .map(|plan| plan.name.clone())
@@ -2036,10 +2040,13 @@ impl Shell {
 
     /// The KNOWN COSTS stat's link: the Bills Schedule on the period being shown.
     pub(super) fn open_budgets_schedule(&mut self, cx: &mut gpui::App) {
-        self.bills_period = self.budgets_state(cx).period;
-        self.bills_all = false;
-        self.bills_filters = bills::history::BillFilters::default();
+        let period = self.budgets_state(cx).period;
         self.set_bills_tab(bills::BillsTab::Schedule, cx);
+        self.edit_bills_state(cx, |state| {
+            state.period = period;
+            state.all = false;
+            state.filters = bills::history::BillFilters::default();
+        });
         self.nav.set_noun(Noun::Bills);
         self.reset_view_scroll(cx);
     }

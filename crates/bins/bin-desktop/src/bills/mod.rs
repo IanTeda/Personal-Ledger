@@ -27,6 +27,7 @@
 pub(crate) mod form;
 pub(crate) mod history;
 pub(crate) mod pay_form;
+pub(crate) mod store;
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
@@ -45,6 +46,7 @@ use crate::{
 };
 
 pub use lib_bills::*;
+pub use store::{BillsStore, edit_bills, edit_bills_and_transactions};
 
 /// Which tab of the Bills surface shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

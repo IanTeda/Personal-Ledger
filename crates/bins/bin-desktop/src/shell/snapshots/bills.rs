@@ -44,22 +44,25 @@ pub struct BillsSnapshot {
 impl Shell {
     /// The Bills page for a test, built the way the render builds its rows.
     #[doc(hidden)]
-    pub fn bills_snapshot(&self) -> BillsSnapshot {
-        let rows = self.bills_schedule_rows();
-        let plan_rows = bills::planner_order(&self.bill_plans);
-        let len = match self.bills_tab {
+    pub fn bills_snapshot(&self, cx: &gpui::App) -> BillsSnapshot {
+        let view = self.bills_view.read(cx);
+        let state = view.state();
+        let plans = self.bills_store.read(cx).plans();
+        let rows = view.schedule_rows(cx);
+        let plan_rows = bills::planner_order(plans);
+        let len = match state.tab {
             bills::BillsTab::Schedule => rows.len(),
-            bills::BillsTab::Planner => self.bill_plans.len(),
+            bills::BillsTab::Planner => plans.len(),
         };
         BillsSnapshot {
-            tab: format!("{:?}", self.bills_tab),
-            selected: self.bills_selected.min(len.saturating_sub(1)),
-            period: (self.bills_period.year, self.bills_period.month),
-            all: self.bills_all,
+            tab: format!("{:?}", state.tab),
+            selected: state.selected.min(len.saturating_sub(1)),
+            period: (state.period.year, state.period.month),
+            all: state.all,
             rows: rows
                 .iter()
                 .map(|row| BillRowSnapshot {
-                    plan: bills::get(&self.bill_plans, row.id.plan_id)
+                    plan: bills::get(plans, row.id.plan_id)
                         .map(|plan| plan.name.clone())
                         .unwrap_or_default(),
                     status: format!("{:?}", row.status),
@@ -67,14 +70,14 @@ impl Shell {
                 })
                 .collect(),
             plans: plan_rows.iter().map(|plan| plan.name.clone()).collect(),
-            statuses_on: self
-                .bills_filters
+            statuses_on: state
+                .filters
                 .statuses
                 .iter()
                 .map(|status| format!("{status:?}"))
                 .collect(),
-            filter_focus: self
-                .bills_filter_focus
+            filter_focus: state
+                .filter_focus
                 .as_ref()
                 .map(|(field, _)| format!("{field:?}")),
             dialog: self.bills_dialog().map(|dialog| {
