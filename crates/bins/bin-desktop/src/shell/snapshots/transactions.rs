@@ -44,21 +44,24 @@ impl Shell {
         let visible = transactions::query::query(
             &ledger,
             self.transactions(cx),
-            &self.transactions_filters,
-            &self.transactions_search,
+            &self.transactions_state(cx).filters,
+            &self.transactions_state(cx).search,
         );
         let rows = transactions::rows::build_rows(&visible, &ledger, &self.transactions_prefs());
         let chips = transactions::chips::chips(
-            &self.transactions_filters,
+            &self.transactions_state(cx).filters,
             &ledger,
             self.today,
             self.settings_date_style,
         );
         TransactionsSnapshot {
             visible: rows.len(),
-            selected: transactions::rows::clamp_selection(self.transactions_selected, rows.len()),
+            selected: transactions::rows::clamp_selection(
+                self.transactions_state(cx).selected,
+                rows.len(),
+            ),
             payees: rows.into_iter().map(|row| row.payee).collect(),
-            search: self.transactions_search.clone(),
+            search: self.transactions_state(cx).search.clone(),
             chips: chips
                 .into_iter()
                 .map(|chip| ChipSnapshot {
@@ -66,18 +69,21 @@ impl Shell {
                     active: chip.active,
                 })
                 .collect(),
-            filters_changed: !self.transactions_filters.is_default(self.today),
-            filter_open: self.transactions_filter_form.is_some(),
+            filters_changed: !self.transactions_state(cx).filters.is_default(self.today),
+            filter_open: self.transactions_state(cx).filter_form.is_some(),
             filter_focus: self
-                .transactions_filter_form
+                .transactions_state(cx)
+                .filter_form
                 .as_ref()
                 .map(|form| format!("{:?}", form.focused)),
             draft_status: self
-                .transactions_filter_form
+                .transactions_state(cx)
+                .filter_form
                 .as_ref()
                 .map(|form| format!("{:?}", form.status)),
             account_list_open: self
-                .transactions_filter_form
+                .transactions_state(cx)
+                .filter_form
                 .as_ref()
                 .is_some_and(|form| form.account.is_open()),
         }

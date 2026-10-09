@@ -62,6 +62,7 @@ use crate::view::settings::hints::{
     settings_payees_hints, settings_plain_page_hints, settings_tags_hints, settings_tracing_hints,
 };
 use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
+use crate::view::transactions::state::{TransactionsState, TransactionsView};
 use crate::view::{accounts::hints::accounts_hints, settings::hints::confirm_dialog_hints};
 
 use gpui::{
@@ -131,7 +132,6 @@ use crate::{
         dashboard::{self},
         import as import_view,
         settings::{self as settings_view},
-        transactions as transactions_view,
     },
 };
 
@@ -296,24 +296,9 @@ pub struct Shell {
         bills_view::filters::FilterField,
         crate::form::select::SelectState,
     )>,
-    /// The selected row as a position in [`Self::transactions`] (the table shows them in this
-    /// order), clamped wherever it is read. Once filters land it becomes a position in the
-    /// filtered list.
-    transactions_selected: usize,
-    /// The table's `uniform_list` scroll state: scrolls the selected row into view and reports the
-    /// viewport height for half-page moves.
-    transactions_scroll: UniformListScrollHandle,
-    /// What the table is filtered by; starts at the defaults (this year, everything else empty).
-    transactions_filters: TransactionFilters,
-    /// The search box's text, separate from the filters.
-    transactions_search: String,
-    /// The filter popover's draft, `Some` while it is open (`NavState::mode` is then
-    /// `InputMode::Filter`). Kept apart from [`Self::transactions_filters`] until **apply**.
-    transactions_filter_form: Option<FilterForm>,
-    /// The chip that opened the popover, which it anchors under.
-    transactions_filter_anchor: FilterField,
-    /// Where each chip was last painted; the header writes it, the popover reads it.
-    transactions_chip_bounds: transactions_view::ChipBounds,
+    /// The Transactions page's state (selection, scroll, filters, search and the popover draft),
+    /// owned by its Entity (ADR-0032).
+    transactions_view: Entity<TransactionsView>,
     /// The Documents and Document Types, owned by their store Entity and read through it
     /// (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
     /// badge and the Inventory removal read the Documents.
@@ -371,6 +356,17 @@ impl Shell {
             today,
         );
         let transactions_store = cx.new(|_| TransactionsStore::new(transactions));
+        let transactions_view = cx.new(|_| {
+            TransactionsView::new(TransactionsState {
+                selected: 0,
+                scroll: UniformListScrollHandle::new(),
+                filters: TransactionFilters::defaults(today),
+                search: String::new(),
+                filter_form: None,
+                filter_anchor: FilterField::Account,
+                chip_bounds: Default::default(),
+            })
+        });
         let seeded_budgets = budgets::default_budgets(&seeded_accounts, &categories, today);
         let budgets_current = seeded_budgets
             .default_budget()
@@ -450,6 +446,7 @@ impl Shell {
             tags_selected: 0,
             settings_tags_selected: None,
             transactions_store,
+            transactions_view,
             bill_plans: bills_seed.plans,
             bill_entries: bills_seed.entries,
             bills_tab: bills::BillsTab::default(),
@@ -458,13 +455,6 @@ impl Shell {
             bills_all: false,
             bills_filters: bills::history::BillFilters::default(),
             bills_filter_focus: None,
-            transactions_selected: 0,
-            transactions_scroll: UniformListScrollHandle::new(),
-            transactions_filters: TransactionFilters::defaults(today),
-            transactions_search: String::new(),
-            transactions_filter_form: None,
-            transactions_filter_anchor: FilterField::Account,
-            transactions_chip_bounds: Default::default(),
             documents_store,
             documents_view,
             inventory,
@@ -942,6 +932,30 @@ impl Shell {
         self.transactions_store.read(cx).transactions()
     }
 
+    /// The Transactions page's state, read through its Entity (ADR-0032).
+    fn transactions_state<'a>(&self, cx: &'a App) -> &'a TransactionsState {
+        self.transactions_view.read(cx).state()
+    }
+
+    /// Edits the Transactions page's state through its Entity, which notifies after the edit.
+    fn edit_transactions_state<R>(
+        &self,
+        cx: &mut App,
+        change: impl FnOnce(&mut TransactionsState) -> R,
+    ) -> R {
+        self.transactions_view
+            .update(cx, |view, cx| view.edit(cx, change))
+    }
+
+    /// Runs `change` on the open filter popover's draft, if there is one.
+    fn with_filter_form<R>(
+        &self,
+        cx: &mut App,
+        change: impl FnOnce(&mut FilterForm) -> R,
+    ) -> Option<R> {
+        self.edit_transactions_state(cx, |state| state.filter_form.as_mut().map(change))
+    }
+
     /// The reference data the Transactions engine reads, borrowed from the shared stubs.
     fn transactions_ledger<'a>(&'a self, cx: &'a App) -> Ledger<'a> {
         Ledger {
@@ -965,8 +979,8 @@ impl Shell {
         transactions::query::query(
             &self.transactions_ledger(cx),
             self.transactions(cx),
-            &self.transactions_filters,
-            &self.transactions_search,
+            &self.transactions_state(cx).filters,
+            &self.transactions_state(cx).search,
         )
         .rows
         .len()
@@ -983,10 +997,12 @@ impl Shell {
         if len == 0 {
             return;
         }
-        let selected = transactions::rows::clamp_selection(self.transactions_selected, len);
+        let selected =
+            transactions::rows::clamp_selection(self.transactions_state(cx).selected, len);
         let last = len - 1;
         let viewport = f32::from(
-            self.transactions_scroll
+            self.transactions_state(cx)
+                .scroll
                 .0
                 .borrow()
                 .base_handle
@@ -1011,8 +1027,10 @@ impl Shell {
                 return;
             }
         };
-        self.transactions_selected = next;
-        self.transactions_scroll.scroll_to_item(next, strategy);
+        self.edit_transactions_state(cx, |s| s.selected = next);
+        self.transactions_state(cx)
+            .scroll
+            .scroll_to_item(next, strategy);
     }
 
     /// The Transactions page's `n` and `e` (only while it is the active noun and the view has focus,
@@ -1044,24 +1062,25 @@ impl Shell {
 
     /// Puts the table back on its first row: called whenever the filters or the search change what
     /// is visible, since the old selection no longer points at the same row.
-    fn reset_transactions_selection(&mut self) {
-        self.transactions_selected = 0;
-        self.transactions_scroll
+    fn reset_transactions_selection(&mut self, cx: &mut App) {
+        self.edit_transactions_state(cx, |s| s.selected = 0);
+        self.transactions_state(cx)
+            .scroll
             .scroll_to_item(0, ScrollStrategy::Top);
     }
 
     /// Keys while `InputMode::Search` is active on the Transactions page: typing filters live,
     /// `Backspace` edits, `Enter` keeps the text and returns to browsing the (filtered) rows, and
     /// `Esc` (handled with the other modes' exit) clears it.
-    fn handle_transactions_search_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_transactions_search_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match keystroke.key.as_str() {
             "enter" => {
                 self.nav.exit_mode();
                 true
             }
             "backspace" => {
-                self.transactions_search.pop();
-                self.reset_transactions_selection();
+                self.edit_transactions_state(cx, |s| s.search.pop());
+                self.reset_transactions_selection(cx);
                 true
             }
             _ => {
@@ -1074,8 +1093,8 @@ impl Shell {
                         if text.chars().count() == 1
                             && text.chars().next().is_some_and(|ch| !ch.is_control()) =>
                     {
-                        self.transactions_search.push_str(text);
-                        self.reset_transactions_selection();
+                        self.edit_transactions_state(cx, |s| s.search.push_str(text));
+                        self.reset_transactions_selection(cx);
                         true
                     }
                     _ => false,
@@ -1106,14 +1125,16 @@ impl Shell {
     fn open_filter_popover(&mut self, chip: Option<FilterField>, cx: &mut Context<'_, Self>) {
         let options = self.filter_form_options(cx);
         let mut form = FilterForm::from_filters(
-            &self.transactions_filters,
+            &self.transactions_state(cx).filters,
             &options,
             self.today,
             self.settings_date_style,
         );
         form.focused = chip.map(FormField::for_chip).unwrap_or_default();
-        self.transactions_filter_anchor = chip.unwrap_or(FilterField::Account);
-        self.transactions_filter_form = Some(form);
+        self.edit_transactions_state(cx, |s| {
+            s.filter_anchor = chip.unwrap_or(FilterField::Account)
+        });
+        self.edit_transactions_state(cx, |s| s.filter_form = Some(form));
         self.nav.enter_mode(InputMode::Filter);
     }
 
@@ -1125,51 +1146,15 @@ impl Shell {
     fn handle_filter_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let options = self.filter_form_options(cx);
         let (today, date_style) = (self.today, self.settings_date_style);
-        let Some(form) = self.transactions_filter_form.as_mut() else {
+        let Some((handled, apply)) = self.with_filter_form(cx, |form| {
+            filter_key(form, keystroke, &options, today, date_style)
+        }) else {
             return false;
         };
-        let modifiers = &keystroke.modifiers;
-        let mut apply = false;
-
-        if modifiers.control && keystroke.key == "r" {
-            form.reset(&options, today, date_style);
-            return true;
-        }
-        match keystroke.key.as_str() {
-            "tab" => form.cycle_focus(modifiers.shift, &options),
-            "up" => {
-                form.handle_select_key(FilterSelectKey::Up, &options);
-            }
-            "down" => {
-                form.handle_select_key(FilterSelectKey::Down, &options);
-            }
-            "left" if form.focused == FormField::Status => form.step_status(-1),
-            "right" if form.focused == FormField::Status => form.step_status(1),
-            "space" if form.focused.is_select() => {
-                form.handle_select_key(FilterSelectKey::Activate, &options);
-            }
-            "space" if form.focused == FormField::Status => form.step_status(1),
-            "enter" if form.focused.is_select() => {
-                form.handle_select_key(FilterSelectKey::Activate, &options);
-            }
-            "enter" => apply = true,
-            "backspace" => form.backspace(),
-            _ => {
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-                if let Some(text) = keystroke.key_char.as_deref()
-                    && text.chars().count() == 1
-                    && let Some(ch) = text.chars().next()
-                {
-                    form.push_char(ch);
-                }
-            }
-        }
         if apply {
             self.apply_filter_form(cx);
         }
-        true
+        handled
     }
 
     /// **apply**: commits the draft to the applied filters, closes the popover and puts the table
@@ -1177,29 +1162,30 @@ impl Shell {
     fn apply_filter_form(&mut self, cx: &mut Context<'_, Self>) {
         let options = self.filter_form_options(cx);
         let Some(filters) = self
-            .transactions_filter_form
+            .transactions_state(cx)
+            .filter_form
             .as_ref()
             .and_then(|form| form.to_filters(&options, self.today, self.settings_date_style))
         else {
             return;
         };
-        self.transactions_filters = filters;
-        self.transactions_filter_form = None;
+        self.edit_transactions_state(cx, |s| s.filters = filters);
+        self.edit_transactions_state(cx, |s| s.filter_form = None);
         self.nav.exit_mode();
-        self.reset_transactions_selection();
+        self.reset_transactions_selection(cx);
     }
 
     /// A click on a popover field: a text field takes focus; a select takes focus and toggles its
     /// list.
     fn handle_filter_field_click(&mut self, field: FormField, cx: &mut Context<'_, Self>) {
         let options = self.filter_form_options(cx);
-        if let Some(form) = self.transactions_filter_form.as_mut() {
+        self.with_filter_form(cx, |form| {
             if field.is_select() {
                 form.click_select(field, &options);
             } else {
                 form.focus(field);
             }
-        }
+        });
         cx.notify();
     }
 
@@ -1210,9 +1196,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         let options = self.filter_form_options(cx);
-        if let Some(form) = self.transactions_filter_form.as_mut() {
-            form.choose_option(field, index, &options);
-        }
+        self.with_filter_form(cx, |form| form.choose_option(field, index, &options));
         cx.notify();
     }
 
@@ -1221,10 +1205,10 @@ impl Shell {
         status: transactions::query::StatusFilter,
         cx: &mut Context<'_, Self>,
     ) {
-        if let Some(form) = self.transactions_filter_form.as_mut() {
+        self.with_filter_form(cx, |form| {
             form.focus(FormField::Status);
             form.status = status;
-        }
+        });
         cx.notify();
     }
 
@@ -1232,9 +1216,7 @@ impl Shell {
     fn handle_filter_reset(&mut self, cx: &mut Context<'_, Self>) {
         let options = self.filter_form_options(cx);
         let (today, date_style) = (self.today, self.settings_date_style);
-        if let Some(form) = self.transactions_filter_form.as_mut() {
-            form.reset(&options, today, date_style);
-        }
+        self.with_filter_form(cx, |form| form.reset(&options, today, date_style));
         cx.notify();
     }
 
@@ -1245,23 +1227,26 @@ impl Shell {
 
     /// A click outside the card: discards the draft, like `Esc`.
     fn handle_filter_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.transactions_filter_form = None;
+        self.edit_transactions_state(cx, |s| s.filter_form = None);
         self.nav.exit_mode();
         cx.notify();
     }
 
     /// The `✕` on an accent chip: resets just that filter.
     fn handle_transactions_chip_clear(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
-        transactions::chips::clear_field(&mut self.transactions_filters, field, self.today);
-        self.reset_transactions_selection();
+        let today = self.today;
+        self.edit_transactions_state(cx, |s| {
+            transactions::chips::clear_field(&mut s.filters, field, today)
+        });
+        self.reset_transactions_selection(cx);
         cx.notify();
     }
 
     /// `clear filters`: every filter back to its default. The search text is separate state and is
     /// left alone.
     fn handle_transactions_clear_all(&mut self, cx: &mut Context<'_, Self>) {
-        self.transactions_filters = TransactionFilters::defaults(self.today);
-        self.reset_transactions_selection();
+        self.edit_transactions_state(cx, |s| s.filters = TransactionFilters::defaults(self.today));
+        self.reset_transactions_selection(cx);
         cx.notify();
     }
 
@@ -1280,7 +1265,7 @@ impl Shell {
 
     /// A click on a table row selects it.
     fn handle_transactions_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.transactions_selected = index;
+        self.edit_transactions_state(cx, |s| s.selected = index);
         cx.notify();
     }
 
@@ -1922,19 +1907,23 @@ impl Shell {
     /// search cleared and the table back on its first row. The Accounts selection is untouched, so
     /// returning to Accounts finds the same row selected.
     fn open_account_ledger(&mut self, id: u32, cx: &mut App) {
-        self.transactions_filters = TransactionFilters::for_account(self.today, id);
-        self.transactions_search.clear();
-        self.transactions_filter_form = None;
-        self.reset_transactions_selection();
+        self.edit_transactions_state(cx, |s| {
+            s.filters = TransactionFilters::for_account(self.today, id)
+        });
+        self.edit_transactions_state(cx, |s| s.search.clear());
+        self.edit_transactions_state(cx, |s| s.filter_form = None);
+        self.reset_transactions_selection(cx);
         self.nav.set_noun(Noun::Transactions);
         self.reset_view_scroll(cx);
     }
 
     fn open_category_transactions(&mut self, id: u32, cx: &mut App) {
-        self.transactions_filters = TransactionFilters::for_category(self.today, id);
-        self.transactions_search.clear();
-        self.transactions_filter_form = None;
-        self.reset_transactions_selection();
+        self.edit_transactions_state(cx, |s| {
+            s.filters = TransactionFilters::for_category(self.today, id)
+        });
+        self.edit_transactions_state(cx, |s| s.search.clear());
+        self.edit_transactions_state(cx, |s| s.filter_form = None);
+        self.reset_transactions_selection(cx);
         self.nav.set_noun(Noun::Transactions);
         self.reset_view_scroll(cx);
     }
@@ -1942,10 +1931,12 @@ impl Shell {
     /// "View transactions" on the Payees page: Transactions filtered to exactly this Payee's id, not
     /// a name substring that would over-match ("BP").
     fn open_payee_transactions(&mut self, id: u32, cx: &mut App) {
-        self.transactions_filters = TransactionFilters::for_payee(self.today, id);
-        self.transactions_search.clear();
-        self.transactions_filter_form = None;
-        self.reset_transactions_selection();
+        self.edit_transactions_state(cx, |s| {
+            s.filters = TransactionFilters::for_payee(self.today, id)
+        });
+        self.edit_transactions_state(cx, |s| s.search.clear());
+        self.edit_transactions_state(cx, |s| s.filter_form = None);
+        self.reset_transactions_selection(cx);
         self.nav.set_noun(Noun::Transactions);
         self.reset_view_scroll(cx);
     }
@@ -1953,10 +1944,12 @@ impl Shell {
     /// "View transactions" on the Tags page: Transactions filtered to exactly this Tag's id, not a
     /// name substring that would over-match ("trip").
     fn open_tag_transactions(&mut self, id: u32, cx: &mut App) {
-        self.transactions_filters = TransactionFilters::for_tag(self.today, id);
-        self.transactions_search.clear();
-        self.transactions_filter_form = None;
-        self.reset_transactions_selection();
+        self.edit_transactions_state(cx, |s| {
+            s.filters = TransactionFilters::for_tag(self.today, id)
+        });
+        self.edit_transactions_state(cx, |s| s.search.clear());
+        self.edit_transactions_state(cx, |s| s.filter_form = None);
+        self.reset_transactions_selection(cx);
         self.nav.set_noun(Noun::Transactions);
         self.reset_view_scroll(cx);
     }
@@ -2903,21 +2896,22 @@ impl Shell {
         let mut filters = TransactionFilters::defaults(self.today);
         filters.from = filters.from.map(|from| from.min(date));
         filters.to = filters.to.map(|to| to.max(date));
-        self.transactions_filters = filters;
-        self.transactions_search.clear();
-        self.transactions_filter_form = None;
+        self.edit_transactions_state(cx, |s| s.filters = filters);
+        self.edit_transactions_state(cx, |s| s.search.clear());
+        self.edit_transactions_state(cx, |s| s.filter_form = None);
         let index = transactions::query::query(
             &self.transactions_ledger(cx),
             self.transactions(cx),
-            &self.transactions_filters,
-            &self.transactions_search,
+            &self.transactions_state(cx).filters,
+            &self.transactions_state(cx).search,
         )
         .rows
         .iter()
         .position(|row| row.transaction.id == transaction_id)
         .unwrap_or(0);
-        self.transactions_selected = index;
-        self.transactions_scroll
+        self.edit_transactions_state(cx, |s| s.selected = index);
+        self.transactions_state(cx)
+            .scroll
             .scroll_to_item_strict(index, ScrollStrategy::Center);
         self.nav.set_noun(Noun::Transactions);
         self.reset_view_scroll(cx);
@@ -3272,7 +3266,7 @@ impl Shell {
     /// page (#284).
     fn open_import(&mut self, cx: &mut App) {
         self.import = Some(ImportState::new(&self.payees, self.today));
-        self.transactions_filter_form = None;
+        self.edit_transactions_state(cx, |s| s.filter_form = None);
         self.nav.set_noun(Noun::Transactions);
         self.nav.set_focus(FocusZone::View);
         self.reset_view_scroll(cx);
@@ -3379,7 +3373,7 @@ impl Shell {
                     })
                 });
                 self.import = None;
-                self.reset_transactions_selection();
+                self.reset_transactions_selection(cx);
                 self.reset_view_scroll(cx);
                 self.raise_toast(
                     ToastKind::Success,
@@ -4508,8 +4502,9 @@ impl Shell {
         self.settings_row_density = density;
         // The Transactions table's scroll offset is in pixels, so a new row height would leave it
         // pointing at a different row: re-anchor on the selected one for its next paint.
-        self.transactions_scroll
-            .scroll_to_item_strict(self.transactions_selected, ScrollStrategy::Center);
+        self.transactions_state(cx)
+            .scroll
+            .scroll_to_item_strict(self.transactions_state(cx).selected, ScrollStrategy::Center);
         cx.notify();
     }
 
@@ -4550,6 +4545,54 @@ impl Focusable for Shell {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
+}
+
+/// The popover's key table, applied to the draft. Returns whether the key was handled, and whether
+/// it asks for **apply** (which the caller runs once the draft is no longer borrowed).
+fn filter_key(
+    form: &mut FilterForm,
+    keystroke: &Keystroke,
+    options: &FormOptions,
+    today: chrono::NaiveDate,
+    date_style: Option<DateStyle>,
+) -> (bool, bool) {
+    let modifiers = &keystroke.modifiers;
+    if modifiers.control && keystroke.key == "r" {
+        form.reset(options, today, date_style);
+        return (true, false);
+    }
+    match keystroke.key.as_str() {
+        "tab" => form.cycle_focus(modifiers.shift, options),
+        "up" => {
+            form.handle_select_key(FilterSelectKey::Up, options);
+        }
+        "down" => {
+            form.handle_select_key(FilterSelectKey::Down, options);
+        }
+        "left" if form.focused == FormField::Status => form.step_status(-1),
+        "right" if form.focused == FormField::Status => form.step_status(1),
+        "space" if form.focused.is_select() => {
+            form.handle_select_key(FilterSelectKey::Activate, options);
+        }
+        "space" if form.focused == FormField::Status => form.step_status(1),
+        "enter" if form.focused.is_select() => {
+            form.handle_select_key(FilterSelectKey::Activate, options);
+        }
+        "enter" => return (true, true),
+        "backspace" => form.backspace(),
+        _ => {
+            if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                return (false, false);
+            }
+            if let Some(text) = keystroke.key_char.as_deref()
+                && text.chars().count() == 1
+                && let Some(ch) = text.chars().next()
+            {
+                form.push_char(ch);
+            }
+        }
+    }
+    (true, false)
 }
 
 /// Deletes account `id` and, as the Delete dialog says, the transactions booked to it,

@@ -13,10 +13,11 @@ mod filter_popover;
 mod footer;
 mod header;
 pub(crate) mod hints;
+pub mod state;
 mod table;
 
 pub use filter_popover::{OnFieldClick, OnOptionClick, OnStatusClick, PopoverProps};
-pub use header::{ChipBounds, HeaderProps, OnChipClick, OnPlainClick};
+pub use header::{HeaderProps, OnChipClick, OnPlainClick};
 pub use table::OnRowClick;
 
 use std::rc::Rc;

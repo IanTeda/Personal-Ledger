@@ -148,19 +148,17 @@ impl Shell {
                 // saving" -- discards whatever was typed, same as Cancel.
                 // The filter popover's dropdowns work the same way: the first `Esc` closes an open
                 // list only, the next discards the draft and closes the popover.
-                if let Some(form) = self.transactions_filter_form.as_mut()
-                    && form.close_open_select()
-                {
+                if self.with_filter_form(cx, |form| form.close_open_select()) == Some(true) {
                     return true;
                 }
-                self.transactions_filter_form = None;
+                self.edit_transactions_state(cx, |s| s.filter_form = None);
                 self.close_dialog();
                 self.edit_budgets_state(cx, |state| state.plan_edit = None);
                 // `Esc` while searching Transactions clears the search text as well as leaving the
                 // mode (the map's decision: search is cleared by `Esc` or by emptying the box).
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Transactions {
-                    self.transactions_search.clear();
-                    self.reset_transactions_selection();
+                    self.edit_transactions_state(cx, |s| s.search.clear());
+                    self.reset_transactions_selection(cx);
                 }
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Documents {
                     self.documents_cancel_search(cx);
@@ -397,7 +395,7 @@ impl Shell {
     /// everywhere else.
     fn handle_search_key(&mut self, keystroke: &Keystroke, cx: &mut gpui::App) -> bool {
         if self.nav.noun() == Noun::Transactions {
-            return self.handle_transactions_search_key(keystroke);
+            return self.handle_transactions_search_key(keystroke, cx);
         }
         if self.nav.noun() == Noun::Documents {
             return self.handle_documents_search_key(keystroke, cx);

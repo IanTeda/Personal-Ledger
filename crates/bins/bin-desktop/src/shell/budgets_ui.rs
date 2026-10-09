@@ -789,11 +789,12 @@ impl Shell {
             .get(self.budgets_state(cx).current)
             .map(|budget| budget.account_ids.clone())
             .unwrap_or_default();
-        self.transactions_filters =
-            TransactionFilters::for_budget_category(category_id, month, &account_ids);
-        self.transactions_search.clear();
-        self.transactions_filter_form = None;
-        self.reset_transactions_selection();
+        self.edit_transactions_state(cx, |s| {
+            s.filters = TransactionFilters::for_budget_category(category_id, month, &account_ids)
+        });
+        self.edit_transactions_state(cx, |s| s.search.clear());
+        self.edit_transactions_state(cx, |s| s.filter_form = None);
+        self.reset_transactions_selection(cx);
         self.nav.set_noun(Noun::Transactions);
         self.reset_view_scroll(cx);
     }

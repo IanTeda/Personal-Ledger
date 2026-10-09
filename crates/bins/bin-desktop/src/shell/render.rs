@@ -1133,114 +1133,123 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_transactions_search_click(cx));
             })
         };
-        let filter_popover = self.transactions_filter_form.as_ref().map(|form| {
-            let entity_for = |shell_call: fn(&mut Shell, &mut Context<'_, Shell>)| {
-                let entity = entity.clone();
-                Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
-                    entity.update(cx, shell_call);
-                }) as Rc<dyn Fn(&mut Window, &mut gpui::App)>
-            };
-            let on_field_click: transactions_view::OnFieldClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, _window, cx| {
-                    entity.update(cx, |shell, cx| shell.handle_filter_field_click(field, cx));
-                })
-            };
-            let on_option_click: transactions_view::OnOptionClick = {
-                let entity = entity.clone();
-                Rc::new(move |field, index, _window, cx| {
-                    entity.update(cx, |shell, cx| {
-                        shell.handle_filter_option_click(field, index, cx)
-                    });
-                })
-            };
-            let on_status_click: transactions_view::OnStatusClick = {
-                let entity = entity.clone();
-                Rc::new(move |status, _window, cx| {
-                    entity.update(cx, |shell, cx| shell.handle_filter_status_click(status, cx));
-                })
-            };
-            // Anchor just below the chip that opened it, left-aligned to it and kept inside the
-            // window; before any chip has been painted, a fixed spot.
-            let viewport = window.viewport_size();
-            let (left, top) = match self
-                .transactions_chip_bounds
-                .borrow()
-                .get(&self.transactions_filter_anchor)
-                .copied()
-            {
-                Some(bounds) => {
-                    let mut left = bounds.origin.x;
-                    let max_left = viewport.width - px(416.0);
-                    if left > max_left {
-                        left = max_left;
+        let filter_popover = self
+            .transactions_state(cx)
+            .filter_form
+            .as_ref()
+            .map(|form| {
+                let entity_for = |shell_call: fn(&mut Shell, &mut Context<'_, Shell>)| {
+                    let entity = entity.clone();
+                    Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
+                        entity.update(cx, shell_call);
+                    }) as Rc<dyn Fn(&mut Window, &mut gpui::App)>
+                };
+                let on_field_click: transactions_view::OnFieldClick = {
+                    let entity = entity.clone();
+                    Rc::new(move |field, _window, cx| {
+                        entity.update(cx, |shell, cx| shell.handle_filter_field_click(field, cx));
+                    })
+                };
+                let on_option_click: transactions_view::OnOptionClick = {
+                    let entity = entity.clone();
+                    Rc::new(move |field, index, _window, cx| {
+                        entity.update(cx, |shell, cx| {
+                            shell.handle_filter_option_click(field, index, cx)
+                        });
+                    })
+                };
+                let on_status_click: transactions_view::OnStatusClick = {
+                    let entity = entity.clone();
+                    Rc::new(move |status, _window, cx| {
+                        entity.update(cx, |shell, cx| shell.handle_filter_status_click(status, cx));
+                    })
+                };
+                // Anchor just below the chip that opened it, left-aligned to it and kept inside the
+                // window; before any chip has been painted, a fixed spot.
+                let viewport = window.viewport_size();
+                let (left, top) = match self
+                    .transactions_state(cx)
+                    .chip_bounds
+                    .borrow()
+                    .get(&self.transactions_state(cx).filter_anchor)
+                    .copied()
+                {
+                    Some(bounds) => {
+                        let mut left = bounds.origin.x;
+                        let max_left = viewport.width - px(416.0);
+                        if left > max_left {
+                            left = max_left;
+                        }
+                        if left < px(8.0) {
+                            left = px(8.0);
+                        }
+                        (left, bounds.origin.y + bounds.size.height + px(6.0))
                     }
-                    if left < px(8.0) {
-                        left = px(8.0);
-                    }
-                    (left, bounds.origin.y + bounds.size.height + px(6.0))
-                }
-                None => (px(300.0), px(200.0)),
-            };
-            let options = self.filter_form_options(cx);
-            transactions_view::render_popover(
-                transactions_view::PopoverProps {
-                    form,
-                    options: &options,
-                    start_hint: form.start_hint(self.today, self.settings_date_style),
-                    end_hint: form.end_hint(self.today, self.settings_date_style),
-                    can_apply: form.is_valid(self.today, self.settings_date_style),
-                    left,
-                    top,
-                    on_field_click,
-                    on_option_click,
-                    on_status_click,
-                    on_reset: entity_for(Shell::handle_filter_reset),
-                    on_apply: entity_for(Shell::handle_filter_apply),
-                    on_cancel: entity_for(Shell::handle_filter_cancel),
-                },
-                cx,
-            )
-        });
+                    None => (px(300.0), px(200.0)),
+                };
+                let options = self.filter_form_options(cx);
+                transactions_view::render_popover(
+                    transactions_view::PopoverProps {
+                        form,
+                        options: &options,
+                        start_hint: form.start_hint(self.today, self.settings_date_style),
+                        end_hint: form.end_hint(self.today, self.settings_date_style),
+                        can_apply: form.is_valid(self.today, self.settings_date_style),
+                        left,
+                        top,
+                        on_field_click,
+                        on_option_click,
+                        on_status_click,
+                        on_reset: entity_for(Shell::handle_filter_reset),
+                        on_apply: entity_for(Shell::handle_filter_apply),
+                        on_cancel: entity_for(Shell::handle_filter_cancel),
+                    },
+                    cx,
+                )
+            });
         let transactions_page = (self.nav.noun() == Noun::Transactions).then(|| {
             let ledger = self.transactions_ledger(cx);
             let visible = transactions::query::query(
                 &ledger,
                 self.transactions(cx),
-                &self.transactions_filters,
-                &self.transactions_search,
+                &self.transactions_state(cx).filters,
+                &self.transactions_state(cx).search,
             );
             let rows =
                 transactions::rows::build_rows(&visible, &ledger, &self.transactions_prefs());
-            let footer = transactions::chips::footer(&visible, &self.transactions_filters, &ledger);
+            let footer = transactions::chips::footer(
+                &visible,
+                &self.transactions_state(cx).filters,
+                &ledger,
+            );
             let chips = transactions::chips::chips(
-                &self.transactions_filters,
+                &self.transactions_state(cx).filters,
                 &ledger,
                 self.today,
                 self.settings_date_style,
             );
             transactions_view::TransactionsPageProps {
-                dimmed: self.transactions_filter_form.is_some(),
+                dimmed: self.transactions_state(cx).filter_form.is_some(),
                 header: transactions_view::HeaderProps {
                     count_line: transactions::chips::count_line(self.transactions(cx)),
                     chips,
-                    show_clear: !self.transactions_filters.is_default(self.today),
-                    search: self.transactions_search.clone(),
+                    show_clear: !self.transactions_state(cx).filters.is_default(self.today),
+                    search: self.transactions_state(cx).search.clone(),
                     searching: self.nav.mode() == InputMode::Search,
                     on_add_click: on_transactions_add_click,
                     on_chip_click: on_transactions_chip_click,
                     on_chip_clear: on_transactions_chip_clear,
                     on_clear_all: on_transactions_clear_all,
                     on_search_click: on_transactions_search_click,
-                    chip_bounds: self.transactions_chip_bounds.clone(),
+                    chip_bounds: self.transactions_state(cx).chip_bounds.clone(),
                 },
                 selected: transactions::rows::clamp_selection(
-                    self.transactions_selected,
+                    self.transactions_state(cx).selected,
                     rows.len(),
                 ),
                 rows: Rc::new(rows),
                 row_height: px(format::row_height_px(self.settings_row_density)),
-                scroll: self.transactions_scroll.clone(),
+                scroll: self.transactions_state(cx).scroll.clone(),
                 on_row_click: on_transactions_row_click,
                 footer,
             }
