@@ -157,6 +157,10 @@ pub struct Shell {
     /// Showing Toasts hide and their timers pause behind it. Mutually exclusive with every
     /// other popup field.
     toast_history: Option<ToastHistoryPopup>,
+    /// Whether a ledger is loaded (`docs/ux/tui-mockups/01-chrome/README.md`'s 1a). `false` on cold
+    /// start and after `:close`, when the Dashboard's place shows the "no ledger loaded" note
+    /// instead; every other view still opens, as in `bin-desktop`'s `NavState::ledger_open`.
+    ledger_open: bool,
 }
 
 impl Shell {
@@ -196,6 +200,7 @@ impl Shell {
             colours: Colours::default(),
             toasts: Toasts::default(),
             toast_history: None,
+            ledger_open: false,
         }
     }
 
@@ -451,6 +456,8 @@ impl Shell {
             CommandId::UnitEdit => Some(Action::OpenEditUnitPopup),
             CommandId::UnitDelete => Some(Action::OpenDeleteUnitPopup),
             CommandId::Dashboard => Some(Action::OpenDashboard),
+            CommandId::LedgerOpen | CommandId::LedgerNew => Some(Action::OpenLedger),
+            CommandId::LedgerClose => Some(Action::CloseLedger),
             CommandId::Dismiss => Some(Action::DismissNewestToast),
             CommandId::DismissAll => Some(Action::DismissAllToasts),
             CommandId::ToastsOn => Some(Action::SetToasts(true)),
@@ -643,14 +650,16 @@ impl Shell {
     /// The footer's resting hint items, each a key token and its label Message, in the order the
     /// bar shows them.
     fn footer_hints(&self) -> Vec<(&str, String)> {
-        vec![
-            (
-                self.key_token("open_command_popup", ":"),
-                crate::msg::tui_hint_command(),
-            ),
-            (SEARCH_KEY, crate::msg::tui_hint_search()),
-            (self.key_token("help", "?"), crate::msg::tui_hint_help()),
-        ]
+        let mut hints = vec![(
+            self.key_token("open_command_popup", ":"),
+            crate::msg::tui_hint_command(),
+        )];
+        // Nothing to search with no ledger loaded, so 1a's hints are only `: command · ? help`.
+        if self.ledger_open {
+            hints.push((SEARCH_KEY, crate::msg::tui_hint_search()));
+        }
+        hints.push((self.key_token("help", "?"), crate::msg::tui_hint_help()));
+        hints
     }
 
     /// Matches `key` against `command`'s configured key spec, falling back to `default_spec`
@@ -1226,6 +1235,16 @@ impl Shell {
             }
             Action::OpenUnits => self.open(UnitsView::new()),
             Action::OpenDashboard => self.open(DashboardView::new()),
+            // Both land on the Dashboard, which is what the flag changes, and clear the view
+            // stack the way opening it always does.
+            Action::OpenLedger => {
+                self.ledger_open = true;
+                self.open(DashboardView::new());
+            }
+            Action::CloseLedger => {
+                self.ledger_open = false;
+                self.open(DashboardView::new());
+            }
             Action::OpenAccounts => self.open(AccountsView::new()),
             Action::OpenBalanceChecks => self.open(BalanceChecksView::new()),
             Action::OpenBudgets => self.open(BudgetsView::new()),
@@ -1836,8 +1855,12 @@ impl Shell {
         );
         frame.render_widget(Paragraph::new(synced).style(c.status_bar()), right);
 
-        // Screen Frame / View
-        self.view.view(frame, rows[1], c);
+        // Screen Frame / View — with no ledger loaded, the Dashboard's place holds the 1a note.
+        if !self.ledger_open && self.view.id() == ViewId::Dashboard {
+            crate::view::dashboard::render_no_ledger(frame, rows[1], c);
+        } else {
+            self.view.view(frame, rows[1], c);
+        }
 
         // Rule Frame — separates the view from the footer, replacing the footer's old
         // background fill as the visual boundary between them.
@@ -1908,6 +1931,11 @@ impl Shell {
         } else {
             let key = Style::default().add_modifier(Modifier::BOLD);
             let mut spans = vec![Span::raw(" ")];
+            // 1a names the mode at the far left while no ledger is loaded.
+            if !self.ledger_open {
+                spans.push(Span::styled(upper(&crate::msg::tui_mode_normal()), key));
+                spans.push(Span::raw(HINT_SEPARATOR));
+            }
             for (index, (token, label)) in self.footer_hints().into_iter().enumerate() {
                 if index > 0 {
                     spans.push(Span::raw(HINT_SEPARATOR));
@@ -1919,6 +1947,17 @@ impl Shell {
             Line::from(spans)
         };
         frame.render_widget(Paragraph::new(footer), rows[3]);
+        // The right-aligned `no file` label, drawn after the hints so a narrow frame keeps it.
+        if !self.ledger_open {
+            let no_file = format!(" {} ", crate::msg::tui_footer_no_file());
+            let width = u16::try_from(no_file.chars().count()).unwrap_or(0);
+            let [_, right] = Layout::horizontal([
+                Constraint::Min(0),
+                Constraint::Length(width.min(rows[3].width)),
+            ])
+            .areas(rows[3]);
+            frame.render_widget(Paragraph::new(no_file).style(dim), right);
+        }
 
         // Popup overlays — dim the view behind them (never hide it) and float over the whole
         // frame, per §3a. Mutually exclusive: only one is ever `Some` at a time.

@@ -59,6 +59,29 @@ const ATTENTION_ACTION_WIDTH: u16 = 10;
 /// are added on top of this.
 const ATTENTION_FIXED_ROWS: u16 = 3;
 
+/// The 1a resting state (`docs/ux/tui-mockups/01-chrome/README.md`): what `Shell` draws in the
+/// Dashboard's place while no ledger is loaded. Two lines centred both ways, the command names in
+/// the hint bolded so they read as the two ways forward.
+pub fn render_no_ledger(frame: &mut Frame<'_>, area: Rect, c: &Colours) {
+    let bold = Style::default().add_modifier(Modifier::BOLD);
+    let hint: Vec<Span<'_>> = crate::msg::tui_empty_state_hint(":new", ":open")
+        .into_iter()
+        .map(|segment| match segment.tag {
+            Some(_) => Span::styled(segment.text, bold),
+            None => Span::raw(segment.text),
+        })
+        .collect();
+    let lines = vec![
+        Line::from(Span::styled(crate::msg::tui_empty_state_title(), bold)),
+        Line::from(hint).style(c.muted()),
+    ];
+
+    let [middle] = Layout::vertical([Constraint::Length(2)])
+        .flex(ratatui::layout::Flex::Center)
+        .areas(area);
+    frame.render_widget(Paragraph::new(lines).alignment(Alignment::Center), middle);
+}
+
 /// A trivial placeholder Dashboard `View`: labelled boxes proving the §2a pane layout.
 #[derive(Default)]
 pub struct DashboardView;

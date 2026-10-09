@@ -4,8 +4,9 @@
 ## footer hints are Messages.
 
 ## The resting-state group headers. Every other domain reuses a `nav-*` Message, or the shell's own
-## `tui-view-balance-checks-title`, so only Quit and Toasts need one of their own.
+## `tui-view-balance-checks-title`, so only Ledger, Quit and Toasts need one of their own.
 
+tui-command-domain-ledger = Ledger
 tui-command-domain-quit = Quit
 tui-command-domain-toasts = Toasts
 
@@ -73,6 +74,9 @@ tui-command-category-tree-description = prints the subtree — scriptable/pipeab
 tui-command-dashboard-description = financial position — the default view
 tui-command-help-description = browse every command
 tui-command-quit-description = quit the app
+tui-command-open-description = load a ledger file
+tui-command-new-description = start a new ledger
+tui-command-close-description = close the open ledger
 tui-command-dismiss-description = dismiss the newest Toast
 tui-command-dismiss-all-description = dismiss every Toast
 tui-command-toasts-on-description = show Toasts

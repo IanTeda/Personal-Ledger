@@ -21,6 +21,7 @@ tui-status-line-with-mode = { $glyph } { $name } | { $view } · { $mode }
 
 ## The mode names, written in sentence case; the renderer upper-cases them.
 
+tui-mode-normal = Normal
 tui-mode-command = Command
 tui-mode-insert = Insert
 tui-mode-edit = Edit
@@ -31,6 +32,16 @@ tui-mode-confirm = Confirm
 tui-hint-command = command
 tui-hint-search = search
 tui-hint-help = help
+
+## The footer's right-hand label while no ledger is loaded.
+
+tui-footer-no-file = no file
+
+## The Dashboard's place while no ledger is loaded: two lines, centred. `$new` and `$open` are the
+## `:new` and `:open` command names, never translated; the renderer bolds the tagged spans.
+
+tui-empty-state-title = No Personal Ledger file loaded.
+tui-empty-state-hint = Use <new>{ $new }</new> to create a new ledger or <open>{ $open }</open> to open an existing ledger.
 
 ## The footer while an overlay is open: the same hints, plus one close hint for the overlay. `$key`
 ## is the configured back key and `$noun` the form's own noun.

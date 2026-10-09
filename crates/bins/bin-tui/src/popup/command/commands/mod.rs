@@ -21,6 +21,7 @@ mod budgets;
 mod categories;
 mod dashboard;
 mod help;
+mod ledger;
 mod payees;
 mod quit;
 mod reports;
@@ -101,6 +102,10 @@ pub enum CommandId {
     Dashboard,
     // help
     Help,
+    // ledger
+    LedgerOpen,
+    LedgerNew,
+    LedgerClose,
     // payees
     Payee,
     PayeeNew,
@@ -230,6 +235,10 @@ pub const DOMAINS: &[Domain] = &[
     Domain {
         name: lib_locale::msg::nav_help,
         commands: help::COMMANDS,
+    },
+    Domain {
+        name: crate::msg::tui_command_domain_ledger,
+        commands: ledger::COMMANDS,
     },
     Domain {
         name: lib_locale::msg::nav_payees,

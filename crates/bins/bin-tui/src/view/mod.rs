@@ -110,6 +110,12 @@ pub enum Action {
     /// `g d` (the `docs/ux/tui-mockups/01-chrome/README.md` "Jumps" table's chord), or `Enter` on the command
     /// popup's `dashboard` command — returns to the Dashboard view.
     OpenDashboard,
+    /// `Enter` on the command popup's `open` or `new` command — loads a ledger, leaving the
+    /// "no ledger loaded" resting state for the Dashboard. A stand-in: no file is read yet.
+    OpenLedger,
+    /// `Enter` on the command popup's `close` command — returns to the "no ledger loaded"
+    /// resting state, the same as cold start.
+    CloseLedger,
     /// `g a`, or `Enter` on the command popup's `account list` command — opens the
     /// placeholder Accounts view.
     OpenAccounts,
