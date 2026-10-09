@@ -1,7 +1,13 @@
 //! Shared harness for the TUI's in-process keyboard tests (ADR-0035). Each test builds a
 //! hermetic `Shell`, feeds it key sequences the way the terminal would, and reads the drawn
 //! screen back from ratatui's `TestBackend`. Nothing here touches the database, the terminal
-//! or the user's config.
+//! or the user's config. What a test may assert on (screen text, Colour Roles, and when a
+//! `#[doc(hidden)]` accessor is allowed) is set out in ADR-0035.
+
+#![expect(
+    clippy::panic,
+    reason = "test support: an unknown key token is a typo in the test and should fail it loudly"
+)]
 
 use bin_tui::{Shell, build_shell, colours::Colours, event::Event, locale};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

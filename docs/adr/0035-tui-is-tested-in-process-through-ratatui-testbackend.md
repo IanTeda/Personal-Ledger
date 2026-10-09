@@ -6,10 +6,15 @@ To let tests build `Shell` the way the app does, `bin_tui` becomes a lib plus a 
 
 No `test-support` Cargo feature is added: `TestBackend` ships in ratatui's normal build, so the harness needs no extra dependency and no self dev-dependency.
 
+Tests assert on what the frame shows, because unlike gpui the TUI has a readable frame. Drawn screen text is the default, checked with whole-frame `contains` plus harness helpers for a row or the line holding some text when a label could appear in more than one place. Behaviour that lives only in a style (the selected row, a focused pane, an error tint) is checked by Colour Role: the cell's style equals the named style from the same `Colours` the test built the `Shell` with, never a raw colour or modifier. Whole-frame snapshots (`insta`) are not used: with every View being restructured they would churn on each layout or Catalogue tweak and say nothing about what a test is for.
+
+A `#[doc(hidden)]` accessor on `Shell` is allowed only when the behaviour under test has no visible effect in the frame, as text or as a Colour Role (a store change to a field the View doesn't show, a changed Preference). It is never a shortcut for state the screen does show. Each is read-only, returns plain data and is one narrow function per fact, promoted to a per-View snapshot struct only once a View needs three or more readbacks.
+
 ## Consequences
 
 - Modules are `pub(crate)` by default. `Shell`, `build_shell` and the types a test must name are `pub`, and a wider surface is added only when a test needs it. `Shell` fields stay private.
 - Tests are hermetic: a fixed `today`, the locale pinned with `locale::init_for_tests`, the deterministic fixture seed, default keybindings, a fixed colour depth, no database and no terminal probe.
 - Existing in-module tests in `shell.rs` are not backfilled. Each View gains `tests/<view>_keyboard.rs` as it is restructured.
+- The harness gains a role-based style check and row/line helpers when the first test needs them; none exist yet.
 - The pty smoke tier, shell-level chrome tests and mouse tests (the TUI has no mouse support) are out of scope for this decision.
 - ADR-0030 still governs the Desktop. Its out-of-scope line for the TUI now points here.
