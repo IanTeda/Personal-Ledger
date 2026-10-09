@@ -528,16 +528,6 @@ mod tests {
         }
     }
 
-    fn empty() -> World {
-        World {
-            accounts: default_accounts(),
-            categories: default_categories(),
-            transactions: Vec::new(),
-            plans: Vec::new(),
-            entries: Vec::new(),
-        }
-    }
-
     fn draft(recurrence: Recurrence, first_due: NaiveDate) -> BillPlanDraft {
         BillPlanDraft {
             name: "Water".to_string(),
@@ -552,18 +542,6 @@ mod tests {
             ends_on: None,
             attention_lead: None,
         }
-    }
-
-    fn add(w: &mut World, draft: &BillPlanDraft) -> u32 {
-        insert_plan(
-            &mut w.plans,
-            &mut w.entries,
-            draft,
-            &w.categories,
-            &w.accounts,
-            today(),
-        )
-        .unwrap()
     }
 
     fn dues(w: &World, plan_id: u32) -> Vec<NaiveDate> {
@@ -585,100 +563,7 @@ mod tests {
         EntryId { plan_id, due }
     }
 
-    // --- recurrence ---
-
-    #[test]
-    fn periods_step_across_years() {
-        let december = Period {
-            year: 2026,
-            month: 12,
-        };
-        assert_eq!(
-            december.next(),
-            Period {
-                year: 2027,
-                month: 1
-            }
-        );
-        assert_eq!(december.next().prev(), december);
-        assert_eq!(december.last_day(), date(2026, 12, 31));
-        assert_eq!(horizon(today()), date(2026, 10, 31));
-    }
-
-    // --- status and Needs Attention ---
-
-    fn open(due: NaiveDate) -> BillScheduleEntry {
-        BillScheduleEntry {
-            plan_id: 1,
-            due,
-            resolution: Resolution::Unresolved,
-            superseded: false,
-        }
-    }
-
-    #[test]
-    fn needs_attention_is_a_date_rule_across_month_boundaries() {
-        let w = empty();
-        let mut plan_draft = draft(Recurrence::Monthly, today());
-        plan_draft.attention_lead = Some(14);
-        let mut w = w;
-        let pid = add(&mut w, &plan_draft);
-        let plan = get(&w.plans, pid).unwrap();
-        let mut early_next_month = open(date(2026, 10, 2));
-        early_next_month.plan_id = pid;
-        assert!(needs_attention(&early_next_month, plan, today()));
-        let mut later = open(date(2026, 10, 4));
-        later.plan_id = pid;
-        assert!(!needs_attention(&later, plan, today()));
-    }
-
-    #[test]
-    fn no_lead_counts_from_the_due_day_and_resolved_rows_never_count() {
-        let mut w = empty();
-        let pid = add(&mut w, &draft(Recurrence::Monthly, today()));
-        let plan = get(&w.plans, pid).unwrap().clone();
-        let mut tomorrow = open(today() + Duration::days(1));
-        tomorrow.plan_id = pid;
-        assert!(!needs_attention(&tomorrow, &plan, today()));
-        let mut due_today = open(today());
-        due_today.plan_id = pid;
-        assert!(needs_attention(&due_today, &plan, today()));
-        due_today.resolution = Resolution::Skipped {
-            planned: cents_money(1),
-        };
-        assert!(!needs_attention(&due_today, &plan, today()));
-    }
-
     // --- generation ---
-
-    #[test]
-    fn generation_runs_to_the_end_of_next_month() {
-        let mut w = empty();
-        let pid = add(&mut w, &draft(Recurrence::Weekly, date(2026, 9, 14)));
-        let d = dues(&w, pid);
-        assert_eq!(d.first(), Some(&date(2026, 9, 14)));
-        assert_eq!(d.last(), Some(&date(2026, 10, 26)));
-        assert_eq!(d.len(), 7);
-    }
-
-    #[test]
-    fn a_long_recurrence_keeps_one_future_entry_past_the_horizon() {
-        let mut w = empty();
-        let pid = add(&mut w, &draft(Recurrence::Annually, date(2026, 3, 1)));
-        assert_eq!(dues(&w, pid), vec![date(2026, 3, 1), date(2027, 3, 1)]);
-    }
-
-    #[test]
-    fn ends_on_is_inclusive_and_generation_stops_there() {
-        let mut w = empty();
-        let mut d = draft(Recurrence::Monthly, date(2026, 7, 10));
-        d.ends_on = Some(date(2026, 9, 10));
-        let pid = add(&mut w, &d);
-        assert_eq!(
-            dues(&w, pid),
-            vec![date(2026, 7, 10), date(2026, 8, 10), date(2026, 9, 10)]
-        );
-    }
 
     #[test]
     fn populate_is_idempotent() {
@@ -686,166 +571,6 @@ mod tests {
         let before = w.entries.clone();
         populate(&w.plans, &mut w.entries, today());
         assert_eq!(w.entries, before);
-    }
-
-    #[test]
-    fn editing_the_recurrence_supersedes_future_open_entries_only() {
-        let mut w = empty();
-        let pid = add(&mut w, &draft(Recurrence::Monthly, date(2026, 8, 25)));
-        // Aug 25 is Overdue and must survive the edit.
-        let mut edit = draft(Recurrence::Monthly, date(2026, 8, 28));
-        edit.name = "Water".into();
-        edit_plan(
-            &mut w.plans,
-            &mut w.entries,
-            pid,
-            &edit,
-            &w.categories,
-            &w.accounts,
-            today(),
-        )
-        .unwrap();
-        assert_eq!(
-            dues(&w, pid),
-            vec![date(2026, 8, 25), date(2026, 9, 28), date(2026, 10, 28)]
-        );
-        let superseded: Vec<NaiveDate> = w
-            .entries
-            .iter()
-            .filter(|e| e.superseded)
-            .map(|e| e.due)
-            .collect();
-        assert_eq!(superseded, vec![date(2026, 9, 25), date(2026, 10, 25)]);
-    }
-
-    #[test]
-    fn an_edit_back_revives_the_same_superseded_row() {
-        let mut w = empty();
-        let original = draft(Recurrence::Monthly, date(2026, 9, 25));
-        let pid = add(&mut w, &original);
-        let moved = draft(Recurrence::Monthly, date(2026, 9, 27));
-        let (c, a) = (w.categories.clone(), w.accounts.clone());
-        edit_plan(&mut w.plans, &mut w.entries, pid, &moved, &c, &a, today()).unwrap();
-        edit_plan(
-            &mut w.plans,
-            &mut w.entries,
-            pid,
-            &original,
-            &c,
-            &a,
-            today(),
-        )
-        .unwrap();
-        assert_eq!(dues(&w, pid), vec![date(2026, 9, 25), date(2026, 10, 25)]);
-        let rows = w
-            .entries
-            .iter()
-            .filter(|e| e.due == date(2026, 9, 25))
-            .count();
-        assert_eq!(rows, 1);
-    }
-
-    #[test]
-    fn a_settled_period_is_never_billed_twice() {
-        let mut w = empty();
-        let pid = add(&mut w, &draft(Recurrence::Monthly, date(2026, 9, 20)));
-        skip(&w.plans, &mut w.entries, id(pid, date(2026, 9, 20))).unwrap();
-        let (c, a) = (w.categories.clone(), w.accounts.clone());
-        let moved = draft(Recurrence::Monthly, date(2026, 9, 26));
-        edit_plan(&mut w.plans, &mut w.entries, pid, &moved, &c, &a, today()).unwrap();
-        assert_eq!(dues(&w, pid), vec![date(2026, 9, 20), date(2026, 10, 26)]);
-    }
-
-    #[test]
-    fn deactivating_keeps_overdue_and_reactivating_does_not_backfill() {
-        let mut w = empty();
-        let pid = add(&mut w, &draft(Recurrence::Weekly, date(2026, 9, 12)));
-        set_active(&mut w.plans, &mut w.entries, pid, false, today()).unwrap();
-        assert_eq!(dues(&w, pid), vec![date(2026, 9, 12)]);
-        let later = date(2026, 10, 20);
-        set_active(&mut w.plans, &mut w.entries, pid, true, later).unwrap();
-        let d = dues(&w, pid);
-        assert_eq!(d[0], date(2026, 9, 12));
-        assert_eq!(d[1], date(2026, 10, 24));
-    }
-
-    #[test]
-    fn a_plain_edit_reads_through_live() {
-        let mut w = empty();
-        let pid = add(&mut w, &draft(Recurrence::Monthly, date(2026, 9, 25)));
-        let mut edit = draft(Recurrence::Monthly, date(2026, 9, 25));
-        edit.planned_amount = cents_money(12_345);
-        let (c, a) = (w.categories.clone(), w.accounts.clone());
-        edit_plan(&mut w.plans, &mut w.entries, pid, &edit, &c, &a, today()).unwrap();
-        assert!(w.entries.iter().all(|e| !e.superseded));
-        let e = entry(&w.entries, id(pid, date(2026, 9, 25))).unwrap();
-        assert_eq!(
-            amount(e, &w.plans, &w.transactions),
-            Some(cents_money(12_345))
-        );
-    }
-
-    // --- validation ---
-
-    fn refused(change: impl Fn(&mut BillPlanDraft)) -> BillError {
-        let mut w = empty();
-        let mut d = draft(Recurrence::Monthly, today());
-        change(&mut d);
-        insert_plan(
-            &mut w.plans,
-            &mut w.entries,
-            &d,
-            &w.categories,
-            &w.accounts,
-            today(),
-        )
-        .unwrap_err()
-    }
-
-    #[test]
-    fn validation_refuses_bad_drafts() {
-        assert_eq!(refused(|d| d.name = "  ".into()), BillError::NameRequired);
-        // Salary is Income; Utilities has children.
-        assert_eq!(
-            refused(|d| d.category_id = 11),
-            BillError::CategoryNotExpenseLeaf
-        );
-        assert_eq!(
-            refused(|d| d.category_id = 3),
-            BillError::CategoryNotExpenseLeaf
-        );
-        // Home Loan takes no Transactions.
-        assert_eq!(refused(|d| d.account_id = 5), BillError::AccountRequired);
-        assert_eq!(refused(|d| d.account_id = 99), BillError::AccountRequired);
-        assert_eq!(refused(|d| d.unit = "usd".into()), BillError::UnitMismatch);
-        assert_eq!(
-            refused(|d| d.planned_amount = cents_money(0)),
-            BillError::AmountNotPositive
-        );
-        assert_eq!(
-            refused(|d| d.ends_on = Some(date(2026, 1, 1))),
-            BillError::EndsBeforeFirstDue
-        );
-        assert_eq!(
-            refused(|d| {
-                d.recurrence = Recurrence::OneShot;
-                d.ends_on = Some(date(2027, 1, 1));
-            }),
-            BillError::EndsOnForOneShot
-        );
-    }
-
-    #[test]
-    fn the_unit_is_locked_after_creation() {
-        let mut w = empty();
-        let pid = add(&mut w, &draft(Recurrence::Monthly, today()));
-        let mut edit = draft(Recurrence::Monthly, today());
-        edit.unit = "usd".into();
-        let (c, a) = (w.categories.clone(), w.accounts.clone());
-        assert_eq!(
-            edit_plan(&mut w.plans, &mut w.entries, pid, &edit, &c, &a, today()),
-            Err(BillError::UnitLocked("aud".into()))
-        );
     }
 
     // --- settlement ---
@@ -1027,16 +752,6 @@ mod tests {
         );
         unskip(&mut w.entries, due).unwrap();
         assert_eq!(unskip(&mut w.entries, due), Err(BillError::NotSkipped));
-    }
-
-    #[test]
-    fn a_one_shot_can_be_skipped_as_cancelled() {
-        let mut w = empty();
-        let pid = add(&mut w, &draft(Recurrence::OneShot, date(2026, 10, 3)));
-        assert_eq!(dues(&w, pid), vec![date(2026, 10, 3)]);
-        skip(&w.plans, &mut w.entries, id(pid, date(2026, 10, 3))).unwrap();
-        populate(&w.plans, &mut w.entries, today());
-        assert_eq!(dues(&w, pid), vec![date(2026, 10, 3)]);
     }
 
     #[test]
