@@ -173,5 +173,5 @@ Not quite what you're after? These might suit you better:
 [license-shield]: https://img.shields.io/github/license/IanTeda/personal-ledger.svg?style=for-the-badge
 [license-url]: https://github.com/IanTeda/personal-ledger/blob/main/LICENSE
 <!-- Absolute URLs for the same reason as the logo: the README is rendered by both GitHub and mdBook -->
-[screenshot-desktop]: https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/images/screenshot-desktop.png
-[screenshot-tui]: https://raw.githubusercontent.com/IanTeda/Personal-Ledger/main/docs/images/screenshot-tui.png
+[screenshot-desktop]: https://github.com/IanTeda/Personal-Ledger/refs/heads/main/docs/images/screenshot-desktop.png?raw=true
+[screenshot-tui]: https://github.com/IanTeda/Personal-Ledger/refs/heads/main/docs/images/screenshot-tui.png?raw=true

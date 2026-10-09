@@ -79,7 +79,7 @@ desktop-status-export-ledger-not-implemented = export ledger — not implemented
 
 ## The top bar. `$time` is the time of the last sync.
 
-desktop-topbar-synced = synced { $time }
+desktop-topbar-synced = Synced { $time }
 
 ## The cold-start empty state. `$open` and `$new` are the command names as typed, and the tags mark
 ## them as the clickable spans.
