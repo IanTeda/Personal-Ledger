@@ -1,6 +1,6 @@
 //! The Accounts destination's wiring: keys, clicks, the Add, Edit and Delete dialogs, and the `accounts` command. The pure rules live in `accounts`; the chrome in `view::accounts`, and its View state in the `AccountsView` Entity.
 
-use super::{Shell, delete_account};
+use super::Shell;
 
 use chrono::Local;
 
@@ -20,6 +20,27 @@ use crate::{
 };
 
 use gpui::{App, Context, Keystroke};
+use lib_accounts::AccountService;
+use lib_toast::ToastKind;
+
+/// Deletes account `id` and, as the Delete dialog says, the transactions booked to it,
+/// returning the Success Toast that counts them.
+pub(super) fn delete_account(
+    accounts: &mut AccountService,
+    deleted_transactions: usize,
+    id: u32,
+) -> (ToastKind, String) {
+    let name = accounts
+        .get(id)
+        .map(|account| account.name.clone())
+        .unwrap_or_default();
+    accounts.remove(id);
+    let deleted = i64::try_from(deleted_transactions).unwrap_or(i64::MAX);
+    (
+        ToastKind::Success,
+        lib_locale::msg::toast_account_deleted(&name, deleted),
+    )
+}
 
 impl Shell {
     /// Whether the Accounts rows own the keyboard: Settings' Accounts page with focus in the page

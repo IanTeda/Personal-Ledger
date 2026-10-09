@@ -73,7 +73,6 @@ use gpui::{
     ScrollHandle, ScrollStrategy, Subscription, UniformListScrollHandle, point, px,
 };
 
-use lib_accounts::AccountService;
 use lib_core::{CategoryTypes, DateStyle};
 use lib_toast::{ToastKind, Toasts};
 
@@ -3378,25 +3377,6 @@ fn filter_key(
     (true, false)
 }
 
-/// Deletes account `id` and, as the Delete dialog says, the transactions booked to it,
-/// returning the Success Toast that counts them.
-fn delete_account(
-    accounts: &mut AccountService,
-    deleted_transactions: usize,
-    id: u32,
-) -> (ToastKind, String) {
-    let name = accounts
-        .get(id)
-        .map(|account| account.name.clone())
-        .unwrap_or_default();
-    accounts.remove(id);
-    let deleted = i64::try_from(deleted_transactions).unwrap_or(i64::MAX);
-    (
-        ToastKind::Success,
-        lib_locale::msg::toast_account_deleted(&name, deleted),
-    )
-}
-
 /// The refusal Toast for a category delete that the store will not make.
 fn category_refused(error: categories::CategoryError) -> (ToastKind, String) {
     (
@@ -3470,7 +3450,7 @@ mod tests {
     use super::*;
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
     use chrono::Local;
-    use lib_accounts::Account;
+    use lib_accounts::{Account, AccountService};
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
         let accounts = accounts::default_accounts();
@@ -3534,7 +3514,8 @@ mod tests {
             .count();
         let before = transactions.len();
         transactions.retain(|t| t.account_id != account.id);
-        let (kind, text) = delete_account(&mut accounts, before - transactions.len(), account.id);
+        let (kind, text) =
+            accounts_ui::delete_account(&mut accounts, before - transactions.len(), account.id);
         assert_eq!(kind, ToastKind::Success);
         assert_eq!(
             text,
