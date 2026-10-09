@@ -8,38 +8,10 @@
 //! are wireframe `view/` placeholders until each gets its own redesign pass; recover the old
 //! implementation from Git history rather than from a dead module.
 
-mod account;
-mod category;
-mod colours;
-mod db;
 mod detect;
-mod error;
-mod event;
-mod fixture;
-mod format;
-mod locale;
-mod payee;
-mod popup;
-mod shell;
-mod tag;
-mod toast;
-mod tui;
-mod view;
 
-/// This bin's own Messages, generated at build time from `i18n/<locale>/*.ftl`.
-mod msg {
-    include!(concat!(env!("OUT_DIR"), "/msg.rs"));
-}
-
+use bin_tui::{Result, build_shell, colours, locale};
 use clap::Parser;
-use shell::Shell;
-
-pub use error::Error;
-
-/// Crate Result type alias used across the TUI binary.
-///
-/// Use `TuiResult<T>` for functions that return `T` or a `TuiError`.
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// Personal Ledger TUI.
 #[derive(Parser)]
@@ -83,8 +55,7 @@ async fn main() -> Result<()> {
         depth,
     )
     .with_system(system);
-    Shell::with_keybindings(config.keybindings_config().clone())
-        .with_colours(colours)
+    build_shell(config.keybindings_config().clone(), colours)
         .run()
         .await?;
 

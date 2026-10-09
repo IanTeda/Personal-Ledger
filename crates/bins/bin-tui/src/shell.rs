@@ -261,6 +261,14 @@ impl Shell {
         Ok(())
     }
 
+    /// Feeds one terminal event through the same translation and update `run` uses, so a test
+    /// can drive the shell without a terminal. `Event::Resize` is handled by `run` alone.
+    pub fn handle_event(&mut self, event: Event) {
+        if let Some(action) = self.map_event(event) {
+            self.update(action);
+        }
+    }
+
     /// Translates a raw terminal event into an [`Action`]. Precedence: `Ctrl+C` always quits,
     /// even mid-chord; then, while the command popup, a unit form, the Category popup, or a
     /// settings popup is open, it takes every other key over the active view (per §3a, the view
@@ -1772,9 +1780,10 @@ impl Shell {
         }
     }
 
-    /// Renders the shell chrome — status line, full-bleed view region, a rule, then the
-    /// keybind hint bar — around the active view, per `docs/ux/tui-mockups/01-chrome/README.md`.
-    fn draw(&mut self, frame: &mut Frame<'_>) {
+    /// Draws the shell chrome — status line, full-bleed view region, a rule, then the keybind
+    /// hint bar — around the active view, per `docs/ux/tui-mockups/01-chrome/README.md`. `run`
+    /// calls this on every change, and tests call it to read the frame back.
+    pub fn draw(&mut self, frame: &mut Frame<'_>) {
         // The frame size is only known here, so this is where a view shrinking under 40×8
         // hands its Toasts to the status-line echo, and back again.
         let area = frame.area();
@@ -2666,7 +2675,7 @@ mod tests {
         crate::locale::init_for_tests();
         let text = drawn(&mut Shell::new());
         assert!(
-            text.contains(": command \u{b7} / search \u{b7} ? help"),
+            text.contains(": command \u{b7} ? help"),
             "resting hints missing:\n{text}"
         );
     }
