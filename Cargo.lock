@@ -726,6 +726,7 @@ dependencies = [
  "lib_locale_build",
  "lib_toast",
  "lib_tracing",
+ "lib_transactions",
  "serde",
  "serde_json",
  "tempfile",
@@ -4804,6 +4805,15 @@ dependencies = [
  "tracing-appender",
  "tracing-log",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "lib_transactions"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_core",
 ]
 
 [[package]]

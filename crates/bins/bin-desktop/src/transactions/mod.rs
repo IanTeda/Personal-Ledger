@@ -26,7 +26,9 @@ pub(crate) mod rows;
 
 use bigdecimal::BigDecimal;
 use chrono::{Duration, NaiveDate};
-use lib_core::{AccountType, Money, TransactionStatus};
+use lib_core::{Money, TransactionStatus};
+
+pub use lib_transactions::{Split, Transaction, takes_transactions};
 
 use crate::{
     accounts::Account,
@@ -34,47 +36,6 @@ use crate::{
     payees::{self, Payee},
     tags::{self, Tag},
 };
-
-/// One line of a Transaction: an amount and a Category (a leaf), plus an optional Payee and any
-/// number of Tags. Expenses are negative and income positive.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Split {
-    pub amount: Money,
-    pub category_id: u32,
-    pub payee_id: Option<u32>,
-    pub tag_ids: Vec<u32>,
-}
-
-/// A single-entry record of an amount moving against one Transaction or Credit Card Account on a
-/// date, composed of one or more [`Split`]s. Its unit is its account's.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Transaction {
-    pub id: u32,
-    pub date: NaiveDate,
-    /// The [`Account::id`] it is posted against.
-    pub account_id: u32,
-    pub status: TransactionStatus,
-    /// Independent of `status`: any status can also be flagged.
-    pub is_flagged: bool,
-    /// The memo the search box matches.
-    pub description: Option<String>,
-    /// Never empty.
-    pub splits: Vec<Split>,
-}
-
-impl Transaction {
-    /// The sum of its Splits' amounts.
-    pub fn total(&self) -> Money {
-        self.splits.iter().fold(cents_money(0), |sum, split| {
-            Money(sum.0 + split.amount.0.clone())
-        })
-    }
-
-    /// Whether it has more than one Split.
-    pub fn is_split(&self) -> bool {
-        self.splits.len() > 1
-    }
-}
 
 /// How far back the random transactions reach, in days.
 pub const HISTORY_DAYS: i64 = 600;
@@ -295,15 +256,6 @@ const RANDOM_TAGS: [(&str, u32); 5] = [
 
 /// The share of random transactions (in percent) with one tagged Split.
 const TAGGED_PERCENT: u64 = 28;
-
-/// Whether an account of this type takes Transactions directly (glossary: Loan and Investment
-/// accounts do not).
-pub fn takes_transactions(account_type: &AccountType) -> bool {
-    matches!(
-        account_type,
-        AccountType::Cash | AccountType::Bank | AccountType::CreditCard
-    )
-}
 
 /// How recently a transaction happened decides how confirmed it is: old ones are mostly
 /// reconciled, recent ones mostly open.
