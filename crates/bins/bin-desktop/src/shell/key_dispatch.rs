@@ -105,29 +105,9 @@ impl Shell {
             return true;
         }
 
-        if !pending_g_active && self.handle_budgets_plan_edit_key(keystroke) {
-            self.chrome.status_message = None;
-            return true;
-        }
-
-        if !pending_g_active && self.handle_import_key(keystroke) {
-            self.chrome.status_message = None;
-            return true;
-        }
-
-        if !pending_g_active && self.handle_documents_key(keystroke) {
-            self.chrome.status_message = None;
-            return true;
-        }
-
-        // `J`/`K` reorder the Documents page's types; the router would read them as `j`/`k`.
-        if !pending_g_active && self.handle_settings_documents_reorder_key(keystroke) {
-            self.chrome.status_message = None;
-            return true;
-        }
-
-        // `J`/`K` reorder a Room within its Property; the router would read them as `j`/`k`.
-        if !pending_g_active && self.handle_settings_inventory_reorder_key(keystroke) {
+        // Keys a View claims ahead of the router (Budgets' Plan cell edit, the Import step, the
+        // Documents keys, `J`/`K` reorders); the router would otherwise read them as `a` or `j`/`k`.
+        if !pending_g_active && self.handle_view_key_ahead_of_router(keystroke) {
             self.chrome.status_message = None;
             return true;
         }
@@ -313,6 +293,41 @@ impl Shell {
     /// Everything else is swallowed here rather than falling through to the zone/movement
     /// handling below -- keeping "the popup owns every keystroke" true even for a modified key
     /// (e.g. a bare `Ctrl`) this palette gives no meaning to.
+    /// The active View's keys that sit ahead of the router. Each arm is exclusive with the others
+    /// because `ActiveView` is: the handler behind an arm only fires for the View it names, so
+    /// matching on the View first keeps the same keys owned by the same View.
+    fn handle_view_key_ahead_of_router(&mut self, keystroke: &Keystroke) -> bool {
+        match self.active_view() {
+            ActiveView::Budgets => self.handle_budgets_plan_edit_key(keystroke),
+            ActiveView::Import => self.handle_import_key(keystroke),
+            ActiveView::Documents => self.handle_documents_key(keystroke),
+            ActiveView::Settings(SettingsSection::Documents) => {
+                self.handle_settings_documents_reorder_key(keystroke)
+            }
+            ActiveView::Settings(SettingsSection::Inventory) => {
+                self.handle_settings_inventory_reorder_key(keystroke)
+            }
+            ActiveView::Transactions
+            | ActiveView::Dashboard
+            | ActiveView::Bills
+            | ActiveView::Placeholder(_)
+            | ActiveView::Settings(
+                SettingsSection::General
+                | SettingsSection::Display
+                | SettingsSection::Units
+                | SettingsSection::Institutions
+                | SettingsSection::SyncServer
+                | SettingsSection::DataBackup
+                | SettingsSection::Tracing
+                | SettingsSection::About
+                | SettingsSection::Accounts
+                | SettingsSection::Categories
+                | SettingsSection::Payees
+                | SettingsSection::Tags,
+            ) => false,
+        }
+    }
+
     fn handle_palette_key(&mut self, keystroke: &Keystroke) -> bool {
         let Some(palette) = self.chrome.palette.as_mut() else {
             return false;
