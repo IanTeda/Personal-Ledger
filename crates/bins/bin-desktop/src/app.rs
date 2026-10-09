@@ -1501,43 +1501,6 @@ impl Shell {
         });
     }
 
-    fn open_category_transactions(&mut self, id: u32, cx: &mut App) {
-        self.edit_transactions_state(cx, |s| {
-            s.filters = TransactionFilters::for_category(self.today, id)
-        });
-        self.edit_transactions_state(cx, |s| s.search.clear());
-        self.edit_transactions_state(cx, |s| s.filter_form = None);
-        self.reset_transactions_selection(cx);
-        self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll(cx);
-    }
-
-    /// "View transactions" on the Payees page: Transactions filtered to exactly this Payee's id, not
-    /// a name substring that would over-match ("BP").
-    fn open_payee_transactions(&mut self, id: u32, cx: &mut App) {
-        self.edit_transactions_state(cx, |s| {
-            s.filters = TransactionFilters::for_payee(self.today, id)
-        });
-        self.edit_transactions_state(cx, |s| s.search.clear());
-        self.edit_transactions_state(cx, |s| s.filter_form = None);
-        self.reset_transactions_selection(cx);
-        self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll(cx);
-    }
-
-    /// "View transactions" on the Tags page: Transactions filtered to exactly this Tag's id, not a
-    /// name substring that would over-match ("trip").
-    fn open_tag_transactions(&mut self, id: u32, cx: &mut App) {
-        self.edit_transactions_state(cx, |s| {
-            s.filters = TransactionFilters::for_tag(self.today, id)
-        });
-        self.edit_transactions_state(cx, |s| s.search.clear());
-        self.edit_transactions_state(cx, |s| s.filter_form = None);
-        self.reset_transactions_selection(cx);
-        self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll(cx);
-    }
-
     /// The selected Tag: `tags_selected` indexes the page's usage order, not `self.tags`.
     fn selected_tag_id(&self, cx: &App) -> Option<u32> {
         if self.settings_tags_page_has_focus() {
