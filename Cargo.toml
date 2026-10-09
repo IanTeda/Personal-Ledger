@@ -72,6 +72,7 @@ members = [
   "./crates/bins/bin-tui",
   "./crates/libs/lib-colour-theme",
   "./crates/libs/lib-accounts",
+  "./crates/libs/lib-bills",
   "./crates/libs/lib-config",
   "./crates/libs/lib-database",
   "./crates/libs/lib-locale",
