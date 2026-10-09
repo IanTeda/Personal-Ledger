@@ -20,6 +20,7 @@ use crate::view::{
 use crate::{
     bills, budgets,
     chrome::statusline::{HintAction, PageStatus},
+    chrome::view_chrome::ViewChrome,
     import,
     navigation::active_view::ActiveView,
     navigation::nav::{FocusZone, InputMode},
@@ -32,6 +33,21 @@ use crate::{
 };
 
 impl Shell {
+    /// The View on show as Chrome reads it: its title and its status-line content, built together
+    /// so the top bar and the status line can't disagree about which View they describe.
+    pub(super) fn view_chrome(
+        &self,
+        budgets_figures: Option<&(&budgets::Budget, budgets::PeriodFigures)>,
+        budgets_plan: Option<&budgets::Plan>,
+        budgets_history: Option<&budgets::History>,
+        cx: &gpui::App,
+    ) -> ViewChrome {
+        ViewChrome {
+            title: self.active_view().title(),
+            status: self.page_status(budgets_figures, budgets_plan, budgets_history, cx),
+        }
+    }
+
     /// A click on the status line's hint strip: the same action as the matching `Normal`-mode key,
     /// and ignored in any other mode (where those keys aren't live either).
     pub(super) fn handle_hint_click(&mut self, action: HintAction, cx: &mut Context<'_, Self>) {
@@ -60,13 +76,14 @@ impl Shell {
         budgets_figures: Option<&(&budgets::Budget, budgets::PeriodFigures)>,
         budgets_plan: Option<&budgets::Plan>,
         budgets_history: Option<&budgets::History>,
+        cx: &gpui::App,
     ) -> Option<PageStatus> {
         match self.active_view() {
             ActiveView::Documents => self.documents_page_status(),
             ActiveView::Settings(_) if self.accounts_page_has_focus() => Some(PageStatus {
                 hints: accounts_hints(),
                 right: crate::msg::desktop_accounts_count(
-                    i64::try_from(self.accounts.len()).unwrap_or(i64::MAX),
+                    i64::try_from(self.accounts.read(cx).accounts().len()).unwrap_or(i64::MAX),
                 ),
             }),
             ActiveView::Settings(_) if self.settings_tags_page_has_focus() => Some(PageStatus {

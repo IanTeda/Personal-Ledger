@@ -65,17 +65,21 @@ use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
 use crate::view::{accounts::hints::accounts_hints, settings::hints::confirm_dialog_hints};
 
 use gpui::{
-    Context, FocusHandle, Focusable, Keystroke, ListAlignment, ListState, ScrollHandle,
-    ScrollStrategy, Subscription, UniformListScrollHandle, point, px,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, Keystroke, ListAlignment, ListState,
+    ScrollHandle, ScrollStrategy, Subscription, UniformListScrollHandle, point, px,
 };
 
 use chrono::Local;
+use lib_accounts::AccountService;
 use lib_core::{CategoryTypes, DateStyle};
 use lib_toast::{ToastKind, Toasts};
 
+use crate::view::accounts::state::{
+    ACCOUNTS_HALF_PAGE, AccountsEvent, AccountsStore, AccountsView,
+};
 use crate::{
     accounts::{
-        self, Account, NameLookup,
+        self, NameLookup,
         form::{AccountField, AccountForm, AccountOptions, AccountsDialog, DeleteAccountForm},
     },
     bills::{self, pay_form::PayForm},
@@ -139,8 +143,6 @@ const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
 /// reading-sized increment, not a computed value.
 const VIEW_LINE_STEP: f32 = 40.0;
 
-/// `Ctrl-d`/`Ctrl-u` on the Accounts page: half of a typical screenful of rows.
-pub(super) const ACCOUNTS_HALF_PAGE: isize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Categories page: rows per half page.
 const CATEGORIES_HALF_PAGE: usize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Tags page: rows per half page.
@@ -227,14 +229,12 @@ pub struct Shell {
     /// The Tracing page's virtualised log list. Kept in step with `settings_log` by splicing,
     /// so a scrolled-down reader stays anchored as entries arrive.
     settings_log_list: ListState,
-    /// The Accounts page's rows, seeded from `accounts::default_accounts()`. A real, mutable
-    /// `Vec` the Add/Edit/Delete dialogs push to, update and remove from -- saved-in-memory
-    /// state like [`Self::settings_units`], so it survives leaving and re-entering Accounts.
-    accounts: Vec<Account>,
-    /// The selected row as a position in `accounts::display_order(&self.accounts)` -- what
-    /// `j`/`k` move -- not an index into [`Self::accounts`], since the page shows accounts
-    /// grouped by type rather than in insertion order.
-    accounts_selected: usize,
+    /// The Accounts rows, owned by their store Entity and read through it (ADR-0032). Shared:
+    /// Transactions, Budgets, Bills and Documents read the same rows.
+    accounts: Entity<AccountsStore>,
+    /// The Accounts page's state: its selected row. Its events are handled in
+    /// `handle_accounts_event`.
+    accounts_view: Entity<AccountsView>,
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
@@ -339,14 +339,21 @@ pub struct Shell {
 }
 
 impl Shell {
-    pub fn new(nav: NavState, focus_handle: FocusHandle) -> Self {
-        Self::with_today(nav, focus_handle, Local::now().date_naive())
-    }
-
-    /// As [`Self::new`], with the date the seeded stub data is anchored to supplied, so tests
-    /// are not at the mercy of the wall clock.
-    pub fn with_today(nav: NavState, focus_handle: FocusHandle, today: chrono::NaiveDate) -> Self {
-        let seeded_accounts = accounts::default_accounts();
+    /// Builds the Shell with the date the seeded stub data is anchored to supplied, so tests are
+    /// not at the mercy of the wall clock. Creates the Accounts Entities, so it takes a `Context`.
+    pub fn with_today(
+        nav: NavState,
+        focus_handle: FocusHandle,
+        today: chrono::NaiveDate,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let accounts = cx.new(|_| AccountsStore::seeded());
+        let accounts_view = cx.new(|_| AccountsView::new(accounts.clone()));
+        let accounts_subscription =
+            cx.subscribe(&accounts_view, |shell, _view, event: &AccountsEvent, cx| {
+                shell.handle_accounts_event(*event, cx);
+            });
+        let seeded_accounts = accounts.read(cx).accounts().to_vec();
         let categories = categories::default_categories();
         let payees = payees::default_payees();
         let tags = tags::default_tags();
@@ -418,8 +425,8 @@ impl Shell {
                 TracingLevel::default(),
             ),
             settings_log_list: ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
-            accounts: accounts::default_accounts(),
-            accounts_selected: 0,
+            accounts,
+            accounts_view,
             today,
             categories,
             budgets: seeded_budgets,
@@ -467,7 +474,7 @@ impl Shell {
             documents_inbox_selected: 0,
             documents_undo: None,
             pending_file_action: None,
-            view_subscriptions: Vec::new(),
+            view_subscriptions: vec![accounts_subscription],
         }
     }
 
@@ -932,9 +939,9 @@ impl Shell {
     }
 
     /// The reference data the Transactions engine reads, borrowed from the shared stubs.
-    fn transactions_ledger(&self) -> Ledger<'_> {
+    fn transactions_ledger<'a>(&'a self, cx: &'a App) -> Ledger<'a> {
         Ledger {
-            accounts: &self.accounts,
+            accounts: self.accounts.read(cx).accounts(),
             categories: &self.categories,
             payees: &self.payees,
             tags: &self.tags,
@@ -950,9 +957,9 @@ impl Shell {
     }
 
     /// How many rows the current filters and search leave visible.
-    fn transactions_visible_len(&self) -> usize {
+    fn transactions_visible_len(&self, cx: &App) -> usize {
         transactions::query::query(
-            &self.transactions_ledger(),
+            &self.transactions_ledger(cx),
             &self.transactions,
             &self.transactions_filters,
             &self.transactions_search,
@@ -967,8 +974,8 @@ impl Shell {
     /// The scroll strategy follows the research note: a non-strict `scroll_to_item` applies its
     /// strategy only when the row was off-screen, so stepping down uses `Bottom` and stepping up
     /// `Top` (the new row lands at the edge it came from), and jumps use `Center`.
-    fn apply_transactions_movement(&mut self, movement: Movement) {
-        let len = self.transactions_visible_len();
+    fn apply_transactions_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+        let len = self.transactions_visible_len(cx);
         if len == 0 {
             return;
         }
@@ -1006,7 +1013,11 @@ impl Shell {
 
     /// The Transactions page's `n` and `e` (only while it is the active noun and the view has focus,
     /// in `Normal` mode): the bundle designs no add or edit flow, so both say so.
-    fn handle_transactions_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_transactions_key(
+        &mut self,
+        keystroke: &Keystroke,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
         if self.nav.noun() != Noun::Transactions || self.nav.focus() != FocusZone::View {
             return false;
         }
@@ -1015,7 +1026,7 @@ impl Shell {
             return false;
         }
         if keystroke.key == "f" {
-            self.open_filter_popover(None);
+            self.open_filter_popover(None, cx);
             return true;
         }
         let message = match keystroke.key.as_str() {
@@ -1071,20 +1082,25 @@ impl Shell {
 
     /// A click on a filter chip (or its `▾`): opens the popover on that chip's field.
     fn handle_transactions_chip_click(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
-        self.open_filter_popover(Some(field));
+        self.open_filter_popover(Some(field), cx);
         cx.notify();
     }
 
     /// The Account and Category selects' options, read live from the stub data.
-    fn filter_form_options(&self) -> FormOptions {
-        FormOptions::new(&self.accounts, &self.categories, &self.payees, &self.tags)
+    fn filter_form_options(&self, cx: &App) -> FormOptions {
+        FormOptions::new(
+            self.accounts.read(cx).accounts(),
+            &self.categories,
+            &self.payees,
+            &self.tags,
+        )
     }
 
     /// Opens the filter popover on a draft of the applied filters. A chip focuses its own field
     /// (the date chip focuses From) and the card anchors under it; `f` (no chip) focuses the first
     /// field and anchors under the first chip.
-    fn open_filter_popover(&mut self, chip: Option<FilterField>) {
-        let options = self.filter_form_options();
+    fn open_filter_popover(&mut self, chip: Option<FilterField>, cx: &mut Context<'_, Self>) {
+        let options = self.filter_form_options(cx);
         let mut form = FilterForm::from_filters(
             &self.transactions_filters,
             &options,
@@ -1102,8 +1118,8 @@ impl Shell {
     /// steps with `Left` / `Right` (or `Space`); text fields take typing and `Backspace`; `Enter`
     /// applies (from a select it opens or commits the list instead, so `Tab` off it first); `Ctrl-r`
     /// resets the draft. `Esc` never reaches here: it is handled with the other modes' exit.
-    fn handle_filter_key(&mut self, keystroke: &Keystroke) -> bool {
-        let options = self.filter_form_options();
+    fn handle_filter_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let options = self.filter_form_options(cx);
         let (today, date_style) = (self.today, self.settings_date_style);
         let Some(form) = self.transactions_filter_form.as_mut() else {
             return false;
@@ -1147,15 +1163,15 @@ impl Shell {
             }
         }
         if apply {
-            self.apply_filter_form();
+            self.apply_filter_form(cx);
         }
         true
     }
 
     /// **apply**: commits the draft to the applied filters, closes the popover and puts the table
     /// back on its first row. A no-op while a date does not parse.
-    fn apply_filter_form(&mut self) {
-        let options = self.filter_form_options();
+    fn apply_filter_form(&mut self, cx: &mut Context<'_, Self>) {
+        let options = self.filter_form_options(cx);
         let Some(filters) = self
             .transactions_filter_form
             .as_ref()
@@ -1172,7 +1188,7 @@ impl Shell {
     /// A click on a popover field: a text field takes focus; a select takes focus and toggles its
     /// list.
     fn handle_filter_field_click(&mut self, field: FormField, cx: &mut Context<'_, Self>) {
-        let options = self.filter_form_options();
+        let options = self.filter_form_options(cx);
         if let Some(form) = self.transactions_filter_form.as_mut() {
             if field.is_select() {
                 form.click_select(field, &options);
@@ -1189,7 +1205,7 @@ impl Shell {
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        let options = self.filter_form_options();
+        let options = self.filter_form_options(cx);
         if let Some(form) = self.transactions_filter_form.as_mut() {
             form.choose_option(field, index, &options);
         }
@@ -1210,7 +1226,7 @@ impl Shell {
 
     /// `reset`: the draft back to the defaults; the applied filters are untouched.
     fn handle_filter_reset(&mut self, cx: &mut Context<'_, Self>) {
-        let options = self.filter_form_options();
+        let options = self.filter_form_options(cx);
         let (today, date_style) = (self.today, self.settings_date_style);
         if let Some(form) = self.transactions_filter_form.as_mut() {
             form.reset(&options, today, date_style);
@@ -1219,7 +1235,7 @@ impl Shell {
     }
 
     fn handle_filter_apply(&mut self, cx: &mut Context<'_, Self>) {
-        self.apply_filter_form();
+        self.apply_filter_form(cx);
         cx.notify();
     }
 
@@ -1688,44 +1704,29 @@ impl Shell {
         }
     }
 
-    /// The selected account's index in [`Self::accounts`], `None` when there are none. The stored
-    /// position is clamped, so removing accounts can never leave it pointing past the end.
-    fn selected_account_index(&self) -> Option<usize> {
-        let order = accounts::display_order(&self.accounts);
-        order
-            .get(self.accounts_selected.min(order.len().saturating_sub(1)))
-            .copied()
-    }
-
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Accounts page's row selection instead of
     /// scrolling it; `Enter` opens the account's ledger (Transactions filtered to it).
-    fn apply_accounts_movement(&mut self, movement: Movement) {
-        let len = self.accounts.len();
-        let selected = self.accounts_selected;
-        self.accounts_selected = match movement {
-            Movement::Next => accounts::step_selection(selected, len, 1),
-            Movement::Prev => accounts::step_selection(selected, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
-            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
-            Movement::Enter => {
-                if let Some(id) = self
-                    .selected_account_index()
-                    .and_then(|index| self.accounts.get(index))
-                    .map(|account| account.id)
-                {
-                    self.open_account_ledger(id);
-                }
-                selected
-            }
-        };
+    fn apply_accounts_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
+        self.accounts_view
+            .update(cx, |view, cx| view.apply_movement(movement, cx));
+    }
+
+    /// Carries out what the Accounts page asked for. The page holds only its selection; the
+    /// dialogs and the ledger jump are `Shell`'s.
+    fn handle_accounts_event(&mut self, event: AccountsEvent, cx: &mut Context<'_, Self>) {
+        match event {
+            AccountsEvent::Add => self.open_add_account_dialog(""),
+            AccountsEvent::Edit(id) => self.open_edit_account_dialog(id, cx),
+            AccountsEvent::Delete(id) => self.open_delete_account_dialog(id, cx),
+            AccountsEvent::OpenLedger(id) => self.open_account_ledger(id),
+        }
+        cx.notify();
     }
 
     /// The Accounts page's own `n`/`e`/`d` (only while it is the active noun and the view has
     /// focus, in `Normal` mode -- `route_key` hands back `NoOp` for these bare keys). Each goes
     /// through the same handler its button does.
-    fn handle_accounts_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_accounts_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if !self.accounts_page_has_focus() {
             return false;
         }
@@ -1733,25 +1734,8 @@ impl Shell {
         if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
             return false;
         }
-        let selected_id = self
-            .selected_account_index()
-            .and_then(|index| self.accounts.get(index))
-            .map(|account| account.id);
-        match keystroke.key.as_str() {
-            "n" => self.open_add_account_dialog(""),
-            "e" => {
-                if let Some(id) = selected_id {
-                    self.open_edit_account_dialog(id);
-                }
-            }
-            "d" => {
-                if let Some(id) = selected_id {
-                    self.open_delete_account_dialog(id);
-                }
-            }
-            _ => return false,
-        }
-        true
+        self.accounts_view
+            .update(cx, |view, cx| view.handle_key(&keystroke.key, cx))
     }
 
     /// Keyboard input while on the Categories page: `n` adds a top-level category, `N` (shift+n)
@@ -2051,9 +2035,9 @@ impl Shell {
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the active Bills tab's row selection; `Enter` on a
     /// Paid Schedule row opens its Transaction, and on a Planner row edits its Bill Plan. While `f`
     /// has a Schedule filter select focused, they drive the select instead.
-    fn apply_bills_movement(&mut self, movement: Movement) {
+    fn apply_bills_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
         if self.bills_tab == bills::BillsTab::Schedule && self.bills_filter_focus.is_some() {
-            self.apply_bills_filter_select_movement(movement);
+            self.apply_bills_filter_select_movement(movement, cx);
             return;
         }
         let len = match self.bills_tab {
@@ -2072,12 +2056,12 @@ impl Shell {
                 match self.bills_tab {
                     bills::BillsTab::Planner => {
                         if let Some(id) = self.selected_bill_plan() {
-                            self.open_edit_bill_plan_dialog(id);
+                            self.open_edit_bill_plan_dialog(id, cx);
                         }
                     }
                     bills::BillsTab::Schedule => {
                         if let Some(row) = self.selected_bill_row() {
-                            self.open_bill_transaction(row.id);
+                            self.open_bill_transaction(row.id, cx);
                         }
                     }
                 }
@@ -2189,6 +2173,7 @@ impl Shell {
     fn bills_filter_options(
         &self,
         field: bills_view::filters::FilterField,
+        cx: &App,
     ) -> (Vec<String>, usize) {
         use bills_view::filters::FilterField;
         let filters = &self.bills_filters;
@@ -2204,17 +2189,17 @@ impl Shell {
         match field {
             FilterField::Plan => scoped(
                 crate::msg::desktop_bills_filter_all_bills(),
-                self.bills_filter_choices(field),
+                self.bills_filter_choices(field, cx),
                 filters.plan_id,
             ),
             FilterField::Category => scoped(
                 crate::msg::desktop_bills_filter_all_categories(),
-                self.bills_filter_choices(field),
+                self.bills_filter_choices(field, cx),
                 filters.category_id,
             ),
             FilterField::Account => scoped(
                 crate::msg::desktop_bills_filter_all_accounts(),
-                self.bills_filter_choices(field),
+                self.bills_filter_choices(field, cx),
                 filters.account_id,
             ),
         }
@@ -2222,7 +2207,11 @@ impl Shell {
 
     /// The Bill Plan, Category or Account choices behind a scope select (after its "All" option),
     /// as `(id, name)`.
-    fn bills_filter_choices(&self, field: bills_view::filters::FilterField) -> Vec<(u32, String)> {
+    fn bills_filter_choices(
+        &self,
+        field: bills_view::filters::FilterField,
+        cx: &App,
+    ) -> Vec<(u32, String)> {
         use bills_view::filters::FilterField;
         let mut choices: Vec<(u32, String)> = match field {
             FilterField::Plan => {
@@ -2239,6 +2228,8 @@ impl Shell {
                 .collect(),
             FilterField::Account => self
                 .accounts
+                .read(cx)
+                .accounts()
                 .iter()
                 .filter(|a| self.bill_plans.iter().any(|p| p.account_id == a.id))
                 .map(|a| (a.id, a.name.clone()))
@@ -2249,11 +2240,18 @@ impl Shell {
     }
 
     /// Sets a Schedule filter from its select's option `index`.
-    fn apply_bills_filter_option(&mut self, field: bills_view::filters::FilterField, index: usize) {
+    fn apply_bills_filter_option(
+        &mut self,
+        field: bills_view::filters::FilterField,
+        index: usize,
+        cx: &mut Context<'_, Self>,
+    ) {
         use bills_view::filters::FilterField;
-        let id = index
-            .checked_sub(1)
-            .and_then(|i| self.bills_filter_choices(field).get(i).map(|(id, _)| *id));
+        let id = index.checked_sub(1).and_then(|i| {
+            self.bills_filter_choices(field, cx)
+                .get(i)
+                .map(|(id, _)| *id)
+        });
         let filters = &mut self.bills_filters;
         match field {
             FilterField::Plan => filters.plan_id = id,
@@ -2267,13 +2265,14 @@ impl Shell {
     fn bills_filter_select_state(
         &self,
         field: bills_view::filters::FilterField,
+        cx: &App,
     ) -> crate::form::select::SelectState {
-        let (options, index) = self.bills_filter_options(field);
+        let (options, index) = self.bills_filter_options(field, cx);
         crate::form::select::SelectState::new(options.get(index).cloned())
     }
 
     /// `f` steps focus along the filter row's selects, then off it.
-    fn cycle_bills_filter_focus(&mut self) {
+    fn cycle_bills_filter_focus(&mut self, cx: &mut Context<'_, Self>) {
         use bills_view::filters::FilterField;
         let next = match self.bills_filter_focus.as_ref().map(|(field, _)| *field) {
             None => Some(FilterField::Plan),
@@ -2283,16 +2282,21 @@ impl Shell {
                 .and_then(|i| FilterField::ORDER.get(i + 1))
                 .copied(),
         };
-        self.bills_filter_focus = next.map(|field| (field, self.bills_filter_select_state(field)));
+        self.bills_filter_focus =
+            next.map(|field| (field, self.bills_filter_select_state(field, cx)));
     }
 
     /// `j`/`k` on a focused select: step its value while closed (applying it at once), move the
     /// highlight while open; `Enter` opens it, or commits the highlight.
-    fn apply_bills_filter_select_movement(&mut self, movement: Movement) {
+    fn apply_bills_filter_select_movement(
+        &mut self,
+        movement: Movement,
+        cx: &mut Context<'_, Self>,
+    ) {
         let Some((field, mut state)) = self.bills_filter_focus.take() else {
             return;
         };
-        let (options, _) = self.bills_filter_options(field);
+        let (options, _) = self.bills_filter_options(field, cx);
         let delta = match movement {
             Movement::Next => Some(1),
             Movement::Prev => Some(-1),
@@ -2317,7 +2321,7 @@ impl Shell {
                 .value()
                 .and_then(|value| options.iter().position(|option| option == value))
         {
-            self.apply_bills_filter_option(field, index);
+            self.apply_bills_filter_option(field, index, cx);
         }
         self.bills_filter_focus = Some((field, state));
     }
@@ -2337,9 +2341,9 @@ impl Shell {
             .bills_filter_focus
             .as_ref()
             .is_some_and(|(focused, state)| *focused == field && state.is_open());
-        let mut state = self.bills_filter_select_state(field);
+        let mut state = self.bills_filter_select_state(field, cx);
         if !open_here {
-            let (options, _) = self.bills_filter_options(field);
+            let (options, _) = self.bills_filter_options(field, cx);
             state.open(&options);
         }
         self.bills_filter_focus = Some((field, state));
@@ -2352,14 +2356,14 @@ impl Shell {
         index: usize,
         cx: &mut Context<'_, Self>,
     ) {
-        self.apply_bills_filter_option(field, index);
-        self.bills_filter_focus = Some((field, self.bills_filter_select_state(field)));
+        self.apply_bills_filter_option(field, index, cx);
+        self.bills_filter_focus = Some((field, self.bills_filter_select_state(field, cx)));
         cx.notify();
     }
 
     /// The Bills page's own `p`/`s`/`e`/`n`/`f`/`[`/`]`/`0`/`1`–`5` (only while it is the active noun and the view has
     /// focus, in `Normal` mode).
-    fn handle_bills_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_bills_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if self.nav.noun() != Noun::Bills || self.nav.focus() != FocusZone::View {
             return false;
         }
@@ -2381,17 +2385,17 @@ impl Shell {
             return true;
         }
         match keystroke.key.as_str() {
-            "n" if !modifiers.shift => self.open_add_bill_plan_dialog(),
-            "f" if schedule && !modifiers.shift => self.cycle_bills_filter_focus(),
+            "n" if !modifiers.shift => self.open_add_bill_plan_dialog(cx),
+            "f" if schedule && !modifiers.shift => self.cycle_bills_filter_focus(cx),
             "0" if schedule => self.toggle_bills_all(),
             "e" if planner && !modifiers.shift => {
                 if let Some(id) = self.selected_bill_plan() {
-                    self.open_edit_bill_plan_dialog(id);
+                    self.open_edit_bill_plan_dialog(id, cx);
                 }
             }
             "p" if schedule && !modifiers.shift => {
                 if let Some(row) = self.selected_bill_row() {
-                    self.open_pay_bill_dialog(row);
+                    self.open_pay_bill_dialog(row, cx);
                 }
             }
             "s" if schedule && !modifiers.shift => {
@@ -2408,10 +2412,10 @@ impl Shell {
 
     /// What the Add and Edit bill plan selects choose from, copied into the form as it opens. On
     /// Edit the Plan's own Payee stays listed even if it has since been deactivated.
-    fn bill_plan_source(&self, keep_payee: Option<u32>) -> bills::form::BillPlanSource {
+    fn bill_plan_source(&self, keep_payee: Option<u32>, cx: &App) -> bills::form::BillPlanSource {
         bills::form::BillPlanSource::new(
             &self.categories,
-            &self.accounts,
+            self.accounts.read(cx).accounts(),
             &self.payees,
             keep_payee,
             crate::msg::desktop_payees_category_none(),
@@ -2421,17 +2425,18 @@ impl Shell {
         )
     }
 
-    fn open_add_bill_plan_dialog(&mut self) {
-        let form = bills::form::BillPlanForm::new(self.bill_plan_source(None));
+    fn open_add_bill_plan_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let form = bills::form::BillPlanForm::new(self.bill_plan_source(None, cx));
         self.open_dialog(OpenDialog::Bills(Box::new(bills::BillsDialog::Add(form))));
     }
 
     /// Opens the Edit dialog pre-filled from Bill Plan `id`.
-    fn open_edit_bill_plan_dialog(&mut self, id: u32) {
+    fn open_edit_bill_plan_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         let Some(plan) = bills::get(&self.bill_plans, id) else {
             return;
         };
-        let form = bills::form::BillPlanForm::from_plan(plan, self.bill_plan_source(plan.payee_id));
+        let form =
+            bills::form::BillPlanForm::from_plan(plan, self.bill_plan_source(plan.payee_id, cx));
         self.open_dialog(OpenDialog::Bills(Box::new(bills::BillsDialog::Edit(
             id, form,
         ))));
@@ -2444,11 +2449,11 @@ impl Shell {
     }
 
     /// Applies a confirmed Bills dialog (`Enter` and the confirm button).
-    fn apply_bills_dialog(&mut self, dialog: bills::BillsDialog) {
+    fn apply_bills_dialog(&mut self, dialog: bills::BillsDialog, cx: &mut Context<'_, Self>) {
         match dialog {
-            bills::BillsDialog::Add(form) => self.apply_bill_plan(None, form),
-            bills::BillsDialog::Edit(id, form) => self.apply_bill_plan(Some(id), form),
-            bills::BillsDialog::Pay(form) => self.apply_pay_bill(form),
+            bills::BillsDialog::Add(form) => self.apply_bill_plan(None, form, cx),
+            bills::BillsDialog::Edit(id, form) => self.apply_bill_plan(Some(id), form, cx),
+            bills::BillsDialog::Pay(form) => self.apply_pay_bill(form, cx),
             bills::BillsDialog::Skip(entry) => self.apply_skip_bill(entry),
         }
     }
@@ -2456,7 +2461,12 @@ impl Shell {
     /// **Add bill plan** / **Save**: adds or edits the Plan (Schedule regeneration is
     /// `bills::insert_plan`'s, `edit_plan`'s and `set_active`'s) and selects it on the Planner
     /// tab. A refused Save reopens the dialog with the error shown.
-    fn apply_bill_plan(&mut self, editing: Option<u32>, mut form: bills::form::BillPlanForm) {
+    fn apply_bill_plan(
+        &mut self,
+        editing: Option<u32>,
+        mut form: bills::form::BillPlanForm,
+        cx: &mut Context<'_, Self>,
+    ) {
         let Some(draft) = form.draft() else {
             return;
         };
@@ -2467,7 +2477,7 @@ impl Shell {
                 &mut self.bill_entries,
                 &draft,
                 &self.categories,
-                &self.accounts,
+                self.accounts.read(cx).accounts(),
                 today,
             ),
             Some(id) => bills::edit_plan(
@@ -2476,7 +2486,7 @@ impl Shell {
                 id,
                 &draft,
                 &self.categories,
-                &self.accounts,
+                self.accounts.read(cx).accounts(),
                 today,
             )
             .and_then(|()| {
@@ -2561,13 +2571,13 @@ impl Shell {
     }
 
     fn handle_bills_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog();
+        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
     /// Opens the Pay dialog (8d) on an open Schedule row, with its Match candidates worked out now;
     /// a row with nothing to pay says so instead.
-    fn open_pay_bill_dialog(&mut self, row: bills::ScheduleRow) {
+    fn open_pay_bill_dialog(&mut self, row: bills::ScheduleRow, cx: &mut Context<'_, Self>) {
         let plan = bills::get(&self.bill_plans, row.id.plan_id);
         let Some(plan) = plan.filter(|_| row.is_actionable()) else {
             self.chrome.status_message = Some(crate::msg::desktop_status_bill_not_actionable());
@@ -2577,7 +2587,7 @@ impl Shell {
             &self.bill_plans,
             &self.bill_entries,
             &self.transactions,
-            &self.accounts,
+            self.accounts.read(cx).accounts(),
             &self.categories,
             row.id,
         );
@@ -2603,7 +2613,7 @@ impl Shell {
     /// **Create transaction & mark paid** / **Match & mark paid**: settles the entry through
     /// `bills::pay` or `bills::match_split`. A refused settle reopens the dialog with the error
     /// shown.
-    fn apply_pay_bill(&mut self, mut form: PayForm) {
+    fn apply_pay_bill(&mut self, mut form: PayForm, cx: &mut Context<'_, Self>) {
         let entry = form.entry;
         let Some(action) = form.action() else {
             return;
@@ -2622,7 +2632,7 @@ impl Shell {
                 &self.bill_plans,
                 &mut self.bill_entries,
                 &self.transactions,
-                &self.accounts,
+                self.accounts.read(cx).accounts(),
                 &self.categories,
                 entry,
                 split,
@@ -2671,8 +2681,8 @@ impl Shell {
     fn render_pay_bill_dialog(
         &self,
         form: &PayForm,
-        entity: &gpui::Entity<Self>,
-        cx: &gpui::App,
+        entity: &Entity<Self>,
+        cx: &App,
     ) -> Option<gpui::AnyElement> {
         let plan = bills::get(&self.bill_plans, form.entry.plan_id)?;
         let on_mode_click: bills_view::pay_dialog::OnModeClick = {
@@ -2704,6 +2714,8 @@ impl Shell {
         };
         let account = self
             .accounts
+            .read(cx)
+            .accounts()
             .iter()
             .find(|a| a.id == plan.account_id)
             .map(|a| a.name.clone())
@@ -2718,7 +2730,7 @@ impl Shell {
                 plan_name: &plan.name,
                 due: lib_locale::format::format_month_day(form.entry.due),
                 form,
-                candidates: self.pay_bill_candidate_rows(form),
+                candidates: self.pay_bill_candidate_rows(form, cx),
                 planned: format!("{} {}", format::amount(&plan.planned_amount).1, plan.unit),
                 chips: [category, payee, account],
                 amount_invalid: form.amount_invalid(),
@@ -2741,7 +2753,11 @@ impl Shell {
     }
 
     /// The Pay dialog's Match candidates, worded for its radio list.
-    fn pay_bill_candidate_rows(&self, form: &PayForm) -> Vec<bills_view::pay_dialog::CandidateRow> {
+    fn pay_bill_candidate_rows(
+        &self,
+        form: &PayForm,
+        cx: &App,
+    ) -> Vec<bills_view::pay_dialog::CandidateRow> {
         form.candidates
             .iter()
             .filter_map(|split_ref| {
@@ -2758,6 +2774,8 @@ impl Shell {
                     .unwrap_or_default();
                 let account = self
                     .accounts
+                    .read(cx)
+                    .accounts()
                     .iter()
                     .find(|a| a.id == transaction.account_id)
                     .map(|a| a.name.clone())
@@ -2799,8 +2817,8 @@ impl Shell {
     fn render_skip_bill_dialog(
         &self,
         entry: bills::EntryId,
-        entity: &gpui::Entity<Self>,
-        cx: &gpui::App,
+        entity: &Entity<Self>,
+        cx: &App,
     ) -> Option<gpui::AnyElement> {
         let plan = bills::get(&self.bill_plans, entry.plan_id)?;
         let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
@@ -2844,18 +2862,18 @@ impl Shell {
 
     /// A Paid Schedule row's hand-off: the Transactions page with its Matched Transaction selected,
     /// the date range widened to reach it when it falls before this year. A no-op for any other row.
-    fn open_bill_transaction(&mut self, id: bills::EntryId) {
+    fn open_bill_transaction(&mut self, id: bills::EntryId, cx: &mut Context<'_, Self>) {
         let Some(bills::Resolution::Paid(split)) =
             bills::entry(&self.bill_entries, id).map(|entry| entry.resolution.clone())
         else {
             return;
         };
-        self.open_transaction_row(split.transaction_id);
+        self.open_transaction_row(split.transaction_id, cx);
     }
 
     /// The Transactions page with `transaction_id` selected, the date range widened to reach it
     /// when it falls outside this year's. A no-op when the Transaction has gone.
-    fn open_transaction_row(&mut self, transaction_id: u32) {
+    fn open_transaction_row(&mut self, transaction_id: u32, cx: &mut Context<'_, Self>) {
         let Some(date) = self
             .transactions
             .iter()
@@ -2871,7 +2889,7 @@ impl Shell {
         self.transactions_search.clear();
         self.transactions_filter_form = None;
         let index = transactions::query::query(
-            &self.transactions_ledger(),
+            &self.transactions_ledger(cx),
             &self.transactions,
             &self.transactions_filters,
             &self.transactions_search,
@@ -2888,7 +2906,7 @@ impl Shell {
     }
 
     fn handle_bills_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_add_bill_plan_dialog();
+        self.open_add_bill_plan_dialog(cx);
         cx.notify();
     }
 
@@ -2920,7 +2938,7 @@ impl Shell {
     fn handle_bills_edit_plan_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         self.bills_selected = index;
         if let Some(id) = self.selected_bill_plan() {
-            self.open_edit_bill_plan_dialog(id);
+            self.open_edit_bill_plan_dialog(id, cx);
         }
         cx.notify();
     }
@@ -2928,7 +2946,7 @@ impl Shell {
     fn handle_bills_pay_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         self.bills_selected = index;
         if let Some(row) = self.selected_bill_row() {
-            self.open_pay_bill_dialog(row);
+            self.open_pay_bill_dialog(row, cx);
         }
         cx.notify();
     }
@@ -2944,7 +2962,7 @@ impl Shell {
     fn handle_bills_view_transaction_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         self.bills_selected = index;
         if let Some(row) = self.selected_bill_row() {
-            self.open_bill_transaction(row.id);
+            self.open_bill_transaction(row.id, cx);
         }
         cx.notify();
     }
@@ -3032,7 +3050,7 @@ impl Shell {
     }
 
     fn handle_tags_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog();
+        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
@@ -3250,7 +3268,7 @@ impl Shell {
     /// and `c` open its Payee and Category selects, `n` creates a new Payee from its cleaned name,
     /// `r` toggles "remember", `enter` continues and `esc` goes back. While a select is open it
     /// owns `j`/`k`/arrows, `enter`/`space` and `esc`. Any other key falls through to the router.
-    fn handle_import_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_import_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if self.import.is_none()
             || self.nav.noun() != Noun::Transactions
             || self.nav.mode() != InputMode::Normal
@@ -3298,7 +3316,7 @@ impl Shell {
             "n" => state.create_new_payee(&self.payees),
             "r" => state.remember = !state.remember,
             "enter" => {
-                self.continue_import();
+                self.continue_import(cx);
                 return true;
             }
             "escape" => {
@@ -3314,7 +3332,7 @@ impl Shell {
 
     /// **continue** / `enter`: commits the import to the stubs and lands on Transactions with a
     /// Toast. Does nothing while a row needs review (the button is disabled then).
-    fn continue_import(&mut self) {
+    fn continue_import(&mut self, cx: &mut Context<'_, Self>) {
         let Some(state) = self.import.as_ref() else {
             return;
         };
@@ -3326,15 +3344,15 @@ impl Shell {
             &mut self.transactions,
         ) {
             Ok(committed) => {
-                if let Some(account) = self
-                    .accounts
-                    .iter_mut()
-                    .find(|account| account.id == import::EVERYDAY_ACCOUNT_ID)
-                {
-                    account.transaction_count = account
-                        .transaction_count
-                        .saturating_add(u32::try_from(committed.transactions).unwrap_or(u32::MAX));
-                }
+                let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);
+                self.accounts.update(cx, |store, cx| {
+                    store.mutate(cx, |service| {
+                        if let Some(account) = service.get_mut(import::EVERYDAY_ACCOUNT_ID) {
+                            account.transaction_count =
+                                account.transaction_count.saturating_add(imported);
+                        }
+                    })
+                });
                 self.import = None;
                 self.reset_transactions_selection();
                 self.reset_view_scroll();
@@ -3416,7 +3434,7 @@ impl Shell {
     }
 
     fn handle_import_continue_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.continue_import();
+        self.continue_import(cx);
         cx.notify();
     }
 
@@ -3548,7 +3566,7 @@ impl Shell {
     }
 
     fn handle_payees_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog();
+        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
@@ -3708,21 +3726,14 @@ impl Shell {
     }
 
     /// Selects the account with `id`, if it still exists.
-    fn select_account(&mut self, id: u32) {
-        let Some(index) = self.accounts.iter().position(|account| account.id == id) else {
-            return;
-        };
-        if let Some(position) = accounts::display_order(&self.accounts)
-            .iter()
-            .position(|&i| i == index)
-        {
-            self.accounts_selected = position;
-        }
+    fn select_account(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        self.accounts_view
+            .update(cx, |view, cx| view.select_id(id, cx));
     }
 
     /// A click on an account row: selects it and, as `enter` does, tries to open its ledger.
     fn handle_accounts_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_account(id);
+        self.select_account(id, cx);
         self.open_account_ledger(id);
         cx.notify();
     }
@@ -3805,7 +3816,7 @@ impl Shell {
     }
 
     fn handle_accounts_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog();
+        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
@@ -3814,46 +3825,62 @@ impl Shell {
     /// or `Enter`): Add builds the account, appends it and selects it; Edit writes the changes
     /// onto the existing row (which regroups if its Type changed) and keeps it selected; Delete
     /// removes it. The form has already validated.
-    fn apply_accounts_dialog(&mut self, dialog: AccountsDialog) {
+    fn apply_accounts_dialog(&mut self, dialog: AccountsDialog, cx: &mut Context<'_, Self>) {
+        let is_currency = match &dialog {
+            AccountsDialog::Add(form) => form
+                .unit
+                .value()
+                .and_then(|code| self.settings_units.iter().find(|unit| unit.code == code))
+                .is_none_or(|unit| unit.kind == "currency"),
+            _ => true,
+        };
         let changed_id = match dialog {
             AccountsDialog::Add(form) => {
-                let is_currency = form
-                    .unit
-                    .value()
-                    .and_then(|code| self.settings_units.iter().find(|unit| unit.code == code))
-                    .is_none_or(|unit| unit.kind == "currency");
-                let id = accounts::next_account_id(&self.accounts);
                 let opened_at = Local::now().date_naive();
-                form.into_account(id, opened_at, is_currency)
-                    .map(|account| {
-                        self.accounts.push(account);
-                        id
+                self.accounts.update(cx, |store, cx| {
+                    store.mutate(cx, |service| {
+                        let id = service.next_id();
+                        let account = form.into_account(id, opened_at, is_currency)?;
+                        service.insert(account);
+                        Some(id)
                     })
+                })
             }
-            AccountsDialog::Edit(id, form) => self
-                .accounts
-                .iter_mut()
-                .find(|account| account.id == id)
-                .and_then(|account| form.apply_to(account).then_some(id)),
+            AccountsDialog::Edit(id, form) => self.accounts.update(cx, |store, cx| {
+                store.mutate(cx, |service| {
+                    service
+                        .get_mut(id)
+                        .and_then(|account| form.apply_to(account).then_some(id))
+                })
+            }),
             AccountsDialog::Delete(id, _) => {
-                let (kind, text) = delete_account(&mut self.accounts, &mut self.transactions, id);
+                let (kind, text) = self.accounts.update(cx, |store, cx| {
+                    store.mutate(cx, |service| {
+                        delete_account(service, &mut self.transactions, id)
+                    })
+                });
                 self.raise_toast(kind, text);
-                // The selection is a position in display order: keep it in range, so it lands on
-                // the account that slid into the deleted row's place (or the last one).
-                self.accounts_selected = self
-                    .accounts_selected
-                    .min(self.accounts.len().saturating_sub(1));
+                // Keep the selection in range, so it lands on the account that slid into the
+                // deleted row's place (or the last one).
+                self.accounts_view
+                    .update(cx, |view, cx| view.clamp_selection(cx));
                 None
             }
         };
         if let Some(id) = changed_id {
-            self.select_account(id);
+            self.select_account(id, cx);
         }
     }
 
     /// Opens the Delete account dialog on `id`. A no-op if the account is gone.
-    fn open_delete_account_dialog(&mut self, id: u32) {
-        let Some(account) = self.accounts.iter().find(|account| account.id == id) else {
+    fn open_delete_account_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
+        let Some(account) = self
+            .accounts
+            .read(cx)
+            .accounts()
+            .iter()
+            .find(|account| account.id == id)
+        else {
             return;
         };
         let form = DeleteAccountForm::new(account.name.as_str());
@@ -3861,9 +3888,15 @@ impl Shell {
     }
 
     /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
-    fn open_edit_account_dialog(&mut self, id: u32) {
+    fn open_edit_account_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         let options = self.account_dialog_options();
-        let Some(account) = self.accounts.iter().find(|account| account.id == id) else {
+        let Some(account) = self
+            .accounts
+            .read(cx)
+            .accounts()
+            .iter()
+            .find(|account| account.id == id)
+        else {
             return;
         };
         let form = AccountForm::from_account(account, &options);
@@ -3871,14 +3904,14 @@ impl Shell {
     }
 
     fn handle_accounts_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_account(id);
-        self.open_edit_account_dialog(id);
+        self.select_account(id, cx);
+        self.open_edit_account_dialog(id, cx);
         cx.notify();
     }
 
     fn handle_accounts_delete_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_account(id);
-        self.open_delete_account_dialog(id);
+        self.select_account(id, cx);
+        self.open_delete_account_dialog(id, cx);
         cx.notify();
     }
 
@@ -3999,7 +4032,7 @@ impl Shell {
     }
 
     fn handle_categories_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog();
+        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
@@ -4208,7 +4241,7 @@ impl Shell {
     }
 
     fn handle_settings_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog();
+        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
@@ -4217,7 +4250,13 @@ impl Shell {
     /// `edit` and `delete` resolve the typed name ([`accounts::find_by_name`]), or use the
     /// selected row when none is given; a name that fits nothing or several accounts flashes a
     /// status-line message naming the problem rather than guessing.
-    fn run_accounts_command(&mut self, command_name: &str, verb: AccountsVerb, argument: &str) {
+    fn run_accounts_command(
+        &mut self,
+        command_name: &str,
+        verb: AccountsVerb,
+        argument: &str,
+        cx: &mut Context<'_, Self>,
+    ) {
         self.open_settings_page(SettingsSection::Accounts);
         if verb == AccountsVerb::New {
             self.open_add_account_dialog(argument);
@@ -4225,7 +4264,7 @@ impl Shell {
         }
 
         let index = if argument.is_empty() {
-            match self.selected_account_index() {
+            match self.accounts_view.read(cx).selected_index(cx) {
                 Some(index) => index,
                 None => {
                     self.chrome.status_message = Some(crate::msg::desktop_status_no_accounts(
@@ -4235,7 +4274,7 @@ impl Shell {
                 }
             }
         } else {
-            match accounts::find_by_name(&self.accounts, argument) {
+            match accounts::find_by_name(self.accounts.read(cx).accounts(), argument) {
                 NameLookup::Found(index) => index,
                 NameLookup::NotFound => {
                     self.chrome.status_message = Some(crate::msg::desktop_status_no_account_named(
@@ -4255,11 +4294,11 @@ impl Shell {
                 }
             }
         };
-        let id = self.accounts[index].id;
-        self.select_account(id);
+        let id = self.accounts.read(cx).accounts()[index].id;
+        self.select_account(id, cx);
         match verb {
-            AccountsVerb::Edit => self.open_edit_account_dialog(id),
-            AccountsVerb::Delete => self.open_delete_account_dialog(id),
+            AccountsVerb::Edit => self.open_edit_account_dialog(id, cx),
+            AccountsVerb::Delete => self.open_delete_account_dialog(id, cx),
             AccountsVerb::New => {}
         }
     }
@@ -4458,7 +4497,7 @@ impl Shell {
 }
 
 impl Focusable for Shell {
-    fn focus_handle(&self, _cx: &gpui::App) -> FocusHandle {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }
@@ -4466,16 +4505,15 @@ impl Focusable for Shell {
 /// Deletes account `id` and, as the Delete dialog says, the transactions booked to it,
 /// returning the Success Toast that counts them.
 fn delete_account(
-    accounts: &mut Vec<Account>,
+    accounts: &mut AccountService,
     transactions: &mut Vec<Transaction>,
     id: u32,
 ) -> (ToastKind, String) {
     let name = accounts
-        .iter()
-        .find(|account| account.id == id)
+        .get(id)
         .map(|account| account.name.clone())
         .unwrap_or_default();
-    accounts.retain(|account| account.id != id);
+    accounts.remove(id);
     let before = transactions.len();
     transactions.retain(|transaction| transaction.account_id != id);
     let deleted = i64::try_from(before - transactions.len()).unwrap_or(i64::MAX);
@@ -4534,6 +4572,7 @@ fn delete_category(
 mod tests {
     use super::*;
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
+    use lib_accounts::Account;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
         let accounts = accounts::default_accounts();
@@ -4571,8 +4610,9 @@ mod tests {
     #[test]
     fn deleting_an_account_raises_a_success_toast_counting_its_transactions() {
         crate::locale::init_for_tests();
-        let (mut accounts, _, mut transactions) = seeded_ledger();
-        let account = accounts[0].clone();
+        let (accounts, _, mut transactions) = seeded_ledger();
+        let mut accounts = AccountService::from_rows(accounts);
+        let account = accounts.accounts()[0].clone();
         let booked = transactions
             .iter()
             .filter(|t| t.account_id == account.id)

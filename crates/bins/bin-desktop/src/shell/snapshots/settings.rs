@@ -150,15 +150,17 @@ impl Shell {
 
     /// The Settings pages for a test.
     #[doc(hidden)]
-    pub fn settings_snapshot(&self) -> SettingsSnapshot {
-        let account_names = accounts::display_order(&self.accounts)
+    pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
+        let account_names = accounts::display_order(self.accounts.read(cx).accounts())
             .into_iter()
-            .filter_map(|index| self.accounts.get(index))
+            .filter_map(|index| self.accounts.read(cx).accounts().get(index))
             .map(|account| account.name.clone())
             .collect::<Vec<_>>();
         let selected_account = self
-            .selected_account_index()
-            .and_then(|index| self.accounts.get(index))
+            .accounts_view
+            .read(cx)
+            .selected_index(cx)
+            .and_then(|index| self.accounts.read(cx).accounts().get(index))
             .map(|account| account.name.clone());
         let selected_category = self.categories_selected_id.and_then(|id| {
             self.categories

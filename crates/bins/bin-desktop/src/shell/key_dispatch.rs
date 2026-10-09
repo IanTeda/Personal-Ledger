@@ -55,7 +55,11 @@ impl Shell {
     /// just the impure shell that owns `Shell`'s own state (`pending_g`, `status_message`,
     /// `palette`, `file_explorer`, `nav`) and applies the outcome to it. Returns `false` for a
     /// keystroke that changed nothing (nothing to redraw).
-    pub(super) fn handle_key_down(&mut self, event: &KeyDownEvent) -> bool {
+    pub(super) fn handle_key_down(
+        &mut self,
+        event: &KeyDownEvent,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
         let keystroke = &event.keystroke;
         let ctrl = keystroke.modifiers.control;
         let shift = keystroke.modifiers.shift;
@@ -107,7 +111,7 @@ impl Shell {
 
         // Keys a View claims ahead of the router (Budgets' Plan cell edit, the Import step, the
         // Documents keys, `J`/`K` reorders); the router would otherwise read them as `a` or `j`/`k`.
-        if !pending_g_active && self.handle_view_key_ahead_of_router(keystroke) {
+        if !pending_g_active && self.handle_view_key_ahead_of_router(keystroke, cx) {
             self.chrome.status_message = None;
             return true;
         }
@@ -174,11 +178,15 @@ impl Shell {
 
         match outcome {
             KeyOutcome::DelegateToPalette => {
-                self.handle_palette_key(keystroke) || had_status_message
+                self.handle_palette_key(keystroke, cx) || had_status_message
             }
             KeyOutcome::DelegateToSearch => self.handle_search_key(keystroke) || had_status_message,
-            KeyOutcome::DelegateToDialog => self.handle_dialog_key(keystroke) || had_status_message,
-            KeyOutcome::DelegateToFilter => self.handle_filter_key(keystroke) || had_status_message,
+            KeyOutcome::DelegateToDialog => {
+                self.handle_dialog_key(keystroke, cx) || had_status_message
+            }
+            KeyOutcome::DelegateToFilter => {
+                self.handle_filter_key(keystroke, cx) || had_status_message
+            }
             KeyOutcome::Swallowed => had_status_message,
             KeyOutcome::JumpToNoun(noun) => {
                 self.nav.set_noun(noun);
@@ -235,13 +243,13 @@ impl Shell {
                 had_status_message
             }
             KeyOutcome::Movement(movement) => {
-                self.apply_movement(movement);
+                self.apply_movement(movement, cx);
                 true
             }
             KeyOutcome::NoOp => {
                 let handled = match self.active_view() {
                     ActiveView::Settings(SettingsSection::Accounts) => {
-                        self.handle_accounts_key(keystroke)
+                        self.handle_accounts_key(keystroke, cx)
                     }
                     ActiveView::Settings(SettingsSection::Categories) => {
                         self.handle_categories_key(keystroke)
@@ -266,10 +274,10 @@ impl Shell {
                         | SettingsSection::Tracing
                         | SettingsSection::About,
                     ) => false,
-                    ActiveView::Bills => self.handle_bills_key(keystroke),
-                    ActiveView::Budgets => self.handle_budgets_key(keystroke),
+                    ActiveView::Bills => self.handle_bills_key(keystroke, cx),
+                    ActiveView::Budgets => self.handle_budgets_key(keystroke, cx),
                     ActiveView::Transactions | ActiveView::Import => {
-                        self.handle_transactions_key(keystroke)
+                        self.handle_transactions_key(keystroke, cx)
                     }
                     ActiveView::Dashboard | ActiveView::Documents | ActiveView::Placeholder(_) => {
                         false
@@ -296,11 +304,15 @@ impl Shell {
     /// The active View's keys that sit ahead of the router. Each arm is exclusive with the others
     /// because `ActiveView` is: the handler behind an arm only fires for the View it names, so
     /// matching on the View first keeps the same keys owned by the same View.
-    fn handle_view_key_ahead_of_router(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_view_key_ahead_of_router(
+        &mut self,
+        keystroke: &Keystroke,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
         match self.active_view() {
-            ActiveView::Budgets => self.handle_budgets_plan_edit_key(keystroke),
-            ActiveView::Import => self.handle_import_key(keystroke),
-            ActiveView::Documents => self.handle_documents_key(keystroke),
+            ActiveView::Budgets => self.handle_budgets_plan_edit_key(keystroke, cx),
+            ActiveView::Import => self.handle_import_key(keystroke, cx),
+            ActiveView::Documents => self.handle_documents_key(keystroke, cx),
             ActiveView::Settings(SettingsSection::Documents) => {
                 self.handle_settings_documents_reorder_key(keystroke)
             }
@@ -328,7 +340,7 @@ impl Shell {
         }
     }
 
-    fn handle_palette_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_palette_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let Some(palette) = self.chrome.palette.as_mut() else {
             return false;
         };
@@ -359,7 +371,7 @@ impl Shell {
                 let argument = palette.argument().to_string();
                 self.chrome.palette = None;
                 match command {
-                    Some(command) => self.run_command(command, &argument),
+                    Some(command) => self.run_command(command, &argument, cx),
                     // No result to run (an empty registry match) -- there's nothing left for
                     // `run_command` to do, so leave Command mode directly instead.
                     None => self.nav.exit_mode(),
@@ -394,13 +406,13 @@ impl Shell {
     /// [`chrome::dialog_host::handle_key`]; the dialogs not yet moved there keep their own handlers.
     /// This tier returns before `route_key`'s `Tab` tier is ever checked, so the shell-wide zones
     /// stay untouched while a dialog is up.
-    fn handle_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_dialog_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if let Some(dialog) = self.chrome.dialog.as_mut() {
             return match dialog_host::handle_key(dialog, dialog_key(keystroke)) {
                 DialogOutcome::Ignored => false,
                 DialogOutcome::Handled => true,
                 DialogOutcome::Confirm => {
-                    self.confirm_open_dialog();
+                    self.confirm_open_dialog(cx);
                     true
                 }
             };

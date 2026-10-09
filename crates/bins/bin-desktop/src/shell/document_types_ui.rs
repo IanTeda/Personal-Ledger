@@ -135,7 +135,7 @@ impl Shell {
     }
 
     fn handle_document_types_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog();
+        self.confirm_open_dialog(cx);
         cx.notify();
     }
 

@@ -22,7 +22,7 @@ use bin_desktop::{
     theme,
 };
 use chrono::NaiveDate;
-use gpui::{Entity, Modifiers, TestAppContext, VisualTestContext};
+use gpui::{App, Entity, Modifiers, TestAppContext, VisualTestContext};
 use lib_colour_theme::ThemeOverrides;
 
 /// The date every test is anchored to, so scopes and seeded relative dates never drift.
@@ -127,7 +127,7 @@ impl<'a> Harness<'a> {
 
     /// The Documents page's state, read back for assertions.
     pub fn documents(&mut self) -> DocumentsSnapshot {
-        self.read(Shell::documents_snapshot)
+        self.read_app(Shell::documents_snapshot)
     }
 
     /// The Bills page's state, read back for assertions.
@@ -137,12 +137,12 @@ impl<'a> Harness<'a> {
 
     /// The Budgets page's state, read back for assertions.
     pub fn budgets(&mut self) -> BudgetsSnapshot {
-        self.read(Shell::budgets_snapshot)
+        self.read_app(Shell::budgets_snapshot)
     }
 
     /// The Settings pages' state, read back for assertions.
     pub fn settings(&mut self) -> SettingsSnapshot {
-        self.read(Shell::settings_snapshot)
+        self.read_app(Shell::settings_snapshot)
     }
 
     /// The open Add or Edit account dialog's form; panics if none is open.
@@ -164,7 +164,7 @@ impl<'a> Harness<'a> {
 
     /// The Transactions page's state, read back for assertions.
     pub fn transactions(&mut self) -> TransactionsSnapshot {
-        self.read(Shell::transactions_snapshot)
+        self.read_app(Shell::transactions_snapshot)
     }
 
     /// The Toast layer and its history, read back for assertions.
@@ -200,6 +200,11 @@ impl<'a> Harness<'a> {
     /// Reads from the Shell without mutating it.
     pub fn read<T>(&mut self, f: impl FnOnce(&Shell) -> T) -> T {
         self.shell.read_with(self.cx, |shell, _| f(shell))
+    }
+
+    /// As [`Self::read`], for the snapshots that read Entities (ADR-0032) and so need the `App`.
+    pub fn read_app<T>(&mut self, f: impl FnOnce(&Shell, &App) -> T) -> T {
+        self.shell.read_with(self.cx, |shell, cx| f(shell, cx))
     }
 }
 

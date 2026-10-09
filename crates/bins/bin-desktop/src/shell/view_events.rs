@@ -61,7 +61,7 @@ mod tests {
     fn each_view_event_reaches_shell(cx: &mut TestAppContext) {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
-        let shell = cx.new(|cx| Shell::with_today(NavState::new(), cx.focus_handle(), today));
+        let shell = cx.new(|cx| Shell::with_today(NavState::new(), cx.focus_handle(), today, cx));
         let view = cx.new(|_| StandInView);
         shell.update(cx, |shell, cx| shell.subscribe_view(&view, cx));
 

@@ -716,6 +716,7 @@ dependencies = [
  "fake",
  "gpui",
  "gpui-component",
+ "lib_accounts",
  "lib_colour_theme",
  "lib_config",
  "lib_core",
@@ -4654,6 +4655,15 @@ version = "0.1.0"
 [[package]]
 name = "lib-omarchy"
 version = "0.1.0"
+
+[[package]]
+name = "lib_accounts"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_core",
+]
 
 [[package]]
 name = "lib_colour_theme"

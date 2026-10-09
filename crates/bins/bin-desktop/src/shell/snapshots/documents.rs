@@ -51,7 +51,7 @@ pub struct PickerSnapshot {
 
 impl Shell {
     #[doc(hidden)]
-    pub fn documents_snapshot(&self) -> DocumentsSnapshot {
+    pub fn documents_snapshot(&self, cx: &gpui::App) -> DocumentsSnapshot {
         DocumentsSnapshot {
             mode: self.documents_mode.id(),
             scope: self.documents_scope.id(),
@@ -90,7 +90,7 @@ impl Shell {
                     query: state.query.text().to_string(),
                     selected: state.selected,
                     rows: self
-                        .documents_picker_rows(state)
+                        .documents_picker_rows(state, cx)
                         .into_iter()
                         .map(|row| (row.kind, row.text, row.checked, row.link.is_some()))
                         .collect(),

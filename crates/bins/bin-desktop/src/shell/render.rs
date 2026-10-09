@@ -452,9 +452,9 @@ impl Render for Shell {
             })
         };
         let account_options = self.account_dialog_options();
-        let selected_account = self.selected_account_index();
+        let selected_account = self.accounts_view.read(cx).selected_index(cx);
         let accounts_page = accounts_view::AccountsPageProps {
-            accounts: &self.accounts,
+            accounts: self.accounts.read(cx).accounts(),
             units: &self.settings_units,
             selected: selected_account,
             on_add_click: on_accounts_add_click,
@@ -764,7 +764,7 @@ impl Render for Shell {
         let default_budget_figures = self.budgets.default_budget().map(|budget| {
             budgets::period_figures(
                 budget,
-                &self.budgets_ledger(),
+                &self.budgets_ledger(cx),
                 Period::of(self.today),
                 self.today,
             )
@@ -817,9 +817,9 @@ impl Render for Shell {
                                 .filter(|(focused, _)| *focused == field);
                             bills_view::filters::FilterSelect {
                                 field,
-                                options: self.bills_filter_options(field).0,
+                                options: self.bills_filter_options(field, cx).0,
                                 state: focused.map_or_else(
-                                    || self.bills_filter_select_state(field),
+                                    || self.bills_filter_select_state(field, cx),
                                     |(_, state)| state.clone(),
                                 ),
                                 focused: focused.is_some(),
@@ -862,7 +862,7 @@ impl Render for Shell {
                 summary: &bills_summary,
                 plans: &self.bill_plans,
                 entries: &self.bill_entries,
-                accounts: &self.accounts,
+                accounts: self.accounts.read(cx).accounts(),
                 transactions: &self.transactions,
                 base_unit: bills_base_unit,
                 glyphs: self.settings_status_glyphs,
@@ -879,7 +879,7 @@ impl Render for Shell {
                 plans: &bills_planner_plans,
                 inactive: bills::inactive_count(&self.bill_plans),
                 categories: &self.categories,
-                accounts: &self.accounts,
+                accounts: self.accounts.read(cx).accounts(),
                 base_unit: bills_base_unit,
                 selected: (!bills_planner_plans.is_empty())
                     .then(|| self.bills_selected.min(bills_planner_plans.len() - 1)),
@@ -934,15 +934,15 @@ impl Render for Shell {
             }
         });
         let budgets_figures = (self.nav.noun() == Noun::Budgets)
-            .then(|| self.budgets_figures())
+            .then(|| self.budgets_figures(cx))
             .flatten();
         let budgets_plan = (self.nav.noun() == Noun::Budgets
             && self.budgets_state.tab == budgets::BudgetsTab::Plan)
-            .then(|| self.budgets_plan_data())
+            .then(|| self.budgets_plan_data(cx))
             .flatten();
         let budgets_history = (self.nav.noun() == Noun::Budgets
             && self.budgets_state.tab == budgets::BudgetsTab::History)
-            .then(|| self.budgets_history_data())
+            .then(|| self.budgets_history_data(cx))
             .flatten();
         let budgets_page = budgets_figures.as_ref().map(|(budget, figures)| {
             let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
@@ -1007,7 +1007,7 @@ impl Render for Shell {
                 on_edit_plan_click: plain(Shell::handle_budgets_edit_plan_click),
                 on_add_click: plain(Shell::handle_budgets_add_click),
                 fill_label: crate::msg::desktop_budgets_fill_button(
-                    &lib_locale::format::format_month(self.budgets_fill_target().month),
+                    &lib_locale::format::format_month(self.budgets_fill_target(cx).month),
                 ),
                 on_fill_click: plain(Shell::handle_budgets_fill_click),
                 on_action_click: {
@@ -1182,7 +1182,7 @@ impl Render for Shell {
                 }
                 None => (px(300.0), px(200.0)),
             };
-            let options = self.filter_form_options();
+            let options = self.filter_form_options(cx);
             transactions_view::render_popover(
                 transactions_view::PopoverProps {
                     form,
@@ -1203,7 +1203,7 @@ impl Render for Shell {
             )
         });
         let transactions_page = (self.nav.noun() == Noun::Transactions).then(|| {
-            let ledger = self.transactions_ledger();
+            let ledger = self.transactions_ledger(cx);
             let visible = transactions::query::query(
                 &ledger,
                 &self.transactions,
@@ -1246,11 +1246,12 @@ impl Render for Shell {
             }
         });
         let documents_page =
-            (self.nav.noun() == Noun::Documents).then(|| self.documents_page_props(&entity));
-        let page_status = self.page_status(
+            (self.nav.noun() == Noun::Documents).then(|| self.documents_page_props(&entity, cx));
+        let view_chrome = self.view_chrome(
             budgets_figures.as_ref(),
             budgets_plan.as_ref(),
             budgets_history.as_ref(),
+            cx,
         );
 
         div()
@@ -1275,7 +1276,7 @@ impl Render for Shell {
                     || this.handle_colour_theme_grid_key(&event.keystroke)
                     || this.handle_bills_tab_key(&event.keystroke)
                     || this.handle_budgets_tab_key(&event.keystroke)
-                    || this.handle_key_down(event)
+                    || this.handle_key_down(event, cx)
                 {
                     cx.notify();
                 }
@@ -1289,7 +1290,7 @@ impl Render for Shell {
                     .flex_col()
                     .opacity(content_opacity)
                     .child(
-                        TopBar::new(on_rail_toggle, self.active_view().title()).context(
+                        TopBar::new(on_rail_toggle, view_chrome.title.clone()).context(
                             if self.nav.noun() == Noun::Settings {
                                 Some(self.settings_selected_section.label())
                             } else {
@@ -1417,7 +1418,7 @@ impl Render for Shell {
                         .filter(|_| !toast_history_open)
                         .map(|toast| (toast.kind(), toast.text().to_string())),
                 )
-                .page(page_status)
+                .page(view_chrome.status)
                 .mode_label(
                     (self.import.is_some() && self.nav.mode() == InputMode::Normal)
                         .then(crate::msg::desktop_mode_import),
@@ -1462,7 +1463,13 @@ impl Render for Shell {
                     cx,
                 ),
                 AccountsDialog::Edit(id, form) => {
-                    match self.accounts.iter().find(|account| account.id == *id) {
+                    match self
+                        .accounts
+                        .read(cx)
+                        .accounts()
+                        .iter()
+                        .find(|account| account.id == *id)
+                    {
                         Some(account) => accounts_view::edit_dialog::render(
                             form,
                             account,
@@ -1478,7 +1485,13 @@ impl Render for Shell {
                     }
                 }
                 AccountsDialog::Delete(id, form) => {
-                    match self.accounts.iter().find(|account| account.id == *id) {
+                    match self
+                        .accounts
+                        .read(cx)
+                        .accounts()
+                        .iter()
+                        .find(|account| account.id == *id)
+                    {
                         Some(account) => accounts_view::delete_dialog::render(
                             account,
                             form,
@@ -1517,7 +1530,7 @@ impl Render for Shell {
                                 name: &payee.name,
                                 splits: payees::usage(
                                     &self.transactions,
-                                    &self.accounts,
+                                    self.accounts.read(cx).accounts(),
                                     None,
                                     *id,
                                 )
@@ -1540,7 +1553,7 @@ impl Render for Shell {
                                 form,
                                 splits: payees::usage(
                                     &self.transactions,
-                                    &self.accounts,
+                                    self.accounts.read(cx).accounts(),
                                     None,
                                     *id,
                                 )

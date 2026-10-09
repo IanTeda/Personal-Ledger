@@ -487,8 +487,11 @@ impl AccountForm {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::accounts::date;
     use crate::accounts::{default_accounts, group_accounts};
+
+    fn date(year: i32, month: u32) -> NaiveDate {
+        NaiveDate::from_ymd_opt(year, month, 1).expect("test dates are valid")
+    }
 
     fn add_options() -> AccountOptions {
         AccountOptions::new(

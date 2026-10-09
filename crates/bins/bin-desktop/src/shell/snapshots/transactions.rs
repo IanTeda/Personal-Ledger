@@ -39,8 +39,8 @@ pub struct TransactionsSnapshot {
 impl Shell {
     /// The Transactions page for a test, built the way the render builds its rows.
     #[doc(hidden)]
-    pub fn transactions_snapshot(&self) -> TransactionsSnapshot {
-        let ledger = self.transactions_ledger();
+    pub fn transactions_snapshot(&self, cx: &gpui::App) -> TransactionsSnapshot {
+        let ledger = self.transactions_ledger(cx);
         let visible = transactions::query::query(
             &ledger,
             &self.transactions,

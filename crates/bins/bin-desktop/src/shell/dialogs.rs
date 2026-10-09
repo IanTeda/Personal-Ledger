@@ -30,7 +30,7 @@ impl Shell {
 
     /// `Enter` and the confirm button both land here: applies the open Dialog if its form is
     /// valid, then closes it. A no-op while the form is invalid, leaving the Dialog open.
-    pub(super) fn confirm_open_dialog(&mut self) {
+    pub(super) fn confirm_open_dialog(&mut self, cx: &mut gpui::Context<'_, Self>) {
         if !self.chrome.dialog.as_ref().is_some_and(Dialog::is_valid) {
             return;
         }
@@ -40,15 +40,15 @@ impl Shell {
         self.nav.exit_mode();
         match dialog {
             OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog),
-            OpenDialog::Accounts(dialog) => self.apply_accounts_dialog(dialog),
+            OpenDialog::Accounts(dialog) => self.apply_accounts_dialog(dialog, cx),
             OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog),
             OpenDialog::Payees(dialog) => self.apply_payees_dialog(dialog),
             OpenDialog::DocumentTypes(dialog) => self.apply_document_types_dialog(dialog),
             OpenDialog::Inventory(dialog) => self.apply_inventory_dialog(dialog),
             OpenDialog::Tags(dialog) => self.apply_tags_dialog(dialog),
-            OpenDialog::Bills(dialog) => self.apply_bills_dialog(*dialog),
-            OpenDialog::Budgets(dialog) => self.apply_budgets_dialog(*dialog),
-            OpenDialog::Documents(dialog) => self.apply_documents_dialog(dialog),
+            OpenDialog::Bills(dialog) => self.apply_bills_dialog(*dialog, cx),
+            OpenDialog::Budgets(dialog) => self.apply_budgets_dialog(*dialog, cx),
+            OpenDialog::Documents(dialog) => self.apply_documents_dialog(dialog, cx),
             // Read-only: it has nothing to apply.
             OpenDialog::ToastHistory(_) => {}
         }

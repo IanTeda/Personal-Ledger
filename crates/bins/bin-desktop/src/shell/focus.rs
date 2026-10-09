@@ -16,12 +16,12 @@ use crate::{
 const PRIMARY_RAIL_HALF_PAGE: usize = 5;
 
 impl Shell {
-    pub(super) fn apply_movement(&mut self, movement: Movement) {
+    pub(super) fn apply_movement(&mut self, movement: Movement, cx: &mut gpui::Context<'_, Self>) {
         let noun_before = self.nav.noun();
         match self.nav.focus() {
             FocusZone::PrimaryRail => self.apply_primary_rail_movement(movement),
             FocusZone::ContextRail => self.apply_context_rail_movement(movement),
-            FocusZone::View => self.apply_view_movement(movement),
+            FocusZone::View => self.apply_view_movement(movement, cx),
         }
         if self.nav.noun() != noun_before {
             self.reset_view_scroll();
@@ -88,12 +88,12 @@ impl Shell {
         self.nav.set_context(Some(next));
     }
 
-    fn apply_view_movement(&mut self, movement: Movement) {
+    fn apply_view_movement(&mut self, movement: Movement, cx: &mut gpui::Context<'_, Self>) {
         let page_focused =
             self.nav.focus() == FocusZone::View && self.settings_focus == SettingsFocus::Page;
         match self.active_view() {
             ActiveView::Settings(SettingsSection::Accounts) if page_focused => {
-                self.apply_accounts_movement(movement);
+                self.apply_accounts_movement(movement, cx);
             }
             ActiveView::Settings(SettingsSection::Categories) if page_focused => {
                 self.apply_settings_categories_movement(movement);
@@ -124,11 +124,11 @@ impl Shell {
             }
             // The import step keeps the Transactions movement, as it did before `ActiveView`.
             ActiveView::Transactions | ActiveView::Import => {
-                self.apply_transactions_movement(movement);
+                self.apply_transactions_movement(movement, cx);
             }
             ActiveView::Documents => self.apply_documents_movement(movement),
-            ActiveView::Bills => self.apply_bills_movement(movement),
-            ActiveView::Budgets => self.apply_budgets_movement(movement),
+            ActiveView::Bills => self.apply_bills_movement(movement, cx),
+            ActiveView::Budgets => self.apply_budgets_movement(movement, cx),
             ActiveView::Dashboard | ActiveView::Placeholder(_) => self.scroll_view(movement),
         }
     }

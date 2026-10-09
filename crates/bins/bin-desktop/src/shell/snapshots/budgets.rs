@@ -50,9 +50,9 @@ pub struct BudgetsSnapshot {
 impl Shell {
     /// The Budgets page for a test, built the way the render builds its rows.
     #[doc(hidden)]
-    pub fn budgets_snapshot(&self) -> BudgetsSnapshot {
+    pub fn budgets_snapshot(&self, cx: &gpui::App) -> BudgetsSnapshot {
         let (budget, rows) = self
-            .budgets_figures()
+            .budgets_figures(cx)
             .map(|(budget, figures)| {
                 let rows = figures
                     .rows

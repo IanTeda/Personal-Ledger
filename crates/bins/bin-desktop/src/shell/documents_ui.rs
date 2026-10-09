@@ -108,9 +108,9 @@ fn exists_on_disk(path: &Path) -> bool {
 }
 
 impl Shell {
-    pub(super) fn documents_lookups(&self) -> Lookups<'_> {
+    pub(super) fn documents_lookups<'a>(&'a self, cx: &'a gpui::App) -> Lookups<'a> {
         Lookups {
-            accounts: &self.accounts,
+            accounts: self.accounts.read(cx).accounts(),
             payees: &self.payees,
             plans: &self.bill_plans,
             types: &self.document_types,
@@ -203,8 +203,12 @@ impl Shell {
     }
 
     /// Builds the page's props, only while Documents is the noun on show.
-    pub(super) fn documents_page_props(&self, entity: &gpui::Entity<Shell>) -> DocumentsPageProps {
-        let lookups = self.documents_lookups();
+    pub(super) fn documents_page_props(
+        &self,
+        entity: &gpui::Entity<Shell>,
+        cx: &gpui::App,
+    ) -> DocumentsPageProps {
+        let lookups = self.documents_lookups(cx);
         let rows = self.documents_library_rows();
         let selected = self.documents_selected.min(rows.len().saturating_sub(1));
         let total =
@@ -568,7 +572,11 @@ impl Shell {
 
     /// The Documents keys that sit ahead of the global router (`a` would otherwise enter Insert
     /// mode), in `Normal` mode with the view focused. `false` for any key it does not own.
-    pub(super) fn handle_documents_key(&mut self, keystroke: &Keystroke) -> bool {
+    pub(super) fn handle_documents_key(
+        &mut self,
+        keystroke: &Keystroke,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
         if self.nav.noun() != Noun::Documents
             || self.nav.focus() != FocusZone::View
             || self.nav.mode() != InputMode::Normal
@@ -632,7 +640,7 @@ impl Shell {
                 true
             }
             "l" if in_list && modifiers.shift => {
-                self.documents_follow_link();
+                self.documents_follow_link(cx);
                 true
             }
             "h" | "left" if in_list => {
@@ -766,8 +774,12 @@ impl Shell {
     }
 
     /// The picker's rows for `state`: derived afresh from the stubs and the Document's Links.
-    pub(super) fn documents_picker_rows(&self, state: &PickerState) -> Vec<PickerRow> {
-        let lookups = self.documents_lookups();
+    pub(super) fn documents_picker_rows(
+        &self,
+        state: &PickerState,
+        cx: &gpui::App,
+    ) -> Vec<PickerRow> {
+        let lookups = self.documents_lookups(cx);
         let current: Vec<DocumentLink> = documents::get(&self.documents, state.purpose.document())
             .map(|document| document.links.clone())
             .unwrap_or_default();
@@ -782,11 +794,11 @@ impl Shell {
 
     /// What `enter` or a click on picker row `index` does: toggles a Link, files the Unfiled
     /// Document, or follows a Link, according to why the picker opened.
-    pub(super) fn documents_picker_pick(&mut self, index: usize) {
+    pub(super) fn documents_picker_pick(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let Some(DocumentsDialog::Picker(state)) = self.documents_dialog().cloned() else {
             return;
         };
-        let Some(row) = self.documents_picker_rows(&state).get(index).cloned() else {
+        let Some(row) = self.documents_picker_rows(&state, cx).get(index).cloned() else {
             return;
         };
         match state.purpose {
@@ -819,7 +831,7 @@ impl Shell {
             Purpose::Follow(_) => {
                 self.close_documents_dialog();
                 if let Some(link) = row.link {
-                    self.documents_goto_link(link);
+                    self.documents_goto_link(link, cx);
                 }
             }
         }
@@ -828,7 +840,7 @@ impl Shell {
     /// `L`: follows a Link. In the Library one Link jumps straight there, several open a small list
     /// of them, and none is a quiet no-op. In the Inbox it follows the row's Suggested Link, so it
     /// can be checked before `y`.
-    pub(super) fn documents_follow_link(&mut self) {
+    pub(super) fn documents_follow_link(&mut self, cx: &mut Context<'_, Self>) {
         let Some(document) = self.documents_selected_document() else {
             return;
         };
@@ -838,7 +850,7 @@ impl Shell {
                 [] => {}
                 [only] => {
                     let only = *only;
-                    self.documents_goto_link(only);
+                    self.documents_goto_link(only, cx);
                 }
                 _ => {
                     let state = PickerState::new(Purpose::Follow(id), document.date, None);
@@ -854,7 +866,7 @@ impl Shell {
                 );
                 if let Some(best) = suggestion.best() {
                     let transaction_id = best.transaction_id;
-                    self.documents_goto_link(DocumentLink::Transaction(transaction_id));
+                    self.documents_goto_link(DocumentLink::Transaction(transaction_id), cx);
                 }
             }
         }
@@ -862,12 +874,12 @@ impl Shell {
 
     /// Hands off to the record a Link points at, with it selected. There is no back-history: `g f`
     /// returns to Documents.
-    pub(super) fn documents_goto_link(&mut self, link: DocumentLink) {
+    pub(super) fn documents_goto_link(&mut self, link: DocumentLink, cx: &mut Context<'_, Self>) {
         match link {
-            DocumentLink::Transaction(id) => self.open_transaction_row(id),
+            DocumentLink::Transaction(id) => self.open_transaction_row(id, cx),
             DocumentLink::Account(id) => {
                 self.open_settings_page(SettingsSection::Accounts);
-                self.select_account(id);
+                self.select_account(id, cx);
             }
             DocumentLink::Payee(id) => {
                 self.open_settings_page(SettingsSection::Payees);
@@ -893,7 +905,7 @@ impl Shell {
 
     /// A click on a LINKED TO name: follows that Link.
     fn handle_documents_link_click(&mut self, link: DocumentLink, cx: &mut Context<'_, Self>) {
-        self.documents_goto_link(link);
+        self.documents_goto_link(link, cx);
         cx.notify();
     }
 
@@ -903,7 +915,7 @@ impl Shell {
             .documents_selected_document()
             .map(|document| document.id)
         {
-            let name = self.documents_link_name(link);
+            let name = self.documents_link_name(link, cx);
             if documents::toggle_link(&mut self.documents, id, link) == Some(false) {
                 self.raise_toast(
                     ToastKind::Info,
@@ -915,13 +927,13 @@ impl Shell {
     }
 
     /// The text a Link reads as in the picker, for toasts.
-    fn documents_link_name(&self, link: DocumentLink) -> String {
+    fn documents_link_name(&self, link: DocumentLink, cx: &gpui::App) -> String {
         let id = self
             .documents_selected_document()
             .map(|document| document.id)
             .unwrap_or_default();
         let state = PickerState::new(Purpose::Follow(id), self.today, None);
-        let lookups = self.documents_lookups();
+        let lookups = self.documents_lookups(cx);
         documents::picker::rows(
             &state,
             &documents::picker::Sources {
@@ -1267,29 +1279,33 @@ impl Shell {
     /// Applies a confirmed Documents dialog (`Enter`, `Ctrl-Enter` in Import, and the confirm
     /// button). A form with a problem only `Shell` can see (a missing file, a duplicate path) and
     /// an import that took nothing reopen the Dialog, which shows why.
-    pub(super) fn apply_documents_dialog(&mut self, dialog: DocumentsDialog) {
+    pub(super) fn apply_documents_dialog(
+        &mut self,
+        dialog: DocumentsDialog,
+        cx: &mut Context<'_, Self>,
+    ) {
         match dialog {
             DocumentsDialog::Add(form) => self.apply_documents_form(None, form),
             DocumentsDialog::Edit(id, form) => self.apply_documents_form(Some(id), form),
             DocumentsDialog::Import(form, _) => self.apply_documents_import(form),
             DocumentsDialog::Facts(id, form) => self.apply_documents_facts(id, &form),
             DocumentsDialog::AcceptAll(_) => self.apply_documents_accept_all(),
-            DocumentsDialog::Picker(state) => self.apply_documents_picker(*state),
+            DocumentsDialog::Picker(state) => self.apply_documents_picker(*state, cx),
         }
     }
 
     /// A picker key that needed the live rows: moves the highlight over them, or acts on the
     /// highlighted one.
-    fn apply_documents_picker(&mut self, mut state: PickerState) {
+    fn apply_documents_picker(&mut self, mut state: PickerState, cx: &mut Context<'_, Self>) {
         let Some(request) = state.request.take() else {
             return;
         };
-        let rows = self.documents_picker_rows(&state).len();
+        let rows = self.documents_picker_rows(&state, cx).len();
         let at = state.selected.min(rows.saturating_sub(1));
         match request {
             PickerRequest::Pick => {
                 self.open_documents_dialog(DocumentsDialog::Picker(Box::new(state)));
-                self.documents_picker_pick(at);
+                self.documents_picker_pick(at, cx);
             }
             PickerRequest::Step { down } => {
                 state.step(down, rows);
@@ -1513,19 +1529,19 @@ impl Shell {
             let entity = entity.clone();
             Rc::new(move |_window: &mut Window, cx: &mut gpui::App| {
                 entity.update(cx, |shell, cx| {
-                    shell.confirm_open_dialog();
+                    shell.confirm_open_dialog(cx);
                     cx.notify();
                 });
             })
         };
         match dialog {
             DocumentsDialog::Picker(state) => {
-                let rows = self.documents_picker_rows(state);
+                let rows = self.documents_picker_rows(state, cx);
                 let on_pick: dialogs::OnPickerRow = {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
                         entity.update(cx, |shell, cx| {
-                            shell.documents_picker_pick(index);
+                            shell.documents_picker_pick(index, cx);
                             cx.notify();
                         });
                     })

@@ -45,7 +45,12 @@ impl Shell {
     /// `command_echo`) depends on staying there for as long as the dialog is on screen, exiting
     /// only when it closes (`Self::handle_explorer_cancel`/`Self::confirm_explorer_open`, or
     /// `Self::handle_key_down`'s `escape` arm).
-    pub(super) fn run_command(&mut self, command: &'static Command, argument: &str) {
+    pub(super) fn run_command(
+        &mut self,
+        command: &'static Command,
+        argument: &str,
+        cx: &mut Context<'_, Self>,
+    ) {
         // History keeps what was typed, argument and all, so `^r` recalls `accounts delete Home
         // Loan` rather than just the bare command.
         if argument.is_empty() {
@@ -82,7 +87,7 @@ impl Shell {
             }
             CommandEffect::Accounts(verb) => {
                 self.nav.exit_mode();
-                self.run_accounts_command(command.name, verb, argument);
+                self.run_accounts_command(command.name, verb, argument, cx);
             }
             CommandEffect::Colour(change) => {
                 self.nav.exit_mode();
@@ -126,31 +131,35 @@ impl Shell {
                 }
                 match verb {
                     BudgetsVerb::Switch => self.open_budgets_switcher(),
-                    BudgetsVerb::New => self.open_budgets_new(),
-                    BudgetsVerb::Edit => self.open_budgets_edit(self.budgets_state.current),
+                    BudgetsVerb::New => self.open_budgets_new(cx),
+                    BudgetsVerb::Edit => self.open_budgets_edit(self.budgets_state.current, cx),
                     BudgetsVerb::Manage => self.open_budgets_manage(),
                     BudgetsVerb::Duplicate => {
                         self.run_budgets_manage_action(
                             self.budgets_state.current,
                             ManageAction::Duplicate,
+                            cx,
                         );
                     }
                     BudgetsVerb::SetDefault => {
                         self.run_budgets_manage_action(
                             self.budgets_state.current,
                             ManageAction::SetDefault,
+                            cx,
                         );
                     }
                     BudgetsVerb::Archive => {
                         self.run_budgets_manage_action(
                             self.budgets_state.current,
                             ManageAction::Archive,
+                            cx,
                         );
                     }
                     BudgetsVerb::Restore => {
                         self.run_budgets_manage_action(
                             self.budgets_state.current,
                             ManageAction::Restore,
+                            cx,
                         );
                     }
                 }
@@ -178,7 +187,7 @@ impl Shell {
             return;
         };
         self.nav.enter_mode(InputMode::Command);
-        self.run_command(command, "");
+        self.run_command(command, "", cx);
         if let Some(change) = self.pending_colour_change.take() {
             change.apply(cx);
         }

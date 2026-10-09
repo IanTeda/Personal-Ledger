@@ -103,7 +103,7 @@ pub fn build_shell(
         .map(settings::SettingsSection::from_id)
         .unwrap_or_default();
 
-    let mut shell = Shell::with_today(nav, focus_handle, today);
+    let mut shell = Shell::with_today(nav, focus_handle, today, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised);
     shell.set_settings_page(settings_page);
     shell.set_explorer_filters(persisted.explorer_filters);

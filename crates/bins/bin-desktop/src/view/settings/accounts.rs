@@ -49,7 +49,7 @@ pub fn scope_note(accounts: &[Account], units: &[UnitRow]) -> String {
         .map(|unit| unit.code.as_str());
     let net = accounts::net_worth(accounts, base_unit);
 
-    let mut parts = vec![net.count_text()];
+    let mut parts = vec![accounts::count_text(&net)];
     if let Some(base) = &net.base_unit {
         let (negative, figure) = crate::view::format::amount(&net.base_net);
         let sign = if negative { "-" } else { "" };
@@ -58,7 +58,7 @@ pub fn scope_note(accounts: &[Account], units: &[UnitRow]) -> String {
             crate::msg::desktop_accounts_net_worth()
         ));
     }
-    parts.extend(net.held_separately_text());
+    parts.extend(accounts::held_separately_text(&net));
     parts.join(" \u{b7} ")
 }
 
