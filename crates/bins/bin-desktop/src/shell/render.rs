@@ -74,7 +74,7 @@ impl Render for Shell {
         // the status line's own COMMAND-mode content (the live query, "esc close command
         // window"), which stays meaningful precisely because it stays legible; only the
         // navigational chrome the palette/explorer visually floats over goes dim.
-        let content_opacity = if self.palette.is_some()
+        let content_opacity = if self.chrome.palette.is_some()
             || self.file_explorer.is_some()
             || self.nav.mode() == InputMode::Help
         {
@@ -141,7 +141,7 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |index, _window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.toasts.dismiss_visible(index);
+                    shell.chrome.toasts.dismiss_visible(index);
                     cx.notify();
                 });
             })
@@ -149,7 +149,7 @@ impl Render for Shell {
         let on_toast_hover: crate::chrome::toast::OnHover = {
             let entity = entity.clone();
             Rc::new(move |hovered, _window, cx| {
-                entity.update(cx, |shell, _cx| shell.toasts_hovered = hovered);
+                entity.update(cx, |shell, _cx| shell.chrome.toasts_hovered = hovered);
             })
         };
         // Hidden while the history is open, which lists them in full.
@@ -157,7 +157,7 @@ impl Render for Shell {
         let toast_layer = if toast_history_open {
             None
         } else {
-            crate::chrome::toast::render(&self.toasts, on_toast_dismiss, on_toast_hover, cx)
+            crate::chrome::toast::render(&self.chrome.toasts, on_toast_dismiss, on_toast_hover, cx)
         };
         let on_toast_history_close: toast_history_view::OnClose = {
             let entity = entity.clone();
@@ -1306,7 +1306,7 @@ impl Render for Shell {
                                     self.nav.primary_highlight(),
                                     focus == FocusZone::PrimaryRail,
                                     self.nav.primary_rail(),
-                                    self.collapsed_rail_tooltip,
+                                    self.chrome.collapsed_rail_tooltip,
                                     on_row_hover,
                                     on_row_click,
                                 )
@@ -1367,7 +1367,7 @@ impl Render for Shell {
                                     on_date_style_click,
                                     on_row_density_click,
                                     on_status_glyphs_click,
-                                    toasts_on: self.toasts.display().toasts_on,
+                                    toasts_on: self.chrome.toasts.display().toasts_on,
                                     on_toasts_click,
                                     colour_theme_focus: self.colour_theme_focus,
                                     display_field: self.settings_display_field,
@@ -1404,11 +1404,12 @@ impl Render for Shell {
             .child(
                 StatusLine::new(
                     self.nav.mode(),
-                    self.status_message.clone(),
+                    self.chrome.status_message.clone(),
                     self.command_echo(),
                 )
                 .toast_echo(
-                    self.toasts
+                    self.chrome
+                        .toasts
                         .echo()
                         .filter(|_| !toast_history_open)
                         .map(|toast| (toast.kind(), toast.text().to_string())),
@@ -1420,7 +1421,12 @@ impl Render for Shell {
                 )
                 .on_hint(on_hint),
             )
-            .children(self.palette.as_ref().map(|palette| palette.render(cx)))
+            .children(
+                self.chrome
+                    .palette
+                    .as_ref()
+                    .map(|palette| palette.render(cx)),
+            )
             .children(self.file_explorer.as_ref().map(|explorer| {
                 explorer.render(
                     on_explorer_entry_click,
@@ -1438,7 +1444,7 @@ impl Render for Shell {
                 help_view::render(on_help_close, sheet, cx)
             }))
             .children(toast_history_open.then(|| {
-                toast_history_view::render(self.toasts.history(), on_toast_history_close, cx)
+                toast_history_view::render(self.chrome.toasts.history(), on_toast_history_close, cx)
             }))
             .children(self.render_documents_dialog(&entity, cx))
             .child(documents_view::drop_overlay::render(cx))

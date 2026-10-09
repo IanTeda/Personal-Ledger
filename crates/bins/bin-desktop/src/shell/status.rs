@@ -31,7 +31,7 @@ impl Shell {
         if self.nav.mode() != InputMode::Normal {
             return;
         }
-        self.status_message = None;
+        self.chrome.status_message = None;
         self.pending_g = None;
         match action {
             HintAction::Command => self.open_palette(),
@@ -39,7 +39,7 @@ impl Shell {
             HintAction::Help => self.nav.enter_mode(InputMode::Help),
             HintAction::ToggleRail => {
                 self.nav.toggle_primary_rail();
-                self.collapsed_rail_tooltip = None;
+                self.chrome.collapsed_rail_tooltip = None;
             }
         }
         cx.notify();

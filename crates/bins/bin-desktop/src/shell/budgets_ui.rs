@@ -1106,7 +1106,7 @@ impl Shell {
             ManageAction::Restore => self.budgets.restore(id),
         };
         let refused = outcome.err();
-        match self.dialog.as_mut() {
+        match self.chrome.dialog.as_mut() {
             Some(OpenDialog::Budgets(dialog))
                 if matches!(**dialog, budgets::BudgetsDialog::Manage(_)) =>
             {
@@ -1118,7 +1118,7 @@ impl Shell {
             }
             _ => {
                 if let Some(error) = refused {
-                    self.status_message = Some(match error {
+                    self.chrome.status_message = Some(match error {
                         budgets::BudgetError::DefaultCannotBeArchived => {
                             crate::msg::desktop_budgets_manage_error_default()
                         }
@@ -1815,7 +1815,7 @@ impl Shell {
     pub(super) fn set_budgets_tab(&mut self, tab: budgets::BudgetsTab) {
         self.budgets_state.tab = tab;
         self.budgets_state.selected = 0;
-        self.status_message = None;
+        self.chrome.status_message = None;
         self.reset_view_scroll();
     }
 

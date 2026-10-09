@@ -6,6 +6,7 @@
 pub(crate) mod dialog_host;
 pub(crate) mod palette;
 pub(crate) mod rail;
+pub(crate) mod state;
 pub(crate) mod statusline;
 pub(crate) mod toast;
 pub(crate) mod topbar;

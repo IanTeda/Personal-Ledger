@@ -414,7 +414,7 @@ impl Shell {
             row_density: format!("{:?}", self.settings_row_density),
             status_glyphs: format!("{:?}", self.settings_status_glyphs),
             start_sidebar_minimised: self.settings_start_sidebar_minimised,
-            toasts_on: self.toasts.display().toasts_on,
+            toasts_on: self.chrome.toasts.display().toasts_on,
             tracing_level: format!("{:?}", self.settings_log.level()),
             log_line_count: self.settings_log.visible().len(),
             log_lines: self
@@ -425,7 +425,7 @@ impl Shell {
                 .collect(),
             log_hidden_count: self.settings_log.hidden_count(),
             log_scroll_top: self.settings_log_list.logical_scroll_top().item_ix,
-            status_message: self.status_message.clone(),
+            status_message: self.chrome.status_message.clone(),
         }
     }
 }

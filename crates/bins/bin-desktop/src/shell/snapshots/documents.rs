@@ -77,12 +77,13 @@ impl Shell {
             library_rows: self.documents_library_rows().len(),
             inbox_rows: self.documents_inbox_rows().len(),
             toasts: self
+                .chrome
                 .toasts
                 .visible()
                 .iter()
                 .map(|toast| toast.text().to_string())
                 .collect(),
-            status: self.status_message.clone(),
+            status: self.chrome.status_message.clone(),
             picker: match self.documents_dialog() {
                 Some(DocumentsDialog::Picker(state)) => Some(PickerSnapshot {
                     kind: state.kind.label(),

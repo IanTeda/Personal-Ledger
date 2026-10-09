@@ -711,7 +711,7 @@ impl Shell {
     /// file to the OS when it exists, and says so when it does not.
     pub(super) fn documents_open_selected(&mut self, reveal: bool) {
         let Some(document) = self.documents_selected_document() else {
-            self.status_message = Some(crate::msg::desktop_documents_status_no_document());
+            self.chrome.status_message = Some(crate::msg::desktop_documents_status_no_document());
             return;
         };
         let path = documents::resolve_path(&document.path.to_string_lossy());
@@ -735,7 +735,7 @@ impl Shell {
     /// a Link in the Library or to file the focused Unfiled Document from the Inbox.
     pub(super) fn documents_link_picker(&mut self) {
         let Some(document) = self.documents_selected_document() else {
-            self.status_message = Some(crate::msg::desktop_documents_status_no_document());
+            self.chrome.status_message = Some(crate::msg::desktop_documents_status_no_document());
             return;
         };
         let id = document.id;
@@ -811,7 +811,8 @@ impl Shell {
             }
             Purpose::File(id) => {
                 let Some(doc_type) = state.doc_type else {
-                    self.status_message = Some(crate::msg::desktop_documents_picker_need_type());
+                    self.chrome.status_message =
+                        Some(crate::msg::desktop_documents_picker_need_type());
                     return;
                 };
                 self.close_documents_dialog();
@@ -954,7 +955,7 @@ impl Shell {
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        self.status_message = Some(if reveal {
+        self.chrome.status_message = Some(if reveal {
             crate::msg::desktop_documents_status_shown(&name)
         } else {
             crate::msg::desktop_documents_status_opened(&name)
@@ -1062,7 +1063,8 @@ impl Shell {
     /// `u`: reverses the last filing action as a unit and puts focus back on its Document.
     pub(super) fn documents_undo_last(&mut self) {
         let Some(record) = self.documents_undo.take() else {
-            self.status_message = Some(crate::msg::desktop_documents_status_nothing_to_undo());
+            self.chrome.status_message =
+                Some(crate::msg::desktop_documents_status_nothing_to_undo());
             return;
         };
         let count = record.entries.len();
@@ -1095,7 +1097,7 @@ impl Shell {
     pub(super) fn open_documents_accept_all(&mut self) {
         let count = documents::strong_count(&self.documents, &self.transactions, &self.payees);
         if count == 0 {
-            self.status_message = Some(crate::msg::desktop_documents_status_no_strong());
+            self.chrome.status_message = Some(crate::msg::desktop_documents_status_no_strong());
             return;
         }
         self.open_documents_dialog(DocumentsDialog::AcceptAll(count));
@@ -1129,7 +1131,7 @@ impl Shell {
     fn open_documents_facts(&mut self) {
         let options = self.documents_options();
         let Some(document) = self.documents_selected_document() else {
-            self.status_message = Some(crate::msg::desktop_documents_status_no_document());
+            self.chrome.status_message = Some(crate::msg::desktop_documents_status_no_document());
             return;
         };
         let facts = document
@@ -1234,7 +1236,7 @@ impl Shell {
     fn open_documents_edit(&mut self) {
         let options = self.documents_options();
         let Some(document) = self.documents_selected_document() else {
-            self.status_message = Some(crate::msg::desktop_documents_status_no_document());
+            self.chrome.status_message = Some(crate::msg::desktop_documents_status_no_document());
             return;
         };
         let id = document.id;
@@ -1247,14 +1249,14 @@ impl Shell {
     }
 
     pub(super) fn documents_dialog(&self) -> Option<&DocumentsDialog> {
-        match self.dialog.as_ref()? {
+        match self.chrome.dialog.as_ref()? {
             OpenDialog::Documents(dialog) => Some(dialog),
             _ => None,
         }
     }
 
     fn documents_dialog_mut(&mut self) -> Option<&mut DocumentsDialog> {
-        match self.dialog.as_mut()? {
+        match self.chrome.dialog.as_mut()? {
             OpenDialog::Documents(dialog) => Some(dialog),
             _ => None,
         }

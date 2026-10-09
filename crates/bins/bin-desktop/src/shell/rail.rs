@@ -11,7 +11,7 @@ impl Shell {
     /// same action as the `b` key, see [`Self::handle_key_down`].
     pub(super) fn handle_toggle_rail(&mut self, cx: &mut Context<'_, Self>) {
         self.nav.toggle_primary_rail();
-        self.collapsed_rail_tooltip = None;
+        self.chrome.collapsed_rail_tooltip = None;
         cx.notify();
     }
 
@@ -26,19 +26,19 @@ impl Shell {
         hovered: bool,
         cx: &mut Context<'_, Self>,
     ) {
-        self.hover_generation += 1;
+        self.chrome.hover_generation += 1;
         if !hovered {
-            self.collapsed_rail_tooltip = None;
+            self.chrome.collapsed_rail_tooltip = None;
             cx.notify();
             return;
         }
 
-        let generation = self.hover_generation;
+        let generation = self.chrome.hover_generation;
         cx.spawn(async move |this, cx| {
             Timer::after(TOOLTIP_REVEAL_DELAY).await;
             this.update(cx, |shell, cx| {
-                if shell.hover_generation == generation {
-                    shell.collapsed_rail_tooltip = Some(noun);
+                if shell.chrome.hover_generation == generation {
+                    shell.chrome.collapsed_rail_tooltip = Some(noun);
                     cx.notify();
                 }
             })

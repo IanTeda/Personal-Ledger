@@ -90,11 +90,11 @@ impl Shell {
             }
             CommandEffect::DismissToast => {
                 self.nav.exit_mode();
-                self.toasts.dismiss_newest();
+                self.chrome.toasts.dismiss_newest();
             }
             CommandEffect::DismissAllToasts => {
                 self.nav.exit_mode();
-                self.toasts.dismiss_all();
+                self.chrome.toasts.dismiss_all();
             }
             CommandEffect::SetToasts(on) => {
                 self.nav.exit_mode();
@@ -157,9 +157,9 @@ impl Shell {
             }
             CommandEffect::NotYetBuilt => {
                 self.nav.exit_mode();
-                self.status_message = Some(crate::msg::desktop_status_command_not_yet_built(
-                    command.name,
-                ));
+                self.chrome.status_message = Some(
+                    crate::msg::desktop_status_command_not_yet_built(command.name),
+                );
             }
         }
     }
@@ -187,6 +187,6 @@ impl Shell {
 
     pub(super) fn open_palette(&mut self) {
         self.nav.enter_mode(InputMode::Command);
-        self.palette = Some(Palette::with_history(self.command_history.clone()));
+        self.chrome.palette = Some(Palette::with_history(self.command_history.clone()));
     }
 }

@@ -62,7 +62,7 @@ use gpui::{
     ScrollStrategy, UniformListScrollHandle, point, px,
 };
 
-use chrono::{DateTime, Local};
+use chrono::Local;
 use lib_core::{CategoryTypes, DateStyle};
 use lib_toast::{ToastKind, Toasts};
 
@@ -75,7 +75,7 @@ use crate::{
     budgets,
     categories::{self, Category},
     chrome::dialog_host::OpenDialog,
-    chrome::palette::Palette,
+    chrome::state::ChromeState,
     documents::types::DocumentTypeRow,
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     form::field::TextField,
@@ -414,39 +414,13 @@ pub struct Shell {
     /// [`PENDING_G_TIMEOUT`] rather than driven by a timer: nothing needs to happen on its
     /// own with no further keypress, so a lazily-checked timestamp is enough.
     pending_g: Option<Instant>,
-    /// Replaces the status line's hint strip until the next keypress -- the `g`-prefix's own
-    /// "flash the hint strip" abort message, and the command palette's "not yet built" message
-    /// once it closes back to `Normal` (see [`Self::run_command`]).
-    status_message: Option<String>,
-    /// The Toasts raised this session (`crate::chrome::toast` draws them), stamped with the local time
-    /// for the history. Advanced by [`Self::start_toast_clock`]'s timer.
-    toasts: Toasts<DateTime<Local>>,
-    /// The pointer is over the Toast stack, which pauses the timers.
-    toasts_hovered: bool,
-    /// The `[keybindings] dismiss_toasts` spec, `ctrl+l` by default.
-    dismiss_toasts_binding: String,
-    /// The `[keybindings] toast_history` spec; unbound by default.
-    toast_history_binding: Option<String>,
-    /// Debug builds only: the Kind `F9` raises next, so each can be eyeballed.
-    #[cfg(debug_assertions)]
-    debug_toast_kind: usize,
-    /// The command palette's own input/selection state -- `Some` only while
-    /// `NavState::mode` is `InputMode::Command`, mirroring `bin-tui`'s own
-    /// `Shell`'s `Option<popup::command::CommandPopup>` (`docs/ux/desktop-mockups/README.md`'s Notes).
-    palette: Option<Palette>,
+    /// Chrome's own state (the status message, Toasts, palette, Dialog and rail tooltip), see
+    /// [`ChromeState`] and ADR-0032.
+    chrome: ChromeState,
     /// Previously run palette command names, most-recent-first, deduplicated -- outlives any
     /// one `Palette` (see [`record_history`]), cloned into a fresh `Palette` on every `:` open
     /// so `^r` can reach commands run in an earlier palette session.
     command_history: Vec<String>,
-    /// The collapsed primary rail's row whose hover has settled past
-    /// [`TOOLTIP_REVEAL_DELAY`] -- `None` while nothing's hovered, the delay hasn't elapsed
-    /// yet, or the rail isn't collapsed (see `chrome::rail::primary::PrimaryRail`, which only wires
-    /// hover at all in its collapsed rendering).
-    collapsed_rail_tooltip: Option<Noun>,
-    /// Bumped on every hover transition; a pending reveal timer checks this against the value
-    /// it captured before applying, so hovering a second row (or leaving the rail entirely)
-    /// before the first row's delay elapses can't reveal the wrong tooltip.
-    hover_generation: u64,
     /// The "1e" file explorer's own state -- `Some` only while `:open`'s dialog is on screen,
     /// mirroring `Option<Palette>`. `NavState::mode` stays `InputMode::Command` for as long as
     /// this is `Some` (see [`Self::run_command`]'s own doc), so the two together -- rather than
@@ -494,10 +468,6 @@ pub struct Shell {
     /// nothing on this map's own dialog tickets mutates this `Vec` yet (test/edit/delete/add are
     /// all clearly-marked stubs, see `view::settings::units`'s own doc).
     settings_price_sources: Vec<PriceSourceRow>,
-    /// The open Dialog in the Dialog host (`crate::chrome::dialog_host`), if any. Only
-    /// [`Self::open_dialog`]/[`Self::close_dialog`] change it, so `NavState::mode` is
-    /// `InputMode::Dialog` for exactly as long as this is `Some`. Every feature's Dialog lives here.
-    dialog: Option<OpenDialog>,
     /// The Institutions section's own table rows (issue #178), seeded from
     /// `institutions::default_institutions()` -- same reasoning as [`Self::settings_units`].
     settings_institutions: Vec<InstitutionRow>,
@@ -661,17 +631,20 @@ impl Shell {
             focus_handle,
             view_scroll_handle: ScrollHandle::new(),
             pending_g: None,
-            status_message: None,
-            toasts: Toasts::default(),
-            toasts_hovered: false,
-            dismiss_toasts_binding: key_router::DEFAULT_DISMISS_TOASTS.to_string(),
-            toast_history_binding: None,
-            #[cfg(debug_assertions)]
-            debug_toast_kind: 0,
-            palette: None,
+            chrome: ChromeState {
+                status_message: None,
+                toasts: Toasts::default(),
+                toasts_hovered: false,
+                dismiss_toasts_binding: key_router::DEFAULT_DISMISS_TOASTS.to_string(),
+                toast_history_binding: None,
+                #[cfg(debug_assertions)]
+                debug_toast_kind: 0,
+                palette: None,
+                collapsed_rail_tooltip: None,
+                hover_generation: 0,
+                dialog: None,
+            },
             command_history: Vec::new(),
-            collapsed_rail_tooltip: None,
-            hover_generation: 0,
             file_explorer: None,
             settings_selected_section: SettingsSection::default(),
             settings_focus: SettingsFocus::default(),
@@ -685,7 +658,6 @@ impl Shell {
             explorer_filters: ExplorerFilters::default(),
             settings_units: units::default_units(),
             settings_price_sources: units::default_price_sources(),
-            dialog: None,
             settings_institutions: institutions::default_institutions(),
             // A private, empty capture until `set_log_capture` hands over the real one.
             settings_log: LogView::new(
@@ -781,11 +753,11 @@ impl Shell {
     }
 
     pub fn set_dismiss_toasts_binding(&mut self, spec: String) {
-        self.dismiss_toasts_binding = spec;
+        self.chrome.dismiss_toasts_binding = spec;
     }
 
     pub fn set_toast_history_binding(&mut self, spec: Option<String>) {
-        self.toast_history_binding = spec;
+        self.chrome.toast_history_binding = spec;
     }
 
     /// Stands in for opening a ledger, so a test can reach the context rail without the file
@@ -805,7 +777,7 @@ impl Shell {
     /// The status line's flash message (e.g. "not yet built"), if one is showing.
     #[doc(hidden)]
     pub fn status_message(&self) -> Option<&str> {
-        self.status_message.as_deref()
+        self.chrome.status_message.as_deref()
     }
 
     /// Previously run palette commands, most recent first.
@@ -847,7 +819,7 @@ impl Shell {
         };
         match key {
             "escape" => {
-                self.status_message = None;
+                self.chrome.status_message = None;
                 self.leave_colour_theme_grid();
                 true
             }
@@ -1015,7 +987,7 @@ impl Shell {
         };
         match keystroke.key.as_str() {
             "j" | "down" => {
-                self.status_message = None;
+                self.chrome.status_message = None;
                 if field + 1 >= DISPLAY_FIELD_COUNT {
                     self.settings_display_field = None;
                     self.colour_theme_focus = Some(chosen);
@@ -1029,7 +1001,7 @@ impl Shell {
                 true
             }
             "h" | "left" | "l" | "right" => {
-                self.status_message = None;
+                self.chrome.status_message = None;
                 match field {
                     0 => {
                         self.settings_date_style =
@@ -1100,7 +1072,7 @@ impl Shell {
     }
 
     fn step_tracing_level(&mut self, delta: isize) {
-        self.status_message = None;
+        self.chrome.status_message = None;
         let level = step_choice(&TracingLevel::ALL, self.settings_log.level(), delta);
         self.set_tracing_level(level);
     }
@@ -1123,7 +1095,7 @@ impl Shell {
         }
         match (self.settings_focus, keystroke.key.as_str()) {
             (SettingsFocus::Index, "l" | "right" | "enter") => {
-                self.status_message = None;
+                self.chrome.status_message = None;
                 self.focus_settings_page();
                 true
             }
@@ -1142,7 +1114,7 @@ impl Shell {
                 false
             }
             (SettingsFocus::Page, "h" | "left") if self.colour_theme_focus.is_none() => {
-                self.status_message = None;
+                self.chrome.status_message = None;
                 self.focus_settings_index();
                 true
             }
@@ -1269,7 +1241,7 @@ impl Shell {
             Movement::HalfPageDown => ((selected + half).min(last), ScrollStrategy::Center),
             Movement::HalfPageUp => (selected.saturating_sub(half), ScrollStrategy::Center),
             Movement::Enter => {
-                self.status_message =
+                self.chrome.status_message =
                     Some(crate::msg::desktop_status_open_transaction_not_yet_built());
                 return;
             }
@@ -1297,7 +1269,7 @@ impl Shell {
             "e" => crate::msg::desktop_status_edit_transaction_not_yet_built(),
             _ => return false,
         };
-        self.status_message = Some(message);
+        self.chrome.status_message = Some(message);
         true
     }
 
@@ -1521,7 +1493,8 @@ impl Shell {
 
     /// The header's **add transaction** button: the same message `n` gives.
     fn handle_transactions_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some(crate::msg::desktop_status_add_transaction_not_yet_built());
+        self.chrome.status_message =
+            Some(crate::msg::desktop_status_add_transaction_not_yet_built());
         cx.notify();
     }
 
@@ -1724,7 +1697,8 @@ impl Shell {
             .and_then(|position| self.document_types.get(position))
             .is_some_and(|row| row.is_default);
         if is_default {
-            self.status_message = Some(crate::msg::desktop_document_types_hint_default_kept());
+            self.chrome.status_message =
+                Some(crate::msg::desktop_document_types_hint_default_kept());
         }
         self.open_remove_document_type_dialog(id);
     }
@@ -2067,7 +2041,7 @@ impl Shell {
             "d" => {
                 if let Some(category) = selected_category {
                     if !categories::is_leaf(&self.categories, category.id) {
-                        self.status_message =
+                        self.chrome.status_message =
                             Some(crate::msg::desktop_status_delete_children_first());
                     } else {
                         let id = category.id;
@@ -2425,7 +2399,7 @@ impl Shell {
         self.bills_tab = tab;
         self.bills_selected = 0;
         self.bills_filter_focus = None;
-        self.status_message = None;
+        self.chrome.status_message = None;
         self.reset_view_scroll();
     }
 
@@ -2842,7 +2816,7 @@ impl Shell {
     fn open_pay_bill_dialog(&mut self, row: bills::ScheduleRow) {
         let plan = bills::get(&self.bill_plans, row.id.plan_id);
         let Some(plan) = plan.filter(|_| row.is_actionable()) else {
-            self.status_message = Some(crate::msg::desktop_status_bill_not_actionable());
+            self.chrome.status_message = Some(crate::msg::desktop_status_bill_not_actionable());
             return;
         };
         let candidates = bills::match_candidates(
@@ -3050,7 +3024,7 @@ impl Shell {
     /// instead.
     fn open_skip_bill_dialog(&mut self, row: bills::ScheduleRow) {
         if !row.is_actionable() || bills::get(&self.bill_plans, row.id.plan_id).is_none() {
-            self.status_message = Some(crate::msg::desktop_status_bill_not_actionable());
+            self.chrome.status_message = Some(crate::msg::desktop_status_bill_not_actionable());
             return;
         }
         self.open_dialog(OpenDialog::Bills(Box::new(bills::BillsDialog::Skip(
@@ -3063,7 +3037,7 @@ impl Shell {
     /// closes with the reason in the status line.
     fn apply_skip_bill(&mut self, entry: bills::EntryId) {
         if bills::skip(&self.bill_plans, &mut self.bill_entries, entry).is_err() {
-            self.status_message = Some(crate::msg::desktop_bills_skip_error_gone());
+            self.chrome.status_message = Some(crate::msg::desktop_bills_skip_error_gone());
         }
     }
 
@@ -4175,7 +4149,7 @@ impl Shell {
 
     fn handle_categories_delete_click(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
         if !categories::is_leaf(&self.categories, category_id) {
-            self.status_message = Some(crate::msg::desktop_status_delete_children_first());
+            self.chrome.status_message = Some(crate::msg::desktop_status_delete_children_first());
             cx.notify();
             return;
         }
@@ -4500,9 +4474,9 @@ impl Shell {
             match self.selected_account_index() {
                 Some(index) => index,
                 None => {
-                    self.status_message = Some(crate::msg::desktop_status_no_accounts(&format!(
-                        ":{command_name}"
-                    )));
+                    self.chrome.status_message = Some(crate::msg::desktop_status_no_accounts(
+                        &format!(":{command_name}"),
+                    ));
                     return;
                 }
             }
@@ -4510,18 +4484,19 @@ impl Shell {
             match accounts::find_by_name(&self.accounts, argument) {
                 NameLookup::Found(index) => index,
                 NameLookup::NotFound => {
-                    self.status_message = Some(crate::msg::desktop_status_no_account_named(
+                    self.chrome.status_message = Some(crate::msg::desktop_status_no_account_named(
                         &format!(":{command_name}"),
                         argument,
                     ));
                     return;
                 }
                 NameLookup::Ambiguous(names) => {
-                    self.status_message = Some(crate::msg::desktop_status_account_ambiguous(
-                        &format!(":{command_name}"),
-                        argument,
-                        &names.join(", "),
-                    ));
+                    self.chrome.status_message =
+                        Some(crate::msg::desktop_status_account_ambiguous(
+                            &format!(":{command_name}"),
+                            argument,
+                            &names.join(", "),
+                        ));
                     return;
                 }
             }
@@ -4554,24 +4529,28 @@ impl Shell {
     /// own doc), so each flashes a plain "not yet built" status message naming no issue.
     fn handle_price_source_test_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index;
-        self.status_message = Some(crate::msg::desktop_status_test_price_source_not_yet_built());
+        self.chrome.status_message =
+            Some(crate::msg::desktop_status_test_price_source_not_yet_built());
         cx.notify();
     }
 
     fn handle_price_source_edit_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index;
-        self.status_message = Some(crate::msg::desktop_status_edit_price_source_not_yet_built());
+        self.chrome.status_message =
+            Some(crate::msg::desktop_status_edit_price_source_not_yet_built());
         cx.notify();
     }
 
     fn handle_price_source_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index;
-        self.status_message = Some(crate::msg::desktop_status_delete_price_source_not_yet_built());
+        self.chrome.status_message =
+            Some(crate::msg::desktop_status_delete_price_source_not_yet_built());
         cx.notify();
     }
 
     fn handle_add_price_source_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some(crate::msg::desktop_status_add_price_source_not_yet_built());
+        self.chrome.status_message =
+            Some(crate::msg::desktop_status_add_price_source_not_yet_built());
         cx.notify();
     }
 
@@ -4597,13 +4576,15 @@ impl Shell {
     /// `AddInstitution`), so there is no ticket to point at.
     fn handle_institution_edit_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index; // no row-scoped state until a future ticket specifies this dialog
-        self.status_message = Some(crate::msg::desktop_status_edit_institution_not_yet_built());
+        self.chrome.status_message =
+            Some(crate::msg::desktop_status_edit_institution_not_yet_built());
         cx.notify();
     }
 
     fn handle_institution_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
         let _ = index; // no row-scoped state until a future ticket specifies this dialog
-        self.status_message = Some(crate::msg::desktop_status_delete_institution_not_yet_built());
+        self.chrome.status_message =
+            Some(crate::msg::desktop_status_delete_institution_not_yet_built());
         cx.notify();
     }
 
@@ -4640,19 +4621,20 @@ impl Shell {
     /// buttons above, this has no future ticket that will give it real behaviour -- the map's
     /// own Out-of-scope names it a permanent stand-in -- so the stub message names no issue.
     fn handle_sync_now_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some(crate::msg::desktop_status_sync_now_not_implemented());
+        self.chrome.status_message = Some(crate::msg::desktop_status_sync_now_not_implemented());
         cx.notify();
     }
 
     /// The Data & backup section's own "Backup now"/"Export ledger (CSV)" buttons (issue #181)
     /// -- same permanently-out-of-scope reasoning as [`Self::handle_sync_now_click`].
     fn handle_backup_now_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some(crate::msg::desktop_status_backup_now_not_implemented());
+        self.chrome.status_message = Some(crate::msg::desktop_status_backup_now_not_implemented());
         cx.notify();
     }
 
     fn handle_export_ledger_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.status_message = Some(crate::msg::desktop_status_export_ledger_not_implemented());
+        self.chrome.status_message =
+            Some(crate::msg::desktop_status_export_ledger_not_implemented());
         cx.notify();
     }
 
@@ -4710,7 +4692,7 @@ impl Shell {
     }
 
     fn open_clear_logs_dialog(&mut self) {
-        self.status_message = None;
+        self.chrome.status_message = None;
         self.open_dialog(OpenDialog::Settings(SettingsDialog::ClearLogs));
     }
 

@@ -28,7 +28,7 @@ impl Shell {
     /// confirmed and the palette has closed in its favour -- the file explorer's frozen
     /// `"open"` echo, each paired with its own "esc closes ..." hint text.
     pub(super) fn command_echo(&self) -> Option<(String, String)> {
-        if let Some(palette) = self.palette.as_ref() {
+        if let Some(palette) = self.chrome.palette.as_ref() {
             Some((
                 palette.input().to_string(),
                 crate::msg::desktop_status_close_command_window("esc"),
@@ -74,24 +74,24 @@ impl Shell {
         if key_router::dismisses_toasts(
             self.nav.mode(),
             pending_g_active,
-            &self.dismiss_toasts_binding,
+            &self.chrome.dismiss_toasts_binding,
             key,
             modifiers,
         ) {
-            self.toasts.dismiss_all();
-            self.status_message = None;
+            self.chrome.toasts.dismiss_all();
+            self.chrome.status_message = None;
             return true;
         }
 
         if key_router::opens_toast_history(
             self.nav.mode(),
             pending_g_active,
-            self.toast_history_binding.as_deref(),
+            self.chrome.toast_history_binding.as_deref(),
             key,
             modifiers,
         ) {
             self.open_toast_history();
-            self.status_message = None;
+            self.chrome.status_message = None;
             return true;
         }
 
@@ -99,36 +99,36 @@ impl Shell {
         // call sites exist (#346).
         #[cfg(debug_assertions)]
         if key == "f9" && self.nav.mode() == InputMode::Normal {
-            let kind = ToastKind::ALL[self.debug_toast_kind % ToastKind::ALL.len()];
-            self.debug_toast_kind += 1;
+            let kind = ToastKind::ALL[self.chrome.debug_toast_kind % ToastKind::ALL.len()];
+            self.chrome.debug_toast_kind += 1;
             self.raise_toast(kind, format!("{kind:?} Toast raised from F9"));
             return true;
         }
 
         if !pending_g_active && self.handle_budgets_plan_edit_key(keystroke) {
-            self.status_message = None;
+            self.chrome.status_message = None;
             return true;
         }
 
         if !pending_g_active && self.handle_import_key(keystroke) {
-            self.status_message = None;
+            self.chrome.status_message = None;
             return true;
         }
 
         if !pending_g_active && self.handle_documents_key(keystroke) {
-            self.status_message = None;
+            self.chrome.status_message = None;
             return true;
         }
 
         // `J`/`K` reorder the Documents page's types; the router would read them as `j`/`k`.
         if !pending_g_active && self.handle_settings_documents_reorder_key(keystroke) {
-            self.status_message = None;
+            self.chrome.status_message = None;
             return true;
         }
 
         // `J`/`K` reorder a Room within its Property; the router would read them as `j`/`k`.
         if !pending_g_active && self.handle_settings_inventory_reorder_key(keystroke) {
-            self.status_message = None;
+            self.chrome.status_message = None;
             return true;
         }
 
@@ -140,7 +140,12 @@ impl Shell {
         match outcome {
             KeyOutcome::ClearPendingG => return true,
             KeyOutcome::ClosePopupsAndExitMode => {
-                if self.dialog.as_mut().is_some_and(Dialog::close_open_select) {
+                if self
+                    .chrome
+                    .dialog
+                    .as_mut()
+                    .is_some_and(Dialog::close_open_select)
+                {
                     return true;
                 }
                 // The Schedule tab's filter selects: the first `Esc` closes an open list, the next
@@ -153,7 +158,7 @@ impl Shell {
                     }
                     return true;
                 }
-                self.palette = None;
+                self.chrome.palette = None;
                 self.file_explorer = None;
                 // The README's own Dialog lifecycle table: "`esc` closes any dialog without
                 // saving" -- discards whatever was typed, same as Cancel.
@@ -185,7 +190,7 @@ impl Shell {
 
         // The handoff's own precedent for hint-strip messages (`docs/ux/desktop-mockups/README.md`'s
         // "Loading and error states"): any keypress clears one, not just a timer.
-        let had_status_message = self.status_message.take().is_some();
+        let had_status_message = self.chrome.status_message.take().is_some();
 
         match outcome {
             KeyOutcome::DelegateToPalette => {
@@ -201,7 +206,7 @@ impl Shell {
                 true
             }
             KeyOutcome::PendingGUnbound(message) => {
-                self.status_message = Some(message);
+                self.chrome.status_message = Some(message);
                 true
             }
             KeyOutcome::EnterCommand => {
@@ -234,7 +239,7 @@ impl Shell {
             // meaningless once the rail that anchors it changes shape.
             KeyOutcome::ToggleRail => {
                 self.nav.toggle_primary_rail();
-                self.collapsed_rail_tooltip = None;
+                self.chrome.collapsed_rail_tooltip = None;
                 true
             }
             KeyOutcome::CycleFocusForward => {
@@ -309,7 +314,7 @@ impl Shell {
     /// handling below -- keeping "the popup owns every keystroke" true even for a modified key
     /// (e.g. a bare `Ctrl`) this palette gives no meaning to.
     fn handle_palette_key(&mut self, keystroke: &Keystroke) -> bool {
-        let Some(palette) = self.palette.as_mut() else {
+        let Some(palette) = self.chrome.palette.as_mut() else {
             return false;
         };
 
@@ -337,7 +342,7 @@ impl Shell {
             "enter" => {
                 let command = palette.selected_command();
                 let argument = palette.argument().to_string();
-                self.palette = None;
+                self.chrome.palette = None;
                 match command {
                     Some(command) => self.run_command(command, &argument),
                     // No result to run (an empty registry match) -- there's nothing left for
@@ -375,7 +380,7 @@ impl Shell {
     /// This tier returns before `route_key`'s `Tab` tier is ever checked, so the shell-wide zones
     /// stay untouched while a dialog is up.
     fn handle_dialog_key(&mut self, keystroke: &Keystroke) -> bool {
-        if let Some(dialog) = self.dialog.as_mut() {
+        if let Some(dialog) = self.chrome.dialog.as_mut() {
             return match dialog_host::handle_key(dialog, dialog_key(keystroke)) {
                 DialogOutcome::Ignored => false,
                 DialogOutcome::Handled => true,

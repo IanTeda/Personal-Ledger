@@ -62,6 +62,7 @@ impl Shell {
     pub fn toasts_snapshot(&self) -> ToastsSnapshot {
         ToastsSnapshot {
             visible: self
+                .chrome
                 .toasts
                 .visible()
                 .iter()
@@ -71,8 +72,9 @@ impl Shell {
                     count: toast.count(),
                 })
                 .collect(),
-            more: self.toasts.more_count(),
+            more: self.chrome.toasts.more_count(),
             history: self
+                .chrome
                 .toasts
                 .history()
                 .iter()
@@ -83,7 +85,7 @@ impl Shell {
                 })
                 .collect(),
             history_open: self.toast_history_open(),
-            on: self.toasts.display().toasts_on,
+            on: self.chrome.toasts.display().toasts_on,
         }
     }
 

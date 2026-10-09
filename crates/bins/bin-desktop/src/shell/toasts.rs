@@ -16,22 +16,22 @@ use crate::{
 impl Shell {
     /// Opens the session Toast history as a modal, which pauses the Toast timers.
     pub(super) fn open_toast_history(&mut self) {
-        self.palette = None;
+        self.chrome.palette = None;
         self.open_dialog(OpenDialog::ToastHistory(ToastHistoryDialog));
     }
 
     /// Sets the Client-scoped Toasts Preference (ADR-0027), held in memory like the Colour Theme
     /// Preferences. The Desktop can always draw a Toast, so only `toasts_on` ever changes.
     pub fn set_toasts_on(&mut self, on: bool) {
-        self.toasts.set_display(lib_toast::Display {
+        self.chrome.toasts.set_display(lib_toast::Display {
             toasts_on: on,
-            ..self.toasts.display()
+            ..self.chrome.toasts.display()
         });
     }
 
     /// Raises a Toast whose Message the caller has already resolved to text.
     pub fn raise_toast(&mut self, kind: ToastKind, text: impl Into<String>) {
-        self.toasts.raise(kind, text, Local::now());
+        self.chrome.toasts.raise(kind, text, Local::now());
     }
 
     /// Starts the Toast clock for the window's life: every [`crate::chrome::toast::TICK`] it advances
@@ -64,33 +64,33 @@ impl Shell {
     /// One clock tick; `true` when the stack changed and needs a redraw.
     pub(super) fn advance_toasts(&mut self, elapsed: Duration) -> bool {
         let before = (
-            self.toasts.visible().len(),
-            self.toasts.more_count(),
-            self.toasts.echo().is_some(),
+            self.chrome.toasts.visible().len(),
+            self.chrome.toasts.more_count(),
+            self.chrome.toasts.echo().is_some(),
         );
         if before.0 == 0 {
             // A dismissed stack never reports the pointer leaving it.
-            self.toasts_hovered = false;
+            self.chrome.toasts_hovered = false;
             return false;
         }
-        if self.toasts_hovered || self.modal_open() {
-            self.toasts.pause();
+        if self.chrome.toasts_hovered || self.modal_open() {
+            self.chrome.toasts.pause();
         } else {
-            self.toasts.resume();
+            self.chrome.toasts.resume();
         }
-        self.toasts.advance(elapsed);
+        self.chrome.toasts.advance(elapsed);
         before
             != (
-                self.toasts.visible().len(),
-                self.toasts.more_count(),
-                self.toasts.echo().is_some(),
+                self.chrome.toasts.visible().len(),
+                self.chrome.toasts.more_count(),
+                self.chrome.toasts.echo().is_some(),
             )
     }
 
     /// Whether a modal surface is open -- the palette, the file explorer, a dialog, the filter
     /// popover or the help overlay -- which pauses the Toast timers.
     pub(super) fn modal_open(&self) -> bool {
-        self.palette.is_some()
+        self.chrome.palette.is_some()
             || self.file_explorer.is_some()
             || matches!(
                 self.nav.mode(),
@@ -99,6 +99,6 @@ impl Shell {
     }
 
     pub(super) fn toast_history_open(&self) -> bool {
-        matches!(self.dialog, Some(OpenDialog::ToastHistory(_)))
+        matches!(self.chrome.dialog, Some(OpenDialog::ToastHistory(_)))
     }
 }

@@ -16,7 +16,7 @@ impl Shell {
     /// The command palette's state for a test: `None` while it is closed.
     #[doc(hidden)]
     pub fn palette_snapshot(&self) -> Option<PaletteSnapshot> {
-        self.palette.as_ref().map(|palette| PaletteSnapshot {
+        self.chrome.palette.as_ref().map(|palette| PaletteSnapshot {
             input: palette.input().to_string(),
             matches: palette.match_names(),
             selected: palette.selected_command().map(|command| command.name),
