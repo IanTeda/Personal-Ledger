@@ -10,3 +10,4 @@ pub(crate) mod state;
 pub(crate) mod statusline;
 pub(crate) mod toast;
 pub(crate) mod topbar;
+pub(crate) mod view_chrome;
