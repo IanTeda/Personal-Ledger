@@ -161,18 +161,18 @@ impl Shell {
                     i64::try_from(self.bill_plans.len()).unwrap_or(i64::MAX),
                 ),
             }),
-            ActiveView::Budgets if self.budgets_tab == budgets::BudgetsTab::Progress => {
+            ActiveView::Budgets if self.budgets_state.tab == budgets::BudgetsTab::Progress => {
                 Some(PageStatus {
                     hints: self.budgets_hints(),
                     right: crate::msg::desktop_budgets_status_period(
-                        &budgets_view::period_label(self.budgets_period),
+                        &budgets_view::period_label(self.budgets_state.period),
                         budgets_figures.map_or(0, |(_, figures)| {
                             i64::try_from(figures.rows.len()).unwrap_or(i64::MAX)
                         }),
                     ),
                 })
             }
-            ActiveView::Budgets if self.budgets_tab == budgets::BudgetsTab::Plan => {
+            ActiveView::Budgets if self.budgets_state.tab == budgets::BudgetsTab::Plan => {
                 Some(PageStatus {
                     hints: self.budgets_hints(),
                     right: budgets_plan.map_or_else(String::new, |plan| {

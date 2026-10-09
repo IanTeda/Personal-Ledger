@@ -33,6 +33,7 @@ mod figures;
 mod history;
 mod plan;
 mod seed;
+mod state;
 mod store;
 mod surface;
 
@@ -41,6 +42,7 @@ pub use figures::*;
 pub use history::*;
 pub use plan::*;
 pub use seed::*;
+pub use state::*;
 pub use store::*;
 pub use surface::*;
 

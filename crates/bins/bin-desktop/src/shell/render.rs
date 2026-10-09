@@ -936,11 +936,11 @@ impl Render for Shell {
             .then(|| self.budgets_figures())
             .flatten();
         let budgets_plan = (self.nav.noun() == Noun::Budgets
-            && self.budgets_tab == budgets::BudgetsTab::Plan)
+            && self.budgets_state.tab == budgets::BudgetsTab::Plan)
             .then(|| self.budgets_plan_data())
             .flatten();
         let budgets_history = (self.nav.noun() == Noun::Budgets
-            && self.budgets_tab == budgets::BudgetsTab::History)
+            && self.budgets_state.tab == budgets::BudgetsTab::History)
             .then(|| self.budgets_history_data())
             .flatten();
         let budgets_page = budgets_figures.as_ref().map(|(budget, figures)| {
@@ -954,8 +954,8 @@ impl Render for Shell {
             budgets_view::BudgetsPageProps {
                 name: &budget.name,
                 method: budget.method,
-                tab: self.budgets_tab,
-                period: self.budgets_period,
+                tab: self.budgets_state.tab,
+                period: self.budgets_state.period,
                 figures,
                 plan: budgets_plan
                     .as_ref()
@@ -963,7 +963,7 @@ impl Render for Shell {
                         plan,
                         current: Period::of(self.today),
                         cursor: self.budgets_plan_cursor_in(plan),
-                        edit: self.budgets_plan_edit.as_ref(),
+                        edit: self.budgets_state.plan_edit.as_ref(),
                         on_cell_click: {
                             let entity = entity.clone();
                             Rc::new(move |row, column, _window, cx| {
@@ -993,7 +993,7 @@ impl Render for Shell {
                 on_range_next: plain(Shell::handle_budgets_range_next),
                 categories: &self.categories,
                 selected: (!figures.rows.is_empty())
-                    .then(|| self.budgets_selected.min(figures.rows.len() - 1)),
+                    .then(|| self.budgets_state.selected.min(figures.rows.len() - 1)),
                 on_tab_click: {
                     let entity = entity.clone();
                     Rc::new(move |tab, _window, cx| {

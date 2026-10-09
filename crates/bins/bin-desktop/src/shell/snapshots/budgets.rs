@@ -76,20 +76,30 @@ impl Shell {
             _ => None,
         };
         BudgetsSnapshot {
-            tab: format!("{:?}", self.budgets_tab),
+            tab: format!("{:?}", self.budgets_state.tab),
             budget,
-            period: (self.budgets_period.year, self.budgets_period.month),
-            selected: self.budgets_selected.min(rows.len().saturating_sub(1)),
+            period: (
+                self.budgets_state.period.year,
+                self.budgets_state.period.month,
+            ),
+            selected: self
+                .budgets_state
+                .selected
+                .min(rows.len().saturating_sub(1)),
             rows,
-            plan_start: (self.budgets_plan_start.year, self.budgets_plan_start.month),
-            plan_cursor: self.budgets_plan_cursor,
+            plan_start: (
+                self.budgets_state.plan_start.year,
+                self.budgets_state.plan_start.month,
+            ),
+            plan_cursor: self.budgets_state.plan_cursor,
             plan_edit: self
-                .budgets_plan_edit
+                .budgets_state
+                .plan_edit
                 .as_ref()
                 .map(|edit| edit.text.clone()),
             history_end: (
-                self.budgets_history_end.year,
-                self.budgets_history_end.month,
+                self.budgets_state.history_end.year,
+                self.budgets_state.history_end.month,
             ),
             dialog: self.budgets_dialog().map(|dialog| {
                 match dialog {
