@@ -56,7 +56,7 @@ impl Shell {
         let noun_before = self.nav.noun();
         self.nav.set_noun(noun);
         if self.nav.noun() != noun_before {
-            self.reset_view_scroll();
+            self.reset_view_scroll(cx);
         }
         cx.notify();
     }

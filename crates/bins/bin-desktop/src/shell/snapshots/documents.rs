@@ -53,14 +53,16 @@ impl Shell {
     #[doc(hidden)]
     pub fn documents_snapshot(&self, cx: &gpui::App) -> DocumentsSnapshot {
         DocumentsSnapshot {
-            mode: self.documents_mode.id(),
-            scope: self.documents_scope.id(),
-            sort: self.documents_sort.id(),
-            index_focused: self.documents_focus == DocumentsFocus::Index,
-            query: self.documents_query.clone(),
-            selected_file: self.documents_selected_document().map(Document::file_name),
+            mode: self.documents_state(cx).mode.id(),
+            scope: self.documents_state(cx).scope.id(),
+            sort: self.documents_state(cx).sort.id(),
+            index_focused: self.documents_state(cx).focus == DocumentsFocus::Index,
+            query: self.documents_state(cx).query.clone(),
+            selected_file: self
+                .documents_selected_document(cx)
+                .map(Document::file_name),
             selected_links: self
-                .documents_selected_document()
+                .documents_selected_document(cx)
                 .map_or(0, |document| document.links.len()),
             dialog: self.documents_dialog().map(|dialog| match dialog {
                 DocumentsDialog::Add(_) => "add",
@@ -74,8 +76,8 @@ impl Shell {
                     Purpose::Follow(_) => "picker-follow",
                 },
             }),
-            library_rows: self.documents_library_rows().len(),
-            inbox_rows: self.documents_inbox_rows().len(),
+            library_rows: self.documents_library_rows(cx).len(),
+            inbox_rows: self.documents_inbox_rows(cx).len(),
             toasts: self
                 .chrome
                 .toasts

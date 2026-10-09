@@ -163,7 +163,7 @@ impl Shell {
                     self.reset_transactions_selection();
                 }
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Documents {
-                    self.documents_cancel_search();
+                    self.documents_cancel_search(cx);
                 }
                 self.nav.exit_mode();
                 return true;
@@ -180,7 +180,9 @@ impl Shell {
             KeyOutcome::DelegateToPalette => {
                 self.handle_palette_key(keystroke, cx) || had_status_message
             }
-            KeyOutcome::DelegateToSearch => self.handle_search_key(keystroke) || had_status_message,
+            KeyOutcome::DelegateToSearch => {
+                self.handle_search_key(keystroke, cx) || had_status_message
+            }
             KeyOutcome::DelegateToDialog => {
                 self.handle_dialog_key(keystroke, cx) || had_status_message
             }
@@ -190,7 +192,7 @@ impl Shell {
             KeyOutcome::Swallowed => had_status_message,
             KeyOutcome::JumpToNoun(noun) => {
                 self.nav.set_noun(noun);
-                self.reset_view_scroll();
+                self.reset_view_scroll(cx);
                 true
             }
             KeyOutcome::PendingGUnbound(message) => {
@@ -204,7 +206,7 @@ impl Shell {
             KeyOutcome::EnterSearch => {
                 // Settings has no Search: `/` is inert there rather than opening a mode with no box.
                 if self.nav.noun() == Noun::Documents {
-                    self.documents_start_search();
+                    self.documents_start_search(cx);
                 } else if self.nav.noun() != Noun::Settings {
                     self.nav.enter_mode(InputMode::Search);
                 }
@@ -258,10 +260,10 @@ impl Shell {
                         self.handle_payees_key(keystroke)
                     }
                     ActiveView::Settings(SettingsSection::Documents) => {
-                        self.handle_settings_documents_key(keystroke)
+                        self.handle_settings_documents_key(keystroke, cx)
                     }
                     ActiveView::Settings(SettingsSection::Inventory) => {
-                        self.handle_settings_inventory_key(keystroke)
+                        self.handle_settings_inventory_key(keystroke, cx)
                     }
                     ActiveView::Settings(SettingsSection::Tags) => self.handle_tags_key(keystroke),
                     ActiveView::Settings(
@@ -314,7 +316,7 @@ impl Shell {
             ActiveView::Import => self.handle_import_key(keystroke, cx),
             ActiveView::Documents => self.handle_documents_key(keystroke, cx),
             ActiveView::Settings(SettingsSection::Documents) => {
-                self.handle_settings_documents_reorder_key(keystroke)
+                self.handle_settings_documents_reorder_key(keystroke, cx)
             }
             ActiveView::Settings(SettingsSection::Inventory) => {
                 self.handle_settings_inventory_reorder_key(keystroke)
@@ -391,12 +393,12 @@ impl Shell {
     /// Routes a keystroke while `InputMode::Search` is active (tier 2, mirroring
     /// [`Self::handle_palette_key`]'s shape): only Transactions has a Search box today. A no-op
     /// everywhere else.
-    fn handle_search_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_search_key(&mut self, keystroke: &Keystroke, cx: &mut gpui::App) -> bool {
         if self.nav.noun() == Noun::Transactions {
             return self.handle_transactions_search_key(keystroke);
         }
         if self.nav.noun() == Noun::Documents {
-            return self.handle_documents_search_key(keystroke);
+            return self.handle_documents_search_key(keystroke, cx);
         }
         false
     }
@@ -426,7 +428,6 @@ impl Shell {
         if let Some(change) = self.pending_colour_change.take() {
             change.apply(cx);
         }
-        self.run_pending_file_action(cx);
     }
 }
 

@@ -85,9 +85,9 @@ impl Shell {
     }
 
     /// `x` or **remove**: same split as [`Self::open_edit_inventory_row`].
-    pub(super) fn open_remove_inventory_row(&mut self, row: InventoryRow) {
+    pub(super) fn open_remove_inventory_row(&mut self, row: InventoryRow, cx: &gpui::App) {
         match row {
-            InventoryRow::Property(id) => self.open_remove_property_dialog(id),
+            InventoryRow::Property(id) => self.open_remove_property_dialog(id, cx),
             InventoryRow::Room(id) => self.open_remove_room_dialog(id),
         }
     }
@@ -113,12 +113,12 @@ impl Shell {
         self.open_dialog(OpenDialog::Inventory(InventoryDialog::Edit(id, form)));
     }
 
-    pub(super) fn open_remove_property_dialog(&mut self, id: u32) {
+    pub(super) fn open_remove_property_dialog(&mut self, id: u32, cx: &gpui::App) {
         let Some(property) = self.inventory.property(id) else {
             return;
         };
         let form =
-            RemovePropertyForm::new(property.name.clone(), self.holdings_need_typed_name(id));
+            RemovePropertyForm::new(property.name.clone(), self.holdings_need_typed_name(id, cx));
         self.open_dialog(OpenDialog::Inventory(InventoryDialog::Remove(id, form)));
     }
 
@@ -164,7 +164,7 @@ impl Shell {
         self.open_dialog(OpenDialog::Inventory(dialog));
     }
 
-    fn holdings(&self, id: u32) -> Holdings {
+    fn holdings(&self, id: u32, cx: &gpui::App) -> Holdings {
         let rooms = self.inventory.property(id).map_or(0, |p| p.rooms.len());
         let items: Vec<u32> = self
             .inventory
@@ -174,7 +174,7 @@ impl Shell {
             .map(|item| item.id)
             .collect();
         let documents = self
-            .documents
+            .documents(cx)
             .iter()
             .filter(|document| {
                 document.links.iter().any(|link| {
@@ -189,15 +189,15 @@ impl Shell {
         }
     }
 
-    fn holdings_need_typed_name(&self, id: u32) -> bool {
-        let holdings = self.holdings(id);
+    fn holdings_need_typed_name(&self, id: u32, cx: &gpui::App) -> bool {
+        let holdings = self.holdings(id, cx);
         holdings.rooms > 0 || holdings.items > 0
     }
 
     /// Applies a confirmed Inventory dialog (reached through [`Self::confirm_open_dialog`] from
     /// **Add property** / **Save** / **Remove property** and `enter`): applies the change and
     /// selects the Property or Room. The Room-blocked notice only closes.
-    pub(super) fn apply_inventory_dialog(&mut self, dialog: InventoryDialog) {
+    pub(super) fn apply_inventory_dialog(&mut self, dialog: InventoryDialog, cx: &mut gpui::App) {
         match dialog {
             InventoryDialog::AddRoom(property, form) => {
                 let name = form.name.text().trim().to_string();
@@ -315,7 +315,9 @@ impl Shell {
                     Err(PropertyError::Unknown) => return,
                     Err(_) => return,
                 };
-                documents::drop_inventory_links(&mut self.documents, &removed.items);
+                self.mutate_documents(cx, |data| {
+                    documents::drop_inventory_links(&mut data.documents, &removed.items)
+                });
                 self.settings_inventory_expanded.remove(&id);
                 self.settings_inventory_selected = self
                     .inventory
@@ -451,7 +453,7 @@ impl Shell {
             }
             InventoryDialog::Remove(id, form) => {
                 let property = self.inventory.property(*id)?;
-                let holdings = self.holdings(*id);
+                let holdings = self.holdings(*id, cx);
                 Some(view::render_remove(
                     view::RemoveProps {
                         name: &property.name,

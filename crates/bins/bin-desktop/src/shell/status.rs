@@ -79,7 +79,7 @@ impl Shell {
         cx: &gpui::App,
     ) -> Option<PageStatus> {
         match self.active_view() {
-            ActiveView::Documents => self.documents_page_status(),
+            ActiveView::Documents => self.documents_page_status(cx),
             ActiveView::Settings(_) if self.accounts_page_has_focus() => Some(PageStatus {
                 hints: accounts_hints(),
                 right: crate::msg::desktop_accounts_count(
@@ -112,7 +112,7 @@ impl Shell {
                     hints: self
                         .document_types_dialog()
                         .map_or_else(settings_documents_hints, document_types_ui::dialog_hints),
-                    right: settings_view::documents::scope_text(&self.document_types),
+                    right: settings_view::documents::scope_text(self.document_types(cx)),
                 })
             }
             ActiveView::Settings(_) if self.settings_inventory_page_has_focus() => {

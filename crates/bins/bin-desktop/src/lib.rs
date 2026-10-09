@@ -107,7 +107,7 @@ pub fn build_shell(
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised);
     shell.set_settings_page(settings_page);
     shell.set_explorer_filters(persisted.explorer_filters);
-    shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2);
+    shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
     shell.set_dismiss_toasts_binding(bindings.dismiss_toasts);
     shell.set_toast_history_binding(bindings.toast_history);
     shell.start_toast_clock(cx);
@@ -241,7 +241,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
             // registered, hence `detach()` (mirroring `cx.spawn(..).detach()` elsewhere in this
             // crate) rather than binding and dropping it.
             cx.on_app_quit(move |cx| {
-                let _ = window_handle.update(cx, |shell, window, _cx| {
+                let _ = window_handle.update(cx, |shell, window, cx| {
                     let bounds = window.bounds();
                     let state = PersistedState {
                         noun: shell.nav().noun(),
@@ -249,9 +249,9 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
                         start_sidebar_minimised: shell.start_sidebar_minimised(),
                         settings_page: Some(shell.settings_page().id().to_string()),
                         explorer_filters: shell.explorer_filters(),
-                        documents_mode: Some(shell.documents_persisted().0.id().to_string()),
-                        documents_scope: Some(shell.documents_persisted().1.id()),
-                        documents_sort: Some(shell.documents_persisted().2.id().to_string()),
+                        documents_mode: Some(shell.documents_persisted(cx).0.id().to_string()),
+                        documents_scope: Some(shell.documents_persisted(cx).1.id()),
+                        documents_sort: Some(shell.documents_persisted(cx).2.id().to_string()),
                         window: Some(WindowGeometry {
                             x: f32::from(bounds.origin.x),
                             y: f32::from(bounds.origin.y),

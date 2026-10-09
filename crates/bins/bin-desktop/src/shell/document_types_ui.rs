@@ -32,30 +32,30 @@ pub(super) fn dialog_hints(dialog: &DocumentTypesDialog) -> Vec<(&'static str, S
 }
 
 impl Shell {
-    pub(super) fn open_add_document_type_dialog(&mut self) {
-        let form = DocumentTypeForm::new(&self.document_types);
+    pub(super) fn open_add_document_type_dialog(&mut self, cx: &gpui::App) {
+        let form = DocumentTypeForm::new(self.document_types(cx));
         self.open_dialog(OpenDialog::DocumentTypes(DocumentTypesDialog::Add(form)));
     }
 
-    pub(super) fn open_edit_document_type_dialog(&mut self, id: u32) {
-        let Some(row) = documents::types::get(&self.document_types, id) else {
+    pub(super) fn open_edit_document_type_dialog(&mut self, id: u32, cx: &gpui::App) {
+        let Some(row) = documents::types::get(self.document_types(cx), id) else {
             return;
         };
-        let form = DocumentTypeForm::from_row(row, &self.document_types);
+        let form = DocumentTypeForm::from_row(row, self.document_types(cx));
         self.open_dialog(OpenDialog::DocumentTypes(DocumentTypesDialog::Edit(
             id, form,
         )));
     }
 
     /// Other, the Default, has no remove action and gets a notice instead.
-    pub(super) fn open_remove_document_type_dialog(&mut self, id: u32) {
-        let Some(row) = documents::types::get(&self.document_types, id) else {
+    pub(super) fn open_remove_document_type_dialog(&mut self, id: u32, cx: &gpui::App) {
+        let Some(row) = documents::types::get(self.document_types(cx), id) else {
             return;
         };
         let dialog = if row.is_default {
             DocumentTypesDialog::DefaultNotice
         } else {
-            DocumentTypesDialog::Remove(id, RemoveForm::new(&self.document_types, id))
+            DocumentTypesDialog::Remove(id, RemoveForm::new(self.document_types(cx), id))
         };
         self.open_dialog(OpenDialog::DocumentTypes(dialog));
     }
@@ -63,52 +63,61 @@ impl Shell {
     /// Applies a confirmed Document types dialog (reached through [`Self::confirm_open_dialog`]
     /// from **Add type** / **Save** / **Remove** or `Enter`): applies the change and selects the
     /// type. The Default notice only closes.
-    pub(super) fn apply_document_types_dialog(&mut self, dialog: DocumentTypesDialog) {
+    pub(super) fn apply_document_types_dialog(
+        &mut self,
+        dialog: DocumentTypesDialog,
+        cx: &mut gpui::App,
+    ) {
         match dialog {
             DocumentTypesDialog::Add(form) => {
-                let id = documents::types::add_type(
-                    &mut self.document_types,
-                    &mut self.document_types_next_id,
-                    &form,
-                );
+                let id = self.mutate_documents(cx, |data| {
+                    documents::types::add_type(&mut data.types, &mut data.types_next_id, &form)
+                });
                 self.settings_documents_selected = Some(id);
             }
             DocumentTypesDialog::Edit(id, form) => {
-                documents::types::edit_type(&mut self.document_types, id, &form);
+                self.mutate_documents(cx, |data| {
+                    documents::types::edit_type(&mut data.types, id, &form);
+                });
                 self.settings_documents_selected = Some(id);
             }
             DocumentTypesDialog::Remove(id, form) => {
                 // Keep the cursor on the neighbour that takes the removed row's place.
-                let position = documents::types::position(&self.document_types, id).unwrap_or(0);
+                let position = documents::types::position(self.document_types(cx), id).unwrap_or(0);
                 let destination = form
                     .select
                     .value()
-                    .and_then(|name| documents::types::id_by_name(&self.document_types, name))
+                    .and_then(|name| documents::types::id_by_name(self.document_types(cx), name))
                     .filter(|destination| *destination != id);
-                if documents::types::remove_type(&mut self.document_types, id, form.select.value())
-                    .is_err()
-                {
+                let removed = self.mutate_documents(cx, |data| {
+                    documents::types::remove_type(&mut data.types, id, form.select.value())
+                });
+                if removed.is_err() {
                     return;
                 }
                 // The Documents surface follows the list: Filed files move with their type, to the
                 // chosen destination or else the Default, and a scope on the type falls back to All.
                 let moved_to = documents::DocumentType(
                     destination
-                        .unwrap_or_else(|| documents::types::fallback_id(&self.document_types)),
+                        .unwrap_or_else(|| documents::types::fallback_id(self.document_types(cx))),
                 );
-                for document in &mut self.documents {
-                    if document.doc_type == documents::DocumentType(id) {
-                        document.doc_type = moved_to;
+                self.mutate_documents(cx, |data| {
+                    for document in &mut data.documents {
+                        if document.doc_type == documents::DocumentType(id) {
+                            document.doc_type = moved_to;
+                        }
                     }
-                }
-                if self.documents_scope
+                });
+                if self.documents_state(cx).scope
                     == documents::LibraryScope::Type(documents::DocumentType(id))
                 {
-                    self.documents_scope = documents::LibraryScope::All;
+                    self.edit_documents_state(cx, |state| {
+                        state.scope = documents::LibraryScope::All;
+                    });
                 }
                 self.settings_documents_selected = self
-                    .document_types
-                    .get(position.min(self.document_types.len().saturating_sub(1)))
+                    .document_types(cx)
+                    .get(position.min(self.document_types(cx).len().saturating_sub(1)))
                     .map(|row| row.id);
             }
             DocumentTypesDialog::DefaultNotice => {}
@@ -180,7 +189,7 @@ impl Shell {
             });
             on_click
         };
-        let types = &self.document_types;
+        let types = self.document_types(cx);
         match self.document_types_dialog()? {
             DocumentTypesDialog::Add(form) => Some(view::render_form(
                 view::FormProps {

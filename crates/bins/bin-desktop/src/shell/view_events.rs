@@ -16,7 +16,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         let subscription = cx.subscribe(view, |shell, _view, event: &ViewEvent, cx| {
-            shell.handle_view_event(event.clone());
+            shell.handle_view_event(event.clone(), cx);
             // A View's request changes what `Shell` draws, and nothing else schedules a frame.
             cx.notify();
         });
@@ -25,7 +25,7 @@ impl Shell {
 
     /// Applies one View request to `Shell`'s own state, using the same helpers the keyboard and
     /// the palette use, so a View's request and a keypress leave the same state behind.
-    pub(super) fn handle_view_event(&mut self, event: ViewEvent) {
+    pub(super) fn handle_view_event(&mut self, event: ViewEvent, cx: &mut gpui::App) {
         match event {
             ViewEvent::RaiseToast { kind, text } => self.raise_toast(kind, text),
             ViewEvent::OpenDialog(dialog) => self.open_dialog(*dialog),
@@ -33,7 +33,7 @@ impl Shell {
                 let noun_before = self.nav.noun();
                 self.nav.set_noun(noun);
                 if self.nav.noun() != noun_before {
-                    self.reset_view_scroll();
+                    self.reset_view_scroll(cx);
                 }
             }
             ViewEvent::SetStatus(text) => self.chrome.status_message = Some(text),

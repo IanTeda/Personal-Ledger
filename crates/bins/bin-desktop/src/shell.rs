@@ -78,6 +78,9 @@ use crate::view::accounts::state::{
     ACCOUNTS_HALF_PAGE, AccountsEvent, AccountsStore, AccountsView,
 };
 use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, BudgetsView};
+use crate::view::documents::state::{
+    DocumentsEvent, DocumentsState, DocumentsStore, DocumentsView,
+};
 use crate::{
     accounts::{
         self, NameLookup,
@@ -88,7 +91,6 @@ use crate::{
     categories::{self, Category},
     chrome::dialog_host::OpenDialog,
     chrome::state::ChromeState,
-    documents::types::DocumentTypeRow,
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     form::field::TextField,
     import::{self, ImportState, RowSelect},
@@ -126,7 +128,6 @@ use crate::{
         bills as bills_view,
         budgets::{self as budgets_view},
         dashboard::{self},
-        documents::DocumentsFocus,
         import as import_view,
         settings::{self as settings_view},
         transactions as transactions_view,
@@ -261,14 +262,10 @@ pub struct Shell {
     payees_selected: usize,
     /// The selected row on Settings' Payees page, by Payee id: that page lists A–Z.
     settings_payees_selected: Option<u32>,
-    /// The Ledger's Document Types in the user's order (mock data until persistence lands).
-    document_types: Vec<DocumentTypeRow>,
     settings_documents_selected: Option<u32>,
     /// Settings' Inventory page: the selected row and the Properties shown open (session-only).
     settings_inventory_selected: Option<InventoryRow>,
     settings_inventory_expanded: HashSet<u32>,
-    /// The id the next added Document Type takes; only counts up, so ids are never reused.
-    document_types_next_id: u32,
     /// The stubbed 6e Import "match payees" step, `Some` while it shows in place of the
     /// Transactions page (`:import`). Dropped on leaving Transactions.
     import: Option<ImportState>,
@@ -316,27 +313,15 @@ pub struct Shell {
     transactions_filter_anchor: FilterField,
     /// Where each chip was last painted; the header writes it, the popover reads it.
     transactions_chip_bounds: transactions_view::ChipBounds,
-    /// The Documents surface's stub Documents, and the Inventory their Links resolve against.
-    documents: Vec<documents::Document>,
+    /// The Documents and Document Types, owned by their store Entity and read through it
+    /// (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
+    /// badge and the Inventory removal read the Documents.
+    documents_store: Entity<DocumentsStore>,
+    /// The Documents page's state (mode, scope, sort, search, selection). Its events are handled
+    /// in `handle_documents_event`.
+    documents_view: Entity<DocumentsView>,
+    /// The Inventory the Documents' Links resolve against.
     inventory: inventory::Inventory,
-    /// Inbox or Library, the Library's scope and sort. These three persist across restarts.
-    documents_mode: DocumentsMode,
-    documents_scope: LibraryScope,
-    documents_sort: LibrarySort,
-    /// The Library's search text: session-only, and kept across an `i` round-trip.
-    documents_query: String,
-    /// Index rail or list, while the View zone has focus.
-    documents_focus: DocumentsFocus,
-    /// The selected Library row, a position in the listed rows; clamped wherever it is read.
-    documents_selected: usize,
-    documents_scroll: ScrollHandle,
-    /// The focused Inbox row, a position in the Inbox's rows; clamped wherever it is read. Kept
-    /// apart from the Library's so an `i` round-trip returns to both.
-    documents_inbox_selected: usize,
-    /// The last filing action as a unit, for `u`. Session-only; a new filing action replaces it.
-    documents_undo: Option<documents::FilingUndo>,
-    /// A file to hand to the OS, taken by the key-down listener, which has the `App` it needs.
-    pending_file_action: Option<documents_ui::FileAction>,
     /// Keeps each View's event subscription alive: dropping one silently stops its events.
     view_subscriptions: Vec<Subscription>,
 }
@@ -394,7 +379,16 @@ impl Shell {
             cx.subscribe(&budgets_view, |shell, _view, event: &BudgetsEvent, cx| {
                 shell.handle_budgets_event(*event, cx);
             });
-        let document_types_seed = documents::types::default_types();
+        let documents_store = cx.new(|_| {
+            DocumentsStore::new(documents_seed.documents, documents::types::default_types())
+        });
+        let documents_view = cx.new(|_| DocumentsView::new(DocumentsState::default()));
+        let documents_subscription = cx.subscribe(
+            &documents_view,
+            |shell, _view, event: &DocumentsEvent, cx| {
+                shell.handle_documents_event(event, cx);
+            },
+        );
         Self {
             nav,
             focus_handle,
@@ -446,8 +440,6 @@ impl Shell {
             payees,
             payees_selected: 0,
             settings_payees_selected: None,
-            document_types_next_id: documents::types::first_free_id(&document_types_seed),
-            document_types: document_types_seed,
             settings_documents_selected: None,
             settings_inventory_selected: None,
             settings_inventory_expanded: HashSet::new(),
@@ -471,30 +463,26 @@ impl Shell {
             transactions_filter_form: None,
             transactions_filter_anchor: FilterField::Account,
             transactions_chip_bounds: Default::default(),
-            documents: documents_seed.documents,
+            documents_store,
+            documents_view,
             inventory,
-            documents_mode: DocumentsMode::default(),
-            documents_scope: LibraryScope::default(),
-            documents_sort: LibrarySort::default(),
-            documents_query: String::new(),
-            documents_focus: DocumentsFocus::default(),
-            documents_selected: 0,
-            documents_scroll: documents_ui::new_scroll(),
-            documents_inbox_selected: 0,
-            documents_undo: None,
-            pending_file_action: None,
-            view_subscriptions: vec![accounts_subscription, budgets_subscription],
+            view_subscriptions: vec![
+                accounts_subscription,
+                budgets_subscription,
+                documents_subscription,
+            ],
         }
     }
 
     /// Restores the Documents mode, Library scope and sort from the last run.
     pub fn set_documents_state(
-        &mut self,
+        &self,
         mode: DocumentsMode,
         scope: LibraryScope,
         sort: LibrarySort,
+        cx: &mut App,
     ) {
-        self.set_documents_persisted(mode, scope, sort);
+        self.set_documents_persisted(mode, scope, sort, cx);
     }
 
     /// The last-visited Settings page, for persistence.
@@ -692,11 +680,11 @@ impl Shell {
     /// `:categories` / `:payees` / `:tags` aliases and every hand-off to a moved noun land on
     /// (the keyboard model's "commands and hand-offs land in the page"). Leaves the view's scroll
     /// alone when the page is already showing.
-    fn open_settings_page(&mut self, section: SettingsSection) {
+    fn open_settings_page(&mut self, section: SettingsSection, cx: &mut App) {
         let noun_before = self.nav.noun();
         self.nav.set_noun(Noun::Settings);
         if noun_before != Noun::Settings {
-            self.reset_view_scroll();
+            self.reset_view_scroll(cx);
         }
         self.select_settings_page(section);
         self.focus_settings_page();
@@ -1390,18 +1378,18 @@ impl Shell {
 
     /// The Documents page's selected type: the stored id while it still exists, else the first
     /// row, so the cursor is never lost.
-    fn settings_documents_selected_id(&self) -> Option<u32> {
+    fn settings_documents_selected_id(&self, cx: &App) -> Option<u32> {
         self.settings_documents_selected
-            .filter(|id| documents::types::position(&self.document_types, *id).is_some())
-            .or_else(|| self.document_types.first().map(|row| row.id))
+            .filter(|id| documents::types::position(self.document_types(cx), *id).is_some())
+            .or_else(|| self.document_types(cx).first().map(|row| row.id))
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the types in the user's order.
-    fn apply_settings_documents_movement(&mut self, movement: Movement) {
-        let len = self.document_types.len();
+    fn apply_settings_documents_movement(&mut self, movement: Movement, cx: &mut App) {
+        let len = self.document_types(cx).len();
         let current = self
-            .settings_documents_selected_id()
-            .and_then(|id| documents::types::position(&self.document_types, id))
+            .settings_documents_selected_id(cx)
+            .and_then(|id| documents::types::position(self.document_types(cx), id))
             .unwrap_or(0);
         let next = match movement {
             Movement::Next => accounts::step_selection(current, len, 1),
@@ -1416,12 +1404,16 @@ impl Shell {
             }
             Movement::Enter => return,
         };
-        self.settings_documents_selected = self.document_types.get(next).map(|row| row.id);
+        self.settings_documents_selected = self.document_types(cx).get(next).map(|row| row.id);
     }
 
     /// `J`/`K` on the Documents page move the selected type a place, which is also its place in
     /// the Documents Type filter.
-    fn handle_settings_documents_reorder_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_settings_documents_reorder_key(
+        &mut self,
+        keystroke: &Keystroke,
+        cx: &mut App,
+    ) -> bool {
         if !self.settings_documents_page_has_focus() {
             return false;
         }
@@ -1430,15 +1422,15 @@ impl Shell {
             return false;
         }
         match keystroke.key.as_str() {
-            "j" => self.move_selected_document_type(1),
-            "k" => self.move_selected_document_type(-1),
+            "j" => self.move_selected_document_type(1, cx),
+            "k" => self.move_selected_document_type(-1, cx),
             _ => return false,
         }
         true
     }
 
     /// The Documents page's own `n`/`e`/`x`, which open the Add, Edit and Remove dialogs.
-    fn handle_settings_documents_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_settings_documents_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
         if !self.settings_documents_page_has_focus() {
             return false;
         }
@@ -1447,11 +1439,11 @@ impl Shell {
             return false;
         }
         match (keystroke.key.as_str(), modifiers.shift) {
-            ("x", false) => self.remove_selected_document_type(),
-            ("n", false) => self.open_add_document_type_dialog(),
+            ("x", false) => self.remove_selected_document_type(cx),
+            ("n", false) => self.open_add_document_type_dialog(cx),
             ("e", false) => {
-                if let Some(id) = self.settings_documents_selected_id() {
-                    self.open_edit_document_type_dialog(id);
+                if let Some(id) = self.settings_documents_selected_id(cx) {
+                    self.open_edit_document_type_dialog(id, cx);
                 }
             }
             _ => return false,
@@ -1459,27 +1451,29 @@ impl Shell {
         true
     }
 
-    fn move_selected_document_type(&mut self, delta: isize) {
-        if let Some(id) = self.settings_documents_selected_id() {
-            documents::types::move_by(&mut self.document_types, id, delta);
+    fn move_selected_document_type(&mut self, delta: isize, cx: &mut App) {
+        if let Some(id) = self.settings_documents_selected_id(cx) {
+            self.mutate_documents(cx, |data| {
+                documents::types::move_by(&mut data.types, id, delta)
+            });
             self.settings_documents_selected = Some(id);
         }
     }
 
     /// The Remove action. Other, the Default, is never removed: it gets a notice dialog and says
     /// so on the status line.
-    fn remove_selected_document_type(&mut self) {
-        let Some(id) = self.settings_documents_selected_id() else {
+    fn remove_selected_document_type(&mut self, cx: &mut App) {
+        let Some(id) = self.settings_documents_selected_id(cx) else {
             return;
         };
-        let is_default = documents::types::position(&self.document_types, id)
-            .and_then(|position| self.document_types.get(position))
+        let is_default = documents::types::position(self.document_types(cx), id)
+            .and_then(|position| self.document_types(cx).get(position))
             .is_some_and(|row| row.is_default);
         if is_default {
             self.chrome.status_message =
                 Some(crate::msg::desktop_document_types_hint_default_kept());
         }
-        self.open_remove_document_type_dialog(id);
+        self.open_remove_document_type_dialog(id, cx);
     }
 
     /// Whether Settings' Inventory table owns the keyboard: the page, not the index, has focus.
@@ -1553,7 +1547,7 @@ impl Shell {
 
     /// The Inventory page's own keys: right and left open, close and climb, and `n`/`r`/`e`/`x`
     /// ask for the Add, Edit and Remove dialogs, which are still placeholders.
-    fn handle_settings_inventory_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_settings_inventory_key(&mut self, keystroke: &Keystroke, cx: &App) -> bool {
         if !self.settings_inventory_page_has_focus() {
             return false;
         }
@@ -1571,7 +1565,7 @@ impl Shell {
             }
             "x" => {
                 if let Some(row) = self.settings_inventory_selected_row() {
-                    self.open_remove_inventory_row(row);
+                    self.open_remove_inventory_row(row, cx);
                 }
             }
             "right" => self.step_settings_inventory_in(),
@@ -1727,7 +1721,7 @@ impl Shell {
             AccountsEvent::Add => self.open_add_account_dialog(""),
             AccountsEvent::Edit(id) => self.open_edit_account_dialog(id, cx),
             AccountsEvent::Delete(id) => self.open_delete_account_dialog(id, cx),
-            AccountsEvent::OpenLedger(id) => self.open_account_ledger(id),
+            AccountsEvent::OpenLedger(id) => self.open_account_ledger(id, cx),
         }
         cx.notify();
     }
@@ -1750,7 +1744,7 @@ impl Shell {
     /// Keyboard input while on the Categories page: `n` adds a top-level category, `N` (shift+n)
     /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it,
     /// `enter` opens Transactions filtered to the selected category.
-    fn handle_categories_key(&mut self, keystroke: &Keystroke, cx: &App) -> bool {
+    fn handle_categories_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
         let on_settings_page = self.settings_categories_page_has_focus();
         if !on_settings_page {
             return false;
@@ -1800,7 +1794,7 @@ impl Shell {
             // Settings' tree has no ledger hand-off: `enter` is the standalone page's only.
             "enter" if !on_settings_page => {
                 if let Some(category) = selected_category {
-                    self.open_category_transactions(category.id);
+                    self.open_category_transactions(category.id, cx);
                 }
                 true
             }
@@ -1920,44 +1914,44 @@ impl Shell {
     /// Opens Transactions pre-filtered to the account `id`: fresh defaults plus that account, the
     /// search cleared and the table back on its first row. The Accounts selection is untouched, so
     /// returning to Accounts finds the same row selected.
-    fn open_account_ledger(&mut self, id: u32) {
+    fn open_account_ledger(&mut self, id: u32, cx: &mut App) {
         self.transactions_filters = TransactionFilters::for_account(self.today, id);
         self.transactions_search.clear();
         self.transactions_filter_form = None;
         self.reset_transactions_selection();
         self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
-    fn open_category_transactions(&mut self, id: u32) {
+    fn open_category_transactions(&mut self, id: u32, cx: &mut App) {
         self.transactions_filters = TransactionFilters::for_category(self.today, id);
         self.transactions_search.clear();
         self.transactions_filter_form = None;
         self.reset_transactions_selection();
         self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     /// "View transactions" on the Payees page: Transactions filtered to exactly this Payee's id, not
     /// a name substring that would over-match ("BP").
-    fn open_payee_transactions(&mut self, id: u32) {
+    fn open_payee_transactions(&mut self, id: u32, cx: &mut App) {
         self.transactions_filters = TransactionFilters::for_payee(self.today, id);
         self.transactions_search.clear();
         self.transactions_filter_form = None;
         self.reset_transactions_selection();
         self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     /// "View transactions" on the Tags page: Transactions filtered to exactly this Tag's id, not a
     /// name substring that would over-match ("trip").
-    fn open_tag_transactions(&mut self, id: u32) {
+    fn open_tag_transactions(&mut self, id: u32, cx: &mut App) {
         self.transactions_filters = TransactionFilters::for_tag(self.today, id);
         self.transactions_search.clear();
         self.transactions_filter_form = None;
         self.reset_transactions_selection();
         self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     /// The selected Tag: `tags_selected` indexes the page's usage order, not `self.tags`.
@@ -2125,7 +2119,7 @@ impl Shell {
     /// `tab` on the Bills page switches its tab (the handoff's `tab switch view`) rather than
     /// cycling focus; `shift-tab` still cycles focus, so the View zone can always be left. Runs
     /// before the router, like the Colour Theme grid's own `tab`.
-    fn handle_bills_tab_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_bills_tab_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
         let pending_g_active = self
             .pending_g
             .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
@@ -2142,16 +2136,16 @@ impl Shell {
         {
             return false;
         }
-        self.set_bills_tab(self.bills_tab.next());
+        self.set_bills_tab(self.bills_tab.next(), cx);
         true
     }
 
-    fn set_bills_tab(&mut self, tab: bills::BillsTab) {
+    fn set_bills_tab(&mut self, tab: bills::BillsTab, cx: &mut App) {
         self.bills_tab = tab;
         self.bills_selected = 0;
         self.bills_filter_focus = None;
         self.chrome.status_message = None;
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     /// Steps the Schedule tab's period a calendar month; from All, returns to the month last viewed.
@@ -2855,7 +2849,7 @@ impl Shell {
 
     /// A Dashboard Needs Attention Bill row's hand-off: the Bills Schedule tab, on the period that
     /// shows the entry, with it selected.
-    fn open_bill_entry(&mut self, id: bills::EntryId) {
+    fn open_bill_entry(&mut self, id: bills::EntryId, cx: &mut App) {
         let Some(entry) = bills::entry(&self.bill_entries, id) else {
             return;
         };
@@ -2863,14 +2857,14 @@ impl Shell {
         self.bills_all = false;
         // Reset so no filter hides the entry being handed off to.
         self.bills_filters = bills::history::BillFilters::default();
-        self.set_bills_tab(bills::BillsTab::Schedule);
+        self.set_bills_tab(bills::BillsTab::Schedule, cx);
         self.bills_selected = self
             .bills_schedule_rows()
             .iter()
             .position(|row| row.id == id)
             .unwrap_or(0);
         self.nav.set_noun(Noun::Bills);
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     /// A Paid Schedule row's hand-off: the Transactions page with its Matched Transaction selected,
@@ -2915,7 +2909,7 @@ impl Shell {
         self.transactions_scroll
             .scroll_to_item_strict(index, ScrollStrategy::Center);
         self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     fn handle_bills_add_click(&mut self, cx: &mut Context<'_, Self>) {
@@ -2924,7 +2918,7 @@ impl Shell {
     }
 
     fn handle_bills_tab_click(&mut self, tab: bills::BillsTab, cx: &mut Context<'_, Self>) {
-        self.set_bills_tab(tab);
+        self.set_bills_tab(tab, cx);
         cx.notify();
     }
 
@@ -3261,12 +3255,12 @@ impl Shell {
     /// The Default category select's options: "none", then the leaf Categories.
     /// `:import`: opens the stubbed 6e step on the seeded statement, in place of the Transactions
     /// page (#284).
-    fn open_import(&mut self) {
+    fn open_import(&mut self, cx: &mut App) {
         self.import = Some(ImportState::new(&self.payees, self.today));
         self.transactions_filter_form = None;
         self.nav.set_noun(Noun::Transactions);
         self.nav.set_focus(FocusZone::View);
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     /// The Category select's options on 6e: "choose category…", then every leaf.
@@ -3368,7 +3362,7 @@ impl Shell {
                 });
                 self.import = None;
                 self.reset_transactions_selection();
-                self.reset_view_scroll();
+                self.reset_view_scroll(cx);
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_import_done(
@@ -3639,7 +3633,7 @@ impl Shell {
     fn handle_settings_documents_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.settings_documents_selected = Some(id);
         self.focus_settings_page();
-        self.open_edit_document_type_dialog(id);
+        self.open_edit_document_type_dialog(id, cx);
         cx.notify();
     }
 
@@ -3647,14 +3641,14 @@ impl Shell {
     fn handle_settings_documents_remove_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.settings_documents_selected = Some(id);
         self.focus_settings_page();
-        self.open_remove_document_type_dialog(id);
+        self.open_remove_document_type_dialog(id, cx);
         cx.notify();
     }
 
     /// **+ Add document type**: opens the Add dialog.
     fn handle_settings_documents_add_click(&mut self, cx: &mut Context<'_, Self>) {
         self.focus_settings_page();
-        self.open_add_document_type_dialog();
+        self.open_add_document_type_dialog(cx);
         cx.notify();
     }
 
@@ -3708,7 +3702,7 @@ impl Shell {
     ) {
         self.settings_inventory_selected = Some(row);
         self.focus_settings_page();
-        self.open_remove_inventory_row(row);
+        self.open_remove_inventory_row(row, cx);
         cx.notify();
     }
 
@@ -3747,7 +3741,7 @@ impl Shell {
     /// A click on an account row: selects it and, as `enter` does, tries to open its ledger.
     fn handle_accounts_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_account(id, cx);
-        self.open_account_ledger(id);
+        self.open_account_ledger(id, cx);
         cx.notify();
     }
 
@@ -4278,7 +4272,7 @@ impl Shell {
         argument: &str,
         cx: &mut Context<'_, Self>,
     ) {
-        self.open_settings_page(SettingsSection::Accounts);
+        self.open_settings_page(SettingsSection::Accounts, cx);
         if verb == AccountsVerb::New {
             self.open_add_account_dialog(argument);
             return;

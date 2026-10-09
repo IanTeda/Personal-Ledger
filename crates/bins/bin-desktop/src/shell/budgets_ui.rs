@@ -778,7 +778,7 @@ impl Shell {
 
     /// 9d's `open in Transactions →`: Transactions filtered to the Category, the month and the
     /// Budget's on-budget Accounts, following [`Self::open_payee_transactions`].
-    pub(super) fn open_budgets_detail_transactions(&mut self, cx: &gpui::App) {
+    pub(super) fn open_budgets_detail_transactions(&mut self, cx: &mut gpui::App) {
         let Some(budgets::BudgetsDialog::CategoryDetail(detail)) = self.budgets_dialog() else {
             return;
         };
@@ -795,7 +795,7 @@ impl Shell {
         self.transactions_filter_form = None;
         self.reset_transactions_selection();
         self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     /// The Starting / From options for the Budget on show: `count` months from the current one.
@@ -1008,7 +1008,7 @@ impl Shell {
             state.history_cursor = (0, 0);
             state.history_end = Period::of(today);
         });
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     /// `enter` or a click on a Switcher row: switches to it and closes the popover.
@@ -1944,7 +1944,7 @@ impl Shell {
             state.selected = 0;
         });
         self.chrome.status_message = None;
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     /// Steps the period a calendar month. The Plan and History range navs are their own tickets'.
@@ -2036,9 +2036,9 @@ impl Shell {
         self.bills_period = self.budgets_state(cx).period;
         self.bills_all = false;
         self.bills_filters = bills::history::BillFilters::default();
-        self.set_bills_tab(bills::BillsTab::Schedule);
+        self.set_bills_tab(bills::BillsTab::Schedule, cx);
         self.nav.set_noun(Noun::Bills);
-        self.reset_view_scroll();
+        self.reset_view_scroll(cx);
     }
 
     pub(super) fn handle_budgets_tab_click(

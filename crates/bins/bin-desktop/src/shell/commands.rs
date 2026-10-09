@@ -74,12 +74,12 @@ impl Shell {
                 let noun_before = self.nav.noun();
                 self.nav.set_noun(noun);
                 if self.nav.noun() != noun_before {
-                    self.reset_view_scroll();
+                    self.reset_view_scroll(cx);
                 }
             }
             CommandEffect::OpenSettingsPage(section) => {
                 self.nav.exit_mode();
-                self.open_settings_page(section);
+                self.open_settings_page(section, cx);
             }
             CommandEffect::CloseLedger => {
                 self.nav.exit_mode();
@@ -111,23 +111,23 @@ impl Shell {
             }
             CommandEffect::MergeTags => {
                 self.nav.exit_mode();
-                self.open_settings_page(SettingsSection::Tags);
+                self.open_settings_page(SettingsSection::Tags, cx);
                 self.open_merge_tags_dialog(None);
             }
             CommandEffect::Import => {
                 self.nav.exit_mode();
-                self.open_import();
+                self.open_import(cx);
             }
             CommandEffect::Documents(verb) => {
                 self.nav.exit_mode();
-                self.run_documents_command(verb);
+                self.run_documents_command(verb, cx);
             }
             CommandEffect::Budgets(verb) => {
                 self.nav.exit_mode();
                 let noun_before = self.nav.noun();
                 self.nav.set_noun(Noun::Budgets);
                 if noun_before != Noun::Budgets {
-                    self.reset_view_scroll();
+                    self.reset_view_scroll(cx);
                 }
                 match verb {
                     BudgetsVerb::Switch => self.open_budgets_switcher(cx),

@@ -175,8 +175,8 @@ impl Shell {
                 .map(|payee| payee.name.clone())
         });
 
-        let selected_document_type = self.settings_documents_selected_id().and_then(|id| {
-            self.document_types
+        let selected_document_type = self.settings_documents_selected_id(cx).and_then(|id| {
+            self.document_types(cx)
                 .iter()
                 .find(|row| row.id == id)
                 .map(|row| row.name.clone())
@@ -304,12 +304,16 @@ impl Shell {
                 .collect(),
             selected_payee,
             document_type_names: self
-                .document_types
+                .document_types(cx)
                 .iter()
                 .map(|row| row.name.clone())
                 .collect(),
             selected_document_type,
-            document_type_files: self.document_types.iter().map(|row| row.files).collect(),
+            document_type_files: self
+                .document_types(cx)
+                .iter()
+                .map(|row| row.files)
+                .collect(),
             inventory_rows: crate::view::settings::inventory::visible_rows(
                 &self.inventory,
                 &self.settings_inventory_expanded,

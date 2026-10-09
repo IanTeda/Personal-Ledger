@@ -8,6 +8,7 @@
 pub mod dialogs;
 pub mod drop_overlay;
 mod inbox;
+pub mod state;
 pub mod type_dialogs;
 
 use std::rc::Rc;

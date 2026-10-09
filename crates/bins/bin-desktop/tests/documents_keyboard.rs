@@ -499,8 +499,8 @@ fn files_dropped_on_the_window_land_in_the_inbox(app: &mut TestAppContext) {
     let dropped = dir.join("Coles-Receipt.jpg");
     std::fs::write(&dropped, b"stub").expect("temp file is writable");
 
-    ui.shell.update(ui.cx, |shell, _| {
-        shell.drop_documents(&[dropped.clone(), dir.join("missing.pdf")]);
+    ui.shell.update(ui.cx, |shell, cx| {
+        shell.drop_documents(&[dropped.clone(), dir.join("missing.pdf")], cx);
     });
     ui.cx.run_until_parked();
     std::fs::remove_dir_all(&dir).ok();
@@ -513,4 +513,21 @@ fn files_dropped_on_the_window_land_in_the_inbox(app: &mut TestAppContext) {
     );
     assert_eq!(page.mode, "library", "a drop does not move the page");
     assert_eq!(page.toasts.len(), 1);
+}
+
+#[gpui::test]
+fn o_on_a_file_that_is_missing_says_so_instead_of_opening_it(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    let before = ui.documents().toasts.len();
+
+    // The stub Documents name files that are not on this machine; the OS hand-off (an event the
+    // test platform cannot service) is only raised for a file that exists.
+    ui.press("o");
+
+    let page = ui.documents();
+    assert_eq!(
+        page.toasts.len(),
+        before + 1,
+        "a warning toast names the file"
+    );
 }

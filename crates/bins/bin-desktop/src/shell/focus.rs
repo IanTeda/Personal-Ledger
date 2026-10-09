@@ -24,7 +24,7 @@ impl Shell {
             FocusZone::View => self.apply_view_movement(movement, cx),
         }
         if self.nav.noun() != noun_before {
-            self.reset_view_scroll();
+            self.reset_view_scroll(cx);
         }
     }
 
@@ -33,12 +33,12 @@ impl Shell {
     /// fresh noun starts scrolled to the top. Also puts
     /// Settings' focus back on the index (`g s` "lands on the index"); the page on show is the
     /// last-visited one and stays.
-    pub(super) fn reset_view_scroll(&mut self) {
+    pub(super) fn reset_view_scroll(&mut self, cx: &mut gpui::App) {
         self.view_scroll_handle.set_offset(gpui::Point::default());
         self.settings_focus = SettingsFocus::default();
         self.colour_theme_focus = None;
         // `g f` and the palette land on the Documents list, unlike Settings' index.
-        self.documents_focus = DocumentsFocus::List;
+        self.edit_documents_state(cx, |state| state.focus = DocumentsFocus::List);
     }
 
     fn apply_primary_rail_movement(&mut self, movement: Movement) {
@@ -105,7 +105,7 @@ impl Shell {
                 self.apply_settings_payees_movement(movement);
             }
             ActiveView::Settings(SettingsSection::Documents) if page_focused => {
-                self.apply_settings_documents_movement(movement);
+                self.apply_settings_documents_movement(movement, cx);
             }
             ActiveView::Settings(SettingsSection::Inventory) if page_focused => {
                 self.apply_settings_inventory_movement(movement);
@@ -126,7 +126,7 @@ impl Shell {
             ActiveView::Transactions | ActiveView::Import => {
                 self.apply_transactions_movement(movement, cx);
             }
-            ActiveView::Documents => self.apply_documents_movement(movement),
+            ActiveView::Documents => self.apply_documents_movement(movement, cx),
             ActiveView::Bills => self.apply_bills_movement(movement, cx),
             ActiveView::Budgets => self.apply_budgets_movement(movement, cx),
             ActiveView::Dashboard | ActiveView::Placeholder(_) => self.scroll_view(movement),

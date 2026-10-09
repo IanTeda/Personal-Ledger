@@ -623,8 +623,8 @@ impl Render for Shell {
             on_click
         };
         let settings_documents_page = settings_view::documents::DocumentsPageProps {
-            types: &self.document_types,
-            selected: self.settings_documents_selected_id(),
+            types: self.document_types(cx),
+            selected: self.settings_documents_selected_id(cx),
             on_add_click: {
                 let entity = entity.clone();
                 Rc::new(move |_window, cx| {
@@ -755,7 +755,7 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |id, _window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.open_bill_entry(id);
+                    shell.open_bill_entry(id, cx);
                     cx.notify();
                 });
             })
@@ -1265,7 +1265,7 @@ impl Render for Shell {
             .track_focus(&self.focus_handle)
             .group(documents_view::drop_overlay::GROUP)
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _window, cx| {
-                this.drop_documents(paths.paths());
+                this.drop_documents(paths.paths(), cx);
                 cx.notify();
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
@@ -1274,7 +1274,7 @@ impl Render for Shell {
                     || this.handle_settings_tracing_key(&event.keystroke)
                     || this.handle_settings_focus_key(&event.keystroke)
                     || this.handle_colour_theme_grid_key(&event.keystroke)
-                    || this.handle_bills_tab_key(&event.keystroke)
+                    || this.handle_bills_tab_key(&event.keystroke, cx)
                     || this.handle_budgets_tab_key(&event.keystroke, cx)
                     || this.handle_key_down(event, cx)
                 {
@@ -1327,7 +1327,7 @@ impl Render for Shell {
                                         .as_ref()
                                         .map_or(0, |figures| figures.over_count),
                                 )
-                                .documents_inbox(documents::inbox_count(&self.documents)),
+                                .documents_inbox(documents::inbox_count(self.documents(cx))),
                             )
                             .when(
                                 self.nav.noun().has_context_entities() && self.nav.ledger_open(),
@@ -1444,7 +1444,7 @@ impl Render for Shell {
             .children(filter_popover)
             .children((self.nav.mode() == InputMode::Help).then(|| {
                 let mut sheet = self.settings_cheat_sheet();
-                sheet.extend(self.documents_cheat_sheet());
+                sheet.extend(self.documents_cheat_sheet(cx));
                 help_view::render(on_help_close, sheet, cx)
             }))
             .children(toast_history_open.then(|| {
