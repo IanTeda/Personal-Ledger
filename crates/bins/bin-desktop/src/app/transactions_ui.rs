@@ -59,7 +59,7 @@ impl Shell {
             accounts: self.accounts.read(cx).accounts(),
             categories: &self.categories,
             payees: &self.payees,
-            tags: &self.tags,
+            tags: self.tags_list(cx),
         }
     }
 
@@ -231,7 +231,7 @@ impl Shell {
             self.accounts.read(cx).accounts(),
             &self.categories,
             &self.payees,
-            &self.tags,
+            self.tags_list(cx),
         )
     }
 

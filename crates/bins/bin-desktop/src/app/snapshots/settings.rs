@@ -182,8 +182,8 @@ impl Shell {
                 .map(|row| row.name.clone())
         });
         let selected_tag = self
-            .settings_tags_selected_id()
-            .and_then(|id| tags::get(&self.tags, id).map(|tag| tag.name.clone()));
+            .settings_tags_selected_id(cx)
+            .and_then(|id| tags::get(self.tags_list(cx), id).map(|tag| tag.name.clone()));
         let mut merge_pair = None;
         let mut dialog = None;
         let mut dialog_name = None;
@@ -251,8 +251,8 @@ impl Shell {
                 TagsDialog::Merge(form) => {
                     merge_pair = form.pair().and_then(|(source, target)| {
                         Some((
-                            tags::get(&self.tags, source)?.name.clone(),
-                            tags::get(&self.tags, target)?.name.clone(),
+                            tags::get(self.tags_list(cx), source)?.name.clone(),
+                            tags::get(self.tags_list(cx), target)?.name.clone(),
                         ))
                     });
                     ("MergeTags", None, None)
@@ -379,7 +379,7 @@ impl Shell {
                 }
                 .to_string()
             }),
-            tag_names: tags::sorted_by_name(&self.tags)
+            tag_names: tags::sorted_by_name(self.tags_list(cx))
                 .into_iter()
                 .map(|tag| tag.name.clone())
                 .collect(),

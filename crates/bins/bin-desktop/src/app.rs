@@ -41,6 +41,7 @@ mod rail;
 mod render;
 mod snapshots;
 mod status;
+mod tags_ui;
 mod toasts;
 mod transactions_ui;
 mod view_events;
@@ -85,6 +86,7 @@ use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, Budg
 use crate::view::documents::state::{
     DocumentsEvent, DocumentsState, DocumentsStore, DocumentsView,
 };
+use crate::view::tags::state::{TagsStore, TagsView};
 use crate::{
     accounts::{self},
     bills::{self, BillsStore},
@@ -109,7 +111,7 @@ use crate::{
         step_choice,
         tracing_log::TracingLevel,
     },
-    tags::{self, Tag},
+    tags::{self},
     theme::colours::ColourChange,
     transactions::{
         self, Transaction, TransactionsStore, chips::FilterField, edit_transactions,
@@ -140,8 +142,6 @@ const VIEW_LINE_STEP: f32 = 40.0;
 
 /// `Ctrl-d`/`Ctrl-u` on the Settings Categories page: rows per half page.
 const CATEGORIES_HALF_PAGE: usize = 5;
-/// `Ctrl-d`/`Ctrl-u` on the Settings Tags page: rows per half page.
-const SETTINGS_TAGS_HALF_PAGE: isize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Payees page: rows per half page.
 const SETTINGS_PAYEES_HALF_PAGE: isize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Documents page: rows per half page.
@@ -262,11 +262,11 @@ pub struct Shell {
     /// The stubbed 6e Import "match payees" step, `Some` while it shows in place of the
     /// Transactions page (`:import`). Dropped on leaving Transactions.
     import: Option<ImportState>,
-    tags: Vec<Tag>,
-    /// The selected row on the Tags page, a position in `tags::sorted_by_usage`'s order.
-    tags_selected: usize,
-    /// The selected row on Settings' Tags page, by Tag id: that page lists A–Z, not by usage.
-    settings_tags_selected: Option<u32>,
+    /// The Tags rows, owned by their store Entity and read through it (ADR-0032). Shared:
+    /// Transactions reads the same rows for its chips, filter form and Split tag picker.
+    tags_store: Entity<TagsStore>,
+    /// The Tags page's and Settings Tags list's selections, owned by their view Entity.
+    tags_view: Entity<TagsView>,
     /// The Transactions, owned by their store Entity and read through it (ADR-0032). Seeded from
     /// `transactions::default_transactions`; saved-in-memory state that survives leaving and
     /// re-entering the page. Deleting an account deletes its transactions with it.
@@ -313,6 +313,9 @@ impl Shell {
         let categories = categories::default_categories();
         let payees = payees::default_payees();
         let tags = tags::default_tags();
+        let tags_store = cx.new(|_| TagsStore::new(tags.clone()));
+        let tags_view = cx.new(|_| TagsView::new(tags_store.clone()));
+        let tags_observer = cx.observe(&tags_store, |_, _, cx| cx.notify());
         let mut transactions = transactions::default_transactions(
             &seeded_accounts,
             &categories,
@@ -430,9 +433,8 @@ impl Shell {
             settings_inventory_selected: None,
             settings_inventory_expanded: HashSet::new(),
             import: None,
-            tags,
-            tags_selected: 0,
-            settings_tags_selected: None,
+            tags_store,
+            tags_view,
             transactions_store,
             transactions_view,
             bills_store,
@@ -445,6 +447,7 @@ impl Shell {
                 budgets_subscription,
                 bills_subscription,
                 documents_subscription,
+                tags_observer,
             ],
         }
     }
@@ -908,47 +911,6 @@ impl Shell {
         let clamped_y = new_y.clamp(-max_height, 0.0);
         self.view_scroll_handle
             .set_offset(point(offset.x, px(clamped_y)));
-    }
-
-    /// Whether Settings' Tags list owns the keyboard: the page, not the index, has focus.
-    fn settings_tags_page_has_focus(&self) -> bool {
-        self.nav.noun() == Noun::Settings
-            && self.nav.focus() == FocusZone::View
-            && self.settings_focus == SettingsFocus::Page
-            && self.settings_selected_section == SettingsSection::Tags
-    }
-
-    /// The Settings Tags page's selected Tag: the stored id while it still exists, else the first
-    /// row, so a removed or merged-away Tag never leaves the page with nothing under the cursor.
-    fn settings_tags_selected_id(&self) -> Option<u32> {
-        let sorted = tags::sorted_by_name(&self.tags);
-        self.settings_tags_selected
-            .filter(|id| sorted.iter().any(|tag| tag.id == *id))
-            .or_else(|| sorted.first().map(|tag| tag.id))
-    }
-
-    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the Tags list A–Z. `enter` has no hand-off here.
-    fn apply_settings_tags_movement(&mut self, movement: Movement) {
-        let sorted = tags::sorted_by_name(&self.tags);
-        let len = sorted.len();
-        let current = self
-            .settings_tags_selected_id()
-            .and_then(|id| sorted.iter().position(|tag| tag.id == id))
-            .unwrap_or(0);
-        let next = match movement {
-            Movement::Next => accounts::step_selection(current, len, 1),
-            Movement::Prev => accounts::step_selection(current, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => {
-                accounts::step_selection(current, len, SETTINGS_TAGS_HALF_PAGE)
-            }
-            Movement::HalfPageUp => {
-                accounts::step_selection(current, len, -SETTINGS_TAGS_HALF_PAGE)
-            }
-            Movement::Enter => return,
-        };
-        self.settings_tags_selected = sorted.get(next).map(|tag| tag.id);
     }
 
     /// Whether Settings' Payees list owns the keyboard: the page, not the index, has focus.
@@ -1501,60 +1463,6 @@ impl Shell {
         });
     }
 
-    /// The selected Tag: `tags_selected` indexes the page's usage order, not `self.tags`.
-    fn selected_tag_id(&self, cx: &App) -> Option<u32> {
-        if self.settings_tags_page_has_focus() {
-            return self.settings_tags_selected_id();
-        }
-        let sorted = tags::sorted_by_usage(&self.tags, self.transactions(cx));
-        sorted
-            .get(self.tags_selected.min(sorted.len().saturating_sub(1)))
-            .map(|tag| tag.id)
-    }
-
-    /// Selects the Tag with `id`, if it still exists.
-    fn select_tag(&mut self, id: u32, cx: &App) {
-        self.settings_tags_selected = Some(id);
-        if let Some(index) = tags::sorted_by_usage(&self.tags, self.transactions(cx))
-            .iter()
-            .position(|tag| tag.id == id)
-        {
-            self.tags_selected = index;
-        }
-    }
-
-    /// The Tags page's own `n`/`e`/`x`/`m` (only while it is the active noun and the view has
-    /// focus, in `Normal` mode).
-    fn handle_tags_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if !self.settings_tags_page_has_focus() {
-            return false;
-        }
-        let modifiers = &keystroke.modifiers;
-        if modifiers.control || modifiers.alt || modifiers.platform || modifiers.shift {
-            return false;
-        }
-        match keystroke.key.as_str() {
-            "n" => self.open_add_tag_dialog(),
-            "e" => {
-                if let Some(id) = self.selected_tag_id(cx) {
-                    self.open_edit_tag_dialog(id);
-                }
-            }
-            "x" => {
-                if let Some(id) = self.selected_tag_id(cx) {
-                    self.open_remove_tag_dialog(id, cx);
-                }
-            }
-            "m" => {
-                if let Some(id) = self.selected_tag_id(cx) {
-                    self.open_merge_tags_dialog(Some(id), cx);
-                }
-            }
-            _ => return false,
-        }
-        true
-    }
-
     /// The Dashboard's budget list, worded from the default Budget's current-month figures.
     fn dashboard_budget_list(&self, figures: &budgets::PeriodFigures) -> dashboard::BudgetList {
         use bigdecimal::{ToPrimitive, Zero};
@@ -1592,241 +1500,6 @@ impl Shell {
             elapsed: figures.elapsed.percent as f32 / 100.0,
             bars,
         }
-    }
-
-    fn open_add_tag_dialog(&mut self) {
-        let form = tags::form::TagForm::new(self.tags.clone());
-        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Add(form)));
-    }
-
-    /// The form behind the open Add or Edit tag dialog, if that is what's open.
-    fn tag_form_mut(&mut self) -> Option<&mut tags::form::TagForm> {
-        match self.tags_dialog_mut() {
-            Some(tags::form::TagsDialog::Add(form) | tags::form::TagsDialog::Edit(_, form)) => {
-                Some(form)
-            }
-            _ => None,
-        }
-    }
-
-    /// Applies a confirmed Tags dialog (`Enter` and the confirm button): adds or saves the Tag
-    /// and selects it, removes it, or merges it into another, toasting the last two.
-    fn apply_tags_dialog(&mut self, dialog: tags::form::TagsDialog, cx: &mut Context<'_, Self>) {
-        match dialog {
-            tags::form::TagsDialog::Add(form) => {
-                let Some(draft) = form.draft() else {
-                    return;
-                };
-                // `is_valid` ran the same name check, so a refusal can only leave the dialog open.
-                match tags::insert_tag(&mut self.tags, &draft) {
-                    Ok(id) => self.select_tag(id, cx),
-                    Err(_) => self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Add(form))),
-                }
-            }
-            tags::form::TagsDialog::Edit(id, form) => {
-                let Some(draft) = form.draft() else {
-                    return;
-                };
-                let saved = tags::edit_tag(&mut self.tags, id, &draft)
-                    .and_then(|()| tags::set_active(&mut self.tags, id, form.is_active));
-                match saved {
-                    Ok(()) => self.select_tag(id, cx),
-                    Err(_) => {
-                        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Edit(id, form)))
-                    }
-                }
-            }
-            tags::form::TagsDialog::Remove(id, _) => self.apply_remove_tag(id, cx),
-            tags::form::TagsDialog::Merge(form) => {
-                if let Some((source, target)) = form.pair() {
-                    self.apply_merge_tags(source, target, cx);
-                }
-            }
-        }
-    }
-
-    fn handle_tags_dialog_field_click(
-        &mut self,
-        field: tags::form::TagField,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(form) = self.tag_form_mut() {
-            form.focus(field);
-        }
-        cx.notify();
-    }
-
-    fn handle_tags_dialog_pick(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        if let Some(form) = self.tag_form_mut() {
-            form.focus(tags::form::TagField::Swatches);
-            form.pick(index);
-        }
-        cx.notify();
-    }
-
-    fn handle_tags_dialog_toggle_active(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(form) = self.tag_form_mut() {
-            form.toggle_active();
-        }
-        cx.notify();
-    }
-
-    fn handle_tags_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
-    }
-
-    fn handle_tags_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
-    }
-
-    fn open_edit_tag_dialog(&mut self, id: u32) {
-        let Some(tag) = tags::get(&self.tags, id) else {
-            return;
-        };
-        let form = tags::form::TagForm::for_edit(tag, self.tags.clone());
-        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Edit(id, form)));
-    }
-
-    fn open_remove_tag_dialog(&mut self, id: u32, cx: &App) {
-        let Some(tag) = tags::get(&self.tags, id) else {
-            return;
-        };
-        let form = tags::form::RemoveTagForm::new(
-            &tag.name,
-            tags::transaction_count(self.transactions(cx), id),
-        );
-        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Remove(id, form)));
-    }
-
-    /// Untags every Split, deletes the Tag and toasts it. The selection keeps its position, so it
-    /// lands on the next Tag in usage order (or the new last one).
-    fn apply_remove_tag(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        let Some(name) = tags::get(&self.tags, id).map(|tag| tag.name.clone()) else {
-            return;
-        };
-        let removed = edit_transactions(&self.transactions_store, cx, |transactions| {
-            tags::remove_tag(&mut self.tags, transactions, id)
-        });
-        let (kind, text) = match removed {
-            Ok(()) => (
-                ToastKind::Success,
-                lib_locale::msg::toast_tag_deleted(&name),
-            ),
-            Err(error) => (
-                ToastKind::Error,
-                lib_locale::msg::toast_save_failed(
-                    &lib_locale::msg::toast_entity_tag(),
-                    &error.to_string(),
-                ),
-            ),
-        };
-        self.raise_toast(kind, text);
-        self.tags_selected = self.tags_selected.min(self.tags.len().saturating_sub(1));
-    }
-
-    /// The 7e selects' options, labelled `Shared (9 txns)`.
-    fn merge_tag_options(&self, cx: &App) -> Vec<tags::form::MergeOption> {
-        tags::form::merge_options(&self.tags, self.transactions(cx), |name, count| {
-            crate::msg::desktop_tags_merge_option(name, i64::try_from(count).unwrap_or(i64::MAX))
-        })
-    }
-
-    /// Opens 7e with `source` as the source Tag and, when it is flagged as a likely duplicate, its
-    /// suggested target (#354). `None` (the palette's `tags merge`, or the subline link with
-    /// nothing flagged) leaves both selects empty.
-    fn open_merge_tags_dialog(&mut self, source: Option<u32>, cx: &App) {
-        let groups = tags::duplicate_groups(&self.tags, self.transactions(cx));
-        let target = source.and_then(|id| tags::duplicate_of(&groups, id));
-        let form = tags::form::MergeTagsForm::new(self.merge_tag_options(cx), source, target);
-        self.open_dialog(OpenDialog::Tags(tags::form::TagsDialog::Merge(form)));
-    }
-
-    /// Retags the source's Splits with the target, deletes the source, toasts it and selects the
-    /// target.
-    fn apply_merge_tags(&mut self, source: u32, target: u32, cx: &mut Context<'_, Self>) {
-        let (Some(source_name), Some(target_name)) = (
-            tags::get(&self.tags, source).map(|tag| tag.name.clone()),
-            tags::get(&self.tags, target).map(|tag| tag.name.clone()),
-        ) else {
-            return;
-        };
-        let transactions = tags::transaction_count(self.transactions(cx), source);
-        let (kind, text) = match edit_transactions(&self.transactions_store, cx, |transactions| {
-            tags::merge_tags(&mut self.tags, transactions, source, target)
-        }) {
-            Ok(()) => (
-                ToastKind::Success,
-                lib_locale::msg::toast_tag_merged(
-                    &source_name,
-                    &target_name,
-                    i64::try_from(transactions).unwrap_or(i64::MAX),
-                ),
-            ),
-            Err(error) => (
-                ToastKind::Error,
-                lib_locale::msg::toast_save_failed(
-                    &lib_locale::msg::toast_entity_tag(),
-                    &error.to_string(),
-                ),
-            ),
-        };
-        self.raise_toast(kind, text);
-        self.select_tag(target, cx);
-    }
-
-    fn handle_merge_tags_field_click(
-        &mut self,
-        field: tags::form::MergeField,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(tags::form::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
-            form.toggle(field);
-        }
-        cx.notify();
-    }
-
-    fn handle_merge_tags_option_click(
-        &mut self,
-        field: tags::form::MergeField,
-        index: usize,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(tags::form::TagsDialog::Merge(form)) = self.tags_dialog_mut() {
-            form.choose(field, index);
-        }
-        cx.notify();
-    }
-
-    fn handle_tags_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_add_tag_dialog();
-        cx.notify();
-    }
-
-    /// A click on a row of Settings' Tags list: selects it and moves focus into the page.
-    fn handle_settings_tags_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_tag(id, cx);
-        self.focus_settings_page();
-        cx.notify();
-    }
-
-    fn handle_tags_duplicate_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_tag(id, cx);
-        self.open_merge_tags_dialog(Some(id), cx);
-        cx.notify();
-    }
-
-    fn handle_tags_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_tag(id, cx);
-        self.open_edit_tag_dialog(id);
-        cx.notify();
-    }
-
-    fn handle_tags_remove_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.select_tag(id, cx);
-        self.open_remove_tag_dialog(id, cx);
-        cx.notify();
     }
 
     fn selected_payee_id(&self) -> Option<u32> {

@@ -711,10 +711,10 @@ impl Render for Shell {
                 on_confirm: tag_plain(Shell::handle_tags_dialog_confirm),
             }
         };
-        let tag_groups = tags::duplicate_groups(&self.tags, self.transactions(cx));
+        let tag_groups = tags::duplicate_groups(self.tags_list(cx), self.transactions(cx));
         let settings_tags_page = settings_view::tags::TagsPageProps {
-            tags: &self.tags,
-            selected: self.settings_tags_selected_id(),
+            tags: self.tags_list(cx),
+            selected: self.settings_tags_selected_id(cx),
             groups: &tag_groups,
             on_add_click: tag_plain(Shell::handle_tags_add_click),
             on_row_click: tag_click(Shell::handle_settings_tags_row_click),
@@ -1593,8 +1593,8 @@ impl Render for Shell {
                     tags_dialog_handlers,
                     cx,
                 )),
-                Some(tags::form::TagsDialog::Edit(id, form)) => {
-                    tags::get(&self.tags, *id).map(|tag| {
+                Some(tags::form::TagsDialog::Edit(id, form)) => tags::get(self.tags_list(cx), *id)
+                    .map(|tag| {
                         tags_view::edit_dialog::render(
                             tags_view::edit_dialog::EditTagProps {
                                 original_name: &tag.name,
@@ -1609,10 +1609,9 @@ impl Render for Shell {
                             tags_dialog_handlers,
                             cx,
                         )
-                    })
-                }
+                    }),
                 Some(tags::form::TagsDialog::Remove(id, form)) => {
-                    tags::get(&self.tags, *id).map(|tag| {
+                    tags::get(self.tags_list(cx), *id).map(|tag| {
                         tags_view::remove_dialog::render(
                             tags_view::remove_dialog::RemoveTagProps {
                                 tag,
@@ -1645,8 +1644,10 @@ impl Render for Shell {
                     Some(tags_view::merge_dialog::render(
                         tags_view::merge_dialog::MergeTagsProps {
                             form,
-                            source: source.and_then(|id| tags::get(&self.tags, id)),
-                            target: form.target_id().and_then(|id| tags::get(&self.tags, id)),
+                            source: source.and_then(|id| tags::get(self.tags_list(cx), id)),
+                            target: form
+                                .target_id()
+                                .and_then(|id| tags::get(self.tags_list(cx), id)),
                             transactions: source
                                 .map_or(0, |id| tags::transaction_count(self.transactions(cx), id)),
                             on_field_click,

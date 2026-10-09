@@ -79,6 +79,28 @@ pub fn default_tags() -> Vec<Tag> {
     .collect()
 }
 
+/// The Tags data behind the Desktop's Tags Entity: the rows, read through `tags` and changed
+/// through `tags_mut` so the rules above stay the only way a name or Split reference changes.
+/// Persistence is a later phase, so the rows are in memory.
+pub struct TagService {
+    tags: Vec<Tag>,
+}
+
+impl TagService {
+    /// A service over `tags`, as the Desktop seeds it from [`default_tags`].
+    pub fn new(tags: Vec<Tag>) -> Self {
+        Self { tags }
+    }
+
+    pub fn tags(&self) -> &[Tag] {
+        &self.tags
+    }
+
+    pub fn tags_mut(&mut self) -> &mut Vec<Tag> {
+        &mut self.tags
+    }
+}
+
 /// The form a Tag name is unique by: Unicode lower-cased, keeping only letters and digits.
 pub fn normalise(name: &str) -> String {
     name.chars()
