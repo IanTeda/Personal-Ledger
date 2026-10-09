@@ -53,7 +53,7 @@ Drawn at **96 × 30 cells** (one cell ≈ 6.6 × 16.5 px in the HTML), inside th
 
 ```
 row 0        status line     "ledger · accounts / everyday spending"
-                             right: "9 accounts · 7 active · base AUD"
+                             right: `Synced HH:mm` only
 rows 1..n-2  two panes       left 41 cols fixed · right Min(0)
 row n-1      keybind hints   j/k · enter ledger · n new · e edit · d delete
                              · a off · b check · tab focus  (one row, always)

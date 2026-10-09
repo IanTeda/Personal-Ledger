@@ -82,7 +82,7 @@ Drawn at **96 × 30 cells** (one cell ≈ 6.6 × 16.5 px in the HTML), inside th
 
 ```
 row 0        status line     "ledger · payees / woolworths"
-                             right: "142 payees · 130 active · base AUD"
+                             right: `Synced HH:mm` only
 rows 1..n-2  two panes       left 41 cols fixed · right Min(0)
 row n-1      keybind hints   j/k · enter txns · n new · e edit · m matches
                              · c default · a off · / filter        (one row, always)

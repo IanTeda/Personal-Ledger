@@ -89,7 +89,7 @@ Editing these is an `$EDITOR` job outside the app. Do not add a fifth key withou
 Drawn at **96 × 30 cells** (one cell ≈ 6.6 × 16.5 px in the HTML), inside the shell's view region.
 
 ```
-row 0        status line     "ledger · settings / general"   right: "3 overridden · ✓ committed 14:02"
+row 0        status line     "ledger · settings / general"   right: `Synced HH:mm` only
 rows 1..n-2  two panes       left 46 cols fixed · right Min(0)
 row n-1      keybind hints   j/k setting · tab groups↔settings · enter edit · r drop override · u undo commit · H change log
 ```

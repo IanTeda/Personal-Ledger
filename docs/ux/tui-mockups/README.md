@@ -2,6 +2,8 @@
 
 Low-to-mid fidelity design references for the `bin-tui` Client, to be rebuilt in **Rust + ratatui**. Each package holds one destination: a design file (`*.dc.html`, open it in a browser from inside its folder, `support.js` beside it) and a `README.md` spec. They are references, not code to port.
 
+**Card IDs:** every card carries a `TUI-NNN` ID (the label on the card and its `#` anchor). Say "TUI-001" rather than "1a" when referring to one. The old per-file IDs used in the prose below map to these in [`../mockup-ids.md`](../mockup-ids.md).
+
 ## How to use
 1. Build `01-chrome` first: the shell, command palette and help window that every other screen re-hosts inside.
 2. Then the destinations in any order. Each README covers its frames, keyboard, state and ratatui notes.

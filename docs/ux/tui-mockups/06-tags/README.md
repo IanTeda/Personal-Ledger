@@ -80,7 +80,7 @@ Drawn at **106 × 30 cells** (one cell ≈ 6.6 × 16.5 px in the HTML), inside t
 
 ```
 row 0        status line     "ledger · tags / holiday-japan"
-                             right: "8 tags · 12m to sep 26 · AUD only"
+                             right: `Synced HH:mm` only
 rows 1..n-2  two panes       left 45 cols fixed · right Min(0)
 row n-1      keybind hints   j/k · enter txns · n new · e edit · A apply
                              · X merge · a archive · / filter · tab   (one row, always)

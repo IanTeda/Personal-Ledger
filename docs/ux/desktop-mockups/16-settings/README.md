@@ -46,7 +46,7 @@ This package supersedes `design_handoff_settings_v4/` and older (v3, v2, single-
 ## Frame & shell
 Every frame is **1280 × 800**: header 48px, body `flex:1`, status bar 28px.
 
-- **Header breadcrumb:** `settings › <page>` (lower case). The right of the header reads `synced 14:22`.
+- **Header breadcrumb:** `settings › <page>` (lower case). The right of the header reads `Synced 14:22`.
 - **Status bar:** the NORMAL chip, then per-page hints on the left and a status on the right.
   - Form pages (General, Display, Units, Institutions, AI Connections, Sync Server, Backup, Logs, About): `j/k section · tab next field · b collapse sidebar · q back to dashboard` · right `saved automatically`.
   - List pages show their own keys (listed in the Pages table) · right `saved automatically`. On Accounts the right side reads `7 accounts`.

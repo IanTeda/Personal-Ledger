@@ -4,6 +4,8 @@ High-fidelity design references for the Personal Ledger desktop app, to be rebui
 
 Generated 3 October 2026; per-view frames re-synced to the new master on 9 October 2026 (header back / forward removed, 1b is the Dashboard, Settings gains Backup, History, Logs and dialogs 16r–16t). This set replaces all earlier `design_handoff_*` folders.
 
+**Card IDs:** every card carries a `DUI-NNN` ID (the label on the card and its `#` anchor). Say "DUI-001" rather than "1a" when referring to one. The old per-file IDs used in the prose below map to these in [`../mockup-ids.md`](../mockup-ids.md).
+
 ## How to use
 1. Read this file for the shell, the rail and the tokens that every destination shares.
 2. Build `01-shell` first, then the destinations in any order. Each README covers its frames, interactions, keyboard, state and GPUI notes.

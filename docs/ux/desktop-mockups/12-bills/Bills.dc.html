@@ -32,8 +32,8 @@ a:hover{color:#ae1800}
 <div class="dv-thd"><span class="dv-tid">12</span><span class="dv-tname">Bills: Bill Plan vs Bill Schedule + History, pay direct or link a transaction, skip</span></div>
 <div class="dv-opts">
 
-<div class="dv-opt" id="12a">
-<div class="dv-olabel"><a class="dv-oid" href="#12a">12a</a>Bill Schedule (default tab) — per docs/bills.md, a Bill Plan is a recurring definition; the Schedule is the generated, dated rows against it, one per period. Status (Upcoming / Due / Overdue / Paid / Skipped) is derived from today's date, never stored. A ⚑ marks anything feeding Needs Attention: every Overdue row, plus any Due row inside its Bill's own Attention Lead. Past Paid and Skipped rows stay in the same table — it doubles as the Bill History, filterable by status, bill, category/account and range.</div>
+<div class="dv-opt" id="DUI-036" data-local-id="12a">
+<div class="dv-olabel"><a class="dv-oid" href="#DUI-036">DUI-036</a>Bill Schedule (default tab) — per docs/bills.md, a Bill Plan is a recurring definition; the Schedule is the generated, dated rows against it, one per period. Status (Upcoming / Due / Overdue / Paid / Skipped) is derived from today's date, never stored. A ⚑ marks anything feeding Needs Attention: every Overdue row, plus any Due row inside its Bill's own Attention Lead. Past Paid and Skipped rows stay in the same table — it doubles as the Bill History, filterable by status, bill, category/account and range.</div>
 <div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
 
   <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38)">
@@ -161,8 +161,8 @@ a:hover{color:#ae1800}
 </div>
 </div>
 
-<div class="dv-opt" id="12b">
-<div class="dv-olabel"><a class="dv-oid" href="#12b">12b</a>Bill Planner — the recurring definitions themselves: what it's for, roughly how much, which Account, and how often. Unit is locked at creation. Deactivating (soft-delete, same pattern as Category/Payee/Account/Tag) stops future Schedule rows without touching the ones already generated — see the closed "Basic Fitness" row.</div>
+<div class="dv-opt" id="DUI-037" data-local-id="12b">
+<div class="dv-olabel"><a class="dv-oid" href="#DUI-037">DUI-037</a>Bill Planner — the recurring definitions themselves: what it's for, roughly how much, which Account, and how often. Unit is locked at creation. Deactivating (soft-delete, same pattern as Category/Payee/Account/Tag) stops future Schedule rows without touching the ones already generated — see the closed "Basic Fitness" row.</div>
 <div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
 
   <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38)">
@@ -274,8 +274,8 @@ a:hover{color:#ae1800}
 </div>
 </div>
 
-<div class="dv-opt" id="12c">
-<div class="dv-olabel"><a class="dv-oid" href="#12c">12c</a>Edit bill plan — Add uses the same fields with Unit editable and no Active toggle (Unit locks once the plan exists, per the spec). Category is restricted to Expense categories, matching Budget's own rule.</div>
+<div class="dv-opt" id="DUI-038" data-local-id="12c">
+<div class="dv-olabel"><a class="dv-oid" href="#DUI-038">DUI-038</a>Edit bill plan — Add uses the same fields with Unit editable and no Active toggle (Unit locks once the plan exists, per the spec). Category is restricted to Expense categories, matching Budget's own rule.</div>
 <div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
   <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38);opacity:.38">
     <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center">
@@ -366,8 +366,8 @@ a:hover{color:#ae1800}
 </div>
 </div>
 
-<div class="dv-opt" id="12d">
-<div class="dv-olabel"><a class="dv-oid" href="#12d">12d</a>Pay a Schedule entry — the spec's two settlement paths as a segmented switch. "Pay it directly" seeds a new Transaction from the Plan (amount editable — the Plan's figure was only ever an estimate). "Link an existing transaction" (shown active) avoids a duplicate when the payment already came in through import.</div>
+<div class="dv-opt" id="DUI-039" data-local-id="12d">
+<div class="dv-olabel"><a class="dv-oid" href="#DUI-039">DUI-039</a>Pay a Schedule entry — the spec's two settlement paths as a segmented switch. "Pay it directly" seeds a new Transaction from the Plan (amount editable — the Plan's figure was only ever an estimate). "Link an existing transaction" (shown active) avoids a duplicate when the payment already came in through import.</div>
 <div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
   <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38);opacity:.38">
     <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center">
@@ -424,8 +424,8 @@ a:hover{color:#ae1800}
 </div>
 </div>
 
-<div class="dv-opt" id="12e">
-<div class="dv-olabel"><a class="dv-oid" href="#12e">12e</a>Skip this cycle — for a cycle you deliberately didn't pay. It's excluded from the Bill's history average rather than counted as a $0 payment, and doesn't affect any other cycle. No typed confirmation, mirroring the tag-removal pattern (<a class="dv-oid" href="#19d">19d</a>).</div>
+<div class="dv-opt" id="DUI-040" data-local-id="12e">
+<div class="dv-olabel"><a class="dv-oid" href="#DUI-040">DUI-040</a>Skip this cycle — for a cycle you deliberately didn't pay. It's excluded from the Bill's history average rather than counted as a $0 payment, and doesn't affect any other cycle. No typed confirmation, mirroring the tag-removal pattern (<a class="dv-oid" href="#19d">19d</a>).</div>
 <div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d">
   <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38);opacity:.38">
     <div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center">

@@ -79,7 +79,7 @@ Drawn at **96 × 30 cells** (one cell ≈ 6.6 × 16.5 px in the HTML), inside th
 
 ```
 row 0        status line     "ledger · categories / expenses / food / groceries"
-                             right: "34 categories · 12m to sep 26 · AUD"
+                             right: `Synced HH:mm` only
 rows 1..n-2  two panes       left 41 cols fixed · right Min(0)
 row n-1      keybind hints   j/k row · h/l fold · n new child · N sibling · m move
                              · r rename · X merge · a archive · tab tree↔txns
