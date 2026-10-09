@@ -30,6 +30,7 @@ lib_categories = { path = "../../libs/lib-categories" }
 lib_documents = { path = "../../libs/lib-documents" }
 lib_inventory = { path = "../../libs/lib-inventory" }
 lib_payees = { path = "../../libs/lib-payees" }
+lib_tags = { path = "../../libs/lib-tags" }
 lib_transactions = { path = "../../libs/lib-transactions" }
 lib_colour_theme = { path = "../../libs/lib-colour-theme" }
 lib_config = { path = "../../libs/lib-config" }

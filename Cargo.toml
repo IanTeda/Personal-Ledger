@@ -78,6 +78,7 @@ members = [
   "./crates/libs/lib-documents",
   "./crates/libs/lib-inventory",
   "./crates/libs/lib-payees",
+  "./crates/libs/lib-tags",
   "./crates/libs/lib-transactions",
   "./crates/libs/lib-config",
   "./crates/libs/lib-database",
