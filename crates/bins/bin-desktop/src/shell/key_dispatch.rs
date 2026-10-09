@@ -132,20 +132,7 @@ impl Shell {
                 {
                     return true;
                 }
-                // The Schedule tab's filter selects: the first `Esc` closes an open list, the next
-                // leaves the filter row.
-                let closed_filter = self.edit_bills_state(cx, |bills| {
-                    let Some((_, state)) = bills.filter_focus.as_mut() else {
-                        return false;
-                    };
-                    if state.is_open() {
-                        state.cancel();
-                    } else {
-                        bills.filter_focus = None;
-                    }
-                    true
-                });
-                if closed_filter {
+                if self.close_bills_filter_focus(cx) {
                     return true;
                 }
                 self.chrome.palette = None;

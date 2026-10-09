@@ -333,6 +333,22 @@ impl Shell {
 
     /// The Bills page's own `p`/`s`/`e`/`n`/`f`/`[`/`]`/`0`/`1`–`5` (only while it is the active noun and the view has
     /// focus, in `Normal` mode).
+    /// The Schedule tab's filter selects: the first `Esc` closes an open list, the next leaves the
+    /// filter row. Returns whether it consumed the `Esc`.
+    pub(super) fn close_bills_filter_focus(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        self.edit_bills_state(cx, |bills| {
+            let Some((_, state)) = bills.filter_focus.as_mut() else {
+                return false;
+            };
+            if state.is_open() {
+                state.cancel();
+            } else {
+                bills.filter_focus = None;
+            }
+            true
+        })
+    }
+
     pub(super) fn handle_bills_key(
         &mut self,
         keystroke: &Keystroke,
