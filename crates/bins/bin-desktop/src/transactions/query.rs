@@ -23,6 +23,7 @@
 //! - The default filter set is **this year**: 1 January to `today`, with everything else empty.
 //!   `clear filters` and the popover's `reset` both mean "the defaults".
 
+pub use lib_core::Total;
 use std::collections::HashMap;
 
 use bigdecimal::BigDecimal;
@@ -204,17 +205,6 @@ pub struct VisibleRow<'a> {
     /// The running total down to and including this row; `None` whenever the total is
     /// [`Total::Mixed`] (or empty).
     pub running: Option<Money>,
-}
-
-/// The footer's grand total under the no-cross-Unit rule.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Total {
-    /// No rows are visible.
-    Empty,
-    /// Every visible row is in one Unit: the sum of the rows' amounts, in that Unit's code.
-    Single { unit: String, amount: Money },
-    /// The visible rows span more than one Unit, so no sum exists.
-    Mixed,
 }
 
 /// The result of a query.

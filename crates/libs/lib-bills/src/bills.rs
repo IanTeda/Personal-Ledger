@@ -6,7 +6,7 @@ use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
 use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
-use lib_core::{CategoryTypes, Money, TransactionStatus};
+use lib_core::{CategoryTypes, Money, Period, Total, TransactionStatus};
 use lib_transactions::{self as transactions, Split, Transaction};
 
 use super::*;
@@ -455,4 +455,162 @@ pub fn planner_order(plans: &[BillPlan]) -> Vec<&BillPlan> {
 
 pub fn inactive_count(plans: &[BillPlan]) -> usize {
     plans.iter().filter(|p| !p.is_active).count()
+}
+
+/// The Schedule tab period that shows an entry: the current month for an Overdue entry carried
+/// into it, the entry's own month otherwise.
+pub fn schedule_period(entry: &BillScheduleEntry, today: NaiveDate) -> Period {
+    let current = Period::of(today);
+    if status(entry, today) == BillStatus::Overdue && Period::of(entry.due) < current {
+        current
+    } else {
+        Period::of(entry.due)
+    }
+}
+
+/// One row of the Schedule tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScheduleRow {
+    pub id: EntryId,
+    pub status: BillStatus,
+    /// An Overdue or Due entry from outside the viewed month, carried into it so an actionable
+    /// row is never out of sight.
+    pub carried: bool,
+    /// Computed from the Recurrence past the generation horizon: no row exists yet, so it can't be
+    /// paid or skipped.
+    pub preview: bool,
+    pub needs_attention: bool,
+}
+
+impl ScheduleRow {
+    /// Whether Pay and Skip act on it: Due or Overdue, and a real entry rather than a preview.
+    pub fn is_actionable(&self) -> bool {
+        !self.preview && matches!(self.status, BillStatus::Due | BillStatus::Overdue)
+    }
+
+    /// Paid or Skipped: nothing left to do.
+    pub fn is_resolved(&self) -> bool {
+        matches!(self.status, BillStatus::Paid | BillStatus::Skipped)
+    }
+}
+
+/// The Schedule tab's rows for `period` (`None` for All: every entry ever generated), before its
+/// filters (#381). A month shows its own entries, every Overdue and Due entry from other months
+/// carried in, and computed previews for active Plans past the horizon.
+///
+/// Unresolved rows come first, next due first; resolved rows follow, most recent first, so the
+/// oldest settled row sits at the bottom.
+pub fn schedule_rows(
+    plans: &[BillPlan],
+    entries: &[BillScheduleEntry],
+    period: Option<Period>,
+    today: NaiveDate,
+) -> Vec<ScheduleRow> {
+    let attention =
+        |e: &BillScheduleEntry| get(plans, e.plan_id).is_some_and(|p| needs_attention(e, p, today));
+    let mut rows: Vec<ScheduleRow> = entries
+        .iter()
+        .filter(|e| !e.superseded)
+        .filter_map(|e| {
+            let status = status(e, today);
+            let own = period.is_none_or(|period| period.contains(e.due));
+            let carried = !own && matches!(status, BillStatus::Overdue | BillStatus::Due);
+            (own || carried).then(|| ScheduleRow {
+                id: e.id(),
+                status,
+                carried,
+                preview: false,
+                needs_attention: attention(e),
+            })
+        })
+        .collect();
+    if let Some(period) = period
+        && period.first_day() > horizon(today)
+    {
+        for plan in plans.iter().filter(|p| p.is_active) {
+            let ends_on = plan.ends_on.unwrap_or(NaiveDate::MAX);
+            let mut n = 0;
+            while let Some(due) = plan.recurrence.occurrence(plan.first_due, n) {
+                n += 1;
+                if due > period.last_day() || due > ends_on {
+                    break;
+                }
+                let id = EntryId {
+                    plan_id: plan.id,
+                    due,
+                };
+                if period.contains(due) && entry(entries, id).is_none() {
+                    rows.push(ScheduleRow {
+                        id,
+                        status: BillStatus::Upcoming,
+                        carried: false,
+                        preview: true,
+                        needs_attention: false,
+                    });
+                }
+            }
+        }
+    }
+    rows.sort_by(|a, b| {
+        a.is_resolved().cmp(&b.is_resolved()).then_with(|| {
+            if a.is_resolved() {
+                b.id.due.cmp(&a.id.due)
+            } else {
+                a.id.due.cmp(&b.id.due)
+            }
+            .then_with(|| a.id.plan_id.cmp(&b.id.plan_id))
+        })
+    });
+    rows
+}
+
+/// The Schedule tab's header meta for one period.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PeriodSummary {
+    pub due: usize,
+    /// Carried entries included.
+    pub overdue: usize,
+    pub paid: usize,
+    /// The period's own rows (carried ones excluded): Paid at their Matched amount, Skipped at
+    /// their snapshot, the rest at their Plan's Planned Amount.
+    pub planned: Total,
+}
+
+pub fn period_summary(
+    rows: &[ScheduleRow],
+    plans: &[BillPlan],
+    entries: &[BillScheduleEntry],
+    transactions: &[Transaction],
+) -> PeriodSummary {
+    let count = |status| rows.iter().filter(|r| r.status == status).count();
+    let mut planned = Total::Empty;
+    for row in rows.iter().filter(|r| !r.carried) {
+        let Some(plan) = get(plans, row.id.plan_id) else {
+            continue;
+        };
+        let figure = match entry(entries, row.id) {
+            Some(found) => amount(found, plans, transactions),
+            None => Some(plan.planned_amount.clone()),
+        };
+        let Some(figure) = figure else {
+            continue;
+        };
+        planned = match planned {
+            Total::Empty => Total::Single {
+                unit: plan.unit.clone(),
+                amount: figure,
+            },
+            Total::Single { unit, amount } if unit == plan.unit => Total::Single {
+                unit,
+                amount: Money(amount.0 + figure.0),
+            },
+            _ => Total::Mixed,
+        };
+    }
+    PeriodSummary {
+        due: count(BillStatus::Due),
+        overdue: count(BillStatus::Overdue),
+        paid: count(BillStatus::Paid),
+        planned,
+    }
 }

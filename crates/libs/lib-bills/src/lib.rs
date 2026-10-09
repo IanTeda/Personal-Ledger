@@ -24,6 +24,8 @@
 pub mod bills;
 
 pub use bills::*;
+pub mod history;
+pub use history::*;
 
 use chrono::{Datelike, Duration, Months, NaiveDate};
 use lib_core::Money;

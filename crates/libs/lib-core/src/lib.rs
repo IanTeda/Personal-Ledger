@@ -103,3 +103,9 @@ pub use date_style::{DateStyle, DateStyleError};
 /// Server -- see [ADR-0009](https://github.com/IanTeda/Personal-Ledger/blob/feasibility/docs/adr/0009-lww-sqlite-change-set-log.md).
 mod hybrid_logical_clock;
 pub use hybrid_logical_clock::{HlcClock, HybridLogicalClock, HybridLogicalClockError};
+
+mod calendar_period;
+pub use calendar_period::Period;
+
+mod total;
+pub use total::Total;
