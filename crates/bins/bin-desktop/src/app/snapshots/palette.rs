@@ -1,7 +1,7 @@
 //! What the integration tests read back of the command palette, kept apart from `shell.rs` so
 //! the snapshot shape and its accessor sit together.
 
-use crate::shell::Shell;
+use crate::app::Shell;
 
 /// What a test can see of an open command palette.
 #[doc(hidden)]

@@ -9,8 +9,8 @@
 
 mod common;
 
+use bin_desktop::app::PaletteSnapshot;
 use bin_desktop::navigation::nav::{InputMode, Noun};
-use bin_desktop::shell::PaletteSnapshot;
 use common::Harness;
 use gpui::TestAppContext;
 

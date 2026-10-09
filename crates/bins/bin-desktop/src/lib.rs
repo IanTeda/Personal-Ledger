@@ -5,6 +5,7 @@
 //! specifies, in place of the feasibility cycle's flat `TabBar` screen-cycling (ADR-0016).
 
 mod accounts;
+pub mod app;
 mod assets;
 mod bills;
 mod budgets;
@@ -24,7 +25,6 @@ mod payees;
 mod period;
 pub mod persistence;
 mod settings;
-pub mod shell;
 mod tags;
 pub mod theme;
 mod transactions;
@@ -43,9 +43,9 @@ use gpui::{
     point, prelude::*, px, size,
 };
 
+use app::Shell;
 pub use error::Error;
 use persistence::{PersistedState, WindowGeometry};
-use shell::Shell;
 
 /// Crate Result type alias used across the Desktop binary.
 ///

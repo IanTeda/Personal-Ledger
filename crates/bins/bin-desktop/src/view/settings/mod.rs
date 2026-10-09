@@ -37,7 +37,7 @@ use crate::{
 };
 
 /// Interactive bits a section's own content needs, gathered in one bundle so `render`'s own
-/// signature doesn't grow a new positional parameter per section (mirrors `shell::SettingsPanelProps`'s
+/// signature doesn't grow a new positional parameter per section (mirrors `app::SettingsPanelProps`'s
 /// reason for existing). Every section function takes `&SettingsBodyProps` and reads whatever
 /// subset it needs.
 pub struct SettingsBodyProps<'a> {

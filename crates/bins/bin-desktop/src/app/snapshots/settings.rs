@@ -1,8 +1,8 @@
 //! What the integration tests read back of the Settings pages, kept apart from `shell.rs` so the
 //! snapshot shape and its accessor sit together.
 
+use crate::app::Shell;
 use crate::inventory::form::InventoryDialog;
-use crate::shell::Shell;
 use crate::{
     accounts::{self, form::AccountsDialog},
     categories::form::CategoriesDialog,

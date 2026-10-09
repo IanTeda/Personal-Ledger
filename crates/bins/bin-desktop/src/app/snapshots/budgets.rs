@@ -1,8 +1,8 @@
 //! What the integration tests read back of the Budgets page, kept apart from `shell.rs` so the
 //! snapshot shape and its accessor sit together.
 
+use crate::app::Shell;
 use crate::budgets::{self, BudgetsDialog};
-use crate::shell::Shell;
 
 /// One Progress row: the Category it shows and whether it carries a Budget Amount.
 #[doc(hidden)]

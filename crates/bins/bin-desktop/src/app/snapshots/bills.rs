@@ -1,8 +1,8 @@
 //! What the integration tests read back of the Bills page, kept apart from `shell.rs` so the
 //! snapshot shape and its accessor sit together.
 
+use crate::app::Shell;
 use crate::bills::{self, BillsDialog};
-use crate::shell::Shell;
 
 /// One Schedule row: the Plan it belongs to and the status it shows.
 #[doc(hidden)]

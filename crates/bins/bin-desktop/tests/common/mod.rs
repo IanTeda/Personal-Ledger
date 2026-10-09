@@ -10,15 +10,16 @@
 )]
 
 use bin_desktop::{
-    ShellBindings, ShellLogs, build_shell,
-    locale::init_for_tests,
-    navigation::nav::Noun,
-    persistence::PersistedState,
-    shell::{
+    ShellBindings, ShellLogs,
+    app::{
         AccountFormSnapshot, BillsSnapshot, BudgetsSnapshot, DashboardBillSnapshot,
         DocumentsSnapshot, ImportSnapshot, SettingsSnapshot, Shell, ToastsSnapshot,
         TransactionsSnapshot,
     },
+    build_shell,
+    locale::init_for_tests,
+    navigation::nav::Noun,
+    persistence::PersistedState,
     theme,
 };
 use chrono::NaiveDate;
@@ -88,7 +89,7 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
         self.cx
             .executor()
-            .advance_clock(bin_desktop::shell::LOG_COALESCE * 2);
+            .advance_clock(bin_desktop::app::LOG_COALESCE * 2);
         self.cx.run_until_parked();
     }
 

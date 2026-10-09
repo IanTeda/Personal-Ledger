@@ -1,7 +1,7 @@
 //! The Documents link picker's rules: what it lists, in what order, and what a query keeps. One
 //! palette-chrome modal searches every record kind a Document can link to (Transaction, Account,
 //! Payee, Bill Plan, Inventory Item), so this is `gpui`-free and unit-tested without a window, the
-//! same split `chrome/palette.rs` and `documents/mod.rs` use. `shell/documents_ui.rs` owns the keys and the
+//! same split `chrome/palette.rs` and `documents/mod.rs` use. `app/documents_ui.rs` owns the keys and the
 //! effects of a pick; `view/documents/dialogs.rs` draws it.
 
 use std::ops::Range;

@@ -14,7 +14,7 @@
 //! **A pure render-helper, not a stateful dialog owner.** Like `Palette`/`FileExplorer`, each
 //! consuming dialog keeps owning its own open/close state as `Option<T>` on `Shell` and its own
 //! esc/enter key handling -- this module only draws the chrome. `Shell` has no *real* `gpui`
-//! focus-trapping for any floating overlay today (see `shell.rs`'s own module doc: one
+//! focus-trapping for any floating overlay today (see `app.rs`'s own module doc: one
 //! `FocusHandle` for the whole window); "the dialog traps focus" is achieved by routing every
 //! keystroke through `Shell::handle_key_down` while the owning `Option<T>` is `Some`, and that
 //! pattern carries over unchanged for whichever ownership/`InputMode` shape each dialog ticket

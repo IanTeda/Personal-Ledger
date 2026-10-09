@@ -220,7 +220,7 @@ pub struct NavState {
     /// deliberately absent from `crate::persistence::PersistedState`, since the "Empty state"
     /// spec section reaches this state "on cold start and after `:close`", never by restoring
     /// a previous session. Rails render identically either way (Implementation note 2); only
-    /// the main pane's `Dashboard` arm branches on it (`render_view` in `shell/render.rs`).
+    /// the main pane's `Dashboard` arm branches on it (`render_view` in `app/render.rs`).
     ledger_open: bool,
 }
 

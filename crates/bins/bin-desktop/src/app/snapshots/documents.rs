@@ -1,10 +1,10 @@
 //! What the integration tests read back of the Documents page, kept apart from the behaviour in
 //! `shell/documents_ui.rs` so the snapshot shape and its accessor sit together.
 
+use crate::app::Shell;
 use crate::documents::Document;
 use crate::documents::form::DocumentsDialog;
 use crate::documents::picker::Purpose;
-use crate::shell::Shell;
 use crate::view::documents::DocumentsFocus;
 
 /// The Documents page's state: ids and plain values, so the private `documents` types need not

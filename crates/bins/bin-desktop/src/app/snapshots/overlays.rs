@@ -1,8 +1,8 @@
 //! What the integration tests read back of the Dashboard, the Toast layer and its history, and the
 //! Import step, kept apart from `shell.rs` so the snapshot shapes and their accessors sit together.
 
+use crate::app::Shell;
 use crate::bills;
-use crate::shell::Shell;
 
 /// One Toast as the stack or the history shows it.
 #[doc(hidden)]

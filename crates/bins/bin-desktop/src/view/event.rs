@@ -1,6 +1,6 @@
 //! `ViewEvent` -- the requests a View makes of `Shell`. A View emits one of these with
 //! `cx.emit` and never holds a handle to `Shell` (ADR-0032): `Shell` subscribes to each View
-//! and handles every event in one place (`shell/view_events.rs`).
+//! and handles every event in one place (`app/view_events.rs`).
 
 use lib_toast::ToastKind;
 

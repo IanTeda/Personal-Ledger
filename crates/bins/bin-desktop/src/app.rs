@@ -10,13 +10,15 @@
 //! mode transitions (issue #150); the command palette (issue #151); the collapsed rail, its
 //! `b`-key/click toggle, and its hover tooltip (issue #152). `?`'s help overlay (issue #169,
 //! `InputMode::Help`). No `View` trait (ADR-0016): `Shell` dispatches on the `ActiveView` enum,
-//! and `render_view` in `shell/render.rs` is its plain exhaustive match.
+//! and `render_view` in `app/render.rs` is its plain exhaustive match.
 //!
-//! The file holds the `Shell` struct, construction, persisted setters, the accessor surface,
-//! `impl Focusable`, per-domain wiring and the unit tests. Each cross-cutting concern lives in a
-//! bare-named child file (`commands`, `dialogs`, `explorer`, `focus`, `key_dispatch`, `log_feed`,
-//! `rail`, `render`, `status`, `toasts`) that is an `impl Shell` block, not the real module of
-//! the same name; a `_ui` suffix (`documents_ui`, `inventory_ui`, ...) marks per-domain wiring.
+//! This is the root of the `app` module, so the `Shell` struct's own module and its child files
+//! sit in `app/`. The file holds the `Shell` struct, construction, persisted setters, the accessor
+//! surface, `impl Focusable`, per-domain wiring and the unit tests. Each cross-cutting concern
+//! lives in a bare-named child file (`commands`, `dialogs`, `explorer`, `focus`, `key_dispatch`,
+//! `log_feed`, `rail`, `render`, `status`, `toasts`) under `app/` that is an `impl Shell` block,
+//! not the real module of the same name; a `_ui` suffix (`documents_ui`, `inventory_ui`, ...)
+//! marks per-domain wiring.
 //!
 //! `Shell` holds exactly one `gpui::FocusHandle` for the whole window rather than one per
 //! zone: the three `FocusZone`s are our own conceptual navigation state
