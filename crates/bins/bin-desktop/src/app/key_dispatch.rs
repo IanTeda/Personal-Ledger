@@ -147,11 +147,8 @@ impl Shell {
                 self.edit_transactions_state(cx, |s| s.filter_form = None);
                 self.close_dialog();
                 self.edit_budgets_state(cx, |state| state.plan_edit = None);
-                // `Esc` while searching Transactions clears the search text as well as leaving the
-                // mode (the map's decision: search is cleared by `Esc` or by emptying the box).
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Transactions {
-                    self.edit_transactions_state(cx, |s| s.search.clear());
-                    self.reset_transactions_selection(cx);
+                    self.cancel_transactions_search(cx);
                 }
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Documents {
                     self.documents_cancel_search(cx);

@@ -170,6 +170,13 @@ impl Shell {
             .scroll_to_item(0, ScrollStrategy::Top);
     }
 
+    /// `Esc` while searching Transactions: clears the search text as well as leaving the mode (the
+    /// map's decision: search is cleared by `Esc` or by emptying the box).
+    pub(super) fn cancel_transactions_search(&mut self, cx: &mut App) {
+        self.edit_transactions_state(cx, |s| s.search.clear());
+        self.reset_transactions_selection(cx);
+    }
+
     /// Keys while `InputMode::Search` is active on the Transactions page: typing filters live,
     /// `Backspace` edits, `Enter` keeps the text and returns to browsing the (filtered) rows, and
     /// `Esc` (handled with the other modes' exit) clears it.
