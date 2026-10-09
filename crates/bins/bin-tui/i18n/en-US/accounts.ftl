@@ -1,9 +1,5 @@
 ## The Accounts view, three popups (new, edit, delete), and command palette entries.
 
-## The Accounts view title.
-
-tui-accounts-title = Accounts
-
 ## The Accounts view column headers.
 
 tui-accounts-column-balance = BALANCE
@@ -65,12 +61,3 @@ tui-account-delete-help-tab = next field
 tui-account-delete-help-delete = delete
 tui-account-delete-help-deactivate = deactivate
 tui-account-delete-help-cancel = cancel
-
-## Errors when creating, editing or deleting accounts. These become part of a Message
-## that includes the error title.
-
-tui-account-error-not-found = account not found
-tui-account-error-requires-transfer = holds transactions or Balance Checks — choose a same-unit account to move them into
-tui-account-error-transfer-unit-mismatch = the transfer target must share the account's unit
-tui-account-error-transfer-is-source = can't transfer an account's transactions to itself
-tui-account-error-transfer-inactive = the transfer target must be active

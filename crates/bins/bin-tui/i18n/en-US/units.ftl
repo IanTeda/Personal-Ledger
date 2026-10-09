@@ -1,7 +1,3 @@
-## The Units view title and main list.
-
-tui-units-title = Units & Prices
-
 ## The Units list heading and column headers.
 
 tui-units-list-heading = UNITS
@@ -68,7 +64,6 @@ tui-unit-new-field-qty-precision = qty precision
 tui-unit-new-field-price-precision = price precision
 tui-unit-new-field-active = active
 tui-unit-new-hint-symbol = optional, your own reference
-tui-unit-new-hint-source = tab to pick another unit
 tui-unit-new-hint-priced-in = tab to pick another unit
 tui-unit-new-hint-qty-precision = decimals held
 tui-unit-new-hint-price-precision = permanent
@@ -77,7 +72,6 @@ tui-unit-new-warning = CODE AND PRICE PRECISION CANNOT CHANGE ONCE A TRANSACTION
 ## The Edit Unit popup.
 
 tui-unit-edit-title = edit unit
-tui-unit-edit-command = :unit edit
 tui-unit-edit-field-code = code
 tui-unit-edit-field-name = name
 tui-unit-edit-field-type = type
@@ -90,7 +84,6 @@ tui-unit-edit-note-code = referenced by { $count ->
     *[other] { $count } transactions
 }
 tui-unit-edit-note-type = fixed while prices exist
-tui-unit-edit-locked-note-symbol = no
 tui-unit-edit-title-tag = { $accounts ->
     [one] 1 account
     *[other] { $accounts } accounts
@@ -103,11 +96,6 @@ tui-unit-edit-title-tag = { $accounts ->
 }
 tui-unit-edit-precision-warning = QTY PRECISION IS LOWER THAN THE LOWEST HOLDING · SOME UNITS MAY NOT ROUND
 
-## The Delete Unit popup.
-
-tui-unit-delete-title = delete unit
-tui-unit-delete-confirm = confirm
-
 ## Footer hints for popups.
 
 tui-unit-new-help-tab = tab next field
@@ -117,6 +105,3 @@ tui-unit-new-help-cancel = esc cancel
 tui-unit-edit-help-tab = tab next field
 tui-unit-edit-help-save = ^s save
 tui-unit-edit-help-cancel = esc cancel
-
-tui-unit-delete-help-delete = ^s delete
-tui-unit-delete-help-cancel = esc cancel

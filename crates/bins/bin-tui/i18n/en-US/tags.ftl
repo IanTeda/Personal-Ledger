@@ -1,6 +1,5 @@
 ## The Tags view title and main list.
 
-tui-tag-title = Tags
 tui-tags-heading = tags { $visible } of { $total }
 
 ## The Tags list: tag row status indicators.
@@ -46,7 +45,6 @@ tui-tag-right-pane-lands-statement = a tag crosses the tree — that is what it 
 
 tui-tag-right-pane-txn-heading = TRANSACTIONS
 tui-tag-right-pane-txn-heading-tag = { $visible } of { $total } · newest first
-tui-tag-right-pane-txn-empty = no transactions yet
 tui-tag-right-pane-txn-footer-overlap = { $overlap ->
     [one] 1 of { $total } carries another tag — rows overlap
     *[other] { $overlap } of { $total } carry another tag — rows overlap
