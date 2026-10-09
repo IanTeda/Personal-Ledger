@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
-use super::add_unit_dialog::text_field;
+use crate::view::form_fields::text_field;
 use crate::{
     dialog,
     form::select::SelectState,

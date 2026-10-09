@@ -2,7 +2,7 @@
 //! dialogs: opening them,
 //! their keys and clicks, applying the change to the in-memory Inventory and Documents, and
 //! building their elements. The rules live in `inventory` and `inventory::form`; the chrome in
-//! `view::settings::inventory_dialogs`.
+//! `view::inventory::dialogs`.
 
 use std::rc::Rc;
 
@@ -18,7 +18,7 @@ use crate::{
         RemoveRoomForm, RoomForm,
     },
     inventory::{self, PropertyError},
-    view::settings::{inventory::InventoryRow, inventory_dialogs as view},
+    view::{inventory::dialogs as view, settings::inventory::InventoryRow},
 };
 
 /// What Remove would take with it.

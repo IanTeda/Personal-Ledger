@@ -5,6 +5,7 @@ use super::Shell;
 use std::rc::Rc;
 
 use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
+use crate::view::{institutions as institutions_view, units as units_view};
 
 use gpui::{
     Context, ExternalPaths, KeyDownEvent, ScrollHandle, SharedString, Window, div, prelude::*, px,
@@ -189,7 +190,7 @@ impl Render for Shell {
         // Shared by the Add unit (issue #184) and Edit unit (issue #185) dialogs -- both wrap
         // the same `UnitForm`, and `Shell`'s own handlers already dispatch on whichever
         // `SettingsDialog` variant is actually open, so one set of closures serves both renders.
-        let on_unit_dialog_field_click: settings_view::add_unit_dialog::OnFieldClick = {
+        let on_unit_dialog_field_click: units_view::add_dialog::OnFieldClick = {
             let entity = entity.clone();
             Rc::new(move |field, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -197,7 +198,7 @@ impl Render for Shell {
                 });
             })
         };
-        let on_unit_dialog_kind_click: settings_view::add_unit_dialog::OnKindClick = {
+        let on_unit_dialog_kind_click: units_view::add_dialog::OnKindClick = {
             let entity = entity.clone();
             Rc::new(move |kind, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -205,19 +206,19 @@ impl Render for Shell {
                 });
             })
         };
-        let on_settings_dialog_cancel: settings_view::add_unit_dialog::OnCancel = {
+        let on_settings_dialog_cancel: units_view::add_dialog::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_settings_dialog_cancel(cx));
             })
         };
-        let on_settings_dialog_confirm: settings_view::add_unit_dialog::OnConfirm = {
+        let on_settings_dialog_confirm: units_view::add_dialog::OnConfirm = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_settings_dialog_confirm(cx));
             })
         };
-        let on_add_institution_account_type_click: settings_view::add_institution_dialog::OnAccountTypeClick = {
+        let on_add_institution_account_type_click: institutions_view::add_dialog::OnAccountTypeClick = {
             let entity = entity.clone();
             Rc::new(move |account_type, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -225,7 +226,7 @@ impl Render for Shell {
                 });
             })
         };
-        let on_add_institution_unit_click: settings_view::add_institution_dialog::OnUnitClick = {
+        let on_add_institution_unit_click: institutions_view::add_dialog::OnUnitClick = {
             let entity = entity.clone();
             Rc::new(move |code, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -1757,7 +1758,7 @@ impl Render for Shell {
                 }
             }))
             .children(self.settings_dialog().map(|dialog| match dialog {
-                SettingsDialog::AddUnit(form) => settings_view::add_unit_dialog::render(
+                SettingsDialog::AddUnit(form) => units_view::add_dialog::render(
                     form,
                     on_unit_dialog_field_click.clone(),
                     on_unit_dialog_kind_click.clone(),
@@ -1765,7 +1766,7 @@ impl Render for Shell {
                     on_settings_dialog_confirm.clone(),
                     cx,
                 ),
-                SettingsDialog::EditUnit(_, form) => settings_view::edit_unit_dialog::render(
+                SettingsDialog::EditUnit(_, form) => units_view::edit_dialog::render(
                     form,
                     on_unit_dialog_field_click,
                     on_unit_dialog_kind_click,
@@ -1775,7 +1776,7 @@ impl Render for Shell {
                 ),
                 SettingsDialog::DeleteUnit(index, form) => {
                     match self.settings_units.get(*index) {
-                        Some(row) => settings_view::delete_unit_dialog::render(
+                        Some(row) => units_view::delete_dialog::render(
                             row,
                             form,
                             on_settings_dialog_cancel.clone(),
@@ -1793,17 +1794,15 @@ impl Render for Shell {
                     on_settings_dialog_confirm.clone(),
                     cx,
                 ),
-                SettingsDialog::AddInstitution(form) => {
-                    settings_view::add_institution_dialog::render(
-                        form,
-                        &self.settings_units,
-                        on_add_institution_account_type_click,
-                        on_add_institution_unit_click,
-                        on_settings_dialog_cancel,
-                        on_settings_dialog_confirm,
-                        cx,
-                    )
-                }
+                SettingsDialog::AddInstitution(form) => institutions_view::add_dialog::render(
+                    form,
+                    &self.settings_units,
+                    on_add_institution_account_type_click,
+                    on_add_institution_unit_click,
+                    on_settings_dialog_cancel,
+                    on_settings_dialog_confirm,
+                    cx,
+                ),
             }))
             // Last: above every dialog, the palette and their scrim, never over the status line.
             .children(toast_layer)

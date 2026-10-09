@@ -17,6 +17,7 @@ use crate::{
         DocumentField, DocumentForm, DocumentOptions, DocumentsDialog, FactsField, FactsForm,
         ImportForm, ImportOutcome,
     },
+    documents::model::{self as view_model, Lookups},
     documents::picker::{PickerRequest, PickerRow, PickerState, Purpose},
     documents::{
         self, Document, DocumentLink, DocumentsMode, KeyDateKind, LibraryScope, LibrarySort,
@@ -25,10 +26,7 @@ use crate::{
     navigation::key_router::Movement,
     navigation::nav::{FocusZone, InputMode, Noun},
     settings::SettingsSection,
-    view::documents::{
-        self as documents_view, DocumentsFocus, DocumentsPageProps, dialogs,
-        model::{self as view_model, Lookups},
-    },
+    view::documents::{self as documents_view, DocumentsFocus, DocumentsPageProps, dialogs},
 };
 
 /// `ctrl-d` / `ctrl-u` on the Library list: rows per half page.

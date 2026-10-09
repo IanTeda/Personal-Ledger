@@ -24,7 +24,7 @@ use crate::{
             add_dialog::{label, text_field, two_up},
             select_field::{self, SelectFieldProps},
         },
-        settings::add_unit_dialog::segmented_control,
+        form_fields::segmented_control,
     },
 };
 

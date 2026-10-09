@@ -4,8 +4,8 @@
 //!
 //! Three field shapes, none reused verbatim from the Unit dialogs:
 //! - **Institution name**: a real text field, but the dialog's only one -- reuses
-//!   `add_unit_dialog::text_field` with `focused: true` and a no-op click handler, the same
-//!   "implicitly focused, nothing to click into" shape `delete_unit_dialog`'s own confirm field
+//!   `form_fields::text_field` with `focused: true` and a no-op click handler, the same
+//!   "implicitly focused, nothing to click into" shape `units::delete_dialog`'s own confirm field
 //!   uses.
 //! - **Account types**: multi-select chips (`docs/ux/desktop-mockups/styles.css`'s
 //!   `.chip` role) -- the first *multi*-select control in this crate; every other "pick one"
@@ -14,7 +14,7 @@
 //!   compile-time enum -- `ledger_units::segmented_control`'s `&'static [T]` bound can't take a
 //!   runtime slice, so this module builds its own segmented-style row instead of reusing that
 //!   function. Still a segmented control rather than the raw mockup's own `<select>`, same
-//!   reasoning as `add_unit_dialog`'s own Type field.
+//!   reasoning as `units::add_dialog`'s own Type field.
 
 use std::rc::Rc;
 
@@ -27,7 +27,7 @@ use crate::{
     units::UnitRow,
 };
 
-use super::{add_unit_dialog::text_field, field_label};
+use crate::view::form_fields::{field_label, text_field};
 
 const WIDTH: gpui::Pixels = px(460.0);
 

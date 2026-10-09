@@ -47,7 +47,7 @@ pub fn scope_text(types: &[DocumentTypeRow]) -> String {
 }
 
 /// The text of a Tracks date cell.
-pub(super) fn tracks_label(tracks: TracksDate) -> String {
+pub(crate) fn tracks_label(tracks: TracksDate) -> String {
     match tracks {
         TracksDate::Renews => crate::msg::desktop_document_types_tracks_renews(),
         TracksDate::Ends => crate::msg::desktop_document_types_tracks_ends(),

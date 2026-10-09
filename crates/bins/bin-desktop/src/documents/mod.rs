@@ -17,6 +17,7 @@
 //! - Skip is session-only, and undo is one level: [`undo`] reverses the last [`FilingUndo`] whole.
 
 pub(crate) mod form;
+pub(crate) mod model;
 pub(crate) mod picker;
 pub(crate) mod types;
 

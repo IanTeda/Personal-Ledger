@@ -114,7 +114,7 @@ fn radio_option(
 /// inset 0 0 0 4px var(--color-bg)` ring effect -- `gpui` has no inset-shadow primitive, so two
 /// concentric circles reproduce the same "accent ring around a punched-out centre" look.
 /// `pub(super)`: reused by `super::display`'s own "Status glyphs" radio group (issue #179) --
-/// its second consumer, promoted the same way `add_unit_dialog::segmented_control` was.
+/// its second consumer, promoted the same way `form_fields::segmented_control` was.
 pub(super) fn radio_dot(checked: bool, cx: &App) -> impl IntoElement {
     div()
         .w(DOT_SIZE)

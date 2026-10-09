@@ -17,7 +17,7 @@ use crate::{
     theme::colours::{self, ColourChange, to_gpui},
 };
 
-use super::add_unit_dialog::{UNIFORM_OPTION_WIDTH, segmented_control_sized};
+use crate::view::form_fields::{UNIFORM_OPTION_WIDTH, segmented_control_sized};
 
 /// A click on a card, curried with its Colour Theme id.
 pub type OnColourThemeClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;

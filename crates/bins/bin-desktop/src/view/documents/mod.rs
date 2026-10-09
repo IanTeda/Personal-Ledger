@@ -8,14 +8,14 @@
 pub mod dialogs;
 pub mod drop_overlay;
 mod inbox;
-pub mod model;
+pub mod type_dialogs;
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Pixels, ScrollHandle, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::upper;
 
-use self::model::{
+use crate::documents::model::{
     Chip, ChipKind, DetailView, Fact, InboxDetailView, InboxRowView, LinkRow, RailRow, RowTail,
     RowView,
 };

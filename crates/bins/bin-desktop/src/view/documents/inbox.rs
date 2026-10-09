@@ -12,8 +12,8 @@ use super::{
 };
 use crate::{
     documents::Signals,
+    documents::model::{CandidateView, InboxDetailView, InboxRowView, InboxState},
     theme::color,
-    view::documents::model::{CandidateView, InboxDetailView, InboxRowView, InboxState},
 };
 
 /// The list pane below the header: column header, rows (or the empty state), footnote and drop

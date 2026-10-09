@@ -5,22 +5,16 @@
 
 mod about;
 pub mod accounts;
-pub mod add_institution_dialog;
-pub mod add_unit_dialog;
 pub mod categories;
 pub mod clear_logs_dialog;
 pub mod colour_theme;
 pub mod data_backup;
-pub mod delete_unit_dialog;
 pub mod display;
-pub mod document_type_dialogs;
 pub mod documents;
-pub mod edit_unit_dialog;
 mod general;
 pub(crate) mod hints;
 pub mod institutions;
 pub mod inventory;
-pub mod inventory_dialogs;
 pub mod payees;
 pub mod sync_server;
 pub mod tags;
@@ -277,17 +271,6 @@ fn placeholder(cx: &App) -> AnyElement {
         .text_color(color::faint_text(cx))
         .child(crate::msg::desktop_settings_page_placeholder())
         .into_any_element()
-}
-
-/// A field label: `display:block; font-weight:800; font-size:12px; margin-bottom:6px`
-/// (`docs/ux/desktop-mockups/16-settings/README.md`'s Components table) -- shared by every section that
-/// lays out `Field label` + `Input/select` pairs.
-pub(super) fn field_label(label: impl Into<SharedString>) -> impl IntoElement {
-    div()
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(12.0))
-        .mb(px(6.0))
-        .child(label.into())
 }
 
 /// An `Input`/`select`-styled box showing `value` as static text: `width:100%; padding:8px 10px;

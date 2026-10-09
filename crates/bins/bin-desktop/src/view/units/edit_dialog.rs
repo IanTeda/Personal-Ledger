@@ -1,5 +1,5 @@
 //! Renders the **Edit unit** dialog (issue #185's own "2c"), on the shared `crate::dialog`
-//! chrome. Same form and field-editing rules as [`super::add_unit_dialog`] (see that module's
+//! chrome. Same form and field-editing rules as [`super::add_dialog`] (see that module's
 //! own doc) -- both wrap the same `units::form::UnitForm`, so the only real differences here are
 //! the dynamic title, the pre-filled starting values (`Shell::handle_unit_edit_click`, via
 //! `UnitForm::from_row`), the usage-notice info panel, and the "Save" button label.
@@ -18,9 +18,8 @@ use crate::{
     units::form::{AddUnitField, UnitForm},
 };
 
-use super::add_unit_dialog::{
-    OnCancel, OnConfirm, OnFieldClick, OnKindClick, field_click, text_field, type_field,
-};
+use super::add_dialog::{OnCancel, OnConfirm, OnFieldClick, OnKindClick, field_click, type_field};
+use crate::view::form_fields::text_field;
 
 pub fn render(
     form: &UnitForm,

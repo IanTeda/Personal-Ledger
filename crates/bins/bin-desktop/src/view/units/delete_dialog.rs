@@ -4,7 +4,7 @@
 //! (`units::form::DeleteUnitForm::is_valid`, case-sensitive) before the confirm button enables --
 //! deletion can't happen by muscle memory.
 //!
-//! Reuses `add_unit_dialog::text_field` for the confirm input, but always `focused: true` with a
+//! Reuses `form_fields::text_field` for the confirm input, but always `focused: true` with a
 //! no-op click handler: unlike Code/Name in the Add/Edit dialogs, there's only one field here, so
 //! nothing to click into or `Tab` between (`chrome::dialog_host::handle_key` swallows `Tab` for every
 //! Dialog).
@@ -25,7 +25,7 @@ use crate::{
     units::{UnitRow, form::DeleteUnitForm},
 };
 
-use super::add_unit_dialog::text_field;
+use crate::view::form_fields::text_field;
 
 pub fn render(
     row: &UnitRow,

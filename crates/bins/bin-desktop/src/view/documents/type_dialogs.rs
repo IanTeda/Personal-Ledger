@@ -8,10 +8,9 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
 
-use super::{
-    add_unit_dialog::{OnSegmentClick, segmented_control, text_field},
-    documents::tracks_label,
-    field_label,
+use crate::view::{
+    form_fields::{OnSegmentClick, field_label, segmented_control, text_field},
+    settings::documents::tracks_label,
 };
 use crate::{
     dialog, documents,

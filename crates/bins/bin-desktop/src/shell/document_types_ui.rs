@@ -1,6 +1,6 @@
 //! The Settings › Documents page's Add, Edit and Remove dialogs (#481): opening them, their keys
 //! and clicks, applying the change to the in-memory types, and building their elements. The pure
-//! rules live in `documents::types`; the chrome in `view::settings::document_type_dialogs`.
+//! rules live in `documents::types`; the chrome in `view::documents::type_dialogs`.
 
 use std::rc::Rc;
 
@@ -13,7 +13,7 @@ use crate::{
     documents::types::{
         DocumentTypeForm, DocumentTypesDialog, FormField, RemindLead, RemoveForm, TracksDate,
     },
-    view::settings::document_type_dialogs as view,
+    view::documents::type_dialogs as view,
 };
 
 /// The dialog's status-line legend: Remove and the notice have no fields to `tab` through.
@@ -252,9 +252,7 @@ impl Shell {
                 });
             })
         };
-        let on_tracks_click: crate::view::settings::add_unit_dialog::OnSegmentClick<
-            Option<TracksDate>,
-        > = {
+        let on_tracks_click: crate::view::form_fields::OnSegmentClick<Option<TracksDate>> = {
             let entity = entity.clone();
             Rc::new(move |option, _window, cx| {
                 entity.update(cx, |shell, cx| {
@@ -265,9 +263,7 @@ impl Shell {
                 });
             })
         };
-        let on_remind_click: crate::view::settings::add_unit_dialog::OnSegmentClick<
-            Option<RemindLead>,
-        > = {
+        let on_remind_click: crate::view::form_fields::OnSegmentClick<Option<RemindLead>> = {
             let entity = entity.clone();
             Rc::new(move |option, _window, cx| {
                 entity.update(cx, |shell, cx| {

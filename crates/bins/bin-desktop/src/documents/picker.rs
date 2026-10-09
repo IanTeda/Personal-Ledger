@@ -11,10 +11,10 @@ use lib_locale::format::format_date;
 
 use crate::{
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    documents::model::Lookups,
     documents::{DocumentLink, DocumentType},
     form::field::TextField,
     transactions::Transaction,
-    view::documents::model::Lookups,
     view::format,
 };
 

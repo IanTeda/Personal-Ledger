@@ -28,7 +28,7 @@ impl Shell {
     pub(super) fn handle_view_event(&mut self, event: ViewEvent) {
         match event {
             ViewEvent::RaiseToast { kind, text } => self.raise_toast(kind, text),
-            ViewEvent::OpenDialog(dialog) => self.open_dialog(dialog),
+            ViewEvent::OpenDialog(dialog) => self.open_dialog(*dialog),
             ViewEvent::Navigate(noun) => {
                 let noun_before = self.nav.noun();
                 self.nav.set_noun(noun);
@@ -79,9 +79,9 @@ mod tests {
         });
 
         view.update(cx, |_, cx| {
-            cx.emit(ViewEvent::OpenDialog(OpenDialog::ToastHistory(
+            cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::ToastHistory(
                 ToastHistoryDialog,
-            )));
+            ))));
         });
         cx.run_until_parked();
         shell.read_with(cx, |shell, _| {

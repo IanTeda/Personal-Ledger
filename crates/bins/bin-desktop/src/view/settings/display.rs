@@ -31,11 +31,8 @@ use crate::{
     theme::color,
 };
 
-use super::{
-    add_unit_dialog::{UNIFORM_OPTION_WIDTH, segmented_control_sized},
-    colour_theme,
-    tracing::radio_dot,
-};
+use super::{colour_theme, tracing::radio_dot};
+use crate::view::form_fields::{UNIFORM_OPTION_WIDTH, segmented_control_sized};
 
 pub type OnDateStyleClick = Rc<dyn Fn(Option<DateStyle>, &mut Window, &mut App)>;
 pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
@@ -290,7 +287,7 @@ fn start_sidebar_minimised_toggle(
 
 /// `.field > label`: `display:block; font-size:12px; margin-bottom:5px; color: color-mix(text
 /// 70%, transparent)` -- the same style the now-removed `ledger_units.rs`'s own field label used
-/// (issue #189), distinct from General's bold `super::field_label`
+/// (issue #189), distinct from General's bold `crate::view::form_fields::field_label`
 /// (`font-weight:800; margin-bottom:6px`), which only sits over `Input`/`select` pairs.
 fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     div()
