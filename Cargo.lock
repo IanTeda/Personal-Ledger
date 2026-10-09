@@ -725,6 +725,7 @@ dependencies = [
  "lib_database",
  "lib_locale",
  "lib_locale_build",
+ "lib_payees",
  "lib_toast",
  "lib_tracing",
  "lib_transactions",
@@ -4778,6 +4779,18 @@ version = "0.1.0"
 dependencies = [
  "fluent-syntax",
  "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "lib_payees"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_accounts",
+ "lib_core",
+ "lib_transactions",
  "thiserror 2.0.20",
 ]
 
