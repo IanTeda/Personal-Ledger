@@ -27,6 +27,7 @@ lib_accounts = { path = "../../libs/lib-accounts" }
 lib_bills = { path = "../../libs/lib-bills" }
 lib_budgets = { path = "../../libs/lib-budgets" }
 lib_categories = { path = "../../libs/lib-categories" }
+lib_inventory = { path = "../../libs/lib-inventory" }
 lib_payees = { path = "../../libs/lib-payees" }
 lib_transactions = { path = "../../libs/lib-transactions" }
 lib_colour_theme = { path = "../../libs/lib-colour-theme" }
