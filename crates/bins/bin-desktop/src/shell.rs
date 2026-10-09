@@ -38,6 +38,7 @@ mod render;
 mod snapshots;
 mod status;
 mod toasts;
+mod view_events;
 
 #[cfg(test)]
 use commands::record_history;
@@ -65,7 +66,7 @@ use crate::view::{accounts::hints::accounts_hints, settings::hints::confirm_dial
 
 use gpui::{
     Context, FocusHandle, Focusable, Keystroke, ListAlignment, ListState, ScrollHandle,
-    ScrollStrategy, UniformListScrollHandle, point, px,
+    ScrollStrategy, Subscription, UniformListScrollHandle, point, px,
 };
 
 use chrono::Local;
@@ -333,6 +334,8 @@ pub struct Shell {
     documents_undo: Option<documents::FilingUndo>,
     /// A file to hand to the OS, taken by the key-down listener, which has the `App` it needs.
     pending_file_action: Option<documents_ui::FileAction>,
+    /// Keeps each View's event subscription alive: dropping one silently stops its events.
+    view_subscriptions: Vec<Subscription>,
 }
 
 impl Shell {
@@ -464,6 +467,7 @@ impl Shell {
             documents_inbox_selected: 0,
             documents_undo: None,
             pending_file_action: None,
+            view_subscriptions: Vec::new(),
         }
     }
 

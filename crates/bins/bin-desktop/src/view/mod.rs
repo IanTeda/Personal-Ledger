@@ -8,6 +8,7 @@ pub mod budgets;
 pub mod categories;
 pub mod dashboard;
 pub mod documents;
+pub mod event;
 pub(crate) mod format;
 pub mod help;
 pub mod import;
