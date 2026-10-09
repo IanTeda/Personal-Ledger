@@ -1822,10 +1822,19 @@ impl Shell {
             }
             None => crate::msg::tui_status_line(LEDGER_GLYPH, &name, &title),
         };
+        // Representative content -- a real last-sync time lands with the sync ticket.
+        let synced = format!(" {} ", crate::msg::tui_status_synced("14:22"));
+        let synced_width = u16::try_from(synced.chars().count()).unwrap_or(0);
+        let [left, right] = Layout::horizontal([
+            Constraint::Min(0),
+            Constraint::Length(synced_width.min(rows[0].width)),
+        ])
+        .areas(rows[0]);
         frame.render_widget(
             Paragraph::new(Line::from(format!(" {status} "))).style(c.status_bar()),
-            rows[0],
+            left,
         );
+        frame.render_widget(Paragraph::new(synced).style(c.status_bar()), right);
 
         // Screen Frame / View
         self.view.view(frame, rows[1], c);

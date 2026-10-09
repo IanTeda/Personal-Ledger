@@ -12,6 +12,10 @@ tui-view-units-title = Units & prices
 ## `$name` the product name and `$view` the active view's title. The second form adds the mode,
 ## shown only when it is not the resting NORMAL state; `$mode` arrives already upper-cased.
 
+## The status line's right side: only the time of the last sync (`$time`).
+
+tui-status-synced = Synced { $time }
+
 tui-status-line = { $glyph } { $name } | { $view }
 tui-status-line-with-mode = { $glyph } { $name } | { $view } · { $mode }
 
