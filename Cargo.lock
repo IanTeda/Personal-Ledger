@@ -724,6 +724,7 @@ dependencies = [
  "lib_config",
  "lib_core",
  "lib_database",
+ "lib_documents",
  "lib_inventory",
  "lib_locale",
  "lib_locale_build",
@@ -4769,6 +4770,22 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "lib_documents"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "dirs 6.0.0",
+ "lib_accounts",
+ "lib_bills",
+ "lib_categories",
+ "lib_core",
+ "lib_inventory",
+ "lib_payees",
+ "lib_transactions",
 ]
 
 [[package]]
