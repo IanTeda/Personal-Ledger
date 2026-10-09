@@ -390,6 +390,18 @@ _Avoid_: Match, Match Strength — Match belongs to Bills.
 To move a Document from Unfiled to Filed, setting its Document Type and any Document Links. **Accept** is filing with the Suggested Link as offered; filing by hand or linking elsewhere is still filing. **Skip** leaves a Document Unfiled, set aside to the bottom of the Inbox for the session.
 _Avoid_: Import — Import brings a file into the Inbox; filing is what happens after.
 
+**Git Backup**:
+A Client's scheduled commit of the Ledger to a remote Git repository: a deterministic text dump of the Ledger data plus its Document files, pushed only to a private repository. It is Configuration on one Client, never synced, and independent of the Sync Server. See [ADR-0033](docs/adr/0033-git-backup-pushes-a-text-dump-and-documents-to-a-private-repository.md).
+_Avoid_: Snapshot (the local Backup's term), Sync — a Git Backup is a one-way copy, never read back except to restore.
+
+**Model Provider**:
+A language-model service a Client sends a request to, such as Claude, OpenAI or a local Ollama, set up on that one Client with its key held in the OS keychain. One Model Provider per Client is the default. See [ADR-0034](docs/adr/0034-ai-connections-are-per-client-and-assistant-access-starts-read-only.md).
+_Avoid_: AI, LLM, model — a model is the one a Model Provider serves, chosen per Model Provider.
+
+**Assistant**:
+An external AI agent, such as Claude Desktop or Claude Code, connected to a Client's local MCP server with its own revocable token. It has read-only access to the Ledger. Per Client, never synced. See [ADR-0034](docs/adr/0034-ai-connections-are-per-client-and-assistant-access-starts-read-only.md).
+_Avoid_: Agent, bot, Model Provider — the Client calls out to a Model Provider, while an Assistant calls in to the Client.
+
 **Search**:
 Narrowing a list by **free text** the user types (a query matched against names or labels). Distinct from a Filter: Search takes one typed string and has no structured fields.
 _Avoid_: Filter (for free-text matching), Find.

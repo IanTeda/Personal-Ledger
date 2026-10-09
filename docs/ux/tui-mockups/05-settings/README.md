@@ -1,291 +1,196 @@
-# Handoff: Personal Ledger TUI — settings (database-backed)
+# Handoff: Personal Ledger TUI — Settings (paged, keyboard first)
 
 ## Overview
-The settings view for `personal-ledger` — a keyboard-only, local-first personal finance ledger (single user, SQLite, no auth, no cloud). It re-hosts inside the shell specified in `design_handoff_ledger_shell` and follows the same conventions (single full-bleed view region, `:` palette, footer hint bar).
 
-**The architectural decision this design encodes: settings live in the database, not in a config file.** Static config is reduced to the handful of keys needed *before* the database can be opened. Everything else is a row in a `settings` table that overrides a default compiled into the binary.
+The Settings destination for the `bin-tui` Client. It carries the **same sixteen pages, in the same order, with the same content** as Desktop Settings ([`../../desktop-mockups/16-settings/`](../../desktop-mockups/16-settings/README.md), DUI-063–DUI-083), re-hosted in the TUI's one-view shell and reinterpreted for a keyboard-only terminal.
 
-Three states:
+This package replaces the earlier "database-backed settings" draft (a generic key/value `settings` table with defaults in a code registry). That model contradicted [ADR-0014](../../../adr/0014-preferences-table-and-leaner-sync-server-config.md), which chose typed Preference tables over a key/value store, and the Desktop design, so it is retired. Settings now follows the same Preference / Configuration split as the Desktop:
 
-| id | state |
-| --- | --- |
-| `4a` | **Settings at rest** — groups pane, the selected group's settings, the `settings` rows behind them |
-| `4b` | **Editing in place** — a row opens where it sits, with a live preview and the exact upsert it will commit |
-| `4c` | **Base unit guard** — the one setting whose commit invalidates derived data; states the cost first |
+- **Preferences and ledger data** are stored in the ledger, sync as Change Sets, and are marked `●` in the index.
+- **Configuration** stays on this device: `personal-ledger.conf`, the OS keychain, or local files. It never syncs and is marked `○`.
+
+Eighteen cards are drawn, one per page plus the General editing states and the Sync Server dialog:
+
+| ID | Local | Page or state | Desktop equivalent |
+| --- | --- | --- | --- |
+| TUI-019 | 4a | General, with the index focused | DUI-063 (16a) |
+| TUI-020 | 4b | General, editing a field in place | 16a field edit |
+| TUI-021 | 4c | Base unit guard (typed confirm) | TUI-only, see below |
+| TUI-032 | 4d | Display | DUI-064 (16f) |
+| TUI-033 | 4e | Units | DUI-065 (16g) |
+| TUI-040 | 4l | Institutions | DUI-066 (16h) |
+| TUI-041 | 4m | Accounts | DUI-067 (16o) |
+| TUI-042 | 4n | Categories | DUI-068 (16i) |
+| TUI-043 | 4o | Tags | DUI-069 (16j) |
+| TUI-044 | 4p | Payees | not drawn on Desktop; built to its spec |
+| TUI-045 | 4q | Documents | DUI-070 (16p) |
+| TUI-046 | 4r | Inventory | DUI-071 (16q) |
+| TUI-034 | 4f | AI Connections | DUI-072 (16v) |
+| TUI-035 | 4g | Sync Server, Edit dialog with a failed test | DUI-073 (16k) + DUI-082 (16s) |
+| TUI-036 | 4h | Backup | DUI-074 (16l) |
+| TUI-037 | 4i | History | DUI-076 (16u) |
+| TUI-038 | 4j | Logs | DUI-075 (16m) |
+| TUI-039 | 4k | About | DUI-077 (16n) |
+
+Cards appear in index order. The IDs are not consecutive because TUI-019–021 keep their IDs from the earlier draft and new cards take the next free numbers, in the order they were added (see [`../../mockup-ids.md`](../../mockup-ids.md)).
 
 ## About the design files
-`Ledger TUI Settings.dc.html` (open in a browser; `support.js` must sit beside it) is a **design reference drawn in HTML**. It is not code to port. HTML was only a fast way to draw a character-grid interface — the target is **Rust + [ratatui](https://ratatui.rs) + crossterm**, using the repo's existing crate layout, domain types and SQLite access layer.
 
-Every px value in the HTML is an artifact of drawing. Read the geometry in **terminal cells** only.
+`Ledger TUI Settings.dc.html` (open it in a browser with `support.js` beside it) is a **design reference drawn in HTML**. It is not code to port. The target is Rust + ratatui + crossterm. Read the geometry in **terminal cells**: every px value is an artifact of drawing.
 
 ## Fidelity
-**Low-to-mid fidelity.** Authoritative about the settings model (defaults in code, overrides in the DB), the resolution and reset semantics, pane structure, keybindings, the command grammar, and what each element implies as a ratatui widget. Not authoritative about exact colors, borders or padding — apply the repo's own theme module. All values, dates and counts in the mock are fake.
+
+**Low-to-mid fidelity.** Authoritative about the pages and their order, what each page shows, scope (synced or this device), pane structure and keyboard. For field lists and sample data the Desktop README is the source. Not authoritative about colours, borders or padding: use the theme roles. All figures are fake.
 
 ---
 
-## The settings model
+## How the Desktop maps to the TUI
 
-This is the part to get right before drawing anything.
-
-```
-value(key) = row in `settings` where key = ?    →  the override
-           else DEFAULTS[key]                  →  compiled into the binary
-```
-
-- **Defaults live in code**, as a static registry — one entry per key. The mock shows 42 of them.
-- **A row exists only when the user has changed something.** The mock's "3 overridden" is literally `SELECT count(*) FROM settings`.
-- **The red dot in the left gutter means "a row exists for this key"** — nothing more. It is not "differs from default" computed by comparison; it is the presence of the override. (These coincide in practice, but implementing it as row-presence is what makes `r` coherent.)
-- **`r` deletes the row.** It does not write the default value back. After `r` there is no row for that key and the view falls through to the default. `R` deletes every row in the focused group.
-- **Commits are transactional and immediate.** Accepting an edit performs one upsert and the next render reads the new value. There is no save step, no dirty buffer, no reload — the words "unsaved" and "write config" do not appear anywhere in this view; `uncommitted`, `commit` and `overridden` do.
-- **Every commit is logged and undoable.** `u` reverses the last settings commit; `H` opens the change log. `undo depth` is itself a setting, kept in the database (default 50 commands).
-
-### Table shape
-
-```sql
-CREATE TABLE settings (
-  key        TEXT PRIMARY KEY,      -- "general.base_unit", dotted, group.name
-  value      TEXT NOT NULL,         -- always TEXT; the registry owns the type
-  changed_at TEXT NOT NULL          -- ISO 8601; renders as "14:02 today" / "02 sep"
-);
-```
-
-`value` is stored as TEXT and parsed against the registry entry's type on read (`Bool`, `Int`, `Enum(&[&str])`, `Unit`, `Date`, `Path`, `String`). A row whose value no longer parses — an enum variant removed by an upgrade, a unit code since deleted — must **fall back to the default and surface as a warning in the change log**, never panic and never block startup.
-
-### Registry entry
-
-The groups pane, the settings list, the `selected` explainer box, validation, and `:set` completion all generate from **one registry**, the same way the palette generates from the action registry. Each entry needs:
-
-```
-key           "general.negatives"
-group         General | Display | UnitsPrices | FilesBackup | Reconcile | Keys | About
-label         "negatives"                  the list's SETTING column
-note          "minus · brackets · trailing"  the list's NOTE column — one line, dim
-kind          Enum(["minus","brackets","trailing"])
-default       "brackets"
-explain       "how a negative amount prints everywhere"   the selected box's prose
-consequence   None | Guard(GuardKind)      routes the commit through a dialog
-affects       &[Redraw | ClearDerived | RebindKeymap]  what to invalidate on commit
-```
-
-`affects` is what makes the commit cheap or expensive, and it drives the guard: a display setting is `Redraw`, `general.base_unit` is `ClearDerived`.
-
-### Bootstrap config — the only static file
-
-`ledger.toml` keeps exactly the keys needed before the database is open, and the settings view shows it **read-only**, as two rows in the left pane's box:
-
-| key | why it can't live in the DB |
+| Desktop | TUI interpretation |
 | --- | --- |
-| `db_path` | needed to find the database |
-| `log_level` | logging starts before the connection |
-| `migrate` | whether to run migrations on open |
-| `color_depth` | terminal init happens before the first query |
+| Settings is a destination with the primary rail kept open | Settings is one View in the shell. There is no primary rail. `g s` or `:settings [page]` opens it. |
+| Second rail (214px) is the index; clicking swaps the pane | Left pane (20 cols) is the index. **Moving the selection with `j/k` swaps the page live**, so you can scan pages without opening them. |
+| Scope note on each page header only | The scope note stays on every page heading. The index also gets a one-glyph scope column (`●` syncs · `○` this device), with a legend pinned to the bottom of the index. |
+| Rail footer "preferences sync · configuration local" | The index legend described above. |
+| Click a field; fields save on change | Focus the page (`l`/`enter`), move to a field (`j/k`), and `enter` opens it **in place**. `enter` saves, `esc` keeps the old value. Saving on commit is the TUI equivalent of "saved automatically". |
+| Segmented controls, radios, checkboxes | Segmented row with `←→` · checkbox `[x]` with `space` · text fields become a one-line input. |
+| `+ Add …` buttons on list pages | The key shown in the block heading (`n add unit`). `n` always adds to the focused block. |
+| Row actions (edit · delete · test …) | Keys in the hint bar acting on the selected row (`e`, `d`, `t` …). |
+| Modal dialogs, 420–540px | Centred floating overlay (`Clear` + bordered `Block`, ~76% width, top third) over the dimmed page, the same treatment as the command palette. |
+| Status bar NORMAL chip + hints | Hint bar per focus. The status line shows the mode (`INSERT`, `CONFIRM`) when it isn't NORMAL, and `✓ Synced HH:MM` on the right. |
+| Header breadcrumb `settings › <page>` | Status line `Personal Ledger │ settings › <page>`. |
 
-Editing these is an `$EDITOR` job outside the app. Do not add a fifth key without the same justification — "needed before the DB is open" is the whole test.
-
----
+**List pages and the full views.** Units, Accounts, Categories, Tags and Payees already have their own full TUI views (`../02-accounts`, `../03-categories`, `../04-payees`, `../06-tags`, `../07-units`). Their Settings pages are the compact management lists Desktop shows, and they use **the same forms and keys** as those views (`n`/`e`/`d`, typed delete confirm). `o` opens the full view, and `esc` from it returns to the Settings page. Their existing `g` jumps stay as they are.
 
 ## Terminal geometry
 
-Drawn at **96 × 30 cells** (one cell ≈ 6.6 × 16.5 px in the HTML), inside the shell's view region.
+Drawn at the shell's **96 × 30 cell** minimum.
 
 ```
-row 0        status line     "ledger · settings / general"   right: `Synced HH:mm` only
-rows 1..n-2  two panes       left 46 cols fixed · right Min(0)
-row n-1      keybind hints   j/k setting · tab groups↔settings · enter edit · r drop override · u undo commit · H change log
+row 0        status line   Personal Ledger │ settings › <page>        [MODE ·] ✓ Synced HH:MM
+rows 1..n-2  two panes     index Length(20) │ page Min(0)
+row n-1      hint bar      contextual to the focused pane and page
 ```
 
-`Layout::horizontal([Constraint::Length(46), Constraint::Min(0)])` — widened from this view's own original 28 cols to match the units view's left column, so the two screens' left panes line up when switching between them. Both panes are stacks of `Constraint::Length` blocks over a `Min(0)` list — no fixed heights on anything holding a list.
+- **Index pane:** `settings 16` heading, 16 rows (label + scope glyph), then `Min(0)`, then the 2-row legend pinned to the bottom. The selected row is reversed when the index has focus. When the page has focus, the row is bold with a 1-col accent bar on the left, so you can still see where you are.
+- **Page pane:** heading row (`settings – <page>` bold on the left, the scope note dim on the right) over a strong rule, then the page body. Bodies are `Length` blocks over a `Min(0)`. Pages that fill the height (Logs, History) give the `Min(0)` to their list.
+- **Degrading below 96 columns:** drop the page's notes column, then collapse the index to its scope glyph and the first 3 letters (`gen ●`), then hide the index entirely and show it as a breadcrumb that `h` reopens.
 
-Degrade below 96 columns: drop the NOTE column → drop the `settings table` block → collapse the groups pane into a header breadcrumb reachable with `h`.
+## Keyboard
 
----
+Focus has two places: the **index** and the **page**.
 
-## 4a — Settings at rest
-
-### Left pane (46 cols)
-
-**`groups` list** — 7 rows, each `label` + right-aligned override-eligible count (`general 8`, `display 7`, `units & prices 6`, `files & backup 5`, `reconcile 4`, `keys 12`, `about —`). Selected row is a full-width reversed block. `about` has no settings and carries `—`; it is a view, not a group. Fixed height at the top of the pane.
-
-**`where values live` box** — the model, stated on screen, because a user cannot otherwise tell where a value came from. A bordered `Block` (echoing the units view's summary box) frames the content, horizontal padding 1:
-
-```
-┌──────────────────────────────────────────┐
-│ ledger.db · table                         │
-│ settings                                  │
-│ overrides       3 rows      ← accent      │
-│ defaults        42 in code                │
-│ last commit     14:02                     │
-│ ────────────────────────────────────────  │
-│ bootstrap 4 keys · ledger.toml read-only  │
-└──────────────────────────────────────────┘
-```
-
-The header (above the box) carries `H log`. The rule above the bootstrap line separates the mutable store from the static file — they are different things and must not read as one list. Trimmed from an earlier two-rule, nine-line draft (a rule after the title, `bootstrap`/`ledger.toml` on separate lines) to recoup the 2 rows the border itself costs, so the box still fits the screen's 96×30-cell minimum.
-
-The gap between the groups list and this box is `Constraint::Min(1)`, not a fixed spacer — any terminal height beyond the 96×30 minimum collects there, so "where values live" and the reset block below it are pushed down and pinned to the bottom of the pane, rather than leaving dead blank space under the reset block on a taller terminal (the same "extra height grows the flexible element, not a fixed one" technique the units view uses for its own summary box).
-
-**`reset` block** — header note `deletes the row`, then `r this setting` / `R whole group`. The note is the important word: it tells the user reset is a deletion, not a write.
-
-### Right pane
-
-Like the left pane, only the settings list is fixed height, at the top; the gap above `selected` is `Min(1)`, not a fixed spacer, so extra terminal height collects there and `selected`, the settings table and the command hint row are pushed down and pinned to the bottom of the pane, rather than sitting just below the settings list with dead space beneath the command hint on a taller terminal.
-
-`selected`'s heading lines up with the left pane's `where values live` heading at every terminal height — deliberately, not by accident: the fixed row count from each heading down to the bottom of its own pane is tuned to match (16 rows on both sides), which is what actually pins two independently-flexible sections to the same row, not the size of whatever's above them. The two gaps around the settings table (2 rows, then 1, rather than a single 1-row gap) exist to hit that number; a future change to any of these sections' heights needs a matching change on the other side to keep the headings aligned (`render_right_pane`'s own doc comment in `settings.rs` spells out the arithmetic).
-
-**Settings list** — four columns: a 1-col override gutter, `SETTING` (18 cols), `VALUE` (14 cols), `NOTE` (Min(0), dim). Column heads dim and uppercase. Selected row is a full-width reversed block. The gutter holds `·` in the accent where a row exists in `settings`, blank otherwise. With the left pane now 46 cols (widened to match the units view), `NOTE` gets noticeably less room at the 96-col minimum than the fixed columns beside it — acceptable at this wireframe stage, but worth widening the minimum terminal geometry if the note text needs to stay unabbreviated.
-
-The eight `general` settings as drawn:
-
-| setting | value | note |
+| Key | Index focused | Page focused |
 | --- | --- | --- |
-| **base unit** ● | `AUD` | every total converts to this |
-| fiscal year starts | `01 jul` | drives year-to-date and reports |
-| week starts | `monday` | w/c label on weekly prices |
-| **date input** ● | `dd/mm/yyyy` | accepted when typing a date |
-| number format | `1 234.56` | space groups · dot decimal |
-| **negatives** ● | `−1 234.56` | minus · brackets · trailing |
-| confirm deletes | `type the name` | off falls back to y/n |
-| undo depth | `50 commands` | kept in the database |
+| `j` / `k` | previous / next page (swaps live) | previous / next field or row |
+| `g` / `G` | first / last page | first / last field or row |
+| `l` / `enter` | focus the page | open the field to edit (form pages); page-specific on list pages |
+| `h` | — | back to the index |
+| `esc` | pop the view stack (leave Settings) | back to the index; inside an editor, keep the old value |
+| `tab` | — | next block on pages with two (Units, AI Connections, Backup) |
+| `u` / `ctrl r` | undo / redo the last change, anywhere in the app (History) | same |
 
-● = overridden (row exists). `VALUE` renders the setting **as it will appear in the app**, not as it is stored — `negatives` shows `−1 234.56`, not `minus`; `date input` shows `dd/mm/yyyy`, not `dmy`. The stored form is shown separately, below.
+Inside an open field (mode `INSERT`): `←→` choose · `space` toggle · `enter` save · `esc` keep the old value · `tab` save and move to the next field.
 
-**`selected` box** — the registry entry's `explain` prose (one line at the 96-col minimum now that the left pane is 46 cols wide — e.g. `which unit every total and report converts into`), then a ruled block of facts:
+Page keys (shown in the hint bar):
+
+| Page | Keys |
+| --- | --- |
+| Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory | `n` add · `e` edit · `d` delete (typed confirm) · `o` open the full view where one exists. Plus Desktop's per-page keys: Tags `x` remove, `m` merge · Documents and Inventory rooms `J`/`K` reorder · Categories and Inventory `→`/`←` expand / collapse · Inventory `r` new room · Accounts `enter` open the account's ledger · Units `t` test a price source |
+| AI Connections | `n` add (provider or assistant, by focused block) · `e` edit · `t` test · `D` make default · `x` remove / revoke |
+| Sync Server | `s` sync now · `e` edit (dialog) |
+| Backup | `b` back up now · `X` export ledger (CSV) · `e` edit Git backup (dialog) · `P` push now |
+| History | `enter` restore to here (or redo to here, on a greyed row) · `f` area filter |
+| Logs | `←→` level · `j/k` scroll · `g/G` newest / oldest · `C` clear · `y` copy line |
+| About | `j/k` link · `enter` open in the browser · `y` copy link |
+
+Dialogs: `tab` next field · `ctrl t` test (where there is a Test) · `enter` save, only when enabled · `esc` cancel. The hint for a disabled `enter` is drawn dim.
+
+### Command grammar
+
+Every action is reachable by name ([`../navigation.md`](../navigation.md)):
 
 ```
-default        USD
-accepts        active currency unit — 2 available
-changing it    re-converts every historical total     ← accent
+settings   [page]              opens Settings on that page (last visited if omitted)
+set        <field> [value]     edits a Preference or Configuration field; without a value, opens it in place
+sync       now | edit
+backup     now | export | git
+undo | redo
 ```
 
-`accepts` resolves against live data (how many units qualify), so it is a query, not static text. `changing it` is present only where the entry has a `consequence`.
-
-**`settings table` block** — the actual rows behind the list, `KEY` / `VALUE` / `CHANGED`. Values render in the **stored** form and in the accent-adjacent "positive" tone: `general.base_unit  AUD  14:02 today`, `general.date_input  dmy  02 sep`. Header shows `3 rows · 2 shown` — it is a truncated view; carry the shell's 1-col scrollbar when it overflows, on the same rules as the palette (drawn only when the list overflows).
-
-This block is the answer to "what will `git diff` on my ledger show" now that there is no config file to diff. Keep it.
-
-**Command hint row** — dim, bottom of the pane: `:set base <unit> · :settings log` — trimmed from a third `:set negatives brackets` example to fit the right pane at the 96-col minimum now that the left pane is 46 cols wide.
+`<page>` completes on the 16 index labels. `<field>` completes on the field names of the form pages (`fy-start`, `base`, `date-style`, `glyphs` …). TUI-020 shows the command line echoing the equivalent `:set`, which is how users learn the typed form.
 
 ---
 
-## 4b — Editing in place
+## Pages
 
-**Implementation status**: `crate::popup::settings::edit::EditSettingPopup`, wireframe stage. Opens on `e` from the Settings view rather than `enter` on a selected row — that view has no real row-navigation yet, so `e`/`enter` are fixed keys that always show this section's own `general.negatives` example, the same simplification `view::units`'s own `n`/`e`/`d` already make (see `view::settings`'s own module doc). It's a centred floating overlay (`popup::unit`'s own "`Clear` + bordered `Block`" treatment) rather than this section's literal "in the row's position, no dialog" — reworking the settings list's row layout to host it in place is a larger change than this stage needs. The status line gets a `· EDIT` mode tag rather than replacing the whole title with `EDIT · uncommitted` (the shell's status line is a flat title everywhere, not this view's own breadcrumb). The focused box's content is trimmed from the ASCII block below (its `was` label reads `current` here, and rules/blank lines between sub-sections are dropped) specifically to keep the popup shorter than the screen's own 96×30-cell minimum — see `EditSettingPopup`'s own `CONTENT_ROWS` doc comment.
+The content of each page is the Desktop's (see its Pages table). Only TUI-specific changes are listed here.
 
-`enter` on a row opens the editor **in the row's position** — the list above and below stays put and dims, and the opened row becomes a bordered focused box. No dialog, no separate screen. The status line shows `EDIT · uncommitted` and the breadcrumb extends to `settings / general / negatives`.
+| Page | Scope | TUI notes |
+| --- | --- | --- |
+| **General** (TUI-019/020) | ● preferences · synced | Fields: ledger name, owner, financial year starts, base unit. Desktop's side-by-side THIS LEDGER summary sits below the fields as a 4-cell box. The editor (TUI-020) shows what the change does: for financial year, the resulting year range, the old value, and what it affects. Changing **base unit** goes through the guard (TUI-021). |
+| **Display** (TUI-032) | ○ configuration · local, but appearance and colour theme ● sync | Every row carries its own scope glyph, because this page mixes scopes. **Appearance** (light · dark · system) and **Colour Theme** are Ledger-scoped Preferences ([ADR-0023](../../../adr/0023-colour-theme-preferences-and-theme-role-overrides.md)) and are already built: `enter` on Colour Theme opens the existing theme list popup. **Toasts** is the Client-scoped Preference from [ADR-0027](../../../adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md), also already built. Desktop's Date format and Separator controls are replaced to follow [ADR-0021](../../../adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md). **Date style** (locale default · short · medium · long · iso) replaces date format. **Locale** is shown read-only. There is no separator control. Status glyphs (unicode / ascii) carry over. TUI-only changes: **Row density** and **Hide sidebar** don't apply. **Terminal colours** (theme RGB / terminal palette, [ADR-0024](../../../adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) is added. Desktop's **Show keyboard navigation hints** becomes **hint bar**. The preview box redraws as you choose. |
+| **Units** (TUI-033) | ● ledger data | UNITS and PRICE SOURCES blocks, switched with `tab`. The base and default flags are drawn as outlined chips. A note for the selected unit states its usage, as Desktop's Edit unit (16c) does. Add, edit and delete reuse the TUI unit forms (TUI-028–031). |
+| **Institutions** (TUI-040) | ● ledger data | INSTITUTION · ACCOUNT TYPES · UNIT · ACCOUNTS, A–Z, then a `selected` box naming the institution's accounts and the full account-type set (chosen types bright, the rest dim). Account types use **one enum** shared with the account form (savings · offset · credit card · loan · investment), fixing Desktop known inconsistency 3. Institution names are the stored names the Accounts page shows, fixing inconsistency 2. |
+| **Accounts** (TUI-041) | ● ledger data | Grouped tables by type (BANK, CREDIT CARD, LOAN, INVESTMENT), each with a dim `type · count` label. NAME · INSTITUTION · UNIT · BALANCE, negatives in the accent. Net worth sits in the heading note. `enter` opens the account's ledger, as on Desktop. Add and edit reuse the TUI account form (TUI-007/008). |
+| **Categories** (TUI-042) | ● ledger data | A tree per kind (EXPENSE, INCOME), with `▾`/`▸` on parents, `├`/`└` connectors and an `n subcategories` note. `→`/`←` expand and collapse. `n` adds a top-level category and `s` adds a subcategory under the selected row, replacing Desktop's `+ sub` row action. No spend or budget columns. Counts are derived (Desktop said "3 levels deep" with only 2 drawn). |
+| **Tags** (TUI-043) | ● ledger data | A–Z with a 1-cell colour swatch and the name in bold. A likely duplicate carries `⚑ looks like a duplicate of "…"` in words plus an inline `m merge`. The box below says what the merge does before you press it. `x` removes, as on Desktop. The merge form is the Tags view's (TUI-025). |
+| **Payees** (TUI-044) | ● ledger data | Desktop indexes Payees but never drew the page. This one follows its spec: NAME · CATEGORY (default) · MATCH RULES, A–Z, without count or spend columns. The `selected` box shows all match rules, the rename aliases ([ADR-0012](../../../adr/0012-payee-entity-with-rename-aliases.md)) and the default category. Draw the Desktop page from this when it's designed. |
+| **Documents** (TUI-045) | ● ledger data | Document types in Documents type-filter order ([ADR-0031](../../../adr/0031-document-types-are-user-managed-ledger-data.md)): TYPE · TRACKS · REMIND · TAX YEAR · FILES. `J`/`K` reorder. The three Desktop notes become four dim lines under the table. |
+| **Inventory** (TUI-046) | ● ledger data | A properties tree. Property rows show policy, sum insured, item limit and items. Room rows are indented under them with derived value and items; room value shares the POLICY · VALUE column, because rooms have no policy. The addresses Desktop shows under each property are left out at 96 columns, to keep each property on one row; show them in the edit form. `n` new property, `r` new room under the selected property, `J`/`K` reorder rooms, `x` remove (asks where to move items). |
+| **AI Connections** (TUI-034) | ○ this device | Model providers and Assistant access (MCP server). Status is a glyph plus a word (`● connected`, `■ key rejected`), never colour alone. Per Client and never synced, and Assistants are read only: Read & write is drawn dim as "not yet offered" ([ADR-0034](../../../adr/0034-ai-connections-are-per-client-and-assistant-access-starts-read-only.md)). |
+| **Sync Server** (TUI-035) | ○ this device · synced | Server URL, status, last sync, `s` sync now. `e` opens the Edit dialog (Desktop 16r/16s). Save stays disabled until a test passes, and a failed test names the cause in plain words. |
+| **Backup** (TUI-036) | ○ this device · local files | LOCAL and GIT BACKUP blocks. Git Backup commits a text dump of the Ledger plus its Documents through LFS, only to a private repository ([ADR-0033](../../../adr/0033-git-backup-pushes-a-text-dump-and-documents-to-a-private-repository.md)), so the block adds a **contents** row. `e` opens Set up Git backup (Desktop 16t) as an overlay like TUI-035. Its Test also checks visibility and LFS support. The commit-message prefix is a fixed dim chip. |
+| **History** (TUI-037) | ● all devices | Same undo stack as Desktop 16u. Undone rows are dim and struck through above a reversed `▸ CURRENT STATE` marker band. The selected applied row reads `enter restore to here`. The area filter is a segmented row cycled with `f`. |
+| **Logs** (TUI-038) | ○ this device · diagnostic | The level filter and `C clear logs` share one row. The log box takes the `Min(0)` and always draws the 1-col scrollbar. Lines are `[hh:mm:ss] <subsystem>: <message>`, newest first. |
+| **About** (TUI-039) | — | "Built with Rust + ratatui + SQLite". Links are rows (`j/k`, `enter` opens in the browser, `y` copies). The copyright is pinned to the bottom. |
 
-The focused box, for an enum setting:
+## TUI-021 — Base unit guard
 
-```
-· negatives      how a negative amount prints everywhere
-  value          [minus] brackets trailing   · ←→
-  preview        −320 334.10                        ← accent
-  was            (320 334.10) · brackets, the default
-  on accept      upsert general.negatives = "minus"
-```
+Desktop's General page changes base unit with a plain select. The TUI keeps the earlier draft's guard, because every reported total is converted again when it changes. The commit is cheap (one Preference write, synced as one Change Set, undoable with `u`), but the result can surprise you. The guard follows the Desktop's typed-delete convention (16d):
 
-- `value` is a segmented row of the enum's variants; the selection is a reversed block, `←`/`→` moves it. Free-text and integer settings take a 1-line input with the same `preview` / `was` / `on accept` rows beneath.
-- `preview` renders a **real figure from the user's data** in the candidate format, not lorem — the net position is the obvious choice.
-- `was` names the current value *and* whether it is the default, in one line. If there is no row yet, `was` reads `… , the default`; if there is, it reads the overridden value.
-- **`on accept` spells out the write**: `upsert general.negatives = "minus"`, or `delete general.negatives` when the candidate equals the default (choosing the default value is a delete, not a write of the same string — the row must not linger).
-
-**`applies to` box** — below the list, the same candidate shown in the three places it lands, so scope is legible before committing:
-
-```
-net position   −320 334.10
-ledger row     Woolworths  −184.20  groceries
-csv export     unaffected — always machine format
-```
-
-The `csv export` line matters: display settings never touch export, and someone will otherwise assume they do.
-
-**Status row** — `uncommitted: enter commits and redraws — esc reverts to brackets`. Name the value `esc` returns to; "cancel" alone is not enough information.
-
-**The command line echoes the equivalent command**: `:set negatives minus▌ — same edit, typed`. Every setting must be settable both ways, and showing the command form here is how the user learns it.
-
-Keys: `←→` choose · `enter` commit · `esc` revert · `r` drop override.
-
----
-
-## 4c — Base unit guard
-
-**Implementation status**: `crate::popup::settings::guard::BaseUnitGuardPopup`, wireframe stage — every figure is this section's own worked example, not a real query. Opens on `enter` from the Settings view directly (rather than by committing an §4b edit for `general.base_unit` specifically) for the same "no real row-navigation yet" reason §4b's own implementation-status note gives; `base unit` happens to be the one row this view's fake data marks selected. The status line gets a `· CONFIRM` mode tag rather than the literal `confirm base unit` text, matching §4b's own status-line simplification.
-
-`general.base_unit` is the one `general` setting with `affects: ClearDerived`. Its commit is a single row like any other, but it invalidates every cached total — so it routes through a **centred floating overlay** (`Clear` + bordered `Block`, ~78% width, anchored in the top third) over the dimmed settings view, exactly like the shell's palette. Status line: `confirm base unit`.
-
-Header: `base unit  AUD → USD` with `:set base` right-aligned.
-
-Body — prose first (three short lines), then the facts, each resolved by query:
-
-```
-transactions are stored in their own units and are
-not touched. Every reported total is re-converted
-at the weekly USD close.
-
-transactions   412 · unchanged
-accounts       11 · 4 already in USD
-re-converted   18 months of totals
-missing rates  6 weeks · nov 25 – dec 25          ← accent
-one write      general.base_unit = "USD"
-then           clears the cached totals · u undoes it
-```
-
-`missing rates` is the reason this dialog exists: converting to a unit you have no closes for silently produces gaps. Name the count **and the range**, then offer the fix as a first-class option rather than an error:
-
-```
-those 6 weeks report as gaps until priced.
-i import USD closes first — :price import
-```
-
-`one write` / `then` state that the commit is cheap and reversible — one row, plus a cache invalidation, undoable with `u`. That is the difference from the old config-file model, and it belongs on screen.
-
-**Confirm by typing the unit code** — a focused 1-line input (`type the unit  USD▌`), matching the delete-confirmation convention on the unit forms (`confirm deletes` governs whether type-the-name or `y/n` applies).
-
-Keys: `enter` commit and re-convert · `i` import first · `esc` cancel. The dimmed view behind keeps its own hint row, greyed, with `esc close dialog`.
-
----
-
-## Command grammar
-
-Extends the shell's registry (noun-first, tab-completable at every position):
-
-```
-set        <key> <value>      key completes on dotted registry keys and on bare labels
-set        <key>              opens 4b for that key, no value typed
-settings                      opens 4a
-settings   log                the change log (H)
-settings   reset <key>        equivalent of r — deletes the row
-settings   reset <group>      equivalent of R
-```
-
-`:set` with no argument opens the palette filtered to settings keys. Value completion comes from the registry entry's `kind` — enum variants, or live data for `Unit`.
-
-## Interactions & behaviour
-- **Modal**: `NORMAL` in the list, `INSERT` inside an open editor, and the guard overlay behaves like the palette (view behind visible and heavily dimmed, app command line greyed).
-- **Motion**: `j/k` setting · `tab` toggles groups↔settings focus · `h` back to groups · `g/G` top/bottom.
-- **Commit** on `enter`; **revert** on `esc`; **drop override** on `r` (`R` for the group); **undo** on `u`; **change log** on `H`.
-- Validation is per-field and inline, in the focused box — never a modal. An invalid value blocks the commit and leaves the editor open.
-- Redraw is event-driven. A settings commit fires the same DB-change event as any other write, so open views pick up the new formatting on their next draw.
-- No mouse support required.
+- Header: `base unit  aud → btc`, with the equivalent `:set base btc` on the right.
+- Prose: transactions keep their own units, and reported totals are converted again.
+- Facts, each a query: transactions (unchanged), accounts (how many are already in the new unit), how many months are converted again, and **missing prices** as a count *and* a range, in the accent. Then `syncs as one Change Set · u undoes it`.
+- The fix is offered as a choice, not an error: `p` opens Settings › Units › price sources.
+- **Type the unit code to confirm.** `enter` is dim until the text matches exactly.
 
 ## State
-Settings view: focused pane · selected group · selected key · the resolved value list for that group (query, do not cache) · the override rows for the `settings table` block. Editor: the candidate value · the validation result · the derived preview figures. Guard: the resolved impact figures (transaction count, account count, months affected, missing-rate weeks and their range) and the typed confirmation buffer. Global: last settings commit for `u`, and the change log ring.
+
+```
+settings_view
+  focus: Index | Page
+  page: General | Display | Units | Institutions | Accounts | Categories | Tags | Payees | Documents
+      | Inventory | AiConnections | SyncServer | Backup | History | Logs | About   // remembered per session
+  page_state: per page — selected field/row, focused block, expanded tree nodes
+  editor: None | Field { field, candidate, was }            // INSERT
+  overlay: None | BaseUnitGuard { to, typed } | EditSyncServer | SetupGitBackup
+         | AddProvider | EditProvider(id) | AddAssistant | the domain forms (unit, account, …)
+```
+
+The data is Desktop's (`preferences` / ledger data / `configuration`, see its State block). Don't cache counts: derive them on each draw from the same queries the domain views use.
 
 ## Style
-The wireframe uses ink `#201e1d` on ground `#f3f2f2`, accent `#ec3013`, greys `#605d5d` / `#9b9797` / `#d7d3d3`, dark variant on `#161413`. Map to **theme roles, not literal RGB** (same table as the shell handoff):
 
-| role | use here | ANSI |
-| --- | --- | --- |
-| accent | the override dot, `missing rates`, `changing it`, the cursor | red |
-| dim | labels, column heads, notes, the read-only bootstrap box | dark grey / `DIM` |
-| selection | current group / setting row, the chosen enum variant | reversed |
-| header bar | status line | reversed |
+Use theme roles, not the wireframe hex values:
 
-Never rely on colour alone: the override dot is a glyph as well as a colour, and the guard's warning also carries its count in words.
+| Role | Used here for |
+| --- | --- |
+| accent | the focused-page index bar, the open field's border, missing prices, failed tests, link text |
+| dim | labels, scope notes, the index legend, undone History rows, disabled hints |
+| selection (reversed) | the selected index row (index focused) or field/row (page focused), the chosen segment, the History marker |
+| header bar | the status line |
+
+Never rely on colour alone. The scope glyphs `●`/`○` are distinct shapes, failures use `■` plus words, and disabled keys are named as disabled in the dialog's own note.
+
+## Known gaps
+
+1. **The Desktop mockup itself predates ADR-0021** on Display (it still shows date format and separators). The TUI follows the ADR. Raise the same correction on the Desktop package.
+2. **AI Connections and Git Backup** are decided in [ADR-0034](../../../adr/0034-ai-connections-are-per-client-and-assistant-access-starts-read-only.md) and [ADR-0033](../../../adr/0033-git-backup-pushes-a-text-dump-and-documents-to-a-private-repository.md). The Desktop mockup still shows Read & write as selectable and says Git backup "commits the store"; build to the ADRs.
+3. **`g s`** already works in `shell.rs`, but [`../navigation.md`](../navigation.md)'s jump table doesn't list it. Add it there.
 
 ## Files
-- `Ledger TUI Settings.dc.html` — turn 4: `4a` at rest, `4b` editing in place, `4c` base unit guard. Open in a browser with `support.js` beside it.
-- `support.js` — runtime for the HTML file, not part of the deliverable.
-- Companion bundles: `design_handoff_ledger_shell` (the shell, palette and action registry this view sits in) and `design_handoff_ledger_units` (the units screen and its forms, which read `general.base_unit` and `week starts`).
 
-## Suggested Claude Code prompt
-> Read `docs/ux/settings/README.md` and open `docs/ux/settings/Ledger TUI Settings.dc.html` in a browser for reference. Build, in this order: (1) the settings registry — one static entry per key with group, label, note, kind, default, explain, consequence and affects — plus the `settings` table migration and a `value(key)` resolver that falls back to the default; (2) `r`/`R` as row *deletes*, the change log, and `u` undo; (3) the 4a two-pane view generated entirely from the registry; (4) the in-place editor with its preview / was / on-accept rows, including the rule that choosing the default deletes the row instead of writing it; (5) the base-unit guard overlay with its queried impact figures. Reduce the static `ledger.toml` to the four bootstrap keys listed in the README and show them read-only. Follow the existing crate layout and SQLite layer, and use theme roles rather than the hex values.
+- `Ledger TUI Settings.dc.html` — TUI-019–021 and TUI-032–046, in index order. Open in a browser with `support.js` beside it.
+- `support.js` — runtime for the HTML file, not part of the deliverable.
+- `CLAUDE_CODE.md` — the staged work plan for building this design in `bin-tui`.

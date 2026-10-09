@@ -35,6 +35,21 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 | TUI-029 | 4c | `tui-mockups/07-units/Ledger TUI Units.dc.html` |
 | TUI-030 | 4d | `tui-mockups/07-units/Ledger TUI Units.dc.html` |
 | TUI-031 | 4e | `tui-mockups/07-units/Ledger TUI Units.dc.html` |
+| TUI-032 | 4d | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-033 | 4e | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-034 | 4f | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-035 | 4g | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-036 | 4h | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-037 | 4i | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-038 | 4j | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-039 | 4k | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-040 | 4l | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-041 | 4m | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-042 | 4n | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-043 | 4o | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-044 | 4p | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-045 | 4q | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
+| TUI-046 | 4r | `tui-mockups/05-settings/Ledger TUI Settings.dc.html` |
 | DUI-001 | 1a | `desktop-mockups/01-shell/Shell.dc.html` |
 | DUI-002 | 1b | `desktop-mockups/01-shell/Shell.dc.html` |
 | DUI-003 | 1c | `desktop-mockups/01-shell/Shell.dc.html` |

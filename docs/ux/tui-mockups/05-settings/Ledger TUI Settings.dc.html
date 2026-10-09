@@ -99,170 +99,946 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 .dk .cmd{background:#201e1d;border-top-color:#605d5d}
 .dk .ovl{background:#161413;border-color:#eae7e7}
 .dk .lcb.g{border-top-color:#605d5d}
+/* ── settings additions ── */
+.pane.ix{flex:none;width:150px;display:flex;flex-direction:column}
+.ixr{grid-template-columns:1fr auto;padding:0}
+.ix .sel{margin:0 -9px;padding:0 9px}
+.pane .row.sel{padding-left:9px;padding-right:9px}
+.hd .k{text-transform:none;letter-spacing:0}
+.cur{font-weight:700;box-shadow:inset 2px 0 0 #ec3013;margin:0 -9px;padding:0 9px}
+.ixf{margin-top:auto;border-top:1px solid #d7d3d3;padding-top:3px;display:flex;flex-direction:column;font-size:9.5px}
+.ph{display:flex;justify-content:space-between;align-items:baseline;gap:10px;border-bottom:2px solid #201e1d;padding-bottom:2px;margin:0 0 6px}
+.ph b{font-weight:700}
+.ph span{font-size:9.5px;color:#9b9797}
+.f{grid-template-columns:150px 1fr;padding:1px 0}
+.f3{grid-template-columns:150px 150px 1fr;padding:1px 0}
+.seg{background:#201e1d;color:#f3f2f2;padding:0 4px}
+.chip{border:1px solid #9b9797;padding:0 3px;font-size:9.5px}
+.chip.a{border-color:#ec3013;color:#ec3013}
+.strike{text-decoration:line-through}
+.mark{background:#201e1d;color:#f3f2f2;padding:1px 9px;margin:1px -9px;display:flex;gap:10px;font-size:10px}
+.mark .mut{color:#bab6b6}
+.scr{position:absolute;right:2px;top:2px;bottom:2px;width:5px;background:#eae7e7}
+.scr i{position:absolute;left:0;right:0;top:0;height:30%;background:#605d5d}
+.dk .ph{border-bottom-color:#eae7e7}
+.dk .seg,.dk .mark{background:#eae7e7;color:#161413}
+.dk .ixf{border-top-color:#444141}
 </style></helmet>
 
 <section class="dv-turn {{ themeClass }}" id="t4">
-<div class="dv-thd"><a class="dv-tid" href="#t4">settings</a><span class="dv-tname">Settings — database-backed</span></div>
-<p class="dv-sub">Settings live in the database, not a config file: every setting has a shipped default in code, and changing one writes a row to <code>settings</code> that overrides it. So a red dot means <i>a row exists for this key</i> — the dot is the override, and <code>r</code> deletes the row rather than writing the default back. Values edit in place (<code>enter</code> opens the row, <code>←→</code> picks an enum, <code>esc</code> reverts), commit in one transaction, and take effect on the next render — nothing to write, nothing to reload. Static config is reduced to the four bootstrap keys needed <i>before</i> the database is open. Settings that rewrite stored data (base unit) still route through a guard dialog.</p>
+<div class="dv-thd"><a class="dv-tid" href="#t4">settings</a><span class="dv-tname">Settings — the Desktop's paged index, driven from the keyboard</span></div>
+<p class="dv-sub">Same sixteen pages, same order and same content as Desktop Settings (package 16), re-hosted in the TUI's one-view shell. The left pane is the index: moving through it with <code>j/k</code> swaps the page on the right immediately, so you can scan every page without opening it. <code>l</code> or <code>enter</code> moves focus into the page, and <code>h</code> or <code>esc</code> moves it back. Form pages edit a field in place and save when you press <code>enter</code>. List pages use the same <code>n</code> / <code>e</code> / <code>d</code> keys and forms as their full views. Each row in the index shows a scope glyph: <code>●</code> syncs with the ledger, <code>○</code> stays on this device. Each page heading repeats its scope in words. Every page also opens by name: <code>:settings &lt;page&gt;</code>.</p>
 
 <div class="dv-opts">
 
+<!-- ═════════ TUI-019 General at rest ═════════ -->
 <div class="dv-opt" id="TUI-019" data-local-id="4a">
-<div class="dv-olabel"><a class="dv-oid" href="#TUI-019">TUI-019</a><span><b>Settings.</b> General group; overridden rows dotted, and the <code>settings</code> rows behind them.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-019">TUI-019</a><span><b>Settings – General.</b> Index focused. The page previews the selected entry before you open it.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px">
-  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; settings / general</span><span>3 overridden &nbsp;·&nbsp; ✓ committed 14:02</span></div>
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › general</span><span>✓ Synced 14:22</span></div>
   <div class="tbody">
-    <div class="pane" style="flex:none;width:200px">
-      <div class="hd">groups <span>7</span></div>
-      <div class="row sel" style="grid-template-columns:1fr auto;margin:0 0 0 -9px"><span>general</span><span>8</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>display</span><span class="mut">7</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>units &amp; prices</span><span class="mut">6</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>files &amp; backup</span><span class="mut">5</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>reconcile</span><span class="mut">4</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>keys</span><span class="mut">12</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>about</span><span class="mut">—</span></div>
-      <div class="hd tight">where values live <span class="note">H log</span></div>
-      <div class="box" style="padding:5px 7px">
-        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">ledger.db · table</span></div>
-        <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span>settings</span></div>
-        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0;border-top:1px solid #d7d3d3"><span class="mut">overrides</span><span class="neg">3 rows</span></div>
-        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0"><span class="mut">defaults</span><span class="mut">42 in code</span></div>
-        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0"><span class="mut">last commit</span><span>14:02</span></div>
-        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0;border-top:1px solid #d7d3d3"><span class="mut">bootstrap</span><span class="mut">4 keys</span></div>
-        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">ledger.toml · read-only</span></div>
-      </div>
-      <div class="hd tight">reset <span class="note">deletes the row</span></div>
-      <div class="row" style="grid-template-columns:1fr"><span class="mut"><span class="k">r</span>this setting</span></div>
-      <div class="row" style="grid-template-columns:1fr"><span class="mut"><span class="k">R</span>whole group</span></div>
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr sel"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
     </div>
     <div class="pane">
-      <div class="hd">general <span>8 settings · 3 overridden</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">SETTING</span><span class="mut">VALUE</span><span class="mut">NOTE</span></div>
-      <div class="row sel" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0;margin:0 -9px"><span class="neg">·</span><span>base unit</span><span>AUD</span><span>every total converts to this</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>fiscal year starts</span><span>01 jul</span><span class="mut">drives year-to-date and reports</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>week starts</span><span>monday</span><span class="mut">w/c label on weekly prices</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span class="neg">·</span><span>date input</span><span>dd/mm/yyyy</span><span class="mut">accepted when typing a date</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>number format</span><span>1 234.56</span><span class="mut">space groups · dot decimal</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span class="neg">·</span><span>negatives</span><span>−1 234.56</span><span class="mut">minus · brackets · trailing</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>confirm deletes</span><span>type the name</span><span class="mut">off falls back to y/n</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span>undo depth</span><span>50 commands</span><span class="mut">kept in the database</span></div>
-      <div class="hd tight">selected <span>base unit</span></div>
-      <div class="box" style="padding:5px 7px">
-        <div class="row" style="grid-template-columns:1fr;padding:0"><span>The unit every account, report and net-position figure is</span></div>
-        <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span>converted into, using the weekly close of each unit.</span></div>
-        <div class="row" style="grid-template-columns:96px 1fr;padding:1px 0;border-top:1px solid #d7d3d3"><span class="mut">default</span><span class="mut">USD</span></div>
-        <div class="row" style="grid-template-columns:96px 1fr;padding:1px 0"><span class="mut">accepts</span><span class="mut">any active currency unit — 2 available</span></div>
-        <div class="row" style="grid-template-columns:96px 1fr;padding:1px 0"><span class="mut">changing it</span><span class="neg">re-converts every historical total</span></div>
+      <div class="ph"><b>settings – general</b><span>preferences · synced · ledger identity</span></div>
+      <div class="row f"><span class="mut">ledger name</span><span>Teda household</span></div>
+      <div class="row f"><span class="mut">owner</span><span>Ian Teda</span></div>
+      <div class="row f"><span class="mut">financial year starts</span><span>july <span class="mut">&nbsp;· january · april</span></span></div>
+      <div class="row f"><span class="mut">base unit</span><span>aud <span class="mut">— Australian Dollar</span></span></div>
+      <div class="hd tight">this ledger</div>
+      <div class="box">
+        <div class="row" style="grid-template-columns:repeat(4,1fr);padding:0"><span class="mut">accounts</span><span class="mut">transactions</span><span class="mut">units</span><span class="mut">institutions</span></div>
+        <div class="row" style="grid-template-columns:repeat(4,1fr);padding:0"><b>7</b><b>680</b><b>3</b><b>6</b></div>
       </div>
-      <div class="hd tight">settings table <span>3 rows · 2 shown</span></div>
-      <div class="row" style="grid-template-columns:130px 104px 1fr;padding:1px 0"><span class="mut">KEY</span><span class="mut">VALUE</span><span class="mut">CHANGED</span></div>
-      <div class="row" style="grid-template-columns:130px 104px 1fr;padding:0"><span class="mut">general.base_unit</span><span class="pos">AUD</span><span class="mut">14:02 today</span></div>
-      <div class="row" style="grid-template-columns:130px 104px 1fr;padding:0"><span class="mut">general.date_input</span><span class="pos">dmy</span><span class="mut">02 sep</span></div>
-      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0"><span class="mut">:set base &lt;unit&gt; &nbsp;·&nbsp; :set negatives brackets &nbsp;·&nbsp; :settings log</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">General settings are ledger-scoped Preferences. They travel with the</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">ledger as Change Sets. Settings for this device are under display.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0;margin-top:auto"></div>
     </div>
   </div>
-  <div class="tk"><span><span class="k">j/k</span>setting</span><span><span class="k">tab</span>groups↔settings</span><span><span class="k">enter</span>edit</span><span><span class="k">r</span>drop override</span><span><span class="k">u</span>undo commit</span><span><span class="k">H</span>change log</span></div>
+  <div class="tk"><span><span class="k">j/k</span>page</span><span><span class="k">l</span>open page</span><span><span class="k">g/G</span>first/last</span><span><span class="k">:settings</span>&lt;page&gt;</span><span><span class="k">u</span>undo</span><span><span class="k">esc</span>back</span></div>
 </div>
 </div>
 </div>
 
+<!-- ═════════ TUI-020 Editing in place ═════════ -->
 <div class="dv-opt" id="TUI-020" data-local-id="4b">
-<div class="dv-olabel"><a class="dv-oid" href="#TUI-020">TUI-020</a><span><b>Editing in place.</b> <code>enter</code> opens the row where it sits — inline options, live preview, and one committed row on accept.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-020">TUI-020</a><span><b>Editing in place.</b> Page focused. <code>enter</code> opens the field where it sits, <code>←→</code> chooses, and <code>enter</code> saves.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px">
-  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; settings / general / negatives</span><span>EDIT &nbsp;·&nbsp; uncommitted</span></div>
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › general</span><span>INSERT &nbsp;·&nbsp; ✓ Synced 14:22</span></div>
   <div class="tbody">
-    <div class="pane" style="flex:none;width:200px;opacity:.45">
-      <div class="hd">groups <span>7</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>general</span><span class="mut">8</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>display</span><span class="mut">7</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>units &amp; prices</span><span class="mut">6</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>files &amp; backup</span><span class="mut">5</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>reconcile</span><span class="mut">4</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>keys</span><span class="mut">12</span></div>
-      <div class="row" style="grid-template-columns:1fr auto"><span>about</span><span class="mut">—</span></div>
-      <div class="hd tight">where values live</div>
-      <div class="box" style="padding:5px 7px">
-        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">ledger.db · table</span></div>
-        <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span>settings</span></div>
-        <div class="row" style="grid-template-columns:1fr auto;padding:1px 0;border-top:1px solid #d7d3d3"><span class="mut">overrides</span><span class="neg">3 rows</span></div>
-      </div>
+    <div class="pane ix" style="opacity:.45">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr cur"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
     </div>
     <div class="pane">
-      <div class="hd">general <span>editing 1 of 8</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">SETTING</span><span class="mut">VALUE</span><span class="mut">NOTE</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span class="neg">·</span><span class="mut">base unit</span><span class="mut">AUD</span><span class="mut">every total converts to this</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">fiscal year starts</span><span class="mut">01 jul</span><span class="mut">drives year-to-date and reports</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">week starts</span><span class="mut">monday</span><span class="mut">w/c label on weekly prices</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span class="neg">·</span><span class="mut">date input</span><span class="mut">dd/mm/yyyy</span><span class="mut">accepted when typing a date</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">number format</span><span class="mut">1 234.56</span><span class="mut">space groups · dot decimal</span></div>
-      <div class="box foc" style="margin:2px 0;padding:4px 6px">
-        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:0"><span class="neg">·</span><span>negatives</span><span class="mut">how a negative amount prints everywhere</span></div>
-        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:3px 0 0"><span></span><span class="mut">value</span><span><span style="background:#201e1d;color:#fff;padding:0 4px">minus</span> brackets trailing &nbsp;<span class="mut">· ←→</span></span></div>
-        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:1px 0"><span></span><span class="mut">preview</span><span class="neg">−320 334.10</span></div>
-        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:1px 0"><span></span><span class="mut">was</span><span class="mut">(320 334.10) · brackets, the default</span></div>
-        <div class="row" style="grid-template-columns:9px 130px 1fr;padding:1px 0"><span></span><span class="mut">on accept</span><span class="mut">upsert general.negatives = "minus"</span></div>
+      <div class="ph"><b>settings – general</b><span>preferences · synced · ledger identity</span></div>
+      <div class="row f"><span class="mut">ledger name</span><span class="mut">Teda household</span></div>
+      <div class="row f"><span class="mut">owner</span><span class="mut">Ian Teda</span></div>
+      <div class="box foc" style="margin:2px 0">
+        <div class="row f" style="padding:0"><span>financial year starts</span><span><span class="seg">january</span> &nbsp;july &nbsp;april &nbsp;<span class="mut">· ←→</span></span></div>
+        <div class="row f" style="padding:3px 0 0"><span class="mut">this year runs</span><span class="neg">01 jan 2026 – 31 dec 2026</span></div>
+        <div class="row f"><span class="mut">was</span><span class="mut">july · 01 jul 2026 – 30 jun 2027</span></div>
+        <div class="row f"><span class="mut">changes</span><span class="mut">year-to-date · budget years · reports</span></div>
+        <div class="row f"><span class="mut">on enter</span><span class="mut">saves and syncs as one Change Set · <span class="k">u</span> undoes</span></div>
       </div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">confirm deletes</span><span class="mut">type the name</span><span class="mut">off falls back to y/n</span></div>
-      <div class="row" style="grid-template-columns:9px 130px 104px 1fr;padding:1px 0"><span></span><span class="mut">undo depth</span><span class="mut">50 commands</span><span class="mut">kept in the database</span></div>
-      <div class="hd tight">applies to <span>everywhere an amount prints</span></div>
-      <div class="box" style="padding:5px 7px">
-        <div class="row" style="grid-template-columns:118px 1fr;padding:1px 0"><span class="mut">net position</span><span class="neg">−320 334.10</span></div>
-        <div class="row" style="grid-template-columns:118px 1fr;padding:1px 0"><span class="mut">ledger row</span><span>Woolworths &nbsp;<span class="neg">−184.20</span> &nbsp;<span class="mut">groceries</span></span></div>
-        <div class="row" style="grid-template-columns:118px 1fr;padding:1px 0"><span class="mut">csv export</span><span class="mut">unaffected — always machine format</span></div>
+      <div class="row f"><span class="mut">base unit</span><span class="mut">aud — Australian Dollar</span></div>
+      <div class="hd tight">this ledger</div>
+      <div class="box" style="opacity:.6">
+        <div class="row" style="grid-template-columns:repeat(4,1fr);padding:0"><span class="mut">accounts</span><span class="mut">transactions</span><span class="mut">units</span><span class="mut">institutions</span></div>
+        <div class="row" style="grid-template-columns:repeat(4,1fr);padding:0"><b>7</b><b>680</b><b>3</b><b>6</b></div>
       </div>
-      <div class="row" style="grid-template-columns:1fr;padding:3px 0 0"><span class="mut">uncommitted: <span class="k">enter</span> commits and redraws — <span class="k">esc</span> reverts to brackets</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">unsaved: <span class="k">enter</span> saves january — <span class="k">esc</span> keeps july</span></div>
     </div>
   </div>
-  <div class="cmd">:set negatives minus<span class="neg">▌</span> &nbsp;<span class="mut">— same edit, typed</span></div>
-  <div class="tk"><span><span class="k">←→</span>choose</span><span><span class="k">enter</span>commit</span><span><span class="k">esc</span>revert</span><span><span class="k">r</span>drop override</span></div>
+  <div class="cmd">:set fy-start january<span class="neg">▌</span> &nbsp;<span class="mut">— the same edit as a command</span></div>
+  <div class="tk"><span><span class="k">←→</span>choose</span><span><span class="k">enter</span>save</span><span><span class="k">esc</span>keep july</span><span><span class="k">tab</span>next field</span></div>
 </div>
 </div>
 </div>
 
+<!-- ═════════ TUI-021 Base unit guard ═════════ -->
 <div class="dv-opt" id="TUI-021" data-local-id="4c">
-<div class="dv-olabel"><a class="dv-oid" href="#TUI-021">TUI-021</a><span><b>Base unit guard.</b> One setting whose row invalidates derived data — it states the cost before committing.</span></div>
-<div class="dv-card" style="width:452px">
-<div class="t" style="height:380px;position:relative">
-  <div class="tbar"><span><b>ledger</b> &nbsp;·&nbsp; settings / general</span><span>confirm base unit</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-021">TUI-021</a><span><b>Base unit guard.</b> Changing the base unit converts every reported total again, so it states what will change and asks you to type the code.</span></div>
+<div class="dv-card" style="width:500px">
+<div class="t" style="height:400px;position:relative">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › general</span><span>CONFIRM &nbsp;·&nbsp; ✓ Synced 14:22</span></div>
   <div class="pane" style="opacity:.3">
-    <div class="hd">general <span>8 settings</span></div>
-    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">base unit</span><span>AUD</span></div>
-    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">fiscal year starts</span><span class="mut">01 jul</span></div>
-    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">week starts</span><span class="mut">monday</span></div>
-    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">date input</span><span class="mut">dd/mm/yyyy</span></div>
-    <div class="row" style="grid-template-columns:130px 1fr"><span class="mut">number format</span><span class="mut">1 234.56</span></div>
+    <div class="ph"><b>settings – general</b><span>preferences · synced</span></div>
+    <div class="row f"><span class="mut">ledger name</span><span>Teda household</span></div>
+    <div class="row f"><span class="mut">owner</span><span>Ian Teda</span></div>
+    <div class="row f"><span class="mut">financial year starts</span><span>july</span></div>
+    <div class="row f"><span class="mut">base unit</span><span>aud</span></div>
   </div>
-  <div class="ovl" style="position:absolute;left:6%;right:6%;top:15%;padding:0">
-    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><span>base unit &nbsp;AUD → USD</span><span class="mut">:set base</span></div>
+  <div class="ovl" style="position:absolute;left:5%;right:5%;top:12%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><b>base unit &nbsp;aud → btc</b><span class="mut">:set base btc</span></div>
     <div style="padding:5px 8px">
-      <div class="row" style="grid-template-columns:1fr;padding:0"><span>transactions are stored in their own units and are</span></div>
-      <div class="row" style="grid-template-columns:1fr;padding:0"><span>not touched. Every reported total is re-converted</span></div>
-      <div class="row" style="grid-template-columns:1fr;padding:0 0 3px"><span>at the weekly USD close.</span></div>
-      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">transactions</span><span>412 <span class="mut">· unchanged</span></span></div>
-      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">accounts</span><span>11 <span class="mut">· 4 already in USD</span></span></div>
-      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">re-converted</span><span>18 months of totals</span></div>
-      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">missing rates</span><span class="neg">6 weeks <span class="mut">· nov 25 – dec 25</span></span></div>
-      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">one write</span><span class="mut">general.base_unit = "USD"</span></div>
-      <div class="row" style="grid-template-columns:104px 1fr"><span class="mut">then</span><span class="mut">clears the cached totals · <span class="k">u</span> undoes it</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span>Transactions keep their own units and don't change.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0 0 4px"><span>Every reported total is converted again into btc.</span></div>
+      <div class="row" style="grid-template-columns:110px 1fr"><span class="mut">transactions</span><span>680 <span class="mut">· unchanged</span></span></div>
+      <div class="row" style="grid-template-columns:110px 1fr"><span class="mut">accounts</span><span>7 <span class="mut">· 1 already in btc</span></span></div>
+      <div class="row" style="grid-template-columns:110px 1fr"><span class="mut">converted again</span><span>18 months of totals</span></div>
+      <div class="row" style="grid-template-columns:110px 1fr"><span class="mut">missing prices</span><span class="neg">4 months <span class="mut">· mar 25 – jun 25</span></span></div>
+      <div class="row" style="grid-template-columns:110px 1fr"><span class="mut">then</span><span class="mut">syncs as one Change Set · <span class="k">u</span> undoes it</span></div>
       <div class="box" style="margin:5px 0 1px;padding:4px 6px">
-        <div class="row" style="grid-template-columns:1fr;padding:0"><span>those 6 weeks report as gaps until priced.</span></div>
-        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut"><span class="k">i</span>import USD closes first <span class="mut">— :price import</span></span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span>Those 4 months show as gaps until they have prices.</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut"><span class="k">p</span>open price sources first — settings › units</span></div>
       </div>
       <div class="box foc" style="margin:4px 0 1px;padding:4px 6px">
-        <div class="row" style="grid-template-columns:auto 1fr;padding:0"><span class="mut">type the unit</span><span>USD<span class="neg">▌</span></span></div>
+        <div class="row" style="grid-template-columns:auto 1fr;padding:0"><span class="mut">type btc to confirm &nbsp;</span><span>bt<span class="neg">▌</span></span></div>
       </div>
     </div>
-    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">enter</span>commit and re-convert</span><span><span class="k">i</span>import first</span><span><span class="k">esc</span>cancel</span></div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span class="mut"><span class="k" style="background:#9b9797">enter</span>change base unit</span><span><span class="k">p</span>price sources</span><span><span class="k">esc</span>cancel</span></div>
   </div>
   <div class="tk"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close dialog</span></div>
 </div>
 </div>
 </div>
 
+<!-- ═════════ TUI-032 Display ═════════ -->
+<div class="dv-opt" id="TUI-032" data-local-id="4d">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-032">TUI-032</a><span><b>Settings – Display.</b> Mostly device configuration. Appearance and colour theme sync, so each row carries its own scope glyph.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › display</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – display</b><span>configuration · local · theme syncs</span></div>
+      <div class="row sel" style="grid-template-columns:12px 138px 1fr"><span>●</span><span>appearance</span><span>light &nbsp;dark &nbsp;[system]</span></div>
+      <div class="row" style="grid-template-columns:12px 138px 1fr;padding:1px 0"><span class="mut">●</span><span class="mut">colour theme</span><span>Modernist <span class="mut">· enter opens the theme list</span></span></div>
+      <div class="row" style="grid-template-columns:12px 138px 1fr;padding:1px 0"><span class="mut">○</span><span class="mut">date style</span><span>[locale] <span class="mut">· short · medium · long · iso</span></span></div>
+      <div class="row" style="grid-template-columns:12px 138px 1fr;padding:1px 0"><span class="mut">○</span><span class="mut">locale</span><span>en-AU <span class="mut">· from the config file · read-only</span></span></div>
+      <div class="row" style="grid-template-columns:12px 138px 1fr;padding:1px 0"><span class="mut">○</span><span class="mut">terminal colours</span><span>theme rgb <span class="mut">· terminal palette</span></span></div>
+      <div class="row" style="grid-template-columns:12px 138px 1fr;padding:1px 0"><span class="mut">○</span><span class="mut">status glyphs</span><span>unicode <span class="mut">○ ◐ ● ⚑ &nbsp;· ascii o / x !</span></span></div>
+      <div class="row" style="grid-template-columns:12px 138px 1fr;padding:1px 0"><span class="mut">○</span><span class="mut">toasts</span><span>[x] show toasts <span class="mut">· errors always show</span></span></div>
+      <div class="row" style="grid-template-columns:12px 138px 1fr;padding:1px 0"><span class="mut">○</span><span class="mut">hint bar</span><span>[x] show key hints <span class="mut">· also shows g-jumps</span></span></div>
+      <div class="hd tight">preview <span>date · payee · amount</span></div>
+      <div class="box">
+        <div class="row" style="grid-template-columns:14px 110px 1fr auto;padding:0"><span>●</span><span>12 sep 2026</span><span>Woolworths Metro</span><span class="n neg">−86.40</span></div>
+        <div class="row" style="grid-template-columns:14px 110px 1fr auto;padding:0"><span>◐</span><span>10 sep 2026</span><span>Telstra</span><span class="n neg">−99.00</span></div>
+        <div class="row" style="grid-template-columns:14px 110px 1fr auto;padding:0"><span>⚑</span><span>09 sep 2026</span><span>Dept of Education</span><span class="n">+4,210.00</span></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">Read from personal-ledger.conf at start-up and written back here.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">● rows sync with the ledger. The locale changes only in the file, then a restart.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>edit</span><span><span class="k">space</span>toggle</span><span><span class="k">h</span>index</span><span><span class="k">esc</span>back</span></div>
 </div>
-<p class="dv-next" style="display:none">Try next: "the change log — <code>:settings log</code> with undo" · "the keys group — rebinding a key and its conflict state" · "display group with the theme preview" · "settings search from the palette (<code>:set</code> with no argument)"</p>
+</div>
+</div>
+
+<!-- ═════════ TUI-033 Units list page ═════════ -->
+<div class="dv-opt" id="TUI-033" data-local-id="4e">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-033">TUI-033</a><span><b>Settings – Units.</b> A list page, the pattern for every ledger-data page. It uses the same forms and keys as the full Units view, which <code>o</code> opens.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › units</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr cur"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – units</b><span>ledger data · synced · 3 units</span></div>
+      <div class="hd">units <span><span class="k">n</span>add unit</span></div>
+      <div class="row" style="grid-template-columns:44px 150px 1fr 90px 60px;padding:0"><span class="mut">CODE</span><span class="mut">NAME</span><span class="mut">FLAGS</span><span class="mut">SOURCE</span><span class="mut">TYPE</span></div>
+      <div class="row sel" style="grid-template-columns:44px 150px 1fr 90px 60px;padding:0 9px"><span>aud</span><span>Australian Dollar</span><span><span class="chip a" style="border-color:#ffc4b8;color:#ffc4b8">base</span> <span class="chip" style="border-color:#bab6b6;color:#f3f2f2">default</span></span><span class="mut">—</span><span>currency</span></div>
+      <div class="row" style="grid-template-columns:44px 150px 1fr 90px 60px;padding:0"><span>btc</span><span>Bitcoin</span><span></span><span class="mut">CoinGecko</span><span>crypto</span></div>
+      <div class="row" style="grid-template-columns:44px 150px 1fr 90px 60px;padding:0"><span>vas</span><span>Vanguard Aus Shares</span><span></span><span class="mut">manual</span><span>etf</span></div>
+      <div class="hd tight">price sources <span><span class="k">n</span>add source</span></div>
+      <div class="row" style="grid-template-columns:150px 1fr 100px;padding:0"><span class="mut">NAME</span><span class="mut">SOURCE</span><span class="mut">LAST UPDATED</span></div>
+      <div class="row" style="grid-template-columns:150px 1fr 100px;padding:0"><span>Bitcoin</span><span>CoinGecko <span class="mut">· auto, every 15 min</span></span><span class="mut">5 minutes ago</span></div>
+      <div class="row" style="grid-template-columns:150px 1fr 100px;padding:0"><span>Vanguard Aus Shares</span><span>manual entry</span><span class="mut">—</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:10px 0 0"><span class="mut">aud is used by 4 accounts and 604 transactions. Renaming it is safe.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">Changing its code changes every reference. Deleting asks you to type the code.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">tab</span>units↔sources</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">t</span>test source</span><span><span class="k">o</span>open units view</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-040 Institutions ═════════ -->
+<div class="dv-opt" id="TUI-040" data-local-id="4l">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-040">TUI-040</a><span><b>Settings – Institutions.</b> The banks and funds that hold accounts. Account types come from the same enum the account form uses.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › institutions</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – institutions</b><span>ledger data · synced · 6 institutions</span></div>
+      <div class="hd">a–z <span><span class="k">n</span>add institution</span></div>
+      <div class="row" style="grid-template-columns:140px 1fr 50px 60px;padding:0"><span class="mut">INSTITUTION</span><span class="mut">ACCOUNT TYPES</span><span class="mut">UNIT</span><span class="mut n">ACCOUNTS</span></div>
+      <div class="row" style="grid-template-columns:140px 1fr 50px 60px;padding:0"><span>American Express</span><span>credit card</span><span>aud</span><span class="n">1</span></div>
+      <div class="row sel" style="grid-template-columns:140px 1fr 50px 60px;padding:0 9px"><span>ANZ</span><span>savings · offset · loan</span><span>aud</span><span class="n">3</span></div>
+      <div class="row" style="grid-template-columns:140px 1fr 50px 60px;padding:0"><span>AustralianSuper</span><span>investment</span><span>aud</span><span class="n mut">0</span></div>
+      <div class="row" style="grid-template-columns:140px 1fr 50px 60px;padding:0"><span>Crypto.com</span><span>investment</span><span>btc</span><span class="n">1</span></div>
+      <div class="row" style="grid-template-columns:140px 1fr 50px 60px;padding:0"><span>Vanguard</span><span>investment</span><span>vas</span><span class="n">1</span></div>
+      <div class="row" style="grid-template-columns:140px 1fr 50px 60px;padding:0"><span>Westpac</span><span>savings</span><span>aud</span><span class="n">1</span></div>
+      <div class="hd tight">selected <span>ANZ</span></div>
+      <div class="box">
+        <div class="row f" style="padding:0"><span class="mut">accounts</span><span>ANZ Everyday · ANZ Offset · Home Loan</span></div>
+        <div class="row f" style="padding:0"><span class="mut">account types</span><span>savings · offset · loan <span class="mut">· credit card · investment</span></span></div>
+        <div class="row f" style="padding:0"><span class="mut">default unit</span><span>aud <span class="mut">— new accounts here start in aud</span></span></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">Deleting an institution that still holds accounts asks you to move them first.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-041 Accounts ═════════ -->
+<div class="dv-opt" id="TUI-041" data-local-id="4m">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-041">TUI-041</a><span><b>Settings – Accounts.</b> Grouped by type. <code>enter</code> opens the account's ledger, <code>o</code> the full Accounts view.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › accounts</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – accounts</b><span>ledger data · synced · 7 accounts · net worth <b style="color:#201e1d">−113,943.13 aud</b></span></div>
+      <div class="hd">by type <span><span class="k">n</span>add account</span></div>
+      <div class="row" style="grid-template-columns:1fr 120px 44px 110px;padding:0"><span class="mut">NAME</span><span class="mut">INSTITUTION</span><span class="mut">UNIT</span><span class="mut n">BALANCE</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 0"><span class="lab">bank · 3</span></div>
+      <div class="row sel" style="grid-template-columns:1fr 120px 44px 110px;padding:0 9px"><span>ANZ Everyday</span><span>ANZ</span><span>aud</span><span class="n">4,182.55</span></div>
+      <div class="row" style="grid-template-columns:1fr 120px 44px 110px;padding:0"><span>ANZ Offset</span><span>ANZ</span><span>aud</span><span class="n">61,204.10</span></div>
+      <div class="row" style="grid-template-columns:1fr 120px 44px 110px;padding:0"><span>Westpac Savings</span><span>Westpac</span><span>aud</span><span class="n">18,500.00</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 0"><span class="lab">credit card · 1</span></div>
+      <div class="row" style="grid-template-columns:1fr 120px 44px 110px;padding:0"><span>Amex Platinum</span><span>American Express</span><span>aud</span><span class="n neg">−2,318.44</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 0"><span class="lab">loan · 1</span></div>
+      <div class="row" style="grid-template-columns:1fr 120px 44px 110px;padding:0"><span>Home Loan</span><span>ANZ</span><span>aud</span><span class="n neg">−381,311.34</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 0"><span class="lab">investment · 2</span></div>
+      <div class="row" style="grid-template-columns:1fr 120px 44px 110px;padding:0"><span>Vanguard VAS</span><span>Vanguard</span><span>vas</span><span class="n">1,240 u</span></div>
+      <div class="row" style="grid-template-columns:1fr 120px 44px 110px;padding:0"><span>Bitcoin</span><span>Crypto.com</span><span>btc</span><span class="n">0.4120 u</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">Add and edit use the account form from the Accounts view (TUI-007, TUI-008).</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">Unit balances convert to aud for net worth at the latest weekly close.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">enter</span>open ledger</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">o</span>open accounts view</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-042 Categories ═════════ -->
+<div class="dv-opt" id="TUI-042" data-local-id="4n">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-042">TUI-042</a><span><b>Settings – Categories.</b> A tree, by kind. <code>→/←</code> expand and collapse, <code>s</code> adds a subcategory under the selected row.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › categories</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – categories</b><span>ledger data · synced · 12 categories · 2 levels deep</span></div>
+      <div class="hd">expense · 10 <span><span class="k">n</span>add category</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0"><span>▾</span><b>Housing</b><span class="mut">1 subcategory</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0 0 0 16px"><span class="mut">└</span><span>Rent</span><span></span></div>
+      <div class="row sel" style="grid-template-columns:14px 1fr auto;padding:0 9px"><span>▾</span><b>Utilities</b><span>2 subcategories</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0 0 0 16px"><span class="mut">├</span><span>Electricity</span><span></span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0 0 0 16px"><span class="mut">└</span><span>Water</span><span></span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0"><span>▾</span><b>Food</b><span class="mut">2 subcategories</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0 0 0 16px"><span class="mut">├</span><span>Groceries</span><span></span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0 0 0 16px"><span class="mut">└</span><span>Dining</span><span></span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0"><span></span><span>Transport</span><span></span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0"><span></span><span>Household</span><span></span></div>
+      <div class="hd tight">income · 2</div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0"><span></span><span>Salary</span><span></span></div>
+      <div class="row" style="grid-template-columns:14px 1fr auto;padding:0"><span></span><span>Interest</span><span></span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">Categories nest to any depth. Only leaf categories can be picked on a</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">transaction. Spend and budgets live in Reports and Budgets, not here.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">→/←</span>expand/collapse</span><span><span class="k">n</span>add</span><span><span class="k">s</span>add sub</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">o</span>open categories view</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-043 Tags ═════════ -->
+<div class="dv-opt" id="TUI-043" data-local-id="4o">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-043">TUI-043</a><span><b>Settings – Tags.</b> A–Z with a colour swatch. A likely duplicate is flagged in words and offers <code>m</code> merge.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › tags</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – tags</b><span>ledger data · synced · 7 tags · <span class="neg">1 likely duplicate</span></span></div>
+      <div class="hd">a–z <span><span class="k">n</span>add tag</span></div>
+      <div class="row" style="grid-template-columns:14px 140px 1fr;padding:0"><span class="sw" style="background:#2ecc71"></span><b>gift</b><span></span></div>
+      <div class="row" style="grid-template-columns:14px 140px 1fr;padding:0"><span class="sw" style="background:#9b9797"></span><b>one-off</b><span></span></div>
+      <div class="row" style="grid-template-columns:14px 140px 1fr;padding:0"><span class="sw" style="background:#3b82f6"></span><b>reimbursable</b><span></span></div>
+      <div class="row" style="grid-template-columns:14px 140px 1fr;padding:0"><span class="sw" style="background:#ec3013"></span><b>shared</b><span></span></div>
+      <div class="row sel" style="grid-template-columns:14px 140px 1fr;padding:0 9px"><span class="sw" style="background:#ec3013"></span><b>Shared</b><span>⚑ looks like a duplicate of "shared" · <span class="k" style="background:#ffc4b8;color:#201e1d">m</span>merge</span></div>
+      <div class="row" style="grid-template-columns:14px 140px 1fr;padding:0"><span class="sw" style="background:#f59e0b"></span><b>tax-deductible</b><span></span></div>
+      <div class="row" style="grid-template-columns:14px 140px 1fr;padding:0"><span class="sw" style="background:#605d5d"></span><b>work-trip</b><span></span></div>
+      <div class="hd tight">merge Shared → shared</div>
+      <div class="box">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">Every transaction tagged Shared is retagged shared, then Shared is</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">removed. Opens the merge form from the Tags view (TUI-025), and <span class="k">u</span> undoes it.</span></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">Usage counts and last-used dates live in the Tags view, not here.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">x</span>remove</span><span><span class="k">m</span>merge</span><span><span class="k">o</span>open tags view</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-044 Payees ═════════ -->
+<div class="dv-opt" id="TUI-044" data-local-id="4p">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-044">TUI-044</a><span><b>Settings – Payees.</b> Not drawn on Desktop yet; built to its spec: name, default category and match rules, without count or spend columns.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › payees</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – payees</b><span>ledger data · synced · 8 payees</span></div>
+      <div class="hd">a–z <span><span class="k">n</span>add payee</span></div>
+      <div class="row" style="grid-template-columns:150px 110px 1fr;padding:0"><span class="mut">NAME</span><span class="mut">CATEGORY</span><span class="mut">MATCH RULES</span></div>
+      <div class="row" style="grid-template-columns:150px 110px 1fr;padding:0"><b>Bunnings</b><span>Household</span><span class="mut">BUNNINGS*</span></div>
+      <div class="row" style="grid-template-columns:150px 110px 1fr;padding:0"><b>Camera House</b><span>Household</span><span class="mut">CAMERA HOUSE*</span></div>
+      <div class="row" style="grid-template-columns:150px 110px 1fr;padding:0"><b>Coles</b><span>Groceries</span><span class="mut">COLES * · COLES EXPRESS*</span></div>
+      <div class="row" style="grid-template-columns:150px 110px 1fr;padding:0"><b>Dept of Education</b><span>Salary</span><span class="mut">DEPT EDUCATION PAY*</span></div>
+      <div class="row" style="grid-template-columns:150px 110px 1fr;padding:0"><b>Netflix</b><span>Household</span><span class="mut">NETFLIX.COM</span></div>
+      <div class="row" style="grid-template-columns:150px 110px 1fr;padding:0"><b>Rates</b><span>Housing</span><span class="mut">— <span style="color:#9b9797">no rules</span></span></div>
+      <div class="row" style="grid-template-columns:150px 110px 1fr;padding:0"><b>Telstra</b><span>Utilities</span><span class="mut">TELSTRA*</span></div>
+      <div class="row sel" style="grid-template-columns:150px 110px 1fr;padding:0 9px"><b>Woolworths Metro</b><span>Groceries</span><span>WOOLWORTHS* · WW METRO* <span class="mut">+1</span></span></div>
+      <div class="hd tight">selected <span>Woolworths Metro</span></div>
+      <div class="box">
+        <div class="row f" style="padding:0"><span class="mut">match rules</span><span>WOOLWORTHS* · WW METRO* · WOOLIES ONLINE</span></div>
+        <div class="row f" style="padding:0"><span class="mut">also known as</span><span>Woolworths <span class="mut">· renamed 02 sep 2026</span></span></div>
+        <div class="row f" style="padding:0"><span class="mut">default category</span><span>Groceries <span class="mut">— filled in on import, still editable</span></span></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">Renaming keeps the old name as an alias, so past imports still match.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">d</span>delete</span><span><span class="k">o</span>open payees view</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-045 Documents ═════════ -->
+<div class="dv-opt" id="TUI-045" data-local-id="4q">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-045">TUI-045</a><span><b>Settings – Documents.</b> Document types, in the order of the Documents type filter. <code>J/K</code> move the selected type.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › documents</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – documents</b><span>ledger data · synced · 7 types · 392 of 412 files typed</span></div>
+      <div class="hd">in type-filter order <span><span class="k">n</span>add type</span></div>
+      <div class="row" style="grid-template-columns:1fr 70px 110px 60px 44px;padding:0"><span class="mut">TYPE</span><span class="mut">TRACKS</span><span class="mut">REMIND</span><span class="mut">TAX YEAR</span><span class="mut n">FILES</span></div>
+      <div class="row" style="grid-template-columns:1fr 70px 110px 60px 44px;padding:0"><b>Receipts</b><span class="mut">—</span><span class="mut">—</span><span>yes</span><span class="n">186</span></div>
+      <div class="row" style="grid-template-columns:1fr 70px 110px 60px 44px;padding:0"><b>Statements</b><span class="mut">—</span><span class="mut">—</span><span>yes</span><span class="n">94</span></div>
+      <div class="row" style="grid-template-columns:1fr 70px 110px 60px 44px;padding:0"><b>Tax</b><span class="mut">—</span><span class="mut">—</span><span>yes</span><span class="n">31</span></div>
+      <div class="row sel" style="grid-template-columns:1fr 70px 110px 60px 44px;padding:0 9px"><b>Insurance</b><span>renews</span><span>30 days before</span><span>no</span><span class="n">18</span></div>
+      <div class="row" style="grid-template-columns:1fr 70px 110px 60px 44px;padding:0"><b>Warranties &amp; manuals</b><span>ends</span><span>30 days before</span><span>no</span><span class="n">42</span></div>
+      <div class="row" style="grid-template-columns:1fr 70px 110px 60px 44px;padding:0"><b>Contracts</b><span>ends</span><span>60 days before</span><span>no</span><span class="n">9</span></div>
+      <div class="row" style="grid-template-columns:1fr 70px 110px 60px 44px;padding:0"><b>Identity</b><span>expires</span><span>6 months before</span><span>no</span><span class="n">6</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:10px 0 0"><span class="mut">Tracks: the date a document of this type carries (renews, ends, expires).</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">Remind: when that date raises an Event. Tax year: files group by tax year.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">Removing a type that still has files asks where to move them. The 20</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">untyped files stay in the Inbox.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">J/K</span>move</span><span><span class="k">n</span>add</span><span><span class="k">e</span>edit</span><span><span class="k">x</span>remove</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-046 Inventory ═════════ -->
+<div class="dv-opt" id="TUI-046" data-local-id="4r">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-046">TUI-046</a><span><b>Settings – Inventory.</b> Properties and their rooms. Each property is one Inventory register; its rooms are the room tabs, in this order.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › inventory</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – inventory</b><span>ledger data · synced · 2 properties · 11 rooms · 232 items</span></div>
+      <div class="hd">properties <span><span class="k">n</span>add property &nbsp;<span class="k">r</span>add room</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0"><span></span><span class="mut">PROPERTY · ROOM</span><span class="mut">POLICY · VALUE</span><span class="mut n">INSURED</span><span class="mut n">LIMIT</span><span class="mut n">ITEMS</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0"><span>▾</span><span><b>12 Elm St contents</b></span><span>NRMA HC-4471902</span><span class="n">150,000</span><span class="n">2,000</span><span class="n">214</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 0 0 14px"><span class="mut">├</span><span>Living</span><span class="mut n">24,150</span><span></span><span></span><span class="n">38</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 0 0 14px"><span class="mut">├</span><span>Kitchen</span><span class="mut n">22,310</span><span></span><span></span><span class="n">46</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 0 0 14px"><span class="mut">├</span><span>Bedroom 1</span><span class="mut n">18,420</span><span></span><span></span><span class="n">24</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 0 0 14px"><span class="mut">├</span><span>Bedroom 2</span><span class="mut n">8,060</span><span></span><span></span><span class="n">16</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 0 0 14px"><span class="mut">├</span><span>Bedroom 3</span><span class="mut n">5,540</span><span></span><span></span><span class="n">12</span></div>
+      <div class="row sel" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 9px 0 23px"><span>├</span><span>Office</span><span class="n">15,240</span><span></span><span></span><span class="n">19</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 0 0 14px"><span class="mut">├</span><span>Garage</span><span class="mut n">15,060</span><span></span><span></span><span class="n">27</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 0 0 14px"><span class="mut">├</span><span>Laundry</span><span class="mut n">3,120</span><span></span><span></span><span class="n">11</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 0 0 14px"><span class="mut">├</span><span>Bathroom</span><span class="mut n">1,880</span><span></span><span></span><span class="n">9</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0 0 0 14px"><span class="mut">└</span><span>Outdoor &amp; shed</span><span class="mut n">49,700</span><span></span><span></span><span class="n">12</span></div>
+      <div class="row" style="grid-template-columns:14px 1fr 110px 62px 50px 38px;padding:0"><span>▸</span><span><b>Storage unit</b></span><span>NRMA away cover</span><span class="n">20,000</span><span class="n">1,000</span><span class="n">18</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">Room values are derived from items and sum to 163,480, the register total.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">Sum insured and item limit drive the cover check and over-limit flag.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">Removing a room with items asks where to move them.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">→/←</span>expand/collapse</span><span><span class="k">J/K</span>move room</span><span><span class="k">n</span>property</span><span><span class="k">r</span>room</span><span><span class="k">e</span>edit</span><span><span class="k">x</span>remove</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-034 AI Connections ═════════ -->
+<div class="dv-opt" id="TUI-034" data-local-id="4f">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-034">TUI-034</a><span><b>Settings – AI Connections.</b> Two blocks, each with its own add key. Everything here stays on this Client, and Assistants are read only (ADR-0034).</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › ai connections</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – ai connections</b><span>this device · 3 providers · 2 assistants</span></div>
+      <div class="hd">model providers <span><span class="k">n</span>add provider</span></div>
+      <div class="row sel" style="grid-template-columns:1fr 110px;padding:0 9px"><span>Claude <span class="mut">· claude-sonnet-5-5 · keychain</span> <span class="chip" style="border-color:#bab6b6;color:#f3f2f2">default</span></span><span>● connected</span></div>
+      <div class="row" style="grid-template-columns:1fr 110px;padding:0"><span>Ollama (local) <span class="mut">· llama3.1:8b · localhost:11434</span></span><span>● connected</span></div>
+      <div class="row" style="grid-template-columns:1fr 110px;padding:0"><span>OpenAI <span class="mut">· gpt-5 · keychain</span></span><span class="neg">■ key rejected</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0"><span class="mut">Keys stay in the OS keychain and never sync. Only the transactions you select are sent.</span></div>
+      <div class="hd tight">assistant access · mcp server <span><span class="k">n</span>add assistant</span></div>
+      <div class="row f"><span class="mut">server</span><span>● on · 127.0.0.1:7421</span></div>
+      <div class="row f"><span class="mut">access</span><span><span class="seg">read only</span> &nbsp;<span class="mut">read &amp; write · not yet offered</span></span></div>
+      <div class="row f"><span class="mut">approval</span><span>ask before each change</span></div>
+      <div class="row" style="grid-template-columns:1fr 150px;padding:3px 0 0"><span class="mut">CONNECTED ASSISTANTS</span><span></span></div>
+      <div class="row" style="grid-template-columns:1fr 150px;padding:0"><span>Claude Desktop <span class="mut">· read only · today 14:02</span></span><span>● connected</span></div>
+      <div class="row" style="grid-template-columns:1fr 150px;padding:0"><span>Claude Code <span class="mut">· read only · 12 sep 2026</span></span><span class="mut">○ idle</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0"><span class="mut">The server listens on this device only. Revoking ends the session at once.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>row</span><span><span class="k">tab</span>providers↔assistants</span><span><span class="k">e</span>edit</span><span><span class="k">t</span>test</span><span><span class="k">n</span>add</span><span><span class="k">D</span>make default</span><span><span class="k">x</span>remove · revoke</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-035 Sync Server + edit dialog ═════════ -->
+<div class="dv-opt" id="TUI-035" data-local-id="4g">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-035">TUI-035</a><span><b>Settings – Sync Server, Edit with a failed test.</b> <code>e</code> opens the form. You can't save until a test passes, and a failed test names the cause.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › sync server</span><span>INSERT &nbsp;·&nbsp; ✓ Synced 14:22</span></div>
+  <div class="tbody" style="opacity:.3">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr cur"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – sync server</b><span>this device · synced · every 30 seconds</span></div>
+      <div class="row f"><span class="mut">server url</span><span>sync.ledger.localhost</span></div>
+      <div class="row f"><span class="mut">status</span><span>● connected</span></div>
+      <div class="row f"><span class="mut">last sync</span><span>14 sep 2026 · 14:22</span></div>
+      <div class="row f"><span class="mut"></span><span><span class="k">s</span>sync now &nbsp;<span class="k">e</span>edit</span></div>
+    </div>
+  </div>
+  <div class="ovl" style="position:absolute;left:12%;right:12%;top:10%;padding:0">
+    <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:2px solid #201e1d"><b>edit sync server</b><span class="mut">:sync edit</span></div>
+    <div style="padding:6px 8px">
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">server url</span></div>
+      <div class="box foc" style="padding:2px 6px"><span>https://sync.ledger.home:8443<span class="neg">▌</span></span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0 0 4px"><span class="mut">https:// is required. Include the port if it isn't 443.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">access token</span></div>
+      <div class="box" style="padding:2px 6px;letter-spacing:.15em">••••••••••••••••••••</div>
+      <div class="row" style="grid-template-columns:1fr;padding:0 0 5px"><span class="mut">From the server's admin page. Kept in the OS keychain, never synced.</span></div>
+      <div class="box" style="border-color:#ae1800;padding:4px 6px">
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="neg">■ couldn't connect · connection refused</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">sync.ledger.home:8443 didn't answer. Check the address and</span></div>
+        <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">port, and that the server is running.</span></div>
+      </div>
+      <div class="row" style="grid-template-columns:1fr;padding:5px 0 0"><span class="mut">Save unlocks after a passing test. Saving reconnects and syncs.</span></div>
+    </div>
+    <div class="tk" style="margin:0;padding:3px 8px;font-size:9.5px"><span><span class="k">^t</span>test</span><span><span class="k">tab</span>next field</span><span class="mut"><span class="k" style="background:#9b9797">enter</span>save</span><span><span class="k">esc</span>cancel</span><span class="neg" style="margin-left:auto">test failed</span></div>
+  </div>
+  <div class="tk" style="position:absolute;left:0;right:0;bottom:0"><span class="mut"><span class="k" style="background:#9b9797">esc</span>close dialog</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-036 Backup ═════════ -->
+<div class="dv-opt" id="TUI-036" data-local-id="4h">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-036">TUI-036</a><span><b>Settings – Backup.</b> Two blocks: a local backup, and a Git backup that commits a text dump of the Ledger, plus its Documents through LFS, to a private repository (ADR-0033).</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › backup</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr cur"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – backup</b><span>this device · local files · aud · 2.84 mb</span></div>
+      <div class="hd">local</div>
+      <div class="row f"><span class="mut">store location</span><span>~/.ledger/personal</span></div>
+      <div class="row f"><span class="mut">last snapshot</span><span>12 sep 2026 · 23:10</span></div>
+      <div class="row f"><span></span><span><span class="k">b</span>back up now &nbsp;<span class="k">X</span>export ledger (csv)</span></div>
+      <div class="hd tight">git backup <span><span class="k">e</span>edit</span></div>
+      <div class="row f"><span class="mut">remote</span><span>git@github.com:teda/ledger-backup.git</span></div>
+      <div class="row f"><span class="mut">branch</span><span>main</span></div>
+      <div class="row f"><span class="mut">visibility</span><span>● private <span class="mut">· checked 14:00</span></span></div>
+      <div class="row f"><span class="mut">authentication</span><span>SSH key <span class="mut">· ~/.ssh/id_ed25519</span></span></div>
+      <div class="row f"><span class="mut">contents</span><span>ledger text dump <span class="mut">· 412 documents via LFS</span></span></div>
+      <div class="row f"><span class="mut">schedule</span><span>after changes <span class="mut">· at most hourly</span></span></div>
+      <div class="row f"><span class="mut">commit message</span><span><span class="mut" style="background:#eae7e7;padding:0 3px">2026-09-14 14:00 ·</span> ledger backup</span></div>
+      <div class="row f"><span></span><span><span class="k">P</span>push now</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:8px 0 0"><span class="mut">After changes waits for 5 minutes of quiet, then pushes at most hourly.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">b</span>back up</span><span><span class="k">X</span>export csv</span><span><span class="k">e</span>edit git backup</span><span><span class="k">P</span>push</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-037 History ═════════ -->
+<div class="dv-opt" id="TUI-037" data-local-id="4i">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-037">TUI-037</a><span><b>Settings – History.</b> One linear undo stack, newest first. Undone changes stay greyed above the marker until a new edit discards them.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › history</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr cur"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane">
+      <div class="ph"><b>settings – history</b><span>all devices · last 30 days · 214 changes</span></div>
+      <div class="row" style="grid-template-columns:1fr auto;padding:0 0 4px"><span class="mut">next undo &nbsp;<b style="color:#201e1d">Added Camera House −4,380.00</b></span><span class="mut">area <span class="seg">all</span> txn budget settings</span></div>
+      <div class="row" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span class="mut">TIME</span><span class="mut">AREA</span><span class="mut">CHANGE</span><span class="mut">DEVICE</span></div>
+      <div class="row mut" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span>14:21</span><span>txn</span><span class="strike">Recategorised Woolworths −86.40 → Groceries</span><span>this device</span></div>
+      <div class="row mut" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span>14:19</span><span>budgets</span><span class="strike">Dining limit 400.00 → 350.00</span><span>this device</span></div>
+      <div class="mark"><b>▸ CURRENT STATE</b><span class="mut">2 changes can be redone · a new edit clears them</span></div>
+      <div class="row sel" style="grid-template-columns:40px 80px 1fr 76px;padding:0 9px"><span>14:12</span><span>txn</span><span>Added Camera House −4,380.00 · Everyday</span><span>this device</span></div>
+      <div class="row" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span>14:05</span><span class="mut">tags</span><span>Renamed tag holiday → travel</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span>13:58</span><span class="mut">bills</span><span>Marked Rates Q1 paid · 612.00</span><span class="mut">laptop</span></div>
+      <div class="row" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span>13:51</span><span class="mut">txn</span><span>Split Bunnings −142.75 three ways</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span>13:44</span><span class="mut">inventory</span><span>Added room Garage · 12 Elm St</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span>13:30</span><span class="mut">txn</span><span>Imported 6 rows · anz-sep.qif</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span>12:02</span><span class="mut">accounts</span><span>Created ANZ Offset · aud</span><span class="mut">laptop</span></div>
+      <div class="row" style="grid-template-columns:40px 80px 1fr 76px;padding:0"><span>11:47</span><span class="mut">txn</span><span>Deleted duplicate Netflix −22.99</span><span class="mut">this device</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:6px 0 0"><span class="mut">Synced changes undo on every device.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">u</span>undo</span><span><span class="k">^r</span>redo</span><span><span class="k">j/k</span>row</span><span><span class="k">enter</span>restore to here</span><span><span class="k">f</span>area filter</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-038 Logs ═════════ -->
+<div class="dv-opt" id="TUI-038" data-local-id="4j">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-038">TUI-038</a><span><b>Settings – Logs.</b> A level filter and Clear on one row. The log fills the rest of the page, newest first, with a scrollbar.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › logs</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr cur"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane" style="display:flex;flex-direction:column">
+      <div class="ph"><b>settings – logs</b><span>this device · diagnostic · last 1000 entries</span></div>
+      <div class="row" style="grid-template-columns:1fr auto;padding:0 0 4px"><span><span class="mut">level &nbsp;</span>error &nbsp;warn &nbsp;<span class="seg">info</span> &nbsp;debug</span><span><span class="k">C</span>clear logs</span></div>
+      <div class="box" style="flex:1;position:relative;padding:4px 12px 4px 7px;color:#605d5d;background:#f8f4f4">
+        <div>[14:22:07] sync: pushed 1 change set · 42 ms</div>
+        <div>[14:22:07] sync: pulled 0 change sets</div>
+        <div>[14:21:40] txn: recategorised 01J9…c7 → Groceries</div>
+        <div>[14:19:12] budget: Dining limit 400.00 → 350.00</div>
+        <div>[14:15:00] price: btc close fetched · CoinGecko</div>
+        <div>[14:12:31] txn: added 01J9…a2 · Camera House</div>
+        <div>[14:05:18] store: tag renamed holiday → travel</div>
+        <div>[14:00:00] store: git backup visibility check · private</div>
+        <div>[13:58:44] bills: Rates Q1 marked paid (from laptop)</div>
+        <div>[13:51:09] txn: split 01J9…9f into 3</div>
+        <div>[13:44:20] store: room added · Garage</div>
+        <div>[13:30:02] import: anz-sep.qif · 6 rows · 0 skipped</div>
+        <div>[13:29:58] import: parsing anz-sep.qif</div>
+        <div>[12:02:15] store: account created · ANZ Offset</div>
+        <div>[11:47:33] txn: deleted 01J8…e1 · Netflix</div>
+        <div>[11:40:00] budget: rollover applied · September</div>
+        <div>[11:39:58] notify: 2 bills due this week</div>
+        <div class="scr"><i></i></div>
+      </div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">←→</span>level</span><span><span class="k">j/k</span>scroll</span><span><span class="k">g/G</span>newest/oldest</span><span><span class="k">C</span>clear</span><span><span class="k">y</span>copy line</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-039 About ═════════ -->
+<div class="dv-opt" id="TUI-039" data-local-id="4k">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-039">TUI-039</a><span><b>Settings – About.</b> Version and links come from build metadata. Each link opens in the browser or copies.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px">
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; settings › about</span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane ix">
+      <div class="hd">settings <span>16</span></div>
+      <div class="row ixr"><span>general</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>display</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>units</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>institutions</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>accounts</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>categories</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>tags</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>payees</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>documents</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>inventory</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>ai connections</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>sync server</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>backup</span><span class="mut">○</span></div>
+      <div class="row ixr"><span>history</span><span class="mut">●</span></div>
+      <div class="row ixr"><span>logs</span><span class="mut">○</span></div>
+      <div class="row ixr cur"><span>about</span><span class="mut"></span></div>
+      <div class="ixf"><span class="mut">● syncs with the ledger</span><span class="mut">○ this device only</span></div>
+    </div>
+    <div class="pane" style="display:flex;flex-direction:column">
+      <div class="ph"><b>settings – about</b><span>version info</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">A local-first personal ledger for expenses, investments and assets.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:6px 0 0;border-top:1px solid #d7d3d3;margin-top:6px"><span><b>Personal Ledger v0.1.0</b> <span class="mut">(08 September 2026)</span></span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0 0 6px"><span class="mut">Built with Rust + ratatui + SQLite</span></div>
+      <div class="row f"><span class="mut">AUTHOR</span><span class="neg">Ian Teda</span></div>
+      <div class="row f sel"><span>REPOSITORY</span><span>github.com/IanTeda/personal-ledger</span></div>
+      <div class="row f"><span class="mut">DOCUMENTATION</span><span class="neg">ianteda.github.io/personal-ledger</span></div>
+      <div class="row f"><span class="mut">REPORT AN ISSUE</span><span class="neg">github.com/IanTeda/personal-ledger/issues</span></div>
+      <div class="row f"><span class="mut">LICENSE</span><span>Distributed under the <b>GPL-3.0 License</b></span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:3px 0 0;margin-top:auto;border-top:1px solid #d7d3d3"><span class="mut">© 2025–2026 Ian Teda. All rights reserved.</span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>link</span><span><span class="k">enter</span>open in browser</span><span><span class="k">y</span>copy link</span><span><span class="k">h</span>index</span></div>
+</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next" style="display:none">Dialogs: add/edit/delete unit and add institution reuse the TUI unit forms (TUI-028–031); set up Git backup and add/edit provider follow TUI-034.</p>
 </section>
 
 </x-dc>
