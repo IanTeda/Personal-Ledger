@@ -25,6 +25,7 @@ test-support = ["gpui/test-support"]
 ## -- Internal Dependencies --
 lib_accounts = { path = "../../libs/lib-accounts" }
 lib_bills = { path = "../../libs/lib-bills" }
+lib_categories = { path = "../../libs/lib-categories" }
 lib_transactions = { path = "../../libs/lib-transactions" }
 lib_colour_theme = { path = "../../libs/lib-colour-theme" }
 lib_config = { path = "../../libs/lib-config" }

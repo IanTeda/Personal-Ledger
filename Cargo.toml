@@ -73,6 +73,7 @@ members = [
   "./crates/libs/lib-colour-theme",
   "./crates/libs/lib-accounts",
   "./crates/libs/lib-bills",
+  "./crates/libs/lib-categories",
   "./crates/libs/lib-transactions",
   "./crates/libs/lib-config",
   "./crates/libs/lib-database",

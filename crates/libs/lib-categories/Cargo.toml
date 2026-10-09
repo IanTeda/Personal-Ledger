@@ -1,0 +1,24 @@
+[package]
+name = "lib_categories"
+version = "0.1.0"
+edition = "2024"
+# Never published to crates.io; also lets cargo-deny skip licence checks on workspace crates.
+publish = false
+
+[lib]
+# Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
+doctest = false
+
+[dependencies]
+## -- Internal Dependencies --
+lib_accounts = { path = "../lib-accounts" }
+lib_core = { path = "../lib-core" }
+lib_transactions = { path = "../lib-transactions" }
+
+## -- Workspace Dependencies --
+bigdecimal = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true
