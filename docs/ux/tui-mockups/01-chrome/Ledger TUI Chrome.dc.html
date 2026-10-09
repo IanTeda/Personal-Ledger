@@ -100,21 +100,20 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 </style></helmet>
 
 <section class="dv-turn {{ themeClass }}" id="t1">
-<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Chrome — resting state</span></div>
-<p class="dv-sub">The chosen direction: zero-chrome command shell. The resting state is no ledger loaded (1a); the chart-led dashboard (1b) appears once <code>:open</code> or <code>:new</code> loads a file. Status line, one full-bleed view, an idle <code>:</code> command line, keybind hints. Once a ledger is loaded the default view is the chart-led dashboard — the four FC-06 widgets first, tables demoted to the "needs attention" list. Drawn at 96 × 30 cells; every other screen re-hosts inside this frame.</p>
+<div class="dv-thd"><a class="dv-tid" href="#t1">TUI-001–002</a><span class="dv-tname">Chrome — resting state</span></div>
+<p class="dv-sub">The chosen direction: zero-chrome command shell. The resting state is no ledger loaded (TUI-001); the chart-led dashboard (TUI-002) appears once <code>:open</code> or <code>:new</code> loads a file. Status line, one full-bleed view, an idle <code>:</code> command line, keybind hints. Once a ledger is loaded the default view is the chart-led dashboard — the four FC-06 widgets first, tables demoted to the "needs attention" list. Drawn at 96 × 30 cells; every other screen re-hosts inside this frame.</p>
 
 <div class="dv-opts">
 
 <div class="dv-opt" id="TUI-001" data-local-id="1a">
-<div class="dv-olabel"><a class="dv-oid" href="#TUI-001">TUI-001</a><span><b>Resting state — no ledger loaded.</b> Cold start and after <code>:close</code>. A centred note names the two ways forward; the command line is idle.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-001">TUI-001</a><span><b>Resting state — no ledger loaded.</b> Cold start and after <code>:close</code>. A centred note names the two ways forward.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px">
-  <div class="tbar"><span><b>Personal Ledger</b></span><span>21 sep 2026</span></div>
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>21 sep 2026 &nbsp;·&nbsp; ✓ Synced 14:02</span></div>
   <div class="pane" style="padding:10px 14px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px">
     <div style="font-weight:700">No Personal Ledger file loaded.</div>
     <div class="mut">Use <b>:new</b> to create a new ledger or <b>:open</b> to open an existing ledger.</div>
   </div>
-  <div class="cmd">: <span class="mut">type a command — :new, :open, :help</span></div>
   <div class="tk"><span><b>NORMAL</b></span><span><span class="k">:</span>command</span><span><span class="k">?</span>help</span><span class="mut">no persistent nav — ↑ recalls history</span><span style="margin-left:auto">no file</span></div>
 </div>
 </div>
@@ -124,7 +123,7 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 <div class="dv-olabel"><a class="dv-oid" href="#TUI-002">TUI-002</a><span><b>Dashboard — ledger loaded.</b> Command line idle at the bottom; every widget is a jump target by name.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px">
-  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; dashboard</span><span>245 824 AUD &nbsp;·&nbsp; ✓ 14:02 &nbsp;·&nbsp; 21 sep 2026</span></div>
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; dashboard</span><span>245 824 AUD &nbsp;·&nbsp; 21 sep 2026 &nbsp;·&nbsp; ✓ Synced 14:02</span></div>
   <div class="pane" style="padding:10px 14px">
     <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:3px">
       <div><div class="lab">net position</div><div class="big" style="font-size:26px">$ 245 824.10</div></div>
@@ -180,7 +179,6 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
       </div>
     </div>
   </div>
-  <div class="cmd">: <span class="mut">type a command — :account, :budget, :report, :reconcile</span></div>
   <div class="tk"><span><span class="k">:</span>command</span><span><span class="k">/</span>search</span><span><span class="k">a</span>add txn</span><span><span class="k">?</span>help</span><span class="mut">no persistent nav — ↑ recalls history</span></div>
 </div>
 </div>
@@ -191,7 +189,7 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 </section>
 
 <section class="dv-turn {{ themeClass }}" id="t2">
-<div class="dv-thd"><a class="dv-tid" href="#t2">2</a><span class="dv-tname">:help popup</span></div>
+<div class="dv-thd"><a class="dv-tid" href="#t2">TUI-003–004</a><span class="dv-tname">:help popup</span></div>
 <p class="dv-sub">A reference rather than a runner: search at the top, then every command as <code>:command &lt;binding&gt; description</code> grouped by noun, navigation first. Drawn from the same action registry that feeds the palette and the footer hints, so a new action appears here for free.</p>
 
 <div class="dv-opts">
@@ -200,7 +198,7 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 <div class="dv-olabel"><a class="dv-oid" href="#TUI-003">TUI-003</a><span><b>Resting.</b> Search empty, full list, navigation group first.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px;position:relative">
-  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; help</span><span>HELP &nbsp;·&nbsp; 62 commands</span></div>
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; help</span><span>HELP &nbsp;·&nbsp; 62 commands &nbsp;·&nbsp; ✓ Synced 14:02</span></div>
   <div class="pane" style="padding:10px 14px;opacity:.3">
     <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:3px">
       <div><div class="lab">net position</div><div class="big" style="font-size:26px">$ 245 824.10</div></div>
@@ -246,7 +244,7 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 <div class="dv-olabel"><a class="dv-oid" href="#TUI-004">TUI-004</a><span><b>Searching.</b> <code>bud</code> filters across command, binding and description; groups collapse to what matched.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px;position:relative">
-  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; help</span><span>HELP &nbsp;·&nbsp; search</span></div>
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; help</span><span>HELP &nbsp;·&nbsp; search &nbsp;·&nbsp; ✓ Synced 14:02</span></div>
   <div class="pane" style="padding:10px 14px;opacity:.3">
     <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:3px">
       <div><div class="lab">net position</div><div class="big" style="font-size:26px">$ 245 824.10</div></div>
@@ -286,14 +284,14 @@ a{color:#ec3013;text-underline-offset:3px}a:hover{color:#ae1800}
 </section>
 
 <section class="dv-turn {{ themeClass }}" id="t3">
-<div class="dv-thd"><a class="dv-tid" href="#t3">3</a><span class="dv-tname">Command palette</span></div>
+<div class="dv-thd"><a class="dv-tid" href="#t3">TUI-005</a><span class="dv-tname">Command palette</span></div>
 <p class="dv-sub">A centred floating fuzzy-find window over the dimmed view — with no menus and no persistent nav, this is the whole navigation model. Matches anywhere in the string, shows action → effect → binding, and previews the resolved argument before you commit.</p>
 
 <div class="dv-opts"><div class="dv-opt" id="TUI-005" data-local-id="3a">
 <div class="dv-olabel"><a class="dv-oid" href="#TUI-005">TUI-005</a><span><b>Command open.</b> Floating fuzzy-find window over the dimmed dashboard — this is the whole navigation model.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px;position:relative">
-  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; dashboard</span><span>COMMAND &nbsp;·&nbsp; 245 824 AUD &nbsp;·&nbsp; ✓ 14:02</span></div>
+  <div class="tbar"><span><b>Personal Ledger</b> &nbsp;|&nbsp; dashboard</span><span>COMMAND &nbsp;·&nbsp; 245 824 AUD &nbsp;·&nbsp; ✓ Synced 14:02</span></div>
   <div class="pane" style="padding:10px 14px;opacity:.3">
     <div style="display:flex;align-items:flex-end;gap:16px;margin-bottom:3px">
       <div><div class="lab">net position</div><div class="big" style="font-size:26px">$ 245 824.10</div></div>

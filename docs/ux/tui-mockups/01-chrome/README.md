@@ -7,8 +7,8 @@ Five states are specified, and together they are the entire navigation model:
 
 | id | state |
 | --- | --- |
-| `1a` | **Chrome at rest, no ledger loaded** — status line, a centred note pointing at `:new` / `:open`, idle command line, keybind hints |
-| `1b` | **Chrome with a ledger loaded** — status line, full-bleed chart-led dashboard, idle command line, keybind hints |
+| `1a` | **Chrome at rest, no ledger loaded** — status line, a centred note pointing at `:new` / `:open`, keybind hints |
+| `1b` | **Chrome with a ledger loaded** — status line, full-bleed chart-led dashboard, keybind hints |
 | `2a` | **`:help` window** — search + the full command list, at rest |
 | `2b` | **`:help` window** — filtered by a search term |
 | `3a` | **Command palette** — floating fuzzy-find window, the only way to navigate |
@@ -32,9 +32,9 @@ Every px value in the HTML is an artifact of drawing. Read the geometry in **ter
 Drawn at a **96 × 30 cell** minimum (one cell ≈ 6.6 × 16.5 px in the HTML).
 
 ```
-row 0        status line       reversed Block — "Personal Ledger | <view>"   right: `Synced HH:mm` only
+row 0        status line       reversed Block — "Personal Ledger | <view>"   right: date · `✓ Synced HH:mm`
 rows 1..n-3  view region       exactly ONE view, full bleed — no tab strip, no sidebar, no tree
-row n-2      command line      ":" prompt; a hint when idle, greyed while a window is open
+row n-2      command line      shown only while typing a command (":" prompt); no idle hint
 row n-1      keybind hint bar   dim; contextual to the focused view
 ```
 
@@ -46,9 +46,9 @@ Degrade below 96 columns in this order: drop sparkline columns → drop the righ
 
 ## 1a — Chrome at rest, no ledger loaded
 
-The state on cold start and after `:close`: status line (`Personal Ledger` on the left, only the date on the right) and, on the key-hint bar, the mode (`NORMAL`) at the far left and a right-aligned `no file` label at the far right, a single centred note in the view region, the idle command line and the key hints (`: command · ? help`). No dashboard, no other views.
+The state on cold start and after `:close`: status line (`Personal Ledger` on the left, the date and `✓ Synced HH:mm` on the right) and, on the key-hint bar, the mode (`NORMAL`) at the far left and a right-aligned `no file` label at the far right, a single centred note in the view region and the key hints (`: command · ? help`). No dashboard, no other views.
 
-Note copy, two lines, centred horizontally and vertically in the view region: `No Personal Ledger file loaded.` then `Use :new to create a new ledger or :open to open an existing ledger.` Only `:new` and `:open` (and `:help`) are live commands until a ledger loads; the command line hint reads `type a command — :new, :open, :help`.
+Note copy, two lines, centred horizontally and vertically in the view region: `No Personal Ledger file loaded.` then `Use :new to create a new ledger or :open to open an existing ledger.` Only `:new` and `:open` (and `:help`) are live commands until a ledger loads.
 
 ## 1b — Chrome with a ledger loaded (dashboard / financial position)
 
