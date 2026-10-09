@@ -3,12 +3,19 @@
 
 use gpui::Context;
 
-use super::{
-    Shell, accounts_hints, bills_planner_hints, bills_schedule_hints, confirm_dialog_hints,
-    document_types_ui, filter_hints, import_hints, inventory_ui, merge_tags_dialog_hints,
-    pay_bill_dialog_hints, payee_dialog_hints, settings_categories_hints, settings_documents_hints,
-    settings_inventory_hints, settings_payees_hints, settings_tags_hints, skip_bill_dialog_hints,
-    tag_dialog_hints, transactions_hints,
+use super::{Shell, document_types_ui, inventory_ui};
+use crate::view::{
+    accounts::hints::accounts_hints,
+    bills::hints::{
+        bills_planner_hints, bills_schedule_hints, pay_bill_dialog_hints, skip_bill_dialog_hints,
+    },
+    import::import_hints,
+    settings::hints::{
+        confirm_dialog_hints, merge_tags_dialog_hints, payee_dialog_hints,
+        settings_categories_hints, settings_documents_hints, settings_inventory_hints,
+        settings_payees_hints, settings_tags_hints, tag_dialog_hints,
+    },
+    transactions::hints::{filter_hints, transactions_hints},
 };
 use crate::{
     bills, budgets,

@@ -17,6 +17,7 @@ pub mod document_type_dialogs;
 pub mod documents;
 pub mod edit_unit_dialog;
 mod general;
+pub(crate) mod hints;
 pub mod institutions;
 pub mod inventory;
 pub mod inventory_dialogs;

@@ -12,6 +12,7 @@
 mod filter_popover;
 mod footer;
 mod header;
+pub(crate) mod hints;
 mod table;
 
 pub use filter_popover::{OnFieldClick, OnOptionClick, OnStatusClick, PopoverProps};

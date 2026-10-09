@@ -7,6 +7,7 @@
 //! so the keyboard and the mouse reach the same handlers.
 
 pub mod filters;
+pub(crate) mod hints;
 pub mod pay_dialog;
 pub mod plan_dialog;
 pub mod planner;

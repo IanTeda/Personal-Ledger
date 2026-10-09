@@ -20,7 +20,7 @@ use std::rc::Rc;
 use gpui::{App, ClickEvent, Window, div, prelude::*, px};
 use gpui_component::Sizable;
 
-use crate::{assets::icon::DesktopIcon, navigation::nav::Noun, theme::color};
+use crate::{assets::icon::DesktopIcon, theme::color};
 
 /// Band height: `docs/ux/desktop-mockups/01-shell/README.md`'s "Layout" table.
 pub const HEIGHT: gpui::Pixels = px(48.0);
@@ -32,16 +32,17 @@ pub type OnRailToggle = Rc<dyn Fn(&ClickEvent, &mut Window, &mut App)>;
 #[derive(IntoElement)]
 pub struct TopBar {
     on_rail_toggle: OnRailToggle,
-    active_noun: Noun,
+    /// The active View's title, from `ActiveView::title`.
+    title: String,
     /// Extra context after the noun (6e's `import statement.csv`).
     context: Option<String>,
 }
 
 impl TopBar {
-    pub fn new(on_rail_toggle: OnRailToggle, active_noun: Noun) -> Self {
+    pub fn new(on_rail_toggle: OnRailToggle, title: String) -> Self {
         Self {
             on_rail_toggle,
-            active_noun,
+            title,
             context: None,
         }
     }
@@ -66,7 +67,7 @@ impl RenderOnce for TopBar {
             .border_b(px(2.0))
             .border_color(color::structural_rule(cx))
             .child(rail_toggle(self.on_rail_toggle, cx))
-            .child(brand_mark(self.active_noun, self.context, cx))
+            .child(brand_mark(self.title, self.context, cx))
             .child(div().flex_1())
             .child(sync_indicator(cx))
             .child(window_controls(cx))
@@ -94,11 +95,11 @@ fn rail_toggle(on_rail_toggle: OnRailToggle, cx: &App) -> impl IntoElement {
 }
 
 /// The brand tile names the active screen too (e.g. "Personal Ledger | Dashboard"), so it
-/// changes with `NavState::noun` -- the status line's own bottom-right breadcrumb used to
-/// duplicate this same fact and was dropped in favour of naming it once, here. The open
-/// Ledger's own file path lives at the status line's own bottom right instead
+/// changes with the active View (`ActiveView::title`) -- the status line's own bottom-right
+/// breadcrumb used to duplicate this same fact and was dropped in favour of naming it once, here.
+/// The open Ledger's own file path lives at the status line's own bottom right instead
 /// (`crate::chrome::statusline`), not here.
-fn brand_mark(active_noun: Noun, context: Option<String>, cx: &App) -> impl IntoElement {
+fn brand_mark(title: String, context: Option<String>, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .items_baseline()
@@ -110,7 +111,7 @@ fn brand_mark(active_noun: Noun, context: Option<String>, cx: &App) -> impl Into
                 .child(lib_locale::msg::app_name()),
         )
         .child(div().text_color(color::faint_text(cx)).child("|"))
-        .child(active_noun.label())
+        .child(title)
         .children(context.map(|context| {
             div()
                 .text_size(px(12.0))

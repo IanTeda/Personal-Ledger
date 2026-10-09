@@ -573,3 +573,17 @@ fn footer(props: &ImportPageProps<'_>, cx: &App) -> impl IntoElement {
                 .child(div().opacity(0.75).child("enter")),
         )
 }
+
+/// The 6e Import step's status-line legend. The handoff's `enter accept suggestion` has no
+/// separate key here: a suggestion is pre-selected, so `enter` continues (#290).
+pub(crate) fn import_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_row()),
+        ("p", crate::msg::desktop_hint_payee()),
+        ("c", crate::msg::desktop_hint_category()),
+        ("n", crate::msg::desktop_hint_create_new_payee()),
+        ("r", crate::msg::desktop_hint_remember_rules()),
+        ("enter", crate::msg::desktop_hint_continue()),
+        ("esc", crate::msg::desktop_hint_back()),
+    ]
+}

@@ -22,6 +22,25 @@ pub enum ActiveView {
 }
 
 impl ActiveView {
+    /// The Noun this View belongs to: the CSV import is part of Transactions, and every Settings
+    /// section is part of Settings.
+    pub fn noun(self) -> Noun {
+        match self {
+            Self::Dashboard => Noun::Dashboard,
+            Self::Transactions | Self::Import => Noun::Transactions,
+            Self::Documents => Noun::Documents,
+            Self::Bills => Noun::Bills,
+            Self::Budgets => Noun::Budgets,
+            Self::Settings(_) => Noun::Settings,
+            Self::Placeholder(noun) => noun,
+        }
+    }
+
+    /// The title the Chrome shows for this View: its Noun's display name.
+    pub fn title(self) -> String {
+        self.noun().label()
+    }
+
     pub fn derive(noun: Noun, settings_section: SettingsSection, import_open: bool) -> Self {
         match noun {
             Noun::Dashboard => Self::Dashboard,
@@ -63,6 +82,24 @@ mod tests {
             ActiveView::derive(Noun::Bills, GENERAL, true),
             ActiveView::Bills
         );
+    }
+
+    #[test]
+    fn title_is_the_name_of_the_noun_the_view_belongs_to() {
+        let locale = lib_locale::Locale::EnUs;
+        lib_locale::with_locale(locale, || {
+            assert_eq!(ActiveView::Import.title(), Noun::Transactions.label());
+            assert_eq!(ActiveView::Transactions.title(), Noun::Transactions.label());
+            assert_eq!(ActiveView::Dashboard.title(), Noun::Dashboard.label());
+            assert_eq!(
+                ActiveView::Settings(SettingsSection::Tags).title(),
+                Noun::Settings.label()
+            );
+            assert_eq!(
+                ActiveView::Placeholder(Noun::Cash).title(),
+                Noun::Cash.label()
+            );
+        });
     }
 
     #[test]

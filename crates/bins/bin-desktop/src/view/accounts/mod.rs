@@ -5,6 +5,7 @@
 pub mod add_dialog;
 pub mod delete_dialog;
 pub mod edit_dialog;
+pub(crate) mod hints;
 pub(crate) mod select_field;
 
 use std::rc::Rc;

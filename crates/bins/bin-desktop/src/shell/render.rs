@@ -1287,15 +1287,17 @@ impl Render for Shell {
                     .flex()
                     .flex_col()
                     .opacity(content_opacity)
-                    .child(TopBar::new(on_rail_toggle, self.nav.noun()).context(
-                        if self.nav.noun() == Noun::Settings {
-                            Some(self.settings_selected_section.label())
-                        } else {
-                            self.import
-                                .as_ref()
-                                .map(|_| crate::msg::desktop_import_context(import::STATEMENT_FILE))
-                        },
-                    ))
+                    .child(
+                        TopBar::new(on_rail_toggle, self.active_view().title()).context(
+                            if self.nav.noun() == Noun::Settings {
+                                Some(self.settings_selected_section.label())
+                            } else {
+                                self.import.as_ref().map(|_| {
+                                    crate::msg::desktop_import_context(import::STATEMENT_FILE)
+                                })
+                            },
+                        ),
+                    )
                     .child(
                         div()
                             .flex_1()
