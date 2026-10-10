@@ -84,7 +84,7 @@ impl Shell {
             }
             "enter" => {
                 if let Some(theme) = lib_colour_theme::ColourTheme::built_in().get(index) {
-                    self.pending_colour_change = Some(ColourChange::Theme(theme.id));
+                    self.chrome.pending_colour_change = Some(ColourChange::Theme(theme.id));
                 }
                 true
             }

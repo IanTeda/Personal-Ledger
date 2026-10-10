@@ -91,7 +91,7 @@ impl Shell {
             }
             CommandEffect::Colour(change) => {
                 self.nav.exit_mode();
-                self.pending_colour_change = Some(change);
+                self.chrome.pending_colour_change = Some(change);
             }
             CommandEffect::DismissToast => {
                 self.nav.exit_mode();
@@ -188,7 +188,7 @@ impl Shell {
         };
         self.nav.enter_mode(InputMode::Command);
         self.run_command(command, "", cx);
-        if let Some(change) = self.pending_colour_change.take() {
+        if let Some(change) = self.chrome.pending_colour_change.take() {
             change.apply(cx);
         }
         cx.notify();

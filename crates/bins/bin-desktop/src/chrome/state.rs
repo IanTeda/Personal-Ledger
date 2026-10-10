@@ -9,6 +9,7 @@ use lib_toast::Toasts;
 use crate::{
     chrome::{dialog_host::OpenDialog, palette::Palette},
     navigation::nav::Noun,
+    theme::colours::ColourChange,
 };
 
 pub(crate) struct ChromeState {
@@ -45,4 +46,7 @@ pub(crate) struct ChromeState {
     /// `Shell::open_dialog`/`Shell::close_dialog` change it, so `NavState::mode` is
     /// `InputMode::Dialog` for exactly as long as this is `Some`. Every feature's Dialog lives here.
     pub(crate) dialog: Option<OpenDialog>,
+    /// A Colour Theme or Colour Appearance picked by a keystroke or palette command, applied by
+    /// the caller once it has an `App` (the key handling runs without one).
+    pub(crate) pending_colour_change: Option<ColourChange>,
 }

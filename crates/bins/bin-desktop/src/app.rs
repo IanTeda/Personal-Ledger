@@ -106,7 +106,6 @@ use crate::{
         tracing_log::TracingLevel,
     },
     tags::{self},
-    theme::colours::ColourChange,
     transactions::{self, TransactionsStore, chips::FilterField, query::TransactionFilters},
     units::{self},
     view::format,
@@ -166,9 +165,6 @@ pub struct Shell {
     /// The same section's "Row density" segmented control -- also drives the PREVIEW table's own
     /// row padding (`view::settings::display`'s own doc), unlike a purely-cosmetic preference.
     settings_row_density: RowDensity,
-    /// A Colour Theme or Colour Appearance picked by a keystroke or palette command, applied by
-    /// the caller once it has an `App` (the key handling runs without one).
-    pending_colour_change: Option<ColourChange>,
     /// The same section's "Status glyphs" radio group.
     settings_status_glyphs: StatusGlyphs,
     /// The same section's "Start Sidebar minimised" toggle -- persisted across restarts (see
@@ -390,12 +386,12 @@ impl Shell {
                 collapsed_rail_tooltip: None,
                 hover_generation: 0,
                 dialog: None,
+                pending_colour_change: None,
             },
             command_history: Vec::new(),
             file_explorer: None,
             settings_date_style: None,
             settings_row_density: RowDensity::default(),
-            pending_colour_change: None,
             settings_status_glyphs: StatusGlyphs::default(),
             settings_start_sidebar_minimised: false,
             explorer_filters: ExplorerFilters::default(),

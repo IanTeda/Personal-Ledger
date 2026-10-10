@@ -415,7 +415,7 @@ impl Shell {
     /// Runs what the key handlers left pending for after the `cx.notify()` -- effects that need
     /// the `gpui::App` rather than just `Shell`'s own state.
     pub(super) fn run_pending_effects(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(change) = self.pending_colour_change.take() {
+        if let Some(change) = self.chrome.pending_colour_change.take() {
             change.apply(cx);
         }
     }
