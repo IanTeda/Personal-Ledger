@@ -3,7 +3,44 @@
 //! Preferences, the Tracing page and the Settings dialogs. The pages themselves are drawn by
 //! `view::settings`, and the View state is in the `SettingsView` Entity (ADR-0032).
 
-use super::*;
+use super::Shell;
+use super::key_dispatch::PENDING_G_TIMEOUT;
+use super::log_feed::LOG_LINE_STEP;
+use crate::accounts::{self};
+use crate::chrome::dialog_host::OpenDialog;
+use crate::documents::{self};
+use crate::institutions::AccountType;
+use crate::institutions::form::AddInstitutionForm;
+use crate::inventory;
+use crate::navigation::key_router::Movement;
+use crate::navigation::nav::{FocusZone, InputMode, Noun};
+use crate::settings::display::{DATE_STYLE_CHOICES, RowDensity, StatusGlyphs};
+use crate::settings::tracing_log::TracingLevel;
+use crate::settings::{
+    DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, SettingsDialog, SettingsFocus, SettingsSection,
+    step_choice,
+};
+use crate::theme::colours::ColourChange;
+use crate::units::UnitKind;
+use crate::units::form::{AddUnitField, DeleteUnitForm, UnitForm};
+use crate::view::accounts::hints::accounts_hints;
+use crate::view::settings as settings_view;
+use crate::view::settings::hints::{
+    confirm_dialog_hints, settings_categories_hints, settings_colour_grid_hints,
+    settings_display_hints, settings_documents_hints, settings_index_hints,
+    settings_inventory_hints, settings_payees_hints, settings_plain_page_hints,
+    settings_tags_hints, settings_tracing_hints,
+};
+use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
+use gpui::{App, Context, Keystroke, ScrollStrategy};
+use lib_core::DateStyle;
+use lib_toast::ToastKind;
+
+/// Settings' Documents page: rows per half page for `Ctrl-d`/`Ctrl-u`.
+const SETTINGS_DOCUMENTS_HALF_PAGE: isize = 5;
+
+/// Settings' Inventory page: rows per half page for `Ctrl-d`/`Ctrl-u`.
+const SETTINGS_INVENTORY_HALF_PAGE: usize = 5;
 
 impl Shell {
     /// Settings' Colour Theme grid (`docs/colour-themes-design.md` "Settings"): Focus arrives from
@@ -590,7 +627,7 @@ impl Shell {
             "r" => self.add_inventory_room_for_selection(cx),
             "e" => {
                 if let Some(row) = self.settings_inventory_selected_row(cx) {
-                    self.open_edit_inventory_row(row);
+                    self.open_edit_inventory_row(row, cx);
                 }
             }
             "x" => {
@@ -754,7 +791,7 @@ impl Shell {
         self.settings_view
             .update(cx, |v, cx| v.set_inventory_selected(cx, Some(row)));
         self.focus_settings_page(cx);
-        self.open_edit_inventory_row(row);
+        self.open_edit_inventory_row(row, cx);
         cx.notify();
     }
 
@@ -807,7 +844,7 @@ impl Shell {
     /// somehow out of bounds (defensive only -- every caller is a row's own click handler, so
     /// this should never actually happen).
     pub(super) fn handle_unit_edit_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        let Some(row) = self.settings_units.get(index) else {
+        let Some(row) = self.units_store.read(cx).unit(index) else {
             return;
         };
         let form = UnitForm::from_row(row);
@@ -870,45 +907,39 @@ impl Shell {
     /// close" (a changed code just relabels the row here; rewriting real references is out of
     /// scope per the map's own Destination), Delete "confirm -> remove + close". The form has
     /// already validated.
-    pub(super) fn apply_settings_dialog(&mut self, dialog: SettingsDialog) {
+    pub(super) fn apply_settings_dialog(&mut self, dialog: SettingsDialog, cx: &mut App) {
         match dialog {
             SettingsDialog::AddUnit(form) => {
-                self.settings_units.push(UnitRow {
-                    code: form.code.into_text(),
-                    name: form.name.into_text(),
-                    kind: form.kind.label().to_string(),
-                    // Neither field exists in the Add unit dialog (issue #184's own fields are
-                    // just Code/Name/Type) -- a dialog-created unit has no real price-source
-                    // integration yet, and can't be the ledger's base/default unit (nothing
-                    // lets a user change which one that is).
-                    source: "Manual entry".to_string(),
-                    is_base: false,
-                    is_default: false,
+                // Neither Add unit field carries a source or a base or default flag: the store
+                // defaults a dialog-created unit to "Manual entry", not base and not default.
+                self.units_store.update(cx, |store, cx| {
+                    store.add_unit(
+                        cx,
+                        form.code.into_text(),
+                        form.name.into_text(),
+                        form.kind.label().to_string(),
+                    );
                 });
             }
             SettingsDialog::EditUnit(index, form) => {
-                if let Some(existing) = self.settings_units.get_mut(index) {
-                    // `source`/`is_base`/`is_default` aren't Edit unit dialog fields either
-                    // (issue #185's own body: "same form as Add unit") -- preserved from the
-                    // row being edited rather than reset, unlike `code`/`name`/`kind`.
-                    *existing = UnitRow {
-                        code: form.code.into_text(),
-                        name: form.name.into_text(),
-                        kind: form.kind.label().to_string(),
-                        source: existing.source.clone(),
-                        is_base: existing.is_base,
-                        is_default: existing.is_default,
-                    };
-                }
+                // Source and the base and default flags aren't Edit unit fields either, so the
+                // store keeps them from the row being edited.
+                self.units_store.update(cx, |store, cx| {
+                    store.edit_unit(
+                        cx,
+                        index,
+                        form.code.into_text(),
+                        form.name.into_text(),
+                        form.kind.label().to_string(),
+                    );
+                });
             }
             SettingsDialog::DeleteUnit(index, form) => {
                 // Defensive only: the dialog is modal, so the row it opened on is still there.
-                if self
-                    .settings_units
-                    .get(index)
-                    .is_some_and(|row| row.code == form.code)
-                {
-                    let unit = self.settings_units.remove(index);
+                let removed = self
+                    .units_store
+                    .update(cx, |store, cx| store.remove_unit(cx, index, &form.code));
+                if let Some(unit) = removed {
                     self.raise_toast(
                         ToastKind::Success,
                         lib_locale::msg::toast_unit_deleted(&unit.code),
@@ -922,9 +953,8 @@ impl Shell {
                     .map(|account_type| account_type.label())
                     .collect::<Vec<_>>()
                     .join(" \u{b7} ");
-                self.settings_institutions.push(InstitutionRow {
-                    name: form.name.into_text(),
-                    account_type,
+                self.institutions_store.update(cx, |store, cx| {
+                    store.add(cx, form.name.into_text(), account_type);
                 });
             }
             SettingsDialog::ClearLogs => {
@@ -1005,7 +1035,7 @@ impl Shell {
     /// message. A no-op if `index` is somehow out of bounds (defensive only, same reasoning as
     /// [`Self::handle_unit_edit_click`]).
     pub(super) fn handle_unit_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        let Some(row) = self.settings_units.get(index) else {
+        let Some(row) = self.units_store.read(cx).unit(index) else {
             return;
         };
         let form = DeleteUnitForm::new(row.code.as_str());
@@ -1044,11 +1074,11 @@ impl Shell {
 
     /// The Institutions table's own "+ Add institution" button (issue #187, replacing the stub
     /// #178 left behind): opens the real Add institution dialog rather than flashing a status
-    /// message. `AddInstitutionForm::new` seeds Default unit from `self.settings_units`' own
+    /// message. `AddInstitutionForm::new` seeds Default unit from `self.units_store.read(cx).units()`' own
     /// first entry, so this dialog reads Units' live state even though the two sections are
     /// otherwise independent.
     pub(super) fn handle_add_institution_click(&mut self, cx: &mut Context<'_, Self>) {
-        let form = AddInstitutionForm::new(&self.settings_units);
+        let form = AddInstitutionForm::new(self.units_store.read(cx).units());
         self.open_dialog(OpenDialog::Settings(SettingsDialog::AddInstitution(form)));
         cx.notify();
     }

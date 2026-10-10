@@ -53,7 +53,7 @@ mod view_events;
 use commands::record_history;
 use key_dispatch::PENDING_G_TIMEOUT;
 pub use log_feed::LOG_COALESCE;
-use log_feed::{LOG_LINE_STEP, LOG_LIST_OVERDRAW};
+use log_feed::LOG_LIST_OVERDRAW;
 #[doc(hidden)]
 pub use snapshots::{
     AccountFormSnapshot, BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot,
@@ -63,23 +63,16 @@ pub use snapshots::{
 
 use std::time::{Duration, Instant};
 
-use crate::view::settings::hints::{
-    settings_categories_hints, settings_colour_grid_hints, settings_display_hints,
-    settings_documents_hints, settings_index_hints, settings_inventory_hints,
-    settings_payees_hints, settings_plain_page_hints, settings_tags_hints, settings_tracing_hints,
-};
-use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
-use crate::view::settings::state::SettingsView;
+use crate::view::settings::state::{InstitutionsStore, LedgerDataEvent, SettingsView, UnitsStore};
 use crate::view::transactions::state::{TransactionsState, TransactionsView};
-use crate::view::{accounts::hints::accounts_hints, settings::hints::confirm_dialog_hints};
 
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, Keystroke, ListAlignment, ListState,
-    ScrollHandle, ScrollStrategy, Subscription, UniformListScrollHandle, point, px,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState,
+    ScrollHandle, Subscription, UniformListScrollHandle, point, px,
 };
 
 use lib_core::DateStyle;
-use lib_toast::{ToastKind, Toasts};
+use lib_toast::Toasts;
 
 use crate::view::accounts::state::{
     ACCOUNTS_HALF_PAGE, AccountsEvent, AccountsStore, AccountsView,
@@ -93,39 +86,33 @@ use crate::view::documents::state::{
 use crate::view::payees::state::{PayeesEvent, PayeesStore, PayeesView};
 use crate::view::tags::state::{TagsEvent, TagsStore, TagsView};
 use crate::{
-    accounts::{self},
     bills::{self, BillsStore},
     budgets,
     categories::{self, Category},
     chrome::dialog_host::OpenDialog,
     chrome::state::ChromeState,
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
-    institutions::{self, AccountType, InstitutionRow, form::AddInstitutionForm},
+    institutions::{self},
     inventory,
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
     navigation::key_router::{self, Movement},
-    navigation::nav::{FocusZone, InputMode, NavState, Noun},
+    navigation::nav::NavState,
     payees::{self},
     settings::tracing_log::LogView,
     settings::{
-        DISPLAY_FIELD_COUNT, DISPLAY_FIELD_SIDEBAR, SettingsDialog, SettingsFocus, SettingsSection,
-        display::{DATE_STYLE_CHOICES, RowDensity, StatusGlyphs},
-        step_choice,
+        SettingsSection,
+        display::{RowDensity, StatusGlyphs},
         tracing_log::TracingLevel,
     },
     tags::{self},
     theme::colours::ColourChange,
     transactions::{self, TransactionsStore, chips::FilterField, query::TransactionFilters},
-    units::{
-        self, PriceSourceRow, UnitKind, UnitRow,
-        form::{AddUnitField, DeleteUnitForm, UnitForm},
-    },
+    units::{self},
     view::format,
     view::{
         budgets::{self as budgets_view},
         dashboard::{self},
-        settings::{self as settings_view},
     },
 };
 
@@ -139,12 +126,6 @@ const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
 /// there's no literal "row height" for a dashboard of charts and figures, so this is a plain
 /// reading-sized increment, not a computed value.
 const VIEW_LINE_STEP: f32 = 40.0;
-
-/// `Ctrl-d`/`Ctrl-u` on the Settings Categories page: rows per half page.
-/// `Ctrl-d`/`Ctrl-u` on the Settings Documents page: rows per half page.
-const SETTINGS_DOCUMENTS_HALF_PAGE: isize = 5;
-/// `Ctrl-d`/`Ctrl-u` on the Settings Inventory page: rows per half page.
-const SETTINGS_INVENTORY_HALF_PAGE: usize = 5;
 
 /// Owns the shell's render tree and the live `NavState`.
 pub struct Shell {
@@ -198,21 +179,13 @@ pub struct Shell {
     /// The `:open` explorer's footer checkboxes, kept here so they outlive each dialog and reach
     /// `persistence::PersistedState` at quit.
     explorer_filters: ExplorerFilters,
-    /// The Units section's own table rows (issue #177), seeded from `units::default_units()`.
-    /// A real, mutable `Vec` so the Add/Edit/Delete unit dialogs (issues #184-#186) can
-    /// push/update/remove rows once they land -- unlike
-    /// [`Self::settings_selected_section`], not reset by
-    /// [`Self::reset_view_scroll`]: it represents saved-in-memory state, not navigational UI
-    /// state, so it must survive leaving and re-entering Settings the way real saved data would.
-    settings_units: Vec<UnitRow>,
-    /// The same section's own "Price Sources" subsection rows (issue #189), seeded from
-    /// `units::default_price_sources()` -- same reasoning as [`Self::settings_units`], though
-    /// nothing on this map's own dialog tickets mutates this `Vec` yet (test/edit/delete/add are
-    /// all clearly-marked stubs, see `view::settings::units`'s own doc).
-    settings_price_sources: Vec<PriceSourceRow>,
-    /// The Institutions section's own table rows (issue #178), seeded from
-    /// `institutions::default_institutions()` -- same reasoning as [`Self::settings_units`].
-    settings_institutions: Vec<InstitutionRow>,
+    /// The Units table and Price Sources, owned by their store Entity and read through it
+    /// (ADR-0032). Shared: Settings edits them, and Accounts and the Institutions dialog read the
+    /// same rows.
+    units_store: Entity<UnitsStore>,
+    /// The Institutions table, owned by its store Entity and read through it (ADR-0032). Shared:
+    /// Settings edits it, and the Accounts form reads it.
+    institutions_store: Entity<InstitutionsStore>,
     /// The Tracing page's mirror of the live log capture and its level filter (session only).
     settings_log: LogView,
     /// The Tracing page's virtualised log list. Kept in step with `settings_log` by splicing,
@@ -301,6 +274,18 @@ impl Shell {
         let categories = categories::default_categories();
         let categories_store = cx.new(|_| CategoriesStore::new(categories.clone()));
         let categories_view = cx.new(|_| CategoriesView::new());
+        let units_store =
+            cx.new(|_| UnitsStore::new(units::default_units(), units::default_price_sources()));
+        let institutions_store =
+            cx.new(|_| InstitutionsStore::new(institutions::default_institutions()));
+        let units_subscription = cx
+            .subscribe(&units_store, |_, _store, _event: &LedgerDataEvent, cx| {
+                cx.notify()
+            });
+        let institutions_subscription = cx.subscribe(
+            &institutions_store,
+            |_, _store, _event: &LedgerDataEvent, cx| cx.notify(),
+        );
         let categories_subscription = cx.subscribe(
             &categories_store,
             |_, _store, _event: &CategoriesEvent, cx| cx.notify(),
@@ -413,9 +398,8 @@ impl Shell {
             settings_status_glyphs: StatusGlyphs::default(),
             settings_start_sidebar_minimised: false,
             explorer_filters: ExplorerFilters::default(),
-            settings_units: units::default_units(),
-            settings_price_sources: units::default_price_sources(),
-            settings_institutions: institutions::default_institutions(),
+            units_store,
+            institutions_store,
             // A private, empty capture until `set_log_capture` hands over the real one.
             settings_log: LogView::new(
                 lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
@@ -450,6 +434,8 @@ impl Shell {
                 payees_subscription,
                 payees_view_observer,
                 categories_subscription,
+                units_subscription,
+                institutions_subscription,
                 categories_view_observer,
                 settings_view_observer,
             ],
@@ -656,11 +642,18 @@ impl Focusable for Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accounts;
     use crate::transactions::Transaction;
+    use crate::view::accounts::hints::accounts_hints;
+    use crate::view::settings::hints::{
+        settings_colour_grid_hints, settings_display_hints, settings_index_hints,
+        settings_plain_page_hints,
+    };
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
     use categories_ui::category_refused;
     use chrono::Local;
     use lib_accounts::{Account, AccountService};
+    use lib_toast::ToastKind;
     use transactions_ui::move_category_splits;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {

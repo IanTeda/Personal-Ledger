@@ -42,8 +42,10 @@ pub(super) fn dialog_hints(dialog: &InventoryDialog) -> Vec<(&'static str, Strin
 
 impl Shell {
     /// The fiat Units a Property can be kept in, as option labels, with each one's code.
-    fn property_unit_choices(&self) -> Vec<(String, String)> {
-        self.settings_units
+    fn property_unit_choices(&self, cx: &App) -> Vec<(String, String)> {
+        self.units_store
+            .read(cx)
+            .units()
             .iter()
             .filter(|unit| unit.kind == "currency")
             .map(|unit| {
@@ -59,12 +61,12 @@ impl Shell {
     }
 
     /// What the Property form checks against, copied in when it opens.
-    fn property_context(&self) -> PropertyContext {
+    fn property_context(&self, cx: &App) -> PropertyContext {
         PropertyContext {
             inventory: self.inventory.clone(),
             today: self.today,
             date_style: self.settings_date_style,
-            unit_choices: self.property_unit_choices(),
+            unit_choices: self.property_unit_choices(cx),
         }
     }
 
@@ -77,9 +79,9 @@ impl Shell {
     }
 
     /// `e` or **edit**: a Property opens its dialog; a Room opens its own.
-    pub(super) fn open_edit_inventory_row(&mut self, row: InventoryRow) {
+    pub(super) fn open_edit_inventory_row(&mut self, row: InventoryRow, cx: &App) {
         match row {
-            InventoryRow::Property(id) => self.open_edit_property_dialog(id),
+            InventoryRow::Property(id) => self.open_edit_property_dialog(id, cx),
             InventoryRow::Room(id) => self.open_edit_room_dialog(id),
         }
     }
@@ -94,22 +96,22 @@ impl Shell {
 
     pub(super) fn open_add_property_dialog(&mut self, cx: &App) {
         // The selected Property's Unit, else the first fiat Unit.
-        let choices = self.property_unit_choices();
+        let choices = self.property_unit_choices(cx);
         let preferred = self
             .selected_inventory_property(cx)
             .and_then(|id| self.inventory.property(id))
             .and_then(|property| choices.iter().find(|(_, code)| *code == property.unit))
             .or_else(|| choices.first())
             .map(|(label, _)| label.clone());
-        let form = PropertyForm::for_add(preferred, self.property_context());
+        let form = PropertyForm::for_add(preferred, self.property_context(cx));
         self.open_dialog(OpenDialog::Inventory(InventoryDialog::Add(form)));
     }
 
-    pub(super) fn open_edit_property_dialog(&mut self, id: u32) {
+    pub(super) fn open_edit_property_dialog(&mut self, id: u32, cx: &App) {
         let Some(property) = self.inventory.property(id) else {
             return;
         };
-        let form = PropertyForm::from_property(property, self.property_context());
+        let form = PropertyForm::from_property(property, self.property_context(cx));
         self.open_dialog(OpenDialog::Inventory(InventoryDialog::Edit(id, form)));
     }
 

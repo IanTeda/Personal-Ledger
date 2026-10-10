@@ -451,11 +451,11 @@ impl Render for Shell {
                 entity.update(cx, |shell, cx| shell.handle_accounts_dialog_confirm(cx));
             })
         };
-        let account_options = self.account_dialog_options();
+        let account_options = self.account_dialog_options(cx);
         let selected_account = self.accounts_view.read(cx).selected_index(cx);
         let accounts_page = accounts_view::AccountsPageProps {
             accounts: self.accounts.read(cx).accounts(),
-            units: &self.settings_units,
+            units: self.units_store.read(cx).units(),
             selected: selected_account,
             on_add_click: on_accounts_add_click,
             on_row_click: on_accounts_row_click,
@@ -735,7 +735,9 @@ impl Render for Shell {
         );
         let bills_planner_plans = bills::planner_order(self.bill_plans(cx));
         let bills_base_unit = self
-            .settings_units
+            .units_store
+            .read(cx)
+            .units()
             .iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code.as_str());
@@ -1392,16 +1394,16 @@ impl Render for Shell {
                                     colour_theme_focus: self.colour_theme_focus,
                                     display_field: self.settings_view.read(cx).display_field(),
                                     on_colour_theme_click,
-                                    units: &self.settings_units,
+                                    units: self.units_store.read(cx).units(),
                                     on_unit_edit_click,
                                     on_unit_delete_click,
                                     on_add_unit_click,
-                                    price_sources: &self.settings_price_sources,
+                                    price_sources: self.units_store.read(cx).price_sources(),
                                     on_price_source_test_click,
                                     on_price_source_edit_click,
                                     on_price_source_delete_click,
                                     on_add_price_source_click,
-                                    institutions: &self.settings_institutions,
+                                    institutions: self.institutions_store.read(cx).institutions(),
                                     on_institution_edit_click,
                                     on_institution_delete_click,
                                     on_add_institution_click,
@@ -1808,7 +1810,7 @@ impl Render for Shell {
                     cx,
                 ),
                 SettingsDialog::DeleteUnit(index, form) => {
-                    match self.settings_units.get(*index) {
+                    match self.units_store.read(cx).unit(*index) {
                         Some(row) => units_view::delete_dialog::render(
                             row,
                             form,
@@ -1829,7 +1831,7 @@ impl Render for Shell {
                 ),
                 SettingsDialog::AddInstitution(form) => institutions_view::add_dialog::render(
                     form,
-                    &self.settings_units,
+                    self.units_store.read(cx).units(),
                     on_add_institution_account_type_click,
                     on_add_institution_unit_click,
                     on_settings_dialog_cancel,

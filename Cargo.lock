@@ -725,6 +725,7 @@ dependencies = [
  "lib_core",
  "lib_database",
  "lib_documents",
+ "lib_institutions",
  "lib_inventory",
  "lib_locale",
  "lib_locale_build",
@@ -733,6 +734,7 @@ dependencies = [
  "lib_toast",
  "lib_tracing",
  "lib_transactions",
+ "lib_units",
  "serde",
  "serde_json",
  "tempfile",
@@ -4790,6 +4792,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib_institutions"
+version = "0.1.0"
+
+[[package]]
 name = "lib_inventory"
 version = "0.1.0"
 dependencies = [
@@ -4901,6 +4907,10 @@ dependencies = [
  "chrono",
  "lib_core",
 ]
+
+[[package]]
+name = "lib_units"
+version = "0.1.0"
 
 [[package]]
 name = "libc"

@@ -71,7 +71,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         match event {
-            AccountsEvent::Add => self.open_add_account_dialog(""),
+            AccountsEvent::Add => self.open_add_account_dialog("", cx),
             AccountsEvent::Edit(id) => self.open_edit_account_dialog(id, cx),
             AccountsEvent::Delete(id) => self.open_delete_account_dialog(id, cx),
             AccountsEvent::OpenLedger(id) => self.open_account_ledger(id, cx),
@@ -127,19 +127,23 @@ impl Shell {
 
     /// The page's **+ Add account** button: the same handler `n` reaches.
     pub(super) fn handle_accounts_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_add_account_dialog("");
+        self.open_add_account_dialog("", cx);
         cx.notify();
     }
 
     /// The three selects' option lists, read live from Settings (so an institution added there
     /// appears here) and the fixed type order.
-    pub(super) fn account_dialog_options(&self) -> AccountOptions {
+    pub(super) fn account_dialog_options(&self, cx: &App) -> AccountOptions {
         AccountOptions::new(
-            self.settings_institutions
+            self.institutions_store
+                .read(cx)
+                .institutions()
                 .iter()
                 .map(|institution| institution.name.clone())
                 .collect(),
-            self.settings_units
+            self.units_store
+                .read(cx)
+                .units()
                 .iter()
                 .map(|unit| unit.code.clone())
                 .collect(),
@@ -149,10 +153,12 @@ impl Shell {
     /// Opens the Add account dialog on a fresh form (Unit starting on Settings' default Unit),
     /// with Name pre-filled from `name` -- empty for `n` and the button, the typed argument for
     /// `accounts new <account name>`.
-    pub(super) fn open_add_account_dialog(&mut self, name: &str) {
-        let options = self.account_dialog_options();
+    pub(super) fn open_add_account_dialog(&mut self, name: &str, cx: &App) {
+        let options = self.account_dialog_options(cx);
         let default_unit = self
-            .settings_units
+            .units_store
+            .read(cx)
+            .units()
             .iter()
             .find(|unit| unit.is_default)
             .map(|unit| unit.code.as_str());
@@ -221,7 +227,13 @@ impl Shell {
             AccountsDialog::Add(form) => form
                 .unit
                 .value()
-                .and_then(|code| self.settings_units.iter().find(|unit| unit.code == code))
+                .and_then(|code| {
+                    self.units_store
+                        .read(cx)
+                        .units()
+                        .iter()
+                        .find(|unit| unit.code == code)
+                })
                 .is_none_or(|unit| unit.kind == "currency"),
             _ => true,
         };
@@ -283,7 +295,7 @@ impl Shell {
 
     /// Opens the Edit account dialog on `id`, pre-filled. A no-op if the account is gone.
     pub(super) fn open_edit_account_dialog(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        let options = self.account_dialog_options();
+        let options = self.account_dialog_options(cx);
         let Some(account) = self
             .accounts
             .read(cx)
@@ -323,7 +335,7 @@ impl Shell {
     ) {
         self.open_settings_page(SettingsSection::Accounts, cx);
         if verb == AccountsVerb::New {
-            self.open_add_account_dialog(argument);
+            self.open_add_account_dialog(argument, cx);
             return;
         }
 

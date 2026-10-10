@@ -386,17 +386,23 @@ impl Shell {
             selected_tag,
             merge_pair,
             unit_codes: self
-                .settings_units
+                .units_store
+                .read(cx)
+                .units()
                 .iter()
                 .map(|unit| unit.code.clone())
                 .collect(),
             institutions: self
-                .settings_institutions
+                .institutions_store
+                .read(cx)
+                .institutions()
                 .iter()
                 .map(|row| (row.name.clone(), row.account_type.clone()))
                 .collect(),
             unit_rows: self
-                .settings_units
+                .units_store
+                .read(cx)
+                .units()
                 .iter()
                 .map(|unit| (unit.code.clone(), unit.name.clone(), unit.kind.clone()))
                 .collect(),
