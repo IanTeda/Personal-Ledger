@@ -3,8 +3,15 @@
 //! Settings list's id). `Shell` opens the dialogs and runs the rules, since the dialog host and the
 //! Transactions store are `Shell`'s.
 
-use gpui::{Context, Entity};
+use gpui::{Context, Entity, EventEmitter};
 use lib_payees::{Payee, PayeeService};
+
+/// Emitted by [`PayeesStore`] after any write, so `Shell` can refresh the Views that read the rows
+/// (ADR-0032's View events).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PayeesEvent {
+    Changed,
+}
 
 /// The shared Payees rows. Every reader (the Payees page, Settings, the Transactions form and
 /// Import, Bills, Documents and Budgets) reads them from here, so a change is seen everywhere on
@@ -12,6 +19,8 @@ use lib_payees::{Payee, PayeeService};
 pub struct PayeesStore {
     service: PayeeService,
 }
+
+impl EventEmitter<PayeesEvent> for PayeesStore {}
 
 impl PayeesStore {
     /// A store over `payees`, which the Desktop seeds from `lib_payees::default_payees`.
@@ -25,15 +34,15 @@ impl PayeesStore {
         self.service.payees()
     }
 
-    /// Applies `change` to the rows, then tells every subscriber they changed. Mutations go
-    /// through here so no write can skip the notification.
+    /// Applies `change` to the rows, then emits [`PayeesEvent::Changed`]. Mutations go through
+    /// here so no write can skip the event.
     pub fn mutate<R>(
         &mut self,
         cx: &mut Context<'_, Self>,
         change: impl FnOnce(&mut Vec<Payee>) -> R,
     ) -> R {
         let result = change(self.service.payees_mut());
-        cx.notify();
+        cx.emit(PayeesEvent::Changed);
         result
     }
 }

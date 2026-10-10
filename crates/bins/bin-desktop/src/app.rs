@@ -88,7 +88,7 @@ use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, Budg
 use crate::view::documents::state::{
     DocumentsEvent, DocumentsState, DocumentsStore, DocumentsView,
 };
-use crate::view::payees::state::{PayeesStore, PayeesView};
+use crate::view::payees::state::{PayeesEvent, PayeesStore, PayeesView};
 use crate::view::tags::state::{TagsStore, TagsView};
 use crate::{
     accounts::{self},
@@ -310,7 +310,8 @@ impl Shell {
         let payees = payees::default_payees();
         let payees_store = cx.new(|_| PayeesStore::new(payees.clone()));
         let payees_view = cx.new(|_| PayeesView::new(payees_store.clone()));
-        let payees_observer = cx.observe(&payees_store, |_, _, cx| cx.notify());
+        let payees_subscription =
+            cx.subscribe(&payees_store, |_, _store, _event: &PayeesEvent, cx| cx.notify());
         let tags = tags::default_tags();
         let tags_store = cx.new(|_| TagsStore::new(tags.clone()));
         let tags_view = cx.new(|_| TagsView::new(tags_store.clone()));
@@ -446,7 +447,7 @@ impl Shell {
                 bills_subscription,
                 documents_subscription,
                 tags_observer,
-                payees_observer,
+                payees_subscription,
             ],
         }
     }
