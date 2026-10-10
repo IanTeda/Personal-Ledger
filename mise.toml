@@ -55,7 +55,7 @@ description = "Run the headless Desktop UI integration tests (gpui test-support,
 env = { SQLX_OFFLINE = "true" }
 # `mise run end-to-end-ui settings_inventory` runs only the test files whose name contains the
 # argument (each View owns `<view>_keyboard.rs` and `<view>_mouse.rs`); no argument runs them all.
-# Run the full suite once before pushing.
+# Run the full suite when closing a parent ticket (a Wayfinder map or any issue with sub-issues).
 usage = 'arg "[view]" help="Substring of the tests/ file names to run, e.g. settings_inventory"'
 run = '''
 set -eu

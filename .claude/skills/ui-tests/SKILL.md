@@ -5,7 +5,7 @@ description: Write or extend headless keyboard and mouse integration tests for t
 
 # Desktop UI tests
 
-Run them with `mise run end-to-end-ui <view>` while developing (headless; no window or GPU, so it works in Claude's sandbox), where `<view>` is a substring of the `tests/` file names, e.g. `settings_inventory` or `documents`. Run the bare `mise run end-to-end-ui` (the whole suite) once before pushing, not after every change. Design and gating are in ADR-0030.
+Run them with `mise run end-to-end-ui <view>` while developing (headless; no window or GPU, so it works in Claude's sandbox), where `<view>` is a substring of the `tests/` file names, e.g. `settings_inventory` or `documents`. The bare `mise run end-to-end-ui` (the whole suite) is required only when closing a parent ticket (a Wayfinder map or any issue with sub-issues), not for each child ticket or push. Design and gating are in ADR-0030.
 
 ## Harness (`tests/common/mod.rs`)
 
