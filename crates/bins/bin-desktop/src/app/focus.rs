@@ -91,7 +91,7 @@ impl Shell {
     fn apply_view_movement(&mut self, movement: Movement, cx: &mut gpui::Context<'_, Self>) {
         let page_focused =
             self.nav.focus() == FocusZone::View && self.settings_focus == SettingsFocus::Page;
-        match self.active_view() {
+        match self.active_view(cx) {
             ActiveView::Settings(SettingsSection::Accounts) if page_focused => {
                 self.apply_accounts_movement(movement, cx);
             }

@@ -65,8 +65,8 @@ type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut gpui::
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         // 6e shows only on Transactions: leaving the page (a jump, a rail click) abandons it.
-        if self.nav.noun() != Noun::Transactions {
-            self.import = None;
+        if self.nav.noun() != Noun::Transactions && self.import_state(cx).is_some() {
+            self.edit_import(cx, |import| *import = None);
         }
         let focus = self.nav.focus();
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
@@ -905,7 +905,7 @@ impl Render for Shell {
             on_all_click: bills_plain(Shell::handle_bills_all_click),
         };
         let import_categories = self.import_category_options();
-        let import_page = self.import.as_ref().map(|state| {
+        let import_page = self.import_state(cx).map(|state| {
             let entity_for = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
                 let entity = entity.clone();
                 let on_click: import_view::OnClick = Rc::new(move |_window, cx| {
@@ -1310,7 +1310,7 @@ impl Render for Shell {
                             if self.nav.noun() == Noun::Settings {
                                 Some(self.settings_selected_section.label())
                             } else {
-                                self.import.as_ref().map(|_| {
+                                self.import_state(cx).map(|_| {
                                     crate::msg::desktop_import_context(import::STATEMENT_FILE)
                                 })
                             },
@@ -1356,7 +1356,7 @@ impl Render for Shell {
                                 },
                             )
                             .child(render_view(
-                                self.active_view(),
+                                self.active_view(cx),
                                 self.nav.ledger_open(),
                                 focus == FocusZone::View,
                                 &self.view_scroll_handle,
@@ -1436,7 +1436,7 @@ impl Render for Shell {
                 )
                 .page(view_chrome.status)
                 .mode_label(
-                    (self.import.is_some() && self.nav.mode() == InputMode::Normal)
+                    (self.import_state(cx).is_some() && self.nav.mode() == InputMode::Normal)
                         .then(crate::msg::desktop_mode_import),
                 )
                 .on_hint(on_hint),

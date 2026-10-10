@@ -44,6 +44,21 @@ impl Shell {
             .update(cx, |view, cx| view.edit(cx, change))
     }
 
+    /// The Import step's state, read through the Transactions Entity (ADR-0032). `None` while it
+    /// is not showing.
+    pub(super) fn import_state<'a>(&self, cx: &'a App) -> Option<&'a ImportState> {
+        self.transactions_state(cx).import.as_ref()
+    }
+
+    /// Edits the Import step's slot through the Transactions Entity, which notifies after the edit.
+    pub(super) fn edit_import<R>(
+        &self,
+        cx: &mut App,
+        change: impl FnOnce(&mut Option<ImportState>) -> R,
+    ) -> R {
+        self.edit_transactions_state(cx, |state| change(&mut state.import))
+    }
+
     /// Runs `change` on the open filter popover's draft, if there is one.
     pub(super) fn with_filter_form<R>(
         &self,
@@ -444,8 +459,11 @@ impl Shell {
     /// `:import`: opens the stubbed 6e step on the seeded statement, in place of the Transactions
     /// page (#284).
     pub(super) fn open_import(&mut self, cx: &mut App) {
-        self.import = Some(ImportState::new(&self.payees, self.today));
-        self.edit_transactions_state(cx, |s| s.filter_form = None);
+        let import = ImportState::new(&self.payees, self.today);
+        self.edit_transactions_state(cx, |s| {
+            s.import = Some(import);
+            s.filter_form = None;
+        });
         self.nav.set_noun(Noun::Transactions);
         self.nav.set_focus(FocusZone::View);
         self.reset_view_scroll(cx);
@@ -468,7 +486,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        if self.import.is_none()
+        if self.import_state(cx).is_none()
             || self.nav.noun() != Noun::Transactions
             || self.nav.mode() != InputMode::Normal
             || self.nav.focus() != FocusZone::View
@@ -480,11 +498,13 @@ impl Shell {
             return false;
         }
         let categories = self.import_category_options();
-        let Some(state) = self.import.as_mut() else {
+        let key = keystroke.key.as_str();
+        let Some(state) = self.import_state(cx) else {
             return false;
         };
-        let key = keystroke.key.as_str();
-        let selected = state.selected.min(state.rows.len().saturating_sub(1));
+        let len = state.rows.len();
+        let selected = state.selected.min(len.saturating_sub(1));
+        let select_open = state.open_select.is_some();
         let choices = state
             .rows
             .get(selected)
@@ -493,7 +513,7 @@ impl Shell {
             return false;
         };
 
-        if state.open_select.is_some() {
+        if select_open {
             let select_key = match key {
                 "j" | "down" => import::SelectKey::Down,
                 "k" | "up" => import::SelectKey::Up,
@@ -502,37 +522,51 @@ impl Shell {
                 // An open list swallows everything else, like the dialogs' selects.
                 _ => return true,
             };
-            state.handle_select_key(select_key, &self.payees, &choices, &categories);
+            self.edit_import(cx, |import| {
+                if let Some(state) = import.as_mut() {
+                    state.handle_select_key(select_key, &self.payees, &choices, &categories);
+                }
+            });
             return true;
         }
 
-        let len = state.rows.len();
         match key {
-            "j" | "down" => state.selected = accounts::step_selection(selected, len, 1),
-            "k" | "up" => state.selected = accounts::step_selection(selected, len, -1),
-            "p" => state.open(selected, RowSelect::Payee, &choices, &categories),
-            "c" => state.open(selected, RowSelect::Category, &choices, &categories),
-            "n" => state.create_new_payee(&self.payees),
-            "r" => state.remember = !state.remember,
             "enter" => {
                 self.continue_import(cx);
                 return true;
             }
             "escape" => {
-                self.import = None;
+                self.edit_import(cx, |import| *import = None);
                 return true;
             }
-            _ => return false,
+            _ => {}
         }
-        let selected = state.selected;
-        self.view_scroll_handle.scroll_to_item(selected);
-        true
+        let handled = self.edit_import(cx, |import| {
+            let Some(state) = import.as_mut() else {
+                return false;
+            };
+            match key {
+                "j" | "down" => state.selected = accounts::step_selection(selected, len, 1),
+                "k" | "up" => state.selected = accounts::step_selection(selected, len, -1),
+                "p" => state.open(selected, RowSelect::Payee, &choices, &categories),
+                "c" => state.open(selected, RowSelect::Category, &choices, &categories),
+                "n" => state.create_new_payee(&self.payees),
+                "r" => state.remember = !state.remember,
+                _ => return false,
+            }
+            true
+        });
+        if handled && let Some(state) = self.import_state(cx) {
+            self.view_scroll_handle.scroll_to_item(state.selected);
+        }
+        handled
     }
 
     /// **continue** / `enter`: commits the import to the stubs and lands on Transactions with a
     /// Toast. Does nothing while a row needs review (the button is disabled then).
     pub(super) fn continue_import(&mut self, cx: &mut Context<'_, Self>) {
-        let Some(state) = self.import.as_ref() else {
+        // Cloned so the commit can borrow `cx` mutably for the store write.
+        let Some(state) = self.import_state(cx).cloned() else {
             return;
         };
         let committed = edit_transactions(&self.transactions_store, cx, |transactions| {
@@ -555,7 +589,7 @@ impl Shell {
                         }
                     })
                 });
-                self.import = None;
+                self.edit_import(cx, |import| *import = None);
                 self.reset_transactions_selection(cx);
                 self.reset_view_scroll(cx);
                 self.raise_toast(
@@ -573,16 +607,18 @@ impl Shell {
     }
 
     pub(super) fn handle_import_row_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        if let Some(state) = self.import.as_mut() {
-            state.selected = index;
-            if state
-                .open_select
-                .as_ref()
-                .is_some_and(|(row, _, _)| *row != index)
-            {
-                state.open_select = None;
+        self.edit_import(cx, |import| {
+            if let Some(state) = import.as_mut() {
+                state.selected = index;
+                if state
+                    .open_select
+                    .as_ref()
+                    .is_some_and(|(row, _, _)| *row != index)
+                {
+                    state.open_select = None;
+                }
             }
-        }
+        });
         self.nav.set_focus(FocusZone::View);
         cx.notify();
     }
@@ -595,43 +631,49 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         let categories = self.import_category_options();
-        if let Some(state) = self.import.as_mut() {
-            if state
-                .open_select
-                .as_ref()
-                .is_some_and(|(row, open, _)| *row == index && *open == select)
-            {
-                state.open_select = None;
-            } else if let Some(row) = state.rows.get(index) {
-                let choices = import_view::payee_choices(&self.payees, &row.raw);
-                state.open(index, select, &choices, &categories);
+        self.edit_import(cx, |import| {
+            if let Some(state) = import.as_mut() {
+                if state
+                    .open_select
+                    .as_ref()
+                    .is_some_and(|(row, open, _)| *row == index && *open == select)
+                {
+                    state.open_select = None;
+                } else if let Some(row) = state.rows.get(index) {
+                    let choices = import_view::payee_choices(&self.payees, &row.raw);
+                    state.open(index, select, &choices, &categories);
+                }
             }
-        }
+        });
         self.nav.set_focus(FocusZone::View);
         cx.notify();
     }
 
     pub(super) fn handle_import_option_click(&mut self, option: usize, cx: &mut Context<'_, Self>) {
         let categories = self.import_category_options();
-        if let Some(state) = self.import.as_mut()
-            && let Some((index, _, _)) = state.open_select.as_ref()
-            && let Some(row) = state.rows.get(*index)
-        {
-            let choices = import_view::payee_choices(&self.payees, &row.raw);
-            state.choose(option, &self.payees, &choices, &categories);
-        }
+        self.edit_import(cx, |import| {
+            if let Some(state) = import.as_mut()
+                && let Some((index, _, _)) = state.open_select.as_ref()
+                && let Some(row) = state.rows.get(*index)
+            {
+                let choices = import_view::payee_choices(&self.payees, &row.raw);
+                state.choose(option, &self.payees, &choices, &categories);
+            }
+        });
         cx.notify();
     }
 
     pub(super) fn handle_import_remember_click(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(state) = self.import.as_mut() {
-            state.remember = !state.remember;
-        }
+        self.edit_import(cx, |import| {
+            if let Some(state) = import.as_mut() {
+                state.remember = !state.remember;
+            }
+        });
         cx.notify();
     }
 
     pub(super) fn handle_import_back_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.import = None;
+        self.edit_import(cx, |import| *import = None);
         cx.notify();
     }
 

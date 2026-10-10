@@ -96,7 +96,6 @@ use crate::{
     chrome::state::ChromeState,
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
     form::field::TextField,
-    import::ImportState,
     institutions::{self, AccountType, InstitutionRow, form::AddInstitutionForm},
     inventory,
     navigation::active_view::ActiveView,
@@ -259,9 +258,6 @@ pub struct Shell {
     /// Settings' Inventory page: the selected row and the Properties shown open (session-only).
     settings_inventory_selected: Option<InventoryRow>,
     settings_inventory_expanded: HashSet<u32>,
-    /// The stubbed 6e Import "match payees" step, `Some` while it shows in place of the
-    /// Transactions page (`:import`). Dropped on leaving Transactions.
-    import: Option<ImportState>,
     /// The Tags rows, owned by their store Entity and read through it (ADR-0032). Shared:
     /// Transactions reads the same rows for its chips, filter form and Split tag picker.
     tags_store: Entity<TagsStore>,
@@ -350,6 +346,7 @@ impl Shell {
                 filter_form: None,
                 filter_anchor: FilterField::Account,
                 chip_bounds: Default::default(),
+                import: None,
             })
         });
         let seeded_budgets = budgets::default_budgets(&seeded_accounts, &categories, today);
@@ -432,7 +429,6 @@ impl Shell {
             settings_documents_selected: None,
             settings_inventory_selected: None,
             settings_inventory_expanded: HashSet::new(),
-            import: None,
             tags_store,
             tags_view,
             transactions_store,
@@ -883,11 +879,11 @@ impl Shell {
     }
 
     /// Which View owns the keyboard, page status and main pane right now.
-    fn active_view(&self) -> ActiveView {
+    fn active_view(&self, cx: &App) -> ActiveView {
         ActiveView::derive(
             self.nav.noun(),
             self.settings_selected_section,
-            self.import.is_some(),
+            self.import_state(cx).is_some(),
         )
     }
 

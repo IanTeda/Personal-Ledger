@@ -175,7 +175,7 @@ impl<'a> Harness<'a> {
 
     /// The Import step's state; `None` while it is not showing.
     pub fn import(&mut self) -> Option<ImportSnapshot> {
-        self.read(Shell::import_snapshot)
+        self.read_app(Shell::import_snapshot)
     }
 
     /// The Dashboard's Needs Attention Bill rows.

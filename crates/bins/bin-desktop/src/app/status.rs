@@ -43,7 +43,7 @@ impl Shell {
         cx: &gpui::App,
     ) -> ViewChrome {
         ViewChrome {
-            title: self.active_view().title(),
+            title: self.active_view(cx).title(),
             status: self.page_status(budgets_figures, budgets_plan, budgets_history, cx),
         }
     }
@@ -78,7 +78,7 @@ impl Shell {
         budgets_history: Option<&budgets::History>,
         cx: &gpui::App,
     ) -> Option<PageStatus> {
-        match self.active_view() {
+        match self.active_view(cx) {
             ActiveView::Documents => self.documents_page_status(cx),
             ActiveView::Settings(_) if self.accounts_page_has_focus() => Some(PageStatus {
                 hints: accounts_hints(),
@@ -224,8 +224,7 @@ impl Shell {
             }),
             ActiveView::Import => {
                 let pending = self
-                    .import
-                    .as_ref()
+                    .import_state(cx)
                     .map_or(0, |state| import::summary(&state.rows).needs_review);
                 Some(PageStatus {
                     hints: import_hints(),

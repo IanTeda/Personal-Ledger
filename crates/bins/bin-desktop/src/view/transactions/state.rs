@@ -5,7 +5,10 @@
 use gpui::{Context, UniformListScrollHandle};
 
 use super::header::ChipBounds;
-use crate::transactions::{chips::FilterField, filter_form::FilterForm, query::TransactionFilters};
+use crate::{
+    import::ImportState,
+    transactions::{chips::FilterField, filter_form::FilterForm, query::TransactionFilters},
+};
 
 /// The Transactions page's own state, owned by its Entity.
 pub struct TransactionsState {
@@ -25,6 +28,9 @@ pub struct TransactionsState {
     pub filter_anchor: FilterField,
     /// Where each chip was last painted; the header writes it, the popover reads it.
     pub chip_bounds: ChipBounds,
+    /// The stubbed 6e Import "match payees" step, `Some` while it shows in place of the page
+    /// (`:import`). Dropped on leaving Transactions.
+    pub import: Option<ImportState>,
 }
 
 /// The Transactions Entity. Its state is edited through [`Self::edit`], which notifies so the page

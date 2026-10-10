@@ -350,7 +350,7 @@ pub enum RowSelect {
     Category,
 }
 
-/// The whole step's live state -- `Shell` holds it as `Some` while 6e is showing.
+/// The whole step's live state -- the Transactions view holds it as `Some` while 6e is showing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImportState {
     pub rows: Vec<ImportRow>,

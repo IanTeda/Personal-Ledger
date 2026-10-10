@@ -91,8 +91,8 @@ impl Shell {
 
     /// The Import step for a test; `None` while it is not showing.
     #[doc(hidden)]
-    pub fn import_snapshot(&self) -> Option<ImportSnapshot> {
-        let state = self.import.as_ref()?;
+    pub fn import_snapshot(&self, cx: &gpui::App) -> Option<ImportSnapshot> {
+        let state = self.import_state(cx)?;
         Some(ImportSnapshot {
             rows: state
                 .rows

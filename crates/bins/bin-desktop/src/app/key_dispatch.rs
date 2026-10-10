@@ -237,7 +237,7 @@ impl Shell {
                 true
             }
             KeyOutcome::NoOp => {
-                let handled = match self.active_view() {
+                let handled = match self.active_view(cx) {
                     ActiveView::Settings(SettingsSection::Accounts) => {
                         self.handle_accounts_key(keystroke, cx)
                     }
@@ -301,7 +301,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        match self.active_view() {
+        match self.active_view(cx) {
             ActiveView::Budgets => self.handle_budgets_plan_edit_key(keystroke, cx),
             ActiveView::Import => self.handle_import_key(keystroke, cx),
             ActiveView::Documents => self.handle_documents_key(keystroke, cx),
