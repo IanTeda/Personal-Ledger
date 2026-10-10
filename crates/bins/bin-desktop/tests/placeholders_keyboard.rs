@@ -31,13 +31,17 @@ fn each_placeholder_noun_is_reachable_by_a_g_jump_and_renders(app: &mut TestAppC
     }
 }
 
+// gpui's `debug_bounds` map is never cleared between frames in this harness, so once a
+// placeholder has been drawn its selector stays findable. Leaving a placeholder is therefore
+// checked on a fresh Harness that has never drawn one: `g l` must draw Transactions, not the
+// placeholder.
 #[gpui::test]
 fn leaving_a_placeholder_noun_drops_the_placeholder_view(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
-    ui.press("g c");
 
     ui.press("g l");
 
     assert_eq!(ui.noun(), Noun::Transactions);
-    assert!(ui.cx.debug_bounds("placeholder-view").is_none());
+    assert!(ui.is_drawn("transactions-add"));
+    assert!(!ui.is_drawn("placeholder-view"));
 }
