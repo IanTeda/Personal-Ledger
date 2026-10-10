@@ -607,9 +607,9 @@ impl Render for Shell {
             }
         };
         let settings_payees_page = settings_view::payees::PayeesPageProps {
-            payees: &self.payees,
+            payees: self.payees_list(cx),
             categories: &self.categories,
-            selected: self.settings_payees_selected_id(),
+            selected: self.settings_payees_selected_id(cx),
             on_add_click: on_payees_add_click,
             on_row_click: payee_click(Shell::handle_settings_payees_row_click),
             on_edit_click: payee_click(Shell::handle_payees_edit_click),
@@ -930,7 +930,7 @@ impl Render for Shell {
             };
             import_view::ImportPageProps {
                 state,
-                payees: &self.payees,
+                payees: self.payees_list(cx),
                 categories: &import_categories,
                 on_row_click: indexed(Shell::handle_import_row_click),
                 on_select_click,
@@ -1539,8 +1539,8 @@ impl Render for Shell {
                         cx,
                     ))
                 }
-                Some(payees::form::PayeesDialog::Edit(id, form)) => payees::get(&self.payees, *id)
-                    .map(|payee| {
+                Some(payees::form::PayeesDialog::Edit(id, form)) => {
+                    payees::get(self.payees_list(cx), *id).map(|payee| {
                         payees_view::add_dialog::render(
                             payees_view::add_dialog::PayeeDialogMode::Edit {
                                 name: &payee.name,
@@ -1559,9 +1559,10 @@ impl Render for Shell {
                             payees_dialog_handlers,
                             cx,
                         )
-                    }),
+                    })
+                }
                 Some(payees::form::PayeesDialog::Delete(id, form)) => {
-                    self.delete_payee_target().map(|(payee, action)| {
+                    self.delete_payee_target(cx).map(|(payee, action)| {
                         payees_view::delete_dialog::render(
                             payees_view::delete_dialog::DeletePayeeProps {
                                 payee,

@@ -376,7 +376,7 @@ impl Shell {
         bills::form::BillPlanSource::new(
             &self.categories,
             self.accounts.read(cx).accounts(),
-            &self.payees,
+            self.payees_list(cx),
             keep_payee,
             crate::msg::desktop_payees_category_none(),
             bills_view::planner::recurrence_label,
@@ -671,7 +671,7 @@ impl Shell {
             .unwrap_or_default();
         let payee = plan
             .payee_id
-            .and_then(|id| payees::get(&self.payees, id))
+            .and_then(|id| payees::get(self.payees_list(cx), id))
             .map_or_else(crate::msg::desktop_bills_pay_no_payee, |p| p.name.clone());
         let category = categories::path(&self.categories, plan.category_id).unwrap_or_default();
         Some(bills_view::pay_dialog::render(
@@ -717,7 +717,7 @@ impl Shell {
                 let split = transaction.splits.get(split_ref.split_index)?;
                 let payee = split
                     .payee_id
-                    .and_then(|id| payees::get(&self.payees, id))
+                    .and_then(|id| payees::get(self.payees_list(cx), id))
                     .map(|p| p.name.clone())
                     .or_else(|| transaction.description.clone())
                     .unwrap_or_default();

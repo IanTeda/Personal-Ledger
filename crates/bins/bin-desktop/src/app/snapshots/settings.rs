@@ -168,8 +168,8 @@ impl Shell {
                 .find(|category| category.id == id)
                 .map(|category| category.name.clone())
         });
-        let selected_payee = self.settings_payees_selected_id().and_then(|id| {
-            self.payees
+        let selected_payee = self.settings_payees_selected_id(cx).and_then(|id| {
+            self.payees_list(cx)
                 .iter()
                 .find(|payee| payee.id == id)
                 .map(|payee| payee.name.clone())
@@ -298,7 +298,7 @@ impl Shell {
                 .map(|category| category.name.clone())
                 .collect(),
             selected_category,
-            payee_names: payees::sorted_by_name(&self.payees)
+            payee_names: payees::sorted_by_name(self.payees_list(cx))
                 .into_iter()
                 .map(|payee| payee.name.clone())
                 .collect(),

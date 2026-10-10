@@ -170,7 +170,7 @@ impl Shell {
     pub(super) fn documents_lookups<'a>(&'a self, cx: &'a gpui::App) -> Lookups<'a> {
         Lookups {
             accounts: self.accounts.read(cx).accounts(),
-            payees: &self.payees,
+            payees: self.payees_list(cx),
             plans: self.bill_plans(cx),
             types: self.document_types(cx),
             inventory: &self.inventory,
@@ -408,7 +408,7 @@ impl Shell {
             inbox_strong: documents::strong_count(
                 self.documents(cx),
                 self.transactions(cx),
-                &self.payees,
+                self.payees_list(cx),
             ),
             inbox_hints: inbox_hints(),
             list_focused: false,
@@ -954,7 +954,7 @@ impl Shell {
                     document,
                     self.documents(cx),
                     self.transactions(cx),
-                    &self.payees,
+                    self.payees_list(cx),
                 );
                 if let Some(best) = suggestion.best() {
                     let transaction_id = best.transaction_id;
@@ -975,7 +975,7 @@ impl Shell {
             }
             DocumentLink::Payee(id) => {
                 self.open_settings_page(SettingsSection::Payees, cx);
-                self.select_payee(id);
+                self.select_payee(id, cx);
             }
             DocumentLink::BillPlan(id) => {
                 let at = crate::bills::planner_order(self.bill_plans(cx))
@@ -1057,7 +1057,7 @@ impl Shell {
             document,
             self.documents(cx),
             self.transactions(cx),
-            &self.payees,
+            self.payees_list(cx),
         );
         match suggestion.best() {
             Some(best) => self.documents_accept(id, best.transaction_id, cx),
@@ -1193,8 +1193,11 @@ impl Shell {
 
     /// `Y`, **Accept all strong matches** and `:documents accept-all`: asks first, with the count.
     pub(super) fn open_documents_accept_all(&mut self, cx: &gpui::App) {
-        let count =
-            documents::strong_count(self.documents(cx), self.transactions(cx), &self.payees);
+        let count = documents::strong_count(
+            self.documents(cx),
+            self.transactions(cx),
+            self.payees_list(cx),
+        );
         if count == 0 {
             self.chrome.status_message = Some(crate::msg::desktop_documents_status_no_strong());
             return;
@@ -1206,14 +1209,15 @@ impl Shell {
         let focus = self
             .documents_selected_document(cx)
             .map(|document| document.id);
-        // Copied out so the Documents can be written while the Transactions are read.
+        // Copied out so the Documents can be written while the Transactions and Payees are read.
         let transactions = self.transactions(cx).to_vec();
+        let payees = self.payees_list(cx).to_vec();
         let batch = self.mutate_documents(cx, |data| {
             documents::accept_all_strong(
                 &data.types,
                 &mut data.documents,
                 &transactions,
-                &self.payees,
+                &payees,
                 focus,
             )
         });

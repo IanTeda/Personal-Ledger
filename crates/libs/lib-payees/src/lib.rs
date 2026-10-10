@@ -355,3 +355,41 @@ pub fn without_default_category_count(payees: &[Payee]) -> usize {
         .filter(|p| p.is_active && p.default_category.is_none())
         .count()
 }
+
+/// The Payees data behind the Desktop's Payees Entity: the rows, read through `payees` and changed
+/// through `payees_mut` so the rules above stay the only way a name, alias or Split reference
+/// changes. Persistence is a later phase, so the rows are in memory.
+pub struct PayeeService {
+    payees: Vec<Payee>,
+}
+
+impl PayeeService {
+    /// A service over `payees`, as the Desktop seeds it from [`default_payees`].
+    pub fn new(payees: Vec<Payee>) -> Self {
+        Self { payees }
+    }
+
+    pub fn payees(&self) -> &[Payee] {
+        &self.payees
+    }
+
+    pub fn payees_mut(&mut self) -> &mut Vec<Payee> {
+        &mut self.payees
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_hands_out_the_rows_it_was_seeded_with_and_keeps_writes() {
+        let mut service = PayeeService::new(default_payees());
+        let seeded = service.payees().len();
+        assert!(seeded > 0);
+
+        service.payees_mut().retain(|payee| payee.id != 1);
+        assert_eq!(service.payees().len(), seeded - 1);
+        assert!(get(service.payees(), 1).is_none());
+    }
+}

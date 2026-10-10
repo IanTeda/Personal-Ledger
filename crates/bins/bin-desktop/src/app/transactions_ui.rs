@@ -73,7 +73,7 @@ impl Shell {
         Ledger {
             accounts: self.accounts.read(cx).accounts(),
             categories: &self.categories,
-            payees: &self.payees,
+            payees: self.payees_list(cx),
             tags: self.tags_list(cx),
         }
     }
@@ -245,7 +245,7 @@ impl Shell {
         FormOptions::new(
             self.accounts.read(cx).accounts(),
             &self.categories,
-            &self.payees,
+            self.payees_list(cx),
             self.tags_list(cx),
         )
     }
@@ -459,7 +459,7 @@ impl Shell {
     /// `:import`: opens the stubbed 6e step on the seeded statement, in place of the Transactions
     /// page (#284).
     pub(super) fn open_import(&mut self, cx: &mut App) {
-        let import = ImportState::new(&self.payees, self.today);
+        let import = ImportState::new(self.payees_list(cx), self.today);
         self.edit_transactions_state(cx, |s| {
             s.import = Some(import);
             s.filter_form = None;
@@ -508,7 +508,7 @@ impl Shell {
         let choices = state
             .rows
             .get(selected)
-            .map(|row| import_view::payee_choices(&self.payees, &row.raw));
+            .map(|row| import_view::payee_choices(self.payees_list(cx), &row.raw));
         let Some(choices) = choices else {
             return false;
         };
@@ -522,9 +522,10 @@ impl Shell {
                 // An open list swallows everything else, like the dialogs' selects.
                 _ => return true,
             };
+            let payees = self.payees_list(cx).to_vec();
             self.edit_import(cx, |import| {
                 if let Some(state) = import.as_mut() {
-                    state.handle_select_key(select_key, &self.payees, &choices, &categories);
+                    state.handle_select_key(select_key, &payees, &choices, &categories);
                 }
             });
             return true;
@@ -541,6 +542,7 @@ impl Shell {
             }
             _ => {}
         }
+        let payees = self.payees_list(cx).to_vec();
         let handled = self.edit_import(cx, |import| {
             let Some(state) = import.as_mut() else {
                 return false;
@@ -550,7 +552,7 @@ impl Shell {
                 "k" | "up" => state.selected = accounts::step_selection(selected, len, -1),
                 "p" => state.open(selected, RowSelect::Payee, &choices, &categories),
                 "c" => state.open(selected, RowSelect::Category, &choices, &categories),
-                "n" => state.create_new_payee(&self.payees),
+                "n" => state.create_new_payee(&payees),
                 "r" => state.remember = !state.remember,
                 _ => return false,
             }
@@ -569,15 +571,19 @@ impl Shell {
         let Some(state) = self.import_state(cx).cloned() else {
             return;
         };
+        // Copied out so the commit can add Payees and Aliases, then written back whether or not it
+        // committed, as the in-place commit always kept its Payee edits.
+        let mut payees = self.payees_list(cx).to_vec();
         let committed = edit_transactions(&self.transactions_store, cx, |transactions| {
             import::commit(
                 &state.rows,
                 state.remember,
                 import::EVERYDAY_ACCOUNT_ID,
-                &mut self.payees,
+                &mut payees,
                 transactions,
             )
         });
+        self.store_payees(payees, cx);
         match committed {
             Ok(committed) => {
                 let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);
@@ -631,6 +637,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         let categories = self.import_category_options();
+        let payees = self.payees_list(cx).to_vec();
         self.edit_import(cx, |import| {
             if let Some(state) = import.as_mut() {
                 if state
@@ -640,7 +647,7 @@ impl Shell {
                 {
                     state.open_select = None;
                 } else if let Some(row) = state.rows.get(index) {
-                    let choices = import_view::payee_choices(&self.payees, &row.raw);
+                    let choices = import_view::payee_choices(&payees, &row.raw);
                     state.open(index, select, &choices, &categories);
                 }
             }
@@ -651,13 +658,14 @@ impl Shell {
 
     pub(super) fn handle_import_option_click(&mut self, option: usize, cx: &mut Context<'_, Self>) {
         let categories = self.import_category_options();
+        let payees = self.payees_list(cx).to_vec();
         self.edit_import(cx, |import| {
             if let Some(state) = import.as_mut()
                 && let Some((index, _, _)) = state.open_select.as_ref()
                 && let Some(row) = state.rows.get(*index)
             {
-                let choices = import_view::payee_choices(&self.payees, &row.raw);
-                state.choose(option, &self.payees, &choices, &categories);
+                let choices = import_view::payee_choices(&payees, &row.raw);
+                state.choose(option, &payees, &choices, &categories);
             }
         });
         cx.notify();

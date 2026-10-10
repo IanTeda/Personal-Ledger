@@ -1835,7 +1835,7 @@ impl Shell {
                 date: lib_locale::format::format_month_day(line.date),
                 payee: line
                     .payee_id
-                    .and_then(|id| payees::get(&self.payees, id))
+                    .and_then(|id| payees::get(self.payees_list(cx), id))
                     .map_or_else(crate::msg::desktop_budgets_detail_no_payee, |payee| {
                         payee.name.clone()
                     }),

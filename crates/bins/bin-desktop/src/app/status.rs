@@ -105,7 +105,7 @@ impl Shell {
                     Some(_) => payee_dialog_hints(),
                     None => settings_payees_hints(),
                 },
-                right: settings_view::payees::scope_text(&self.payees),
+                right: settings_view::payees::scope_text(self.payees_list(cx)),
             }),
             ActiveView::Settings(_) if self.settings_documents_page_has_focus() => {
                 Some(PageStatus {

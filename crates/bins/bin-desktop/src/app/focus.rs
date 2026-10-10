@@ -102,7 +102,7 @@ impl Shell {
                 self.apply_settings_tags_movement(movement, cx);
             }
             ActiveView::Settings(SettingsSection::Payees) if page_focused => {
-                self.apply_settings_payees_movement(movement);
+                self.apply_settings_payees_movement(movement, cx);
             }
             ActiveView::Settings(SettingsSection::Documents) if page_focused => {
                 self.apply_settings_documents_movement(movement, cx);
