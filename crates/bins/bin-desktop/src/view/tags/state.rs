@@ -3,8 +3,15 @@
 //! the Settings list's id). `Shell` opens the dialogs and runs the rules, since the dialog host
 //! and the Transactions store are `Shell`'s.
 
-use gpui::{Context, Entity};
+use gpui::{Context, Entity, EventEmitter};
 use lib_tags::{Tag, TagService};
+
+/// Emitted by [`TagsStore`] after any write, so `Shell` can refresh the Views that read the rows
+/// (ADR-0032's View events).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TagsEvent {
+    Changed,
+}
 
 /// The shared Tags rows. Every reader (the Tags page, Settings, the Transactions chips and filter
 /// form, and the Transactions Split tag picker) reads them from here, so a change is seen
@@ -12,6 +19,8 @@ use lib_tags::{Tag, TagService};
 pub struct TagsStore {
     service: TagService,
 }
+
+impl EventEmitter<TagsEvent> for TagsStore {}
 
 impl TagsStore {
     /// A store over `tags`, which the Desktop seeds from `lib_tags::default_tags`.
@@ -25,15 +34,15 @@ impl TagsStore {
         self.service.tags()
     }
 
-    /// Applies `change` to the rows, then tells every subscriber they changed. Mutations go
-    /// through here so no write can skip the notification.
+    /// Applies `change` to the rows, then emits [`TagsEvent::Changed`]. Mutations go through here
+    /// so no write can skip the event.
     pub fn mutate<R>(
         &mut self,
         cx: &mut Context<'_, Self>,
         change: impl FnOnce(&mut Vec<Tag>) -> R,
     ) -> R {
         let result = change(self.service.tags_mut());
-        cx.notify();
+        cx.emit(TagsEvent::Changed);
         result
     }
 }
