@@ -20,9 +20,11 @@ The fixed thing a balance, principal, or holding quantity is denominated in — 
 _Avoid_: Commodity, Currency, asset class, exchange rate, conversion.
 
 **Ledger**:
-The complete set of Accounts, Institutions, Categories, and Transactions owned by
-one self-hoster — a logical whole, physically replicated as a full local SQLite
-database on each Client and synced between them by the Sync Server.
+The complete set of Accounts, Institutions, Units, Categories, Payees, Tags,
+Transactions, Bills, Budgets, Documents, and Inventory owned by one self-hoster — a
+logical whole, physically replicated as a full local SQLite database on each Client
+and synced between them by the Sync Server. A change that crosses these (paying a
+Bill, deleting a Payee) is a change to the Ledger, not to one of its parts.
 _Avoid_: Book, journal.
 
 **Client**:

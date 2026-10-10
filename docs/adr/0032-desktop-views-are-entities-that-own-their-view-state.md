@@ -25,6 +25,8 @@ We're making each destination's **View** a gpui `Entity` that owns its View stat
 
 Update ([#594](https://github.com/IanTeda/Personal-Ledger/issues/594)): [ADR-0037](0037-desktop-view-entities-render-and-handle-their-own-input.md) finishes this move. Each View Entity renders itself and handles its own keys, Esc, search and movement, and `ViewEvent` replaces the per-View intent events.
 
+Update ([#592](https://github.com/IanTeda/Personal-Ledger/issues/592)): [ADR-0038](0038-clients-reach-ledger-data-through-a-ledger-aggregate.md) sharpens "each View loads its own data". A View reads and writes Ledger data through the `Ledger` aggregate in `lib-ledger`, held on the Desktop by one `LedgerStore` Entity that emits `LedgerChanged`.
+
 ## Considered Options
 
 - **Shell owns each destination's state in a per-destination struct (`BudgetsState` style).** This was the recommended option. It keeps one event and data path and needs no Entity wiring. It was rejected because every per-destination struct would still be a field on `Shell`, so the Divergent Change would move rather than end.
