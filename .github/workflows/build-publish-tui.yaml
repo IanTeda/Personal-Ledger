@@ -41,6 +41,9 @@ env:
   # Pinned (not "latest") so the cache key below is stable and meaningful --
   # bump this deliberately, not implicitly on cargo-packager's next release.
   CARGO_PACKAGER_VERSION: "0.11.8"
+  # Pinned for the same reason as the packager version above; it generates the notices each
+  # package ships (#611). Bump deliberately, with about.toml and the Dockerfile.
+  CARGO_ABOUT_VERSION: "0.9.2"
 
 jobs:
   build-test:
@@ -127,6 +130,30 @@ jobs:
       # (confirmed for real on the first feasibility-branch CI run, ubuntu-24.04 leg).
       - name: Build tui (release)
         run: cargo build --locked --release --package bin_tui
+
+      # cargo-about generates THIRD-PARTY-NOTICES.txt, which the packages ship beside the
+      # licence (#611, docs/research/package-licence-notices.md). Like cargo-packager below it
+      # has no prebuilt step in this workflow, so it is cached the same way, keyed to the
+      # pinned CARGO_ABOUT_VERSION. The `cli` feature is required: the binary sits behind it
+      # since 0.9.0.
+      - name: Cache cargo-about
+        id: cache-cargo-about
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/cargo-about
+            ~/.cargo/bin/cargo-about.exe
+          key: cargo-about-${{ runner.os }}-${{ env.CARGO_ABOUT_VERSION }}
+
+      - name: Install cargo-about
+        if: steps.cache-cargo-about.outputs.cache-hit != 'true'
+        run: cargo install --locked cargo-about --version ${{ env.CARGO_ABOUT_VERSION }} --features cli
+
+      # `--fail` makes an unknown licence fail the build rather than ship an incomplete notice,
+      # and `--locked` ties the output to Cargo.lock. Generated under target/ (ignored by
+      # .gitignore), and `resources` in this crate's Cargo.toml reads it from there.
+      - name: Generate third-party notices
+        run: cargo about generate --fail --locked -c about.toml --manifest-path crates/bins/bin-tui/Cargo.toml -o target/THIRD-PARTY-NOTICES.txt about.hbs
 
       # cargo-packager ships no prebuilt release binaries (its GitHub releases carry no
       # binary assets) and isn't in taiki-e/install-action's supported-tools list either,
@@ -256,7 +283,10 @@ jobs:
       # does). See ticket #19.
       - name: Package tui as portable zip (Windows)
         if: runner.os == 'Windows'
-        run: Compress-Archive -Path target\release\personal-ledger-tui.exe -DestinationPath target\release\tui-windows-portable.zip
+        # LICENSE and THIRD-PARTY-NOTICES.txt go in beside the exe, so the zip carries the
+        # MIT licence and the notices for every linked crate with each download (#611,
+        # docs/research/package-licence-notices.md). Zipped flat, so both sit at the archive root.
+        run: Compress-Archive -Path target\release\personal-ledger-tui.exe, LICENSE, target\THIRD-PARTY-NOTICES.txt -DestinationPath target\release\tui-windows-portable.zip
 
       - name: Verify portable exe launches (Windows)
         if: runner.os == 'Windows'

@@ -1,0 +1,53 @@
+# cargo-about configuration for the third-party notices shipped in every package (#611,
+# docs/research/package-licence-notices.md). Run per bin with `--fail --locked`, see the
+# packaging workflows and Dockerfile.sync-server.
+#
+# `accepted` must hold the same licences as deny.toml's `[licenses] allow`, so anything
+# cargo-deny lets in can also be rendered here. It is a priority list, not a set: MIT comes
+# first so that `MIT OR Apache-2.0` crates are recorded under MIT and the Apache text is only
+# shipped for the Apache-only crates. If you change one list, change the other.
+accepted = [
+  "MIT",
+  "0BSD",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-1-Clause",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT-0",
+  "MPL-2.0",
+  "NCSA",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+
+# The platforms the packages are built for, so a crate that is only linked on another
+# platform does not appear in the notices. Windows-only crates (such as `dwrote`) still show
+# up in the Linux build's notices; that over-includes harmlessly, and one list for every
+# package is simpler than one per package.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+]
+
+# Only the shipped dependency graph is in scope: build scripts and proc-macro-only crates are
+# not linked into a binary, and dev-dependencies never ship.
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+
+# Workspace crates are `publish = false` and carry Personal Ledger's own MIT licence, which
+# is shipped as LICENSE, not repeated here.
+private = { ignore = true }
+
+# cargo-about's built-in workarounds for crates whose licence files are not laid out the way it
+# expects (ring, rustls and prost in this graph). Kept explicit so a change in cargo-about's
+# defaults is visible here.
+workarounds = ["ring", "rustls", "prost"]

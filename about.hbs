@@ -1,0 +1,32 @@
+Third-party notices for Personal Ledger
+=======================================
+
+Personal Ledger is released under the MIT licence (see LICENSE). This file lists the third-party
+software compiled into this build, with the licence text each crate is used under. It is
+generated from Cargo.lock by cargo-about (see about.toml); do not edit it by hand.
+
+Each crate is listed under the licence it is used under. Where a crate offers a choice of
+licences, the first one allowed by about.toml is used. Crates that publish no licence file are
+listed with the standard text of their licence, without an author's copyright line.
+
+Summary
+-------
+
+{{#each overview}}
+{{{count}}} crate(s) under {{{name}}} ({{{id}}})
+{{/each}}
+
+{{#each licenses}}
+================================================================================
+
+{{{name}}} ({{{id}}})
+
+Used by:
+{{#each used_by}}
+  - {{{crate.name}}} {{{crate.version}}}{{#if crate.repository}} ({{{crate.repository}}}){{/if}}
+{{/each}}
+
+--------------------------------------------------------------------------------
+{{{text}}}
+
+{{/each}}

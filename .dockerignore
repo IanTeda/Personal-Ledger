@@ -15,7 +15,6 @@ mise.toml
 # Docs and non-build metadata
 docs/
 *.md
-LICENSE*
 
 # Editor/OS noise
 .vscode/
