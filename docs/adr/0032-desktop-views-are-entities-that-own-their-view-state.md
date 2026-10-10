@@ -23,6 +23,8 @@ We're making each destination's **View** a gpui `Entity` that owns its View stat
 - Desktop and TUI can read the same data through the same lib service. Without that, the two clients would drift.
 - Entities add a second source of truth risk: a View's copy of data can go stale when another View changes it. Views that write to shared data must emit an event that `Shell` uses to refresh the others. This applies, for example, to Bills and Documents, which write Transactions.
 
+Update ([#594](https://github.com/IanTeda/Personal-Ledger/issues/594)): [ADR-0037](0037-desktop-view-entities-render-and-handle-their-own-input.md) finishes this move. Each View Entity renders itself and handles its own keys, Esc, search and movement, and `ViewEvent` replaces the per-View intent events.
+
 ## Considered Options
 
 - **Shell owns each destination's state in a per-destination struct (`BudgetsState` style).** This was the recommended option. It keeps one event and data path and needs no Entity wiring. It was rejected because every per-destination struct would still be a field on `Shell`, so the Divergent Change would move rather than end.
