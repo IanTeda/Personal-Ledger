@@ -151,16 +151,8 @@ pub struct Shell {
     /// this is `Some` (see [`Self::run_command`]'s own doc), so the two together -- rather than
     /// a third `InputMode` variant -- are what "the file explorer is open" means.
     file_explorer: Option<FileExplorer>,
-    /// The Settings page on show, and the index rail's highlighted entry. Changed by a row click,
-    /// `j`/`k` on the index, or `:settings <page>`. Deliberately *not* reset when a noun is
-    /// entered: it is the last-visited page, which `g s` reopens and persistence keeps.
-    /// Whether keyboard focus is on the index rail or the page, while the View zone has it.
-    /// Set when focus has just moved onto the Display page, so the next key handler (which has
-    /// an `App` to read the chosen Colour Theme from) puts the grid's focus on that card.
-    /// The Display page's focused control (`DISPLAY_FIELD_COUNT` of them, above the Colour Theme
-    /// grid); `None` off that page or while the grid has focus.
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored
-    /// preference, not reset on noun change (same reasoning as [`Self::settings_units`]).
+    /// preference, not reset on noun change (same reasoning as [`Self::units_store`]).
     settings_date_style: Option<DateStyle>,
     /// The same section's "Row density" segmented control -- also drives the PREVIEW table's own
     /// row padding (`view::settings::display`'s own doc), unlike a purely-cosmetic preference.
