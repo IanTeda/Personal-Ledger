@@ -656,7 +656,7 @@ impl Render for Shell {
             on_click
         };
         let settings_inventory_page = inventory_view::InventoryPageProps {
-            inventory: &self.inventory,
+            inventory: self.inventory(cx),
             expanded: self.settings_view.read(cx).inventory_expanded(),
             selected: self.settings_inventory_selected_row(cx),
             on_add_property_click: {

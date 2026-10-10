@@ -173,7 +173,7 @@ impl Shell {
             payees: self.payees_list(cx),
             plans: self.bill_plans(cx),
             types: self.document_types(cx),
-            inventory: &self.inventory,
+            inventory: self.inventory(cx),
             transactions: self.transactions(cx),
             today: self.today,
             date_style: self.settings_date_style,

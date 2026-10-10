@@ -132,16 +132,20 @@ impl Shell {
     }
 
     /// An Inventory row as `property:<name>` or `room:<name>`.
-    fn inventory_row_label(&self, row: crate::view::settings::inventory::InventoryRow) -> String {
+    fn inventory_row_label(
+        &self,
+        row: crate::view::settings::inventory::InventoryRow,
+        cx: &gpui::App,
+    ) -> String {
         use crate::view::settings::inventory::InventoryRow;
         match row {
             InventoryRow::Property(id) => self
-                .inventory
+                .inventory(cx)
                 .property(id)
                 .map(|property| format!("property:{}", property.name))
                 .unwrap_or_default(),
             InventoryRow::Room(id) => self
-                .inventory
+                .inventory(cx)
                 .room(id)
                 .map(|(_, room)| format!("room:{}", room.name))
                 .unwrap_or_default(),
@@ -315,17 +319,17 @@ impl Shell {
                 .map(|row| row.files)
                 .collect(),
             inventory_rows: crate::view::settings::inventory::visible_rows(
-                &self.inventory,
+                self.inventory(cx),
                 self.settings_view.read(cx).inventory_expanded(),
             )
             .into_iter()
-            .map(|row| self.inventory_row_label(row))
+            .map(|row| self.inventory_row_label(row, cx))
             .collect(),
             selected_inventory: self
                 .settings_inventory_selected_row(cx)
-                .map(|row| self.inventory_row_label(row)),
+                .map(|row| self.inventory_row_label(row, cx)),
             inventory_rooms: self
-                .inventory
+                .inventory(cx)
                 .properties
                 .iter()
                 .map(|property| {
@@ -352,14 +356,14 @@ impl Shell {
                 .to_string()
             }),
             inventory_room_items: self
-                .inventory
+                .inventory(cx)
                 .properties
                 .iter()
                 .flat_map(|p| p.rooms.iter())
-                .map(|room| (room.name.clone(), self.inventory.room_items(room.id)))
+                .map(|room| (room.name.clone(), self.inventory(cx).room_items(room.id)))
                 .collect(),
             inventory_properties: self
-                .inventory
+                .inventory(cx)
                 .properties
                 .iter()
                 .map(|p| {

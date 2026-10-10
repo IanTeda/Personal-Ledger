@@ -1,4 +1,4 @@
-//! The Ledger's Inventory: Properties, their Rooms and the Items in them (`CONTEXT.md`'s
+//! The Ledger's Inventory: Properties, their Rooms and the Items in them (`GLOSSARY.md`'s
 //! Property, Room and Inventory Item). `gpui`-free and side-effect free, so every rule is
 //! unit-tested without a window.
 //!
@@ -663,6 +663,61 @@ pub fn default_inventory(today: NaiveDate) -> Inventory {
     inventory
 }
 
+// ---------------------------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------------------------
+
+/// The Ledger's Inventory behind one seam, so a Client's store Entity reads and writes it the same
+/// way as the other lib services (Units, Institutions). Each write is a refusal-or-apply on the
+/// free functions above, so a refused write leaves the Inventory untouched.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct InventoryService {
+    inventory: Inventory,
+}
+
+impl InventoryService {
+    pub fn new(inventory: Inventory) -> Self {
+        Self { inventory }
+    }
+
+    pub fn inventory(&self) -> &Inventory {
+        &self.inventory
+    }
+
+    pub fn add_property(
+        &mut self,
+        draft: &PropertyDraft,
+        unit: &str,
+    ) -> Result<u32, PropertyError> {
+        add_property(&mut self.inventory, draft, unit)
+    }
+
+    pub fn edit_property(&mut self, id: u32, draft: &PropertyDraft) -> Result<(), PropertyError> {
+        edit_property(&mut self.inventory, id, draft)
+    }
+
+    pub fn remove_property(&mut self, id: u32) -> Result<RemovedProperty, PropertyError> {
+        remove_property(&mut self.inventory, id)
+    }
+
+    pub fn add_room(&mut self, property: u32, name: &str) -> Result<u32, RoomError> {
+        add_room(&mut self.inventory, property, name)
+    }
+
+    pub fn edit_room(&mut self, room: u32, name: &str) -> Result<(), RoomError> {
+        edit_room(&mut self.inventory, room, name)
+    }
+
+    pub fn remove_room(&mut self, room: u32, destination: Option<u32>) -> Result<(), RoomError> {
+        remove_room(&mut self.inventory, room, destination)
+    }
+
+    /// Returns `false` when nothing moved, and changes nothing.
+    pub fn move_room(&mut self, room: u32, delta: isize) -> bool {
+        move_room(&mut self.inventory, room, delta)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -702,6 +757,58 @@ mod tests {
             item_limit: limit.map(dollars),
             ..CoverDraft::default()
         }
+    }
+
+    // --- service ----------------------------------------------------------------------------
+
+    #[test]
+    fn service_writes_land_in_the_inventory_it_reads() {
+        let mut service = InventoryService::new(seed());
+        let before = service.inventory().properties.len();
+
+        let property = service.add_property(&draft("Beach shack"), "nzd").unwrap();
+        let room = service.add_room(property, "Deck").unwrap();
+        service.edit_room(room, "Verandah").unwrap();
+
+        let inv = service.inventory();
+        assert_eq!(inv.properties.len(), before + 1);
+        assert_eq!(inv.room(room).unwrap().1.name, "Verandah");
+    }
+
+    #[test]
+    fn service_refusals_leave_the_inventory_untouched() {
+        let mut service = InventoryService::new(seed());
+        let before = service.inventory().clone();
+
+        assert_eq!(
+            service.add_room(9_999, "Nowhere"),
+            Err(RoomError::UnknownProperty)
+        );
+        assert_eq!(
+            service.remove_property(9_999).unwrap_err(),
+            PropertyError::Unknown
+        );
+        assert!(!service.move_room(9_999, 1));
+
+        assert_eq!(service.inventory(), &before);
+    }
+
+    #[test]
+    fn service_remove_property_reports_the_items_it_took() {
+        let mut service = InventoryService::new(seed());
+        let elm = property_id(service.inventory(), "12 Elm St contents");
+        let expected: Vec<u32> = service
+            .inventory()
+            .items
+            .iter()
+            .filter(|item| item.property == elm)
+            .map(|item| item.id)
+            .collect();
+
+        let removed = service.remove_property(elm).unwrap();
+
+        assert_eq!(removed.items, expected);
+        assert!(service.inventory().property(elm).is_none());
     }
 
     // --- seed -------------------------------------------------------------------------------

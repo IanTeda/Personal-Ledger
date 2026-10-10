@@ -60,10 +60,15 @@ impl Shell {
             .collect()
     }
 
+    /// The Inventory, read through its store Entity (ADR-0032).
+    pub(super) fn inventory<'a>(&self, cx: &'a App) -> &'a inventory::Inventory {
+        self.inventory.read(cx).inventory()
+    }
+
     /// What the Property form checks against, copied in when it opens.
     fn property_context(&self, cx: &App) -> PropertyContext {
         PropertyContext {
-            inventory: self.inventory.clone(),
+            inventory: self.inventory(cx).clone(),
             today: self.today,
             date_style: self.settings_date_style,
             unit_choices: self.property_unit_choices(cx),
@@ -74,7 +79,7 @@ impl Shell {
     fn selected_inventory_property(&self, cx: &App) -> Option<u32> {
         match self.settings_inventory_selected_row(cx)? {
             InventoryRow::Property(id) => Some(id),
-            InventoryRow::Room(id) => self.inventory.room(id).map(|(property, _)| property.id),
+            InventoryRow::Room(id) => self.inventory(cx).room(id).map(|(property, _)| property.id),
         }
     }
 
@@ -82,7 +87,7 @@ impl Shell {
     pub(super) fn open_edit_inventory_row(&mut self, row: InventoryRow, cx: &App) {
         match row {
             InventoryRow::Property(id) => self.open_edit_property_dialog(id, cx),
-            InventoryRow::Room(id) => self.open_edit_room_dialog(id),
+            InventoryRow::Room(id) => self.open_edit_room_dialog(id, cx),
         }
     }
 
@@ -90,7 +95,7 @@ impl Shell {
     pub(super) fn open_remove_inventory_row(&mut self, row: InventoryRow, cx: &App) {
         match row {
             InventoryRow::Property(id) => self.open_remove_property_dialog(id, cx),
-            InventoryRow::Room(id) => self.open_remove_room_dialog(id),
+            InventoryRow::Room(id) => self.open_remove_room_dialog(id, cx),
         }
     }
 
@@ -99,7 +104,7 @@ impl Shell {
         let choices = self.property_unit_choices(cx);
         let preferred = self
             .selected_inventory_property(cx)
-            .and_then(|id| self.inventory.property(id))
+            .and_then(|id| self.inventory(cx).property(id))
             .and_then(|property| choices.iter().find(|(_, code)| *code == property.unit))
             .or_else(|| choices.first())
             .map(|(label, _)| label.clone());
@@ -108,7 +113,7 @@ impl Shell {
     }
 
     pub(super) fn open_edit_property_dialog(&mut self, id: u32, cx: &App) {
-        let Some(property) = self.inventory.property(id) else {
+        let Some(property) = self.inventory(cx).property(id) else {
             return;
         };
         let form = PropertyForm::from_property(property, self.property_context(cx));
@@ -116,7 +121,7 @@ impl Shell {
     }
 
     pub(super) fn open_remove_property_dialog(&mut self, id: u32, cx: &App) {
-        let Some(property) = self.inventory.property(id) else {
+        let Some(property) = self.inventory(cx).property(id) else {
             return;
         };
         let form =
@@ -124,40 +129,40 @@ impl Shell {
         self.open_dialog(OpenDialog::Inventory(InventoryDialog::Remove(id, form)));
     }
 
-    pub(super) fn open_add_room_dialog(&mut self, property: u32) {
-        if self.inventory.property(property).is_none() {
+    pub(super) fn open_add_room_dialog(&mut self, property: u32, cx: &App) {
+        if self.inventory(cx).property(property).is_none() {
             return;
         }
-        let form = RoomForm::for_add(self.inventory.clone(), property);
+        let form = RoomForm::for_add(self.inventory(cx).clone(), property);
         self.open_dialog(OpenDialog::Inventory(InventoryDialog::AddRoom(
             property, form,
         )));
     }
 
-    fn open_edit_room_dialog(&mut self, id: u32) {
-        let Some((property, room)) = self.inventory.room(id) else {
+    fn open_edit_room_dialog(&mut self, id: u32, cx: &App) {
+        let Some((property, room)) = self.inventory(cx).room(id) else {
             return;
         };
-        let form = RoomForm::for_edit(self.inventory.clone(), property.id, room);
+        let form = RoomForm::for_edit(self.inventory(cx).clone(), property.id, room);
         self.open_dialog(OpenDialog::Inventory(InventoryDialog::EditRoom(id, form)));
     }
 
     /// An empty Room gets a plain confirm; one with Items a destination picker pre-selecting the
     /// Room above (below when first); the last Room with Items a notice.
-    fn open_remove_room_dialog(&mut self, id: u32) {
-        let Some((property, _)) = self.inventory.room(id) else {
+    fn open_remove_room_dialog(&mut self, id: u32, cx: &App) {
+        let Some((property, _)) = self.inventory(cx).room(id) else {
             return;
         };
-        let items = self.inventory.room_items(id);
+        let items = self.inventory(cx).room_items(id);
         let dialog = if items > 0 && property.rooms.len() == 1 {
             InventoryDialog::RoomBlocked(id)
         } else {
             let preselected = (items > 0)
-                .then(|| inventory::default_destination(&self.inventory, id))
+                .then(|| inventory::default_destination(self.inventory(cx), id))
                 .flatten()
-                .and_then(|to| self.inventory.room(to))
+                .and_then(|to| self.inventory(cx).room(to))
                 .map(|(_, room)| room.name.clone());
-            let destinations = room_destinations(&self.inventory, id);
+            let destinations = room_destinations(self.inventory(cx), id);
             InventoryDialog::RemoveRoom(
                 id,
                 RemoveRoomForm::new(destinations, preselected, items > 0),
@@ -167,9 +172,9 @@ impl Shell {
     }
 
     fn holdings(&self, id: u32, cx: &App) -> Holdings {
-        let rooms = self.inventory.property(id).map_or(0, |p| p.rooms.len());
+        let rooms = self.inventory(cx).property(id).map_or(0, |p| p.rooms.len());
         let items: Vec<u32> = self
-            .inventory
+            .inventory(cx)
             .items
             .iter()
             .filter(|item| item.property == id)
@@ -203,7 +208,10 @@ impl Shell {
         match dialog {
             InventoryDialog::AddRoom(property, form) => {
                 let name = form.name.text().trim().to_string();
-                let Ok(id) = inventory::add_room(&mut self.inventory, property, &name) else {
+                let Ok(id) = self
+                    .inventory
+                    .update(cx, |store, cx| store.add_room(cx, property, &name))
+                else {
                     return;
                 };
                 self.settings_view
@@ -218,7 +226,11 @@ impl Shell {
             }
             InventoryDialog::EditRoom(id, form) => {
                 let name = form.name.text().trim().to_string();
-                if inventory::edit_room(&mut self.inventory, id, &name).is_err() {
+                if self
+                    .inventory
+                    .update(cx, |store, cx| store.edit_room(cx, id, &name))
+                    .is_err()
+                {
                     return;
                 }
                 self.settings_view.update(cx, |v, cx| {
@@ -230,12 +242,12 @@ impl Shell {
                 );
             }
             InventoryDialog::RemoveRoom(id, form) => {
-                let Some((property, room)) = self.inventory.room(id) else {
+                let Some((property, room)) = self.inventory(cx).room(id) else {
                     return;
                 };
                 let (property_id, name) = (property.id, room.name.clone());
                 let position = property.rooms.iter().position(|r| r.id == id).unwrap_or(0);
-                let items = self.inventory.room_items(id);
+                let items = self.inventory(cx).room_items(id);
                 let destination = form.select.value().and_then(|chosen| {
                     property
                         .rooms
@@ -244,12 +256,16 @@ impl Shell {
                 });
                 let destination_name = destination.map(|r| r.name.clone());
                 let destination_id = destination.map(|r| r.id);
-                if inventory::remove_room(&mut self.inventory, id, destination_id).is_err() {
+                if self
+                    .inventory
+                    .update(cx, |store, cx| store.remove_room(cx, id, destination_id))
+                    .is_err()
+                {
                     return;
                 }
                 // The cursor lands on the Room that takes the removed row's place, else the Property.
                 let rooms = self
-                    .inventory
+                    .inventory(cx)
                     .property(property_id)
                     .map(|p| p.rooms.as_slice())
                     .unwrap_or_default();
@@ -282,7 +298,10 @@ impl Shell {
                 let Ok(draft) = form.draft() else {
                     return;
                 };
-                let Ok(id) = inventory::add_property(&mut self.inventory, &draft, unit) else {
+                let Ok(id) = self
+                    .inventory
+                    .update(cx, |store, cx| store.add_property(cx, &draft, unit))
+                else {
                     return;
                 };
                 self.settings_view.update(cx, |v, cx| v.expand(cx, id));
@@ -298,7 +317,11 @@ impl Shell {
                 let Ok(draft) = form.draft() else {
                     return;
                 };
-                if inventory::edit_property(&mut self.inventory, id, &draft).is_err() {
+                if self
+                    .inventory
+                    .update(cx, |store, cx| store.edit_property(cx, id, &draft))
+                    .is_err()
+                {
                     return;
                 }
                 self.settings_view.update(cx, |v, cx| {
@@ -310,18 +333,21 @@ impl Shell {
                 );
             }
             InventoryDialog::Remove(id, _) => {
-                let Some(property) = self.inventory.property(id) else {
+                let Some(property) = self.inventory(cx).property(id) else {
                     return;
                 };
                 let name = property.name.clone();
                 // The cursor lands on the neighbour that takes the removed row's place.
                 let position = self
-                    .inventory
+                    .inventory(cx)
                     .properties
                     .iter()
                     .position(|p| p.id == id)
                     .unwrap_or(0);
-                let removed = match inventory::remove_property(&mut self.inventory, id) {
+                let removed = match self
+                    .inventory
+                    .update(cx, |store, cx| store.remove_property(cx, id))
+                {
                     Ok(removed) => removed,
                     Err(PropertyError::Unknown) => return,
                     Err(_) => return,
@@ -331,9 +357,9 @@ impl Shell {
                 });
                 self.settings_view.update(cx, |v, cx| v.collapse(cx, id));
                 let selected = self
-                    .inventory
+                    .inventory(cx)
                     .properties
-                    .get(position.min(self.inventory.properties.len().saturating_sub(1)))
+                    .get(position.min(self.inventory(cx).properties.len().saturating_sub(1)))
                     .map(|p| InventoryRow::Property(p.id));
                 self.settings_view
                     .update(cx, |v, cx| v.set_inventory_selected(cx, selected));
@@ -409,16 +435,16 @@ impl Shell {
         };
         match self.inventory_dialog()? {
             InventoryDialog::AddRoom(property, form) => {
-                let name = self.inventory.property(*property)?.name.clone();
+                let name = self.inventory(cx).property(*property)?.name.clone();
                 Some(self.render_room_form(true, &name, form, form.problem(), plain, cx))
             }
             InventoryDialog::EditRoom(id, form) => {
-                let (property, _) = self.inventory.room(*id)?;
+                let (property, _) = self.inventory(cx).room(*id)?;
                 let problem = form.problem();
                 Some(self.render_room_form(false, &property.name.clone(), form, problem, plain, cx))
             }
             InventoryDialog::RemoveRoom(id, form) => {
-                let (_, room) = self.inventory.room(*id)?;
+                let (_, room) = self.inventory(cx).room(*id)?;
                 let on_option_click: crate::view::accounts::select_field::OnOptionClick = {
                     let entity = entity.clone();
                     Rc::new(move |index, _window, cx| {
@@ -430,7 +456,7 @@ impl Shell {
                 Some(view::render_room_remove(
                     view::RoomRemoveProps {
                         name: &room.name,
-                        items: self.inventory.room_items(*id),
+                        items: self.inventory(cx).room_items(*id),
                         destinations: &form.destinations,
                         destination: &form.select,
                         handlers: view::RoomRemoveHandlers {
@@ -444,11 +470,11 @@ impl Shell {
                 ))
             }
             InventoryDialog::RoomBlocked(id) => {
-                let (property, room) = self.inventory.room(*id)?;
+                let (property, room) = self.inventory(cx).room(*id)?;
                 Some(view::render_room_blocked(
                     &room.name,
                     &property.name,
-                    self.inventory.room_items(*id),
+                    self.inventory(cx).room_items(*id),
                     plain(Shell::handle_inventory_dialog_cancel),
                     cx,
                 ))
@@ -458,14 +484,14 @@ impl Shell {
                 Some(self.render_property_form(entity, form, None, problem, plain, cx))
             }
             InventoryDialog::Edit(id, form) => {
-                let property = self.inventory.property(*id)?;
+                let property = self.inventory(cx).property(*id)?;
                 let fixed =
                     crate::msg::desktop_inventory_field_unit_fixed(&property.unit.to_uppercase());
                 let problem = form.problem();
                 Some(self.render_property_form(entity, form, Some(fixed), problem, plain, cx))
             }
             InventoryDialog::Remove(id, form) => {
-                let property = self.inventory.property(*id)?;
+                let property = self.inventory(cx).property(*id)?;
                 let holdings = self.holdings(*id, cx);
                 Some(view::render_remove(
                     view::RemoveProps {
@@ -546,7 +572,7 @@ impl Shell {
                 });
             })
         };
-        let suggestions = inventory::form::suggestions(&self.inventory, form.insurer.text());
+        let suggestions = inventory::form::suggestions(self.inventory(cx), form.insurer.text());
         view::render_form(
             view::FormProps {
                 form,

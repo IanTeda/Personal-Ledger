@@ -63,7 +63,9 @@ pub use snapshots::{
 
 use std::time::{Duration, Instant};
 
-use crate::view::settings::state::{InstitutionsStore, LedgerDataEvent, SettingsView, UnitsStore};
+use crate::view::settings::state::{
+    InstitutionsStore, InventoryStore, LedgerDataEvent, SettingsView, UnitsStore,
+};
 use crate::view::transactions::state::{TransactionsState, TransactionsView};
 
 use gpui::{
@@ -230,8 +232,9 @@ pub struct Shell {
     /// The Documents page's state (mode, scope, sort, search, selection). Its events are handled
     /// in `handle_documents_event`.
     documents_view: Entity<DocumentsView>,
-    /// The Inventory the Documents' Links resolve against.
-    inventory: inventory::Inventory,
+    /// The Inventory, owned by its store Entity and read through it (ADR-0032). Shared: Settings'
+    /// Inventory page edits it, and Documents resolve their Links against it.
+    inventory: Entity<InventoryStore>,
     /// Keeps each View's event subscription alive: dropping one silently stops its events.
     view_subscriptions: Vec<Subscription>,
 }
@@ -312,13 +315,17 @@ impl Shell {
             &mut transactions,
             today,
         );
-        let inventory = inventory::default_inventory(today);
+        let inventory = cx.new(|_| InventoryStore::new(inventory::default_inventory(today)));
+        let inventory_subscription = cx
+            .subscribe(&inventory, |_, _store, _event: &LedgerDataEvent, cx| {
+                cx.notify()
+            });
         let documents_seed = documents::default_documents(
             &seeded_accounts,
             &categories,
             &payees,
             &bills_seed.plans,
-            &inventory,
+            &inventory.read(cx).inventory().clone(),
             &mut transactions,
             today,
         );
@@ -419,6 +426,7 @@ impl Shell {
                 categories_subscription,
                 units_subscription,
                 institutions_subscription,
+                inventory_subscription,
                 categories_view_observer,
                 settings_view_observer,
             ],
@@ -485,8 +493,23 @@ impl Shell {
     /// Empties the Inventory, standing in for removing every Property until the Remove dialog
     /// lands, so a test can reach the Inventory page's empty state.
     #[doc(hidden)]
-    pub fn empty_inventory_for_test(&mut self) {
-        self.inventory = inventory::Inventory::default();
+    pub fn empty_inventory_for_test(&mut self, cx: &mut App) {
+        let ids: Vec<u32> = self
+            .inventory
+            .read(cx)
+            .inventory()
+            .properties
+            .iter()
+            .map(|property| property.id)
+            .collect();
+        self.inventory.update(cx, |store, cx| {
+            for id in ids {
+                assert!(
+                    store.remove_property(cx, id).is_ok(),
+                    "a Property listed a moment ago must still be removable"
+                );
+            }
+        });
     }
 
     /// The status line's flash message (e.g. "not yet built"), if one is showing.

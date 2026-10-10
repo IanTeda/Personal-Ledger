@@ -123,7 +123,7 @@ impl Shell {
                         || settings_inventory_hints(self.settings_inventory_selected_row(cx)),
                         inventory_ui::dialog_hints,
                     ),
-                    right: inventory_view::scope_text(&self.inventory),
+                    right: inventory_view::scope_text(self.inventory(cx)),
                 })
             }
             ActiveView::Settings(_) if self.settings_categories_page_has_focus(cx) => {

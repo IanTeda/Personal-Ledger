@@ -115,7 +115,7 @@ impl<'a> Harness<'a> {
     /// Empties the Inventory so the Settings Inventory page shows its empty state.
     pub fn empty_inventory(&mut self) {
         self.shell.update(self.cx, |shell, cx| {
-            shell.empty_inventory_for_test();
+            shell.empty_inventory_for_test(cx);
             cx.notify();
         });
         self.cx.run_until_parked();

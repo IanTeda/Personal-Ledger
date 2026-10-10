@@ -11,7 +11,6 @@ use crate::chrome::dialog_host::OpenDialog;
 use crate::documents::{self};
 use crate::institutions::AccountType;
 use crate::institutions::form::AddInstitutionForm;
-use crate::inventory;
 use crate::navigation::key_router::Movement;
 use crate::navigation::nav::{FocusZone, InputMode, Noun};
 use crate::settings::display::{DATE_STYLE_CHOICES, RowDensity, StatusGlyphs};
@@ -551,7 +550,7 @@ impl Shell {
     /// first row, so the cursor is never lost. `None` only with no Properties.
     pub(super) fn settings_inventory_selected_row(&self, cx: &App) -> Option<InventoryRow> {
         let rows = inventory_view::visible_rows(
-            &self.inventory,
+            self.inventory(cx),
             self.settings_view.read(cx).inventory_expanded(),
         );
         self.settings_view
@@ -578,7 +577,7 @@ impl Shell {
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the visible Property and Room rows as one list.
     pub(super) fn apply_settings_inventory_movement(&mut self, movement: Movement, cx: &mut App) {
         let rows = inventory_view::visible_rows(
-            &self.inventory,
+            self.inventory(cx),
             self.settings_view.read(cx).inventory_expanded(),
         );
         let Some(last) = rows.len().checked_sub(1) else {
@@ -621,7 +620,8 @@ impl Shell {
             _ => return false,
         };
         if let Some(InventoryRow::Room(id)) = self.settings_inventory_selected_row(cx) {
-            inventory::move_room(&mut self.inventory, id, delta);
+            self.inventory
+                .update(cx, |store, cx| store.move_room(cx, id, delta));
         }
         true
     }
@@ -665,7 +665,7 @@ impl Shell {
     pub(super) fn add_inventory_room_for_selection(&mut self, cx: &mut App) {
         let property = match self.settings_inventory_selected_row(cx) {
             Some(InventoryRow::Property(id)) => id,
-            Some(InventoryRow::Room(id)) => match self.inventory.room(id) {
+            Some(InventoryRow::Room(id)) => match self.inventory(cx).room(id) {
                 Some((property, _)) => property.id,
                 None => return,
             },
@@ -679,7 +679,7 @@ impl Shell {
         };
         self.settings_view
             .update(cx, |v, cx| v.expand(cx, property));
-        self.open_add_room_dialog(property);
+        self.open_add_room_dialog(property, cx);
     }
 
     /// `right`: open a closed Property, or step from an open one to its first Room.
@@ -690,13 +690,13 @@ impl Shell {
         if self.settings_view.update(cx, |v, cx| v.expand(cx, id)) {
             return;
         }
-        if let Some(room) = self
-            .inventory
+        let first_room = self
+            .inventory(cx)
             .property(id)
-            .and_then(|property| property.rooms.first())
-        {
+            .and_then(|property| property.rooms.first().map(|room| room.id));
+        if let Some(room) = first_room {
             self.settings_view.update(cx, |v, cx| {
-                v.set_inventory_selected(cx, Some(InventoryRow::Room(room.id)))
+                v.set_inventory_selected(cx, Some(InventoryRow::Room(room)))
             });
         }
     }
@@ -705,9 +705,10 @@ impl Shell {
     pub(super) fn step_settings_inventory_out(&mut self, cx: &mut App) {
         match self.settings_inventory_selected_row(cx) {
             Some(InventoryRow::Room(id)) => {
-                if let Some((property, _)) = self.inventory.room(id) {
+                let property = self.inventory(cx).room(id).map(|(property, _)| property.id);
+                if let Some(property) = property {
                     self.settings_view.update(cx, |v, cx| {
-                        v.set_inventory_selected(cx, Some(InventoryRow::Property(property.id)))
+                        v.set_inventory_selected(cx, Some(InventoryRow::Property(property)))
                     });
                 }
             }
@@ -786,7 +787,7 @@ impl Shell {
         if self.settings_view.update(cx, |v, cx| v.collapse(cx, id)) {
             if let Some(InventoryRow::Room(room)) = self.settings_inventory_selected_row(cx)
                 && self
-                    .inventory
+                    .inventory(cx)
                     .room(room)
                     .is_some_and(|(property, _)| property.id == id)
             {
@@ -843,7 +844,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         self.focus_settings_page(cx);
-        self.open_add_room_dialog(id);
+        self.open_add_room_dialog(id, cx);
         cx.notify();
     }
 
