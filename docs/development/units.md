@@ -28,7 +28,7 @@ Invariants the schema does not enforce:
 - **`unit_kind` has no `CHECK` constraint.** `categories.category_type` constrains its five tokens at the storage layer; `units.unit_kind` does not, so validity rests entirely on `lib_core::UnitKind` parsing on the way in. A row written by anything other than `lib-database` could hold an unparseable kind.
 - **A Unit referenced by an Account must not be deleted**, only deactivated via `is_active` — the same lifecycle as Category, Payee and Account. `delete.rs` performs a hard delete and does not check for references itself.
 - **`decimal_places` is not range-checked.** Nothing rejects a negative or absurd value.
-- **No pricing or conversion tables exist, by decision.** FR.2 and FR.3's cross-Unit exchange-rate and weekly-price-snapshot machinery is superseded by the "no cross-Unit conversion in V1" rule in `CONTEXT.md`'s Unit entry and the Constraints section of `docs/product-requirements.md`. The migration comment records this so nobody re-adds them casually.
+- **No pricing or conversion tables exist, by decision.** FR.2 and FR.3's cross-Unit exchange-rate and weekly-price-snapshot machinery is superseded by the "no cross-Unit conversion in V1" rule in `GLOSSARY.md`'s Unit entry and the Constraints section of `docs/product-requirements.md`. The migration comment records this so nobody re-adds them casually.
 
 ## Domain types
 
@@ -58,7 +58,7 @@ Omitted: [units.md](../units.md) is a design document and carries no requirement
 - [ADR-0021](../adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md) — the Locale, not a Preference, owns how an amount is formatted; the Unit owns what is shown.
 - [ADR-0013](../adr/0013-shell-view-replaces-breadcrumb-app-screen-nav.md) — why `view/` supersedes `screen/` in the TUI.
 - [ADR-0014](../adr/0014-preferences-table-and-leaner-sync-server-config.md) — the Preferences table that holds `default_unit_id`.
-- `CONTEXT.md` — Unit, Account, Trade.
+- `GLOSSARY.md` — Unit, Account, Trade.
 
 ## Open questions and known gaps
 

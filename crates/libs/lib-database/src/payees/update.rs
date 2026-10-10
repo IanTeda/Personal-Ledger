@@ -2,7 +2,7 @@
 //!
 //! Renaming is not a plain field update: it must also preserve the prior name as a
 //! [`crate::PayeeAliases`] row so a suggestion typed against the old name still resolves to
-//! this Payee (see `CONTEXT.md`'s Payee Alias entry,
+//! this Payee (see `GLOSSARY.md`'s Payee Alias entry,
 //! [ADR-0012](../../../../../docs/adr/0012-payee-entity-with-rename-aliases.md)). There is
 //! deliberately no plain "set name" method — every name change goes through [`Self::rename`]
 //! so an alias is never skipped.

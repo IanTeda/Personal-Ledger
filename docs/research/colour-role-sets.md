@@ -4,7 +4,7 @@
 
 **Outcome.** [#298](https://github.com/IanTeda/Personal-Ledger/issues/298) narrowed this survey to seven stored Colour Roles (`foreground`, `background`, `accent`, `cursor`, `muted`, `positive`, `negative`) with every other colour calculated from them — see `docs/colour-themes-design.md` and ADR-0022 on `concept`. The [suggested starting set](#proposed-unionintersection-baseline) below is the pre-decision survey output, kept as the record of what was weighed.
 
-Vocabulary note, per `CONTEXT.md`/the map: this repo calls a named colour set a **Colour Theme**, never a "palette" (that word means the command palette here), and **Colour Role** is the term for a named slot such as `accent` or `border`. Where a source's own docs say "palette" or "scheme", that is quoted verbatim as their term, not adopted as ours.
+Vocabulary note, per `GLOSSARY.md`/the map: this repo calls a named colour set a **Colour Theme**, never a "palette" (that word means the command palette here), and **Colour Role** is the term for a named slot such as `accent` or `border`. Where a source's own docs say "palette" or "scheme", that is quoted verbatim as their term, not adopted as ours.
 
 ## 1. base16 / base24
 

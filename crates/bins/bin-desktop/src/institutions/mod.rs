@@ -1,4 +1,4 @@
-//! Institutions: the banks, brokers and funds that hold a Ledger's Accounts (`CONTEXT.md`'s
+//! Institutions: the banks, brokers and funds that hold a Ledger's Accounts (`GLOSSARY.md`'s
 //! Institution). `gpui`-free; Settings' Institutions page is only where they're edited.
 
 pub(crate) mod form;

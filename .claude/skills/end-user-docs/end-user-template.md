@@ -78,4 +78,4 @@ Curious how <domain> is structured in the codebase, or planning to change it? Se
 
 - Section order is the reading order: what it is, what you can do, the words, the model, how you use it, an example, then reference material, then requirements.
 - Rules to know is where domain constraints go. They no longer live in the product requirements.
-- Terminology may use `CONTEXT.md` terms, but only ones you define there.
+- Terminology may use `GLOSSARY.md` terms, but only ones you define there.

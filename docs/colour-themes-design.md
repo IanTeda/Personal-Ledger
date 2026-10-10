@@ -1,6 +1,6 @@
 # Colour Themes design
 
-The developer-facing design for Colour Themes in the Desktop and TUI Clients. This page records the decisions reached on the [Colour Themes for the Desktop and TUI](https://github.com/IanTeda/Personal-Ledger/issues/292) Wayfinder map; each decision's detail lives on its ticket. The terms Colour Theme, Colour Role, Colour Variant and Colour Appearance are defined in `CONTEXT.md`.
+The developer-facing design for Colour Themes in the Desktop and TUI Clients. This page records the decisions reached on the [Colour Themes for the Desktop and TUI](https://github.com/IanTeda/Personal-Ledger/issues/292) Wayfinder map; each decision's detail lives on its ticket. The terms Colour Theme, Colour Role, Colour Variant and Colour Appearance are defined in `GLOSSARY.md`.
 
 ## Status
 

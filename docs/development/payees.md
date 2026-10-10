@@ -37,7 +37,7 @@ Invariants and deliberate omissions:
 - **`payee_aliases` rows are write-once.** An alias is only ever inserted by a rename and never updated, so the table carries no timestamp columns at all — the `id`'s embedded UUIDv7 timestamp stands in for when the rename happened. This is the same reasoning `transactions` uses to omit `created_on` (FR.21). Do not add `created_on`/`updated_on` here without revisiting that decision.
 - **`pattern` is a literal substring, matched as a case-insensitive *contains*** (ADR-0012's match-rules amendment). A rename-generated alias and a hand-authored match rule are the same row with no kind flag. Stored trimmed and upper-cased, deduplicated, unique across Payees (not enforced by the schema); the longest matching alias wins, then the Payee name alphabetically. Nothing compiles a regex.
 - **Delete only when unreferenced.** A Payee referenced by a Split is deactivated via `is_active`, never hard-deleted, enforced by the FK-enforcement pragma; an unreferenced one may be hard-deleted with its aliases (ADR-0012's delete amendment). `delete.rs` exists and does not itself check for references or remove aliases.
-- **No default Category column yet.** `CONTEXT.md`'s optional default Category (a leaf) exists only in the desktop stub; the migration gains a nullable `default_category_id` when persistence is wired.
+- **No default Category column yet.** `GLOSSARY.md`'s optional default Category (a leaf) exists only in the desktop stub; the migration gains a nullable `default_category_id` when persistence is wired.
 - **Case-insensitive uniqueness is enforced by the collation**, so "Kmart" and "KMART" cannot coexist.
 
 ## Domain types
@@ -103,7 +103,7 @@ Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live
 
 - [ADR-0012](../adr/0012-payee-entity-with-rename-aliases.md) — Payee as a first-class entity with rename aliases, reversing the original free-text decision. Covers why renaming changes one row rather than bulk-rewriting Transactions and why aliases are write-once. Its amendments make hand-authored match rules Payee Aliases (literal *contains*, longest wins; #282) and allow hard-deleting an unreferenced Payee (#283).
 - Desktop Payees Surface map, [#281](https://github.com/IanTeda/Personal-Ledger/issues/281) — the import step's scope and entry (#284).
-- `CONTEXT.md` — Payee, Split, Transaction.
+- `GLOSSARY.md` — Payee, Split, Transaction.
 
 ## Open questions and known gaps
 

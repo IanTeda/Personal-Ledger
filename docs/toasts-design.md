@@ -1,6 +1,6 @@
 # Toasts design
 
-The developer-facing design for Toasts in the Desktop and TUI Clients. This page records the decisions reached on the [Toasts for the Desktop and TUI](https://github.com/IanTeda/Personal-Ledger/issues/305) Wayfinder map; each decision's detail lives on its ticket. The terms Toast, Toast Kind, Message, Preference and Colour Role are defined in `CONTEXT.md`.
+The developer-facing design for Toasts in the Desktop and TUI Clients. This page records the decisions reached on the [Toasts for the Desktop and TUI](https://github.com/IanTeda/Personal-Ledger/issues/305) Wayfinder map; each decision's detail lives on its ticket. The terms Toast, Toast Kind, Message, Preference and Colour Role are defined in `GLOSSARY.md`.
 
 ## Status
 

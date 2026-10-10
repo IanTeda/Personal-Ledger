@@ -3,7 +3,7 @@
 //! Defines the `Units` struct, one row of the `units` table — a currency, cryptocurrency,
 //! stock, precious metal, or other tradeable instrument a Client's Accounts and
 //! Transactions are denominated in (FR.1, `docs/product-requirements.md`). No cross-Unit
-//! conversion exists in V1 (see `CONTEXT.md`'s Unit glossary entry) — `unit_kind` is a
+//! conversion exists in V1 (see `GLOSSARY.md`'s Unit glossary entry) — `unit_kind` is a
 //! descriptive grouping only, and `decimal_places` is used for display rounding, distinct
 //! from the decimal-separator Configuration decided in "Decide the application Settings /
 //! Preference model".

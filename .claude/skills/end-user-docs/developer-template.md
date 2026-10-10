@@ -77,7 +77,7 @@ Required for every ticked requirement. Stubs and planned work may omit it.
 
 ## Decisions
 
-<Linked ADRs and the `CONTEXT.md` terms this domain relies on.>
+<Linked ADRs and the `GLOSSARY.md` terms this domain relies on.>
 
 ## Open questions and known gaps
 

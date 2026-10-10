@@ -52,7 +52,7 @@ Omitted: nothing is built. The domain's requirement prefix is `NAT`. Add the tab
 
 - [ADR-0020](../adr/0020-needs-attention-as-derived-view.md) — Needs Attention as a derived view, why only Task persists, and the accepted loss of history.
 - [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md) — the deliberate contrast in the other direction.
-- `CONTEXT.md` — Task, Transaction, Bill Plan, Bill Schedule, Transaction Status.
+- `GLOSSARY.md` — Task, Transaction, Bill Plan, Bill Schedule, Transaction Status.
 
 ## Open questions and known gaps
 

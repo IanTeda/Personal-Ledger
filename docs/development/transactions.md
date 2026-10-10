@@ -62,7 +62,7 @@ When a Split is created with a payee name that doesn't exist, the Payee is auto-
 
 A Transaction cannot move value between two accounts directly — a Split is always against the Transaction's Account. Transferring between two Accounts of the same Unit is an ordinary pair of Transactions: one posting a negative amount to the source account and a positive amount to the destination, with a pair of tags or a shared description so the user can see they're related.
 
-Cross-Unit transfers are not possible in V1 (see `CONTEXT.md` — Unit, and `product-requirements.md` — Constraints).
+Cross-Unit transfers are not possible in V1 (see `GLOSSARY.md` — Unit, and `product-requirements.md` — Constraints).
 
 ## Moving a transaction to another account
 

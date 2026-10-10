@@ -3,7 +3,7 @@
 //! Descriptive grouping for a [`Unit`](crate) — fiat currency, crypto, a tradeable stock,
 //! a precious metal, or anything else FR.1's "etc." covers. Purely a display/grouping aid;
 //! Personal Ledger does not treat any kind specially (no cross-Unit conversion in V1 — see
-//! `CONTEXT.md`'s Unit glossary entry).
+//! `GLOSSARY.md`'s Unit glossary entry).
 
 /// One of the descriptive groupings a Unit can carry.
 #[derive(Debug, Clone, Default, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]

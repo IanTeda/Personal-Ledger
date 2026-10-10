@@ -1,6 +1,6 @@
 # Markdown Formatting
 
-How to format any Markdown file you write or edit in this repo (`CONTEXT.md`, `docs/adr/`, `docs/*.md`, `README.md`, etc.).
+How to format any Markdown file you write or edit in this repo (`GLOSSARY.md`, `docs/adr/`, `docs/*.md`, `README.md`, etc.).
 
 ## Headings
 
@@ -12,7 +12,7 @@ Write each paragraph as a single unwrapped line, however long. Don't insert manu
 
 This applies to list items too: one list item is one line, no matter how long, unless it contains a nested block (a sub-list, a code fence) that genuinely needs its own lines.
 
-`docs/product-requirements.md` and this file follow this convention. `CONTEXT.md` and `docs/adr/0001-single-entry-not-double-entry.md` predate it and are still hard-wrapped at ~85 columns — don't copy that style into new content, and feel free to unwrap a paragraph in those files if you're already editing it for another reason, but don't do a drive-by reformat of a file you're not otherwise touching.
+`docs/product-requirements.md` and this file follow this convention. `GLOSSARY.md` and `docs/adr/0001-single-entry-not-double-entry.md` predate it and are still hard-wrapped at ~85 columns — don't copy that style into new content, and feel free to unwrap a paragraph in those files if you're already editing it for another reason, but don't do a drive-by reformat of a file you're not otherwise touching.
 
 ## Blank lines between blocks
 

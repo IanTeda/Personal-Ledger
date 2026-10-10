@@ -2,7 +2,7 @@
 //!
 //! Defines the `PayeeAliases` struct, one row of the `payee_aliases` table — a Payee's
 //! former name, preserved automatically by [`crate::Payees::rename`] so a suggestion typed
-//! against the old name still resolves to the renamed Payee (see `CONTEXT.md`'s Payee Alias
+//! against the old name still resolves to the renamed Payee (see `GLOSSARY.md`'s Payee Alias
 //! entry, [ADR-0012](../../../../../docs/adr/0012-payee-entity-with-rename-aliases.md)).
 //! Write-once: a row is only ever inserted by a rename, never updated or deleted in V1, so
 //! there is deliberately no `update`/`delete` here.

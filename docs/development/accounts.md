@@ -9,7 +9,7 @@ Personal Ledger accounts represent money spent, money owed or money held as an i
 
 Each account type has its own record shape, workflow, and view, even though the app still groups all four under one “Accounts” navigation area for browsing. This document explains why they’re separate, what each one is, and how the mechanisms that move value between them (Transaction, Split, Trade, Repayment) fit together.
 
-See CONTEXT.md for the one-paragraph canonical definition of each term; this document covers the fuller shape and relationships.
+See GLOSSARY.md for the one-paragraph canonical definition of each term; this document covers the fuller shape and relationships.
 
 ## Why four entities, not one
 
@@ -77,7 +77,7 @@ Fields:
 - Statement/Due Date — when the current statement is due.
 - Active flag — soft-delete, same pattern as Transaction Account.
 
-Paying down a Credit Card Account is an **ordinary Transaction**, not a Repayment: it's a same-Unit Transaction moving cash from a Transaction Account into the Credit Card Account, using the same "a Transaction may move to another Account sharing that same Unit" rule that already covers any same-Unit transfer (see `CONTEXT.md`, Unit). Repayment (see below) stays specific to Loan Account, precisely because a Loan Account — unlike Credit Card Account — can't accept a Transaction directly at all.
+Paying down a Credit Card Account is an **ordinary Transaction**, not a Repayment: it's a same-Unit Transaction moving cash from a Transaction Account into the Credit Card Account, using the same "a Transaction may move to another Account sharing that same Unit" rule that already covers any same-Unit transfer (see `GLOSSARY.md`, Unit). Repayment (see below) stays specific to Loan Account, precisely because a Loan Account — unlike Credit Card Account — can't accept a Transaction directly at all.
 
 ## Loan Account
 
@@ -138,7 +138,7 @@ This is structurally different from a Transaction/Split for two reasons:
 1. **It crosses Account Kinds.** A Split moves value within one Account. A Trade moves value from a Transaction Account into an Investment Account (or back) — two different Account Kinds entirely.
 2. **It's quantity- and price-aware.** A Split is just a Category and an Amount. A Trade needs a quantity of the security bought or sold and a price, which together determine the cash Amount on the Transaction Account side.
 
-No exchange rate is involved, and this doesn't reopen the "Personal Ledger doesn't convert between Units in V1" rule (see `CONTEXT.md`, Unit): each side of a Trade is simply denominated in its own Unit already — the Transaction Account side in currency, the Investment Account side in the security itself. The Trade's price is what ties the two amounts together, not a currency-conversion exchange rate.
+No exchange rate is involved, and this doesn't reopen the "Personal Ledger doesn't convert between Units in V1" rule (see `GLOSSARY.md`, Unit): each side of a Trade is simply denominated in its own Unit already — the Transaction Account side in currency, the Investment Account side in the security itself. The Trade's price is what ties the two amounts together, not a currency-conversion exchange rate.
 
 Example — buying 10 shares of AAPL at $150.00 each from a cash Transaction Account:
 

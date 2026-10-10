@@ -1,4 +1,4 @@
-//! Units: the currencies, cryptocurrencies and other commodities a Ledger counts in (`CONTEXT.md`'s
+//! Units: the currencies, cryptocurrencies and other commodities a Ledger counts in (`GLOSSARY.md`'s
 //! Unit), with their price sources. Pure and I/O-free: the desktop's Settings › Units page reads
 //! them through `UnitsStore`, and the Type selector's labels stay in the desktop, which owns the
 //! Message catalogue.

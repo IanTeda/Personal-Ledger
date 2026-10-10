@@ -1,6 +1,6 @@
 //! # Budget Period Domain Module
 //!
-//! How often a Budget's limit recurs (FR.23, `CONTEXT.md`'s Budget entry): Weekly, Monthly,
+//! How often a Budget's limit recurs (FR.23, `GLOSSARY.md`'s Budget entry): Weekly, Monthly,
 //! Quarterly, or Yearly. [`Self::current_bounds`] computes the current period's calendar
 //! boundaries — always a fixed calendar boundary (ISO week Monday-start, calendar month,
 //! calendar quarter, calendar year), never a rolling window anchored to the Budget's own

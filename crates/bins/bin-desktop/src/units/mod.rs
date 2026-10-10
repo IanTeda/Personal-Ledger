@@ -1,4 +1,4 @@
-//! Units: the currencies, cryptocurrencies and other commodities a Ledger counts in (`CONTEXT.md`'s
+//! Units: the currencies, cryptocurrencies and other commodities a Ledger counts in (`GLOSSARY.md`'s
 //! Unit), with their price sources. `gpui`-free; Settings' Units page is only where they're edited.
 
 pub(crate) mod form;

@@ -59,7 +59,7 @@ Desktop locations for the ticked requirements.
 
 - [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md) — materialised, Split-Matched Bill Schedule entries, and why Paid requires a real Transaction.
 - [ADR-0020](../adr/0020-needs-attention-as-derived-view.md) — the contrast: Bill Schedule is materialised because it needs identity, Needs Attention is derived because it does not.
-- `CONTEXT.md` — Bill Plan, Bill Schedule, Match, Anticipated Bill, Known Costs (Bills), Needs Attention.
+- `GLOSSARY.md` — Bill Plan, Bill Schedule, Match, Anticipated Bill, Known Costs (Bills), Needs Attention.
 
 ## Open questions and known gaps
 

@@ -70,7 +70,7 @@ Desktop locations for the ticked requirements. Paths are under `crates/bins/bin-
 - [ADR-0028](../adr/0028-budget-amounts-are-effective-dated-and-never-rewrite-closed-months.md): Budget Amounts are effective-dated and never rewrite closed months.
 - [ADR-0029](../adr/0029-budgets-are-named-overlapping-views-over-one-ledger.md): Budgets are named, overlapping views over one Ledger.
 - [ADR-0019](../adr/0019-materialized-bill-schedule-transaction-linked.md): the Bill Schedule that Known Costs reads.
-- `CONTEXT.md` terms: Budget, Method, Category Limit, Budget Amount, Stop, Unbudgeted, Rollover, Budget History, Known Costs (Bills).
+- `GLOSSARY.md` terms: Budget, Method, Category Limit, Budget Amount, Stop, Unbudgeted, Rollover, Budget History, Known Costs (Bills).
 
 ## Open questions and known gaps
 

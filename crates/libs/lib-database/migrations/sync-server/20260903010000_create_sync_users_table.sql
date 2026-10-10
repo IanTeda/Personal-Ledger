@@ -1,6 +1,6 @@
 -- Migration: create sync_users table -- the Sync Server's own auth user store (ADR-0010:
 -- OAuth2 Authorization Code + PKCE, Sync Server as its own authorization server). Named
--- sync_users, not accounts, to keep the domain Account entity's name free (see CONTEXT.md's
+-- sync_users, not accounts, to keep the domain Account entity's name free (see GLOSSARY.md's
 -- SyncUser glossary entry).
 --
 -- Single-account this cycle (ADR-0010): the PRD's deployment profile is one self-hoster,

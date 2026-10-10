@@ -2,7 +2,7 @@
 -- and other tradeable instruments Accounts and Transactions are denominated in (FR.1-3,
 -- CC-TUI-005). No exchange-rate/pricing table: FR.2/FR.3's cross-Unit exchange-rate and
 -- weekly-price-snapshot machinery is superseded by the "no cross-Unit conversion in V1"
--- decision already recorded in CONTEXT.md's Unit entry and docs/product-requirements.md's
+-- decision already recorded in GLOSSARY.md's Unit entry and docs/product-requirements.md's
 -- Constraints/Future Considerations.
 
 CREATE TABLE IF NOT EXISTS units (

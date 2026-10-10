@@ -76,8 +76,8 @@ Omitted: [categories.md](../categories.md) carries no requirement checklist yet,
 
 ## Decisions
 
-- [ADR-0015](../adr/0015-tag-as-independent-transaction-label.md) — why Tag is a separate cross-cutting label rather than a grouping layered over Category. Relevant here because `CONTEXT.md`'s Category entry previously listed Tag under `_Avoid_`.
-- `CONTEXT.md` — Category, Split, Transaction.
+- [ADR-0015](../adr/0015-tag-as-independent-transaction-label.md) — why Tag is a separate cross-cutting label rather than a grouping layered over Category. Relevant here because `GLOSSARY.md`'s Category entry previously listed Tag under `_Avoid_`.
+- `GLOSSARY.md` — Category, Split, Transaction.
 - FR.35 in `docs/product-requirements.md` — per-Category totals.
 
 ## Open questions and known gaps

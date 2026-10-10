@@ -10,7 +10,7 @@ Every domain gets one end-user page, `docs/<domain>.md`, and one developer page,
 - End-user page: copy [end-user-template.md](end-user-template.md).
 - Developer page: copy [developer-template.md](developer-template.md). A stub is fine when the domain isn't documented technically yet.
 
-Also follow `docs/agents/markdown-style.md` (ATX headings, one line per paragraph, `-` bullets), Australian English, and the vocabulary in `CONTEXT.md`. Filenames are kebab-case.
+Also follow `docs/agents/markdown-style.md` (ATX headings, one line per paragraph, `-` bullets), Australian English, and the vocabulary in `GLOSSARY.md`. Filenames are kebab-case.
 
 ## Scope
 
@@ -22,7 +22,7 @@ This skill covers domain pages only. Guides (`getting-around`, `new-ledger-workf
 - Clarity beats concision. Shorten grammar only in bullets and requirement lines, never in prose.
 - Describe what the user sees and does. Show keys in backticks.
 - No implementation detail (crates, SQL, gRPC, IDs). That belongs on the developer page.
-- `CONTEXT.md` terms are fine only when defined in the page's Terminology section.
+- `GLOSSARY.md` terms are fine only when defined in the page's Terminology section.
 - Describe intent, not code. If a feature isn't built, say so in the Heads up and leave its requirement unticked.
 
 ## Requirements
@@ -66,5 +66,5 @@ When asked to review, don't rewrite. Run the checklist, then report each deviati
 - Page is in `docs/SUMMARY.md`: end-user list alphabetical, developer page under Code Structure.
 - Requirements follow the rules above, and their ticks match reality.
 - Getting around is copied from the table in `docs/getting-around.md`, with both apps' keys. Never write keys from memory.
-- Terms match `CONTEXT.md` and are defined in Terminology. Links resolve (`mdbook build`).
+- Terms match `GLOSSARY.md` and are defined in Terminology. Links resolve (`mdbook build`).
 - The domain has a row in the prefix registry.

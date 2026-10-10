@@ -2,7 +2,7 @@
 //!
 //! Data access for the Sync Server's own auth user store (ADR-0010) -- single-account
 //! this cycle, holding a username, an Argon2 password hash, and the currently valid
-//! refresh-token hash. See `CONTEXT.md`'s SyncUser glossary entry: this is not Ledger
+//! refresh-token hash. See `GLOSSARY.md`'s SyncUser glossary entry: this is not Ledger
 //! data and never syncs via Change Sets.
 //!
 //! | Submodule | Purpose |

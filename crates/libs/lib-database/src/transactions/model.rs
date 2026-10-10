@@ -4,7 +4,7 @@
 //! record of an amount moving against exactly one Account and one Category (FR.16-21,
 //! CC-TUI-009). No `created_on` column: FR.21 says the UUIDv7 `id` itself determines
 //! creation date. Personal Ledger is deliberately single-entry, not double-entry (see
-//! `CONTEXT.md`'s Transaction entry and [ADR-0001](../../../../../docs/adr/0001-single-entry-not-double-entry.md)).
+//! `GLOSSARY.md`'s Transaction entry and [ADR-0001](../../../../../docs/adr/0001-single-entry-not-double-entry.md)).
 
 /// Database row model representing one persisted Transaction.
 #[derive(Debug, sqlx::FromRow, serde::Deserialize, serde::Serialize, PartialEq, Clone)]
@@ -28,7 +28,7 @@ pub struct Transactions {
     pub account_id: lib_core::RowID,
 
     /// The optional Payee money moved to or from. A first-class entity as of ADR-0012 —
-    /// see `CONTEXT.md`'s Payee entry — resolved or auto-created from typed text at save
+    /// see `GLOSSARY.md`'s Payee entry — resolved or auto-created from typed text at save
     /// time, not stored as free text here.
     pub payee_id: Option<lib_core::RowID>,
 

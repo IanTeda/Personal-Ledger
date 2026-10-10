@@ -4,7 +4,7 @@ Version: v0.0.1 (Draft — End-State Requirements Pool; active cycle scope defin
 Date: 3 September 2026
 Author: Ian Teda
 
-This document owns the product vision, scope, and requirements. Domain vocabulary (precise definitions of terms like "ledger", "category", "account") is defined in `CONTEXT.md`. This PRD references domain terms without formally defining them.
+This document owns the product vision, scope, and requirements. Domain vocabulary (precise definitions of terms like "ledger", "category", "account") is defined in `GLOSSARY.md`. This PRD references domain terms without formally defining them.
 
 # 1. Introduction
 
@@ -112,7 +112,7 @@ Implement these requirements to bring the TUI, Desktop and Sync up to functional
 - __CC-TUI-006:__ Build out the categories functionality.
 - __CC-TUI-008:__ Build out the accounts functionality.
 - __CC-TUI-009:__ Build out the transaction functionality.
-- __CC-TUI-010:__ Build out the budgeting functionality using line-item budgeting only (matching `CONTEXT.md`'s existing Budget definition — a cap on one Category, not a full allocation); envelope and reverse budgeting are deferred to Future Considerations (§7).
+- __CC-TUI-010:__ Build out the budgeting functionality using line-item budgeting only (matching `GLOSSARY.md`'s existing Budget definition — a cap on one Category, not a full allocation); envelope and reverse budgeting are deferred to Future Considerations (§7).
 - __CC-TUI-011:__ Build out the reporting functionality.
 - __CC-TUI-012:__ Build out the CSV import functionality (FR.33 — Balance Check import only; no CSV export is specified anywhere in the FR pool).
 - __CC-TUI-013:__ Build out the Balance Check functionality (FR.28–32) — added when charting the "TUI App concept" Wayfinder map; Balance Checks were missing from this list despite having their own FR section.
@@ -121,7 +121,7 @@ Implement these requirements to bring the TUI, Desktop and Sync up to functional
 
 Mirrors §2.2.2, built in parallel with the TUI cycle rather than sequenced after it — both clients share `lib-database`/`lib-core`, and `bin-desktop` already has a feasibility-cycle scaffold (GPUI, ADR-0007/0008) as mature as `bin-tui`'s.
 
-- __CC-DESKTOP-001:__ Research and decide on screens and user flows for the Desktop app, including how the Preference model from CC-TUI-001 is shared or diverges for Desktop (see `CONTEXT.md` — Preference).
+- __CC-DESKTOP-001:__ Research and decide on screens and user flows for the Desktop app, including how the Preference model from CC-TUI-001 is shared or diverges for Desktop (see `GLOSSARY.md` — Preference).
 - __CC-DESKTOP-002:__ Replace the feasibility cycle's dummy-data chart/table demo (`bin-desktop/src/main.rs`) with live screens backed by `lib-database`.
 - __CC-DESKTOP-003:__ Research and decide on navigation/workflow (menus, keyboard shortcuts) for the Desktop app.
 - __CC-DESKTOP-004:__ Reuse the TUI's data model and persistence layer decision (CC-TUI-004) — no separate research needed unless Desktop surfaces a real gap.
@@ -152,7 +152,7 @@ The requirements below describe the product's ultimate end state across all deve
 ### Units
 
 - __FR.1:__ The system shall allow for multiple different Units like currencies, crypto, stocks, equities, precious metals, etc.
-- ~~__FR.2:__ When a transaction is between different Units, it should include an exchange rate.~~ — superseded: cross-Unit transactions don't exist in V1 at all (see `CONTEXT.md`'s Unit entry and this document's Constraints/Future Considerations, "Cross-Unit conversion"). This FR predates that decision and was never reconciled with it; surfaced and struck while resolving CC-TUI-005 ("Build out Units functionality" Wayfinder ticket).
+- ~~__FR.2:__ When a transaction is between different Units, it should include an exchange rate.~~ — superseded: cross-Unit transactions don't exist in V1 at all (see `GLOSSARY.md`'s Unit entry and this document's Constraints/Future Considerations, "Cross-Unit conversion"). This FR predates that decision and was never reconciled with it; surfaced and struck while resolving CC-TUI-005 ("Build out Units functionality" Wayfinder ticket).
 - ~~__FR.3:__ Unit prices will be stored locally as part of a transaction exchange and every week to avoid excessive granularity. If more granularity is needed, it can be queried from the internet dynamically.~~ — superseded alongside FR.2, same reason: no cross-Unit exchange exists to price.
 
 ### Categories
@@ -172,7 +172,7 @@ The requirements below describe the product's ultimate end state across all deve
 - __FR.13:__ The system shall allow updating an account's name, type, or active status.
 - __FR.14:__ The system shall allow deleting an account. On deleting an account, there will be an option to transfer all the transactions under an account to another account. (CC-TUI-008 implements a bare delete only — the transfer option operates on Transaction rows, which don't exist until CC-TUI-009; deferred there.)
 - __FR.15:__ The system shall allow the merging of two accounts into one. (Deferred to CC-TUI-009 alongside FR.14's transfer option, for the same reason — there's nothing to merge until Transactions exist.)
-- __FR.16:__ The system shall allow creating a single-entry transaction with a UUIDv7, date, an amount, exactly one Category, exactly one account, an optional Payee, an optional description, optional ID, a Transaction Status (Open, Cleared, or Reconciled — defaulting to Open), and an independent Flagged marker (defaulting to unset), and shall update the linked account's running Balance accordingly. A Payee not yet seen is auto-created from the entered name (see CONTEXT.md — Payee, [ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md)).
+- __FR.16:__ The system shall allow creating a single-entry transaction with a UUIDv7, date, an amount, exactly one Category, exactly one account, an optional Payee, an optional description, optional ID, a Transaction Status (Open, Cleared, or Reconciled — defaulting to Open), and an independent Flagged marker (defaulting to unset), and shall update the linked account's running Balance accordingly. A Payee not yet seen is auto-created from the entered name (see GLOSSARY.md — Payee, [ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md)).
 - __FR.17:__ The system shall allow retrieving a transaction by id.
 - __FR.18:__ The system shall allow listing transactions with pagination, filtering by account, Category, Payee, Transaction Status, Flagged state, and/or date range, and sorting.
 - __FR.19:__ The system shall allow updating a transaction — including its Transaction Status and Flagged marker, each settable independently of the other — and shall adjust the affected account balance(s) accordingly, including moving a transaction between accounts that share the same Unit (moving it to an account with a different Unit is rejected — see Constraints). Status and Flagged changes are always explicit user actions; the system never infers or auto-applies them. A Reconciled transaction's other fields cannot be updated until its Transaction Status is first moved back to Open or Cleared (see Constraints).
@@ -181,7 +181,7 @@ The requirements below describe the product's ultimate end state across all deve
 - __FR.21a:__ The system shall allow creating a Payee with a name; a Payee is also auto-created the first time its name is entered on a Transaction (FR.16), so explicit creation exists mainly for consistency with other entities.
 - __FR.21b:__ The system shall allow retrieving a Payee by id.
 - __FR.21c:__ The system shall allow listing Payees with pagination and filtering by active status.
-- __FR.21d:__ The system shall allow renaming a Payee. The prior name is preserved as a Payee Alias so entering it on a future Transaction still resolves to the renamed Payee (see CONTEXT.md — Payee Alias, [ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md)); every Transaction referencing the Payee reflects the new name immediately, since the reference is by identity, not stored text.
+- __FR.21d:__ The system shall allow renaming a Payee. The prior name is preserved as a Payee Alias so entering it on a future Transaction still resolves to the renamed Payee (see GLOSSARY.md — Payee Alias, [ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md)); every Transaction referencing the Payee reflects the new name immediately, since the reference is by identity, not stored text.
 - __FR.21e:__ The system shall allow deactivating a Payee (active status); deleting a Payee is rejected while any Transaction still references it.
 
 ### Budgets
@@ -253,7 +253,7 @@ The requirements below describe the product's ultimate end state across all deve
 - A Balance Check's CSV import reads exactly a date column and a balance column for one Account; it does not import Transactions, categories, or payees.
 - Transaction Status (Open, Cleared, Reconciled) and Flagged are both set manually by the user; the system never automatically matches a Transaction to a Balance Check or infers a status change. Flagged is independent of Transaction Status — a Transaction may be Flagged in any status, including Reconciled.
 - A Reconciled Transaction's other fields (amount, Category, account, Payee, description, date) cannot be updated until its Transaction Status is first moved back to Open or Cleared; the Status and Flagged fields themselves remain independently settable at any time.
-- A Payee cannot be hard-deleted while any Transaction references it; only deactivation (active status) is allowed once referenced. Renaming a Payee is not a bulk update of Transactions — it changes one row, reflected everywhere via the reference — and preserves the prior name as a Payee Alias (see CONTEXT.md — Payee, Payee Alias, [ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md)).
+- A Payee cannot be hard-deleted while any Transaction references it; only deactivation (active status) is allowed once referenced. Renaming a Payee is not a bulk update of Transactions — it changes one row, reflected everywhere via the reference — and preserves the prior name as a Payee Alias (see GLOSSARY.md — Payee, Payee Alias, [ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md)).
 - SQL queries must list explicit columns; no `SELECT *`.
 - Secrets must be wrapped in `secrecy::Secret`.
 
@@ -261,8 +261,8 @@ The requirements below describe the product's ultimate end state across all deve
 
 - __Shared ledgers:__ Support for Family, Couples & Groups sharing a single ledger (see §1.3) — out of scope for v0.0.1, which targets a single individual.
 - __Institution:__ Associating an Account with the financial Institution that holds it (e.g. a bank) is deferred past V1; no Institution entity, field, or CRUD exists in this cycle.
-- __Cross-Unit conversion:__ V1 keeps every Account and Transaction in one fixed Unit with no conversion between Units (see `CONTEXT.md` — Unit); multi-Unit rollups/conversion are a future consideration.
-- __Payee fuzzy matching:__ V1 resolves a renamed Payee via the Payee Alias an explicit rename leaves behind (see CONTEXT.md — Payee Alias, [ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md)); free-form fuzzy/typo-tolerant matching with no explicit rename behind it is a future consideration.
+- __Cross-Unit conversion:__ V1 keeps every Account and Transaction in one fixed Unit with no conversion between Units (see `GLOSSARY.md` — Unit); multi-Unit rollups/conversion are a future consideration.
+- __Payee fuzzy matching:__ V1 resolves a renamed Payee via the Payee Alias an explicit rename leaves behind (see GLOSSARY.md — Payee Alias, [ADR-0012](docs/adr/0012-payee-entity-with-rename-aliases.md)); free-form fuzzy/typo-tolerant matching with no explicit rename behind it is a future consideration.
 - __Double-entry accounting:__ Personal Ledger deliberately uses single-entry Transactions in V1 (see [ADR-0001](docs/adr/0001-single-entry-not-double-entry.md)); revisiting this for audit-grade, structurally-balanced accounting is a future consideration should the need arise.
 - __Desktop & TUI UI:__ The concrete UI/UX for each client app (§1.4) is not yet detailed as Functional Requirements; deferred until each respective cycle is scoped.
 - __Multi-device sync protocol:__ End-state Functional Requirements for the sync server's protocol beyond FR.39a's placeholder are deferred until a sync-focused cycle is scoped (see FR.39a, §2.1 Sync).

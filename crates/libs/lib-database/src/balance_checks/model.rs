@@ -3,7 +3,7 @@
 //! Defines the `BalanceChecks` struct, one row of the `balance_checks` table — a
 //! point-in-time assertion of what an Account's Balance should be (FR.28-32, CC-TUI-013),
 //! checked against the Account's own Balance as computed from its Transactions (see
-//! `CONTEXT.md`'s Balance Check entry). Manual entry only here; CSV import (FR.33) is a
+//! `GLOSSARY.md`'s Balance Check entry). Manual entry only here; CSV import (FR.33) is a
 //! separate ticket (CC-TUI-012).
 
 /// Database row model representing one persisted Balance Check.

@@ -1,8 +1,8 @@
 //! # Transaction Status Domain Module
 //!
-//! Where a Transaction sits in the reconciliation workflow (FR.16/19, `CONTEXT.md`'s
+//! Where a Transaction sits in the reconciliation workflow (FR.16/19, `GLOSSARY.md`'s
 //! Transaction Status entry): Open, Cleared, or Reconciled. Independent of the Flagged
-//! marker — see `CONTEXT.md`, not a fourth status here.
+//! marker — see `GLOSSARY.md`, not a fourth status here.
 
 /// One of the three reconciliation-workflow states a Transaction carries.
 #[derive(Debug, Clone, Default, PartialEq, PartialOrd, serde::Deserialize, serde::Serialize)]

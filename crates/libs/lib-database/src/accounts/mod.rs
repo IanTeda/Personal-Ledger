@@ -2,7 +2,7 @@
 //!
 //! Data access for the `accounts` table — the domain Account entity (Cash/Bank/Credit
 //! Card/Investment/Loan, FR.10-15, CC-TUI-008). Not the Sync Server's own auth credential;
-//! see `CONTEXT.md`'s SyncUser glossary entry for that.
+//! see `GLOSSARY.md`'s SyncUser glossary entry for that.
 //!
 //! | Submodule | Purpose |
 //! |-----------|---------|

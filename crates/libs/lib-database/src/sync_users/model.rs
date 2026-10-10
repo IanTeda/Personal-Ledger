@@ -10,7 +10,7 @@
 ///
 /// Single-account this cycle (ADR-0010): the Sync Server's user store holds exactly one
 /// bootstrap sync user, not multi-user account management. Not Ledger data -- see
-/// `CONTEXT.md`'s SyncUser glossary entry.
+/// `GLOSSARY.md`'s SyncUser glossary entry.
 #[derive(Debug, sqlx::FromRow, serde::Deserialize, serde::Serialize, PartialEq, Clone)]
 pub struct SyncUser {
     /// Unique time-ordered identifier for the sync user.

@@ -3,7 +3,7 @@
 //! `update` covers FR.19's "other fields" (date, amount, category, account, payee,
 //! description) — locked while the Transaction's *current* status is Reconciled. `Status`
 //! and `Flagged` go through their own dedicated methods instead, since they're always
-//! settable independently of everything else (see `CONTEXT.md`'s Transaction Status and
+//! settable independently of everything else (see `GLOSSARY.md`'s Transaction Status and
 //! Flagged entries) and of the Reconciled-lock in particular.
 
 use lib_core as domain;

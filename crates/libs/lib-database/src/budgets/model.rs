@@ -2,7 +2,7 @@
 //!
 //! Defines the `Budgets` struct, one row of the `budgets` table — a limit on the total
 //! amount of Transactions in one Category over a recurring period (FR.22-27, CC-TUI-010),
-//! line-item only (see `CONTEXT.md`'s Budget entry; envelope/reverse budgeting are deferred,
+//! line-item only (see `GLOSSARY.md`'s Budget entry; envelope/reverse budgeting are deferred,
 //! PRD §7). Restricted to Expense-type Categories, enforced by [`Self::insert`] — "spending"
 //! against an Asset/Liability/Income/Equity Category has no coherent meaning yet.
 

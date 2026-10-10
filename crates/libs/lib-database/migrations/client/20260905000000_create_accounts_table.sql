@@ -1,6 +1,6 @@
 -- Migration: create accounts table -- the domain Account entity (Cash/Bank/Credit
 -- Card/Investment/Loan, FR.10-15, CC-TUI-008). Not to be confused with the Sync Server's
--- own auth credential, which is named sync_users to keep this name free (see CONTEXT.md's
+-- own auth credential, which is named sync_users to keep this name free (see GLOSSARY.md's
 -- SyncUser entry).
 --
 -- unit_id is the first real foreign key in the schema: an Account's Unit is fixed at

@@ -5,7 +5,7 @@
 //! The Documents surface reads this list through `documents::DocumentType`, which is just a row's
 //! stable `id`, so a rename or a reorder never touches a Document.
 
-/// The kind of Key Date a type tracks (`CONTEXT.md`'s Key Date).
+/// The kind of Key Date a type tracks (`GLOSSARY.md`'s Key Date).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TracksDate {
     Renews,

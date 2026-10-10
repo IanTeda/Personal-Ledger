@@ -62,7 +62,7 @@ Desktop locations for the ticked requirements. The TUI's Tags code lives in `cra
 
 - [ADR-0015](../adr/0015-tag-as-independent-transaction-label.md) — Tag as an independent, many-to-many Transaction label rather than a grouping over Category or Payee, including why the rejected alternative cannot express a cross-cutting total over an untagged Category. Its amendments add the optional colour (#352), hard remove with `is_active` as a toggle (#353), normalised-name uniqueness and merge (#354), and the usage figures (#355).
 - [ADR-0012](../adr/0012-payee-entity-with-rename-aliases.md) — the contrast that explains why Tag needs no aliases.
-- `CONTEXT.md` — Tag, Category, Payee, Split, Unit.
+- `GLOSSARY.md` — Tag, Category, Payee, Split, Unit.
 
 ## Open questions and known gaps
 

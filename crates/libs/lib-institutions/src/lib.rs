@@ -1,4 +1,4 @@
-//! Institutions: the banks, brokers and funds that hold a Ledger's Accounts (`CONTEXT.md`'s
+//! Institutions: the banks, brokers and funds that hold a Ledger's Accounts (`GLOSSARY.md`'s
 //! Institution). Pure and I/O-free: the desktop's Settings › Institutions page reads them through
 //! `InstitutionsStore`, and the Account Type labels stay in the desktop, which owns the Message
 //! catalogue.
@@ -70,7 +70,8 @@ impl InstitutionService {
     /// Appends an institution from the Add institution dialog. `account_type` is the joined
     /// label the dialog built, so this service stores it as given.
     pub fn add(&mut self, name: String, account_type: String) {
-        self.institutions.push(InstitutionRow { name, account_type });
+        self.institutions
+            .push(InstitutionRow { name, account_type });
     }
 }
 

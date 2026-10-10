@@ -1,6 +1,6 @@
 # Tag as an independent, many-to-many Transaction label, not a grouping over Category/Payee
 
-`CONTEXT.md`'s Category entry previously listed `_Avoid_: Tag, group` — Tag had been weighed as just another word for Category and rejected. Revisiting it for "totals across Categories and Payees" surfaced a genuinely different need: a cross-cutting label that doesn't nest inside the fixed, required, exactly-one Category classification.
+`GLOSSARY.md`'s Category entry previously listed `_Avoid_: Tag, group` — Tag had been weighed as just another word for Category and rejected. Revisiting it for "totals across Categories and Payees" surfaced a genuinely different need: a cross-cutting label that doesn't nest inside the fixed, required, exactly-one Category classification.
 
 We modelled Tag as its own entity: a freeform, globally-unique (case-insensitive) label attached many-to-many directly to Transactions, independent of their Category and Payee — not a grouping layered over Category or Payee themselves. The rejected alternative (tagging Categories/Payees and rolling totals up through them) can't express a Transaction that should count toward a cross-cutting total despite sitting under an untagged Category or Payee (e.g. one stray "Japan Trip 2026" expense filed under "Miscellaneous"), which is exactly the case this feature exists for.
 

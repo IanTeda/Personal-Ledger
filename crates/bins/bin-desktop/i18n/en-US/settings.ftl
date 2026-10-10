@@ -15,7 +15,7 @@ desktop-display-locale-fallback = { $requested } is not supported, so { $locale 
 desktop-display-locale-hint = Set with the locale setting or the --locale flag, then restart.
 
 ## Settings: the page, its index rail and the section headings. Terms such as Configuration,
-## Preferences and Change Sets are the ones `CONTEXT.md` defines.
+## Preferences and Change Sets are the ones `GLOSSARY.md` defines.
 
 desktop-settings-index-footer = preferences sync · configuration local
 

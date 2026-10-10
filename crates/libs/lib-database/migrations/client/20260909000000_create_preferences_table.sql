@@ -4,7 +4,7 @@
 -- Theme id and Colour Appearance (NULL means Modernist and System). Only an explicit choice
 -- is stored, so a changed default still reaches existing Ledgers. No CHECK on colour_theme:
 -- a Colour Theme added in a later release must survive a sync through an older Client. Client-scoped
--- (local-only, unsynced) Preferences remain a valid category per CONTEXT.md, but nothing
+-- (local-only, unsynced) Preferences remain a valid category per GLOSSARY.md, but nothing
 -- needs one yet, so no such table is built here.
 --
 -- Singleton by convention, not a database constraint -- mirrors sync_users: a normal RowID

@@ -2,7 +2,7 @@
 
 The developer-facing design for localisation. Looking for the user guide (how to change your Locale, what changes)? See [Localisation](localisation.md).
 
-How Personal Ledger presents its interface in a Locale: which Messages the desktop and TUI show, and how numbers, dates and currency amounts are formatted. This page records the decisions reached on the [Localisation of the Desktop and TUI UX](https://github.com/IanTeda/Personal-Ledger/issues/211) Wayfinder map; each decision's detail lives on its ticket, and the hard-to-reverse parts are in [ADR-0021](adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md). The terms Locale, Message and Catalogue are defined in `CONTEXT.md`.
+How Personal Ledger presents its interface in a Locale: which Messages the desktop and TUI show, and how numbers, dates and currency amounts are formatted. This page records the decisions reached on the [Localisation of the Desktop and TUI UX](https://github.com/IanTeda/Personal-Ledger/issues/211) Wayfinder map; each decision's detail lives on its ticket, and the hard-to-reverse parts are in [ADR-0021](adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md). The terms Locale, Message and Catalogue are defined in `GLOSSARY.md`.
 
 ## Status
 

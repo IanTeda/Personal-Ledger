@@ -4,7 +4,7 @@
 //! Change Set log (`change_sets` table) -- the unit of data pushed and pulled between
 //! Clients to propagate one Client's local edits to the others, at field granularity.
 //! See [ADR-0009](https://github.com/IanTeda/Personal-Ledger/blob/feasibility/docs/adr/0009-lww-sqlite-change-set-log.md)
-//! for the schema decision and `CONTEXT.md`'s Change Set glossary entry.
+//! for the schema decision and `GLOSSARY.md`'s Change Set glossary entry.
 
 /// Database row model representing one persisted Change Set.
 ///

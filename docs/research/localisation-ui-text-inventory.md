@@ -1,6 +1,6 @@
 # Research: Inventory of hardcoded UI text in bin-desktop and bin-tui
 
-**Question.** Issue [#215](https://github.com/IanTeda/Personal-Ledger/issues/215), part of the [Localisation of the Desktop and TUI UX](https://github.com/IanTeda/Personal-Ledger/issues/211) map, asks for an inventory of user-visible text in `crates/bins/bin-desktop/src` and `crates/bins/bin-tui/src` (plus `lib-*` text that can reach the screen), classified by how hard each kind of string is to turn into a Message, with counts per category and per file, the worst patterns to migrate, and where the two bins already share wording. This replaces the map's rough figure of "about 180 literal-string UI call sites". It is research input for the message-scope decision and the per-screen migration tickets; it makes no decision. Vocabulary (Locale, Message, Catalogue, Account Kind, Transaction Status) follows `CONTEXT.md`.
+**Question.** Issue [#215](https://github.com/IanTeda/Personal-Ledger/issues/215), part of the [Localisation of the Desktop and TUI UX](https://github.com/IanTeda/Personal-Ledger/issues/211) map, asks for an inventory of user-visible text in `crates/bins/bin-desktop/src` and `crates/bins/bin-tui/src` (plus `lib-*` text that can reach the screen), classified by how hard each kind of string is to turn into a Message, with counts per category and per file, the worst patterns to migrate, and where the two bins already share wording. This replaces the map's rough figure of "about 180 literal-string UI call sites". It is research input for the message-scope decision and the per-screen migration tickets; it makes no decision. Vocabulary (Locale, Message, Catalogue, Account Kind, Transaction Status) follows `GLOSSARY.md`.
 
 **Method and caveats.** The audit ran against the `concept` branch at `ba0b53e`, because `main` still carries the old six-screen feasibility demo. A script extracted every string literal from non-test code (everything before the first `#[cfg(test)]` in each file) under both bins and the `lib-*` crates, then classified each literal with regular expressions on the literal and its line, and the results were spot-checked by reading. Counts are therefore **string literals, not call sites**, and the category boundaries are heuristic: expect roughly ten per cent of literals to land in a neighbouring category. Multi-line SQL literals in `lib-database` were excluded because they are not UI. `lib-database`, `lib-core` and the other libs were audited by reading their error enums and enum label methods rather than by literal count.
 
@@ -62,7 +62,7 @@ There are three sources.
 
 Placeholder text such as `"not yet built"` and `"-- not yet built (see issue #153)"` (`bin-desktop/src/shell.rs:1806`, `:3050`; `bin-tui/src/popup/command/mod.rs:247`) appears about 20 times and is temporary; it is better deleted as features land than migrated.
 
-### 2.6 Strings that are Ledger data or `CONTEXT.md` vocabulary
+### 2.6 Strings that are Ledger data or `GLOSSARY.md` vocabulary
 
 The map's out-of-scope note is that Account, Payee, Category and Tag names are Ledger data. Two things complicate the line.
 

@@ -120,7 +120,7 @@ pub enum Error {
     ///
     /// Occurs when `Transactions::update` is called against a Transaction whose current
     /// status is Reconciled — its other fields cannot change until the status is first
-    /// moved back to Open or Cleared (see `CONTEXT.md`'s Transaction Status entry).
+    /// moved back to Open or Cleared (see `GLOSSARY.md`'s Transaction Status entry).
     #[error(
         "Transaction {0} is Reconciled; move it back to Open or Cleared before editing its other fields"
     )]

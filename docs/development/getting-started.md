@@ -27,7 +27,7 @@ Personal Ledger is not a client/server app in the traditional sense — there's 
               └─────────────────────────────────┘
 ```
 
-This is why the Sync Server is deployed at all: it's the one component meant to run continuously, unattended, on infrastructure you control — a homelab, a NAS, a small always-on server — rather than on the same device you're actively using the Desktop or TUI app on. See `CONTEXT.md`'s glossary for the precise definitions and `docs/adr/0009-lww-sqlite-change-set-log.md`/`docs/adr/0010-oauth2-pkce-native-app-auth.md` for how conflict resolution and authentication actually work.
+This is why the Sync Server is deployed at all: it's the one component meant to run continuously, unattended, on infrastructure you control — a homelab, a NAS, a small always-on server — rather than on the same device you're actively using the Desktop or TUI app on. See `GLOSSARY.md`'s glossary for the precise definitions and `docs/adr/0009-lww-sqlite-change-set-log.md`/`docs/adr/0010-oauth2-pkce-native-app-auth.md` for how conflict resolution and authentication actually work.
 
 ### Trusted network assumption
 

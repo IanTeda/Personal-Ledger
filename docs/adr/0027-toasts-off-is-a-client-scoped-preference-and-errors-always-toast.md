@@ -1,6 +1,6 @@
 # Toasts off is a Client-scoped Preference, and Errors always toast
 
-The user can turn Toasts off (see Toast and Toast Kind in `CONTEXT.md`). Whether Toasts are welcome depends on the device and its screen (a roomy Desktop window against a small TUI terminal), not on the Ledger, and every existing Preference is Ledger-scoped.
+The user can turn Toasts off (see Toast and Toast Kind in `GLOSSARY.md`). Whether Toasts are welcome depends on the device and its screen (a roomy Desktop window against a small TUI terminal), not on the Ledger, and every existing Preference is Ledger-scoped.
 
 We're making **Toasts** an on/off **Client-scoped Preference**, default on: the first Client-scoped Preference, stored locally and never synced. Until the Settings screens read and write Preferences it is held in memory, like the Colour Theme Preferences. It is one switch, not one per Toast Kind, and it never silences an **Error**: with Toasts off, Info, Success and Warning go to a **status-line echo** instead, and Errors still toast. Turning Toasts off removes the showing Info, Success and Warning Toasts, and the newest moves to the echo for the rest of its lifetime.
 

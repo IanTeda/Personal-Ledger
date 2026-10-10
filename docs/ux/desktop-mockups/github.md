@@ -34,7 +34,7 @@ date: 2026-09-14T18:42:38Z
 
 date: 2026-09-13T05:27:54Z
 
-- Read the PRD, `CONTEXT.md` glossary, ADR-0007 (gpui) and ADR-0013 (Shell/View nav) as the brief for the desktop mockups.
+- Read the PRD, `GLOSSARY.md` glossary, ADR-0007 (gpui) and ADR-0013 (Shell/View nav) as the brief for the desktop mockups.
 - Built `Ledger Desktop Shell.dc.html` — four navigation/IA options for the gpui desktop shell at 1280×800, GNOME chrome, light theme.
 - Carried the TUI handoff's vocabulary across: mode line, `g`-jumps, `:` palette, status glyphs (○ ◐ ● ⚑), budget track + period marker.
 
@@ -43,8 +43,8 @@ date: 2026-09-13T05:27:54Z
 | Screen / option | Built from |
 | --- | --- |
 | 1a Dashboard, two rails expanded | docs/ux/tui-mockups/01-chrome/README.md (dashboard priority order), docs/product-requirements.md FR.34–38 |
-| 1b Account ledger, list–detail rail | CONTEXT.md (Account, Transaction Status, Flagged), FR.16–20 |
-| 1c Settings, collapsed icon rail | CONTEXT.md (Preference vs Configuration), CC-DESKTOP-001 |
+| 1b Account ledger, list–detail rail | GLOSSARY.md (Account, Transaction Status, Flagged), FR.16–20 |
+| 1c Settings, collapsed icon rail | GLOSSARY.md (Preference vs Configuration), CC-DESKTOP-001 |
 | 1d Command palette over the shell | docs/ux/tui-mockups/01-chrome/README.md §3a, action registry + command grammar |
 | docs/ux/desktop-mockups/README.md (handoff) | `Ledger Desktop Shell.dc.html` option 1a, ADR-0007, ADR-0013, docs/ux/tui-mockups/01-chrome/README.md |
 | docs/ux/desktop-mockups/ (folder shape) | docs/ux/tui-mockups/ — README + mockup + support.js, self-contained |

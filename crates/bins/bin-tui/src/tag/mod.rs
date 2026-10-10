@@ -4,7 +4,7 @@
 //! onto real `lib_database` persistence later without a UI rewrite — only a second `impl
 //! TagStore` is needed.
 //!
-//! **The domain model was fully settled before this map started** — `CONTEXT.md`'s **Tag**
+//! **The domain model was fully settled before this map started** — `GLOSSARY.md`'s **Tag**
 //! glossary entry and [ADR-0015](docs/adr/0015-tag-as-independent-transaction-label.md): a
 //! freeform, globally-unique (case-insensitive) label, `is_active` soft-delete, no note, no
 //! rename-alias history, and (since ADR-0015's #352 amendment) an optional user-chosen colour —
@@ -38,7 +38,7 @@ use chrono::NaiveDate;
 use lib_core::{HexColor, Money, RowID};
 
 /// One Tag — a freeform, globally-unique label a user can attach to any number of
-/// Transactions, independent of their Category and Payee (`CONTEXT.md`, ADR-0015).
+/// Transactions, independent of their Category and Payee (`GLOSSARY.md`, ADR-0015).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tag {
     pub id: RowID,

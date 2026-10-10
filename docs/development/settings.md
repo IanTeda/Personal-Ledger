@@ -48,7 +48,7 @@ Invariants the schema does not enforce:
 - **No seed row in the migration.** `get_or_create_default` seeds both the preferences row and a default `USD` Unit in Rust at first use, because a Unit's `id` must be a genuine UUIDv7 and plain SQL cannot generate one.
 - **`date_style` nullability is load-bearing.** `NULL` is not "unset, use a hardcoded default" — it means defer to the Locale. Only an explicit ISO value overrides the Locale for both display and typed input.
 - **No `CHECK` on `colour_theme`.** A Client that doesn't know a synced id draws Modernist, logs a `warn` and never writes the default back (ADR-0023).
-- **Client-scoped Preferences have no table.** `CONTEXT.md` keeps Client-scoped (local-only, unsynced) Preferences as a valid category, but nothing needs one yet, so none was built.
+- **Client-scoped Preferences have no table.** `GLOSSARY.md` keeps Client-scoped (local-only, unsynced) Preferences as a valid category, but nothing needs one yet, so none was built.
 
 ## Domain types
 
@@ -100,7 +100,7 @@ Omitted: [settings.md](../settings.md) is a configuration reference and carries 
 - [ADR-0021](../adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md) — the Locale owns formatting; `NumberFormat`/`DateFormat` Preferences are replaced by the nullable `DateStyle`, and the number-separator Preference is deleted.
 - [ADR-0010](../adr/0010-oauth2-pkce-native-app-auth.md) — why the Sync Server has one listener, and so one `bind_address`.
 - [ADR-0022](../adr/0022-seven-stored-colour-roles-with-calculated-shades.md), [ADR-0023](../adr/0023-colour-theme-preferences-and-theme-role-overrides.md), [ADR-0024](../adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md), [ADR-0025](../adr/0025-lib-colour-theme-resolves-shared-colours-from-build-time-ini-files.md) — Colour Roles, the Colour Theme Preferences and `[theme]`, the TUI's RGB default, and `lib-colour-theme`.
-- `CONTEXT.md` — Colour Theme, Colour Role, Colour Variant, Colour Appearance, Preference, Configuration, Client, Ledger.
+- `GLOSSARY.md` — Colour Theme, Colour Role, Colour Variant, Colour Appearance, Preference, Configuration, Client, Ledger.
 - Design: [Localisation design](../localisation-design.md) for how the Locale is resolved.
 
 ## Open questions and known gaps

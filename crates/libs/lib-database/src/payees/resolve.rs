@@ -2,7 +2,7 @@
 //!
 //! The single entry point Transaction entry goes through to turn typed Payee text into a
 //! `payee_id`: reuse an exact (case-insensitive) name match, fall back to a Payee Alias
-//! match, or auto-create a new canonical Payee (see `CONTEXT.md`'s Payee entry,
+//! match, or auto-create a new canonical Payee (see `GLOSSARY.md`'s Payee entry,
 //! [ADR-0012](../../../../../docs/adr/0012-payee-entity-with-rename-aliases.md)).
 
 impl crate::Payees {

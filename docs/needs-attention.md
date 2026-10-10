@@ -2,7 +2,7 @@
 
 Personal Ledger surfaces one always-current list of everything that wants a user's action — an unreconciled Transaction, a Transaction flagged for review, a Bill that's overdue, or a plain money-related to-do the user jotted down themselves — so there's one place to check rather than hunting across Accounts, Bills, and Reports separately. This document explains how the one thing a user creates directly (Task) relates to the three things the Ledger surfaces on its own, and how the combined list behaves.
 
-See `CONTEXT.md` for the one-paragraph canonical definition of Task and Needs Attention, and [ADR-0020](adr/0020-needs-attention-as-derived-view.md) for why Needs Attention is computed fresh on every view rather than stored as its own table. This document is where the fuller shape and workflow live, the same way `docs/bills.md` covers Bill Plan and Bill Schedule.
+See `GLOSSARY.md` for the one-paragraph canonical definition of Task and Needs Attention, and [ADR-0020](adr/0020-needs-attention-as-derived-view.md) for why Needs Attention is computed fresh on every view rather than stored as its own table. This document is where the fuller shape and workflow live, the same way `docs/bills.md` covers Bill Plan and Bill Schedule.
 
 ## Why Task is the only persisted thing here
 
