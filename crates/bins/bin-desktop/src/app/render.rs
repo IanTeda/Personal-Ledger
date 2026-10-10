@@ -367,7 +367,9 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |id, _window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.colour_theme_focus = None;
+                    shell
+                        .settings_view
+                        .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
                     cx.notify();
                 });
                 ColourChange::Theme(id).apply(cx);
@@ -1391,7 +1393,10 @@ impl Render for Shell {
                                     on_status_glyphs_click,
                                     toasts_on: self.chrome.toasts.display().toasts_on,
                                     on_toasts_click,
-                                    colour_theme_focus: self.colour_theme_focus,
+                                    colour_theme_focus: self
+                                        .settings_view
+                                        .read(cx)
+                                        .colour_theme_focus(),
                                     display_field: self.settings_view.read(cx).display_field(),
                                     on_colour_theme_click,
                                     units: self.units_store.read(cx).units(),

@@ -64,10 +64,11 @@ impl Shell {
             || keystroke.modifiers.control
             || pending_g_active
         {
-            self.colour_theme_focus = None;
+            self.settings_view
+                .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
             return false;
         }
-        let Some(index) = self.colour_theme_focus else {
+        let Some(index) = self.settings_view.read(cx).colour_theme_focus() else {
             return false;
         };
         match key {
@@ -77,7 +78,8 @@ impl Shell {
                 true
             }
             "tab" => {
-                self.colour_theme_focus = None;
+                self.settings_view
+                    .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
                 false
             }
             "enter" => {
@@ -103,12 +105,14 @@ impl Shell {
                 }
                 match settings_view::colour_theme::grid_move(index, len, columns, key) {
                     Some(next) => {
-                        self.colour_theme_focus = Some(next);
+                        self.settings_view
+                            .update(cx, |v, cx| v.set_colour_theme_focus(cx, Some(next)));
                         true
                     }
                     // Any other key leaves the grid and goes on to the usual handling.
                     None => {
-                        self.colour_theme_focus = None;
+                        self.settings_view
+                            .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
                         false
                     }
                 }
@@ -124,7 +128,9 @@ impl Shell {
             return settings_index_hints();
         }
         match self.settings_view.read(cx).selected_section() {
-            SettingsSection::Display if self.colour_theme_focus.is_some() => {
+            SettingsSection::Display
+                if self.settings_view.read(cx).colour_theme_focus().is_some() =>
+            {
                 settings_colour_grid_hints()
             }
             SettingsSection::Display => settings_display_hints(),
@@ -166,7 +172,8 @@ impl Shell {
 
     /// Steps from the Colour Theme grid back up to the Display page's last control.
     pub(super) fn leave_colour_theme_grid(&mut self, cx: &mut App) {
-        self.colour_theme_focus = None;
+        self.settings_view
+            .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
         self.settings_view.update(cx, |v, cx| {
             v.set_display_field(cx, Some(DISPLAY_FIELD_COUNT - 1))
         });
@@ -193,7 +200,8 @@ impl Shell {
         }
         self.settings_view
             .update(cx, |v, cx| v.set_selected_section(cx, section));
-        self.colour_theme_focus = None;
+        self.settings_view
+            .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
         self.settings_view
             .update(cx, |v, cx| v.set_display_field(cx, None));
     }
@@ -220,7 +228,8 @@ impl Shell {
     pub(super) fn focus_settings_index(&mut self, cx: &mut App) {
         self.settings_view
             .update(cx, |v, cx| v.set_focus(cx, SettingsFocus::Index));
-        self.colour_theme_focus = None;
+        self.settings_view
+            .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
         self.settings_view
             .update(cx, |v, cx| v.set_display_field(cx, None));
     }
@@ -263,7 +272,8 @@ impl Shell {
                 if field + 1 >= DISPLAY_FIELD_COUNT {
                     self.settings_view
                         .update(cx, |v, cx| v.set_display_field(cx, None));
-                    self.colour_theme_focus = Some(chosen);
+                    self.settings_view
+                        .update(cx, |v, cx| v.set_colour_theme_focus(cx, Some(chosen)));
                 } else {
                     self.settings_view
                         .update(cx, |v, cx| v.set_display_field(cx, Some(field + 1)));
@@ -401,12 +411,16 @@ impl Shell {
             {
                 false
             }
-            (SettingsFocus::Page, "h" | "left") if self.colour_theme_focus.is_none() => {
+            (SettingsFocus::Page, "h" | "left")
+                if self.settings_view.read(cx).colour_theme_focus().is_none() =>
+            {
                 self.chrome.status_message = None;
                 self.focus_settings_index(cx);
                 true
             }
-            (SettingsFocus::Page, "escape") if self.colour_theme_focus.is_none() => {
+            (SettingsFocus::Page, "escape")
+                if self.settings_view.read(cx).colour_theme_focus().is_none() =>
+            {
                 self.focus_settings_index(cx);
                 true
             }

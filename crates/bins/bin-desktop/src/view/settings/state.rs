@@ -27,6 +27,8 @@ pub struct SettingsView {
     documents_selected: Option<u32>,
     inventory_selected: Option<InventoryRow>,
     inventory_expanded: HashSet<u32>,
+    /// The Colour Theme card the keyboard is on, while the Display page's grid has focus.
+    colour_theme_focus: Option<usize>,
     log: LogView,
     log_list: ListState,
 }
@@ -42,9 +44,19 @@ impl SettingsView {
             documents_selected: None,
             inventory_selected: None,
             inventory_expanded: HashSet::new(),
+            colour_theme_focus: None,
             log,
             log_list,
         }
+    }
+
+    pub fn colour_theme_focus(&self) -> Option<usize> {
+        self.colour_theme_focus
+    }
+
+    pub fn set_colour_theme_focus(&mut self, cx: &mut Context<'_, Self>, focus: Option<usize>) {
+        self.colour_theme_focus = focus;
+        cx.notify();
     }
 
     pub fn log(&self) -> &LogView {

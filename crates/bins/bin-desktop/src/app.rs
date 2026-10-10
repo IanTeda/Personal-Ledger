@@ -166,8 +166,6 @@ pub struct Shell {
     /// The same section's "Row density" segmented control -- also drives the PREVIEW table's own
     /// row padding (`view::settings::display`'s own doc), unlike a purely-cosmetic preference.
     settings_row_density: RowDensity,
-    /// The Colour Theme card the keyboard is on, while Settings' Colour Theme grid has focus.
-    colour_theme_focus: Option<usize>,
     /// A Colour Theme or Colour Appearance picked by a keystroke or palette command, applied by
     /// the caller once it has an `App` (the key handling runs without one).
     pending_colour_change: Option<ColourChange>,
@@ -397,7 +395,6 @@ impl Shell {
             file_explorer: None,
             settings_date_style: None,
             settings_row_density: RowDensity::default(),
-            colour_theme_focus: None,
             pending_colour_change: None,
             settings_status_glyphs: StatusGlyphs::default(),
             settings_start_sidebar_minimised: false,

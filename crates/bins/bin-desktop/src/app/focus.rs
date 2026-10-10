@@ -37,7 +37,8 @@ impl Shell {
         self.view_scroll_handle.set_offset(gpui::Point::default());
         self.settings_view
             .update(cx, |v, cx| v.set_focus(cx, SettingsFocus::default()));
-        self.colour_theme_focus = None;
+        self.settings_view
+            .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
         // `g f` and the palette land on the Documents list, unlike Settings' index.
         self.edit_documents_state(cx, |state| state.focus = DocumentsFocus::List);
     }

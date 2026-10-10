@@ -421,7 +421,7 @@ impl Shell {
             dialog_name,
             dialog_confirm,
             display_field: self.settings_view.read(cx).display_field(),
-            colour_theme_focus: self.colour_theme_focus,
+            colour_theme_focus: self.settings_view.read(cx).colour_theme_focus(),
             date_style: self.settings_date_style.map(|style| format!("{style:?}")),
             row_density: format!("{:?}", self.settings_row_density),
             status_glyphs: format!("{:?}", self.settings_status_glyphs),
