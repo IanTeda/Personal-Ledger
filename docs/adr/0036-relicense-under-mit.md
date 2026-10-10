@@ -6,6 +6,8 @@ We chose plain MIT over `MIT OR Apache-2.0`, the Rust convention the research re
 
 Copies obtained before the change stay available under GPL-3.0 to whoever holds them, including any image or CI artefact built earlier. The change cannot recall those copies, so it applies from the relicensing commit onwards and nothing before it.
 
+Whether any GPL-3.0 binary was published is not settled. On 2026-10-11 the repository had no releases and no tags, no retained CI artefacts, and three workflow runs in its history, none of them a publish. GHCR packages could not be listed, because the `gh` token lacks `read:packages`. The research records a release-triggered Sync Server publish on 2026-09-03 for `v0.0.1-sync-server-ci-test`, which would have pushed `ghcr.io/ianteda/personal-ledger-sync-server`, and manual Desktop and TUI runs on 2026-09-17. Those runs can no longer be retrieved, so that record stands unverified. Treat any image or artefact published before `d5bcd50` as GPL-3.0, and re-check GHCR with a token that has `read:packages`.
+
 No dependency's licence blocks MIT, and the allow list in `deny.toml` is unchanged.
 
 ## Considered Options
