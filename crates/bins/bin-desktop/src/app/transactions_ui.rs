@@ -691,17 +691,6 @@ impl Shell {
         cx.notify();
     }
 
-    pub(super) fn open_category_transactions(&mut self, id: u32, cx: &mut App) {
-        self.edit_transactions_state(cx, |s| {
-            s.filters = TransactionFilters::for_category(self.today, id)
-        });
-        self.edit_transactions_state(cx, |s| s.search.clear());
-        self.edit_transactions_state(cx, |s| s.filter_form = None);
-        self.reset_transactions_selection(cx);
-        self.nav.set_noun(Noun::Transactions);
-        self.reset_view_scroll(cx);
-    }
-
     /// "View transactions" on the Payees page: Transactions filtered to exactly this Payee's id, not
     /// a name substring that would over-match ("BP").
     pub(super) fn open_payee_transactions(&mut self, id: u32, cx: &mut App) {

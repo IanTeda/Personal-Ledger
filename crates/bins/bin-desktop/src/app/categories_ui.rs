@@ -123,8 +123,7 @@ impl Shell {
     }
 
     /// Keyboard input while on the Categories page: `n` adds a top-level category, `N` (shift+n)
-    /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it,
-    /// `enter` opens Transactions filtered to the selected category.
+    /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it.
     pub(super) fn handle_categories_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
         let on_settings_page = self.settings_categories_page_has_focus(cx);
         if !on_settings_page {
@@ -148,12 +147,10 @@ impl Shell {
         match keystroke.key.as_str() {
             "n" => {
                 if shift {
-                    // N (shift+n): add sub-category to selected
                     if let Some(id) = selected_id {
                         self.open_add_categories_dialog(Some(id), cx);
                     }
                 } else {
-                    // n: add top-level category
                     self.open_add_categories_dialog(None, cx);
                 }
                 true
@@ -172,13 +169,6 @@ impl Shell {
                     } else {
                         self.open_delete_categories_dialog(id, cx);
                     }
-                }
-                true
-            }
-            // Settings' tree has no ledger hand-off: `enter` is the standalone page's only.
-            "enter" if !on_settings_page => {
-                if let Some(id) = selected_id {
-                    self.open_category_transactions(id, cx);
                 }
                 true
             }
@@ -283,17 +273,36 @@ impl Shell {
                 Err(_) => return,
             }
         };
-        // A Category that can't hold a Budget Amount (an Income one) is left without one.
         let categories = self.categories(cx).to_vec();
-        let _ = self.mutate_budgets(cx, |budgets| {
+        let today = self.today;
+        let saved = self.mutate_budgets(cx, |budgets| {
             budgets.set_monthly_limit(
                 budgets::PERSONAL_SPENDING_ID,
                 &categories,
                 category_id,
                 amount,
-                self.today,
+                today,
             )
         });
+        if let Err(error) = saved {
+            self.raise_category_save_failed(&error.to_string());
+        }
+    }
+
+    /// Raises the error Toast for a Categories write the store or Budgets refused, so the dialog
+    /// closes with the reason on screen rather than dropping the write silently.
+    fn raise_category_save_failed(&mut self, reason: &str) {
+        self.raise_toast(
+            ToastKind::Error,
+            lib_locale::msg::toast_save_failed(&lib_locale::msg::toast_entity_category(), reason),
+        );
+    }
+
+    /// Raises the Toast for a refused Categories store write, if it was refused.
+    fn report_category_write(&mut self, result: Result<(), categories::CategoryError>) {
+        if let Err(error) = result {
+            self.raise_category_save_failed(&error.to_string());
+        }
     }
 
     pub(super) fn handle_categories_add_click(&mut self, cx: &mut Context<'_, Self>) {
@@ -414,9 +423,10 @@ impl Shell {
         }
         // For Edit dialogs, cascade the type change to descendants
         if let Some(id) = edited_id {
-            let _ = self
+            let changed = self
                 .categories_store
                 .update(cx, |store, cx| store.change_type(cx, id, category_type));
+            self.report_category_write(changed);
         }
         cx.notify();
     }
@@ -457,33 +467,27 @@ impl Shell {
             }
             categories::form::CategoriesDialog::Edit(id, form) => {
                 let name = form.name.text().trim().to_string();
-                let _ = self
+                let renamed = self
                     .categories_store
                     .update(cx, |store, cx| store.edit(cx, id, name));
+                self.report_category_write(renamed);
                 // `None` moves it to top level when the parent was cleared.
-                let _ = self
+                let moved = self
                     .categories_store
                     .update(cx, |store, cx| store.move_to(cx, id, form.parent_id));
+                self.report_category_write(moved);
                 self.save_category_budget(id, &form, true, cx);
             }
             categories::form::CategoriesDialog::Delete(category_id, _) => {
                 let (kind, text) = self.delete_category(category_id, cx);
                 self.raise_toast(kind, text);
-                // Keep the selection in range
+                // Keep the selection in range. It indexes the Settings rows, Expense then Income,
+                // so the clamp counts those same rows rather than the Expense ones alone.
                 let expanded = self.categories_view.read(cx).expanded().to_vec();
-                let tree_rows = categories::tree_rows(self.categories(cx), &expanded);
-                let filtered_rows = tree_rows
-                    .iter()
-                    .filter(|row| {
-                        self.categories(cx)
-                            .iter()
-                            .find(|c| c.id == row.id)
-                            .is_some_and(|c| c.category_type == CategoryTypes::Expense)
-                    })
-                    .count();
+                let row_count = categories::settings_rows(self.categories(cx), &expanded).len();
                 let selected = self.categories_view.read(cx).selected();
                 self.categories_view.update(cx, |view, cx| {
-                    view.set_selected(selected.min(filtered_rows.saturating_sub(1)), cx)
+                    view.set_selected(selected.min(row_count.saturating_sub(1)), cx)
                 });
             }
         }
