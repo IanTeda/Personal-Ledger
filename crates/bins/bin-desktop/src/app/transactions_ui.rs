@@ -720,6 +720,19 @@ impl Shell {
     }
 }
 
+/// Re-points every Split on category `from` to `to`, returning how many moved. Runs on the
+/// Transactions store, so it borrows no Category or Budget state.
+pub(super) fn move_category_splits(transactions: &mut [Transaction], from: u32, to: u32) -> i64 {
+    let mut moved = 0_i64;
+    for split in transactions.iter_mut().flat_map(|t| t.splits.iter_mut()) {
+        if split.category_id == from {
+            split.category_id = to;
+            moved += 1;
+        }
+    }
+    moved
+}
+
 /// The popover's key table, applied to the draft. Returns whether the key was handled, and whether
 /// it asks for **apply** (which the caller runs once the draft is no longer borrowed).
 fn filter_key(

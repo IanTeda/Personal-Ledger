@@ -57,6 +57,7 @@ pub use snapshots::{
     ChipSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportRowSnapshot, ImportSnapshot,
     PaletteSnapshot, SettingsSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
 };
+use transactions_ui::move_category_splits;
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -113,8 +114,7 @@ use crate::{
     tags::{self},
     theme::colours::ColourChange,
     transactions::{
-        self, Transaction, TransactionsStore, chips::FilterField, edit_transactions,
-        query::TransactionFilters,
+        self, TransactionsStore, chips::FilterField, edit_transactions, query::TransactionFilters,
     },
     units::{
         self, PriceSourceRow, UnitKind, UnitRow,
@@ -2415,19 +2415,6 @@ fn prepare_category_delete(
     ))
 }
 
-/// Re-points every Split on category `from` to `to`, returning how many moved. Runs on the
-/// Transactions store, so it borrows no Category or Budget state.
-fn move_category_splits(transactions: &mut [Transaction], from: u32, to: u32) -> i64 {
-    let mut moved = 0_i64;
-    for split in transactions.iter_mut().flat_map(|t| t.splits.iter_mut()) {
-        if split.category_id == from {
-            split.category_id = to;
-            moved += 1;
-        }
-    }
-    moved
-}
-
 /// Drops category `id`'s budget and the Category itself, and returns the Toast counting the
 /// `moved` Splits: Success, or the `toast-save-failed` Error if the store refuses (the dialog
 /// only opens on a leaf, so that means the tree changed underneath it).
@@ -2455,6 +2442,7 @@ fn finish_category_delete(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::transactions::Transaction;
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
     use chrono::Local;
     use lib_accounts::{Account, AccountService};
