@@ -80,7 +80,7 @@ Crates in `docs/directories-files.md` or `README.md` that aren't listed here (e.
 
 A self-contained ticket body is the spec: the user usually `/clear`s between independent tickets, so don't rely on earlier conversation. If the body lacks what you need (acceptance criteria, files, decisions), stop and ask.
 
-Use Opus medium for research and decisions: Wayfinder charting and its `research`/`prototype`/`grilling` tickets, domain modelling, ADRs, design, code review, unclear requirements. Use Sonnet low for implementation against a fixed scope: explicit acceptance criteria, tests, lint fixes, routine refactors, extending an established pattern. Raise to Opus high for hard bugs and cross-cutting design, or Sonnet medium for `/end-user-docs` pages. If Sonnet low hits ambiguity or a decision point, stop and escalate rather than guess. The same split applies when picking a subagent's model.
+Use Opus medium for research and decisions: Wayfinder charting and its `research`/`prototype`/`grilling` tickets, domain modelling, ADRs, design, code review, unclear requirements. Use Haiku low for implementation against a fixed scope: explicit acceptance criteria, tests, lint fixes, routine refactors, extending an established pattern. Raise to Opus high for hard bugs and cross-cutting design, or Sonnet medium for `/end-user-docs` pages. If Haiku low hits ambiguity or a decision point, stop and escalate rather than guess. The same split applies when picking a subagent's model.
 
 ## graphify
 
