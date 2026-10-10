@@ -25,26 +25,6 @@ impl Shell {
         self.payees_store.read(cx).payees()
     }
 
-    /// The Payees page's stored row position. Clamp it before use.
-    fn payees_page_selected(&self, cx: &App) -> usize {
-        self.payees_view.read(cx).selected()
-    }
-
-    fn set_payees_page_selected(&mut self, selected: usize, cx: &mut App) {
-        self.payees_view
-            .update(cx, |view, cx| view.set_selected(selected, cx));
-    }
-
-    /// The Settings Payees list's stored id. It may name a Payee that has since been removed.
-    fn settings_payees_selected(&self, cx: &App) -> Option<u32> {
-        self.payees_view.read(cx).settings_selected()
-    }
-
-    fn set_settings_payees_selected(&mut self, id: Option<u32>, cx: &mut App) {
-        self.payees_view
-            .update(cx, |view, cx| view.set_settings_selected(id, cx));
-    }
-
     /// Whether Settings' Payees list owns the keyboard: the page, not the index, has focus.
     pub(super) fn settings_payees_page_has_focus(&self, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
@@ -57,7 +37,9 @@ impl Shell {
     /// first row, so a deleted Payee never leaves the page with nothing under the cursor.
     pub(super) fn settings_payees_selected_id(&self, cx: &App) -> Option<u32> {
         let sorted = payees::sorted_by_name(self.payees_list(cx));
-        self.settings_payees_selected(cx)
+        self.payees_view
+            .read(cx)
+            .settings_selected()
             .filter(|id| sorted.iter().any(|payee| payee.id == *id))
             .or_else(|| sorted.first().map(|payee| payee.id))
     }
@@ -84,7 +66,8 @@ impl Shell {
             Movement::Enter => return,
         };
         let next_id = sorted.get(next).map(|payee| payee.id);
-        self.set_settings_payees_selected(next_id, cx);
+        self.payees_view
+            .update(cx, |view, cx| view.set_settings_selected(next_id, cx));
     }
 
     /// The selected Payee: the Payees page's row, or the Settings list's when that owns the
@@ -96,7 +79,9 @@ impl Shell {
         let payees = self.payees_list(cx);
         payees
             .get(
-                self.payees_page_selected(cx)
+                self.payees_view
+                    .read(cx)
+                    .selected()
                     .min(payees.len().saturating_sub(1)),
             )
             .map(|payee| payee.id)
@@ -104,10 +89,12 @@ impl Shell {
 
     /// Selects the Payee with `id`, if it still exists.
     pub(super) fn select_payee(&mut self, id: u32, cx: &mut App) {
-        self.set_settings_payees_selected(Some(id), cx);
+        self.payees_view
+            .update(cx, |view, cx| view.set_settings_selected(Some(id), cx));
         let index = self.payees_list(cx).iter().position(|payee| payee.id == id);
         if let Some(index) = index {
-            self.set_payees_page_selected(index, cx);
+            self.payees_view
+                .update(cx, |view, cx| view.set_selected(index, cx));
         }
     }
 
@@ -202,8 +189,9 @@ impl Shell {
                 };
                 self.raise_toast(kind, text);
                 let last = self.payees_list(cx).len().saturating_sub(1);
-                let selected = self.payees_page_selected(cx).min(last);
-                self.set_payees_page_selected(selected, cx);
+                let selected = self.payees_view.read(cx).selected().min(last);
+                self.payees_view
+                    .update(cx, |view, cx| view.set_selected(selected, cx));
             }
             payees::form::PayeesDialog::Add(mut form) => {
                 let draft = form.draft();
