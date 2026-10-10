@@ -186,11 +186,6 @@ pub struct Shell {
     /// The Institutions table, owned by its store Entity and read through it (ADR-0032). Shared:
     /// Settings edits it, and the Accounts form reads it.
     institutions_store: Entity<InstitutionsStore>,
-    /// The Tracing page's mirror of the live log capture and its level filter (session only).
-    settings_log: LogView,
-    /// The Tracing page's virtualised log list. Kept in step with `settings_log` by splicing,
-    /// so a scrolled-down reader stays anchored as entries arrive.
-    settings_log_list: ListState,
     /// The Accounts rows, owned by their store Entity and read through it (ADR-0032). Shared:
     /// Transactions, Budgets, Bills and Documents read the same rows.
     accounts: Entity<AccountsStore>,
@@ -291,7 +286,16 @@ impl Shell {
             |_, _store, _event: &CategoriesEvent, cx| cx.notify(),
         );
         let categories_view_observer = cx.observe(&categories_view, |_, _, cx| cx.notify());
-        let settings_view = cx.new(|_| SettingsView::new());
+        // A private, empty capture until `set_log_capture` hands over the real one.
+        let settings_view = cx.new(|_| {
+            SettingsView::new(
+                LogView::new(
+                    lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+                    TracingLevel::default(),
+                ),
+                ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
+            )
+        });
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
         let payees = payees::default_payees();
         let payees_store = cx.new(|_| PayeesStore::new(payees.clone()));
@@ -400,12 +404,6 @@ impl Shell {
             explorer_filters: ExplorerFilters::default(),
             units_store,
             institutions_store,
-            // A private, empty capture until `set_log_capture` hands over the real one.
-            settings_log: LogView::new(
-                lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
-                TracingLevel::default(),
-            ),
-            settings_log_list: ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
             accounts,
             accounts_view,
             today,

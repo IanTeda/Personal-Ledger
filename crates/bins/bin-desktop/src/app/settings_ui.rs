@@ -331,11 +331,11 @@ impl Shell {
         {
             return false;
         }
-        let list = &self.settings_log_list;
+        let list = self.settings_view.read(cx).log_list().clone();
         let page = list.viewport_bounds().size.height.max(LOG_LINE_STEP);
         match (modifiers.shift, keystroke.key.as_str()) {
-            (false, "h" | "left") => self.step_tracing_level(-1),
-            (false, "l" | "right") => self.step_tracing_level(1),
+            (false, "h" | "left") => self.step_tracing_level(-1, cx),
+            (false, "l" | "right") => self.step_tracing_level(1, cx),
             (false, "j" | "down") => list.scroll_by(LOG_LINE_STEP),
             (false, "k" | "up") => list.scroll_by(-LOG_LINE_STEP),
             (true, "j") => list.scroll_by(page),
@@ -351,10 +351,14 @@ impl Shell {
         true
     }
 
-    pub(super) fn step_tracing_level(&mut self, delta: isize) {
+    pub(super) fn step_tracing_level(&mut self, delta: isize, cx: &mut App) {
         self.chrome.status_message = None;
-        let level = step_choice(&TracingLevel::ALL, self.settings_log.level(), delta);
-        self.set_tracing_level(level);
+        let level = step_choice(
+            &TracingLevel::ALL,
+            self.settings_view.read(cx).log().level(),
+            delta,
+        );
+        self.set_tracing_level(level, cx);
     }
 
     /// Settings' own focus keys, ahead of the Colour Theme grid and the global keymap: `l`/`right`
@@ -958,8 +962,8 @@ impl Shell {
                 });
             }
             SettingsDialog::ClearLogs => {
-                self.settings_log.clear();
-                self.settings_log_list.reset(0);
+                self.settings_view
+                    .update(cx, |view, cx| view.update_log(cx, |log| log.clear()));
                 self.raise_toast(
                     ToastKind::Info,
                     crate::msg::desktop_settings_tracing_toast_cleared(),
@@ -1133,14 +1137,14 @@ impl Shell {
         level: TracingLevel,
         cx: &mut Context<'_, Self>,
     ) {
-        self.set_tracing_level(level);
+        self.set_tracing_level(level, cx);
         cx.notify();
     }
 
-    pub(super) fn set_tracing_level(&mut self, level: TracingLevel) {
-        self.settings_log.set_level(level);
-        self.settings_log_list
-            .reset(self.settings_log.visible().len());
+    pub(super) fn set_tracing_level(&mut self, level: TracingLevel, cx: &mut App) {
+        self.settings_view.update(cx, |view, cx| {
+            view.update_log(cx, |log| log.set_level(level))
+        });
     }
 
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored

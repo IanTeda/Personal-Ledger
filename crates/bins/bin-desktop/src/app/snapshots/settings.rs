@@ -427,16 +427,23 @@ impl Shell {
             status_glyphs: format!("{:?}", self.settings_status_glyphs),
             start_sidebar_minimised: self.settings_start_sidebar_minimised,
             toasts_on: self.chrome.toasts.display().toasts_on,
-            tracing_level: format!("{:?}", self.settings_log.level()),
-            log_line_count: self.settings_log.visible().len(),
+            tracing_level: format!("{:?}", self.settings_view.read(cx).log().level()),
+            log_line_count: self.settings_view.read(cx).log().visible().len(),
             log_lines: self
-                .settings_log
+                .settings_view
+                .read(cx)
+                .log()
                 .visible()
                 .iter()
                 .map(|entry| crate::settings::tracing_log::body(entry))
                 .collect(),
-            log_hidden_count: self.settings_log.hidden_count(),
-            log_scroll_top: self.settings_log_list.logical_scroll_top().item_ix,
+            log_hidden_count: self.settings_view.read(cx).log().hidden_count(),
+            log_scroll_top: self
+                .settings_view
+                .read(cx)
+                .log_list()
+                .logical_scroll_top()
+                .item_ix,
             status_message: self.chrome.status_message.clone(),
         }
     }

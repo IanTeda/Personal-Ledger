@@ -5,18 +5,21 @@
 
 use std::collections::HashSet;
 
-use gpui::{Context, EventEmitter};
+use gpui::{Context, EventEmitter, ListOffset, ListState, px};
 use lib_institutions::{InstitutionRow, InstitutionService};
 use lib_units::{PriceSourceRow, UnitRow, UnitService};
 
 use crate::{
-    settings::{SettingsFocus, SettingsSection},
+    settings::{
+        SettingsFocus, SettingsSection,
+        tracing_log::{LogChange, LogView},
+    },
     view::settings::inventory::InventoryRow,
 };
 
 /// The Settings View's own state. The page is the last one visited, so it survives leaving and
-/// re-entering Settings, as `g s` relies on.
-#[derive(Default)]
+/// re-entering Settings, as `g s` relies on. The Tracing page's log mirror and its list live here
+/// too: the capture feed in `Shell` pushes into them, and only this page reads them.
 pub struct SettingsView {
     selected_section: SettingsSection,
     focus: SettingsFocus,
@@ -24,11 +27,73 @@ pub struct SettingsView {
     documents_selected: Option<u32>,
     inventory_selected: Option<InventoryRow>,
     inventory_expanded: HashSet<u32>,
+    log: LogView,
+    log_list: ListState,
 }
 
 impl SettingsView {
-    pub fn new() -> Self {
-        Self::default()
+    /// `log` mirrors the live capture; `log_list` is the virtualised list that shows it, and must
+    /// be kept in step with `log` by [`Self::pull_log`] and [`Self::replace_log`].
+    pub fn new(log: LogView, log_list: ListState) -> Self {
+        Self {
+            selected_section: SettingsSection::default(),
+            focus: SettingsFocus::default(),
+            display_field: None,
+            documents_selected: None,
+            inventory_selected: None,
+            inventory_expanded: HashSet::new(),
+            log,
+            log_list,
+        }
+    }
+
+    pub fn log(&self) -> &LogView {
+        &self.log
+    }
+
+    pub fn log_list(&self) -> &ListState {
+        &self.log_list
+    }
+
+    /// Hands the page a new capture, opening on `log`'s level, and restarts the list at its top.
+    pub fn replace_log(&mut self, cx: &mut Context<'_, Self>, log: LogView) {
+        self.log = log;
+        self.log_list.reset(self.log.visible().len());
+        cx.notify();
+    }
+
+    /// Pulls new entries from the capture and mirrors them onto the list. Notifies only when
+    /// something changed, so an idle capture doesn't redraw the page.
+    pub fn pull_log(&mut self, cx: &mut Context<'_, Self>) -> LogChange {
+        let change = self.log.pull();
+        if change != LogChange::default() {
+            self.mirror_log_change(change);
+            cx.notify();
+        }
+        change
+    }
+
+    /// Mirrors a pull onto the list: evicted rows leave the bottom, new ones arrive at the top.
+    /// A reader at the very top keeps seeing the newest; one scrolled down stays where they are.
+    fn mirror_log_change(&mut self, change: LogChange) {
+        let list = &self.log_list;
+        let top = list.logical_scroll_top();
+        let at_top = top.item_ix == 0 && top.offset_in_item <= px(0.0);
+        let count = list.item_count();
+        let evicted = change.evicted.min(count);
+        list.splice(count - evicted..count, 0);
+        list.splice(0..0, change.added);
+        if at_top {
+            list.scroll_to(ListOffset::default());
+        }
+    }
+
+    /// Edits the log mirror in place (its level and clear), then redraws. The list is reset to
+    /// the mirror's visible rows, as a level or clear changes which rows show.
+    pub fn update_log(&mut self, cx: &mut Context<'_, Self>, edit: impl FnOnce(&mut LogView)) {
+        edit(&mut self.log);
+        self.log_list.reset(self.log.visible().len());
+        cx.notify();
     }
 
     pub fn selected_section(&self) -> SettingsSection {
