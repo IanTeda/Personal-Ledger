@@ -1,7 +1,15 @@
+dictionaries = ["en_gb"]
 words = [
+    "ADR",
+    "Esc",
+    "Focusable",
+    "Teda",
     "cli",
     "dialogs",
+    "glyphs",
     "gpui",
+    "handoff's",
     "mockup",
     "mockup's",
+    "mockups",
 ]
