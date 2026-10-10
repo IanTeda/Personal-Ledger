@@ -4,7 +4,6 @@
 ## The dashboard header: main title and subtitle with date/accounts/currency.
 
 desktop-dashboard-title = Financial position
-desktop-dashboard-subtitle = { $date } · { $accounts } · { $currency }
 
 ## The figure row: NET POSITION and supporting metrics (30-DAY, ASSETS, LIABILITIES).
 

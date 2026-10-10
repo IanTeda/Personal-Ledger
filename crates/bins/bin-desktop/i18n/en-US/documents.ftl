@@ -181,7 +181,6 @@ desktop-documents-status-opened = Opened { $name }.
 desktop-documents-status-shown = Showing { $name } in its folder.
 desktop-documents-status-missing = { $name } is not at { $path }.
 desktop-documents-status-no-document = No document is selected.
-desktop-documents-status-not-yet-built = Not yet built.
 
 ## The Add document dialog, the Import dialog and the Edit dialog share these field labels.
 
@@ -239,7 +238,6 @@ desktop-documents-picker-hint-follow = ↑↓ move · enter go · esc close
 desktop-documents-picker-need-type = Choose a document type first (← →).
 desktop-documents-toast-linked = Linked { $record }.
 desktop-documents-toast-unlinked = Unlinked { $record }.
-desktop-documents-link-remove = Remove link
 desktop-hint-follow = follow link
 desktop-hint-kind = kind
 desktop-documents-drop-overlay = Drop to add to the Inbox

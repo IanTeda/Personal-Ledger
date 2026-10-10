@@ -17,7 +17,6 @@ desktop-display-locale-hint = Set with the locale setting or the --locale flag, 
 ## Settings: the page, its index rail and the section headings. Terms such as Configuration,
 ## Preferences and Change Sets are the ones `CONTEXT.md` defines.
 
-desktop-settings-scope-preferences = preferences · synced
 desktop-settings-index-footer = preferences sync · configuration local
 
 desktop-settings-section-general = General
