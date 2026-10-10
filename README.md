@@ -139,7 +139,9 @@ Contributions are welcome. Fork the repo, make your change on a branch and open 
 
 ## License
 
-GPL-3.0. See [`LICENSE`](LICENSE) for details.
+Personal Ledger is licensed under the MIT License. See [`LICENSE`](LICENSE) for details.
+
+Versions up to the relicensing commit (d5bcd50) were published under GPL-3.0, and copies obtained before then remain available under GPL-3.0. See [ADR-0036](docs/adr/0036-relicense-under-mit.md) for the decision.
 
 ## Contact
 
