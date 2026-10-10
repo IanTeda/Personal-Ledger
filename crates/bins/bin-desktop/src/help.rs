@@ -46,7 +46,7 @@ pub const LINKS: [Link; 3] = [
     },
 ];
 
-pub const LICENSE_URL: &str = "https://www.gnu.org/licenses/gpl-3.0.html";
+pub const LICENSE_URL: &str = "https://github.com/IanTeda/Personal-Ledger/blob/main/LICENSE";
 
 /// The copyright line.
 pub fn copyright() -> String {
@@ -119,11 +119,11 @@ mod tests {
         };
         assert_eq!(
             linked(lib_locale::Locale::EnUs).as_deref(),
-            Some("GPL-3.0 License")
+            Some("MIT License")
         );
         assert_eq!(
             linked(lib_locale::Locale::EnAu).as_deref(),
-            Some("GPL-3.0 Licence")
+            Some("MIT Licence")
         );
         assert!(linked(lib_locale::Locale::EnXa).is_some());
     }
