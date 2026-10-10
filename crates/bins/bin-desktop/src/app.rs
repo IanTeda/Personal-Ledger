@@ -205,7 +205,6 @@ pub struct Shell {
     payees_store: Entity<PayeesStore>,
     /// The Payees page's and Settings Payees list's selections, owned by their view Entity.
     payees_view: Entity<PayeesView>,
-    /// Settings' Inventory page: the selected row and the Properties shown open (session-only).
     /// The Tags rows, owned by their store Entity and read through it (ADR-0032). Shared:
     /// Transactions reads the same rows for its chips, filter form and Split tag picker.
     tags_store: Entity<TagsStore>,
