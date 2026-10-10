@@ -39,6 +39,9 @@ pub use plan::*;
 pub use seed::*;
 pub use store::*;
 
+#[cfg(test)]
+mod tests;
+
 use std::collections::BTreeMap;
 
 use bigdecimal::BigDecimal;

@@ -4684,6 +4684,7 @@ dependencies = [
  "lib_accounts",
  "lib_categories",
  "lib_core",
+ "lib_payees",
  "lib_transactions",
  "thiserror 2.0.20",
 ]
@@ -4698,6 +4699,8 @@ dependencies = [
  "lib_bills",
  "lib_categories",
  "lib_core",
+ "lib_payees",
+ "lib_tags",
  "lib_transactions",
  "thiserror 2.0.20",
 ]
@@ -4843,6 +4846,7 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "lib_accounts",
+ "lib_categories",
  "lib_core",
  "lib_transactions",
  "thiserror 2.0.20",

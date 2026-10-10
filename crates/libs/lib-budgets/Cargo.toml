@@ -23,5 +23,9 @@ bigdecimal = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+lib_payees = { path = "../lib-payees" }
+lib_tags = { path = "../lib-tags" }
+
 [lints]
 workspace = true

@@ -15,6 +15,7 @@ doctest = false
 lib_accounts = { path = "../lib-accounts" }
 lib_categories = { path = "../lib-categories" }
 lib_core = { path = "../lib-core" }
+lib_payees = { path = "../lib-payees" }
 lib_transactions = { path = "../lib-transactions" }
 
 ## -- Workspace Dependencies --
