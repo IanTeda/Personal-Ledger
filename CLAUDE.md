@@ -66,6 +66,8 @@ Crates in `docs/directories-files.md` or `README.md` that aren't listed here (e.
 - **Full suites at parent-ticket close only:** the full UI suite (bare `mise run end-to-end-ui`) and the full workspace `cargo test` are required when closing a parent ticket (a Wayfinder map or any issue with sub-issues), not for each child ticket or push. Run the targeted tests for what you changed.
 - **Tests:** unit tests alongside the code in `#[cfg(test)] mod tests`; DB tests use `sqlx::test`; generated data uses `fake` with deterministic seeds. No doctests: every library sets `[lib] doctest = false`, and doc comments explain why rather than carrying `# Examples`.
 - **Commits:** `<area>: <short description>`, e.g. `desktop: move the Inventory into a store Entity behind lib_inventory's service`.
+- **Issue titles:** prefix every GitHub issue title with its bin crate, `TUI: `, `DESKTOP: ` or `SYNC: `, or `CORE: ` for none or several; an issue for a lib crate inherits the prefix of the bin being worked on when it was created (`docs/agents/issue-tracker.md`).
+- **Signing key check before committing:** commits are SSH-signed with a key held by the Bitwarden ssh-agent (`SSH_AUTH_SOCK`), which is only reachable while Bitwarden is open and unlocked. Before `git commit`, run `ssh-add -l | grep -qF "$(ssh-keygen -lf "$(git config user.signingkey)" | cut -d' ' -f2)"`. If it fails, don't commit (and never bypass signing): ask the user to open or unlock Bitwarden, then check again.
 
 ## Skills and docs
 
