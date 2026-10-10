@@ -2,23 +2,6 @@ pub(crate) mod form;
 
 pub use lib_payees::*;
 
-use form::DeleteAction;
-use lib_transactions::Transaction;
-
-/// Applies the dialog's [`DeleteAction`] to Payee `id`.
-pub fn apply_delete_action(
-    payees: &mut Vec<Payee>,
-    transactions: &[Transaction],
-    id: u32,
-    action: DeleteAction,
-) -> Result<(), PayeeError> {
-    match action {
-        DeleteAction::Delete => delete_payee(payees, transactions, id),
-        DeleteAction::Deactivate => set_active(payees, id, false),
-        DeleteAction::Reactivate => set_active(payees, id, true),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use bigdecimal::BigDecimal;
@@ -30,6 +13,8 @@ mod tests {
         accounts::default_accounts, categories, categories::default_categories, tags::default_tags,
         transactions::default_transactions,
     };
+    use form::DeleteAction;
+    use lib_transactions::Transaction;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -261,24 +246,12 @@ mod tests {
 
         assert_eq!(action(&payees, netflix), DeleteAction::Delete);
         assert_eq!(action(&payees, j_smith), DeleteAction::Deactivate);
-        apply_delete_action(
-            &mut payees,
-            &transactions,
-            j_smith,
-            DeleteAction::Deactivate,
-        )
-        .unwrap();
+        set_active(&mut payees, j_smith, false).unwrap();
         assert!(!get(&payees, j_smith).unwrap().is_active);
         assert_eq!(action(&payees, j_smith), DeleteAction::Reactivate);
-        apply_delete_action(
-            &mut payees,
-            &transactions,
-            j_smith,
-            DeleteAction::Reactivate,
-        )
-        .unwrap();
+        set_active(&mut payees, j_smith, true).unwrap();
         assert!(get(&payees, j_smith).unwrap().is_active);
-        apply_delete_action(&mut payees, &transactions, netflix, DeleteAction::Delete).unwrap();
+        delete_payee(&mut payees, &transactions, netflix).unwrap();
         assert_eq!(get(&payees, netflix), None);
     }
 

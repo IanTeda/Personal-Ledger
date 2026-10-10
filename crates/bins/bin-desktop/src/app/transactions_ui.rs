@@ -583,7 +583,8 @@ impl Shell {
                 transactions,
             )
         });
-        self.store_payees(payees, cx);
+        self.payees_store
+            .update(cx, |store, cx| store.replace(cx, payees));
         match committed {
             Ok(committed) => {
                 let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);

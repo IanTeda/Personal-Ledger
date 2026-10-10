@@ -357,8 +357,9 @@ pub fn without_default_category_count(payees: &[Payee]) -> usize {
 }
 
 /// The Payees data behind the Desktop's Payees Entity: the rows, read through `payees` and changed
-/// through `payees_mut` so the rules above stay the only way a name, alias or Split reference
-/// changes. Persistence is a later phase, so the rows are in memory.
+/// only through the rule-checked methods, so the rules above stay the way a name, alias or Split
+/// reference changes. Each check runs before the rows are touched, so a refused change leaves them
+/// as they were. Persistence is a later phase, so the rows are in memory.
 pub struct PayeeService {
     payees: Vec<Payee>,
 }
@@ -373,8 +374,31 @@ impl PayeeService {
         &self.payees
     }
 
-    pub fn payees_mut(&mut self) -> &mut Vec<Payee> {
-        &mut self.payees
+    /// Adds a new, active Payee and returns its id; see [`insert_payee`].
+    pub fn insert(&mut self, draft: &PayeeDraft) -> Result<u32, PayeeError> {
+        insert_payee(&mut self.payees, draft)
+    }
+
+    /// Replaces Payee `id`'s fields with `draft`'s; see [`edit_payee`].
+    pub fn edit(&mut self, id: u32, draft: &PayeeDraft) -> Result<(), PayeeError> {
+        edit_payee(&mut self.payees, id, draft)
+    }
+
+    /// Hard-deletes Payee `id`, refused while a Split references it; see [`delete_payee`].
+    pub fn delete(&mut self, id: u32, transactions: &[Transaction]) -> Result<(), PayeeError> {
+        delete_payee(&mut self.payees, transactions, id)
+    }
+
+    /// Deactivates or reactivates Payee `id`; see [`set_active`].
+    pub fn set_active(&mut self, id: u32, is_active: bool) -> Result<(), PayeeError> {
+        set_active(&mut self.payees, id, is_active)
+    }
+
+    /// Replaces every row at once. Import's commit adds Payees and Aliases to a copy of the rows
+    /// with the same rules, then writes the copy back in one step, since it also writes
+    /// Transactions. This is the only bulk write, so keep new callers on the methods above.
+    pub fn replace(&mut self, rows: Vec<Payee>) {
+        self.payees = rows;
     }
 }
 
@@ -388,8 +412,25 @@ mod tests {
         let seeded = service.payees().len();
         assert!(seeded > 0);
 
-        service.payees_mut().retain(|payee| payee.id != 1);
+        service.delete(1, &[]).unwrap();
         assert_eq!(service.payees().len(), seeded - 1);
         assert!(get(service.payees(), 1).is_none());
+    }
+
+    #[test]
+    fn refused_writes_leave_the_rows_untouched() {
+        let mut service = PayeeService::new(default_payees());
+        let before = service.payees().to_vec();
+        let taken = before[0].name.clone();
+        let draft = PayeeDraft {
+            name: taken,
+            aliases: Vec::new(),
+            default_category: None,
+        };
+
+        assert!(service.insert(&draft).is_err());
+        assert!(service.edit(before[1].id, &draft).is_err());
+        assert!(service.edit(u32::MAX, &draft).is_err());
+        assert_eq!(service.payees(), before.as_slice());
     }
 }

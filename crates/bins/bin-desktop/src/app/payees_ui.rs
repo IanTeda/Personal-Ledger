@@ -25,13 +25,6 @@ impl Shell {
         self.payees_store.read(cx).payees()
     }
 
-    /// Writes `rows` back to the Payees store, which notifies its readers. The rules work on a copy
-    /// of the rows, so a refused change never reaches the store.
-    pub(super) fn store_payees(&mut self, rows: Vec<Payee>, cx: &mut App) {
-        self.payees_store
-            .update(cx, |store, cx| store.mutate(cx, |payees| *payees = rows));
-    }
-
     /// The Payees page's stored row position. Clamp it before use.
     fn payees_page_selected(&self, cx: &App) -> usize {
         self.payees_view.read(cx).selected()
@@ -172,36 +165,32 @@ impl Shell {
     ) {
         match dialog {
             payees::form::PayeesDialog::Delete(id, form) => {
+                // The dialog is only ever opened on a Payee that exists, so a miss means it was
+                // removed while the dialog was open. There is nothing left to delete.
                 let Some(name) = payees::get(self.payees_list(cx), id).map(|p| p.name.clone())
                 else {
                     return;
                 };
                 let action = form.action();
-                let mut rows = self.payees_list(cx).to_vec();
-                let result = payees::apply_delete_action(
-                    &mut rows,
-                    self.transactions_store.read(cx).transactions(),
-                    id,
-                    action,
-                );
+                let transactions = self.transactions_store.read(cx).transactions().to_vec();
+                let result = self.payees_store.update(cx, |store, cx| {
+                    store.apply_delete(cx, id, action, &transactions)
+                });
                 let (kind, text) = match result {
-                    Ok(()) => {
-                        self.store_payees(rows, cx);
-                        (
-                            ToastKind::Success,
-                            match action {
-                                payees::form::DeleteAction::Delete => {
-                                    lib_locale::msg::toast_payee_deleted(&name)
-                                }
-                                payees::form::DeleteAction::Deactivate => {
-                                    lib_locale::msg::toast_payee_deactivated(&name)
-                                }
-                                payees::form::DeleteAction::Reactivate => {
-                                    lib_locale::msg::toast_payee_reactivated(&name)
-                                }
-                            },
-                        )
-                    }
+                    Ok(()) => (
+                        ToastKind::Success,
+                        match action {
+                            payees::form::DeleteAction::Delete => {
+                                lib_locale::msg::toast_payee_deleted(&name)
+                            }
+                            payees::form::DeleteAction::Deactivate => {
+                                lib_locale::msg::toast_payee_deactivated(&name)
+                            }
+                            payees::form::DeleteAction::Reactivate => {
+                                lib_locale::msg::toast_payee_reactivated(&name)
+                            }
+                        },
+                    ),
                     Err(error) => (
                         ToastKind::Error,
                         lib_locale::msg::toast_save_failed(
@@ -216,12 +205,12 @@ impl Shell {
                 self.set_payees_page_selected(selected, cx);
             }
             payees::form::PayeesDialog::Add(mut form) => {
-                let mut rows = self.payees_list(cx).to_vec();
-                match payees::insert_payee(&mut rows, &form.draft()) {
-                    Ok(id) => {
-                        self.store_payees(rows, cx);
-                        self.select_payee(id, cx);
-                    }
+                let draft = form.draft();
+                match self
+                    .payees_store
+                    .update(cx, |store, cx| store.insert(cx, &draft))
+                {
+                    Ok(id) => self.select_payee(id, cx),
                     Err(error) => {
                         form.error = Some(error);
                         self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Add(form)));
@@ -229,12 +218,12 @@ impl Shell {
                 }
             }
             payees::form::PayeesDialog::Edit(id, mut form) => {
-                let mut rows = self.payees_list(cx).to_vec();
-                match payees::edit_payee(&mut rows, id, &form.draft()) {
-                    Ok(()) => {
-                        self.store_payees(rows, cx);
-                        self.select_payee(id, cx);
-                    }
+                let draft = form.draft();
+                match self
+                    .payees_store
+                    .update(cx, |store, cx| store.edit(cx, id, &draft))
+                {
+                    Ok(()) => self.select_payee(id, cx),
                     Err(error) => {
                         form.error = Some(error);
                         self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Edit(

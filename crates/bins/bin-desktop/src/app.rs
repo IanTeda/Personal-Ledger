@@ -309,9 +309,14 @@ impl Shell {
         let categories = categories::default_categories();
         let payees = payees::default_payees();
         let payees_store = cx.new(|_| PayeesStore::new(payees.clone()));
-        let payees_view = cx.new(|_| PayeesView::new(payees_store.clone()));
-        let payees_subscription =
-            cx.subscribe(&payees_store, |_, _store, _event: &PayeesEvent, cx| cx.notify());
+        let payees_view = cx.new(|_| PayeesView::new());
+        let payees_subscription = cx
+            .subscribe(&payees_store, |_, _store, _event: &PayeesEvent, cx| {
+                cx.notify()
+            });
+        // The Payees View's selections live in their own Entity, so a selection change repaints
+        // Shell too, not just the View that moved.
+        let payees_view_observer = cx.observe(&payees_view, |_, _, cx| cx.notify());
         let tags = tags::default_tags();
         let tags_store = cx.new(|_| TagsStore::new(tags.clone()));
         let tags_view = cx.new(|_| TagsView::new(tags_store.clone()));
@@ -449,6 +454,7 @@ impl Shell {
                 documents_subscription,
                 tags_subscription,
                 payees_subscription,
+                payees_view_observer,
             ],
         }
     }
