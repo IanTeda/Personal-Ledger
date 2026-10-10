@@ -655,8 +655,8 @@ impl Render for Shell {
         };
         let settings_inventory_page = inventory_view::InventoryPageProps {
             inventory: &self.inventory,
-            expanded: &self.settings_inventory_expanded,
-            selected: self.settings_inventory_selected_row(),
+            expanded: self.settings_view.read(cx).inventory_expanded(),
+            selected: self.settings_inventory_selected_row(cx),
             on_add_property_click: {
                 let entity = entity.clone();
                 Rc::new(move |_window, cx| {
@@ -1286,10 +1286,10 @@ impl Render for Shell {
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
                 let chosen = settings_view::colour_theme::chosen_index(cx);
-                if this.handle_settings_form_key(&event.keystroke, chosen)
-                    || this.handle_settings_tracing_key(&event.keystroke)
+                if this.handle_settings_form_key(&event.keystroke, chosen, cx)
+                    || this.handle_settings_tracing_key(&event.keystroke, cx)
                     || this.handle_settings_focus_key(&event.keystroke, cx)
-                    || this.handle_colour_theme_grid_key(&event.keystroke)
+                    || this.handle_colour_theme_grid_key(&event.keystroke, cx)
                     || this.handle_bills_tab_key(&event.keystroke, cx)
                     || this.handle_budgets_tab_key(&event.keystroke, cx)
                     || this.handle_key_down(event, cx)
@@ -1308,7 +1308,7 @@ impl Render for Shell {
                     .child(
                         TopBar::new(on_rail_toggle, view_chrome.title.clone()).context(
                             if self.nav.noun() == Noun::Settings {
-                                Some(self.settings_selected_section.label())
+                                Some(self.settings_view.read(cx).selected_section().label())
                             } else {
                                 self.import_state(cx).map(|_| {
                                     crate::msg::desktop_import_context(import::STATEMENT_FILE)
@@ -1376,8 +1376,8 @@ impl Render for Shell {
                                     documents: documents_page,
                                 },
                                 SettingsPanelProps {
-                                    selected: self.settings_selected_section,
-                                    focus: self.settings_focus,
+                                    selected: self.settings_view.read(cx).selected_section(),
+                                    focus: self.settings_view.read(cx).focus(),
                                     on_index_click: on_settings_index_click,
                                     date_style: self.settings_date_style,
                                     row_density: self.settings_row_density,
@@ -1390,7 +1390,7 @@ impl Render for Shell {
                                     toasts_on: self.chrome.toasts.display().toasts_on,
                                     on_toasts_click,
                                     colour_theme_focus: self.colour_theme_focus,
-                                    display_field: self.settings_display_field,
+                                    display_field: self.settings_view.read(cx).display_field(),
                                     on_colour_theme_click,
                                     units: &self.settings_units,
                                     on_unit_edit_click,
@@ -1459,7 +1459,7 @@ impl Render for Shell {
             }))
             .children(filter_popover)
             .children((self.nav.mode() == InputMode::Help).then(|| {
-                let mut sheet = self.settings_cheat_sheet();
+                let mut sheet = self.settings_cheat_sheet(cx);
                 sheet.extend(self.documents_cheat_sheet(cx));
                 help_view::render(on_help_close, sheet, cx)
             }))

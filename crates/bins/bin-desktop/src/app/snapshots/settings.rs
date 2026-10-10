@@ -288,8 +288,8 @@ impl Shell {
         }
 
         SettingsSnapshot {
-            page: format!("{:?}", self.settings_selected_section),
-            page_focused: self.settings_focus == SettingsFocus::Page,
+            page: format!("{:?}", self.settings_view.read(cx).selected_section()),
+            page_focused: self.settings_view.read(cx).focus() == SettingsFocus::Page,
             account_names,
             selected_account,
             category_names: self
@@ -316,13 +316,13 @@ impl Shell {
                 .collect(),
             inventory_rows: crate::view::settings::inventory::visible_rows(
                 &self.inventory,
-                &self.settings_inventory_expanded,
+                self.settings_view.read(cx).inventory_expanded(),
             )
             .into_iter()
             .map(|row| self.inventory_row_label(row))
             .collect(),
             selected_inventory: self
-                .settings_inventory_selected_row()
+                .settings_inventory_selected_row(cx)
                 .map(|row| self.inventory_row_label(row)),
             inventory_rooms: self
                 .inventory
@@ -414,7 +414,7 @@ impl Shell {
             dialog: dialog.map(str::to_string),
             dialog_name,
             dialog_confirm,
-            display_field: self.settings_display_field,
+            display_field: self.settings_view.read(cx).display_field(),
             colour_theme_focus: self.colour_theme_focus,
             date_style: self.settings_date_style.map(|style| format!("{style:?}")),
             row_density: format!("{:?}", self.settings_row_density),

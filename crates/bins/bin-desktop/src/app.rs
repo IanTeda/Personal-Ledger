@@ -60,7 +60,6 @@ pub use snapshots::{
     PaletteSnapshot, SettingsSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
 };
 
-use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use crate::view::settings::hints::{
@@ -69,6 +68,7 @@ use crate::view::settings::hints::{
     settings_payees_hints, settings_plain_page_hints, settings_tags_hints, settings_tracing_hints,
 };
 use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
+use crate::view::settings::state::SettingsView;
 use crate::view::transactions::state::{TransactionsState, TransactionsView};
 use crate::view::{accounts::hints::accounts_hints, settings::hints::confirm_dialog_hints};
 
@@ -173,14 +173,11 @@ pub struct Shell {
     /// The Settings page on show, and the index rail's highlighted entry. Changed by a row click,
     /// `j`/`k` on the index, or `:settings <page>`. Deliberately *not* reset when a noun is
     /// entered: it is the last-visited page, which `g s` reopens and persistence keeps.
-    settings_selected_section: SettingsSection,
     /// Whether keyboard focus is on the index rail or the page, while the View zone has it.
-    settings_focus: SettingsFocus,
     /// Set when focus has just moved onto the Display page, so the next key handler (which has
     /// an `App` to read the chosen Colour Theme from) puts the grid's focus on that card.
     /// The Display page's focused control (`DISPLAY_FIELD_COUNT` of them, above the Colour Theme
     /// grid); `None` off that page or while the grid has focus.
-    settings_display_field: Option<usize>,
     /// The Display section's own "Date format" segmented control (issue #179) -- a stored
     /// preference, not reset on noun change (same reasoning as [`Self::settings_units`]).
     settings_date_style: Option<DateStyle>,
@@ -235,6 +232,9 @@ pub struct Shell {
     /// The Settings Categories tree's cursor, selected id and expanded nodes, owned by their view
     /// Entity.
     categories_view: Entity<CategoriesView>,
+    /// The Settings View's own state (the page, focus, Display control and Documents and
+    /// Inventory selections), owned by its view Entity (ADR-0032).
+    settings_view: Entity<SettingsView>,
     /// The shared stub Budgets, seeded from `budgets::default_budgets()`, owned by their store
     /// Entity and read through it (ADR-0032). Shared so the Budgets surface and Categories 5c
     /// read and write the same Category Limits, and so they survive leaving and re-entering
@@ -248,10 +248,7 @@ pub struct Shell {
     payees_store: Entity<PayeesStore>,
     /// The Payees page's and Settings Payees list's selections, owned by their view Entity.
     payees_view: Entity<PayeesView>,
-    settings_documents_selected: Option<u32>,
     /// Settings' Inventory page: the selected row and the Properties shown open (session-only).
-    settings_inventory_selected: Option<InventoryRow>,
-    settings_inventory_expanded: HashSet<u32>,
     /// The Tags rows, owned by their store Entity and read through it (ADR-0032). Shared:
     /// Transactions reads the same rows for its chips, filter form and Split tag picker.
     tags_store: Entity<TagsStore>,
@@ -308,6 +305,8 @@ impl Shell {
             |_, _store, _event: &CategoriesEvent, cx| cx.notify(),
         );
         let categories_view_observer = cx.observe(&categories_view, |_, _, cx| cx.notify());
+        let settings_view = cx.new(|_| SettingsView::new());
+        let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
         let payees = payees::default_payees();
         let payees_store = cx.new(|_| PayeesStore::new(payees.clone()));
         let payees_view = cx.new(|_| PayeesView::new());
@@ -406,9 +405,6 @@ impl Shell {
             },
             command_history: Vec::new(),
             file_explorer: None,
-            settings_selected_section: SettingsSection::default(),
-            settings_focus: SettingsFocus::default(),
-            settings_display_field: None,
             settings_date_style: None,
             settings_row_density: RowDensity::default(),
             colour_theme_focus: None,
@@ -430,13 +426,11 @@ impl Shell {
             today,
             categories_store,
             categories_view,
+            settings_view,
             budgets_store,
             budgets_view,
             payees_store,
             payees_view,
-            settings_documents_selected: None,
-            settings_inventory_selected: None,
-            settings_inventory_expanded: HashSet::new(),
             tags_store,
             tags_view,
             transactions_store,
@@ -456,6 +450,7 @@ impl Shell {
                 payees_view_observer,
                 categories_subscription,
                 categories_view_observer,
+                settings_view_observer,
             ],
         }
     }
@@ -477,12 +472,13 @@ impl Shell {
     }
 
     /// The last-visited Settings page, for persistence.
-    pub fn settings_page(&self) -> SettingsSection {
-        self.settings_selected_section
+    pub fn settings_page(&self, cx: &App) -> SettingsSection {
+        self.settings_view.read(cx).selected_section()
     }
 
-    pub fn set_settings_page(&mut self, section: SettingsSection) {
-        self.settings_selected_section = section;
+    pub fn set_settings_page(&mut self, section: SettingsSection, cx: &mut App) {
+        self.settings_view
+            .update(cx, |v, cx| v.set_selected_section(cx, section));
     }
 
     pub fn explorer_filters(&self) -> ExplorerFilters {
@@ -547,7 +543,7 @@ impl Shell {
     /// the Display page (`l`/`enter` on the index) at the chosen card; arrows or `h`/`j`/`k`/`l` move focus,
     /// `Enter` selects, and `Esc` or `Tab` leaves it (`Tab` going on to the next zone). Moving
     /// focus never previews. `false` for any key the grid does not take.
-    fn handle_colour_theme_grid_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_colour_theme_grid_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
         let key = keystroke.key.as_str();
         let pending_g_active = self
             .pending_g
@@ -555,8 +551,8 @@ impl Shell {
         if self.nav.mode() != InputMode::Normal
             || self.nav.noun() != Noun::Settings
             || self.nav.focus() != FocusZone::View
-            || self.settings_focus != SettingsFocus::Page
-            || self.settings_selected_section != SettingsSection::Display
+            || self.settings_view.read(cx).focus() != SettingsFocus::Page
+            || self.settings_view.read(cx).selected_section() != SettingsSection::Display
             || keystroke.modifiers.control
             || pending_g_active
         {
@@ -569,7 +565,7 @@ impl Shell {
         match key {
             "escape" => {
                 self.chrome.status_message = None;
-                self.leave_colour_theme_grid();
+                self.leave_colour_theme_grid(cx);
                 true
             }
             "tab" => {
@@ -589,12 +585,12 @@ impl Shell {
                 let len = lib_colour_theme::ColourTheme::built_in().len();
                 // `k` on the top row climbs back to the last control above the grid.
                 if matches!(key, "k" | "up") && index < columns {
-                    self.leave_colour_theme_grid();
+                    self.leave_colour_theme_grid(cx);
                     return true;
                 }
                 // `h` at the first column steps back out to the index.
                 if matches!(key, "h" | "left") && index % columns.max(1) == 0 {
-                    self.focus_settings_index();
+                    self.focus_settings_index(cx);
                     return true;
                 }
                 match settings_view::colour_theme::grid_move(index, len, columns, key) {
@@ -615,11 +611,11 @@ impl Shell {
     /// The status-line legend for Settings' current focus: the index rail's keys, or the open
     /// page's. The four list pages are handled before this (they own dialogs too), so it covers
     /// the index and the form and plain pages.
-    fn settings_hints(&self) -> Vec<(&'static str, String)> {
-        if self.settings_focus == SettingsFocus::Index {
+    fn settings_hints(&self, cx: &App) -> Vec<(&'static str, String)> {
+        if self.settings_view.read(cx).focus() == SettingsFocus::Index {
             return settings_index_hints();
         }
-        match self.settings_selected_section {
+        match self.settings_view.read(cx).selected_section() {
             SettingsSection::Display if self.colour_theme_focus.is_some() => {
                 settings_colour_grid_hints()
             }
@@ -632,18 +628,18 @@ impl Shell {
 
     /// The `?` cheat-sheet's Settings group as `(action, keys)`: the index keys, then the open
     /// page's. Empty off the Settings noun, so the group is left out.
-    fn settings_cheat_sheet(&self) -> Vec<(String, &'static str)> {
+    fn settings_cheat_sheet(&self, cx: &App) -> Vec<(String, &'static str)> {
         if self.nav.noun() != Noun::Settings {
             return Vec::new();
         }
-        let page = match self.settings_selected_section {
+        let page = match self.settings_view.read(cx).selected_section() {
             SettingsSection::Accounts => accounts_hints(),
             SettingsSection::Categories => settings_categories_hints(),
             SettingsSection::Tags => settings_tags_hints(),
             SettingsSection::Payees => settings_payees_hints(),
             SettingsSection::Documents => settings_documents_hints(),
             SettingsSection::Inventory => {
-                settings_inventory_hints(self.settings_inventory_selected_row())
+                settings_inventory_hints(self.settings_inventory_selected_row(cx))
             }
             SettingsSection::Display => {
                 let mut keys = settings_display_hints();
@@ -661,9 +657,11 @@ impl Shell {
     }
 
     /// Steps from the Colour Theme grid back up to the Display page's last control.
-    fn leave_colour_theme_grid(&mut self) {
+    fn leave_colour_theme_grid(&mut self, cx: &mut App) {
         self.colour_theme_focus = None;
-        self.settings_display_field = Some(DISPLAY_FIELD_COUNT - 1);
+        self.settings_view.update(cx, |v, cx| {
+            v.set_display_field(cx, Some(DISPLAY_FIELD_COUNT - 1))
+        });
     }
 
     /// Swaps the Settings page on show. Each page starts at its top.
@@ -677,52 +675,69 @@ impl Shell {
         if noun_before != Noun::Settings {
             self.reset_view_scroll(cx);
         }
-        self.select_settings_page(section);
-        self.focus_settings_page();
+        self.select_settings_page(section, cx);
+        self.focus_settings_page(cx);
     }
 
-    fn select_settings_page(&mut self, section: SettingsSection) {
-        if self.settings_selected_section != section {
+    fn select_settings_page(&mut self, section: SettingsSection, cx: &mut App) {
+        if self.settings_view.read(cx).selected_section() != section {
             self.view_scroll_handle.set_offset(gpui::Point::default());
         }
-        self.settings_selected_section = section;
+        self.settings_view
+            .update(cx, |v, cx| v.set_selected_section(cx, section));
         self.colour_theme_focus = None;
-        self.settings_display_field = None;
+        self.settings_view
+            .update(cx, |v, cx| v.set_display_field(cx, None));
     }
 
     /// Moves focus from the index rail into the open page (`l`/`enter`, `:settings <page>`). A
     /// page with nothing to focus keeps focus on the index, as a quiet no-op.
-    fn focus_settings_page(&mut self) {
-        if !self.settings_selected_section.has_controls() {
+    fn focus_settings_page(&mut self, cx: &mut App) {
+        if !self
+            .settings_view
+            .read(cx)
+            .selected_section()
+            .has_controls()
+        {
             return;
         }
-        self.settings_focus = SettingsFocus::Page;
-        self.settings_display_field =
-            (self.settings_selected_section == SettingsSection::Display).then_some(0);
+        self.settings_view
+            .update(cx, |v, cx| v.set_focus(cx, SettingsFocus::Page));
+        self.settings_view.update(cx, |v, cx| {
+            let on_display = v.selected_section() == SettingsSection::Display;
+            v.set_display_field(cx, on_display.then_some(0));
+        });
     }
 
-    fn focus_settings_index(&mut self) {
-        self.settings_focus = SettingsFocus::Index;
+    fn focus_settings_index(&mut self, cx: &mut App) {
+        self.settings_view
+            .update(cx, |v, cx| v.set_focus(cx, SettingsFocus::Index));
         self.colour_theme_focus = None;
-        self.settings_display_field = None;
+        self.settings_view
+            .update(cx, |v, cx| v.set_display_field(cx, None));
     }
 
     /// The Display page's form keys, ahead of Settings' focus keys: `j`/`k` walk the controls and
     /// on past the last into the Colour Theme grid, `h`/`l` change a segmented or radio control
     /// (or clear/tick the checkbox) in place, `enter`/`space` toggles the checkbox. `esc` is left
     /// to the focus keys, which step back to the index. `false` for any key it does not take.
-    fn handle_settings_form_key(&mut self, keystroke: &Keystroke, chosen: usize) -> bool {
+    fn handle_settings_form_key(
+        &mut self,
+        keystroke: &Keystroke,
+        chosen: usize,
+        cx: &mut App,
+    ) -> bool {
         let pending_g_active = self
             .pending_g
             .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
-        let Some(field) = self.settings_display_field else {
+        let Some(field) = self.settings_view.read(cx).display_field() else {
             return false;
         };
         if self.nav.mode() != InputMode::Normal
             || self.nav.noun() != Noun::Settings
             || self.nav.focus() != FocusZone::View
-            || self.settings_focus != SettingsFocus::Page
-            || self.settings_selected_section != SettingsSection::Display
+            || self.settings_view.read(cx).focus() != SettingsFocus::Page
+            || self.settings_view.read(cx).selected_section() != SettingsSection::Display
             || keystroke.modifiers.control
             || keystroke.modifiers.shift
             || pending_g_active
@@ -738,15 +753,19 @@ impl Shell {
             "j" | "down" => {
                 self.chrome.status_message = None;
                 if field + 1 >= DISPLAY_FIELD_COUNT {
-                    self.settings_display_field = None;
+                    self.settings_view
+                        .update(cx, |v, cx| v.set_display_field(cx, None));
                     self.colour_theme_focus = Some(chosen);
                 } else {
-                    self.settings_display_field = Some(field + 1);
+                    self.settings_view
+                        .update(cx, |v, cx| v.set_display_field(cx, Some(field + 1)));
                 }
                 true
             }
             "k" | "up" => {
-                self.settings_display_field = Some(field.saturating_sub(1));
+                self.settings_view.update(cx, |v, cx| {
+                    v.set_display_field(cx, Some(field.saturating_sub(1)))
+                });
                 true
             }
             "h" | "left" | "l" | "right" => {
@@ -783,7 +802,7 @@ impl Shell {
     /// level rather than leaving (Display's radio grammar; `esc` leaves): `h`/`l` the level,
     /// `j`/`k` a line, `J`/`K` a page, `G` the oldest entry, `c` Clear logs. Focus never enters
     /// the box itself. `false` for any key it does not take.
-    fn handle_settings_tracing_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_settings_tracing_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
         let pending_g_active = self
             .pending_g
             .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
@@ -791,8 +810,8 @@ impl Shell {
         if self.nav.mode() != InputMode::Normal
             || self.nav.noun() != Noun::Settings
             || self.nav.focus() != FocusZone::View
-            || self.settings_focus != SettingsFocus::Page
-            || self.settings_selected_section != SettingsSection::Tracing
+            || self.settings_view.read(cx).focus() != SettingsFocus::Page
+            || self.settings_view.read(cx).selected_section() != SettingsSection::Tracing
             || modifiers.control
             || modifiers.alt
             || modifiers.platform
@@ -829,7 +848,7 @@ impl Shell {
     /// Settings' own focus keys, ahead of the Colour Theme grid and the global keymap: `l`/`right`
     /// /`enter` on the index step into the page, `h`/`left`/`esc` on the page step back out.
     /// `false` for any key it does not take.
-    fn handle_settings_focus_key(&mut self, keystroke: &Keystroke, cx: &App) -> bool {
+    fn handle_settings_focus_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
         let pending_g_active = self
             .pending_g
             .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
@@ -842,33 +861,33 @@ impl Shell {
         {
             return false;
         }
-        match (self.settings_focus, keystroke.key.as_str()) {
+        match (self.settings_view.read(cx).focus(), keystroke.key.as_str()) {
             (SettingsFocus::Index, "l" | "right" | "enter") => {
                 self.chrome.status_message = None;
-                self.focus_settings_page();
+                self.focus_settings_page(cx);
                 true
             }
             // `left` on the Categories tree collapses or climbs first; only a top-level row with
             // nothing to fold hands it back to the index. `h` always leaves.
             (SettingsFocus::Page, "left")
-                if self.settings_categories_page_has_focus()
+                if self.settings_categories_page_has_focus(cx)
                     && self.settings_categories_left_is_local(cx) =>
             {
                 false
             }
             (SettingsFocus::Page, "left")
-                if self.settings_inventory_page_has_focus()
-                    && self.settings_inventory_left_is_local() =>
+                if self.settings_inventory_page_has_focus(cx)
+                    && self.settings_inventory_left_is_local(cx) =>
             {
                 false
             }
             (SettingsFocus::Page, "h" | "left") if self.colour_theme_focus.is_none() => {
                 self.chrome.status_message = None;
-                self.focus_settings_index();
+                self.focus_settings_index(cx);
                 true
             }
             (SettingsFocus::Page, "escape") if self.colour_theme_focus.is_none() => {
-                self.focus_settings_index();
+                self.focus_settings_index(cx);
                 true
             }
             _ => false,
@@ -877,14 +896,14 @@ impl Shell {
 
     /// `j`/`k`/`g g`/`G` on the Settings index step the highlight through the pages
     /// and swap the page live, like an index click.
-    fn apply_settings_section_movement(&mut self, movement: Movement) {
+    fn apply_settings_section_movement(&mut self, movement: Movement, cx: &mut App) {
         let visible: Vec<SettingsSection> = SettingsSection::ALL.into_iter().collect();
         let Some(last) = visible.len().checked_sub(1) else {
             return;
         };
         let current = visible
             .iter()
-            .position(|section| *section == self.settings_selected_section)
+            .position(|section| *section == self.settings_view.read(cx).selected_section())
             .unwrap_or(0);
         let next = match movement {
             Movement::Next => (current + 1).min(last),
@@ -892,14 +911,14 @@ impl Shell {
             Movement::First => 0,
             _ => last,
         };
-        self.select_settings_page(visible[next]);
+        self.select_settings_page(visible[next], cx);
     }
 
     /// Which View owns the keyboard, page status and main pane right now.
     fn active_view(&self, cx: &App) -> ActiveView {
         ActiveView::derive(
             self.nav.noun(),
-            self.settings_selected_section,
+            self.settings_view.read(cx).selected_section(),
             self.import_state(cx).is_some(),
         )
     }
@@ -927,17 +946,19 @@ impl Shell {
     }
 
     /// Whether Settings' Documents table owns the keyboard: the page, not the index, has focus.
-    fn settings_documents_page_has_focus(&self) -> bool {
+    fn settings_documents_page_has_focus(&self, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
-            && self.settings_focus == SettingsFocus::Page
-            && self.settings_selected_section == SettingsSection::Documents
+            && self.settings_view.read(cx).focus() == SettingsFocus::Page
+            && self.settings_view.read(cx).selected_section() == SettingsSection::Documents
     }
 
     /// The Documents page's selected type: the stored id while it still exists, else the first
     /// row, so the cursor is never lost.
     fn settings_documents_selected_id(&self, cx: &App) -> Option<u32> {
-        self.settings_documents_selected
+        self.settings_view
+            .read(cx)
+            .documents_selected()
             .filter(|id| documents::types::position(self.document_types(cx), *id).is_some())
             .or_else(|| self.document_types(cx).first().map(|row| row.id))
     }
@@ -962,7 +983,9 @@ impl Shell {
             }
             Movement::Enter => return,
         };
-        self.settings_documents_selected = self.document_types(cx).get(next).map(|row| row.id);
+        self.settings_view.update(cx, |v, cx| {
+            v.set_documents_selected(cx, self.document_types(cx).get(next).map(|row| row.id))
+        });
     }
 
     /// `J`/`K` on the Documents page move the selected type a place, which is also its place in
@@ -972,7 +995,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut App,
     ) -> bool {
-        if !self.settings_documents_page_has_focus() {
+        if !self.settings_documents_page_has_focus(cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -989,7 +1012,7 @@ impl Shell {
 
     /// The Documents page's own `n`/`e`/`x`, which open the Add, Edit and Remove dialogs.
     fn handle_settings_documents_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        if !self.settings_documents_page_has_focus() {
+        if !self.settings_documents_page_has_focus(cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -1014,7 +1037,8 @@ impl Shell {
             self.mutate_documents(cx, |data| {
                 documents::types::move_by(&mut data.types, id, delta)
             });
-            self.settings_documents_selected = Some(id);
+            self.settings_view
+                .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
         }
     }
 
@@ -1035,40 +1059,52 @@ impl Shell {
     }
 
     /// Whether Settings' Inventory table owns the keyboard: the page, not the index, has focus.
-    fn settings_inventory_page_has_focus(&self) -> bool {
+    fn settings_inventory_page_has_focus(&self, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
-            && self.settings_focus == SettingsFocus::Page
-            && self.settings_selected_section == SettingsSection::Inventory
+            && self.settings_view.read(cx).focus() == SettingsFocus::Page
+            && self.settings_view.read(cx).selected_section() == SettingsSection::Inventory
     }
 
     /// The Inventory page's selected row: the stored one while it is still on screen, else the
     /// first row, so the cursor is never lost. `None` only with no Properties.
-    fn settings_inventory_selected_row(&self) -> Option<InventoryRow> {
-        let rows = inventory_view::visible_rows(&self.inventory, &self.settings_inventory_expanded);
-        self.settings_inventory_selected
+    fn settings_inventory_selected_row(&self, cx: &App) -> Option<InventoryRow> {
+        let rows = inventory_view::visible_rows(
+            &self.inventory,
+            self.settings_view.read(cx).inventory_expanded(),
+        );
+        self.settings_view
+            .read(cx)
+            .inventory_selected()
             .filter(|row| rows.contains(row))
             .or_else(|| rows.first().copied())
     }
 
     /// Whether `left` has something to do on the Inventory page: close an open Property, or
     /// climb from a Room to its Property. Anything else hands it back to the index.
-    fn settings_inventory_left_is_local(&self) -> bool {
-        match self.settings_inventory_selected_row() {
+    fn settings_inventory_left_is_local(&self, cx: &App) -> bool {
+        match self.settings_inventory_selected_row(cx) {
             Some(InventoryRow::Room(_)) => true,
-            Some(InventoryRow::Property(id)) => self.settings_inventory_expanded.contains(&id),
+            Some(InventoryRow::Property(id)) => self
+                .settings_view
+                .read(cx)
+                .inventory_expanded()
+                .contains(&id),
             None => false,
         }
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the visible Property and Room rows as one list.
-    fn apply_settings_inventory_movement(&mut self, movement: Movement) {
-        let rows = inventory_view::visible_rows(&self.inventory, &self.settings_inventory_expanded);
+    fn apply_settings_inventory_movement(&mut self, movement: Movement, cx: &mut App) {
+        let rows = inventory_view::visible_rows(
+            &self.inventory,
+            self.settings_view.read(cx).inventory_expanded(),
+        );
         let Some(last) = rows.len().checked_sub(1) else {
             return;
         };
         let current = self
-            .settings_inventory_selected_row()
+            .settings_inventory_selected_row(cx)
             .and_then(|row| rows.iter().position(|r| *r == row))
             .unwrap_or(0);
         let next = match movement {
@@ -1080,12 +1116,18 @@ impl Shell {
             Movement::HalfPageUp => current.saturating_sub(SETTINGS_INVENTORY_HALF_PAGE),
             Movement::Enter => return,
         };
-        self.settings_inventory_selected = rows.get(next).copied();
+        self.settings_view.update(cx, |v, cx| {
+            v.set_inventory_selected(cx, rows.get(next).copied())
+        });
     }
 
     /// `J`/`K` on a Room move it a place within its Property; inert on a Property row.
-    fn handle_settings_inventory_reorder_key(&mut self, keystroke: &Keystroke) -> bool {
-        if !self.settings_inventory_page_has_focus() {
+    fn handle_settings_inventory_reorder_key(
+        &mut self,
+        keystroke: &Keystroke,
+        cx: &mut App,
+    ) -> bool {
+        if !self.settings_inventory_page_has_focus(cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -1097,7 +1139,7 @@ impl Shell {
             "k" => -1,
             _ => return false,
         };
-        if let Some(InventoryRow::Room(id)) = self.settings_inventory_selected_row() {
+        if let Some(InventoryRow::Room(id)) = self.settings_inventory_selected_row(cx) {
             inventory::move_room(&mut self.inventory, id, delta);
         }
         true
@@ -1105,8 +1147,8 @@ impl Shell {
 
     /// The Inventory page's own keys: right and left open, close and climb, and `n`/`r`/`e`/`x`
     /// ask for the Add, Edit and Remove dialogs, which are still placeholders.
-    fn handle_settings_inventory_key(&mut self, keystroke: &Keystroke, cx: &App) -> bool {
-        if !self.settings_inventory_page_has_focus() {
+    fn handle_settings_inventory_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
+        if !self.settings_inventory_page_has_focus(cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -1114,20 +1156,20 @@ impl Shell {
             return false;
         }
         match keystroke.key.as_str() {
-            "n" => self.open_add_property_dialog(),
-            "r" => self.add_inventory_room_for_selection(),
+            "n" => self.open_add_property_dialog(cx),
+            "r" => self.add_inventory_room_for_selection(cx),
             "e" => {
-                if let Some(row) = self.settings_inventory_selected_row() {
+                if let Some(row) = self.settings_inventory_selected_row(cx) {
                     self.open_edit_inventory_row(row);
                 }
             }
             "x" => {
-                if let Some(row) = self.settings_inventory_selected_row() {
+                if let Some(row) = self.settings_inventory_selected_row(cx) {
                     self.open_remove_inventory_row(row, cx);
                 }
             }
-            "right" => self.step_settings_inventory_in(),
-            "left" => self.step_settings_inventory_out(),
+            "right" => self.step_settings_inventory_in(cx),
+            "left" => self.step_settings_inventory_out(cx),
             _ => return false,
         }
         true
@@ -1135,8 +1177,8 @@ impl Shell {
 
     /// `r`: Add room for the selected Property (or the selected Room's), opening it so the new
     /// Room shows. With no Property it is a Toast.
-    fn add_inventory_room_for_selection(&mut self) {
-        let property = match self.settings_inventory_selected_row() {
+    fn add_inventory_room_for_selection(&mut self, cx: &mut App) {
+        let property = match self.settings_inventory_selected_row(cx) {
             Some(InventoryRow::Property(id)) => id,
             Some(InventoryRow::Room(id)) => match self.inventory.room(id) {
                 Some((property, _)) => property.id,
@@ -1150,16 +1192,17 @@ impl Shell {
                 return;
             }
         };
-        self.settings_inventory_expanded.insert(property);
+        self.settings_view
+            .update(cx, |v, cx| v.expand(cx, property));
         self.open_add_room_dialog(property);
     }
 
     /// `right`: open a closed Property, or step from an open one to its first Room.
-    fn step_settings_inventory_in(&mut self) {
-        let Some(InventoryRow::Property(id)) = self.settings_inventory_selected_row() else {
+    fn step_settings_inventory_in(&mut self, cx: &mut App) {
+        let Some(InventoryRow::Property(id)) = self.settings_inventory_selected_row(cx) else {
             return;
         };
-        if self.settings_inventory_expanded.insert(id) {
+        if self.settings_view.update(cx, |v, cx| v.expand(cx, id)) {
             return;
         }
         if let Some(room) = self
@@ -1167,20 +1210,24 @@ impl Shell {
             .property(id)
             .and_then(|property| property.rooms.first())
         {
-            self.settings_inventory_selected = Some(InventoryRow::Room(room.id));
+            self.settings_view.update(cx, |v, cx| {
+                v.set_inventory_selected(cx, Some(InventoryRow::Room(room.id)))
+            });
         }
     }
 
     /// `left`: climb from a Room to its Property, or close an open Property.
-    fn step_settings_inventory_out(&mut self) {
-        match self.settings_inventory_selected_row() {
+    fn step_settings_inventory_out(&mut self, cx: &mut App) {
+        match self.settings_inventory_selected_row(cx) {
             Some(InventoryRow::Room(id)) => {
                 if let Some((property, _)) = self.inventory.room(id) {
-                    self.settings_inventory_selected = Some(InventoryRow::Property(property.id));
+                    self.settings_view.update(cx, |v, cx| {
+                        v.set_inventory_selected(cx, Some(InventoryRow::Property(property.id)))
+                    });
                 }
             }
             Some(InventoryRow::Property(id)) => {
-                self.settings_inventory_expanded.remove(&id);
+                self.settings_view.update(cx, |v, cx| v.collapse(cx, id));
             }
             None => {}
         }
@@ -1231,30 +1278,33 @@ impl Shell {
 
     /// A click on a row of Settings' Documents table: selects it and moves focus into the page.
     fn handle_settings_documents_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.settings_documents_selected = Some(id);
-        self.focus_settings_page();
+        self.settings_view
+            .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
+        self.focus_settings_page(cx);
         cx.notify();
     }
 
     /// **edit** on a Documents row: selects it and opens the Edit dialog.
     fn handle_settings_documents_edit_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.settings_documents_selected = Some(id);
-        self.focus_settings_page();
+        self.settings_view
+            .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
+        self.focus_settings_page(cx);
         self.open_edit_document_type_dialog(id, cx);
         cx.notify();
     }
 
     /// **remove** on a Documents row: selects it and opens the Remove dialog.
     fn handle_settings_documents_remove_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.settings_documents_selected = Some(id);
-        self.focus_settings_page();
+        self.settings_view
+            .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
+        self.focus_settings_page(cx);
         self.open_remove_document_type_dialog(id, cx);
         cx.notify();
     }
 
     /// **+ Add document type**: opens the Add dialog.
     fn handle_settings_documents_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.focus_settings_page();
+        self.focus_settings_page(cx);
         self.open_add_document_type_dialog(cx);
         cx.notify();
     }
@@ -1265,26 +1315,29 @@ impl Shell {
         row: InventoryRow,
         cx: &mut Context<'_, Self>,
     ) {
-        self.settings_inventory_selected = Some(row);
-        self.focus_settings_page();
+        self.settings_view
+            .update(cx, |v, cx| v.set_inventory_selected(cx, Some(row)));
+        self.focus_settings_page(cx);
         cx.notify();
     }
 
     /// The disclosure control of a Property row: opens or closes it. Closing keeps the selection
     /// on screen by moving a hidden Room's selection up to its Property.
     fn handle_settings_inventory_toggle_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.focus_settings_page();
-        if self.settings_inventory_expanded.remove(&id) {
-            if let Some(InventoryRow::Room(room)) = self.settings_inventory_selected_row()
+        self.focus_settings_page(cx);
+        if self.settings_view.update(cx, |v, cx| v.collapse(cx, id)) {
+            if let Some(InventoryRow::Room(room)) = self.settings_inventory_selected_row(cx)
                 && self
                     .inventory
                     .room(room)
                     .is_some_and(|(property, _)| property.id == id)
             {
-                self.settings_inventory_selected = Some(InventoryRow::Property(id));
+                self.settings_view.update(cx, |v, cx| {
+                    v.set_inventory_selected(cx, Some(InventoryRow::Property(id)))
+                });
             }
         } else {
-            self.settings_inventory_expanded.insert(id);
+            self.settings_view.update(cx, |v, cx| v.expand(cx, id));
         }
         cx.notify();
     }
@@ -1295,8 +1348,9 @@ impl Shell {
         row: InventoryRow,
         cx: &mut Context<'_, Self>,
     ) {
-        self.settings_inventory_selected = Some(row);
-        self.focus_settings_page();
+        self.settings_view
+            .update(cx, |v, cx| v.set_inventory_selected(cx, Some(row)));
+        self.focus_settings_page(cx);
         self.open_edit_inventory_row(row);
         cx.notify();
     }
@@ -1307,22 +1361,23 @@ impl Shell {
         row: InventoryRow,
         cx: &mut Context<'_, Self>,
     ) {
-        self.settings_inventory_selected = Some(row);
-        self.focus_settings_page();
+        self.settings_view
+            .update(cx, |v, cx| v.set_inventory_selected(cx, Some(row)));
+        self.focus_settings_page(cx);
         self.open_remove_inventory_row(row, cx);
         cx.notify();
     }
 
     /// **+ Add property**.
     fn handle_settings_inventory_add_property_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.focus_settings_page();
-        self.open_add_property_dialog();
+        self.focus_settings_page(cx);
+        self.open_add_property_dialog(cx);
         cx.notify();
     }
 
     /// **+ Add room** under an open Property.
     fn handle_settings_inventory_add_room_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.focus_settings_page();
+        self.focus_settings_page(cx);
         self.open_add_room_dialog(id);
         cx.notify();
     }
@@ -1478,8 +1533,9 @@ impl Shell {
         section: SettingsSection,
         cx: &mut Context<'_, Self>,
     ) {
-        self.select_settings_page(section);
-        self.settings_focus = SettingsFocus::Index;
+        self.select_settings_page(section, cx);
+        self.settings_view
+            .update(cx, |v, cx| v.set_focus(cx, SettingsFocus::Index));
         cx.notify();
     }
 

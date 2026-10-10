@@ -309,7 +309,7 @@ impl Shell {
                 self.handle_settings_documents_reorder_key(keystroke, cx)
             }
             ActiveView::Settings(SettingsSection::Inventory) => {
-                self.handle_settings_inventory_reorder_key(keystroke)
+                self.handle_settings_inventory_reorder_key(keystroke, cx)
             }
             ActiveView::Transactions
             | ActiveView::Dashboard

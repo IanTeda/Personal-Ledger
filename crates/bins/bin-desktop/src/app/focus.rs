@@ -35,7 +35,8 @@ impl Shell {
     /// last-visited one and stays.
     pub(super) fn reset_view_scroll(&mut self, cx: &mut gpui::App) {
         self.view_scroll_handle.set_offset(gpui::Point::default());
-        self.settings_focus = SettingsFocus::default();
+        self.settings_view
+            .update(cx, |v, cx| v.set_focus(cx, SettingsFocus::default()));
         self.colour_theme_focus = None;
         // `g f` and the palette land on the Documents list, unlike Settings' index.
         self.edit_documents_state(cx, |state| state.focus = DocumentsFocus::List);
@@ -89,8 +90,8 @@ impl Shell {
     }
 
     fn apply_view_movement(&mut self, movement: Movement, cx: &mut gpui::Context<'_, Self>) {
-        let page_focused =
-            self.nav.focus() == FocusZone::View && self.settings_focus == SettingsFocus::Page;
+        let page_focused = self.nav.focus() == FocusZone::View
+            && self.settings_view.read(cx).focus() == SettingsFocus::Page;
         match self.active_view(cx) {
             ActiveView::Settings(SettingsSection::Accounts) if page_focused => {
                 self.apply_accounts_movement(movement, cx);
@@ -108,16 +109,16 @@ impl Shell {
                 self.apply_settings_documents_movement(movement, cx);
             }
             ActiveView::Settings(SettingsSection::Inventory) if page_focused => {
-                self.apply_settings_inventory_movement(movement);
+                self.apply_settings_inventory_movement(movement, cx);
             }
             ActiveView::Settings(_) => {
-                if self.settings_focus == SettingsFocus::Index
+                if self.settings_view.read(cx).focus() == SettingsFocus::Index
                     && matches!(
                         movement,
                         Movement::Next | Movement::Prev | Movement::First | Movement::Last
                     )
                 {
-                    self.apply_settings_section_movement(movement);
+                    self.apply_settings_section_movement(movement, cx);
                 } else {
                     self.scroll_view(movement);
                 }

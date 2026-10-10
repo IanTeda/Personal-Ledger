@@ -80,13 +80,13 @@ impl Shell {
     ) -> Option<PageStatus> {
         match self.active_view(cx) {
             ActiveView::Documents => self.documents_page_status(cx),
-            ActiveView::Settings(_) if self.accounts_page_has_focus() => Some(PageStatus {
+            ActiveView::Settings(_) if self.accounts_page_has_focus(cx) => Some(PageStatus {
                 hints: accounts_hints(),
                 right: crate::msg::desktop_accounts_count(
                     i64::try_from(self.accounts.read(cx).accounts().len()).unwrap_or(i64::MAX),
                 ),
             }),
-            ActiveView::Settings(_) if self.settings_tags_page_has_focus() => Some(PageStatus {
+            ActiveView::Settings(_) if self.settings_tags_page_has_focus(cx) => Some(PageStatus {
                 hints: match self.tags_dialog() {
                     Some(tags::form::TagsDialog::Add(_)) => tag_dialog_hints(false),
                     Some(tags::form::TagsDialog::Edit(..)) => tag_dialog_hints(true),
@@ -99,15 +99,17 @@ impl Shell {
                     &tags::duplicate_groups(self.tags_list(cx), self.transactions(cx)),
                 ),
             }),
-            ActiveView::Settings(_) if self.settings_payees_page_has_focus() => Some(PageStatus {
-                hints: match self.payees_dialog() {
-                    Some(payees::form::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
-                    Some(_) => payee_dialog_hints(),
-                    None => settings_payees_hints(),
-                },
-                right: settings_view::payees::scope_text(self.payees_list(cx)),
-            }),
-            ActiveView::Settings(_) if self.settings_documents_page_has_focus() => {
+            ActiveView::Settings(_) if self.settings_payees_page_has_focus(cx) => {
+                Some(PageStatus {
+                    hints: match self.payees_dialog() {
+                        Some(payees::form::PayeesDialog::Delete(..)) => confirm_dialog_hints(),
+                        Some(_) => payee_dialog_hints(),
+                        None => settings_payees_hints(),
+                    },
+                    right: settings_view::payees::scope_text(self.payees_list(cx)),
+                })
+            }
+            ActiveView::Settings(_) if self.settings_documents_page_has_focus(cx) => {
                 Some(PageStatus {
                     hints: self
                         .document_types_dialog()
@@ -115,24 +117,24 @@ impl Shell {
                     right: settings_view::documents::scope_text(self.document_types(cx)),
                 })
             }
-            ActiveView::Settings(_) if self.settings_inventory_page_has_focus() => {
+            ActiveView::Settings(_) if self.settings_inventory_page_has_focus(cx) => {
                 Some(PageStatus {
                     hints: self.inventory_dialog().map_or_else(
-                        || settings_inventory_hints(self.settings_inventory_selected_row()),
+                        || settings_inventory_hints(self.settings_inventory_selected_row(cx)),
                         inventory_ui::dialog_hints,
                     ),
                     right: inventory_view::scope_text(&self.inventory),
                 })
             }
-            ActiveView::Settings(_) if self.settings_categories_page_has_focus() => {
+            ActiveView::Settings(_) if self.settings_categories_page_has_focus(cx) => {
                 Some(PageStatus {
                     hints: settings_categories_hints(),
                     right: settings_view::categories::scope_note(self.categories(cx)),
                 })
             }
             ActiveView::Settings(_) if self.nav.focus() == FocusZone::View => Some(PageStatus {
-                hints: self.settings_hints(),
-                right: self.settings_selected_section.scope_note(),
+                hints: self.settings_hints(cx),
+                right: self.settings_view.read(cx).selected_section().scope_note(),
             }),
             ActiveView::Bills
                 if matches!(self.bills_dialog(), Some(bills::BillsDialog::Pay(_))) =>

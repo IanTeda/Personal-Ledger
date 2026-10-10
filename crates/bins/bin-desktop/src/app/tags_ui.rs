@@ -54,11 +54,11 @@ impl Shell {
     }
 
     /// Whether Settings' Tags list owns the keyboard: the page, not the index, has focus.
-    pub(super) fn settings_tags_page_has_focus(&self) -> bool {
+    pub(super) fn settings_tags_page_has_focus(&self, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
-            && self.settings_focus == SettingsFocus::Page
-            && self.settings_selected_section == SettingsSection::Tags
+            && self.settings_view.read(cx).focus() == SettingsFocus::Page
+            && self.settings_view.read(cx).selected_section() == SettingsSection::Tags
     }
 
     /// The Settings Tags page's selected Tag: the stored id while it still exists, else the first
@@ -97,7 +97,7 @@ impl Shell {
 
     /// The selected Tag: the Tags page's row indexes the usage order, not the rows.
     pub(super) fn selected_tag_id(&self, cx: &App) -> Option<u32> {
-        if self.settings_tags_page_has_focus() {
+        if self.settings_tags_page_has_focus(cx) {
             return self.settings_tags_selected_id(cx);
         }
         let sorted = tags::sorted_by_usage(self.tags_list(cx), self.transactions(cx));
@@ -127,7 +127,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        if !self.settings_tags_page_has_focus() {
+        if !self.settings_tags_page_has_focus(cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -399,7 +399,7 @@ impl Shell {
     /// A click on a row of Settings' Tags list: selects it and moves focus into the page.
     pub(super) fn handle_settings_tags_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_tag(id, cx);
-        self.focus_settings_page();
+        self.focus_settings_page(cx);
         cx.notify();
     }
 

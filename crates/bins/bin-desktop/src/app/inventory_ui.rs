@@ -6,7 +6,7 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, Context};
+use gpui::{AnyElement, App, Context};
 use lib_toast::ToastKind;
 
 use super::Shell;
@@ -69,8 +69,8 @@ impl Shell {
     }
 
     /// The Property the selected row belongs to.
-    fn selected_inventory_property(&self) -> Option<u32> {
-        match self.settings_inventory_selected_row()? {
+    fn selected_inventory_property(&self, cx: &App) -> Option<u32> {
+        match self.settings_inventory_selected_row(cx)? {
             InventoryRow::Property(id) => Some(id),
             InventoryRow::Room(id) => self.inventory.room(id).map(|(property, _)| property.id),
         }
@@ -85,18 +85,18 @@ impl Shell {
     }
 
     /// `x` or **remove**: same split as [`Self::open_edit_inventory_row`].
-    pub(super) fn open_remove_inventory_row(&mut self, row: InventoryRow, cx: &gpui::App) {
+    pub(super) fn open_remove_inventory_row(&mut self, row: InventoryRow, cx: &App) {
         match row {
             InventoryRow::Property(id) => self.open_remove_property_dialog(id, cx),
             InventoryRow::Room(id) => self.open_remove_room_dialog(id),
         }
     }
 
-    pub(super) fn open_add_property_dialog(&mut self) {
+    pub(super) fn open_add_property_dialog(&mut self, cx: &App) {
         // The selected Property's Unit, else the first fiat Unit.
         let choices = self.property_unit_choices();
         let preferred = self
-            .selected_inventory_property()
+            .selected_inventory_property(cx)
             .and_then(|id| self.inventory.property(id))
             .and_then(|property| choices.iter().find(|(_, code)| *code == property.unit))
             .or_else(|| choices.first())
@@ -113,7 +113,7 @@ impl Shell {
         self.open_dialog(OpenDialog::Inventory(InventoryDialog::Edit(id, form)));
     }
 
-    pub(super) fn open_remove_property_dialog(&mut self, id: u32, cx: &gpui::App) {
+    pub(super) fn open_remove_property_dialog(&mut self, id: u32, cx: &App) {
         let Some(property) = self.inventory.property(id) else {
             return;
         };
@@ -164,7 +164,7 @@ impl Shell {
         self.open_dialog(OpenDialog::Inventory(dialog));
     }
 
-    fn holdings(&self, id: u32, cx: &gpui::App) -> Holdings {
+    fn holdings(&self, id: u32, cx: &App) -> Holdings {
         let rooms = self.inventory.property(id).map_or(0, |p| p.rooms.len());
         let items: Vec<u32> = self
             .inventory
@@ -189,7 +189,7 @@ impl Shell {
         }
     }
 
-    fn holdings_need_typed_name(&self, id: u32, cx: &gpui::App) -> bool {
+    fn holdings_need_typed_name(&self, id: u32, cx: &App) -> bool {
         let holdings = self.holdings(id, cx);
         holdings.rooms > 0 || holdings.items > 0
     }
@@ -197,15 +197,18 @@ impl Shell {
     /// Applies a confirmed Inventory dialog (reached through [`Self::confirm_open_dialog`] from
     /// **Add property** / **Save** / **Remove property** and `enter`): applies the change and
     /// selects the Property or Room. The Room-blocked notice only closes.
-    pub(super) fn apply_inventory_dialog(&mut self, dialog: InventoryDialog, cx: &mut gpui::App) {
+    pub(super) fn apply_inventory_dialog(&mut self, dialog: InventoryDialog, cx: &mut App) {
         match dialog {
             InventoryDialog::AddRoom(property, form) => {
                 let name = form.name.text().trim().to_string();
                 let Ok(id) = inventory::add_room(&mut self.inventory, property, &name) else {
                     return;
                 };
-                self.settings_inventory_expanded.insert(property);
-                self.settings_inventory_selected = Some(InventoryRow::Room(id));
+                self.settings_view
+                    .update(cx, |v, cx| v.expand(cx, property));
+                self.settings_view.update(cx, |v, cx| {
+                    v.set_inventory_selected(cx, Some(InventoryRow::Room(id)))
+                });
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_inventory_toast_room_added(&name),
@@ -216,7 +219,9 @@ impl Shell {
                 if inventory::edit_room(&mut self.inventory, id, &name).is_err() {
                     return;
                 }
-                self.settings_inventory_selected = Some(InventoryRow::Room(id));
+                self.settings_view.update(cx, |v, cx| {
+                    v.set_inventory_selected(cx, Some(InventoryRow::Room(id)))
+                });
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_inventory_toast_room_saved(&name),
@@ -246,13 +251,13 @@ impl Shell {
                     .property(property_id)
                     .map(|p| p.rooms.as_slice())
                     .unwrap_or_default();
-                self.settings_inventory_selected = Some(
-                    rooms
-                        .get(position.min(rooms.len().saturating_sub(1)))
-                        .map_or(InventoryRow::Property(property_id), |r| {
-                            InventoryRow::Room(r.id)
-                        }),
-                );
+                let selected = rooms
+                    .get(position.min(rooms.len().saturating_sub(1)))
+                    .map_or(InventoryRow::Property(property_id), |r| {
+                        InventoryRow::Room(r.id)
+                    });
+                self.settings_view
+                    .update(cx, |v, cx| v.set_inventory_selected(cx, Some(selected)));
                 let toast = match destination_name {
                     Some(to) if items > 0 => {
                         crate::msg::desktop_inventory_toast_room_removed_moved(
@@ -278,8 +283,10 @@ impl Shell {
                 let Ok(id) = inventory::add_property(&mut self.inventory, &draft, unit) else {
                     return;
                 };
-                self.settings_inventory_expanded.insert(id);
-                self.settings_inventory_selected = Some(InventoryRow::Property(id));
+                self.settings_view.update(cx, |v, cx| v.expand(cx, id));
+                self.settings_view.update(cx, |v, cx| {
+                    v.set_inventory_selected(cx, Some(InventoryRow::Property(id)))
+                });
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_inventory_toast_property_added(form.name.text().trim()),
@@ -292,7 +299,9 @@ impl Shell {
                 if inventory::edit_property(&mut self.inventory, id, &draft).is_err() {
                     return;
                 }
-                self.settings_inventory_selected = Some(InventoryRow::Property(id));
+                self.settings_view.update(cx, |v, cx| {
+                    v.set_inventory_selected(cx, Some(InventoryRow::Property(id)))
+                });
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_inventory_toast_property_saved(form.name.text().trim()),
@@ -318,12 +327,14 @@ impl Shell {
                 self.mutate_documents(cx, |data| {
                     documents::drop_inventory_links(&mut data.documents, &removed.items)
                 });
-                self.settings_inventory_expanded.remove(&id);
-                self.settings_inventory_selected = self
+                self.settings_view.update(cx, |v, cx| v.collapse(cx, id));
+                let selected = self
                     .inventory
                     .properties
                     .get(position.min(self.inventory.properties.len().saturating_sub(1)))
                     .map(|p| InventoryRow::Property(p.id));
+                self.settings_view
+                    .update(cx, |v, cx| v.set_inventory_selected(cx, selected));
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_inventory_toast_property_removed(&name),
@@ -385,7 +396,7 @@ impl Shell {
     pub(super) fn render_inventory_dialog(
         &self,
         entity: &gpui::Entity<Shell>,
-        cx: &gpui::App,
+        cx: &App,
     ) -> Option<AnyElement> {
         let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
             let entity = entity.clone();
@@ -479,7 +490,7 @@ impl Shell {
         form: &RoomForm,
         problem: Option<inventory::NameError>,
         plain: impl Fn(fn(&mut Shell, &mut Context<'_, Shell>)) -> crate::dialog::OnClick,
-        cx: &gpui::App,
+        cx: &App,
     ) -> AnyElement {
         view::render_room_form(
             view::RoomFormProps {
@@ -504,7 +515,7 @@ impl Shell {
         fixed_unit: Option<String>,
         problem: Option<Problem>,
         plain: impl Fn(fn(&mut Shell, &mut Context<'_, Shell>)) -> crate::dialog::OnClick,
-        cx: &gpui::App,
+        cx: &App,
     ) -> AnyElement {
         let on_field_click: view::OnFieldClick = {
             let entity = entity.clone();

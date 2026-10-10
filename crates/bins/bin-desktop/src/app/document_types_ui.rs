@@ -73,13 +73,15 @@ impl Shell {
                 let id = self.mutate_documents(cx, |data| {
                     documents::types::add_type(&mut data.types, &mut data.types_next_id, &form)
                 });
-                self.settings_documents_selected = Some(id);
+                self.settings_view
+                    .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
             }
             DocumentTypesDialog::Edit(id, form) => {
                 self.mutate_documents(cx, |data| {
                     documents::types::edit_type(&mut data.types, id, &form);
                 });
-                self.settings_documents_selected = Some(id);
+                self.settings_view
+                    .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
             }
             DocumentTypesDialog::Remove(id, form) => {
                 // Keep the cursor on the neighbour that takes the removed row's place.
@@ -115,10 +117,14 @@ impl Shell {
                         state.scope = documents::LibraryScope::All;
                     });
                 }
-                self.settings_documents_selected = self
-                    .document_types(cx)
-                    .get(position.min(self.document_types(cx).len().saturating_sub(1)))
-                    .map(|row| row.id);
+                self.settings_view.update(cx, |v, cx| {
+                    v.set_documents_selected(
+                        cx,
+                        self.document_types(cx)
+                            .get(position.min(self.document_types(cx).len().saturating_sub(1)))
+                            .map(|row| row.id),
+                    )
+                });
             }
             DocumentTypesDialog::DefaultNotice => {}
         }

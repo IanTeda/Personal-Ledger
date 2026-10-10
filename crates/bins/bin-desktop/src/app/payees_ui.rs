@@ -46,11 +46,11 @@ impl Shell {
     }
 
     /// Whether Settings' Payees list owns the keyboard: the page, not the index, has focus.
-    pub(super) fn settings_payees_page_has_focus(&self) -> bool {
+    pub(super) fn settings_payees_page_has_focus(&self, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
-            && self.settings_focus == SettingsFocus::Page
-            && self.settings_selected_section == SettingsSection::Payees
+            && self.settings_view.read(cx).focus() == SettingsFocus::Page
+            && self.settings_view.read(cx).selected_section() == SettingsSection::Payees
     }
 
     /// The Settings Payees page's selected Payee: the stored id while it still exists, else the
@@ -90,7 +90,7 @@ impl Shell {
     /// The selected Payee: the Payees page's row, or the Settings list's when that owns the
     /// keyboard.
     pub(super) fn selected_payee_id(&self, cx: &App) -> Option<u32> {
-        if self.settings_payees_page_has_focus() {
+        if self.settings_payees_page_has_focus(cx) {
             return self.settings_payees_selected_id(cx);
         }
         let payees = self.payees_list(cx);
@@ -118,7 +118,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        if !self.settings_payees_page_has_focus() {
+        if !self.settings_payees_page_has_focus(cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
@@ -341,7 +341,7 @@ impl Shell {
     /// A click on a row of Settings' Payees list: selects it and moves focus into the page.
     pub(super) fn handle_settings_payees_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.select_payee(id, cx);
-        self.focus_settings_page();
+        self.focus_settings_page(cx);
         cx.notify();
     }
 

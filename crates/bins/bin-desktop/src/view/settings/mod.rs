@@ -16,6 +16,7 @@ pub(crate) mod hints;
 pub mod institutions;
 pub mod inventory;
 pub mod payees;
+pub mod state;
 pub mod sync_server;
 pub mod tags;
 pub mod tracing;

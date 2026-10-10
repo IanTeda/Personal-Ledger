@@ -23,11 +23,11 @@ const CATEGORIES_HALF_PAGE: usize = 5;
 
 impl Shell {
     /// Whether Settings' Categories tree owns the keyboard: the page, not the index, has focus.
-    pub(super) fn settings_categories_page_has_focus(&self) -> bool {
+    pub(super) fn settings_categories_page_has_focus(&self, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
-            && self.settings_focus == SettingsFocus::Page
-            && self.settings_selected_section == SettingsSection::Categories
+            && self.settings_view.read(cx).focus() == SettingsFocus::Page
+            && self.settings_view.read(cx).selected_section() == SettingsSection::Categories
     }
 
     /// Whether `left` has something to do inside the Categories tree: fold an open parent, or
@@ -126,7 +126,7 @@ impl Shell {
     /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it,
     /// `enter` opens Transactions filtered to the selected category.
     pub(super) fn handle_categories_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        let on_settings_page = self.settings_categories_page_has_focus();
+        let on_settings_page = self.settings_categories_page_has_focus(cx);
         if !on_settings_page {
             return false;
         }
@@ -545,7 +545,7 @@ impl Shell {
         cx: &mut Context<'_, Self>,
     ) {
         self.select_category(Some(id), cx);
-        self.focus_settings_page();
+        self.focus_settings_page(cx);
         cx.notify();
     }
 }

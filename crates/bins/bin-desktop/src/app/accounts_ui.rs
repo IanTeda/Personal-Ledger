@@ -45,11 +45,11 @@ pub(super) fn delete_account(
 impl Shell {
     /// Whether the Accounts rows own the keyboard: Settings' Accounts page with focus in the page
     /// rather than on the index.
-    pub(super) fn accounts_page_has_focus(&self) -> bool {
+    pub(super) fn accounts_page_has_focus(&self, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
-            && self.settings_focus == SettingsFocus::Page
-            && self.settings_selected_section == SettingsSection::Accounts
+            && self.settings_view.read(cx).focus() == SettingsFocus::Page
+            && self.settings_view.read(cx).selected_section() == SettingsSection::Accounts
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` step the Accounts page's row selection instead of
@@ -87,7 +87,7 @@ impl Shell {
         keystroke: &Keystroke,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        if !self.accounts_page_has_focus() {
+        if !self.accounts_page_has_focus(cx) {
             return false;
         }
         let modifiers = &keystroke.modifiers;
