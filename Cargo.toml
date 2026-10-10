@@ -94,6 +94,11 @@ members = [
 ]
 
 
+# Package metadata every member inherits with `<key>.workspace = true`, including `lib-core`,
+# which joins only as a path dependency.
+[workspace.package]
+license = "MIT"
+
 # Define shared dependencies here to ensure consistent versions across workspace members
 # In member crates' Cargo.toml, reference them as: serde = { workspace = true }
 # Common workspace dev dependencies can also be defined here. Then added to the dev-dependencies

@@ -18,7 +18,8 @@ ignore = [
   { id = "RUSTSEC-2023-0071", reason = "rsa is pulled in by jsonwebtoken, but the Sync Server signs and verifies HS256 only (bin-sync-server/src/auth/jwt.rs), so no RSA key is ever used; no patched rsa exists yet" },
 ]
 
-# Licences must be compatible with this project's GPL-3.0. Workspace crates are `publish = false`
+# Licences must keep the shipped binaries distributable under this project's MIT licence, so
+# permissive and file-level copyleft (MPL-2.0) only. Workspace crates are `publish = false`
 # and skipped via `private.ignore`. Crates offering a choice (e.g. `Apache-2.0 OR GPL-2.0-only`)
 # pass as long as one option is allowed here.
 [licenses]
