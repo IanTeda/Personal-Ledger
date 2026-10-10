@@ -257,7 +257,7 @@ impl Shell {
 
     pub(super) fn budgets_ledger<'a>(&'a self, cx: &'a gpui::App) -> budgets::Ledger<'a> {
         budgets::Ledger {
-            categories: &self.categories,
+            categories: self.categories(cx),
             accounts: self.accounts.read(cx).accounts(),
             transactions: self.transactions(cx),
             plans: self.bill_plans(cx),
@@ -351,10 +351,11 @@ impl Shell {
             return;
         };
         let current = self.budgets_state(cx).current;
+        let categories = self.categories(cx).to_vec();
         let saved = self.mutate_budgets(cx, |budgets| {
             budgets.save_cell(
                 current,
-                &self.categories,
+                &categories,
                 edit.category_id,
                 edit.month,
                 span,
@@ -399,10 +400,11 @@ impl Shell {
             return;
         };
         let current = self.budgets_state(cx).current;
+        let categories = self.categories(cx).to_vec();
         let _ = self.mutate_budgets(cx, |budgets| {
             budgets.save_cell(
                 current,
-                &self.categories,
+                &categories,
                 row.category_id,
                 cell.month,
                 budgets::Span::Onward,
@@ -668,7 +670,7 @@ impl Shell {
         };
         let csv = budgets::history_csv(
             &history,
-            &self.categories,
+            self.categories(cx),
             &labels,
             budgets_view::period_label,
         );
@@ -767,7 +769,7 @@ impl Shell {
     ) -> Option<budgets::CategoryDetail> {
         let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
         let ledger = budgets::Ledger {
-            categories: &self.categories,
+            categories: self.categories(cx),
             accounts: self.accounts.read(cx).accounts(),
             transactions: self.transactions(cx),
             plans: self.bill_plans(cx),
@@ -808,7 +810,7 @@ impl Shell {
         let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
         Some(budgets::limit_form::LimitOptions::new(
             budget,
-            &self.categories,
+            self.categories(cx),
             Period::of(self.today),
             count,
             |month, current| {
@@ -841,11 +843,11 @@ impl Shell {
         };
         let current = Period::of(self.today);
         let form = if budgets::applied(budget.chain(category_id), current).is_some() {
-            if !categories::is_leaf(&self.categories, category_id) {
+            if !categories::is_leaf(self.categories(cx), category_id) {
                 return;
             }
             budgets::limit_form::LimitForm::edit(budget, category_id, month, &options)
-        } else if budgets::unbudgeted_leaves(budget, &self.categories, current)
+        } else if budgets::unbudgeted_leaves(budget, self.categories(cx), current)
             .contains(&category_id)
         {
             budgets::limit_form::LimitForm::pick(Some(category_id), &options)
@@ -920,8 +922,9 @@ impl Shell {
             return;
         };
         let current = self.budgets_state(cx).current;
+        let categories = self.categories(cx).to_vec();
         let saved = self.mutate_budgets(cx, |budgets| {
-            budgets::limit_form::save(budgets, current, &self.categories, &draft, self.today)
+            budgets::limit_form::save(budgets, current, &categories, &draft, self.today)
         });
         if let Err(error) = saved {
             form.error = Some(error);
@@ -940,14 +943,9 @@ impl Shell {
             return;
         };
         let current = self.budgets_state(cx).current;
+        let categories = self.categories(cx).to_vec();
         let stopped = self.mutate_budgets(cx, |budgets| {
-            budgets.stop(
-                current,
-                &self.categories,
-                form.category_id,
-                month,
-                self.today,
-            )
+            budgets.stop(current, &categories, form.category_id, month, self.today)
         });
         if let Err(error) = stopped {
             form.error = Some(error);
@@ -1060,8 +1058,9 @@ impl Shell {
         let entries = self.bill_entries(cx).to_vec();
         let saved = match draft {
             budgets::form::BudgetDraft::Create(new) => {
+                let categories = self.categories(cx).to_vec();
                 let ledger = budgets::Ledger {
-                    categories: &self.categories,
+                    categories: &categories,
                     accounts: &accounts,
                     transactions: &transactions,
                     plans: &plans,
@@ -1467,8 +1466,9 @@ impl Shell {
         let transactions = self.transactions(cx).to_vec();
         let plans = self.bill_plans(cx).to_vec();
         let entries = self.bill_entries(cx).to_vec();
+        let categories = self.categories(cx).to_vec();
         let ledger = budgets::Ledger {
-            categories: &self.categories,
+            categories: &categories,
             accounts: &accounts,
             transactions: &transactions,
             plans: &plans,
@@ -1521,7 +1521,7 @@ impl Shell {
             .map(|each| budgets::fill_preview(budget, &ledger, month, each));
         let chosen = previews.iter().find(|preview| preview.source == source)?;
         let name = |category_id: &u32| {
-            self.categories
+            self.categories(cx)
                 .iter()
                 .find(|category| category.id == *category_id)
                 .map(|category| category.name.clone())
@@ -1591,8 +1591,8 @@ impl Shell {
     /// Whether 9d offers Edit budget: a leaf Expense Category in a Budget that takes edits.
     pub(super) fn budgets_detail_editable(&self, category_id: u32, cx: &gpui::App) -> bool {
         self.budgets_editable(cx).is_some()
-            && categories::is_leaf(&self.categories, category_id)
-            && self.categories.iter().any(|category| {
+            && categories::is_leaf(self.categories(cx), category_id)
+            && self.categories(cx).iter().any(|category| {
                 category.id == category_id && category.category_type == CategoryTypes::Expense
             })
     }
@@ -1664,7 +1664,7 @@ impl Shell {
             on_click
         };
         let leaf_name = |category_id: u32| {
-            self.categories
+            self.categories(cx)
                 .iter()
                 .find(|category| category.id == category_id)
                 .map(|category| category.name.clone())
@@ -1676,7 +1676,7 @@ impl Shell {
                     budgets::limit_form::preview(
                         self.budgets(cx),
                         self.budgets_state(cx).current,
-                        &self.categories,
+                        self.categories(cx),
                         draft,
                         self.today,
                     )
@@ -1820,7 +1820,8 @@ impl Shell {
             });
             on_click
         };
-        let category = categories::path(&self.categories, detail.category_id).unwrap_or_default();
+        let category =
+            categories::path(self.categories(cx), detail.category_id).unwrap_or_default();
         let name = category
             .rsplit(" / ")
             .next()

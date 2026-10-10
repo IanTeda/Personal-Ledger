@@ -127,7 +127,7 @@ impl Shell {
             ActiveView::Settings(_) if self.settings_categories_page_has_focus() => {
                 Some(PageStatus {
                     hints: settings_categories_hints(),
-                    right: settings_view::categories::scope_note(&self.categories),
+                    right: settings_view::categories::scope_note(self.categories(cx)),
                 })
             }
             ActiveView::Settings(_) if self.nav.focus() == FocusZone::View => Some(PageStatus {

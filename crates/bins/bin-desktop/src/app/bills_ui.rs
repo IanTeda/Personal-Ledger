@@ -177,7 +177,7 @@ impl Shell {
                     .collect();
             }
             FilterField::Category => self
-                .categories
+                .categories(cx)
                 .iter()
                 .filter(|c| plans.iter().any(|p| p.category_id == c.id))
                 .map(|c| (c.id, c.name.clone()))
@@ -374,7 +374,7 @@ impl Shell {
         cx: &App,
     ) -> bills::form::BillPlanSource {
         bills::form::BillPlanSource::new(
-            &self.categories,
+            self.categories(cx),
             self.accounts.read(cx).accounts(),
             self.payees_list(cx),
             keep_payee,
@@ -436,10 +436,10 @@ impl Shell {
         };
         let (today, is_active) = (self.today, form.is_active);
         let accounts = self.accounts.read(cx).accounts().to_vec();
-        let categories = &self.categories;
+        let categories = self.categories(cx).to_vec();
         let result = edit_bills(&self.bills_store, cx, |plans, entries| match editing {
-            None => bills::insert_plan(plans, entries, &draft, categories, &accounts, today),
-            Some(id) => bills::edit_plan(plans, entries, id, &draft, categories, &accounts, today)
+            None => bills::insert_plan(plans, entries, &draft, &categories, &accounts, today),
+            Some(id) => bills::edit_plan(plans, entries, id, &draft, &categories, &accounts, today)
                 .and_then(|()| bills::set_active(plans, entries, id, is_active, today))
                 .map(|()| id),
         });
@@ -536,7 +536,7 @@ impl Shell {
             self.bill_entries(cx),
             self.transactions(cx),
             self.accounts.read(cx).accounts(),
-            &self.categories,
+            self.categories(cx),
             row.id,
         );
         let preselected = bills::preselected_candidate(plan, &candidates, self.transactions(cx));
@@ -567,7 +567,7 @@ impl Shell {
             return;
         };
         let accounts = self.accounts.read(cx).accounts().to_vec();
-        let categories = &self.categories;
+        let categories = self.categories(cx).to_vec();
         let result = edit_bills_and_transactions(
             &self.bills_store,
             &self.transactions_store,
@@ -581,7 +581,7 @@ impl Shell {
                     entries,
                     transactions,
                     &accounts,
-                    categories,
+                    &categories,
                     entry,
                     split,
                 ),
@@ -673,7 +673,7 @@ impl Shell {
             .payee_id
             .and_then(|id| payees::get(self.payees_list(cx), id))
             .map_or_else(crate::msg::desktop_bills_pay_no_payee, |p| p.name.clone());
-        let category = categories::path(&self.categories, plan.category_id).unwrap_or_default();
+        let category = categories::path(self.categories(cx), plan.category_id).unwrap_or_default();
         Some(bills_view::pay_dialog::render(
             bills_view::pay_dialog::PayDialogProps {
                 plan_name: &plan.name,

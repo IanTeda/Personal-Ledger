@@ -608,7 +608,7 @@ impl Render for Shell {
         };
         let settings_payees_page = settings_view::payees::PayeesPageProps {
             payees: self.payees_list(cx),
-            categories: &self.categories,
+            categories: self.categories(cx),
             selected: self.settings_payees_selected_id(cx),
             on_add_click: on_payees_add_click,
             on_row_click: payee_click(Shell::handle_settings_payees_row_click),
@@ -797,7 +797,7 @@ impl Render for Shell {
         .budgets(
             default_budget_figures
                 .as_ref()
-                .map(|figures| self.dashboard_budget_list(figures))
+                .map(|figures| self.dashboard_budget_list(figures, cx))
                 .unwrap_or_default(),
         );
         let bills_page = bills_view::BillsPageProps {
@@ -882,7 +882,7 @@ impl Render for Shell {
             planner: bills_view::planner::PlannerProps {
                 plans: &bills_planner_plans,
                 inactive: bills::inactive_count(self.bill_plans(cx)),
-                categories: &self.categories,
+                categories: self.categories(cx),
                 accounts: self.accounts.read(cx).accounts(),
                 base_unit: bills_base_unit,
                 selected: (!bills_planner_plans.is_empty()).then(|| {
@@ -904,7 +904,7 @@ impl Render for Shell {
             on_period_next: bills_plain(Shell::handle_bills_period_next),
             on_all_click: bills_plain(Shell::handle_bills_all_click),
         };
-        let import_categories = self.import_category_options();
+        let import_categories = self.import_category_options(cx);
         let import_page = self.import_state(cx).map(|state| {
             let entity_for = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
                 let entity = entity.clone();
@@ -984,7 +984,7 @@ impl Render for Shell {
                 history: budgets_history.as_ref().map(|history| {
                     budgets_view::history::HistoryProps {
                         history,
-                        categories: &self.categories,
+                        categories: self.categories(cx),
                         cursor: self.budgets_history_cursor_in(history, cx),
                         on_cell_click: {
                             let entity = entity.clone();
@@ -999,7 +999,7 @@ impl Render for Shell {
                 on_export_click: plain(Shell::handle_budgets_export_click),
                 on_range_prev: plain(Shell::handle_budgets_range_prev),
                 on_range_next: plain(Shell::handle_budgets_range_next),
-                categories: &self.categories,
+                categories: self.categories(cx),
                 selected: (!figures.rows.is_empty())
                     .then(|| self.budgets_state(cx).selected.min(figures.rows.len() - 1)),
                 on_tab_click: {
@@ -1043,9 +1043,9 @@ impl Render for Shell {
             })
         };
         let settings_categories_page = settings_view::categories::CategoriesPageProps {
-            categories: &self.categories,
-            expanded: &self.categories_expanded,
-            selected: self.categories_selected_id,
+            categories: self.categories(cx),
+            expanded: self.categories_view.read(cx).expanded(),
+            selected: self.categories_view.read(cx).selected_id(),
             on_add_click: on_categories_add_click.clone(),
             on_add_sub_click: on_categories_add_sub_click.clone(),
             on_edit_click: on_categories_edit_click.clone(),
@@ -1288,7 +1288,7 @@ impl Render for Shell {
                 let chosen = settings_view::colour_theme::chosen_index(cx);
                 if this.handle_settings_form_key(&event.keystroke, chosen)
                     || this.handle_settings_tracing_key(&event.keystroke)
-                    || this.handle_settings_focus_key(&event.keystroke)
+                    || this.handle_settings_focus_key(&event.keystroke, cx)
                     || this.handle_colour_theme_grid_key(&event.keystroke)
                     || this.handle_bills_tab_key(&event.keystroke, cx)
                     || this.handle_budgets_tab_key(&event.keystroke, cx)
@@ -1664,14 +1664,14 @@ impl Render for Shell {
             .children(self.categories_dialog().map(|dialog| match dialog {
                 categories::form::CategoriesDialog::Add { form, .. } => {
                     let parent_options: Vec<_> = self
-                        .categories
+                        .categories(cx)
                         .iter()
                         .map(|c| {
-                            let depth = categories::depth(&self.categories, c.id);
+                            let depth = categories::depth(self.categories(cx), c.id);
                             let is_available = depth < 2; // Can't add children to depth-2 categories
                             categories_view::add_dialog::ParentOption {
                                 id: Some(c.id),
-                                label: categories::path(&self.categories, c.id)
+                                label: categories::path(self.categories(cx), c.id)
                                     .unwrap_or_else(|| c.name.clone()),
                                 is_available,
                             }
@@ -1681,7 +1681,7 @@ impl Render for Shell {
                     categories_view::add_dialog::render(
                         form,
                         &parent_options,
-                        &self.categories,
+                        self.categories(cx),
                         categories_view::DialogHandlers {
                             on_field_click: on_categories_dialog_field_click,
                             on_parent_change: on_categories_dialog_parent_change,
@@ -1693,13 +1693,15 @@ impl Render for Shell {
                     )
                 }
                 categories::form::CategoriesDialog::Edit(category_id, form) => {
-                    let category = self.categories.iter().find(|c| c.id == *category_id);
+                    let category = self.categories(cx).iter().find(|c| c.id == *category_id);
                     let descendants = category
-                        .map(|_| categories::descendants_inclusive(&self.categories, *category_id))
+                        .map(|_| {
+                            categories::descendants_inclusive(self.categories(cx), *category_id)
+                        })
                         .unwrap_or_default();
 
                     let parent_options: Vec<_> = self
-                        .categories
+                        .categories(cx)
                         .iter()
                         .filter(|c| {
                             // Exclude the category itself
@@ -1711,12 +1713,12 @@ impl Render for Shell {
                                 return false;
                             }
                             // Check depth: can't be at depth 2 or deeper
-                            let depth = categories::depth(&self.categories, c.id);
+                            let depth = categories::depth(self.categories(cx), c.id);
                             depth < 2
                         })
                         .map(|c| categories_view::edit_dialog::ParentOption {
                             id: Some(c.id),
-                            label: categories::path(&self.categories, c.id)
+                            label: categories::path(self.categories(cx), c.id)
                                 .unwrap_or_else(|| c.name.clone()),
                             is_available: true,
                         })
@@ -1724,7 +1726,7 @@ impl Render for Shell {
 
                     // Count splits in this category (and descendants if parent)
                     let split_count =
-                        categories::descendants_inclusive(&self.categories, *category_id)
+                        categories::descendants_inclusive(self.categories(cx), *category_id)
                             .iter()
                             .flat_map(|cat_id| {
                                 self.transactions(cx).iter().flat_map(move |t| {
@@ -1733,13 +1735,13 @@ impl Render for Shell {
                             })
                             .count();
 
-                    let is_parent = !categories::is_leaf(&self.categories, *category_id);
+                    let is_parent = !categories::is_leaf(self.categories(cx), *category_id);
 
                     categories_view::edit_dialog::render(
                         *category_id,
                         form,
                         &parent_options,
-                        &self.categories,
+                        self.categories(cx),
                         split_count,
                         is_parent,
                         categories_view::DialogHandlers {
@@ -1754,7 +1756,7 @@ impl Render for Shell {
                 }
                 categories::form::CategoriesDialog::Delete(category_id, form) => {
                     let category = self
-                        .categories
+                        .categories(cx)
                         .iter()
                         .find(|c| c.id == *category_id)
                         .cloned();
@@ -1762,7 +1764,7 @@ impl Render for Shell {
                     if let Some(category) = category {
                         // Count splits in this category (and descendants if parent)
                         let split_count =
-                            categories::descendants_inclusive(&self.categories, *category_id)
+                            categories::descendants_inclusive(self.categories(cx), *category_id)
                                 .iter()
                                 .flat_map(|cat_id| {
                                     self.transactions(cx).iter().flat_map(move |t| {

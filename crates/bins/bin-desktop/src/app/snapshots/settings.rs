@@ -162,8 +162,8 @@ impl Shell {
             .selected_index(cx)
             .and_then(|index| self.accounts.read(cx).accounts().get(index))
             .map(|account| account.name.clone());
-        let selected_category = self.categories_selected_id.and_then(|id| {
-            self.categories
+        let selected_category = self.categories_view.read(cx).selected_id().and_then(|id| {
+            self.categories(cx)
                 .iter()
                 .find(|category| category.id == id)
                 .map(|category| category.name.clone())
@@ -293,7 +293,7 @@ impl Shell {
             account_names,
             selected_account,
             category_names: self
-                .categories
+                .categories(cx)
                 .iter()
                 .map(|category| category.name.clone())
                 .collect(),

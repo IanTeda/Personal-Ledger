@@ -454,3 +454,96 @@ pub fn levels_deep(categories: &[Category]) -> u32 {
 pub fn child_count(categories: &[Category], id: u32) -> usize {
     categories.iter().filter(|c| c.parent == Some(id)).count()
 }
+
+/// The Categories data behind the Desktop's Categories Entity: the tree, read through `categories`
+/// and changed only through the rule-checked methods below, so the depth, type and cycle rules
+/// stay in one place. Persistence is a later phase, so the tree is in memory.
+pub struct CategoryService {
+    categories: Vec<Category>,
+}
+
+impl CategoryService {
+    /// A service over `categories`, as the Desktop seeds it from [`default_categories`].
+    pub fn new(categories: Vec<Category>) -> Self {
+        Self { categories }
+    }
+
+    pub fn categories(&self) -> &[Category] {
+        &self.categories
+    }
+
+    /// Adds a Category under `parent_id` and returns its id; see [`insert_category`].
+    pub fn insert(
+        &mut self,
+        name: String,
+        parent_id: Option<u32>,
+        category_type: CategoryTypes,
+    ) -> Result<u32, CategoryError> {
+        insert_category(&mut self.categories, name, parent_id, category_type)
+    }
+
+    /// Renames Category `id`; see [`edit_category`].
+    pub fn edit(&mut self, id: u32, name: String) -> Result<(), CategoryError> {
+        edit_category(&mut self.categories, id, name)
+    }
+
+    /// Moves Category `id` under `new_parent_id` (`None` for top level); see [`move_category`].
+    pub fn move_to(&mut self, id: u32, new_parent_id: Option<u32>) -> Result<(), CategoryError> {
+        move_category(&mut self.categories, id, new_parent_id)
+    }
+
+    /// Changes Category `id`'s type and its descendants'; see [`change_category_type`].
+    pub fn change_type(&mut self, id: u32, new_type: CategoryTypes) -> Result<(), CategoryError> {
+        change_category_type(&mut self.categories, id, new_type)
+    }
+
+    /// Checks that Category `id` is a leaf, then returns the Uncategorised Category its Splits move
+    /// to before the delete, creating it if needed. Refuses a missing or non-leaf Category before
+    /// anything is created.
+    pub fn prepare_delete(&mut self, id: u32) -> Result<u32, CategoryError> {
+        let category = get(&self.categories, id).ok_or(CategoryError::NotFound)?;
+        if !is_leaf(&self.categories, id) {
+            return Err(CategoryError::NonLeafDeletion);
+        }
+        let category_type = category.category_type.clone();
+        Ok(get_or_create_uncategorised(
+            &mut self.categories,
+            category_type,
+        ))
+    }
+
+    /// Deletes leaf Category `id`; see [`delete_category`].
+    pub fn delete(&mut self, id: u32) -> Result<(), CategoryError> {
+        delete_category(&mut self.categories, id)
+    }
+
+    /// Replaces the whole tree. Only for a caller that has already checked its copy with the
+    /// rules above, as Import does for Payees.
+    pub fn replace(&mut self, rows: Vec<Category>) {
+        self.categories = rows;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn service_applies_the_tree_rules_and_keeps_writes() {
+        let mut service = CategoryService::new(default_categories());
+        let parent = service.categories().len();
+        // Food (6) is top level and Expense, so a child under it is accepted.
+        let child = service
+            .insert("Snacks".into(), Some(6), CategoryTypes::Expense)
+            .expect("a leaf under an Expense parent is accepted");
+        assert_eq!(service.categories().len(), parent + 1);
+        // Salary (11) is Income, so an Expense child under it is refused and the tree is untouched.
+        assert_eq!(
+            service.insert("Bonus".into(), Some(11), CategoryTypes::Expense),
+            Err(CategoryError::TypeMismatch)
+        );
+        assert_eq!(service.categories().len(), parent + 1);
+        service.delete(child).expect("a leaf can be deleted");
+        assert!(get(service.categories(), child).is_none());
+    }
+}

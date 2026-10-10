@@ -142,15 +142,16 @@ impl Shell {
         true
     }
 
-    fn payee_dialog_options(&self) -> payees::form::PayeeOptions {
+    fn payee_dialog_options(&self, cx: &App) -> payees::form::PayeeOptions {
         payees::form::PayeeOptions::new(
-            &self.categories,
+            self.categories(cx),
             crate::msg::desktop_payees_category_none(),
         )
     }
 
     pub(super) fn open_add_payee_dialog(&mut self, cx: &App) {
-        let form = payees::form::PayeeForm::new(&self.payee_dialog_options(), self.payees_list(cx));
+        let form =
+            payees::form::PayeeForm::new(&self.payee_dialog_options(cx), self.payees_list(cx));
         self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Add(form)));
     }
 
@@ -302,7 +303,7 @@ impl Shell {
         let Some(payee) = payees::get(rows, id) else {
             return;
         };
-        let form = payees::form::PayeeForm::from_payee(payee, &self.payee_dialog_options(), rows);
+        let form = payees::form::PayeeForm::from_payee(payee, &self.payee_dialog_options(cx), rows);
         self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Edit(
             id, form,
         )));

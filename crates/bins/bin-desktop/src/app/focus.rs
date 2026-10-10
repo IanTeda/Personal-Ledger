@@ -96,7 +96,7 @@ impl Shell {
                 self.apply_accounts_movement(movement, cx);
             }
             ActiveView::Settings(SettingsSection::Categories) if page_focused => {
-                self.apply_settings_categories_movement(movement);
+                self.apply_settings_categories_movement(movement, cx);
             }
             ActiveView::Settings(SettingsSection::Tags) if page_focused => {
                 self.apply_settings_tags_movement(movement, cx);

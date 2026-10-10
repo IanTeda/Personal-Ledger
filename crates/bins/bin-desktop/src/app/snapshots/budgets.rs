@@ -59,7 +59,7 @@ impl Shell {
                     .iter()
                     .map(|row| BudgetRowSnapshot {
                         category: self
-                            .categories
+                            .categories(cx)
                             .iter()
                             .find(|category| category.id == row.category_id)
                             .map(|category| category.name.clone())

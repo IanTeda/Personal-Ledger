@@ -72,7 +72,7 @@ impl Shell {
     pub(super) fn transactions_ledger<'a>(&'a self, cx: &'a App) -> Ledger<'a> {
         Ledger {
             accounts: self.accounts.read(cx).accounts(),
-            categories: &self.categories,
+            categories: self.categories(cx),
             payees: self.payees_list(cx),
             tags: self.tags_list(cx),
         }
@@ -244,7 +244,7 @@ impl Shell {
     pub(super) fn filter_form_options(&self, cx: &App) -> FormOptions {
         FormOptions::new(
             self.accounts.read(cx).accounts(),
-            &self.categories,
+            self.categories(cx),
             self.payees_list(cx),
             self.tags_list(cx),
         )
@@ -470,9 +470,9 @@ impl Shell {
     }
 
     /// The Category select's options on 6e: "choose category…", then every leaf.
-    pub(super) fn import_category_options(&self) -> payees::form::PayeeOptions {
+    pub(super) fn import_category_options(&self, cx: &App) -> payees::form::PayeeOptions {
         payees::form::PayeeOptions::new(
-            &self.categories,
+            self.categories(cx),
             crate::msg::desktop_import_choose_category(),
         )
     }
@@ -497,7 +497,7 @@ impl Shell {
         if modifiers.control || modifiers.alt || modifiers.platform {
             return false;
         }
-        let categories = self.import_category_options();
+        let categories = self.import_category_options(cx);
         let key = keystroke.key.as_str();
         let Some(state) = self.import_state(cx) else {
             return false;
@@ -637,7 +637,7 @@ impl Shell {
         select: RowSelect,
         cx: &mut Context<'_, Self>,
     ) {
-        let categories = self.import_category_options();
+        let categories = self.import_category_options(cx);
         let payees = self.payees_list(cx).to_vec();
         self.edit_import(cx, |import| {
             if let Some(state) = import.as_mut() {
@@ -658,7 +658,7 @@ impl Shell {
     }
 
     pub(super) fn handle_import_option_click(&mut self, option: usize, cx: &mut Context<'_, Self>) {
-        let categories = self.import_category_options();
+        let categories = self.import_category_options(cx);
         let payees = self.payees_list(cx).to_vec();
         self.edit_import(cx, |import| {
             if let Some(state) = import.as_mut()

@@ -28,6 +28,7 @@
 mod accounts_ui;
 mod bills_ui;
 mod budgets_ui;
+mod categories_ui;
 mod commands;
 mod dialogs;
 mod document_types_ui;
@@ -58,7 +59,6 @@ pub use snapshots::{
     ChipSnapshot, DashboardBillSnapshot, DocumentsSnapshot, ImportRowSnapshot, ImportSnapshot,
     PaletteSnapshot, SettingsSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
 };
-use transactions_ui::move_category_splits;
 
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -77,7 +77,7 @@ use gpui::{
     ScrollHandle, ScrollStrategy, Subscription, UniformListScrollHandle, point, px,
 };
 
-use lib_core::{CategoryTypes, DateStyle};
+use lib_core::DateStyle;
 use lib_toast::{ToastKind, Toasts};
 
 use crate::view::accounts::state::{
@@ -85,6 +85,7 @@ use crate::view::accounts::state::{
 };
 use crate::view::bills::state::{BillsEvent, BillsView};
 use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, BudgetsView};
+use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
 use crate::view::documents::state::{
     DocumentsEvent, DocumentsState, DocumentsStore, DocumentsView,
 };
@@ -98,7 +99,6 @@ use crate::{
     chrome::dialog_host::OpenDialog,
     chrome::state::ChromeState,
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
-    form::field::TextField,
     institutions::{self, AccountType, InstitutionRow, form::AddInstitutionForm},
     inventory,
     navigation::active_view::ActiveView,
@@ -115,9 +115,7 @@ use crate::{
     },
     tags::{self},
     theme::colours::ColourChange,
-    transactions::{
-        self, TransactionsStore, chips::FilterField, edit_transactions, query::TransactionFilters,
-    },
+    transactions::{self, TransactionsStore, chips::FilterField, query::TransactionFilters},
     units::{
         self, PriceSourceRow, UnitKind, UnitRow,
         form::{AddUnitField, DeleteUnitForm, UnitForm},
@@ -142,7 +140,6 @@ const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
 const VIEW_LINE_STEP: f32 = 40.0;
 
 /// `Ctrl-d`/`Ctrl-u` on the Settings Categories page: rows per half page.
-const CATEGORIES_HALF_PAGE: usize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Documents page: rows per half page.
 const SETTINGS_DOCUMENTS_HALF_PAGE: isize = 5;
 /// `Ctrl-d`/`Ctrl-u` on the Settings Inventory page: rows per half page.
@@ -232,9 +229,12 @@ pub struct Shell {
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
-    /// The shared stub Categories tree, Payees and Tags. Owned here so the Categories, Payees and
-    /// Tags views the later maps build can read and grow the same data the Transactions view uses.
-    categories: Vec<Category>,
+    /// The Categories tree, owned by its store Entity and read through it (ADR-0032). Shared:
+    /// Budgets, Bills, Transactions, Documents, Payees and Settings read the same tree.
+    categories_store: Entity<CategoriesStore>,
+    /// The Settings Categories tree's cursor, selected id and expanded nodes, owned by their view
+    /// Entity.
+    categories_view: Entity<CategoriesView>,
     /// The shared stub Budgets, seeded from `budgets::default_budgets()`, owned by their store
     /// Entity and read through it (ADR-0032). Shared so the Budgets surface and Categories 5c
     /// read and write the same Category Limits, and so they survive leaving and re-entering
@@ -243,12 +243,6 @@ pub struct Shell {
     /// The Budgets page's state (Budget, tab, month, cursors). Its events are handled in
     /// `handle_budgets_event`.
     budgets_view: Entity<BudgetsView>,
-    /// The selected category row in the tree view (the position in a depth-first enumeration).
-    categories_selected: usize,
-    /// The selected category ID for keyboard navigation, if any.
-    categories_selected_id: Option<u32>,
-    /// Which category nodes are expanded in the tree view.
-    categories_expanded: Vec<u32>,
     /// The Payees rows, owned by their store Entity and read through it (ADR-0032). Shared:
     /// Transactions, Bills, Documents and Budgets read the same rows.
     payees_store: Entity<PayeesStore>,
@@ -307,6 +301,13 @@ impl Shell {
             });
         let seeded_accounts = accounts.read(cx).accounts().to_vec();
         let categories = categories::default_categories();
+        let categories_store = cx.new(|_| CategoriesStore::new(categories.clone()));
+        let categories_view = cx.new(|_| CategoriesView::new());
+        let categories_subscription = cx.subscribe(
+            &categories_store,
+            |_, _store, _event: &CategoriesEvent, cx| cx.notify(),
+        );
+        let categories_view_observer = cx.observe(&categories_view, |_, _, cx| cx.notify());
         let payees = payees::default_payees();
         let payees_store = cx.new(|_| PayeesStore::new(payees.clone()));
         let payees_view = cx.new(|_| PayeesView::new());
@@ -427,12 +428,10 @@ impl Shell {
             accounts,
             accounts_view,
             today,
-            categories,
+            categories_store,
+            categories_view,
             budgets_store,
             budgets_view,
-            categories_selected: 0,
-            categories_selected_id: None,
-            categories_expanded: vec![1, 3, 6], // Housing, Utilities, Food expanded by default
             payees_store,
             payees_view,
             settings_documents_selected: None,
@@ -455,8 +454,15 @@ impl Shell {
                 tags_subscription,
                 payees_subscription,
                 payees_view_observer,
+                categories_subscription,
+                categories_view_observer,
             ],
         }
+    }
+
+    /// The Categories tree, read through its store Entity (ADR-0032).
+    fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
+        self.categories_store.read(cx).categories()
     }
 
     /// Restores the Documents mode, Library scope and sort from the last run.
@@ -823,7 +829,7 @@ impl Shell {
     /// Settings' own focus keys, ahead of the Colour Theme grid and the global keymap: `l`/`right`
     /// /`enter` on the index step into the page, `h`/`left`/`esc` on the page step back out.
     /// `false` for any key it does not take.
-    fn handle_settings_focus_key(&mut self, keystroke: &Keystroke) -> bool {
+    fn handle_settings_focus_key(&mut self, keystroke: &Keystroke, cx: &App) -> bool {
         let pending_g_active = self
             .pending_g
             .is_some_and(|since| since.elapsed() <= PENDING_G_TIMEOUT);
@@ -846,7 +852,7 @@ impl Shell {
             // nothing to fold hands it back to the index. `h` always leaves.
             (SettingsFocus::Page, "left")
                 if self.settings_categories_page_has_focus()
-                    && self.settings_categories_left_is_local() =>
+                    && self.settings_categories_left_is_local(cx) =>
             {
                 false
             }
@@ -1180,263 +1186,18 @@ impl Shell {
         }
     }
 
-    /// Whether Settings' Categories tree owns the keyboard: the page, not the index, has focus.
-    fn settings_categories_page_has_focus(&self) -> bool {
-        self.nav.noun() == Noun::Settings
-            && self.nav.focus() == FocusZone::View
-            && self.settings_focus == SettingsFocus::Page
-            && self.settings_selected_section == SettingsSection::Categories
-    }
-
-    /// Whether `left` has something to do inside the Categories tree: fold an open parent, or
-    /// climb from a nested row to its parent.
-    fn settings_categories_left_is_local(&self) -> bool {
-        let Some(id) = self.categories_selected_id else {
-            return false;
-        };
-        let open_parent =
-            self.categories_expanded.contains(&id) && !categories::is_leaf(&self.categories, id);
-        open_parent
-            || self
-                .categories
-                .iter()
-                .any(|category| category.id == id && category.parent.is_some())
-    }
-
-    /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the Categories tree's visible rows, Expense then
-    /// Income. With no row selected (or the selected one folded away) the first press lands on
-    /// the first row.
-    fn apply_settings_categories_movement(&mut self, movement: Movement) {
-        let rows = categories::settings_rows(&self.categories, &self.categories_expanded);
-        let Some(last) = rows.len().checked_sub(1) else {
-            return;
-        };
-        let current = self
-            .categories_selected_id
-            .and_then(|id| rows.iter().position(|row| row.id == id));
-        let next = match movement {
-            Movement::Next => current.map_or(0, |index| (index + 1).min(last)),
-            Movement::Prev => current.map_or(0, |index| index.saturating_sub(1)),
-            Movement::First => 0,
-            Movement::Last => last,
-            Movement::HalfPageDown => {
-                current.map_or(0, |index| (index + CATEGORIES_HALF_PAGE).min(last))
-            }
-            Movement::HalfPageUp => {
-                current.map_or(0, |index| index.saturating_sub(CATEGORIES_HALF_PAGE))
-            }
-            Movement::Enter => return,
-        };
-        self.categories_selected_id = rows.get(next).map(|row| row.id);
-    }
-
-    /// `right`: opens a folded parent, or steps into an open one's first child. `left`: folds an
-    /// open parent, or climbs to the parent of a nested row.
-    fn step_settings_categories_fold(&mut self, forward: bool) {
-        let Some(id) = self.categories_selected_id else {
-            return;
-        };
-        let is_parent = !categories::is_leaf(&self.categories, id);
-        let open = self.categories_expanded.contains(&id);
-        if forward {
-            if !is_parent {
-                return;
-            }
-            if open {
-                self.apply_settings_categories_movement(Movement::Next);
-            } else {
-                self.categories_expanded.push(id);
-            }
-        } else if is_parent && open {
-            self.categories_expanded.retain(|&other| other != id);
-        } else if let Some(parent) = self
-            .categories
-            .iter()
-            .find(|category| category.id == id)
-            .and_then(|category| category.parent)
-        {
-            self.categories_selected_id = Some(parent);
-        }
-    }
-
-    /// Keyboard input while on the Categories page: `n` adds a top-level category, `N` (shift+n)
-    /// adds a sub-category to the selected one, `e` edits the selected category, `d` deletes it,
-    /// `enter` opens Transactions filtered to the selected category.
-    fn handle_categories_key(&mut self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        let on_settings_page = self.settings_categories_page_has_focus();
-        if !on_settings_page {
-            return false;
-        }
-        let modifiers = &keystroke.modifiers;
-        let shift = modifiers.shift;
-        let has_mod = modifiers.control || modifiers.alt || modifiers.platform;
-        if has_mod {
-            return false;
-        }
-
-        let selected_category = self
-            .categories_selected_id
-            .and_then(|id| self.categories.iter().find(|c| c.id == id));
-
-        match keystroke.key.as_str() {
-            "n" => {
-                if shift {
-                    // N (shift+n): add sub-category to selected
-                    if let Some(category) = selected_category {
-                        self.open_add_categories_dialog(Some(category.id), cx);
-                    }
-                } else {
-                    // n: add top-level category
-                    self.open_add_categories_dialog(None, cx);
-                }
-                true
-            }
-            "e" => {
-                if let Some(category) = selected_category {
-                    self.open_edit_categories_dialog(category.id, cx);
-                }
-                true
-            }
-            "d" => {
-                if let Some(category) = selected_category {
-                    if !categories::is_leaf(&self.categories, category.id) {
-                        self.chrome.status_message =
-                            Some(crate::msg::desktop_status_delete_children_first());
-                    } else {
-                        let id = category.id;
-                        self.open_delete_categories_dialog(id);
-                    }
-                }
-                true
-            }
-            // Settings' tree has no ledger hand-off: `enter` is the standalone page's only.
-            "enter" if !on_settings_page => {
-                if let Some(category) = selected_category {
-                    self.open_category_transactions(category.id, cx);
-                }
-                true
-            }
-            "right" | "left" if on_settings_page => {
-                self.step_settings_categories_fold(keystroke.key == "right");
-                true
-            }
-            _ => false,
-        }
-    }
-
-    /// Why the Categories dialogs' Monthly budget field is read-only for `category_id` (`None`
-    /// for a Category being added): the Personal spending Budget it reads and writes is archived,
-    /// or the Category is a parent and so only rolls up.
-    fn categories_budget_lock(
-        &self,
-        category_id: Option<u32>,
-        cx: &App,
-    ) -> Option<categories::form::BudgetLock> {
-        if category_id.is_some_and(|id| !categories::is_leaf(&self.categories, id)) {
-            return Some(categories::form::BudgetLock::Parent);
-        }
-        self.budgets(cx)
-            .get(budgets::PERSONAL_SPENDING_ID)
-            .filter(|budget| budget.is_archived())
-            .map(|budget| categories::form::BudgetLock::Archived(budget.name.clone()))
-    }
-
-    /// Opens the Add categories dialog pre-scoped to parent_id (None for top-level).
-    fn open_add_categories_dialog(&mut self, parent_id: Option<u32>, cx: &App) {
-        // A child takes its parent's type, locked in the form; a top-level one starts as Expense.
-        let category_type = match parent_id {
-            Some(id) => self
-                .categories
-                .iter()
-                .find(|c| c.id == id)
-                .map(|c| c.category_type.clone()),
-            None => Some(CategoryTypes::Expense),
-        };
-        let form = categories::form::CategoryForm {
-            name: TextField::default(),
-            parent_id,
-            category_type,
-            budget: TextField::default(),
-            budget_lock: self.categories_budget_lock(None, cx),
-            focused: categories::form::CategoryField::Name,
-        };
-        self.open_dialog(OpenDialog::Categories(
-            categories::form::CategoriesDialog::Add { parent_id, form },
-        ));
-    }
-
-    /// Opens the Edit categories dialog on `id`, pre-filled. Monthly budget shows the current
-    /// month's amount in the Personal spending Budget (a parent's is its children's sum).
-    fn open_edit_categories_dialog(&mut self, category_id: u32, cx: &App) {
-        if let Some(category) = self.categories.iter().find(|c| c.id == category_id) {
-            let budget_str = self
-                .budgets(cx)
-                .monthly_limit(
-                    budgets::PERSONAL_SPENDING_ID,
-                    &self.categories,
-                    category_id,
-                    self.today,
-                )
-                .map(|amount| amount.0.to_string())
-                .unwrap_or_default();
-            let form = categories::form::CategoryForm {
-                name: TextField::new(category.name.as_str()),
-                parent_id: category.parent,
-                category_type: Some(category.category_type.clone()),
-                budget: TextField::new(budget_str),
-                budget_lock: self.categories_budget_lock(Some(category_id), cx),
-                focused: categories::form::CategoryField::Name,
-            };
-            self.open_dialog(OpenDialog::Categories(
-                categories::form::CategoriesDialog::Edit(category_id, form),
-            ));
-        }
-    }
-
-    /// Categories 5c's write on a saved dialog: the Monthly budget text as an Onward amount from
-    /// the current month in the Personal spending Budget, or a Stop when `clears` and it is
-    /// blank. A locked field (a parent's rollup, an archived Budget) writes nothing.
-    fn save_category_budget(
-        &mut self,
-        category_id: u32,
-        form: &categories::form::CategoryForm,
-        clears: bool,
-        cx: &mut App,
-    ) {
-        if form.budget_lock.is_some() {
-            return;
-        }
-        let amount = if form.budget.is_blank() {
-            if !clears {
-                return;
-            }
-            None
-        } else {
-            match form.budget.text().trim().parse::<lib_core::Money>() {
-                Ok(amount) => Some(amount),
-                Err(_) => return,
-            }
-        };
-        // A Category that can't hold a Budget Amount (an Income one) is left without one.
-        let _ = self.mutate_budgets(cx, |budgets| {
-            budgets.set_monthly_limit(
-                budgets::PERSONAL_SPENDING_ID,
-                &self.categories,
-                category_id,
-                amount,
-                self.today,
-            )
-        });
-    }
-
     /// The Dashboard's budget list, worded from the default Budget's current-month figures.
-    fn dashboard_budget_list(&self, figures: &budgets::PeriodFigures) -> dashboard::BudgetList {
+    fn dashboard_budget_list(
+        &self,
+        figures: &budgets::PeriodFigures,
+        cx: &App,
+    ) -> dashboard::BudgetList {
         use bigdecimal::{ToPrimitive, Zero};
-        let bars = budgets::dashboard_bars(figures, &self.categories)
+        let bars = budgets::dashboard_bars(figures, self.categories(cx))
             .into_iter()
             .map(|bar| dashboard::BudgetBar {
                 category: self
-                    .categories
+                    .categories(cx)
                     .iter()
                     .find(|category| category.id == bar.category_id)
                     .map(|category| category.name.clone())
@@ -1563,211 +1324,6 @@ impl Shell {
     fn handle_settings_inventory_add_room_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
         self.focus_settings_page();
         self.open_add_room_dialog(id);
-        cx.notify();
-    }
-
-    fn handle_categories_add_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.open_add_categories_dialog(None, cx);
-        cx.notify();
-    }
-
-    fn handle_categories_add_sub_click(&mut self, parent_id: u32, cx: &mut Context<'_, Self>) {
-        self.categories_selected_id = Some(parent_id);
-        self.open_add_categories_dialog(Some(parent_id), cx);
-        cx.notify();
-    }
-
-    fn handle_categories_edit_click(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
-        if self.categories.iter().any(|c| c.id == category_id) {
-            self.categories_selected_id = Some(category_id);
-            self.open_edit_categories_dialog(category_id, cx);
-            cx.notify();
-        }
-    }
-
-    fn handle_categories_delete_click(&mut self, category_id: u32, cx: &mut Context<'_, Self>) {
-        if !categories::is_leaf(&self.categories, category_id) {
-            self.chrome.status_message = Some(crate::msg::desktop_status_delete_children_first());
-            cx.notify();
-            return;
-        }
-
-        self.open_delete_categories_dialog(category_id);
-        cx.notify();
-    }
-
-    /// Opens the Delete category dialog on `category_id`, copying its name in so the form
-    /// validates without `Shell`. A no-op if the category is gone.
-    fn open_delete_categories_dialog(&mut self, category_id: u32) {
-        let Some(category) = self.categories.iter().find(|c| c.id == category_id) else {
-            return;
-        };
-        let form = categories::form::DeleteCategoryForm::new(category.name.as_str());
-        self.open_dialog(OpenDialog::Categories(
-            categories::form::CategoriesDialog::Delete(category_id, form),
-        ));
-    }
-
-    fn handle_categories_dialog_field_click(
-        &mut self,
-        field: categories::form::CategoryField,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if let Some(dialog) = self.categories_dialog_mut()
-            && let Some(form) = dialog.form_mut()
-        {
-            form.focus_field(field);
-            cx.notify();
-        }
-    }
-
-    fn handle_categories_dialog_parent_change(
-        &mut self,
-        parent_id: Option<u32>,
-        cx: &mut Context<'_, Self>,
-    ) {
-        // A child takes its parent's type.
-        let parent_type = parent_id.and_then(|parent_id| {
-            self.categories
-                .iter()
-                .find(|c| c.id == parent_id)
-                .map(|parent| parent.category_type.clone())
-        });
-        if let Some(dialog) = self.categories_dialog_mut()
-            && let Some(form) = dialog.form_mut()
-        {
-            form.parent_id = parent_id;
-            if parent_type.is_some() {
-                form.category_type = parent_type;
-            }
-            cx.notify();
-        }
-    }
-
-    fn handle_categories_dialog_type_change(
-        &mut self,
-        category_type: CategoryTypes,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let can_change_type = match self.categories_dialog() {
-            Some(categories::form::CategoriesDialog::Add { form, .. }) => form.parent_id.is_none(),
-            Some(categories::form::CategoriesDialog::Edit(id, _)) => self
-                .categories
-                .iter()
-                .find(|c| c.id == *id)
-                .is_some_and(|c| c.parent.is_none()),
-            _ => false,
-        };
-        if !can_change_type {
-            return;
-        }
-        let edited_id = match self.categories_dialog() {
-            Some(categories::form::CategoriesDialog::Edit(id, _)) => Some(*id),
-            _ => None,
-        };
-        if let Some(dialog) = self.categories_dialog_mut()
-            && let Some(form) = dialog.form_mut()
-        {
-            form.category_type = Some(category_type.clone());
-        }
-        // For Edit dialogs, cascade the type change to descendants
-        if let Some(id) = edited_id {
-            let _ = categories::change_category_type(&mut self.categories, id, category_type);
-        }
-        cx.notify();
-    }
-
-    fn handle_categories_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
-    }
-
-    fn handle_categories_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
-    }
-
-    /// Applies a confirmed Categories dialog (reached through [`Self::confirm_open_dialog`] from
-    /// the Add/Save/Delete button or `Enter`): Add inserts the category and saves its Monthly
-    /// budget; Edit renames, re-parents and saves the budget; Delete removes it and keeps the
-    /// selection in range. The form has already validated.
-    fn apply_categories_dialog(
-        &mut self,
-        dialog: categories::form::CategoriesDialog,
-        cx: &mut Context<'_, Self>,
-    ) {
-        match dialog {
-            categories::form::CategoriesDialog::Add { form, .. } => {
-                let category_type = form.category_type.clone().unwrap_or(CategoryTypes::Expense);
-                // A rejected insert (e.g. depth) closes the dialog without adding anything.
-                if let Ok(category_id) = categories::insert_category(
-                    &mut self.categories,
-                    form.name.text().trim().to_string(),
-                    form.parent_id,
-                    category_type,
-                ) {
-                    self.save_category_budget(category_id, &form, false, cx);
-                }
-            }
-            categories::form::CategoriesDialog::Edit(id, form) => {
-                let _ = categories::edit_category(
-                    &mut self.categories,
-                    id,
-                    form.name.text().trim().to_string(),
-                );
-                // `None` moves it to top level when the parent was cleared.
-                let _ = categories::move_category(&mut self.categories, id, form.parent_id);
-                self.save_category_budget(id, &form, true, cx);
-            }
-            categories::form::CategoriesDialog::Delete(category_id, _) => {
-                let (kind, text) = match prepare_category_delete(&mut self.categories, category_id)
-                {
-                    Err(refusal) => refusal,
-                    Ok(uncategorised_id) => {
-                        let moved =
-                            edit_transactions(&self.transactions_store, cx, |transactions| {
-                                move_category_splits(transactions, category_id, uncategorised_id)
-                            });
-                        self.budgets_store.update(cx, |store, cx| {
-                            store.mutate(cx, |budgets| {
-                                finish_category_delete(
-                                    &mut self.categories,
-                                    budgets,
-                                    category_id,
-                                    moved,
-                                )
-                            })
-                        })
-                    }
-                };
-                self.raise_toast(kind, text);
-                // Keep the selection in range
-                let tree_rows = categories::tree_rows(&self.categories, &self.categories_expanded);
-                let filtered_rows = tree_rows
-                    .iter()
-                    .filter(|row| {
-                        self.categories
-                            .iter()
-                            .find(|c| c.id == row.id)
-                            .is_some_and(|c| c.category_type == CategoryTypes::Expense)
-                    })
-                    .count();
-                self.categories_selected = self
-                    .categories_selected
-                    .min(filtered_rows.saturating_sub(1));
-            }
-        }
-    }
-
-    fn handle_categories_disclosure_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        categories::toggle_expanded(&mut self.categories_expanded, id, false);
-        cx.notify();
-    }
-
-    /// A click on a row of Settings' Categories tree: selects it and moves focus into the page.
-    fn handle_settings_categories_row_click(&mut self, id: u32, cx: &mut Context<'_, Self>) {
-        self.categories_selected_id = Some(id);
-        self.focus_settings_page();
         cx.notify();
     }
 
@@ -2114,68 +1670,15 @@ impl Focusable for Shell {
     }
 }
 
-/// The refusal Toast for a category delete that the store will not make.
-fn category_refused(error: categories::CategoryError) -> (ToastKind, String) {
-    (
-        ToastKind::Error,
-        lib_locale::msg::toast_save_failed(
-            &lib_locale::msg::toast_entity_category(),
-            &error.to_string(),
-        ),
-    )
-}
-
-/// The checks a category delete makes before it moves any Splits: the Category must exist and be a
-/// leaf. Returns the Uncategorised Category its Splits move to, or the refusal Toast. The store's
-/// own refusal can still come after the Splits have moved, as it did before this split.
-fn prepare_category_delete(
-    categories: &mut Vec<Category>,
-    id: u32,
-) -> Result<u32, (ToastKind, String)> {
-    let Some(category) = categories.iter().find(|c| c.id == id) else {
-        return Err(category_refused(categories::CategoryError::NotFound));
-    };
-    if !categories::is_leaf(categories, id) {
-        return Err(category_refused(categories::CategoryError::NonLeafDeletion));
-    }
-    let category_type = category.category_type.clone();
-    Ok(categories::get_or_create_uncategorised(
-        categories,
-        category_type,
-    ))
-}
-
-/// Drops category `id`'s budget and the Category itself, and returns the Toast counting the
-/// `moved` Splits: Success, or the `toast-save-failed` Error if the store refuses (the dialog
-/// only opens on a leaf, so that means the tree changed underneath it).
-fn finish_category_delete(
-    categories: &mut Vec<Category>,
-    budgets: &mut budgets::Budgets,
-    id: u32,
-    moved: i64,
-) -> (ToastKind, String) {
-    let name = categories
-        .iter()
-        .find(|c| c.id == id)
-        .map(|c| c.name.clone())
-        .unwrap_or_default();
-    budgets.remove_category(id);
-    match categories::delete_category(categories, id) {
-        Ok(()) => (
-            ToastKind::Success,
-            lib_locale::msg::toast_category_deleted(&name, moved),
-        ),
-        Err(error) => category_refused(error),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::transactions::Transaction;
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
+    use categories_ui::category_refused;
     use chrono::Local;
     use lib_accounts::{Account, AccountService};
+    use transactions_ui::move_category_splits;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
         let accounts = accounts::default_accounts();
@@ -2190,20 +1693,34 @@ mod tests {
         (accounts, categories, transactions)
     }
 
-    /// The category delete the Shell runs, in its order: check, re-point the Splits, then drop the
-    /// budget and the Category.
+    /// The category delete the Shell runs, in its order: check and get the Uncategorised Category,
+    /// re-point the Splits, drop the budget, then drop the Category. Mirrors `Shell::delete_category`
+    /// over plain rows, so the order is tested without a window.
     fn delete_category(
         categories: &mut Vec<Category>,
         transactions: &mut [Transaction],
         budgets: &mut budgets::Budgets,
         id: u32,
     ) -> (ToastKind, String) {
-        match prepare_category_delete(categories, id) {
-            Err(refusal) => refusal,
-            Ok(uncategorised) => {
-                let moved = move_category_splits(transactions, id, uncategorised);
-                finish_category_delete(categories, budgets, id, moved)
-            }
+        let mut service = lib_categories::CategoryService::new(categories.clone());
+        let name = categories
+            .iter()
+            .find(|c| c.id == id)
+            .map(|c| c.name.clone())
+            .unwrap_or_default();
+        let outcome = service.prepare_delete(id).map(|uncategorised| {
+            let moved = move_category_splits(transactions, id, uncategorised);
+            budgets.remove_category(id);
+            (service.delete(id), moved)
+        });
+        *categories = service.categories().to_vec();
+        match outcome {
+            Err(error) => category_refused(error),
+            Ok((Err(error), _)) => category_refused(error),
+            Ok((Ok(()), moved)) => (
+                ToastKind::Success,
+                lib_locale::msg::toast_category_deleted(&name, moved),
+            ),
         }
     }
 
