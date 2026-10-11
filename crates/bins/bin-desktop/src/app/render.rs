@@ -525,11 +525,17 @@ impl Render for Shell {
         };
         let payees_dialog_handlers = {
             let plain = plain_payees;
-            let indexed = |handler: fn(&mut Shell, usize, &mut Context<'_, Shell>)| {
+            let form_edit = |change: fn(&mut payees::form::PayeeForm, usize)| {
                 let entity = entity.clone();
                 let on_click: payees_view::add_dialog::OnOptionClick =
                     Rc::new(move |index, _window, cx| {
-                        entity.update(cx, |shell, cx| handler(shell, index, cx));
+                        entity.update(cx, |shell, cx| {
+                            shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
+                                if let Some(form) = dialog.form_mut() {
+                                    change(form, index);
+                                }
+                            });
+                        });
                     });
                 on_click
             };
@@ -537,17 +543,33 @@ impl Render for Shell {
                 let entity = entity.clone();
                 Rc::new(move |field, _window, cx| {
                     entity.update(cx, |shell, cx| {
-                        shell.handle_payees_dialog_field_click(field, cx);
+                        shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
+                            if let Some(form) = dialog.form_mut() {
+                                if field == payees::form::PayeeField::DefaultCategory {
+                                    form.click_select();
+                                } else {
+                                    form.focus(field);
+                                }
+                            }
+                        });
                     });
                 })
             };
+            let add_rule = |shell: &mut Shell, cx: &mut Context<'_, Shell>| {
+                shell.edit_dialog(cx, |dialog: &mut PayeesDialog| {
+                    if let Some(form) = dialog.form_mut() {
+                        form.focus(payees::form::PayeeField::Rule);
+                        form.add_rule();
+                    }
+                });
+            };
             payees_view::add_dialog::PayeeDialogHandlers {
                 on_field_click,
-                on_option_click: indexed(Shell::handle_payees_dialog_option_click),
-                on_add_rule: plain(Shell::handle_payees_dialog_add_rule),
-                on_remove_rule: indexed(Shell::handle_payees_dialog_remove_rule),
-                on_cancel: plain(Shell::handle_payees_dialog_cancel),
-                on_confirm: plain(Shell::handle_payees_dialog_confirm),
+                on_option_click: form_edit(payees::form::PayeeForm::choose_category),
+                on_add_rule: plain(add_rule),
+                on_remove_rule: form_edit(payees::form::PayeeForm::remove_rule),
+                on_cancel: plain(Shell::handle_dialog_cancel),
+                on_confirm: plain(Shell::handle_dialog_confirm),
             }
         };
         let settings_payees_page = settings_view::payees::PayeesPageProps {
@@ -1401,8 +1423,8 @@ impl Render for Shell {
                                     *id,
                                 )
                                 .splits,
-                                on_cancel: plain_payees(Shell::handle_payees_dialog_cancel),
-                                on_confirm: plain_payees(Shell::handle_payees_dialog_confirm),
+                                on_cancel: plain_payees(Shell::handle_dialog_cancel),
+                                on_confirm: plain_payees(Shell::handle_dialog_confirm),
                             },
                             cx,
                         )

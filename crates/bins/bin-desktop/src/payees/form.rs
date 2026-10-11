@@ -383,6 +383,8 @@ impl DeleteAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeletePayeeForm {
     pub confirmation_name: TextField,
+    /// What the domain refused the confirm with, shown in the dialog.
+    pub error: Option<PayeeError>,
     name: String,
     action: DeleteAction,
 }
@@ -391,6 +393,7 @@ impl DeletePayeeForm {
     pub fn new(payee: &Payee, action: DeleteAction) -> Self {
         Self {
             confirmation_name: TextField::default(),
+            error: None,
             name: payee.name.clone(),
             action,
         }

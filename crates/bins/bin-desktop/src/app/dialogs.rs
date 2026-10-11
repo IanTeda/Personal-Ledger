@@ -27,6 +27,12 @@ impl Shell {
         if !self.chrome.dialog.as_ref().is_some_and(Dialog::is_valid) {
             return;
         }
+        // Payees runs through the host's cycle (`DialogForm`/`Apply`); the other domains still
+        // take their Dialog and apply it themselves until #633.
+        if matches!(self.chrome.dialog, Some(OpenDialog::Payees(_))) {
+            self.confirm_payees_dialog(cx);
+            return;
+        }
         let Some(dialog) = self.chrome.dialog.take() else {
             return;
         };
@@ -35,7 +41,7 @@ impl Shell {
             OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog, cx),
             OpenDialog::Accounts(dialog) => self.apply_accounts_dialog(dialog, cx),
             OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog, cx),
-            OpenDialog::Payees(dialog) => self.apply_payees_dialog(dialog, cx),
+            OpenDialog::Payees(_) => unreachable!("Payees confirms through the host's cycle"),
             OpenDialog::DocumentTypes(dialog) => self.apply_document_types_dialog(dialog, cx),
             OpenDialog::Inventory(dialog) => self.apply_inventory_dialog(dialog, cx),
             OpenDialog::Tags(dialog) => self.apply_tags_dialog(dialog, cx),
@@ -45,6 +51,31 @@ impl Shell {
             // Read-only: it has nothing to apply.
             OpenDialog::ToastHistory(_) => {}
         }
+    }
+
+    /// The cancel button: closes the Dialog without applying it.
+    pub(super) fn handle_dialog_cancel(&mut self, cx: &mut gpui::Context<'_, Self>) {
+        self.close_dialog();
+        cx.notify();
+    }
+
+    /// The confirm button, the click twin of `Enter`.
+    pub(super) fn handle_dialog_confirm(&mut self, cx: &mut gpui::Context<'_, Self>) {
+        self.confirm_open_dialog(cx);
+        cx.notify();
+    }
+
+    /// A click inside the open `T` Dialog: runs `change` on it and repaints. A no-op when another
+    /// feature's Dialog is open.
+    pub(super) fn edit_dialog<T: DialogVariant>(
+        &mut self,
+        cx: &mut gpui::Context<'_, Self>,
+        change: impl FnOnce(&mut T),
+    ) {
+        if let Some(dialog) = self.dialog_mut::<T>() {
+            change(dialog);
+        }
+        cx.notify();
     }
 
     /// The open Dialog as a `T`, `None` when no Dialog or another feature's is open.

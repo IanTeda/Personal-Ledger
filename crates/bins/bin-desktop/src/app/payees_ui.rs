@@ -1,7 +1,13 @@
 //! The Payees destination's wiring: keys, clicks, the Add, Edit and Delete dialogs, and the Settings Payees list. The pure rules live in `lib_payees`; the chrome in `view::payees` and `view::settings::payees`, and its View state in the `PayeesView` Entity.
 
 use super::Shell;
-use crate::payees::form::PayeesDialog;
+use crate::{
+    chrome::dialog_apply,
+    payees::{
+        apply::{PayeeOutcome, PayeesApply},
+        form::PayeesDialog,
+    },
+};
 
 use crate::{
     chrome::dialog_host::OpenDialog,
@@ -127,141 +133,44 @@ impl Shell {
         self.open_dialog(OpenDialog::Payees(PayeesDialog::Add(form)));
     }
 
-    /// Applies a confirmed Payees dialog (reached through [`Self::confirm_open_dialog`] from the
-    /// **Add payee** / **Save** / **Delete** buttons or `Enter`). Add and Edit store the Payee and
-    /// select it; a refused submit reopens the dialog with the error shown. Delete applies its
-    /// [`payees::form::DeleteAction`], toasts the outcome and keeps the selection in range.
-    pub(super) fn apply_payees_dialog(&mut self, dialog: PayeesDialog, cx: &mut Context<'_, Self>) {
-        match dialog {
-            PayeesDialog::Delete(id, form) => {
-                // The dialog is only ever opened on a Payee that exists, so a miss means it was
-                // removed while the dialog was open. There is nothing left to delete.
-                let Some(name) = payees::get(self.payees_list(cx), id).map(|p| p.name.clone())
-                else {
-                    return;
-                };
-                let action = form.action();
-                let transactions = self.transactions_store.read(cx).transactions().to_vec();
-                let result = self.payees_store.update(cx, |store, cx| {
-                    store.apply_delete(cx, id, action, &transactions)
-                });
-                let (kind, text) = match result {
-                    Ok(()) => (
-                        ToastKind::Success,
-                        match action {
-                            payees::form::DeleteAction::Delete => {
-                                lib_locale::msg::toast_payee_deleted(&name)
-                            }
-                            payees::form::DeleteAction::Deactivate => {
-                                lib_locale::msg::toast_payee_deactivated(&name)
-                            }
-                            payees::form::DeleteAction::Reactivate => {
-                                lib_locale::msg::toast_payee_reactivated(&name)
-                            }
-                        },
-                    ),
-                    Err(error) => (
-                        ToastKind::Error,
-                        lib_locale::msg::toast_save_failed(
-                            &lib_locale::msg::toast_entity_payee(),
-                            &error.to_string(),
-                        ),
-                    ),
-                };
-                self.raise_toast(kind, text);
+    /// Confirms the open Payees dialog through the host's cycle: the form's command runs against
+    /// the Payees store, a refusal stays on the form, and a landed one closes the dialog. Add and
+    /// Edit then select the Payee; Delete toasts the outcome and keeps the selection in range.
+    pub(super) fn confirm_payees_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let mut apply = PayeesApply {
+            payees: self.payees_store.clone(),
+            transactions: self.transactions_store.clone(),
+        };
+        let Some(dialog) = self.dialog_mut::<PayeesDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
+        self.close_dialog();
+        match outcome {
+            PayeeOutcome::Saved(id) => self.select_payee(id, cx),
+            PayeeOutcome::Removed { name, action } => {
+                self.raise_toast(
+                    ToastKind::Success,
+                    match action {
+                        payees::form::DeleteAction::Delete => {
+                            lib_locale::msg::toast_payee_deleted(&name)
+                        }
+                        payees::form::DeleteAction::Deactivate => {
+                            lib_locale::msg::toast_payee_deactivated(&name)
+                        }
+                        payees::form::DeleteAction::Reactivate => {
+                            lib_locale::msg::toast_payee_reactivated(&name)
+                        }
+                    },
+                );
                 let last = self.payees_list(cx).len().saturating_sub(1);
                 let selected = self.payees_view.read(cx).selected().min(last);
                 self.payees_view
                     .update(cx, |view, cx| view.set_selected(selected, cx));
             }
-            PayeesDialog::Add(mut form) => {
-                let draft = form.draft();
-                match self
-                    .payees_store
-                    .update(cx, |store, cx| store.insert(cx, &draft))
-                {
-                    Ok(id) => self.select_payee(id, cx),
-                    Err(error) => {
-                        form.error = Some(error);
-                        self.open_dialog(OpenDialog::Payees(PayeesDialog::Add(form)));
-                    }
-                }
-            }
-            PayeesDialog::Edit(id, mut form) => {
-                let draft = form.draft();
-                match self
-                    .payees_store
-                    .update(cx, |store, cx| store.edit(cx, id, &draft))
-                {
-                    Ok(()) => self.select_payee(id, cx),
-                    Err(error) => {
-                        form.error = Some(error);
-                        self.open_dialog(OpenDialog::Payees(PayeesDialog::Edit(id, form)));
-                    }
-                }
-            }
         }
-    }
-
-    fn with_payee_form(
-        &mut self,
-        cx: &mut Context<'_, Self>,
-        change: impl FnOnce(&mut payees::form::PayeeForm),
-    ) {
-        if let Some(form) = self
-            .dialog_mut::<PayeesDialog>()
-            .and_then(PayeesDialog::form_mut)
-        {
-            change(form);
-        }
-        cx.notify();
-    }
-
-    pub(super) fn handle_payees_dialog_field_click(
-        &mut self,
-        field: payees::form::PayeeField,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.with_payee_form(cx, |form| {
-            if field == payees::form::PayeeField::DefaultCategory {
-                form.click_select();
-            } else {
-                form.focus(field);
-            }
-        });
-    }
-
-    pub(super) fn handle_payees_dialog_option_click(
-        &mut self,
-        index: usize,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.with_payee_form(cx, |form| form.choose_category(index));
-    }
-
-    pub(super) fn handle_payees_dialog_add_rule(&mut self, cx: &mut Context<'_, Self>) {
-        self.with_payee_form(cx, |form| {
-            form.focus(payees::form::PayeeField::Rule);
-            form.add_rule();
-        });
-    }
-
-    pub(super) fn handle_payees_dialog_remove_rule(
-        &mut self,
-        index: usize,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.with_payee_form(cx, |form| form.remove_rule(index));
-    }
-
-    pub(super) fn handle_payees_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
-    }
-
-    pub(super) fn handle_payees_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
     }
 
     /// Opens the Edit dialog pre-filled from Payee `id`.
