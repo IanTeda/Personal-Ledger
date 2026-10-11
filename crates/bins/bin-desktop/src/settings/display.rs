@@ -26,6 +26,33 @@ pub fn date_style_label(choice: Option<DateStyle>) -> String {
     }
 }
 
+/// The Display page's Preferences together: what the page's controls set, and what the other
+/// Views and the Chrome read. The Settings View owns them, and hands a copy to `Shell` on each
+/// change, since the other Views draw with them and the Toasts are `Shell`'s.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DisplayPreferences {
+    pub date_style: Option<DateStyle>,
+    pub row_density: RowDensity,
+    pub status_glyphs: StatusGlyphs,
+    /// Persisted across restarts and applied to the primary rail at launch, so a change here
+    /// waits for the next launch.
+    pub start_sidebar_minimised: bool,
+    /// The Client-scoped Toasts Preference (ADR-0027).
+    pub toasts_on: bool,
+}
+
+impl Default for DisplayPreferences {
+    fn default() -> Self {
+        Self {
+            date_style: None,
+            row_density: RowDensity::default(),
+            status_glyphs: StatusGlyphs::default(),
+            start_sidebar_minimised: false,
+            toasts_on: lib_toast::Display::default().toasts_on,
+        }
+    }
+}
+
 /// The same section's "Row density" segmented control (`regular` the mockup's own `checked`
 /// option).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

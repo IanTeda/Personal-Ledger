@@ -70,7 +70,7 @@ impl Shell {
         PropertyContext {
             inventory: self.inventory(cx).clone(),
             today: self.today,
-            date_style: self.settings_date_style,
+            date_style: self.display(cx).date_style,
             unit_choices: self.property_unit_choices(cx),
         }
     }
@@ -218,8 +218,8 @@ impl Shell {
         self.close_dialog();
         match outcome {
             InventoryOutcome::PropertyAdded { id, name } => {
-                self.settings_view.update(cx, |v, cx| v.expand(cx, id));
-                self.settings_view.update(cx, |v, cx| {
+                self.views.settings.update(cx, |v, cx| v.expand(cx, id));
+                self.views.settings.update(cx, |v, cx| {
                     v.set_inventory_selected(cx, Some(InventoryRow::Property(id)))
                 });
                 self.raise_toast(
@@ -228,7 +228,7 @@ impl Shell {
                 );
             }
             InventoryOutcome::PropertySaved { id, name } => {
-                self.settings_view.update(cx, |v, cx| {
+                self.views.settings.update(cx, |v, cx| {
                     v.set_inventory_selected(cx, Some(InventoryRow::Property(id)))
                 });
                 self.raise_toast(
@@ -237,8 +237,9 @@ impl Shell {
                 );
             }
             InventoryOutcome::PropertyRemoved { id, name, selected } => {
-                self.settings_view.update(cx, |v, cx| v.collapse(cx, id));
-                self.settings_view
+                self.views.settings.update(cx, |v, cx| v.collapse(cx, id));
+                self.views
+                    .settings
                     .update(cx, |v, cx| v.set_inventory_selected(cx, selected));
                 self.raise_toast(
                     ToastKind::Success,
@@ -246,9 +247,10 @@ impl Shell {
                 );
             }
             InventoryOutcome::RoomAdded { property, id, name } => {
-                self.settings_view
+                self.views
+                    .settings
                     .update(cx, |v, cx| v.expand(cx, property));
-                self.settings_view.update(cx, |v, cx| {
+                self.views.settings.update(cx, |v, cx| {
                     v.set_inventory_selected(cx, Some(InventoryRow::Room(id)))
                 });
                 self.raise_toast(
@@ -257,7 +259,7 @@ impl Shell {
                 );
             }
             InventoryOutcome::RoomSaved { id, name } => {
-                self.settings_view.update(cx, |v, cx| {
+                self.views.settings.update(cx, |v, cx| {
                     v.set_inventory_selected(cx, Some(InventoryRow::Room(id)))
                 });
                 self.raise_toast(
@@ -271,7 +273,8 @@ impl Shell {
                 destination,
                 selected,
             } => {
-                self.settings_view
+                self.views
+                    .settings
                     .update(cx, |v, cx| v.set_inventory_selected(cx, Some(selected)));
                 let toast = match destination {
                     Some(to) if items > 0 => {

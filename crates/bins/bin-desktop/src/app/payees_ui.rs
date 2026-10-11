@@ -32,8 +32,8 @@ impl Shell {
     pub(super) fn settings_payees_page_has_focus(&self, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
-            && self.settings_view.read(cx).focus() == SettingsFocus::Page
-            && self.settings_view.read(cx).selected_section() == SettingsSection::Payees
+            && self.views.settings.read(cx).focus() == SettingsFocus::Page
+            && self.views.settings.read(cx).selected_section() == SettingsSection::Payees
     }
 
     /// The Settings Payees page's selected Payee: the stored id while it still exists, else the

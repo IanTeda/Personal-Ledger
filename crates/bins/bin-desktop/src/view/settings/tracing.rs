@@ -36,6 +36,9 @@ const DOT_INNER_SIZE: gpui::Pixels = px(8.0);
 const DOT_BORDER: gpui::Pixels = px(1.5);
 const LOG_TEXT_SIZE: gpui::Pixels = px(11.0);
 
+/// One `j`/`k` step in the Tracing log box: a line of its 11px/1.6 monospace.
+pub const LOG_LINE_STEP: gpui::Pixels = px(17.6);
+
 /// What the log box shows, gathered by `Shell` from its `LogView`.
 pub struct LogBoxProps {
     pub level: TracingLevel,

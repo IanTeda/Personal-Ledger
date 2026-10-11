@@ -71,15 +71,14 @@ use crate::inventory::InventoryStore;
 use crate::ledger_data::LedgerDataEvent;
 use crate::ledger_store::LedgerStore;
 use crate::units::UnitsStore;
-use crate::view::settings::state::SettingsView;
+use crate::view::settings::state::{SettingsSources, SettingsView};
 use crate::view::transactions::state::{TransactionsSources, TransactionsView};
 
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, ListAlignment, ListState,
-    ScrollHandle, Subscription, point, px,
+    ScrollHandle, Subscription,
 };
 
-use lib_core::DateStyle;
 use lib_ledger::Ledger;
 use lib_toast::Toasts;
 
@@ -105,11 +104,7 @@ use crate::{
     navigation::key_router::{self, Movement},
     navigation::nav::NavState,
     settings::tracing_log::LogView,
-    settings::{
-        SettingsSection,
-        display::{RowDensity, StatusGlyphs},
-        tracing_log::TracingLevel,
-    },
+    settings::{SettingsSection, display::DisplayPreferences, tracing_log::TracingLevel},
     transactions::TransactionsStore,
     view::format,
     view::{
@@ -123,11 +118,6 @@ use crate::{
 /// even though this tooltip is hand-rolled (row-anchored, not cursor-anchored -- see
 /// `chrome::rail::primary::collapsed_tooltip`'s doc) rather than that builtin.
 const TOOLTIP_REVEAL_DELAY: Duration = Duration::from_millis(500);
-
-/// A single `j`/`k`/`Down`/`Up` step in the `View` zone's own scroll, in logical pixels --
-/// there's no literal "row height" for a dashboard of charts and figures, so this is a plain
-/// reading-sized increment, not a computed value.
-const VIEW_LINE_STEP: f32 = 40.0;
 
 /// Owns the shell's render tree and the live `NavState`.
 pub struct Shell {
@@ -158,17 +148,6 @@ pub struct Shell {
     /// this is `Some` (see [`Self::run_command`]'s own doc), so the two together -- rather than
     /// a third `InputMode` variant -- are what "the file explorer is open" means.
     file_explorer: Option<FileExplorer>,
-    /// The Display section's own "Date format" segmented control (issue #179) -- a stored
-    /// preference, not reset on noun change (same reasoning as [`Self::units_store`]).
-    settings_date_style: Option<DateStyle>,
-    /// The same section's "Row density" segmented control -- also drives the PREVIEW table's own
-    /// row padding (`view::settings::display`'s own doc), unlike a purely-cosmetic preference.
-    settings_row_density: RowDensity,
-    /// The same section's "Status glyphs" radio group.
-    settings_status_glyphs: StatusGlyphs,
-    /// The same section's "Start Sidebar minimised" toggle -- persisted across restarts (see
-    /// `persistence::PersistedState`) and applied to the primary rail at launch.
-    settings_start_sidebar_minimised: bool,
     /// The `:open` explorer's footer checkboxes, kept here so they outlive each dialog and reach
     /// `persistence::PersistedState` at quit.
     explorer_filters: ExplorerFilters,
@@ -196,9 +175,6 @@ pub struct Shell {
     /// The Settings Categories tree's cursor, selected id and expanded nodes, owned by their view
     /// Entity.
     categories_view: Entity<CategoriesView>,
-    /// The Settings View's own state (the page, focus, Display control and Documents and
-    /// Inventory selections), owned by its view Entity (ADR-0032).
-    settings_view: Entity<SettingsView>,
     /// The Budgets, read through their store Entity (ADR-0032). Shared so the Budgets surface and
     /// Categories 5c read and write the same Category Limits, and so they survive leaving and
     /// re-entering either view.
@@ -220,8 +196,8 @@ pub struct Shell {
     /// The Bill Plans and Bill Schedule, read through their store Entity (ADR-0032).
     bills_store: Entity<BillsStore>,
     /// The Views that render themselves and handle their own input (ADR-0037): Bills, Budgets,
-    /// Transactions with its Import step, and Documents. Each reaches `Shell` only through
-    /// `ViewEvent`.
+    /// Transactions with its Import step, Documents, and Settings. Each reaches `Shell` only
+    /// through `ViewEvent`.
     views: ViewEntities,
     /// The Documents and Document Types, read through their store Entity (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
     /// badge and the Inventory removal read the Documents.
@@ -269,6 +245,10 @@ impl Shell {
         // A private, empty capture until `set_log_capture` hands over the real one.
         let settings_view = cx.new(|_| {
             SettingsView::new(
+                SettingsSources {
+                    units: units_store.clone(),
+                    institutions: institutions_store.clone(),
+                },
                 LogView::new(
                     lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
                     TracingLevel::default(),
@@ -276,6 +256,8 @@ impl Shell {
                 ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
             )
         });
+        let settings_subscription = Self::view_event_subscription(&settings_view, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
         let payees_store = cx.new(|cx| PayeesStore::new(ledger.clone(), cx));
         let payees_view = cx.new(|_| PayeesView::new());
@@ -392,10 +374,6 @@ impl Shell {
             },
             command_history: Vec::new(),
             file_explorer: None,
-            settings_date_style: None,
-            settings_row_density: RowDensity::default(),
-            settings_status_glyphs: StatusGlyphs::default(),
-            settings_start_sidebar_minimised: false,
             explorer_filters: ExplorerFilters::default(),
             ledger,
             units_store,
@@ -405,7 +383,6 @@ impl Shell {
             today,
             categories_store,
             categories_view,
-            settings_view,
             budgets_store,
             payees_store,
             payees_view,
@@ -418,6 +395,7 @@ impl Shell {
                 budgets: budgets_view,
                 transactions: transactions_view,
                 documents: documents_view,
+                settings: settings_view,
             },
             documents_store,
             inventory,
@@ -439,6 +417,7 @@ impl Shell {
                 institutions_subscription,
                 inventory_subscription,
                 categories_view_observer,
+                settings_subscription,
                 settings_view_observer,
             ],
         }
@@ -462,11 +441,12 @@ impl Shell {
 
     /// The last-visited Settings page, for persistence.
     pub fn settings_page(&self, cx: &App) -> SettingsSection {
-        self.settings_view.read(cx).selected_section()
+        self.views.settings.read(cx).selected_section()
     }
 
     pub fn set_settings_page(&mut self, section: SettingsSection, cx: &mut App) {
-        self.settings_view
+        self.views
+            .settings
             .update(cx, |v, cx| v.set_selected_section(cx, section));
     }
 
@@ -478,12 +458,23 @@ impl Shell {
         self.explorer_filters = filters;
     }
 
-    pub fn start_sidebar_minimised(&self) -> bool {
-        self.settings_start_sidebar_minimised
+    pub fn start_sidebar_minimised(&self, cx: &App) -> bool {
+        self.display(cx).start_sidebar_minimised
     }
 
-    pub fn set_start_sidebar_minimised(&mut self, minimised: bool) {
-        self.settings_start_sidebar_minimised = minimised;
+    pub fn set_start_sidebar_minimised(&mut self, minimised: bool, cx: &mut App) {
+        let display = DisplayPreferences {
+            start_sidebar_minimised: minimised,
+            ..self.display(cx)
+        };
+        self.views
+            .settings
+            .update(cx, |view, cx| view.set_display(display, cx));
+    }
+
+    /// The Display Preferences, which the Settings View owns (ADR-0037).
+    fn display(&self, cx: &App) -> DisplayPreferences {
+        self.views.settings.read(cx).display()
     }
 
     pub fn set_dismiss_toasts_binding(&mut self, spec: String) {
@@ -547,7 +538,7 @@ impl Shell {
     fn active_view(&self, cx: &App) -> ActiveView {
         ActiveView::derive(
             self.nav.noun(),
-            self.settings_view.read(cx).selected_section(),
+            self.views.settings.read(cx).selected_section(),
             self.views.transactions.read(cx).import_open(),
         )
     }
@@ -557,12 +548,17 @@ impl Shell {
         ActiveViewEntity::new(self.active_view(cx), &self.views)
     }
 
-    /// Hands the Display Preferences to the Views that read them, after a Settings change.
-    fn push_display_preferences(&self, cx: &mut App) {
+    /// Hands the Display Preferences to the Views that read them and the Toasts Preference to
+    /// the Toasts, after a Settings change.
+    fn push_display_preferences(&mut self, display: DisplayPreferences, cx: &mut App) {
+        self.chrome.toasts.set_display(lib_toast::Display {
+            toasts_on: display.toasts_on,
+            ..self.chrome.toasts.display()
+        });
         let (date_style, glyphs, density) = (
-            self.settings_date_style,
-            self.settings_status_glyphs,
-            self.settings_row_density,
+            display.date_style,
+            display.status_glyphs,
+            display.row_density,
         );
         self.views
             .bills
@@ -576,31 +572,14 @@ impl Shell {
     }
 
     fn scroll_view(&mut self, movement: Movement) {
-        let offset = self.view_scroll_handle.offset();
-        let max_height = f32::from(self.view_scroll_handle.max_offset().height);
-        let viewport_height = f32::from(self.view_scroll_handle.bounds().size.height);
-        let current_y = f32::from(offset.y);
-
-        let new_y = match movement {
-            Movement::Next => current_y - VIEW_LINE_STEP,
-            Movement::Prev => current_y + VIEW_LINE_STEP,
-            Movement::First => 0.0,
-            Movement::Last => -max_height,
-            Movement::HalfPageDown => current_y - viewport_height / 2.0,
-            Movement::HalfPageUp => current_y + viewport_height / 2.0,
-            // No action is defined for `Enter` in the View zone by the handoff's "Movement"
-            // bullet (only the primary and context rails are named) -- a no-op until one is.
-            Movement::Enter => current_y,
-        };
-        let clamped_y = new_y.clamp(-max_height, 0.0);
-        self.view_scroll_handle
-            .set_offset(point(offset.x, px(clamped_y)));
+        crate::view::scroll_by_movement(&self.view_scroll_handle, movement);
     }
 
     fn move_selected_document_type(&mut self, delta: isize, cx: &mut App) {
         if let Some(id) = self.settings_documents_selected_id(cx) {
             self.mutate_documents(cx, |data| documents::types::move_by(data.types, id, delta));
-            self.settings_view
+            self.views
+                .settings
                 .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
         }
     }

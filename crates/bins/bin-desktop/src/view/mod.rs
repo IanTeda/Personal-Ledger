@@ -22,3 +22,34 @@ pub mod settings;
 pub mod tags;
 pub mod transactions;
 pub mod units;
+
+use gpui::{ScrollHandle, point, px};
+
+use crate::navigation::key_router::Movement;
+
+/// A single `j`/`k`/`Down`/`Up` step in a scrolling page, in logical pixels -- there's no literal
+/// "row height" for a dashboard of charts and figures, so this is a plain reading-sized
+/// increment, not a computed value.
+const VIEW_LINE_STEP: f32 = 40.0;
+
+/// Scrolls a page that has no list to move through by one movement, kept within its content.
+pub fn scroll_by_movement(handle: &ScrollHandle, movement: Movement) {
+    let offset = handle.offset();
+    let max_height = f32::from(handle.max_offset().height);
+    let viewport_height = f32::from(handle.bounds().size.height);
+    let current_y = f32::from(offset.y);
+
+    let new_y = match movement {
+        Movement::Next => current_y - VIEW_LINE_STEP,
+        Movement::Prev => current_y + VIEW_LINE_STEP,
+        Movement::First => 0.0,
+        Movement::Last => -max_height,
+        Movement::HalfPageDown => current_y - viewport_height / 2.0,
+        Movement::HalfPageUp => current_y + viewport_height / 2.0,
+        // No action is defined for `Enter` in the View zone by the handoff's "Movement" bullet
+        // (only the primary and context rails are named) -- a no-op until one is.
+        Movement::Enter => current_y,
+    };
+    let clamped_y = new_y.clamp(-max_height, 0.0);
+    handle.set_offset(point(offset.x, px(clamped_y)));
+}

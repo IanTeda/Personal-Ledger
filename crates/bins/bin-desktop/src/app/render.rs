@@ -15,36 +15,23 @@ use gpui::{
     prelude::*, px,
 };
 
-use lib_core::DateStyle;
-
 use crate::{
     accounts::form::AccountsDialog,
     bills::{self},
     budgets,
     categories::{self},
-    chrome::rail::{
-        self as chrome_rail,
-        context::ContextRail,
-        primary::PrimaryRail,
-        settings_index::{self, SettingsIndexRail},
-    },
+    chrome::rail::{self as chrome_rail, context::ContextRail, primary::PrimaryRail},
     chrome::statusline::{self, StatusLine},
     chrome::toast::history as toast_history_view,
     chrome::topbar::{self, TopBar},
     documents::{self},
-    institutions::InstitutionRow,
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode},
     payees::{self},
     period::Period,
-    settings::{
-        SettingsDialog, SettingsFocus, SettingsSection,
-        display::{RowDensity, StatusGlyphs},
-    },
+    settings::{SettingsDialog, SettingsFocus},
     tags::{self},
-    theme::colours::ColourChange,
     theme::{color, type_scale},
-    units::{PriceSourceRow, UnitRow},
     view::format,
     view::{
         accounts as accounts_view,
@@ -53,8 +40,7 @@ use crate::{
         dashboard::{self, Dashboard},
         documents::{self as documents_view},
         event::Reveal,
-        help as help_view, payees as payees_view, placeholder,
-        settings::{self as settings_view, SettingsBodyProps},
+        help as help_view, payees as payees_view, placeholder, settings as settings_view,
         tags as tags_view,
     },
 };
@@ -67,9 +53,8 @@ type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut gpui::
 impl Render for Shell {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let focus = self.nav.focus();
-        // The active View's own element, built before anything else borrows the App.
         let active_entity = self.active_view_entity(cx);
-        let active_element = active_entity.element(focus == FocusZone::View, cx);
+        let display = self.display(cx);
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
         // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
         // bar and content row only, not the status line -- that same spec separately describes
@@ -240,164 +225,6 @@ impl Render for Shell {
             Rc::new(move |command_name, _window, cx| {
                 entity.update(cx, |shell, cx| {
                     shell.handle_empty_state_command_click(command_name, cx)
-                });
-            })
-        };
-        let on_settings_index_click: settings_index::OnEntryClick = {
-            let entity = entity.clone();
-            Rc::new(move |section, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_settings_index_click(section, cx)
-                });
-            })
-        };
-        let on_price_source_test_click: settings_view::units::OnRowIndexClick = {
-            let entity = entity.clone();
-            Rc::new(move |index, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_price_source_test_click(index, cx)
-                });
-            })
-        };
-        let on_price_source_edit_click: settings_view::units::OnRowIndexClick = {
-            let entity = entity.clone();
-            Rc::new(move |index, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_price_source_edit_click(index, cx)
-                });
-            })
-        };
-        let on_price_source_delete_click: settings_view::units::OnRowIndexClick = {
-            let entity = entity.clone();
-            Rc::new(move |index, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_price_source_delete_click(index, cx)
-                });
-            })
-        };
-        let on_add_price_source_click: settings_view::units::OnAddClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_add_price_source_click(cx));
-            })
-        };
-        let on_unit_edit_click: settings_view::units::OnRowIndexClick = {
-            let entity = entity.clone();
-            Rc::new(move |index, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_unit_edit_click(index, cx));
-            })
-        };
-        let on_unit_delete_click: settings_view::units::OnRowIndexClick = {
-            let entity = entity.clone();
-            Rc::new(move |index, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_unit_delete_click(index, cx));
-            })
-        };
-        let on_add_unit_click: settings_view::units::OnAddClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_add_unit_click(cx));
-            })
-        };
-        let on_institution_edit_click: settings_view::institutions::OnRowIndexClick = {
-            let entity = entity.clone();
-            Rc::new(move |index, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_institution_edit_click(index, cx)
-                });
-            })
-        };
-        let on_institution_delete_click: settings_view::institutions::OnRowIndexClick = {
-            let entity = entity.clone();
-            Rc::new(move |index, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_institution_delete_click(index, cx)
-                });
-            })
-        };
-        let on_add_institution_click: settings_view::institutions::OnAddClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_add_institution_click(cx));
-            })
-        };
-        let on_sync_now_click: settings_view::sync_server::OnSyncNowClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_sync_now_click(cx));
-            })
-        };
-        let on_backup_now_click: settings_view::data_backup::OnBackupNowClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_backup_now_click(cx));
-            })
-        };
-        let on_export_ledger_click: settings_view::data_backup::OnExportLedgerClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_export_ledger_click(cx));
-            })
-        };
-        let on_tracing_level_click: settings_view::tracing::OnLevelClick = {
-            let entity = entity.clone();
-            Rc::new(move |level, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_tracing_level_click(level, cx));
-            })
-        };
-        let on_clear_logs_click: settings_view::tracing::OnClearLogsClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_clear_logs_click(cx));
-            })
-        };
-        let on_date_style_click: settings_view::display::OnDateStyleClick = {
-            let entity = entity.clone();
-            Rc::new(move |style, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_date_style_click(style, cx));
-            })
-        };
-        let on_row_density_click: settings_view::display::OnRowDensityClick = {
-            let entity = entity.clone();
-            Rc::new(move |density, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_row_density_click(density, cx));
-            })
-        };
-        // A click selects the card and clears any keyboard focus left on the grid.
-        let on_colour_theme_click: settings_view::colour_theme::OnColourThemeClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell
-                        .settings_view
-                        .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
-                    cx.notify();
-                });
-                ColourChange::Theme(id).apply(cx);
-            })
-        };
-        let on_status_glyphs_click: settings_view::display::OnStatusGlyphsClick = {
-            let entity = entity.clone();
-            Rc::new(move |glyphs, _window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_status_glyphs_click(glyphs, cx));
-            })
-        };
-
-        let on_toasts_click: settings_view::display::OnToastsClick = {
-            let entity = entity.clone();
-            Rc::new(move |on, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.set_toasts_on(on);
-                    cx.notify();
-                });
-            })
-        };
-
-        let on_start_sidebar_minimised_click: settings_view::display::OnPlainClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_start_sidebar_minimised_click(cx)
                 });
             })
         };
@@ -617,7 +444,7 @@ impl Render for Shell {
         };
         let settings_inventory_page = inventory_view::InventoryPageProps {
             inventory: self.inventory(cx),
-            expanded: self.settings_view.read(cx).inventory_expanded(),
+            expanded: self.views.settings.read(cx).inventory_expanded(),
             selected: self.settings_inventory_selected_row(cx),
             on_add_property_click: {
                 let entity = entity.clone();
@@ -720,7 +547,7 @@ impl Render for Shell {
                         id,
                         plan: plan.name.clone(),
                         overdue: bills::status(entry, self.today) == bills::BillStatus::Overdue,
-                        due: format::date(id.due, self.settings_date_style),
+                        due: format::date(id.due, display.date_style),
                         amount: bills_view::schedule::with_unit(
                             format::amount(&amount).1,
                             &plan.unit,
@@ -729,7 +556,7 @@ impl Render for Shell {
                     })
                 })
                 .collect(),
-            format::flag_glyph(self.settings_status_glyphs),
+            format::flag_glyph(display.status_glyphs),
             on_dashboard_bill_click,
         )
         .budgets(
@@ -800,6 +627,38 @@ impl Render for Shell {
             })
         };
 
+        // The Settings pages with Ledger data are still drawn here, and handed to the Settings
+        // View for this frame.
+        let settings_data_page = {
+            let settings = self.views.settings.read(cx);
+            settings_view::data_page(
+                settings.selected_section(),
+                focus == FocusZone::View && settings.focus() == SettingsFocus::Page,
+                &settings_view::DataPageProps {
+                    accounts: settings_view::accounts::AccountsPageProps {
+                        accounts: accounts_page.accounts,
+                        units: accounts_page.units,
+                        selected: accounts_page.selected,
+                        on_add_click: accounts_page.on_add_click,
+                        on_row_click: accounts_page.on_row_click,
+                        on_edit_click: accounts_page.on_edit_click,
+                        on_delete_click: accounts_page.on_delete_click,
+                    },
+                    categories: settings_categories_page,
+                    tags: settings_tags_page,
+                    payees: settings_payees_page,
+                    documents: settings_documents_page,
+                    inventory: settings_inventory_page,
+                },
+                cx,
+            )
+        };
+        self.views
+            .settings
+            .update(cx, |view, _| view.set_data_page(settings_data_page));
+        // The active View's own element, told whether the View zone has focus before the status
+        // line reads its page status.
+        let active_element = active_entity.element(focus == FocusZone::View, cx);
         let view_chrome = self.view_chrome(cx);
         let active_view = self.active_view(cx);
 
@@ -818,13 +677,7 @@ impl Render for Shell {
                 cx.notify();
             }))
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
-                let chosen = settings_view::colour_theme::chosen_index(cx);
-                if this.handle_settings_form_key(&event.keystroke, chosen, cx)
-                    || this.handle_settings_tracing_key(&event.keystroke, cx)
-                    || this.handle_settings_focus_key(&event.keystroke, cx)
-                    || this.handle_colour_theme_grid_key(&event.keystroke, cx)
-                    || this.handle_key_down(event, cx)
-                {
+                if this.handle_key_down(event, cx) {
                     cx.notify();
                 }
                 this.run_pending_effects(cx);
@@ -886,68 +739,7 @@ impl Render for Shell {
                                     focus == FocusZone::View,
                                     &self.view_scroll_handle,
                                     on_empty_state_command_click,
-                                    PageProps {
-                                        dashboard,
-                                        accounts: accounts_page,
-                                        settings_categories: settings_categories_page,
-                                        settings_tags: settings_tags_page,
-                                        settings_payees: settings_payees_page,
-                                        settings_documents: settings_documents_page,
-                                        settings_inventory: settings_inventory_page,
-                                    },
-                                    SettingsPanelProps {
-                                        selected: self.settings_view.read(cx).selected_section(),
-                                        focus: self.settings_view.read(cx).focus(),
-                                        on_index_click: on_settings_index_click,
-                                        date_style: self.settings_date_style,
-                                        row_density: self.settings_row_density,
-                                        status_glyphs: self.settings_status_glyphs,
-                                        start_sidebar_minimised: self
-                                            .settings_start_sidebar_minimised,
-                                        on_start_sidebar_minimised_click,
-                                        on_date_style_click,
-                                        on_row_density_click,
-                                        on_status_glyphs_click,
-                                        toasts_on: self.chrome.toasts.display().toasts_on,
-                                        on_toasts_click,
-                                        colour_theme_focus: self
-                                            .settings_view
-                                            .read(cx)
-                                            .colour_theme_focus(),
-                                        display_field: self.settings_view.read(cx).display_field(),
-                                        on_colour_theme_click,
-                                        units: self.units_store.read(cx).units(cx),
-                                        on_unit_edit_click,
-                                        on_unit_delete_click,
-                                        on_add_unit_click,
-                                        price_sources: self.units_store.read(cx).price_sources(cx),
-                                        on_price_source_test_click,
-                                        on_price_source_edit_click,
-                                        on_price_source_delete_click,
-                                        on_add_price_source_click,
-                                        institutions: self
-                                            .institutions_store
-                                            .read(cx)
-                                            .institutions(cx),
-                                        on_institution_edit_click,
-                                        on_institution_delete_click,
-                                        on_add_institution_click,
-                                        on_sync_now_click,
-                                        on_backup_now_click,
-                                        on_export_ledger_click,
-                                        log: settings_view::tracing::LogBoxProps {
-                                            level: self.settings_view.read(cx).log().level(),
-                                            entries: self.settings_view.read(cx).log().visible(),
-                                            hidden: self
-                                                .settings_view
-                                                .read(cx)
-                                                .log()
-                                                .hidden_count(),
-                                            list: self.settings_view.read(cx).log_list().clone(),
-                                        },
-                                        on_tracing_level_click,
-                                        on_clear_logs_click,
-                                    },
+                                    dashboard,
                                     cx,
                                 ),
                                 _ => view_frame(
@@ -1389,168 +1181,23 @@ impl Render for Shell {
     }
 }
 
-/// The per-page props `render_view` needs for the pages that own their whole pane: Accounts, and
-/// Transactions (built only while it is the active page, hence the `Option`).
-struct PageProps<'a> {
-    dashboard: Dashboard,
-    accounts: accounts_view::AccountsPageProps<'a>,
-    /// Settings' own Categories page (2i), mounted only while Settings shows it.
-    settings_categories: settings_view::categories::CategoriesPageProps<'a>,
-    /// Settings' own Tags page (2j), mounted only while Settings shows it.
-    settings_tags: settings_view::tags::TagsPageProps<'a>,
-    /// Settings' own Payees page, mounted only while Settings shows it.
-    settings_payees: settings_view::payees::PayeesPageProps<'a>,
-    /// Settings' own Documents page, mounted only while Settings shows it.
-    settings_documents: settings_view::documents::DocumentsPageProps<'a>,
-    /// Settings' own Inventory page, mounted only while Settings shows it.
-    settings_inventory: inventory_view::InventoryPageProps<'a>,
-}
-
-/// Bundles `render_view`'s Settings-only parameters (keeps the function under Clippy's
-/// `too_many_arguments` threshold) -- ignored entirely for every noun besides `Settings`. Covers
-/// both the index rail's own state and the body's per-section interactive state
-/// (`view::settings::SettingsBodyProps`); `render_view` splits it back apart when it builds
-/// each half's own component.
-struct SettingsPanelProps<'a> {
-    selected: SettingsSection,
-    focus: SettingsFocus,
-    on_index_click: settings_index::OnEntryClick,
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    start_sidebar_minimised: bool,
-    on_start_sidebar_minimised_click: settings_view::display::OnPlainClick,
-    on_date_style_click: settings_view::display::OnDateStyleClick,
-    on_row_density_click: settings_view::display::OnRowDensityClick,
-    on_status_glyphs_click: settings_view::display::OnStatusGlyphsClick,
-    toasts_on: bool,
-    on_toasts_click: settings_view::display::OnToastsClick,
-    colour_theme_focus: Option<usize>,
-    display_field: Option<usize>,
-    on_colour_theme_click: settings_view::colour_theme::OnColourThemeClick,
-    units: &'a [UnitRow],
-    on_unit_edit_click: settings_view::units::OnRowIndexClick,
-    on_unit_delete_click: settings_view::units::OnRowIndexClick,
-    on_add_unit_click: settings_view::units::OnAddClick,
-    price_sources: &'a [PriceSourceRow],
-    on_price_source_test_click: settings_view::units::OnRowIndexClick,
-    on_price_source_edit_click: settings_view::units::OnRowIndexClick,
-    on_price_source_delete_click: settings_view::units::OnRowIndexClick,
-    on_add_price_source_click: settings_view::units::OnAddClick,
-    institutions: &'a [InstitutionRow],
-    on_institution_edit_click: settings_view::institutions::OnRowIndexClick,
-    on_institution_delete_click: settings_view::institutions::OnRowIndexClick,
-    on_add_institution_click: settings_view::institutions::OnAddClick,
-    on_sync_now_click: settings_view::sync_server::OnSyncNowClick,
-    on_backup_now_click: settings_view::data_backup::OnBackupNowClick,
-    on_export_ledger_click: settings_view::data_backup::OnExportLedgerClick,
-    log: settings_view::tracing::LogBoxProps,
-    on_tracing_level_click: settings_view::tracing::OnLevelClick,
-    on_clear_logs_click: settings_view::tracing::OnClearLogsClick,
-}
-
-/// The active noun's own view interior. Only `Dashboard` and `Settings` are real; every other
-/// noun is a placeholder until its own view lands (issue #153). `Dashboard` itself further
-/// branches on `ledger_open` (`docs/ux/desktop-mockups/01-shell/README.md`'s "1a" empty
-/// state) -- implementation note 2's "only the main pane branches on `ledgerOpen`" scopes that
-/// to the one real view; the still-placeholder nouns say "not yet built" either way.
-///
-/// `Settings` (issue #173) is handled separately, before the generic match below: it renders
-/// its own two-column [index rail][scrollable body] layout filling the whole slot, rather than
-/// the single scrollable `#view` div every other noun gets -- the settings body owns
-/// `scroll_handle` directly (see `view::settings::render`), so wrapping the whole thing in a
-/// second scrollable container here would fight it for the same scroll state. Every other noun
-/// is scrollable and focus-bordered regardless of which is active, since both are properties of
-/// the `View` zone itself, not of any one noun's content.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the view props plus the App the Colour Theme is read from; the remaining sweeps may fold them into one struct"
-)]
+/// The active noun's own view interior, for a View `Shell` still draws: the Dashboard, and the
+/// placeholder Nouns. `Dashboard` further branches on `ledger_open`
+/// (`docs/ux/desktop-mockups/01-shell/README.md`'s "1a" empty state). The pane is scrollable
+/// and focus-bordered, both properties of the `View` zone itself.
 fn render_view(
     view: ShellView,
     ledger_open: bool,
     focused: bool,
     scroll_handle: &ScrollHandle,
     on_empty_state_command_click: OnEmptyStateCommandClick,
-    pages: PageProps<'_>,
-    settings: SettingsPanelProps<'_>,
+    dashboard: Dashboard,
     cx: &gpui::App,
 ) -> gpui::AnyElement {
-    if let ShellView::Settings(_) = view {
-        return div()
-            .id("settings")
-            .flex_1()
-            .min_w(px(0.0))
-            .h_full()
-            .flex()
-            .child(SettingsIndexRail::new(
-                settings.selected,
-                focused && settings.focus == SettingsFocus::Index,
-                settings.on_index_click,
-            ))
-            .child(settings_view::render(
-                focused && settings.focus == SettingsFocus::Page,
-                scroll_handle,
-                SettingsBodyProps {
-                    selected: settings.selected,
-                    page_focused: focused && settings.focus == SettingsFocus::Page,
-                    accounts: settings_view::accounts::AccountsPageProps {
-                        accounts: pages.accounts.accounts,
-                        units: pages.accounts.units,
-                        selected: pages.accounts.selected,
-                        on_add_click: pages.accounts.on_add_click,
-                        on_row_click: pages.accounts.on_row_click,
-                        on_edit_click: pages.accounts.on_edit_click,
-                        on_delete_click: pages.accounts.on_delete_click,
-                    },
-                    categories: pages.settings_categories,
-                    tags: pages.settings_tags,
-                    payees: pages.settings_payees,
-                    documents: pages.settings_documents,
-                    inventory: pages.settings_inventory,
-                    date_style: settings.date_style,
-                    row_density: settings.row_density,
-                    status_glyphs: settings.status_glyphs,
-                    start_sidebar_minimised: settings.start_sidebar_minimised,
-                    on_start_sidebar_minimised_click: settings.on_start_sidebar_minimised_click,
-                    on_date_style_click: settings.on_date_style_click,
-                    on_row_density_click: settings.on_row_density_click,
-                    on_status_glyphs_click: settings.on_status_glyphs_click,
-                    toasts_on: settings.toasts_on,
-                    on_toasts_click: settings.on_toasts_click,
-                    colour_theme_focus: settings.colour_theme_focus,
-                    display_field: settings.display_field,
-                    on_colour_theme_click: settings.on_colour_theme_click,
-                    units: settings.units,
-                    on_unit_edit_click: settings.on_unit_edit_click,
-                    on_unit_delete_click: settings.on_unit_delete_click,
-                    on_add_unit_click: settings.on_add_unit_click,
-                    price_sources: settings.price_sources,
-                    on_price_source_test_click: settings.on_price_source_test_click,
-                    on_price_source_edit_click: settings.on_price_source_edit_click,
-                    on_price_source_delete_click: settings.on_price_source_delete_click,
-                    on_add_price_source_click: settings.on_add_price_source_click,
-                    institutions: settings.institutions,
-                    on_institution_edit_click: settings.on_institution_edit_click,
-                    on_institution_delete_click: settings.on_institution_delete_click,
-                    on_add_institution_click: settings.on_add_institution_click,
-                    on_sync_now_click: settings.on_sync_now_click,
-                    on_backup_now_click: settings.on_backup_now_click,
-                    on_export_ledger_click: settings.on_export_ledger_click,
-                    log: settings.log,
-                    on_tracing_level_click: settings.on_tracing_level_click,
-                    on_clear_logs_click: settings.on_clear_logs_click,
-                },
-                cx,
-            ))
-            .into_any_element();
-    }
-
     let content = match view {
-        ShellView::Dashboard if ledger_open => pages.dashboard.into_any_element(),
+        ShellView::Dashboard if ledger_open => dashboard.into_any_element(),
         ShellView::Dashboard => empty_state(on_empty_state_command_click, cx),
         ShellView::Placeholder(noun) => placeholder::render(noun, cx),
-        ShellView::Settings(_) => unreachable!("handled above"),
     };
 
     scrolling_pane(content, focused, scroll_handle, cx)

@@ -3,33 +3,19 @@
 
 use crate::app::Shell;
 use crate::inventory::form::InventoryDialog;
+#[doc(hidden)]
+pub use crate::view::settings::snapshot::{
+    SettingsDisplaySnapshot, SettingsInstitutionsSnapshot, SettingsSnapshot,
+    SettingsTracingSnapshot, SettingsUnitsSnapshot,
+};
 use crate::{
     accounts::{self, form::AccountsDialog},
     categories::form::CategoriesDialog,
     documents::types::DocumentTypesDialog,
     payees::{self, form::PayeesDialog},
-    settings::{SettingsDialog, SettingsFocus},
+    settings::SettingsDialog,
     tags::{self, form::TagsDialog},
 };
-
-/// The Settings shell's state: the page on show and the dialog open over it. Each page's own state
-/// is its own snapshot (`settings_<page>_snapshot`), so a change to one domain edits one struct.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsSnapshot {
-    /// The page on show, as its `SettingsSection` variant name.
-    pub page: String,
-    /// Whether the page, not the index rail, holds keyboard focus.
-    pub page_focused: bool,
-    /// The open dialog (`AddAccount`, `EditPayee`, `DeleteUnit` and so on); only one page's
-    /// dialog is ever open.
-    pub dialog: Option<String>,
-    /// The dialog's name (or Unit code) draft, and its typed-back confirmation for a Delete.
-    pub dialog_name: Option<String>,
-    pub dialog_confirm: Option<String>,
-    /// The status line's message, where the stubbed buttons report.
-    pub status_message: Option<String>,
-}
 
 /// The Accounts page: names in the order the page lists them, and the selected row's name.
 #[doc(hidden)]
@@ -90,55 +76,6 @@ pub struct SettingsTagsSnapshot {
     pub tag_names: Vec<String>,
     pub selected_tag: Option<String>,
     pub merge_pair: Option<(String, String)>,
-}
-
-/// The Units page: codes in table order, `(code, name, kind)` rows, and the Add/Edit unit dialog's
-/// Name draft, Type (`UnitKind` variant name) and focused field (`Code` or `Name`).
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsUnitsSnapshot {
-    pub unit_codes: Vec<String>,
-    pub unit_rows: Vec<(String, String, String)>,
-    pub unit_dialog_name: Option<String>,
-    pub unit_dialog_kind: Option<String>,
-    pub unit_dialog_field: Option<String>,
-}
-
-/// The Institutions page: `(name, account type)` rows in table order, and the Add institution
-/// dialog's checked products (`InstitutionProduct` variant names) and chosen Default unit code.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsInstitutionsSnapshot {
-    pub institutions: Vec<(String, String)>,
-    pub institution_dialog_types: Option<Vec<String>>,
-    pub institution_dialog_unit: Option<String>,
-}
-
-/// The Display page: the focused control above the Colour Theme grid and the focused card, then
-/// each control's value (enum variant names; `date_style` is `None` for the default).
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsDisplaySnapshot {
-    pub display_field: Option<usize>,
-    pub colour_theme_focus: Option<usize>,
-    pub date_style: Option<String>,
-    pub row_density: String,
-    pub status_glyphs: String,
-    pub start_sidebar_minimised: bool,
-    pub toasts_on: bool,
-}
-
-/// The Tracing page: the chosen level (`TracingLevel` variant name), how many entries the filter
-/// shows, their bodies newest first (`subsystem: message key=value`), how many it hides, and the
-/// list's top row.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SettingsTracingSnapshot {
-    pub tracing_level: String,
-    pub log_line_count: usize,
-    pub log_lines: Vec<String>,
-    pub log_hidden_count: usize,
-    pub log_scroll_top: usize,
 }
 
 /// What the open Settings dialog shows, read once for the snapshots that report it.
@@ -328,17 +265,17 @@ impl Shell {
         open_dialog
     }
 
-    /// The Settings shell for a test: the page on show and the open dialog.
+    /// The Settings shell for a test: the page on show, as the View builds it, and the open
+    /// dialog.
     #[doc(hidden)]
     pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
         let dialog = self.open_settings_dialog(cx);
         SettingsSnapshot {
-            page: format!("{:?}", self.settings_view.read(cx).selected_section()),
-            page_focused: self.settings_view.read(cx).focus() == SettingsFocus::Page,
             dialog: dialog.label.map(str::to_string),
             dialog_name: dialog.name,
             dialog_confirm: dialog.confirm,
             status_message: self.chrome.status_message.clone(),
+            ..self.views.settings.read(cx).snapshot()
         }
     }
 
@@ -441,7 +378,7 @@ impl Shell {
         SettingsInventorySnapshot {
             inventory_rows: crate::view::settings::inventory::visible_rows(
                 self.inventory(cx),
-                self.settings_view.read(cx).inventory_expanded(),
+                self.views.settings.read(cx).inventory_expanded(),
             )
             .into_iter()
             .map(|row| self.inventory_row_label(row, cx))
@@ -514,89 +451,39 @@ impl Shell {
         }
     }
 
-    /// The Settings Units page for a test.
+    /// The Settings Units page for a test, as the View builds it, plus the open Unit dialog.
     #[doc(hidden)]
     pub fn settings_units_snapshot(&self, cx: &gpui::App) -> SettingsUnitsSnapshot {
         let unit_form = self.open_settings_dialog(cx).unit;
         SettingsUnitsSnapshot {
-            unit_codes: self
-                .units_store
-                .read(cx)
-                .units(cx)
-                .iter()
-                .map(|unit| unit.code.clone())
-                .collect(),
-            unit_rows: self
-                .units_store
-                .read(cx)
-                .units(cx)
-                .iter()
-                .map(|unit| {
-                    (
-                        unit.code.clone(),
-                        unit.name.clone(),
-                        unit.kind.as_str().to_string(),
-                    )
-                })
-                .collect(),
             unit_dialog_name: unit_form.as_ref().map(|(name, ..)| name.clone()),
             unit_dialog_kind: unit_form.as_ref().map(|(_, kind, _)| kind.clone()),
             unit_dialog_field: unit_form.map(|(.., field)| field),
+            ..self.views.settings.read(cx).units_snapshot(cx)
         }
     }
 
-    /// The Settings Institutions page for a test.
+    /// The Settings Institutions page for a test, as the View builds it, plus the open Add
+    /// institution dialog.
     #[doc(hidden)]
     pub fn settings_institutions_snapshot(&self, cx: &gpui::App) -> SettingsInstitutionsSnapshot {
         let institution_form = self.open_settings_dialog(cx).institution;
         SettingsInstitutionsSnapshot {
-            institutions: self
-                .institutions_store
-                .read(cx)
-                .institutions(cx)
-                .iter()
-                .map(|row| (row.name.clone(), row.account_type.clone()))
-                .collect(),
             institution_dialog_types: institution_form.as_ref().map(|(types, _)| types.clone()),
             institution_dialog_unit: institution_form.and_then(|(_, unit)| unit),
+            ..self.views.settings.read(cx).institutions_snapshot(cx)
         }
     }
 
-    /// The Settings Display page for a test.
+    /// The Settings Display page for a test, as the View builds it.
     #[doc(hidden)]
     pub fn settings_display_snapshot(&self, cx: &gpui::App) -> SettingsDisplaySnapshot {
-        SettingsDisplaySnapshot {
-            display_field: self.settings_view.read(cx).display_field(),
-            colour_theme_focus: self.settings_view.read(cx).colour_theme_focus(),
-            date_style: self.settings_date_style.map(|style| format!("{style:?}")),
-            row_density: format!("{:?}", self.settings_row_density),
-            status_glyphs: format!("{:?}", self.settings_status_glyphs),
-            start_sidebar_minimised: self.settings_start_sidebar_minimised,
-            toasts_on: self.chrome.toasts.display().toasts_on,
-        }
+        self.views.settings.read(cx).display_snapshot()
     }
 
-    /// The Settings Tracing page for a test.
+    /// The Settings Tracing page for a test, as the View builds it.
     #[doc(hidden)]
     pub fn settings_tracing_snapshot(&self, cx: &gpui::App) -> SettingsTracingSnapshot {
-        SettingsTracingSnapshot {
-            tracing_level: format!("{:?}", self.settings_view.read(cx).log().level()),
-            log_line_count: self.settings_view.read(cx).log().visible().len(),
-            log_lines: self
-                .settings_view
-                .read(cx)
-                .log()
-                .visible()
-                .iter()
-                .map(|entry| crate::settings::tracing_log::body(entry))
-                .collect(),
-            log_hidden_count: self.settings_view.read(cx).log().hidden_count(),
-            log_scroll_top: self
-                .settings_view
-                .read(cx)
-                .log_list()
-                .logical_scroll_top()
-                .item_ix,
-        }
+        self.views.settings.read(cx).tracing_snapshot()
     }
 }

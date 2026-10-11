@@ -9,6 +9,7 @@ use crate::{
     chrome::dialog_host::OpenDialog,
     navigation::nav::{InputMode, Noun},
     period::Period,
+    settings::display::DisplayPreferences,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +31,9 @@ pub enum ViewEvent {
     EnterMode(ViewMode),
     /// Leave the mode the View entered, once what it opened is closed.
     ExitMode,
+    /// The Display Preferences changed on Settings. They are cross-cutting: `Shell` hands them to
+    /// the Views that draw with them, and the Toasts Preference to its Toasts.
+    DisplayChanged(DisplayPreferences),
 }
 
 /// A mode a View enters for something it has opened itself: the [`InputMode`]s `Shell` hands

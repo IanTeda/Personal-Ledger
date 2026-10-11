@@ -26,8 +26,8 @@ impl Shell {
     pub(super) fn settings_categories_page_has_focus(&self, cx: &App) -> bool {
         self.nav.noun() == Noun::Settings
             && self.nav.focus() == FocusZone::View
-            && self.settings_view.read(cx).focus() == SettingsFocus::Page
-            && self.settings_view.read(cx).selected_section() == SettingsSection::Categories
+            && self.views.settings.read(cx).focus() == SettingsFocus::Page
+            && self.views.settings.read(cx).selected_section() == SettingsSection::Categories
     }
 
     /// Whether `left` has something to do inside the Categories tree: fold an open parent, or

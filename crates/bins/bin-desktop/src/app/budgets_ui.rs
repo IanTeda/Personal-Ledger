@@ -514,7 +514,7 @@ impl Shell {
         if let Some(date) = budget.archived_at {
             return crate::msg::desktop_budgets_switcher_archived_on(&format::date(
                 date,
-                self.settings_date_style,
+                self.display(cx).date_style,
             ));
         }
         let health = budgets::health(budget, &self.budgets_ledger(cx), self.today);

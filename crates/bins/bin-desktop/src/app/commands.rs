@@ -103,7 +103,7 @@ impl Shell {
             }
             CommandEffect::SetToasts(on) => {
                 self.nav.exit_mode();
-                self.set_toasts_on(on);
+                self.set_toasts_on(on, cx);
             }
             CommandEffect::OpenToastHistory => {
                 self.nav.exit_mode();

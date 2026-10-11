@@ -11,6 +11,7 @@ use super::Shell;
 use crate::{
     chrome::dialog_host::{OpenDialog, ToastHistoryDialog},
     navigation::nav::InputMode,
+    settings::display::DisplayPreferences,
 };
 
 impl Shell {
@@ -20,13 +21,18 @@ impl Shell {
         self.open_dialog(OpenDialog::ToastHistory(ToastHistoryDialog));
     }
 
-    /// Sets the Client-scoped Toasts Preference (ADR-0027), held in memory like the Colour Theme
-    /// Preferences. The Desktop can always draw a Toast, so only `toasts_on` ever changes.
-    pub fn set_toasts_on(&mut self, on: bool) {
-        self.chrome.toasts.set_display(lib_toast::Display {
+    /// Sets the Client-scoped Toasts Preference (ADR-0027) from outside Settings (`:toasts`), held
+    /// in memory like the Colour Theme Preferences. The Settings View owns it with the other
+    /// Display Preferences, so it is told too.
+    pub fn set_toasts_on(&mut self, on: bool, cx: &mut gpui::App) {
+        let display = DisplayPreferences {
             toasts_on: on,
-            ..self.chrome.toasts.display()
-        });
+            ..self.views.settings.read(cx).display()
+        };
+        self.views
+            .settings
+            .update(cx, |view, cx| view.set_display(display, cx));
+        self.push_display_preferences(display, cx);
     }
 
     /// Raises a Toast whose Message the caller has already resolved to text.

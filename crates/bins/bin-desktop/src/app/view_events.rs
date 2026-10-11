@@ -7,10 +7,7 @@ use gpui::{Context, Entity, EventEmitter, Subscription};
 use super::Shell;
 use crate::{
     settings::SettingsSection,
-    view::{
-        active::ActiveViewEntity,
-        event::{Reveal, ViewEvent},
-    },
+    view::event::{Reveal, ViewEvent},
 };
 
 impl Shell {
@@ -64,6 +61,7 @@ impl Shell {
                 }
                 self.view_mode = None;
             }
+            ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
         }
     }
 
@@ -71,14 +69,14 @@ impl Shell {
     pub(super) fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         self.nav.set_noun(reveal.noun());
         self.reset_view_scroll(cx);
-        match self.active_view_entity(cx) {
-            ActiveViewEntity::Shell(_) => self.reveal_in_shell(reveal, cx),
-            view => view.reveal(reveal, cx),
+        match reveal {
+            Reveal::Account(_) | Reveal::Payee(_) => self.reveal_on_settings_data_page(reveal, cx),
+            _ => self.active_view_entity(cx).reveal(reveal, cx),
         }
     }
 
-    /// A reveal whose destination is still drawn by `Shell`: the Settings pages.
-    fn reveal_in_shell(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
+    /// A reveal whose page `Shell` still draws: the Settings pages with Ledger data.
+    fn reveal_on_settings_data_page(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         match reveal {
             Reveal::Account(id) => {
                 self.open_settings_page(SettingsSection::Accounts, cx);

@@ -78,14 +78,16 @@ impl Shell {
         self.close_dialog();
         match outcome {
             DocumentTypeOutcome::Saved(id) => {
-                self.settings_view
+                self.views
+                    .settings
                     .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
             }
             DocumentTypeOutcome::Removed { id, selected } => {
                 self.views
                     .documents
                     .update(cx, |view, cx| view.type_removed(id, cx));
-                self.settings_view
+                self.views
+                    .settings
                     .update(cx, |v, cx| v.set_documents_selected(cx, selected));
             }
             DocumentTypeOutcome::Dismissed => {}

@@ -12,7 +12,7 @@ use crate::{
     navigation::{
         explorer::ExplorerMode,
         key_router::{self, KeyOutcome, route_key},
-        nav::{FocusZone, InputMode, Noun},
+        nav::{FocusZone, InputMode},
     },
     settings::SettingsSection,
     view::{
@@ -237,44 +237,16 @@ impl Shell {
                 true
             }
             KeyOutcome::NoOp => {
-                let view = match self.active_view_entity(cx) {
-                    ActiveViewEntity::Shell(view) => view,
+                let handled = match self.active_view_entity(cx) {
+                    ActiveViewEntity::Shell(ShellView::Dashboard | ShellView::Placeholder(_)) => {
+                        false
+                    }
+                    // A Settings page with Ledger data reads its own modifiers, as it did on
+                    // `Shell`, so it is asked before the View's gate.
                     view => {
-                        let handled =
-                            self.view_takes_key(keystroke) && view.handle_key(keystroke, cx);
-                        return handled || had_status_message;
+                        self.handle_settings_data_page_key(keystroke, cx)
+                            || (self.view_takes_key(keystroke) && view.handle_key(keystroke, cx))
                     }
-                };
-                let handled = match view {
-                    ShellView::Settings(SettingsSection::Accounts) => {
-                        self.handle_accounts_key(keystroke, cx)
-                    }
-                    ShellView::Settings(SettingsSection::Categories) => {
-                        self.handle_categories_key(keystroke, cx)
-                    }
-                    ShellView::Settings(SettingsSection::Payees) => {
-                        self.handle_payees_key(keystroke, cx)
-                    }
-                    ShellView::Settings(SettingsSection::Documents) => {
-                        self.handle_settings_documents_key(keystroke, cx)
-                    }
-                    ShellView::Settings(SettingsSection::Inventory) => {
-                        self.handle_settings_inventory_key(keystroke, cx)
-                    }
-                    ShellView::Settings(SettingsSection::Tags) => {
-                        self.handle_tags_key(keystroke, cx)
-                    }
-                    ShellView::Settings(
-                        SettingsSection::General
-                        | SettingsSection::Display
-                        | SettingsSection::Units
-                        | SettingsSection::Institutions
-                        | SettingsSection::SyncServer
-                        | SettingsSection::DataBackup
-                        | SettingsSection::Tracing
-                        | SettingsSection::About,
-                    ) => false,
-                    ShellView::Dashboard | ShellView::Placeholder(_) => false,
                 };
                 handled || had_status_message
             }
@@ -306,8 +278,8 @@ impl Shell {
             || self.view_takes_key(keystroke)
     }
 
-    /// `/` (or the hint strip's `/ search`): the active View's Search, when it has one. Settings
-    /// has no Search: `/` is inert there rather than opening a mode with no box.
+    /// `/` (or the hint strip's `/ search`): the active View's Search, when it has one. A View
+    /// with no Search leaves `/` inert rather than opening a mode with no box.
     pub(super) fn start_search(&mut self, cx: &mut Context<'_, Self>) {
         let view = self.active_view_entity(cx);
         if !matches!(view, ActiveViewEntity::Shell(_)) {
@@ -317,46 +289,73 @@ impl Shell {
             }
             return;
         }
-        if self.nav.noun() != Noun::Settings {
-            self.nav.enter_mode(InputMode::Search);
-        }
+        self.nav.enter_mode(InputMode::Search);
     }
 
-    /// The active View's keys that sit ahead of the router. Each arm is exclusive with the others
-    /// because `ShellView` is: the handler behind an arm only fires for the View it names, so
-    /// matching on the View first keeps the same keys owned by the same View.
+    /// The active View's keys that sit ahead of the router. A Settings page with Ledger data,
+    /// which `Shell` still drives, takes its own first.
     fn handle_view_key_ahead_of_router(
         &mut self,
         keystroke: &Keystroke,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        let view = match self.active_view_entity(cx) {
-            ActiveViewEntity::Shell(view) => view,
-            view => return self.view_takes_key_ahead(keystroke) && view.key_ahead(keystroke, cx),
-        };
-        match view {
-            ShellView::Settings(SettingsSection::Documents) => {
-                self.handle_settings_documents_reorder_key(keystroke, cx)
+        match self.active_view_entity(cx) {
+            ActiveViewEntity::Shell(ShellView::Dashboard | ShellView::Placeholder(_)) => false,
+            view => {
+                if !self.view_takes_key_ahead(keystroke) {
+                    return false;
+                }
+                match self.settings_data_page_key_ahead(keystroke, cx) {
+                    Some(taken) => taken,
+                    None => view.key_ahead(keystroke, cx),
+                }
             }
-            ShellView::Settings(SettingsSection::Inventory) => {
-                self.handle_settings_inventory_reorder_key(keystroke, cx)
-            }
-            ShellView::Dashboard
-            | ShellView::Placeholder(_)
-            | ShellView::Settings(
-                SettingsSection::General
-                | SettingsSection::Display
-                | SettingsSection::Units
-                | SettingsSection::Institutions
-                | SettingsSection::SyncServer
-                | SettingsSection::DataBackup
-                | SettingsSection::Tracing
-                | SettingsSection::About
-                | SettingsSection::Accounts
-                | SettingsSection::Categories
-                | SettingsSection::Payees
-                | SettingsSection::Tags,
-            ) => false,
+        }
+    }
+
+    /// The keys a Settings page with Ledger data claims ahead of the router, before the Settings
+    /// View sees them: `J`/`K` reorders, and `left` where the page has something to fold or
+    /// climb, which it then handles as a router leftover. `None` leaves the key to the View.
+    fn settings_data_page_key_ahead(
+        &mut self,
+        keystroke: &Keystroke,
+        cx: &mut Context<'_, Self>,
+    ) -> Option<bool> {
+        if self.handle_settings_documents_reorder_key(keystroke, cx)
+            || self.handle_settings_inventory_reorder_key(keystroke, cx)
+        {
+            return Some(true);
+        }
+        let left_is_local = keystroke.key == "left"
+            && !keystroke.modifiers.shift
+            && ((self.settings_data_page_has_focus(SettingsSection::Categories, cx)
+                && self.settings_categories_left_is_local(cx))
+                || (self.settings_data_page_has_focus(SettingsSection::Inventory, cx)
+                    && self.settings_inventory_left_is_local(cx)));
+        left_is_local.then_some(false)
+    }
+
+    /// A router leftover on a Settings page with Ledger data, which `Shell` still drives.
+    fn handle_settings_data_page_key(
+        &mut self,
+        keystroke: &Keystroke,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
+        let focused = |section| self.settings_data_page_has_focus(section, cx);
+        if focused(SettingsSection::Accounts) {
+            self.handle_accounts_key(keystroke, cx)
+        } else if focused(SettingsSection::Categories) {
+            self.handle_categories_key(keystroke, cx)
+        } else if focused(SettingsSection::Payees) {
+            self.handle_payees_key(keystroke, cx)
+        } else if focused(SettingsSection::Documents) {
+            self.handle_settings_documents_key(keystroke, cx)
+        } else if focused(SettingsSection::Inventory) {
+            self.handle_settings_inventory_key(keystroke, cx)
+        } else if focused(SettingsSection::Tags) {
+            self.handle_tags_key(keystroke, cx)
+        } else {
+            false
         }
     }
 

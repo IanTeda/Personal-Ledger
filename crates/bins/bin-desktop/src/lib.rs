@@ -106,7 +106,7 @@ pub fn build_shell(
         .unwrap_or_default();
 
     let mut shell = Shell::with_today(nav, focus_handle, today, cx);
-    shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised);
+    shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
     shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
@@ -248,7 +248,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer) {
                     let state = PersistedState {
                         noun: shell.nav().noun(),
                         primary_rail: shell.nav().primary_rail(),
-                        start_sidebar_minimised: shell.start_sidebar_minimised(),
+                        start_sidebar_minimised: shell.start_sidebar_minimised(cx),
                         settings_page: Some(shell.settings_page(cx).id().to_string()),
                         explorer_filters: shell.explorer_filters(),
                         documents_mode: Some(shell.documents_persisted(cx).0.id().to_string()),

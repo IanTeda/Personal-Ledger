@@ -245,6 +245,17 @@ impl Dialog for SettingsDialog {
             Self::ClearLogs => true,
         }
     }
+
+    /// Clear logs is a confirm; the Units and Institutions dialogs leave the page's own legend.
+    fn hints(&self) -> Option<Vec<(&'static str, String)>> {
+        match self {
+            Self::ClearLogs => Some(crate::view::settings::hints::confirm_dialog_hints()),
+            Self::AddUnit(_)
+            | Self::EditUnit(..)
+            | Self::DeleteUnit(..)
+            | Self::AddInstitution(_) => None,
+        }
+    }
 }
 
 #[cfg(test)]

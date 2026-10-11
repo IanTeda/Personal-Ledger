@@ -6,7 +6,7 @@ use crate::{
     chrome::rail as chrome_rail,
     navigation::key_router::Movement,
     navigation::nav::FocusZone,
-    settings::{SettingsFocus, SettingsSection},
+    settings::SettingsSection,
     view::active::{ActiveViewEntity, ShellView},
 };
 
@@ -25,16 +25,11 @@ impl Shell {
 
     /// A new noun's view is a different (usually much shorter) length -- carrying over the
     /// old scroll offset could leave it scrolled past all its content, rendering blank. Every
-    /// fresh noun starts scrolled to the top. Also puts
-    /// Settings' focus back on the index (`g s` "lands on the index"); the page on show is the
-    /// last-visited one and stays.
+    /// fresh noun starts scrolled to the top, and the View that is now the destination is told
+    /// (`on_enter`), so it can reset its own scroll and focus.
     pub(super) fn reset_view_scroll(&mut self, cx: &mut gpui::App) {
         self.view_scroll_handle.set_offset(gpui::Point::default());
         self.active_view_entity(cx).on_enter(cx);
-        self.settings_view
-            .update(cx, |v, cx| v.set_focus(cx, SettingsFocus::default()));
-        self.settings_view
-            .update(cx, |v, cx| v.set_colour_theme_focus(cx, None));
     }
 
     fn apply_primary_rail_movement(&mut self, movement: Movement) {
@@ -82,44 +77,53 @@ impl Shell {
     }
 
     fn apply_view_movement(&mut self, movement: Movement, cx: &mut gpui::Context<'_, Self>) {
-        let page_focused = self.nav.focus() == FocusZone::View
-            && self.settings_view.read(cx).focus() == SettingsFocus::Page;
         let view = match self.active_view_entity(cx) {
             ActiveViewEntity::Shell(view) => view,
-            view => return view.apply_movement(movement, cx),
+            view => {
+                if !self.apply_settings_data_page_movement(movement, cx) {
+                    view.apply_movement(movement, cx);
+                }
+                return;
+            }
         };
         match view {
-            ShellView::Settings(SettingsSection::Accounts) if page_focused => {
-                self.apply_accounts_movement(movement, cx);
-            }
-            ShellView::Settings(SettingsSection::Categories) if page_focused => {
-                self.apply_settings_categories_movement(movement, cx);
-            }
-            ShellView::Settings(SettingsSection::Tags) if page_focused => {
-                self.apply_settings_tags_movement(movement, cx);
-            }
-            ShellView::Settings(SettingsSection::Payees) if page_focused => {
-                self.apply_settings_payees_movement(movement, cx);
-            }
-            ShellView::Settings(SettingsSection::Documents) if page_focused => {
-                self.apply_settings_documents_movement(movement, cx);
-            }
-            ShellView::Settings(SettingsSection::Inventory) if page_focused => {
-                self.apply_settings_inventory_movement(movement, cx);
-            }
-            ShellView::Settings(_) => {
-                if self.settings_view.read(cx).focus() == SettingsFocus::Index
-                    && matches!(
-                        movement,
-                        Movement::Next | Movement::Prev | Movement::First | Movement::Last
-                    )
-                {
-                    self.apply_settings_section_movement(movement, cx);
-                } else {
-                    self.scroll_view(movement);
-                }
-            }
             ShellView::Dashboard | ShellView::Placeholder(_) => self.scroll_view(movement),
         }
+    }
+
+    /// Movement on a Settings page with Ledger data, which `Shell` still drives until the page
+    /// moves into the Settings View. `false` when no such page has focus.
+    fn apply_settings_data_page_movement(
+        &mut self,
+        movement: Movement,
+        cx: &mut gpui::Context<'_, Self>,
+    ) -> bool {
+        let focused = |section| self.settings_data_page_has_focus(section, cx);
+        let section = [
+            SettingsSection::Accounts,
+            SettingsSection::Categories,
+            SettingsSection::Tags,
+            SettingsSection::Payees,
+            SettingsSection::Documents,
+            SettingsSection::Inventory,
+        ]
+        .into_iter()
+        .find(|section| focused(*section));
+        match section {
+            Some(SettingsSection::Accounts) => self.apply_accounts_movement(movement, cx),
+            Some(SettingsSection::Categories) => {
+                self.apply_settings_categories_movement(movement, cx);
+            }
+            Some(SettingsSection::Tags) => self.apply_settings_tags_movement(movement, cx),
+            Some(SettingsSection::Payees) => self.apply_settings_payees_movement(movement, cx),
+            Some(SettingsSection::Documents) => {
+                self.apply_settings_documents_movement(movement, cx);
+            }
+            Some(SettingsSection::Inventory) => {
+                self.apply_settings_inventory_movement(movement, cx);
+            }
+            _ => return false,
+        }
+        true
     }
 }
