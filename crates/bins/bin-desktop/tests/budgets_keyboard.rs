@@ -225,3 +225,47 @@ fn the_switcher_selection_follows_j_and_k(app: &mut TestAppContext) {
         assert_ne!(ui.budgets().switcher_selected, Some(start));
     }
 }
+
+#[gpui::test]
+fn tab_steps_the_tabs_and_shift_tab_leaves_the_page(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    ui.press("tab");
+    assert_eq!(ui.budgets().tab, "Plan");
+    ui.press("tab");
+    assert_eq!(ui.budgets().tab, "History");
+    ui.press("tab");
+    assert_eq!(ui.budgets().tab, "Progress");
+    ui.press("shift-tab");
+    assert_eq!(ui.budgets().tab, "Progress");
+    assert_ne!(
+        ui.read(|shell| shell.nav().focus()),
+        bin_desktop::navigation::nav::FocusZone::View
+    );
+}
+
+#[gpui::test]
+fn plan_tab_saves_the_cell_and_edits_the_next_month(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    ui.press("2 j l l i 9 0 0 tab");
+    let page = ui.budgets();
+    assert_eq!(page.plan_cursor, (1, 3));
+    assert!(page.plan_edit.is_some());
+    assert_eq!(mode(&mut ui), InputMode::Insert);
+    ui.press("escape");
+    assert_eq!(ui.budgets().plan_edit, None);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn an_insert_the_page_did_not_ask_for_leaves_its_keys_alone(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    ui.press("a");
+    assert_eq!(mode(&mut ui), InputMode::Insert);
+    ui.press("tab 2");
+    assert_eq!(ui.budgets().tab, "Progress");
+    ui.press("escape");
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}

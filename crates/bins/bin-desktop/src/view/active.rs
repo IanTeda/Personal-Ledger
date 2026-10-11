@@ -9,7 +9,7 @@
 
 use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
-use super::{bills::state::BillsView, event::Reveal};
+use super::{bills::state::BillsView, budgets::state::BudgetsView, event::Reveal};
 use crate::{
     chrome::statusline::PageStatus,
     navigation::{active_view::ActiveView, key_router::Movement, nav::Noun},
@@ -20,6 +20,7 @@ use crate::{
 #[derive(Clone)]
 pub enum ActiveViewEntity {
     Bills(Entity<BillsView>),
+    Budgets(Entity<BudgetsView>),
     /// A View whose rendering and input are still `Shell`'s.
     Shell(ShellView),
 }
@@ -33,7 +34,6 @@ pub enum ShellView {
     /// The CSV import step, which takes over the Transactions pane while it is open.
     Import,
     Documents,
-    Budgets,
     Settings(SettingsSection),
     /// A Noun whose surface is a later map's work (#420).
     Placeholder(Noun),
@@ -41,14 +41,14 @@ pub enum ShellView {
 
 impl ActiveViewEntity {
     /// The Entity behind `view`, from the View Entities `Shell` owns.
-    pub fn new(view: ActiveView, bills: &Entity<BillsView>) -> Self {
+    pub fn new(view: ActiveView, bills: &Entity<BillsView>, budgets: &Entity<BudgetsView>) -> Self {
         match view {
             ActiveView::Bills => Self::Bills(bills.clone()),
+            ActiveView::Budgets => Self::Budgets(budgets.clone()),
             ActiveView::Dashboard => Self::Shell(ShellView::Dashboard),
             ActiveView::Transactions => Self::Shell(ShellView::Transactions),
             ActiveView::Import => Self::Shell(ShellView::Import),
             ActiveView::Documents => Self::Shell(ShellView::Documents),
-            ActiveView::Budgets => Self::Shell(ShellView::Budgets),
             ActiveView::Settings(section) => Self::Shell(ShellView::Settings(section)),
             ActiveView::Placeholder(noun) => Self::Shell(ShellView::Placeholder(noun)),
         }
@@ -58,6 +58,7 @@ impl ActiveViewEntity {
     pub fn element(&self) -> AnyElement {
         match self {
             Self::Bills(view) => view.clone().into_any_element(),
+            Self::Budgets(view) => view.clone().into_any_element(),
             Self::Shell(_) => gpui::Empty.into_any_element(),
         }
     }
@@ -66,6 +67,7 @@ impl ActiveViewEntity {
     pub fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Shell(_) => false,
         }
     }
@@ -74,6 +76,7 @@ impl ActiveViewEntity {
     pub fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Shell(_) => false,
         }
     }
@@ -81,6 +84,7 @@ impl ActiveViewEntity {
     pub fn apply_movement(&self, movement: Movement, cx: &mut App) {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Shell(_) => {}
         }
     }
@@ -89,6 +93,7 @@ impl ActiveViewEntity {
     pub fn escape(&self, cx: &mut App) -> bool {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.escape(cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.escape(cx)),
             Self::Shell(_) => false,
         }
     }
@@ -97,6 +102,7 @@ impl ActiveViewEntity {
     pub fn start_search(&self, cx: &mut App) -> bool {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.start_search(cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Shell(_) => false,
         }
     }
@@ -105,6 +111,7 @@ impl ActiveViewEntity {
     pub fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Shell(_) => false,
         }
     }
@@ -113,6 +120,7 @@ impl ActiveViewEntity {
     pub fn on_enter(&self, cx: &mut App) {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.on_enter(cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.on_enter(cx)),
             Self::Shell(_) => {}
         }
     }
@@ -121,6 +129,7 @@ impl ActiveViewEntity {
     pub fn reveal(&self, reveal: Reveal, cx: &mut App) {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
             Self::Shell(_) => {}
         }
     }
@@ -129,6 +138,7 @@ impl ActiveViewEntity {
     pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         match self {
             Self::Bills(view) => view.read(cx).page_status(cx),
+            Self::Budgets(view) => view.read(cx).page_status(cx),
             Self::Shell(_) => None,
         }
     }

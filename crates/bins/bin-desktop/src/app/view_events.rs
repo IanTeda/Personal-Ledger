@@ -5,9 +5,12 @@
 use gpui::{Context, Entity, EventEmitter, Subscription};
 
 use super::Shell;
-use crate::view::{
-    active::ActiveViewEntity,
-    event::{Reveal, ViewEvent},
+use crate::{
+    navigation::nav::InputMode,
+    view::{
+        active::ActiveViewEntity,
+        event::{Reveal, ViewEvent},
+    },
 };
 
 impl Shell {
@@ -50,6 +53,17 @@ impl Shell {
             }
             ViewEvent::SetStatus(text) => self.chrome.status_message = text,
             ViewEvent::Reveal(reveal) => self.reveal(reveal, cx),
+            ViewEvent::EnterInsert => {
+                self.nav.enter_mode(InputMode::Insert);
+                self.view_insert = true;
+            }
+            // Only the View's own Insert: a mode entered since (a Dialog) is left alone.
+            ViewEvent::ExitInsert => {
+                if self.view_insert && self.nav.mode() == InputMode::Insert {
+                    self.nav.exit_mode();
+                }
+                self.view_insert = false;
+            }
         }
     }
 

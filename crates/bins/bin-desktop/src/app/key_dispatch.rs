@@ -109,9 +109,9 @@ impl Shell {
             return true;
         }
 
-        // Keys a View claims ahead of the router (Bills' `tab`, Budgets' Plan cell edit, the Import
-        // step, the Documents keys, `J`/`K` reorders); the router would otherwise read them as
-        // `tab`, `a` or `j`/`k`.
+        // Keys a View claims ahead of the router (Bills' and Budgets' `tab`, Budgets' Plan cell
+        // edit, the Import step, the Documents keys, `J`/`K` reorders); the router would otherwise
+        // read them as `tab`, `a` or `j`/`k`.
         if !pending_g_active && self.handle_view_key_ahead_of_router(keystroke, cx) {
             self.chrome.status_message = None;
             return true;
@@ -135,7 +135,7 @@ impl Shell {
                 return true;
             }
             if self.chrome.dialog.is_none()
-                && self.view_takes_key(keystroke)
+                && self.view_takes_key_ahead(keystroke)
                 && self.active_view_entity(cx).escape(cx)
             {
                 return true;
@@ -159,7 +159,6 @@ impl Shell {
                 }
                 self.edit_transactions_state(cx, |s| s.filter_form = None);
                 self.close_dialog();
-                self.edit_budgets_state(cx, |state| state.plan_edit = None);
                 if self.nav.mode() == InputMode::Search && self.nav.noun() == Noun::Transactions {
                     self.cancel_transactions_search(cx);
                 }
@@ -230,6 +229,7 @@ impl Shell {
             }
             KeyOutcome::EnterInsert => {
                 self.nav.enter_mode(InputMode::Insert);
+                self.view_insert = false;
                 true
             }
             // Mirrors the TopBar's own rail-toggle button (`Shell::handle_toggle_rail`) --
@@ -294,7 +294,6 @@ impl Shell {
                         | SettingsSection::Tracing
                         | SettingsSection::About,
                     ) => false,
-                    ShellView::Budgets => self.handle_budgets_key(keystroke, cx),
                     ShellView::Transactions | ShellView::Import => {
                         self.handle_transactions_key(keystroke, cx)
                     }
@@ -322,6 +321,14 @@ impl Shell {
             && !(modifiers.control || modifiers.alt || modifiers.platform)
     }
 
+    /// Whether a key reaches the active View ahead of the router: as [`Self::view_takes_key`], and
+    /// every key in an `Insert` mode the View entered for an edit it opened in place
+    /// (`ViewEvent::EnterInsert`). The router swallows every `Insert` key, so only the View can
+    /// use one; `Esc` comes back to the View as `escape`.
+    fn view_takes_key_ahead(&self, keystroke: &Keystroke) -> bool {
+        (self.view_insert && self.nav.mode() == InputMode::Insert) || self.view_takes_key(keystroke)
+    }
+
     /// The active View's keys that sit ahead of the router. Each arm is exclusive with the others
     /// because `ShellView` is: the handler behind an arm only fires for the View it names, so
     /// matching on the View first keeps the same keys owned by the same View.
@@ -332,10 +339,9 @@ impl Shell {
     ) -> bool {
         let view = match self.active_view_entity(cx) {
             ActiveViewEntity::Shell(view) => view,
-            view => return self.view_takes_key(keystroke) && view.key_ahead(keystroke, cx),
+            view => return self.view_takes_key_ahead(keystroke) && view.key_ahead(keystroke, cx),
         };
         match view {
-            ShellView::Budgets => self.handle_budgets_plan_edit_key(keystroke, cx),
             ShellView::Import => self.handle_import_key(keystroke, cx),
             ShellView::Documents => self.handle_documents_key(keystroke, cx),
             ShellView::Settings(SettingsSection::Documents) => {

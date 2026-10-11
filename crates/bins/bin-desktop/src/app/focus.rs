@@ -129,7 +129,6 @@ impl Shell {
                 self.apply_transactions_movement(movement, cx);
             }
             ShellView::Documents => self.apply_documents_movement(movement, cx),
-            ShellView::Budgets => self.apply_budgets_movement(movement, cx),
             ShellView::Dashboard | ShellView::Placeholder(_) => self.scroll_view(movement),
         }
     }

@@ -17,6 +17,7 @@ pub mod import;
 pub mod institutions;
 pub mod inventory;
 pub mod payees;
+pub mod placeholder;
 pub mod settings;
 pub mod tags;
 pub mod transactions;

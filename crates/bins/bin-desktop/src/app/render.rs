@@ -50,13 +50,11 @@ use crate::{
     view::{
         accounts as accounts_view,
         active::{ActiveViewEntity, ShellView},
-        bills as bills_view,
-        budgets::{self as budgets_view},
-        categories as categories_view,
+        bills as bills_view, categories as categories_view,
         dashboard::{self, Dashboard},
         documents::{self as documents_view},
         event::Reveal,
-        help as help_view, import as import_view, payees as payees_view,
+        help as help_view, import as import_view, payees as payees_view, placeholder,
         settings::{self as settings_view, SettingsBodyProps},
         tags as tags_view, transactions as transactions_view,
     },
@@ -778,100 +776,6 @@ impl Render for Shell {
                 on_continue_click: entity_for(Shell::handle_import_continue_click),
             }
         });
-        let budgets_figures = (self.nav.noun() == Noun::Budgets)
-            .then(|| self.budgets_figures(cx))
-            .flatten();
-        let budgets_plan = (self.nav.noun() == Noun::Budgets
-            && self.budgets_state(cx).tab == budgets::BudgetsTab::Plan)
-            .then(|| self.budgets_plan_data(cx))
-            .flatten();
-        let budgets_history = (self.nav.noun() == Noun::Budgets
-            && self.budgets_state(cx).tab == budgets::BudgetsTab::History)
-            .then(|| self.budgets_history_data(cx))
-            .flatten();
-        let budgets_page = budgets_figures.as_ref().map(|(budget, figures)| {
-            let plain = |handler: fn(&mut Shell, &mut Context<'_, Shell>)| {
-                let entity = entity.clone();
-                let on_click: budgets_view::OnPlainClick = Rc::new(move |_window, cx| {
-                    entity.update(cx, handler);
-                });
-                on_click
-            };
-            budgets_view::BudgetsPageProps {
-                name: &budget.name,
-                method: budget.method,
-                tab: self.budgets_state(cx).tab,
-                period: self.budgets_state(cx).period,
-                figures,
-                plan: budgets_plan
-                    .as_ref()
-                    .map(|plan| budgets_view::plan::PlanProps {
-                        plan,
-                        current: Period::of(self.today),
-                        cursor: self.budgets_plan_cursor_in(plan, cx),
-                        edit: self.budgets_state(cx).plan_edit.as_ref(),
-                        on_cell_click: {
-                            let entity = entity.clone();
-                            Rc::new(move |row, column, _window, cx| {
-                                entity.update(cx, |shell, cx| {
-                                    shell.handle_budgets_plan_cell_click(row, column, cx);
-                                });
-                            })
-                        },
-                    }),
-                history: budgets_history.as_ref().map(|history| {
-                    budgets_view::history::HistoryProps {
-                        history,
-                        categories: self.categories(cx),
-                        cursor: self.budgets_history_cursor_in(history, cx),
-                        on_cell_click: {
-                            let entity = entity.clone();
-                            Rc::new(move |row, column, _window, cx| {
-                                entity.update(cx, |shell, cx| {
-                                    shell.handle_budgets_history_cell_click(row, column, cx);
-                                });
-                            })
-                        },
-                    }
-                }),
-                on_export_click: plain(Shell::handle_budgets_export_click),
-                on_range_prev: plain(Shell::handle_budgets_range_prev),
-                on_range_next: plain(Shell::handle_budgets_range_next),
-                categories: self.categories(cx),
-                selected: (!figures.rows.is_empty())
-                    .then(|| self.budgets_state(cx).selected.min(figures.rows.len() - 1)),
-                on_tab_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |tab, _window, cx| {
-                        entity.update(cx, |shell, cx| shell.handle_budgets_tab_click(tab, cx));
-                    })
-                },
-                on_title_click: plain(Shell::handle_budgets_title_click),
-                on_period_prev: plain(Shell::handle_budgets_period_prev),
-                on_period_next: plain(Shell::handle_budgets_period_next),
-                on_edit_plan_click: plain(Shell::handle_budgets_edit_plan_click),
-                on_add_click: plain(Shell::handle_budgets_add_click),
-                fill_label: crate::msg::desktop_budgets_fill_button(
-                    &lib_locale::format::format_month(self.budgets_fill_target(cx).month),
-                ),
-                on_fill_click: plain(Shell::handle_budgets_fill_click),
-                on_action_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |index, _window, cx| {
-                        entity.update(cx, |shell, cx| {
-                            shell.handle_budgets_action_click(index, cx);
-                        });
-                    })
-                },
-                on_row_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |index, _window, cx| {
-                        entity.update(cx, |shell, cx| shell.handle_budgets_row_click(index, cx));
-                    })
-                },
-                on_known_click: plain(Shell::handle_budgets_known_click),
-            }
-        });
         let on_settings_categories_row_click: categories_view::OnRowClick = {
             let entity = entity.clone();
             Rc::new(move |id, _window, cx| {
@@ -1101,12 +1005,7 @@ impl Render for Shell {
         });
         let documents_page =
             (self.nav.noun() == Noun::Documents).then(|| self.documents_page_props(&entity, cx));
-        let view_chrome = self.view_chrome(
-            budgets_figures.as_ref(),
-            budgets_plan.as_ref(),
-            budgets_history.as_ref(),
-            cx,
-        );
+        let view_chrome = self.view_chrome(cx);
 
         div()
             .size_full()
@@ -1128,7 +1027,6 @@ impl Render for Shell {
                     || this.handle_settings_tracing_key(&event.keystroke, cx)
                     || this.handle_settings_focus_key(&event.keystroke, cx)
                     || this.handle_colour_theme_grid_key(&event.keystroke, cx)
-                    || this.handle_budgets_tab_key(&event.keystroke, cx)
                     || this.handle_key_down(event, cx)
                 {
                     cx.notify();
@@ -1207,7 +1105,6 @@ impl Render for Shell {
                                         settings_payees: settings_payees_page,
                                         settings_documents: settings_documents_page,
                                         settings_inventory: settings_inventory_page,
-                                        budgets: budgets_page,
                                         import: import_page,
                                         transactions: transactions_page,
                                         documents: documents_page,
@@ -1713,8 +1610,6 @@ struct PageProps<'a> {
     settings_documents: settings_view::documents::DocumentsPageProps<'a>,
     /// Settings' own Inventory page, mounted only while Settings shows it.
     settings_inventory: inventory_view::InventoryPageProps<'a>,
-    /// `None` when the Budget shown has gone.
-    budgets: Option<budgets_view::BudgetsPageProps<'a>>,
     /// `Some` while 6e shows in place of the Transactions page.
     import: Option<import_view::ImportPageProps<'a>>,
     transactions: Option<transactions_view::TransactionsPageProps>,
@@ -1799,18 +1694,7 @@ fn render_view(
             return match pages.documents {
                 Some(documents) => documents_view::render(focused, documents, cx),
                 None => scrolling_pane(
-                    placeholder_view(Noun::Documents, cx),
-                    focused,
-                    scroll_handle,
-                    cx,
-                ),
-            };
-        }
-        ShellView::Budgets => {
-            return match pages.budgets {
-                Some(budgets) => budgets_view::render(focused, scroll_handle, budgets, cx),
-                None => scrolling_pane(
-                    placeholder_view(Noun::Budgets, cx),
+                    placeholder::render(Noun::Documents, cx),
                     focused,
                     scroll_handle,
                     cx,
@@ -1903,10 +1787,10 @@ fn render_view(
     let content = match view {
         ShellView::Dashboard if ledger_open => pages.dashboard.into_any_element(),
         ShellView::Dashboard => empty_state(on_empty_state_command_click, cx),
-        ShellView::Placeholder(noun) => placeholder_view(noun, cx),
+        ShellView::Placeholder(noun) => placeholder::render(noun, cx),
         // Import and Transactions land here only without their props, which `Shell` never sends.
-        ShellView::Transactions | ShellView::Import => placeholder_view(Noun::Transactions, cx),
-        ShellView::Documents | ShellView::Budgets | ShellView::Settings(_) => {
+        ShellView::Transactions | ShellView::Import => placeholder::render(Noun::Transactions, cx),
+        ShellView::Documents | ShellView::Settings(_) => {
             unreachable!("handled above")
         }
     };
@@ -1948,29 +1832,6 @@ fn scrolling_pane(
             this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .child(content)
-        .into_any_element()
-}
-
-/// The "not yet built" view of a noun whose surface is a later map's work (#420): its name and
-/// one line saying so. The rail row and `g` binding are live; the surface is not.
-fn placeholder_view(noun: Noun, cx: &gpui::App) -> gpui::AnyElement {
-    div()
-        .debug_selector(|| "placeholder-view".to_string())
-        .p(px(24.0))
-        .flex()
-        .flex_col()
-        .gap(px(6.0))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(18.0))
-                .child(crate::msg::desktop_placeholder_title(&noun.label())),
-        )
-        .child(
-            div()
-                .text_color(color::faint_text(cx))
-                .child(crate::msg::desktop_placeholder_body()),
-        )
         .into_any_element()
 }
 

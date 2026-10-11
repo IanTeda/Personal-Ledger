@@ -123,3 +123,63 @@ fn the_known_costs_link_opens_the_bills_schedule_on_the_period_shown(app: &mut T
     assert_eq!(bills.tab, "Schedule");
     assert_eq!(bills.period, shown);
 }
+
+#[gpui::test]
+fn clicking_the_title_opens_the_switcher(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    ui.click("budgets-title");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Switcher"));
+}
+
+#[gpui::test]
+fn the_primary_action_follows_the_tab(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    // Progress: Edit plan.
+    ui.click("budgets-primary-action");
+    assert_eq!(ui.budgets().tab, "Plan");
+    // Plan: + Budget a category.
+    ui.click("budgets-primary-action");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("EditLimit"));
+}
+
+#[gpui::test]
+fn the_fill_button_opens_fill(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    ui.click("budgets-tab-Plan");
+    ui.click("budgets-fill");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Fill"));
+}
+
+#[gpui::test]
+fn clicking_a_history_cell_moves_there_and_a_second_click_opens_its_detail(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_budgets(app);
+
+    ui.click("budgets-tab-History");
+    ui.click("budgets-history-1-0");
+    assert_eq!(ui.budgets().dialog, None);
+    ui.click("budgets-history-1-0");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Detail"));
+}
+
+#[gpui::test]
+fn a_dialog_opened_mid_edit_abandons_the_plan_cell(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    ui.click("budgets-tab-Plan");
+    ui.click("budgets-plan-1-2");
+    assert!(ui.budgets().plan_edit.is_some());
+    ui.click("budgets-title");
+    let page = ui.budgets();
+    assert_eq!(page.dialog.as_deref(), Some("Switcher"));
+    assert_eq!(page.plan_edit, None);
+    ui.press("escape");
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
+    // Back in Normal, keys move the grid again rather than typing into a stale cell.
+    ui.press("l");
+    assert_eq!(ui.budgets().plan_cursor, (1, 3));
+}

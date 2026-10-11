@@ -132,32 +132,32 @@ impl Shell {
                 match verb {
                     BudgetsVerb::Switch => self.open_budgets_switcher(cx),
                     BudgetsVerb::New => self.open_budgets_new(cx),
-                    BudgetsVerb::Edit => self.open_budgets_edit(self.budgets_state(cx).current, cx),
+                    BudgetsVerb::Edit => self.open_budgets_edit(self.budgets_current(cx), cx),
                     BudgetsVerb::Manage => self.open_budgets_manage(cx),
                     BudgetsVerb::Duplicate => {
                         self.run_budgets_manage_action(
-                            self.budgets_state(cx).current,
+                            self.budgets_current(cx),
                             ManageAction::Duplicate,
                             cx,
                         );
                     }
                     BudgetsVerb::SetDefault => {
                         self.run_budgets_manage_action(
-                            self.budgets_state(cx).current,
+                            self.budgets_current(cx),
                             ManageAction::SetDefault,
                             cx,
                         );
                     }
                     BudgetsVerb::Archive => {
                         self.run_budgets_manage_action(
-                            self.budgets_state(cx).current,
+                            self.budgets_current(cx),
                             ManageAction::Archive,
                             cx,
                         );
                     }
                     BudgetsVerb::Restore => {
                         self.run_budgets_manage_action(
-                            self.budgets_state(cx).current,
+                            self.budgets_current(cx),
                             ManageAction::Restore,
                             cx,
                         );

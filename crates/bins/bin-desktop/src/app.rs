@@ -87,7 +87,7 @@ use crate::payees::{PayeesEvent, PayeesStore};
 use crate::view::accounts::state::{AccountsEvent, AccountsStore, AccountsView};
 use crate::view::active::ActiveViewEntity;
 use crate::view::bills::state::{BillsSources, BillsView};
-use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, BudgetsView};
+use crate::view::budgets::state::{BudgetsSources, BudgetsStore, BudgetsView};
 use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};
 use crate::view::documents::state::{
     DocumentsEvent, DocumentsState, DocumentsStore, DocumentsView,
@@ -143,6 +143,10 @@ pub struct Shell {
     /// [`PENDING_G_TIMEOUT`](key_dispatch::PENDING_G_TIMEOUT) rather than driven by a timer: nothing needs to happen on its
     /// own with no further keypress, so a lazily-checked timestamp is enough.
     pending_g: Option<Instant>,
+    /// Whether the active View entered the current `Insert` mode itself
+    /// (`ViewEvent::EnterInsert`), so `Insert` keys are its to read. The router's own `a` enters
+    /// an `Insert` no View asked for, which swallows every key as before.
+    view_insert: bool,
     /// Chrome's own state (the status message, Toasts, palette, Dialog and rail tooltip), see
     /// [`ChromeState`] and ADR-0032.
     chrome: ChromeState,
@@ -200,8 +204,8 @@ pub struct Shell {
     /// Categories 5c read and write the same Category Limits, and so they survive leaving and
     /// re-entering either view.
     budgets_store: Entity<BudgetsStore>,
-    /// The Budgets page's state (Budget, tab, month, cursors). Its events are handled in
-    /// `handle_budgets_event`.
+    /// The Budgets page: its state (Budget, tab, month, cursors), its rendering and its input,
+    /// owned by its Entity (ADR-0037). It reaches `Shell` only through `ViewEvent`.
     budgets_view: Entity<BudgetsView>,
     /// The Payees rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions, Bills, Documents and Budgets read the same rows.
@@ -321,12 +325,24 @@ impl Shell {
             .default_budget()
             .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id);
         let budgets_store = cx.new(|cx| BudgetsStore::new(ledger.clone(), cx));
-        let budgets_view = cx.new(|_| BudgetsView::new(BudgetsState::new(budgets_current, today)));
-        let budgets_subscription =
-            cx.subscribe(&budgets_view, |shell, _view, event: &BudgetsEvent, cx| {
-                shell.handle_budgets_event(*event, cx);
-            });
         let bills_store = cx.new(|cx| BillsStore::new(ledger.clone(), cx));
+        let budgets_view = cx.new(|_| {
+            BudgetsView::new(
+                BudgetsSources {
+                    ledger: ledger.clone(),
+                    budgets: budgets_store.clone(),
+                    categories: categories_store.clone(),
+                    accounts: accounts.clone(),
+                    transactions: transactions_store.clone(),
+                    bills: bills_store.clone(),
+                },
+                budgets_current,
+                today,
+            )
+        });
+        let budgets_subscription = Self::view_event_subscription(&budgets_view, cx);
+        // The status line reads the page's state, so a change in it repaints `Shell` too.
+        let budgets_view_observer = cx.observe(&budgets_view, |_, _, cx| cx.notify());
         let bills_view = cx.new(|_| {
             BillsView::new(
                 BillsSources {
@@ -356,6 +372,7 @@ impl Shell {
             focus_handle,
             view_scroll_handle: ScrollHandle::new(),
             pending_g: None,
+            view_insert: false,
             chrome: ChromeState {
                 status_message: None,
                 toasts: Toasts::default(),
@@ -402,6 +419,7 @@ impl Shell {
             view_subscriptions: vec![
                 accounts_subscription,
                 budgets_subscription,
+                budgets_view_observer,
                 bills_subscription,
                 bills_view_observer,
                 documents_subscription,
@@ -528,7 +546,7 @@ impl Shell {
 
     /// The active View as `Shell` forwards to it (ADR-0037).
     fn active_view_entity(&self, cx: &App) -> ActiveViewEntity {
-        ActiveViewEntity::new(self.active_view(cx), &self.bills_view)
+        ActiveViewEntity::new(self.active_view(cx), &self.bills_view, &self.budgets_view)
     }
 
     /// Hands the Display Preferences to the Views that read them, after a Settings change.

@@ -21,6 +21,11 @@ pub enum ViewEvent {
     /// Jump to a record another View owns (ADR-0037): `Shell` makes its destination active, then
     /// asks that View to show it.
     Reveal(Reveal),
+    /// Enter Insert mode for an edit the View has opened in place (Budgets' Plan cell). While
+    /// it lasts, `Shell` hands the View every key ahead of the router.
+    EnterInsert,
+    /// Leave Insert mode, once the View's edit in place is saved or abandoned.
+    ExitInsert,
 }
 
 /// A record one View hands off to the View that owns it.

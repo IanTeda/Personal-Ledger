@@ -367,6 +367,7 @@ fn render_cell(
         .id(SharedString::from(format!(
             "budgets-history-{index}-{column}"
         )))
+        .debug_selector(move || format!("budgets-history-{index}-{column}"))
         .w(MONTH_WIDTH)
         .flex_none()
         .py(px(4.0))

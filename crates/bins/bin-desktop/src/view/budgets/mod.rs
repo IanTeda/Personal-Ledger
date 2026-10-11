@@ -5,32 +5,38 @@
 //! The Progress (9a, `progress`), Plan (9b, `plan`) and History (9c, `history`) tabs, with the
 //! Category detail (9d), Edit budget (9e), Fill (9f) and Stop budgeting (9g) dialogs and the
 //! Switcher popover (11b, `switcher`) and the New budget (11c, `budget_dialog`) and Manage budgets (11f,
-//! `manage_dialog`) dialogs. Every action is a callback into `Shell`, so the keyboard and the mouse reach the same
-//! handlers.
+//! `manage_dialog`) dialogs. [`state::BudgetsView`] renders the page itself (ADR-0037): every
+//! action is a call back into the Budgets Entity, so the keyboard and the mouse reach the same
+//! methods. The dialogs are still drawn by `Shell`'s Dialog host.
 
 pub mod budget_dialog;
 pub mod detail_dialog;
 pub mod fill_dialog;
+pub(crate) mod hints;
 pub mod history;
 pub mod limit_dialog;
 pub mod manage_dialog;
 pub mod plan;
 pub mod progress;
+pub mod snapshot;
 pub mod state;
 pub mod stop_dialog;
 pub mod switcher;
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, ScrollHandle, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, ScrollHandle, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::upper;
 
 use crate::{
     budgets::{BudgetsTab, Method, PeriodFigures},
     categories::Category,
+    navigation::nav::Noun,
     period::Period,
     theme::color,
+    view::placeholder,
 };
+use state::BudgetsView;
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 /// Called with a row's position in the Progress table.
@@ -72,12 +78,7 @@ pub struct BudgetsPageProps<'a> {
     pub on_known_click: OnPlainClick,
 }
 
-pub fn render(
-    focused: bool,
-    scroll_handle: &ScrollHandle,
-    props: BudgetsPageProps<'_>,
-    cx: &App,
-) -> AnyElement {
+pub fn render(scroll_handle: &ScrollHandle, props: BudgetsPageProps<'_>, cx: &App) -> AnyElement {
     let body = match props.tab {
         BudgetsTab::Progress => progress::render(&props, cx),
         BudgetsTab::Plan => match &props.plan {
@@ -99,9 +100,6 @@ pub fn render(
         .h_full()
         .overflow_y_scroll()
         .track_scroll(scroll_handle)
-        .when(focused, |this| {
-            this.border_l(px(2.0)).border_color(color::foreground(cx))
-        })
         .px(px(28.0))
         .py(px(22.0))
         .child(page_header(&props, cx))
@@ -155,6 +153,7 @@ fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
                 .child(
                     div()
                         .id("budgets-title")
+                        .debug_selector(|| "budgets-title".to_string())
                         .cursor_pointer()
                         .on_click({
                             let on_title = props.on_title_click.clone();
@@ -198,6 +197,7 @@ fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
             this.child(div().flex_1()).child(
                 div()
                     .id("budgets-fill")
+                    .debug_selector(|| "budgets-fill".to_string())
                     .cursor_pointer()
                     .flex_none()
                     .py(px(9.0))
@@ -213,7 +213,8 @@ fn page_header(props: &BudgetsPageProps<'_>, cx: &App) -> impl IntoElement {
         })
         .child(
             div()
-                .id("budgets-edit-plan")
+                .id("budgets-primary-action")
+                .debug_selector(|| "budgets-primary-action".to_string())
                 .cursor_pointer()
                 .flex_none()
                 .py(px(10.0))
@@ -337,4 +338,93 @@ fn period_nav(label: String, on_prev: OnPlainClick, on_next: OnPlainClick, cx: &
 /// A period as the Locale writes a month and year (`September 2026`).
 pub fn period_label(period: Period) -> String {
     lib_locale::format::format_year_month(period.year, period.month)
+}
+
+impl Render for BudgetsView {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        let plain = |handler: fn(&mut BudgetsView, &mut Context<'_, BudgetsView>)| {
+            let entity = entity.clone();
+            let on_click: OnPlainClick = Rc::new(move |_window, cx| entity.update(cx, handler));
+            on_click
+        };
+        let indexed = |handler: fn(&mut BudgetsView, usize, &mut Context<'_, BudgetsView>)| {
+            let entity = entity.clone();
+            let on_click: OnRowClick = Rc::new(move |index, _window, cx| {
+                entity.update(cx, |view, cx| handler(view, index, cx));
+            });
+            on_click
+        };
+        let cell = |handler: fn(&mut BudgetsView, usize, usize, &mut Context<'_, BudgetsView>)| {
+            let entity = entity.clone();
+            let on_click: plan::OnCellClick = Rc::new(move |row, column, _window, cx| {
+                entity.update(cx, |view, cx| handler(view, row, column, cx));
+            });
+            on_click
+        };
+        let on_tab_click: OnTabClick = {
+            let entity = entity.clone();
+            Rc::new(move |tab, _window, cx| entity.update(cx, |view, cx| view.set_tab(tab, cx)))
+        };
+
+        let cx: &App = cx;
+        let Some((budget, figures)) = self.figures(cx) else {
+            // The Budget on show has gone.
+            return div()
+                .id("budgets")
+                .flex_1()
+                .h_full()
+                .overflow_y_scroll()
+                .track_scroll(&self.scroll)
+                .child(placeholder::render(Noun::Budgets, cx))
+                .into_any_element();
+        };
+        let state = &self.state;
+        let plan = (state.tab == BudgetsTab::Plan)
+            .then(|| self.plan_data(cx))
+            .flatten();
+        let history = (state.tab == BudgetsTab::History)
+            .then(|| self.history_data(cx))
+            .flatten();
+        let props = BudgetsPageProps {
+            name: &budget.name,
+            method: budget.method,
+            tab: state.tab,
+            period: state.period,
+            figures: &figures,
+            plan: plan.as_ref().map(|plan| plan::PlanProps {
+                plan,
+                current: Period::of(self.today),
+                cursor: self.plan_cursor_in(plan),
+                edit: state.plan_edit.as_ref(),
+                on_cell_click: cell(BudgetsView::click_plan_cell),
+            }),
+            history: history.as_ref().map(|history| history::HistoryProps {
+                history,
+                categories: self.categories(cx),
+                cursor: self.history_cursor_in(history),
+                on_cell_click: cell(BudgetsView::click_history_cell),
+            }),
+            on_export_click: plain(BudgetsView::export_history),
+            on_range_prev: plain(|view, cx| view.shift_range(false, cx)),
+            on_range_next: plain(|view, cx| view.shift_range(true, cx)),
+            categories: self.categories(cx),
+            selected: (!figures.rows.is_empty())
+                .then(|| state.selected.min(figures.rows.len() - 1)),
+            on_tab_click,
+            on_title_click: plain(BudgetsView::click_title),
+            on_period_prev: plain(|view, cx| view.shift_period(false, cx)),
+            on_period_next: plain(|view, cx| view.shift_period(true, cx)),
+            on_edit_plan_click: plain(|view, cx| view.set_tab(BudgetsTab::Plan, cx)),
+            on_add_click: plain(BudgetsView::click_add),
+            fill_label: crate::msg::desktop_budgets_fill_button(&lib_locale::format::format_month(
+                self.fill_target(cx).month,
+            )),
+            on_fill_click: plain(BudgetsView::click_fill),
+            on_action_click: indexed(BudgetsView::click_action),
+            on_row_click: indexed(BudgetsView::click_row),
+            on_known_click: plain(BudgetsView::click_known),
+        };
+        render(&self.scroll, props, cx)
+    }
 }

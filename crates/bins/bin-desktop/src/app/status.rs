@@ -20,7 +20,6 @@ use crate::view::{
     transactions::hints::{filter_hints, transactions_hints},
 };
 use crate::{
-    budgets,
     chrome::dialog_host::Dialog,
     chrome::statusline::{HintAction, PageStatus},
     chrome::view_chrome::ViewChrome,
@@ -28,25 +27,16 @@ use crate::{
     navigation::nav::{FocusZone, InputMode},
     tags,
     view::format,
-    view::{
-        budgets as budgets_view,
-        settings::{self as settings_view, inventory as inventory_view},
-    },
+    view::settings::{self as settings_view, inventory as inventory_view},
 };
 
 impl Shell {
     /// The View on show as Chrome reads it: its title and its status-line content, built together
     /// so the top bar and the status line can't disagree about which View they describe.
-    pub(super) fn view_chrome(
-        &self,
-        budgets_figures: Option<&(&budgets::Budget, budgets::PeriodFigures)>,
-        budgets_plan: Option<&budgets::Plan>,
-        budgets_history: Option<&budgets::History>,
-        cx: &gpui::App,
-    ) -> ViewChrome {
+    pub(super) fn view_chrome(&self, cx: &gpui::App) -> ViewChrome {
         ViewChrome {
             title: self.active_view(cx).title(),
-            status: self.page_status(budgets_figures, budgets_plan, budgets_history, cx),
+            status: self.page_status(cx),
         }
     }
 
@@ -72,19 +62,10 @@ impl Shell {
 
     /// The status line's per-page hints and right-hand text for the View on show, or `None` when
     /// it has none. While a Dialog that has its own hints is open, they replace the View's
-    /// (ADR-0037). The Budgets arguments are the figures `Shell::render` already built for the
-    /// page, so the status line reads the same numbers.
-    pub(super) fn page_status(
-        &self,
-        budgets_figures: Option<&(&budgets::Budget, budgets::PeriodFigures)>,
-        budgets_plan: Option<&budgets::Plan>,
-        budgets_history: Option<&budgets::History>,
-        cx: &gpui::App,
-    ) -> Option<PageStatus> {
+    /// (ADR-0037).
+    pub(super) fn page_status(&self, cx: &gpui::App) -> Option<PageStatus> {
         let status = match self.active_view_entity(cx) {
-            ActiveViewEntity::Shell(view) => {
-                self.shell_page_status(view, budgets_figures, budgets_plan, budgets_history, cx)
-            }
+            ActiveViewEntity::Shell(view) => self.shell_page_status(view, cx),
             view => view.page_status(cx),
         };
         match self.chrome.dialog.as_ref().and_then(Dialog::hints) {
@@ -97,14 +78,7 @@ impl Shell {
     }
 
     /// [`Self::page_status`] for a View `Shell` still draws.
-    fn shell_page_status(
-        &self,
-        view: ShellView,
-        budgets_figures: Option<&(&budgets::Budget, budgets::PeriodFigures)>,
-        budgets_plan: Option<&budgets::Plan>,
-        budgets_history: Option<&budgets::History>,
-        cx: &gpui::App,
-    ) -> Option<PageStatus> {
+    fn shell_page_status(&self, view: ShellView, cx: &gpui::App) -> Option<PageStatus> {
         match view {
             ShellView::Documents => self.documents_page_status(cx),
             ShellView::Settings(_) if self.accounts_page_has_focus(cx) => Some(PageStatus {
@@ -160,39 +134,6 @@ impl Shell {
             ShellView::Settings(_) if self.nav.focus() == FocusZone::View => Some(PageStatus {
                 hints: self.settings_hints(cx),
                 right: self.settings_view.read(cx).selected_section().scope_note(),
-            }),
-            ShellView::Budgets if self.budgets_state(cx).tab == budgets::BudgetsTab::Progress => {
-                Some(PageStatus {
-                    hints: self.budgets_hints(cx),
-                    right: crate::msg::desktop_budgets_status_period(
-                        &budgets_view::period_label(self.budgets_state(cx).period),
-                        budgets_figures.map_or(0, |(_, figures)| {
-                            i64::try_from(figures.rows.len()).unwrap_or(i64::MAX)
-                        }),
-                    ),
-                })
-            }
-            ShellView::Budgets if self.budgets_state(cx).tab == budgets::BudgetsTab::Plan => {
-                Some(PageStatus {
-                    hints: self.budgets_hints(cx),
-                    right: budgets_plan.map_or_else(String::new, |plan| {
-                        crate::msg::desktop_budgets_status_plan(
-                            &budgets_view::plan::range_label(plan),
-                            i64::try_from(plan.row_count()).unwrap_or(i64::MAX),
-                        )
-                    }),
-                })
-            }
-            ShellView::Budgets => Some(PageStatus {
-                hints: self.budgets_hints(cx),
-                right: budgets_history
-                    .as_ref()
-                    .map_or_else(String::new, |history| {
-                        crate::msg::desktop_budgets_status_history(
-                            i64::try_from(history.leaves_ever_budgeted).unwrap_or(i64::MAX),
-                            &history.leaves_shown.to_string(),
-                        )
-                    }),
             }),
             ShellView::Import => {
                 let pending = self
