@@ -15,7 +15,7 @@ We're adding a `Ledger` aggregate in a new `lib-ledger` crate, and every read an
 - **Each command has its own refusal type.** A command returns `Result<Outcome, Refusal>` with a per-command enum, e.g. `DeletePayeeRefusal::HasTransactions { count }`, so each refusal maps to one Message and matches stay exhaustive.
 - **One store Entity on the Desktop.** A single `LedgerStore` Entity wraps `Ledger` and emits `LedgerChanged { what }`, where `what` names the domains a command changed. The per-domain stores and their `Changed` events go, and Views filter on `what`.
 - **This sharpens ADR-0032.** "A View reads ledger data through a service in a lib crate" becomes "a View reads and writes Ledger data through `Ledger`, held on the Desktop by `LedgerStore`".
-- **In memory for now.** `Ledger` is synchronous and seeded by `Ledger::stub()`. Its persistence port, and whether ids stay `u32` newtypes or become `RowID` (ADR-0009), are left to #597. Keeping the ids as `lib-core` newtypes makes that a change in one place.
+- **In memory for now.** `Ledger` is synchronous and seeded by `Ledger::stub()`. Its persistence port is ADR-0039, and its ids become `RowID` newtypes (ADR-0040).
 
 ## Consequences
 
