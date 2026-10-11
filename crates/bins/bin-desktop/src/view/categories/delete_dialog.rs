@@ -33,11 +33,19 @@ pub fn render(
             true,
             cx,
         ))
-        .child(dialog::body([
-            warning_copy(split_count),
-            dialog::info_panel(reference_notice(budget_count), cx).into_any_element(),
-            confirm_input_field(&category.name, form.confirmation_name.text(), cx),
-        ]))
+        .child(dialog::body(
+            [
+                warning_copy(split_count),
+                dialog::info_panel(reference_notice(budget_count), cx).into_any_element(),
+                confirm_input_field(&category.name, form.confirmation_name.text(), cx),
+            ]
+            .into_iter()
+            .chain(
+                form.error
+                    .as_ref()
+                    .map(|error| super::refusal_line(error, cx)),
+            ),
+        ))
         .child(dialog::action_row(
             [
                 dialog::cancel_button("delete-category-cancel", on_cancel, cx).into_any_element(),

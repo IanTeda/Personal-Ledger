@@ -2,8 +2,6 @@
 
 use super::Shell;
 
-use chrono::Local;
-
 use crate::{
     accounts::{
         self, NameLookup,
@@ -16,7 +14,7 @@ use crate::{
     navigation::key_router::Movement,
     navigation::nav::{FocusZone, Noun},
     settings::{SettingsFocus, SettingsSection},
-    transactions::{edit_transactions, query::TransactionFilters},
+    transactions::query::TransactionFilters,
     view::accounts::state::AccountsEvent,
 };
 

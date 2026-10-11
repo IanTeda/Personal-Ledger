@@ -48,6 +48,8 @@ pub struct CategoryForm {
     /// `Some` makes the Monthly budget field read-only; saving then leaves the Budget alone.
     pub budget_lock: Option<BudgetLock>,
     pub focused: CategoryField,
+    /// What the domain refused the confirm with, shown in the dialog.
+    pub error: Option<super::apply::CategoryRefusal>,
 }
 
 impl Default for CategoryForm {
@@ -59,6 +61,7 @@ impl Default for CategoryForm {
             budget: TextField::default(),
             budget_lock: None,
             focused: CategoryField::Name,
+            error: None,
         }
     }
 }
@@ -111,6 +114,8 @@ impl CategoryForm {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeleteCategoryForm {
     pub confirmation_name: TextField,
+    /// What the domain refused the confirm with, shown in the dialog.
+    pub error: Option<super::apply::CategoryRefusal>,
     name: String,
 }
 
@@ -118,6 +123,7 @@ impl DeleteCategoryForm {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             confirmation_name: TextField::default(),
+            error: None,
             name: name.into(),
         }
     }

@@ -27,12 +27,13 @@ impl Shell {
         if !self.chrome.dialog.as_ref().is_some_and(Dialog::is_valid) {
             return;
         }
-        // Payees, Tags, Accounts and Document types run through the host's cycle (`DialogForm`/`Apply`); the other domains
+        // Payees, Tags, Accounts, Categories and Document types run through the host's cycle (`DialogForm`/`Apply`); the other domains
         // still take their Dialog and apply it themselves until #633 lands.
         match self.chrome.dialog {
             Some(OpenDialog::Payees(_)) => return self.confirm_payees_dialog(cx),
             Some(OpenDialog::Tags(_)) => return self.confirm_tags_dialog(cx),
             Some(OpenDialog::Accounts(_)) => return self.confirm_accounts_dialog(cx),
+            Some(OpenDialog::Categories(_)) => return self.confirm_categories_dialog(cx),
             Some(OpenDialog::DocumentTypes(_)) => return self.confirm_document_types_dialog(cx),
             _ => {}
         }
@@ -43,7 +44,9 @@ impl Shell {
         match dialog {
             OpenDialog::Settings(dialog) => self.apply_settings_dialog(dialog, cx),
             OpenDialog::Accounts(_) => unreachable!("Accounts confirms through the host's cycle"),
-            OpenDialog::Categories(dialog) => self.apply_categories_dialog(dialog, cx),
+            OpenDialog::Categories(_) => {
+                unreachable!("Categories confirms through the host's cycle")
+            }
             OpenDialog::Payees(_) => unreachable!("Payees confirms through the host's cycle"),
             OpenDialog::DocumentTypes(_) => {
                 unreachable!("Document types confirm through the host's cycle")

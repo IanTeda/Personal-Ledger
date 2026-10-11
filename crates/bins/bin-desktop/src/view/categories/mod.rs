@@ -9,7 +9,7 @@ pub mod state;
 
 use std::rc::Rc;
 
-use gpui::{App, Window};
+use gpui::{AnyElement, App, Window, div, px};
 
 pub type OnAddClick = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type OnAddSubClick = Rc<dyn Fn(u32, &mut Window, &mut App)>;
@@ -26,4 +26,18 @@ pub struct DialogHandlers {
     pub on_type_change: add_dialog::OnTypeChange,
     pub on_cancel: add_dialog::OnCancel,
     pub on_confirm: add_dialog::OnConfirm,
+}
+
+/// A refusal the domain made on confirm, as the dialogs' last line.
+pub(crate) fn refusal_line(
+    refusal: &crate::categories::apply::CategoryRefusal,
+    cx: &App,
+) -> AnyElement {
+    use gpui::prelude::*;
+    div()
+        .text_size(px(11.5))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .text_color(crate::theme::color::accent_text(cx))
+        .child(refusal.to_string())
+        .into_any_element()
 }

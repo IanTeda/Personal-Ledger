@@ -921,7 +921,7 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.handle_categories_dialog_cancel(cx);
+                    shell.handle_dialog_cancel(cx);
                 });
             })
         };
@@ -929,7 +929,7 @@ impl Render for Shell {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| {
-                    shell.handle_categories_dialog_confirm(cx);
+                    shell.handle_dialog_confirm(cx);
                 });
             })
         };

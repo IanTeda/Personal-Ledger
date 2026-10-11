@@ -1,18 +1,20 @@
 //! The Categories destination's wiring: the Settings Categories tree's keys, clicks and folds, and the Add, Edit and Delete dialogs. The pure tree rules live in `lib_categories`, the chrome in `view::settings::categories` and `view::categories`, and the tree's rows and cursor are the `CategoriesStore` and `CategoriesView` Entities (ADR-0032).
 
-use super::{Shell, transactions_ui::move_category_splits};
-use crate::categories::form::CategoriesDialog;
+use super::Shell;
+use crate::categories::{
+    apply::{CategoriesApply, CategoryOutcome},
+    form::CategoriesDialog,
+};
 
 use crate::{
     budgets, categories,
-    chrome::dialog_host::OpenDialog,
+    chrome::{dialog_apply, dialog_host::OpenDialog},
     form::field::TextField,
     navigation::{
         key_router::Movement,
         nav::{FocusZone, Noun},
     },
     settings::{SettingsFocus, SettingsSection},
-    transactions::edit_transactions,
 };
 
 use gpui::{App, Context, Keystroke};
@@ -202,6 +204,7 @@ impl Shell {
             budget: TextField::default(),
             budget_lock: self.categories_budget_lock(None, cx),
             focused: categories::form::CategoryField::Name,
+            error: None,
         };
         self.open_dialog(OpenDialog::Categories(CategoriesDialog::Add {
             parent_id,
@@ -230,51 +233,12 @@ impl Shell {
                 budget: TextField::new(budget_str),
                 budget_lock: self.categories_budget_lock(Some(category_id), cx),
                 focused: categories::form::CategoryField::Name,
+                error: None,
             };
             self.open_dialog(OpenDialog::Categories(CategoriesDialog::Edit(
                 category_id,
                 form,
             )));
-        }
-    }
-
-    /// Categories 5c's write on a saved dialog: the Monthly budget text as an Onward amount from
-    /// the current month in the Personal spending Budget, or a Stop when `clears` and it is
-    /// blank. A locked field (a parent's rollup, an archived Budget) writes nothing.
-    pub(super) fn save_category_budget(
-        &mut self,
-        category_id: u32,
-        form: &categories::form::CategoryForm,
-        clears: bool,
-        cx: &mut App,
-    ) {
-        if form.budget_lock.is_some() {
-            return;
-        }
-        let amount = if form.budget.is_blank() {
-            if !clears {
-                return;
-            }
-            None
-        } else {
-            match form.budget.text().trim().parse::<lib_core::Money>() {
-                Ok(amount) => Some(amount),
-                Err(_) => return,
-            }
-        };
-        let categories = self.categories(cx).to_vec();
-        let today = self.today;
-        let saved = self.mutate_budgets(cx, |budgets| {
-            budgets.set_monthly_limit(
-                budgets::PERSONAL_SPENDING_ID,
-                &categories,
-                category_id,
-                amount,
-                today,
-            )
-        });
-        if let Err(error) = saved {
-            self.raise_category_save_failed(&error.to_string());
         }
     }
 
@@ -421,56 +385,31 @@ impl Shell {
         cx.notify();
     }
 
-    pub(super) fn handle_categories_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
+    /// Confirms the open Categories dialog through the host's cycle: the form's command runs
+    /// against the Categories, Transactions and Budgets stores, a refusal stays on the form, and a
+    /// landed one closes the dialog. Delete toasts the Splits it moved and keeps the selection in
+    /// range.
+    pub(super) fn confirm_categories_dialog(&mut self, cx: &mut Context<'_, Self>) {
+        let mut apply = CategoriesApply {
+            categories: self.categories_store.clone(),
+            transactions: self.transactions_store.clone(),
+            budgets: self.budgets_store.clone(),
+            today: self.today,
+        };
+        let Some(dialog) = self.dialog_mut::<CategoriesDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
         self.close_dialog();
-        cx.notify();
-    }
-
-    pub(super) fn handle_categories_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
-        cx.notify();
-    }
-
-    /// Applies a confirmed Categories dialog (reached through [`Self::confirm_open_dialog`] from
-    /// the Add/Save/Delete button or `Enter`): Add inserts the category and saves its Monthly
-    /// budget; Edit renames, re-parents and saves the budget; Delete removes it and keeps the
-    /// selection in range. The form has already validated.
-    pub(super) fn apply_categories_dialog(
-        &mut self,
-        dialog: CategoriesDialog,
-        cx: &mut Context<'_, Self>,
-    ) {
-        match dialog {
-            CategoriesDialog::Add { form, .. } => {
-                let category_type = form.category_type.clone().unwrap_or(CategoryTypes::Expense);
-                // A rejected insert (e.g. depth) closes the dialog without adding anything.
-                if let Ok(category_id) = self.categories_store.update(cx, |store, cx| {
-                    store.insert(
-                        cx,
-                        form.name.text().trim().to_string(),
-                        form.parent_id,
-                        category_type,
-                    )
-                }) {
-                    self.save_category_budget(category_id, &form, false, cx);
-                }
-            }
-            CategoriesDialog::Edit(id, form) => {
-                let name = form.name.text().trim().to_string();
-                let renamed = self
-                    .categories_store
-                    .update(cx, |store, cx| store.edit(cx, id, name));
-                self.report_category_write(renamed);
-                // `None` moves it to top level when the parent was cleared.
-                let moved = self
-                    .categories_store
-                    .update(cx, |store, cx| store.move_to(cx, id, form.parent_id));
-                self.report_category_write(moved);
-                self.save_category_budget(id, &form, true, cx);
-            }
-            CategoriesDialog::Delete(category_id, _) => {
-                let (kind, text) = self.delete_category(category_id, cx);
-                self.raise_toast(kind, text);
+        match outcome {
+            CategoryOutcome::Saved => {}
+            CategoryOutcome::Deleted { name, moved } => {
+                self.raise_toast(
+                    ToastKind::Success,
+                    lib_locale::msg::toast_category_deleted(&name, moved),
+                );
                 // Keep the selection in range. It indexes the Settings rows, Expense then Income,
                 // so the clamp counts those same rows rather than the Expense ones alone.
                 let expanded = self.categories_view.read(cx).expanded().to_vec();
@@ -480,44 +419,6 @@ impl Shell {
                     view.set_selected(selected.min(row_count.saturating_sub(1)), cx)
                 });
             }
-        }
-    }
-
-    /// The category delete the Shell runs, in its order: check and get the Uncategorised Category,
-    /// re-point the Splits, drop the budget, then drop the Category. Returns the Toast to raise.
-    pub(super) fn delete_category(
-        &mut self,
-        category_id: u32,
-        cx: &mut Context<'_, Self>,
-    ) -> (ToastKind, String) {
-        let uncategorised_id = match self
-            .categories_store
-            .update(cx, |store, cx| store.prepare_delete(cx, category_id))
-        {
-            Ok(id) => id,
-            Err(error) => return category_refused(error),
-        };
-        let name = self
-            .categories(cx)
-            .iter()
-            .find(|c| c.id == category_id)
-            .map(|c| c.name.clone())
-            .unwrap_or_default();
-        let moved = edit_transactions(&self.transactions_store, cx, |transactions| {
-            move_category_splits(transactions, category_id, uncategorised_id)
-        });
-        self.budgets_store.update(cx, |store, cx| {
-            store.mutate(cx, |budgets| budgets.remove_category(category_id))
-        });
-        match self
-            .categories_store
-            .update(cx, |store, cx| store.delete(cx, category_id))
-        {
-            Ok(()) => (
-                ToastKind::Success,
-                lib_locale::msg::toast_category_deleted(&name, moved),
-            ),
-            Err(error) => category_refused(error),
         }
     }
 

@@ -60,38 +60,46 @@ pub fn render(
             false,
             cx,
         ))
-        .child(dialog::body([
-            name_field(
-                form.name.text(),
-                form.focused == CategoryField::Name,
-                on_field_click.clone(),
-                cx,
-            ),
-            type_field(
-                form.category_type
+        .child(dialog::body(
+            [
+                name_field(
+                    form.name.text(),
+                    form.focused == CategoryField::Name,
+                    on_field_click.clone(),
+                    cx,
+                ),
+                type_field(
+                    form.category_type
+                        .as_ref()
+                        .unwrap_or(&CategoryTypes::Expense),
+                    type_locked,
+                    on_type_change,
+                    cx,
+                ),
+                parent_field(
+                    form.parent_id,
+                    parent_options,
+                    form.focused == CategoryField::Parent,
+                    on_field_click.clone(),
+                    on_parent_change,
+                    cx,
+                ),
+                budget_field(
+                    form.budget.text(),
+                    form.focused == CategoryField::Budget,
+                    form.budget_lock.as_ref(),
+                    on_field_click.clone(),
+                    cx,
+                ),
+                lock_notice(type_locked, parent_category, cx),
+            ]
+            .into_iter()
+            .chain(
+                form.error
                     .as_ref()
-                    .unwrap_or(&CategoryTypes::Expense),
-                type_locked,
-                on_type_change,
-                cx,
+                    .map(|error| super::refusal_line(error, cx)),
             ),
-            parent_field(
-                form.parent_id,
-                parent_options,
-                form.focused == CategoryField::Parent,
-                on_field_click.clone(),
-                on_parent_change,
-                cx,
-            ),
-            budget_field(
-                form.budget.text(),
-                form.focused == CategoryField::Budget,
-                form.budget_lock.as_ref(),
-                on_field_click.clone(),
-                cx,
-            ),
-            lock_notice(type_locked, parent_category, cx),
-        ]))
+        ))
         .child(dialog::action_row(
             [
                 dialog::cancel_button("add-category-cancel", on_cancel, cx).into_any_element(),

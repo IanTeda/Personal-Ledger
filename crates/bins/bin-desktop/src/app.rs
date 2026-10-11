@@ -678,6 +678,7 @@ impl Focusable for Shell {
 mod tests {
     use super::*;
     use crate::accounts;
+    use crate::categories::apply::move_category_splits;
     use crate::transactions::Transaction;
     use crate::view::accounts::hints::accounts_hints;
     use crate::view::settings::hints::{
@@ -689,7 +690,6 @@ mod tests {
     use chrono::Local;
     use lib_accounts::{Account, AccountService};
     use lib_toast::ToastKind;
-    use transactions_ui::move_category_splits;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
         let accounts = accounts::default_accounts();
