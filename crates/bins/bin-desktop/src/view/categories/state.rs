@@ -1,15 +1,11 @@
 //! The Categories destination's Entities (ADR-0032). [`CategoriesStore`] reads the tree through
 //! [`LedgerStore`], which holds the only copy; [`CategoriesView`] owns the Settings tree's cursor, its
-//! selected id and which nodes are expanded. `Shell` opens the dialogs and moves the Budgets and
-//! Transactions with a delete, since those stores are `Shell`'s to coordinate.
+//! selected id and which nodes are expanded. Writes are Ledger commands (`lib_ledger`), run through
+//! `LedgerStore::apply`; `Shell` opens the dialogs.
 
 use gpui::{App, Context, Entity, EventEmitter, Subscription};
-use lib_categories::{
-    Category, CategoryError, change_category_type, delete_category, edit_category, insert_category,
-    move_category, prepare_delete,
-};
-use lib_core::CategoryTypes;
-use lib_ledger::{Domain, LedgerHatch};
+use lib_categories::Category;
+use lib_ledger::Domain;
 
 use crate::ledger_store::{LedgerChanged, LedgerStore};
 
@@ -45,70 +41,6 @@ impl CategoriesStore {
 
     pub fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
         self.ledger.read(cx).ledger().categories()
-    }
-
-    /// Adds a Category and returns its id; the caller decides what to select.
-    pub fn insert(
-        &mut self,
-        cx: &mut App,
-        name: String,
-        parent_id: Option<u32>,
-        category_type: CategoryTypes,
-    ) -> Result<u32, CategoryError> {
-        self.try_write(cx, |ledger| {
-            insert_category(ledger.categories, name, parent_id, category_type)
-        })
-    }
-
-    pub fn edit(&mut self, cx: &mut App, id: u32, name: String) -> Result<(), CategoryError> {
-        self.try_write(cx, |ledger| edit_category(ledger.categories, id, name))
-    }
-
-    pub fn move_to(
-        &mut self,
-        cx: &mut App,
-        id: u32,
-        parent_id: Option<u32>,
-    ) -> Result<(), CategoryError> {
-        self.try_write(cx, |ledger| move_category(ledger.categories, id, parent_id))
-    }
-
-    /// Changes `id`'s type and its descendants'.
-    pub fn change_type(
-        &mut self,
-        cx: &mut App,
-        id: u32,
-        category_type: CategoryTypes,
-    ) -> Result<(), CategoryError> {
-        self.try_write(cx, |ledger| {
-            change_category_type(ledger.categories, id, category_type)
-        })
-    }
-
-    /// The first half of a delete: checks leaf `id` and returns the Uncategorised Category its
-    /// Splits move to, creating it if needed. See [`prepare_delete`].
-    pub fn prepare_delete(&mut self, cx: &mut App, id: u32) -> Result<u32, CategoryError> {
-        self.try_write(cx, |ledger| prepare_delete(ledger.categories, id))
-    }
-
-    /// Drops leaf Category `id`. The caller has already re-pointed its Splits and dropped its
-    /// budget, so this only removes the row.
-    pub fn delete(&mut self, cx: &mut App, id: u32) -> Result<(), CategoryError> {
-        self.try_write(cx, |ledger| delete_category(ledger.categories, id))
-    }
-
-    #[expect(
-        deprecated,
-        reason = "Categories writes move onto Ledger commands in #639"
-    )]
-    fn try_write<T>(
-        &self,
-        cx: &mut App,
-        change: impl FnOnce(LedgerHatch<'_>) -> Result<T, CategoryError>,
-    ) -> Result<T, CategoryError> {
-        self.ledger.update(cx, |ledger, cx| {
-            ledger.try_write(cx, &[Domain::Categories], change)
-        })
     }
 }
 
@@ -177,13 +109,19 @@ mod tests {
     use std::{cell::RefCell, rc::Rc};
 
     use gpui::{AppContext, Entity, TestAppContext};
+    use lib_core::CategoryTypes;
+    use lib_ledger::AddCategory;
 
     use super::*;
 
     /// A `CategoriesStore` over the seeded tree, with every event it emits collected.
     fn seeded_store(
         cx: &mut TestAppContext,
-    ) -> (Entity<CategoriesStore>, Rc<RefCell<Vec<CategoriesEvent>>>) {
+    ) -> (
+        Entity<LedgerStore>,
+        Entity<CategoriesStore>,
+        Rc<RefCell<Vec<CategoriesEvent>>>,
+    ) {
         let ledger = crate::ledger_store::test_ledger(
             cx,
             lib_ledger::LedgerParts {
@@ -191,7 +129,7 @@ mod tests {
                 ..lib_ledger::LedgerParts::default()
             },
         );
-        let store = cx.new(|cx| CategoriesStore::new(ledger, cx));
+        let store = cx.new(|cx| CategoriesStore::new(ledger.clone(), cx));
         let events = Rc::new(RefCell::new(Vec::new()));
         let sink = events.clone();
         cx.update(|cx| {
@@ -200,29 +138,35 @@ mod tests {
             })
             .detach();
         });
-        (store, events)
+        (ledger, store, events)
+    }
+
+    fn add(ledger: &Entity<LedgerStore>, cx: &mut TestAppContext, parent: u32, name: &str) -> bool {
+        ledger.update(cx, |store, cx| {
+            store
+                .apply(
+                    cx,
+                    AddCategory {
+                        name: name.into(),
+                        parent_id: Some(parent),
+                        category_type: CategoryTypes::Expense,
+                        monthly: None,
+                    },
+                )
+                .is_ok()
+        })
     }
 
     #[gpui::test]
     fn a_landed_write_emits_changed_and_a_refused_one_does_not(cx: &mut TestAppContext) {
-        let (store, events) = seeded_store(cx);
+        let (ledger, _store, events) = seeded_store(cx);
 
-        store.update(cx, |store, cx| {
-            // Salary (11) is Income, so an Expense child under it is refused.
-            assert!(
-                store
-                    .insert(cx, "Bonus".into(), Some(11), CategoryTypes::Expense)
-                    .is_err()
-            );
-        });
+        // Salary (11) is Income, so an Expense child under it is refused.
+        assert!(!add(&ledger, cx, 11, "Bonus"));
         cx.run_until_parked();
         assert!(events.borrow().is_empty());
 
-        store.update(cx, |store, cx| {
-            store
-                .insert(cx, "Snacks".into(), Some(6), CategoryTypes::Expense)
-                .expect("a leaf under an Expense parent is accepted");
-        });
+        assert!(add(&ledger, cx, 6, "Snacks"));
         cx.run_until_parked();
         assert_eq!(*events.borrow(), vec![CategoriesEvent::Changed]);
     }

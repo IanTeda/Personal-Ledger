@@ -377,23 +377,21 @@ impl Shell {
         }
         // For Edit dialogs, cascade the type change to descendants
         if let Some(id) = edited_id {
-            let changed = self
-                .categories_store
-                .update(cx, |store, cx| store.change_type(cx, id, category_type));
+            let changed = self.ledger.update(cx, |store, cx| {
+                store.apply(cx, lib_ledger::ChangeCategoryType { id, category_type })
+            });
             self.report_category_write(changed);
         }
         cx.notify();
     }
 
     /// Confirms the open Categories dialog through the host's cycle: the form's command runs
-    /// against the Categories, Transactions and Budgets stores, a refusal stays on the form, and a
+    /// against the Ledger, a refusal stays on the form, and a
     /// landed one closes the dialog. Delete toasts the Splits it moved and keeps the selection in
     /// range.
     pub(super) fn confirm_categories_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let mut apply = CategoriesApply {
-            categories: self.categories_store.clone(),
-            transactions: self.transactions_store.clone(),
-            budgets: self.budgets_store.clone(),
+            ledger: self.ledger.clone(),
             today: self.today,
         };
         let Some(dialog) = self.dialog_mut::<CategoriesDialog>() else {
@@ -443,15 +441,4 @@ impl Shell {
         self.focus_settings_page(cx);
         cx.notify();
     }
-}
-
-/// The refusal Toast for a category delete that the store will not make.
-pub(super) fn category_refused(error: categories::CategoryError) -> (ToastKind, String) {
-    (
-        ToastKind::Error,
-        lib_locale::msg::toast_save_failed(
-            &lib_locale::msg::toast_entity_category(),
-            &error.to_string(),
-        ),
-    )
 }

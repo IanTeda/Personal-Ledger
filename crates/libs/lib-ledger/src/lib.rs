@@ -2,12 +2,17 @@
 
 #[cfg(test)]
 mod budgets_seed_tests;
+mod category_commands;
 mod change;
 mod hatch;
 mod payee_commands;
 pub mod query;
 pub mod seed;
 
+pub use category_commands::{
+    AddCategory, CategoryDeleted, ChangeCategoryType, DeleteCategory, DeleteCategoryRefusal,
+    EditCategory, MonthlyBudget, MoveCategory, RenameCategory, SaveCategoryRefusal,
+};
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
 pub use hatch::LedgerHatch;
 pub use payee_commands::{

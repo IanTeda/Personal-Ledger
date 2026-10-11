@@ -222,9 +222,6 @@ pub enum CategoryError {
     /// Attempted to move an Expense to Income (or vice versa) or parent has different type.
     #[error("the parent category is a different type")]
     TypeMismatch,
-    /// Attempted to delete a non-leaf category with children.
-    #[error("delete or move its children first")]
-    NonLeafDeletion,
     /// Category not found.
     #[error("category not found")]
     NotFound,
@@ -353,37 +350,6 @@ pub fn change_category_type(
     Ok(())
 }
 
-/// Checks that Category `id` is a leaf, then returns the Uncategorised Category its Splits move to
-/// before the delete, creating it if needed. Refuses a missing or non-leaf Category before anything
-/// is created.
-pub fn prepare_delete(categories: &mut Vec<Category>, id: u32) -> Result<u32, CategoryError> {
-    let category = get(categories, id).ok_or(CategoryError::NotFound)?;
-    if !is_leaf(categories, id) {
-        return Err(CategoryError::NonLeafDeletion);
-    }
-    let category_type = category.category_type.clone();
-    Ok(get_or_create_uncategorised(categories, category_type))
-}
-
-/// Delete a category (leaf only). Re-points its splits to Uncategorised.
-pub fn delete_category(categories: &mut Vec<Category>, id: u32) -> Result<(), CategoryError> {
-    let category = get(categories, id).ok_or(CategoryError::NotFound)?;
-    let category_type = category.category_type.clone();
-
-    // Only leaf categories can be deleted
-    if !is_leaf(categories, id) {
-        return Err(CategoryError::NonLeafDeletion);
-    }
-
-    // Get or create Uncategorised (future: re-point splits to this category)
-    let _uncategorised_id = get_or_create_uncategorised(categories, category_type);
-
-    // Remove the category
-    categories.retain(|c| c.id != id);
-
-    Ok(())
-}
-
 /// Information about a category in the tree view (used for rendering).
 #[derive(Debug, Clone)]
 pub struct TreeNode {
@@ -467,87 +433,9 @@ pub fn child_count(categories: &[Category], id: u32) -> usize {
     categories.iter().filter(|c| c.parent == Some(id)).count()
 }
 
-/// The Categories data behind the Desktop's Categories Entity: the tree, read through `categories`
-/// and changed only through the rule-checked methods below, so the depth, type and cycle rules
-/// stay in one place. Persistence is a later phase, so the tree is in memory.
-pub struct CategoryService {
-    categories: Vec<Category>,
-}
-
-impl CategoryService {
-    /// A service over `categories`, as the Desktop seeds it from [`default_categories`].
-    pub fn new(categories: Vec<Category>) -> Self {
-        Self { categories }
-    }
-
-    pub fn categories(&self) -> &[Category] {
-        &self.categories
-    }
-
-    /// Adds a Category under `parent_id` and returns its id; see [`insert_category`].
-    pub fn insert(
-        &mut self,
-        name: String,
-        parent_id: Option<u32>,
-        category_type: CategoryTypes,
-    ) -> Result<u32, CategoryError> {
-        insert_category(&mut self.categories, name, parent_id, category_type)
-    }
-
-    /// Renames Category `id`; see [`edit_category`].
-    pub fn edit(&mut self, id: u32, name: String) -> Result<(), CategoryError> {
-        edit_category(&mut self.categories, id, name)
-    }
-
-    /// Moves Category `id` under `new_parent_id` (`None` for top level); see [`move_category`].
-    pub fn move_to(&mut self, id: u32, new_parent_id: Option<u32>) -> Result<(), CategoryError> {
-        move_category(&mut self.categories, id, new_parent_id)
-    }
-
-    /// Changes Category `id`'s type and its descendants'; see [`change_category_type`].
-    pub fn change_type(&mut self, id: u32, new_type: CategoryTypes) -> Result<(), CategoryError> {
-        change_category_type(&mut self.categories, id, new_type)
-    }
-
-    /// Returns the Uncategorised Category leaf `id`'s Splits move to; see [`prepare_delete`].
-    pub fn prepare_delete(&mut self, id: u32) -> Result<u32, CategoryError> {
-        prepare_delete(&mut self.categories, id)
-    }
-
-    /// Deletes leaf Category `id`; see [`delete_category`].
-    pub fn delete(&mut self, id: u32) -> Result<(), CategoryError> {
-        delete_category(&mut self.categories, id)
-    }
-
-    /// Replaces the whole tree. Only for a caller that has already checked its copy with the
-    /// rules above, as Import does for Payees.
-    pub fn replace(&mut self, rows: Vec<Category>) {
-        self.categories = rows;
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn service_applies_the_tree_rules_and_keeps_writes() {
-        let mut service = CategoryService::new(default_categories());
-        let parent = service.categories().len();
-        // Food (6) is top level and Expense, so a child under it is accepted.
-        let child = service
-            .insert("Snacks".into(), Some(6), CategoryTypes::Expense)
-            .expect("a leaf under an Expense parent is accepted");
-        assert_eq!(service.categories().len(), parent + 1);
-        // Salary (11) is Income, so an Expense child under it is refused and the tree is untouched.
-        assert_eq!(
-            service.insert("Bonus".into(), Some(11), CategoryTypes::Expense),
-            Err(CategoryError::TypeMismatch)
-        );
-        assert_eq!(service.categories().len(), parent + 1);
-        service.delete(child).expect("a leaf can be deleted");
-        assert!(get(service.categories(), child).is_none());
-    }
 
     #[test]
     fn the_seed_matches_the_categories_bundles_twelve_category_tree() {
@@ -794,26 +682,6 @@ mod tests {
         // Can't move an Expense under an Income parent
         let result = move_category(&mut categories, transport, Some(salary));
         assert_eq!(result, Err(CategoryError::TypeMismatch));
-    }
-
-    #[test]
-    fn delete_category_leaf_succeeds() {
-        let mut categories = default_categories();
-        let groceries = find_by_name(&categories, "Groceries").unwrap();
-        let result = delete_category(&mut categories, groceries);
-        assert!(result.is_ok());
-        assert!(!categories.iter().any(|c| c.id == groceries));
-    }
-
-    #[test]
-    fn delete_category_non_leaf_fails() {
-        let mut categories = default_categories();
-        let food = find_by_name(&categories, "Food").unwrap();
-
-        // Food has children (Groceries, Dining), so deletion should fail
-        let result = delete_category(&mut categories, food);
-        assert_eq!(result, Err(CategoryError::NonLeafDeletion));
-        assert!(categories.iter().any(|c| c.id == food));
     }
 
     #[test]

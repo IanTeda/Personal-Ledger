@@ -643,7 +643,6 @@ impl Focusable for Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::categories::apply::move_category_splits;
     use crate::transactions::Transaction;
     use crate::view::accounts::hints::accounts_hints;
     use crate::view::settings::hints::{
@@ -652,7 +651,6 @@ mod tests {
     };
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
     use crate::{accounts, categories, payees, tags, transactions};
-    use categories_ui::category_refused;
     use chrono::Local;
     use lib_accounts::{Account, AccountService};
     use lib_toast::ToastKind;
@@ -668,37 +666,6 @@ mod tests {
             Local::now().date_naive(),
         );
         (accounts, categories, transactions)
-    }
-
-    /// The category delete the Shell runs, in its order: check and get the Uncategorised Category,
-    /// re-point the Splits, drop the budget, then drop the Category. Mirrors `Shell::delete_category`
-    /// over plain rows, so the order is tested without a window.
-    fn delete_category(
-        categories: &mut Vec<Category>,
-        transactions: &mut [Transaction],
-        budgets: &mut budgets::Budgets,
-        id: u32,
-    ) -> (ToastKind, String) {
-        let mut service = lib_categories::CategoryService::new(categories.clone());
-        let name = categories
-            .iter()
-            .find(|c| c.id == id)
-            .map(|c| c.name.clone())
-            .unwrap_or_default();
-        let outcome = service.prepare_delete(id).map(|uncategorised| {
-            let moved = move_category_splits(transactions, id, uncategorised);
-            budgets.remove_category(id);
-            (service.delete(id), moved)
-        });
-        *categories = service.categories().to_vec();
-        match outcome {
-            Err(error) => category_refused(error),
-            Ok((Err(error), _)) => category_refused(error),
-            Ok((Ok(()), moved)) => (
-                ToastKind::Success,
-                lib_locale::msg::toast_category_deleted(&name, moved),
-            ),
-        }
     }
 
     #[test]
@@ -744,29 +711,13 @@ mod tests {
     }
 
     #[test]
-    fn a_refused_category_delete_raises_an_error_toast_and_changes_nothing() {
+    fn deleting_a_leaf_category_toasts_the_splits_it_moved() {
         crate::locale::init_for_tests();
-        let (_, mut categories, mut transactions) = seeded_ledger();
-        let mut budgets = budgets::Budgets::default();
-        let food = categories::find_by_name(&categories, "Food").expect("seeded");
-        let before = categories.len();
-        let (kind, text) = delete_category(&mut categories, &mut transactions, &mut budgets, food);
-        assert_eq!(kind, ToastKind::Error);
-        assert_eq!(
-            text,
-            "Couldn't save category: delete or move its children first"
-        );
-        assert_eq!(categories.len(), before);
-    }
-
-    #[test]
-    fn deleting_a_leaf_category_raises_a_success_toast() {
-        crate::locale::init_for_tests();
-        let (_, mut categories, mut transactions) = seeded_ledger();
-        let mut budgets = budgets::Budgets::default();
-        let rent = categories::find_by_name(&categories, "Rent").expect("seeded");
-        let (kind, text) = delete_category(&mut categories, &mut transactions, &mut budgets, rent);
-        assert_eq!(kind, ToastKind::Success);
+        let mut ledger = Ledger::stub();
+        let rent = categories::find_by_name(ledger.categories(), "Rent").expect("seeded");
+        let deleted = ledger.delete_category(rent).expect("a leaf");
+        let text =
+            lib_locale::msg::toast_category_deleted(&deleted.name, deleted.splits_moved as i64);
         assert!(text.starts_with("Deleted category Rent · "), "{text}");
     }
 
