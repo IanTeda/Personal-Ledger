@@ -727,6 +727,7 @@ dependencies = [
  "lib_documents",
  "lib_institutions",
  "lib_inventory",
+ "lib_ledger",
  "lib_locale",
  "lib_locale_build",
  "lib_payees",
@@ -4805,6 +4806,26 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "lib_core",
+]
+
+[[package]]
+name = "lib_ledger"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_accounts",
+ "lib_bills",
+ "lib_budgets",
+ "lib_categories",
+ "lib_core",
+ "lib_documents",
+ "lib_institutions",
+ "lib_inventory",
+ "lib_payees",
+ "lib_tags",
+ "lib_transactions",
+ "lib_units",
 ]
 
 [[package]]

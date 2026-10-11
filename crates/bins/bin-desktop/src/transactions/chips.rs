@@ -171,7 +171,9 @@ pub fn chips(
         ),
         make(
             FilterField::Status,
-            crate::msg::desktop_transactions_chip_status(&filters.status.label()),
+            crate::msg::desktop_transactions_chip_status(
+                &crate::transactions::query::status_filter_label(filters.status),
+            ),
             filters.status != defaults.status,
         ),
     ]

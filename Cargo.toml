@@ -82,6 +82,7 @@ members = [
   "./crates/libs/lib-tags",
   "./crates/libs/lib-units",
   "./crates/libs/lib-transactions",
+  "./crates/libs/lib-ledger",
   "./crates/libs/lib-config",
   "./crates/libs/lib-database",
   "./crates/libs/lib-locale",

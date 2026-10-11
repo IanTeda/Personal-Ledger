@@ -312,7 +312,7 @@ fn status_field(
                     "filter-status",
                     &StatusFilter::ALL,
                     current,
-                    StatusFilter::label,
+                    crate::transactions::query::status_filter_label,
                     on_click,
                     cx,
                 )),

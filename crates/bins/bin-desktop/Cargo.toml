@@ -35,6 +35,7 @@ lib_payees = { path = "../../libs/lib-payees" }
 lib_tags = { path = "../../libs/lib-tags" }
 lib_units = { path = "../../libs/lib-units" }
 lib_transactions = { path = "../../libs/lib-transactions" }
+lib_ledger = { path = "../../libs/lib-ledger" }
 lib_colour_theme = { path = "../../libs/lib-colour-theme" }
 lib_config = { path = "../../libs/lib-config" }
 lib_database = { path = "../../libs/lib-database" }
