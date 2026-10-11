@@ -8,7 +8,7 @@ use lib_core::{CategoryTypes, Money, Period};
 
 use lib_categories::{self as categories, Category};
 
-use super::figures::{Ledger, SpentIndex, effective, expense_leaves};
+use super::figures::{BudgetSources, SpentIndex, effective, expense_leaves};
 use super::{Budget, Limit, zero};
 
 /// One month of one History row: what applied then against what was spent.
@@ -67,7 +67,7 @@ pub fn history_bounds(budget: &Budget, today: NaiveDate) -> Option<(Period, Peri
 /// the Budget's current Accounts and the current Category tree. Known Costs are left out.
 pub fn history(
     budget: &Budget,
-    ledger: &Ledger<'_>,
+    ledger: &BudgetSources<'_>,
     first: Period,
     last: Period,
     today: NaiveDate,

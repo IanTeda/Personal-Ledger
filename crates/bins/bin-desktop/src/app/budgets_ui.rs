@@ -156,7 +156,7 @@ pub(super) fn budgets_stop_hints() -> Vec<(&'static str, String)> {
 impl Shell {
     /// The shared Budgets, read from their store Entity.
     pub(super) fn budgets<'a>(&self, cx: &'a gpui::App) -> &'a budgets::Budgets {
-        self.budgets_store.read(cx).budgets()
+        self.budgets_store.read(cx).budgets(cx)
     }
 
     /// Applies `change` to the shared Budgets, notifying every reader.
@@ -296,10 +296,10 @@ impl Shell {
         Some((budget, figures))
     }
 
-    pub(super) fn budgets_ledger<'a>(&'a self, cx: &'a gpui::App) -> budgets::Ledger<'a> {
-        budgets::Ledger {
+    pub(super) fn budgets_ledger<'a>(&'a self, cx: &'a gpui::App) -> budgets::BudgetSources<'a> {
+        budgets::BudgetSources {
             categories: self.categories(cx),
-            accounts: self.accounts.read(cx).accounts(),
+            accounts: self.accounts.read(cx).accounts(cx),
             transactions: self.transactions(cx),
             plans: self.bill_plans(cx),
             entries: self.bill_entries(cx),
@@ -788,9 +788,9 @@ impl Shell {
         cx: &gpui::App,
     ) -> Option<budgets::CategoryDetail> {
         let budget = self.budgets(cx).get(self.budgets_state(cx).current)?;
-        let ledger = budgets::Ledger {
+        let ledger = budgets::BudgetSources {
             categories: self.categories(cx),
-            accounts: self.accounts.read(cx).accounts(),
+            accounts: self.accounts.read(cx).accounts(cx),
             transactions: self.transactions(cx),
             plans: self.bill_plans(cx),
             entries: self.bill_entries(cx),
@@ -1000,7 +1000,7 @@ impl Shell {
     /// what "Copy categories from" names.
     pub(super) fn open_budgets_new(&mut self, cx: &mut Context<'_, Self>) {
         let form = budgets::form::BudgetForm::new(
-            self.accounts.read(cx).accounts(),
+            self.accounts.read(cx).accounts(cx),
             self.budgets(cx).get(self.budgets_state(cx).current),
         );
         self.open_budgets_dialog(BudgetsDialog::Budget(form));
@@ -1017,7 +1017,7 @@ impl Shell {
             return;
         };
         self.open_budgets_dialog(BudgetsDialog::Budget(
-            budgets::form::BudgetForm::from_budget(budget, self.accounts.read(cx).accounts()),
+            budgets::form::BudgetForm::from_budget(budget, self.accounts.read(cx).accounts(cx)),
         ));
     }
 
@@ -1154,7 +1154,7 @@ impl Shell {
             Some(OpenDialog::Budgets(dialog)) if matches!(**dialog, BudgetsDialog::Manage(_)) => {
                 if let BudgetsDialog::Manage(manage) = &mut **dialog {
                     // Archiving or restoring moves the row between the two sections: follow it.
-                    manage.refresh(self.budgets_store.read(cx).budgets(), id);
+                    manage.refresh(self.budgets_store.read(cx).budgets(cx), id);
                     manage.error = refused;
                 }
             }
@@ -1717,7 +1717,7 @@ impl Shell {
                 account: self
                     .accounts
                     .read(cx)
-                    .accounts()
+                    .accounts(cx)
                     .iter()
                     .find(|account| account.id == line.account_id)
                     .map(|account| account.name.clone())

@@ -6,7 +6,7 @@ use lib_core::{CategoryTypes, Money, Period};
 
 use lib_categories::{self as categories, Category};
 
-use super::figures::{Ledger, SpentIndex, expense_leaves};
+use super::figures::{BudgetSources, SpentIndex, expense_leaves};
 use super::{AVERAGE_MONTHS, Budget, Rollover, applied, zero};
 
 /// A month's Total budgeted: Budget Amounts only, no carry.
@@ -45,7 +45,7 @@ fn average_of(index: &SpentIndex, category_id: u32, target: Period) -> Money {
 /// `target`: Fill's source and 11c's "Last 3 months' spending".
 pub fn three_month_average(
     budget: &Budget,
-    ledger: &Ledger<'_>,
+    ledger: &BudgetSources<'_>,
     category_id: u32,
     target: Period,
 ) -> Money {
@@ -55,7 +55,7 @@ pub fn three_month_average(
 /// Every leaf Expense Category's 3-month average for `target`, tree order.
 pub fn three_month_averages(
     budget: &Budget,
-    ledger: &Ledger<'_>,
+    ledger: &BudgetSources<'_>,
     target: Period,
 ) -> Vec<(u32, Money)> {
     let index = SpentIndex::build(budget, ledger);
@@ -119,7 +119,7 @@ pub fn fill_target(cursor: Option<Period>, today: NaiveDate) -> Period {
 /// where the plan already has it.
 pub fn fill_preview(
     budget: &Budget,
-    ledger: &Ledger<'_>,
+    ledger: &BudgetSources<'_>,
     target: Period,
     source: FillSource,
 ) -> FillPreview {
@@ -167,7 +167,7 @@ pub fn fill_preview(
 }
 
 /// The average signed Income Splits on the Budget's Accounts over the last 3 closed months.
-pub fn average_income(budget: &Budget, ledger: &Ledger<'_>, today: NaiveDate) -> Money {
+pub fn average_income(budget: &Budget, ledger: &BudgetSources<'_>, today: NaiveDate) -> Money {
     let last_three: Vec<Period> = months_before(Period::of(today)).collect();
     let income: Vec<u32> = ledger
         .categories
@@ -195,7 +195,12 @@ pub fn average_income(budget: &Budget, ledger: &Ledger<'_>, today: NaiveDate) ->
 
 /// The Plan grid's footer for `month`: average income minus Total budgeted. Negative means
 /// over-allocated.
-pub fn unallocated(budget: &Budget, ledger: &Ledger<'_>, month: Period, today: NaiveDate) -> Money {
+pub fn unallocated(
+    budget: &Budget,
+    ledger: &BudgetSources<'_>,
+    month: Period,
+    today: NaiveDate,
+) -> Money {
     Money(
         average_income(budget, ledger, today).0
             - total_budgeted(budget, ledger.categories, month).0,
@@ -287,7 +292,7 @@ pub fn plan_start_bounds(budget: &Budget, today: NaiveDate) -> (Period, Period) 
 
 /// The Plan grid's figures for the six months from `start`. A row is any leaf with an amount or
 /// a record in those months, so a cell just cleared keeps its row.
-pub fn plan(budget: &Budget, ledger: &Ledger<'_>, start: Period, today: NaiveDate) -> Plan {
+pub fn plan(budget: &Budget, ledger: &BudgetSources<'_>, start: Period, today: NaiveDate) -> Plan {
     let current = Period::of(today);
     let months: Vec<Period> = std::iter::successors(Some(start), |month| Some(month.next()))
         .take(PLAN_MONTHS)

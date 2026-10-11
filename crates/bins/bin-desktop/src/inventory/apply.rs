@@ -163,7 +163,7 @@ impl Apply<InventoryCommand> for InventoryApply {
                 })
             }
             InventoryCommand::RemoveProperty(id) => {
-                let inventory = self.inventory.read(cx).inventory();
+                let inventory = self.inventory.read(cx).inventory(cx);
                 let name = inventory
                     .property(id)
                     .map(|property| property.name.clone())
@@ -180,10 +180,10 @@ impl Apply<InventoryCommand> for InventoryApply {
                     .map_err(InventoryRefusal::Property)?;
                 self.documents.update(cx, |store, cx| {
                     store.mutate(cx, |data| {
-                        documents::drop_inventory_links(&mut data.documents, &removed.items)
+                        documents::drop_inventory_links(data.documents, &removed.items)
                     })
                 });
-                let properties = &self.inventory.read(cx).inventory().properties;
+                let properties = &self.inventory.read(cx).inventory(cx).properties;
                 let selected = properties
                     .get(position.min(properties.len().saturating_sub(1)))
                     .map(|property| InventoryRow::Property(property.id));
@@ -203,7 +203,7 @@ impl Apply<InventoryCommand> for InventoryApply {
                 Ok(InventoryOutcome::RoomSaved { id, name })
             }
             InventoryCommand::RemoveRoom { id, destination } => {
-                let inventory = self.inventory.read(cx).inventory();
+                let inventory = self.inventory.read(cx).inventory(cx);
                 let (property, room) = inventory
                     .room(id)
                     .ok_or(InventoryRefusal::Room(RoomError::UnknownRoom))?;
@@ -230,7 +230,7 @@ impl Apply<InventoryCommand> for InventoryApply {
                 let rooms = self
                     .inventory
                     .read(cx)
-                    .inventory()
+                    .inventory(cx)
                     .property(property_id)
                     .map(|property| property.rooms.as_slice())
                     .unwrap_or_default();
@@ -254,14 +254,23 @@ impl Apply<InventoryCommand> for InventoryApply {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext, TestAppContext};
+    use lib_ledger::LedgerParts;
 
     use super::*;
     use crate::chrome::dialog_apply::confirm;
+    use crate::ledger_store::test_ledger;
 
     fn apply(cx: &mut TestAppContext) -> InventoryApply {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
-        let inventory = cx.new(|_| InventoryStore::new(lib_inventory::default_inventory(today)));
-        let documents = cx.new(|_| DocumentsStore::new(Vec::new(), Vec::new()));
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                inventory: lib_inventory::default_inventory(today),
+                ..LedgerParts::default()
+            },
+        );
+        let inventory = cx.new(|cx| InventoryStore::new(ledger.clone(), cx));
+        let documents = cx.new(|cx| DocumentsStore::new(ledger, cx));
         InventoryApply {
             inventory,
             documents,
@@ -271,7 +280,7 @@ mod tests {
     #[gpui::test]
     fn removing_a_property_selects_its_neighbour(cx: &mut TestAppContext) {
         let mut apply = apply(cx);
-        let first = cx.read(|cx| apply.inventory.read(cx).inventory().properties[0].id);
+        let first = cx.read(|cx| apply.inventory.read(cx).inventory(cx).properties[0].id);
         let outcome = cx
             .update(|cx| apply.apply(InventoryCommand::RemoveProperty(first), cx))
             .expect("the seeded Property exists");

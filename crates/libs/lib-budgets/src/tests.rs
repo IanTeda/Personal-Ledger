@@ -55,8 +55,8 @@ impl World {
         }
     }
 
-    fn ledger(&self) -> Ledger<'_> {
-        Ledger {
+    fn ledger(&self) -> BudgetSources<'_> {
+        BudgetSources {
             categories: &self.categories,
             accounts: &self.accounts,
             transactions: &self.transactions,

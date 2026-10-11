@@ -1,65 +1,87 @@
-//! The Documents destination's Entities (ADR-0032). [`DocumentsStore`] owns the Documents and the
-//! Document Types, which Settings › Documents edits too; [`DocumentsView`] owns the page's own
-//! state: mode, scope, sort, search and selection. The view reports what needs `Shell` (the OS
+//! The Documents destination's Entities (ADR-0032). [`DocumentsStore`] reads the Documents and the
+//! Document Types through `LedgerStore`; Settings › Documents edits the Types too.
+//! [`DocumentsView`] owns the page's own state: mode, scope, sort, search and selection. The view reports what needs `Shell` (the OS
 //! file hand-off) as a [`DocumentsEvent`].
 
 use std::path::PathBuf;
 
-use gpui::{Context, EventEmitter, ScrollHandle};
+use gpui::{App, Context, Entity, EventEmitter, ScrollHandle, Subscription};
+use lib_ledger::Domain;
 
 use super::DocumentsFocus;
 use crate::documents::{
     Document, DocumentsMode, FilingUndo, LibraryScope, LibrarySort,
     types::{DocumentTypeRow, first_free_id},
 };
+use crate::ledger_store::{LedgerChanged, LedgerStore};
 
-/// Everything the store owns, handed to a mutation as one value so it can borrow the Documents and
-/// the Types together.
-pub struct DocumentsData {
-    pub documents: Vec<Document>,
+/// The Documents and the Types, handed to a mutation as one value so it can borrow them together.
+pub struct DocumentsData<'a> {
+    pub documents: &'a mut Vec<Document>,
     /// The Ledger's Document Types in the user's order (mock data until persistence lands).
-    pub types: Vec<DocumentTypeRow>,
+    pub types: &'a mut Vec<DocumentTypeRow>,
     /// The id the next added Document Type takes; only counts up, so ids are never reused.
-    pub types_next_id: u32,
+    pub types_next_id: &'a mut u32,
 }
 
-/// The shared Documents and Document Types. The Documents page, Settings › Documents, the rail
-/// badge and the Inventory removal all read them from here, so a change is seen everywhere on the
-/// next render.
+/// The shared Documents and Document Types, read through [`LedgerStore`]. The Documents page,
+/// Settings › Documents, the rail badge and the Inventory removal all read them from here, so a
+/// change is seen everywhere on the next render.
 pub struct DocumentsStore {
-    data: DocumentsData,
+    ledger: Entity<LedgerStore>,
+    /// The id counter for Document Types. It's not a row, and it goes when ids become UUIDv7
+    /// newtypes (ADR-0040), so it stays here rather than on the Ledger.
+    types_next_id: u32,
+    _ledger_changed: Subscription,
 }
 
 impl DocumentsStore {
-    pub fn new(documents: Vec<Document>, types: Vec<DocumentTypeRow>) -> Self {
-        let types_next_id = first_free_id(&types);
+    /// A store over `ledger`'s Documents and Document Types.
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let types_next_id = first_free_id(ledger.read(cx).ledger().document_types());
+        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
+            if event.what.contains(&Domain::Documents)
+                || event.what.contains(&Domain::DocumentTypes)
+            {
+                cx.notify();
+            }
+        });
         Self {
-            data: DocumentsData {
-                documents,
-                types,
-                types_next_id,
-            },
+            ledger,
+            types_next_id,
+            _ledger_changed,
         }
     }
 
-    pub fn documents(&self) -> &[Document] {
-        &self.data.documents
+    pub fn documents<'a>(&self, cx: &'a App) -> &'a [Document] {
+        self.ledger.read(cx).ledger().documents()
     }
 
-    pub fn types(&self) -> &[DocumentTypeRow] {
-        &self.data.types
+    pub fn types<'a>(&self, cx: &'a App) -> &'a [DocumentTypeRow] {
+        self.ledger.read(cx).ledger().document_types()
     }
 
     /// Applies `change` to the data, then tells every subscriber it changed. Mutations go through
     /// here so no write can skip the notification.
+    #[expect(
+        deprecated,
+        reason = "Documents and Document Types writes move onto Ledger commands in #645"
+    )]
     pub fn mutate<R>(
         &mut self,
-        cx: &mut Context<'_, Self>,
-        change: impl FnOnce(&mut DocumentsData) -> R,
+        cx: &mut App,
+        change: impl FnOnce(&mut DocumentsData<'_>) -> R,
     ) -> R {
-        let result = change(&mut self.data);
-        cx.notify();
-        result
+        let types_next_id = &mut self.types_next_id;
+        self.ledger.update(cx, |ledger, cx| {
+            ledger.write(cx, &[Domain::Documents, Domain::DocumentTypes], |ledger| {
+                change(&mut DocumentsData {
+                    documents: ledger.documents,
+                    types: ledger.document_types,
+                    types_next_id,
+                })
+            })
+        })
     }
 }
 

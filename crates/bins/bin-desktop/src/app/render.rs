@@ -461,8 +461,8 @@ impl Render for Shell {
         let account_options = self.account_dialog_options(cx);
         let selected_account = self.accounts_view.read(cx).selected_index(cx);
         let accounts_page = accounts_view::AccountsPageProps {
-            accounts: self.accounts.read(cx).accounts(),
-            units: self.units_store.read(cx).units(),
+            accounts: self.accounts.read(cx).accounts(cx),
+            units: self.units_store.read(cx).units(cx),
             selected: selected_account,
             on_add_click: on_accounts_add_click,
             on_row_click: on_accounts_row_click,
@@ -691,7 +691,7 @@ impl Render for Shell {
         let bills_base_unit = self
             .units_store
             .read(cx)
-            .units()
+            .units(cx)
             .iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code.as_str());
@@ -1233,11 +1233,11 @@ impl Render for Shell {
                                             .colour_theme_focus(),
                                         display_field: self.settings_view.read(cx).display_field(),
                                         on_colour_theme_click,
-                                        units: self.units_store.read(cx).units(),
+                                        units: self.units_store.read(cx).units(cx),
                                         on_unit_edit_click,
                                         on_unit_delete_click,
                                         on_add_unit_click,
-                                        price_sources: self.units_store.read(cx).price_sources(),
+                                        price_sources: self.units_store.read(cx).price_sources(cx),
                                         on_price_source_test_click,
                                         on_price_source_edit_click,
                                         on_price_source_delete_click,
@@ -1245,7 +1245,7 @@ impl Render for Shell {
                                         institutions: self
                                             .institutions_store
                                             .read(cx)
-                                            .institutions(),
+                                            .institutions(cx),
                                         on_institution_edit_click,
                                         on_institution_delete_click,
                                         on_add_institution_click,
@@ -1332,7 +1332,7 @@ impl Render for Shell {
                     match self
                         .accounts
                         .read(cx)
-                        .accounts()
+                        .accounts(cx)
                         .iter()
                         .find(|account| account.id == *id)
                     {
@@ -1354,7 +1354,7 @@ impl Render for Shell {
                     match self
                         .accounts
                         .read(cx)
-                        .accounts()
+                        .accounts(cx)
                         .iter()
                         .find(|account| account.id == *id)
                     {
@@ -1394,7 +1394,7 @@ impl Render for Shell {
                                 name: &payee.name,
                                 splits: payees::usage(
                                     self.transactions(cx),
-                                    self.accounts.read(cx).accounts(),
+                                    self.accounts.read(cx).accounts(cx),
                                     None,
                                     *id,
                                 )
@@ -1418,7 +1418,7 @@ impl Render for Shell {
                                 form,
                                 splits: payees::usage(
                                     self.transactions(cx),
-                                    self.accounts.read(cx).accounts(),
+                                    self.accounts.read(cx).accounts(cx),
                                     None,
                                     *id,
                                 )
@@ -1664,7 +1664,7 @@ impl Render for Shell {
                     cx,
                 ),
                 SettingsDialog::DeleteUnit(index, form) => {
-                    match self.units_store.read(cx).unit(*index) {
+                    match self.units_store.read(cx).unit(cx, *index) {
                         Some(row) => units_view::delete_dialog::render(
                             row,
                             form,
@@ -1685,7 +1685,7 @@ impl Render for Shell {
                 ),
                 SettingsDialog::AddInstitution(form) => institutions_view::add_dialog::render(
                     form,
-                    self.units_store.read(cx).units(),
+                    self.units_store.read(cx).units(cx),
                     on_add_institution_account_type_click,
                     on_add_institution_unit_click,
                     on_settings_dialog_cancel,

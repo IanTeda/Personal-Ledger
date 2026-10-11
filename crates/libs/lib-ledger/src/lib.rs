@@ -2,9 +2,13 @@
 
 #[cfg(test)]
 mod budgets_seed_tests;
+mod change;
+mod hatch;
 pub mod query;
 pub mod seed;
 
+pub use change::{Domain, LedgerChange, LedgerCommand, domains};
+pub use hatch::LedgerHatch;
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 
 use chrono::{Local, NaiveDate};
@@ -23,8 +27,9 @@ use lib_tags::{Tag, default_tags};
 use lib_transactions::Transaction;
 use lib_units::{PriceSourceRow, UnitRow, default_price_sources, default_units};
 
-/// Every domain collection the Clients read, owned in one place. Built only by [`Ledger::stub`]
-/// for now; the commands that change it follow the Ledger prototype.
+/// Every domain collection the Clients read, owned in one place. Every write is a
+/// [`LedgerCommand`] that records what it changed, except the temporary
+/// [`hatch`](Ledger::hatch) the migration onto commands still needs.
 #[derive(Debug, Clone)]
 pub struct Ledger {
     accounts: Vec<Account>,
@@ -41,9 +46,68 @@ pub struct Ledger {
     institutions: Vec<InstitutionRow>,
     units: Vec<UnitRow>,
     price_sources: Vec<PriceSourceRow>,
+    /// The changes recorded since the last [`Ledger::drain_changes`].
+    pending: Vec<LedgerChange>,
+}
+
+/// Every collection a [`Ledger`] is built from. A test fills only the collections it reads and
+/// leaves the rest empty.
+#[derive(Debug, Clone, Default)]
+pub struct LedgerParts {
+    pub accounts: Vec<Account>,
+    pub categories: Vec<Category>,
+    pub payees: Vec<Payee>,
+    pub tags: Vec<Tag>,
+    pub transactions: Vec<Transaction>,
+    pub bill_plans: Vec<BillPlan>,
+    pub bill_entries: Vec<BillScheduleEntry>,
+    pub budgets: Budgets,
+    pub documents: Vec<Document>,
+    pub document_types: Vec<DocumentTypeRow>,
+    pub inventory: Inventory,
+    pub institutions: Vec<InstitutionRow>,
+    pub units: Vec<UnitRow>,
+    pub price_sources: Vec<PriceSourceRow>,
 }
 
 impl Ledger {
+    /// A Ledger over `parts`, with nothing recorded.
+    pub fn from_parts(parts: LedgerParts) -> Self {
+        let LedgerParts {
+            accounts,
+            categories,
+            payees,
+            tags,
+            transactions,
+            bill_plans,
+            bill_entries,
+            budgets,
+            documents,
+            document_types,
+            inventory,
+            institutions,
+            units,
+            price_sources,
+        } = parts;
+        Self {
+            accounts,
+            categories,
+            payees,
+            tags,
+            transactions,
+            bill_plans,
+            bill_entries,
+            budgets,
+            documents,
+            document_types,
+            inventory,
+            institutions,
+            units,
+            price_sources,
+            pending: Vec::new(),
+        }
+    }
+
     /// The stub Ledger, anchored to today. Built in the Shell's order: Bills and Documents write
     /// their history into the Transactions, so Transactions are seeded before them and the rest
     /// follow their dependencies.
@@ -70,7 +134,7 @@ impl Ledger {
             today,
         );
         let budgets = default_budgets(&accounts, &categories, today);
-        Self {
+        Self::from_parts(LedgerParts {
             accounts,
             categories,
             payees,
@@ -85,7 +149,7 @@ impl Ledger {
             institutions: default_institutions(),
             units: default_units(),
             price_sources: default_price_sources(),
-        }
+        })
     }
 
     pub fn accounts(&self) -> &[Account] {
@@ -143,11 +207,35 @@ impl Ledger {
     pub fn price_sources(&self) -> &[PriceSourceRow] {
         &self.price_sources
     }
+
+    /// The changes recorded since the last drain, oldest first, for the store to hand to the
+    /// repository (ADR-0039).
+    pub fn drain_changes(&mut self) -> Vec<LedgerChange> {
+        std::mem::take(&mut self.pending)
+    }
+
+    /// Records `change` as a command would, so a Client's store can be tested before the first
+    /// real command lands. Delete it once one does (#638).
+    #[doc(hidden)]
+    pub fn record_for_test(&mut self, change: LedgerChange) {
+        self.pending.push(change);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A hatch write skips the change list, so the repository never sees it: that's why every
+    /// write has to move onto a command before persistence is wired.
+    #[test]
+    #[expect(deprecated, reason = "tests the hatch itself")]
+    fn a_hatch_write_records_no_change() {
+        let mut ledger = Ledger::stub();
+        ledger.hatch().payees.clear();
+        assert!(ledger.payees().is_empty());
+        assert!(ledger.drain_changes().is_empty());
+    }
 
     /// Every id a Transaction names must resolve in the stub, or a View would render a dangling row.
     #[test]

@@ -84,20 +84,18 @@ impl Apply<DocumentTypeCommand> for DocumentTypesApply {
         match command {
             DocumentTypeCommand::Add(form) => Ok(DocumentTypeOutcome::Saved(
                 self.documents.update(cx, |store, cx| {
-                    store.mutate(cx, |data| {
-                        add_type(&mut data.types, &mut data.types_next_id, &form)
-                    })
+                    store.mutate(cx, |data| add_type(data.types, data.types_next_id, &form))
                 }),
             )),
             DocumentTypeCommand::Edit(id, form) => {
                 self.documents.update(cx, |store, cx| {
-                    store.mutate(cx, |data| edit_type(&mut data.types, id, &form));
+                    store.mutate(cx, |data| edit_type(data.types, id, &form));
                 });
                 Ok(DocumentTypeOutcome::Saved(id))
             }
             DocumentTypeCommand::Remove { id, destination } => {
                 let (position, moved_to) = {
-                    let rows = &self.documents.read(cx).types();
+                    let rows = &self.documents.read(cx).types(cx);
                     let position = types::position(rows, id).unwrap_or(0);
                     let moved_to = destination
                         .as_deref()
@@ -108,9 +106,9 @@ impl Apply<DocumentTypeCommand> for DocumentTypesApply {
                 };
                 self.documents.update(cx, |store, cx| {
                     store.mutate(cx, |data| {
-                        remove_type(&mut data.types, id, destination.as_deref())?;
+                        remove_type(data.types, id, destination.as_deref())?;
                         // The Documents surface follows the list: Filed files move with their type.
-                        for document in &mut data.documents {
+                        for document in data.documents.iter_mut() {
                             if document.doc_type == DocumentType(id) {
                                 document.doc_type = DocumentType(moved_to);
                             }
@@ -118,7 +116,7 @@ impl Apply<DocumentTypeCommand> for DocumentTypesApply {
                         Ok(())
                     })
                 })?;
-                let rows = &self.documents.read(cx).types();
+                let rows = &self.documents.read(cx).types(cx);
                 let selected = rows
                     .get(position.min(rows.len().saturating_sub(1)))
                     .map(|row| row.id);
@@ -133,11 +131,21 @@ impl Apply<DocumentTypeCommand> for DocumentTypesApply {
 mod tests {
     use gpui::{AppContext, TestAppContext};
 
+    use lib_ledger::LedgerParts;
+
     use super::*;
+    use crate::ledger_store::test_ledger;
     use crate::{chrome::dialog_apply::confirm, documents::types::RemoveForm};
 
     fn apply(cx: &mut TestAppContext) -> DocumentTypesApply {
-        let documents = cx.new(|_| DocumentsStore::new(Vec::new(), types::default_types()));
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                document_types: types::default_types(),
+                ..LedgerParts::default()
+            },
+        );
+        let documents = cx.new(|cx| DocumentsStore::new(ledger, cx));
         DocumentTypesApply { documents }
     }
 

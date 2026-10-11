@@ -109,8 +109,8 @@ impl Apply<BillCommand> for BillsApply {
                 is_active,
             } => {
                 let today = self.today;
-                let accounts = self.accounts.read(cx).accounts().to_vec();
-                let categories = self.categories.read(cx).categories().to_vec();
+                let accounts = self.accounts.read(cx).accounts(cx).to_vec();
+                let categories = self.categories.read(cx).categories(cx).to_vec();
                 edit_bills(&self.bills, cx, |plans, entries| match editing {
                     None => {
                         bills::insert_plan(plans, entries, &draft, &categories, &accounts, today)
@@ -124,13 +124,10 @@ impl Apply<BillCommand> for BillsApply {
                 .map(BillOutcome::PlanSaved)
             }
             BillCommand::Pay { entry, action } => {
-                let accounts = self.accounts.read(cx).accounts().to_vec();
-                let categories = self.categories.read(cx).categories().to_vec();
-                edit_bills_and_transactions(
-                    &self.bills,
-                    &self.transactions,
-                    cx,
-                    |plans, entries, transactions| match action {
+                let accounts = self.accounts.read(cx).accounts(cx).to_vec();
+                let categories = self.categories.read(cx).categories(cx).to_vec();
+                edit_bills_and_transactions(&self.bills, cx, |plans, entries, transactions| {
+                    match action {
                         PayAction::Pay { amount, date } => {
                             bills::pay(plans, entries, transactions, entry, &amount, date)
                                 .map(|_| ())
@@ -144,8 +141,8 @@ impl Apply<BillCommand> for BillsApply {
                             entry,
                             split,
                         ),
-                    },
-                )
+                    }
+                })
                 .map(|()| BillOutcome::Paid)
             }
             BillCommand::Skip(entry) => {
@@ -165,16 +162,26 @@ impl Apply<BillCommand> for BillsApply {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext, TestAppContext};
+    use lib_ledger::LedgerParts;
 
     use super::*;
+    use crate::ledger_store::test_ledger;
     use crate::{bills::pay_form::PayAction, chrome::dialog_apply::confirm};
 
     fn apply(cx: &mut TestAppContext) -> BillsApply {
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                accounts: crate::accounts::default_accounts(),
+                categories: lib_categories::default_categories(),
+                ..LedgerParts::default()
+            },
+        );
         BillsApply {
-            bills: cx.new(|_| BillsStore::new(Vec::new(), Vec::new())),
-            accounts: cx.new(|_| AccountsStore::seeded()),
-            categories: cx.new(|_| CategoriesStore::new(lib_categories::default_categories())),
-            transactions: cx.new(|_| TransactionsStore::new(Vec::new())),
+            bills: cx.new(|cx| BillsStore::new(ledger.clone(), cx)),
+            accounts: cx.new(|cx| AccountsStore::new(ledger.clone(), cx)),
+            categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
+            transactions: cx.new(|cx| TransactionsStore::new(ledger, cx)),
             today: NaiveDate::from_ymd_opt(2026, 9, 19).unwrap(),
         }
     }

@@ -25,7 +25,7 @@ use lib_toast::ToastKind;
 impl Shell {
     /// The Tags rows, read through their store (ADR-0032).
     pub(super) fn tags_list<'a>(&self, cx: &'a App) -> &'a [Tag] {
-        self.tags_store.read(cx).tags()
+        self.tags_store.read(cx).tags(cx)
     }
 
     /// Writes `rows` back to the Tags store, which notifies its readers. The rules work on a copy

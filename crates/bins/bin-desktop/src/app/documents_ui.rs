@@ -99,19 +99,19 @@ fn dialog_hints(import: bool) -> Vec<(&'static str, String)> {
 impl Shell {
     /// The Documents, read from their store Entity.
     pub(super) fn documents<'a>(&self, cx: &'a gpui::App) -> &'a [Document] {
-        self.documents_store.read(cx).documents()
+        self.documents_store.read(cx).documents(cx)
     }
 
     /// The Document Types in the user's order, read from the store Entity.
     pub(super) fn document_types<'a>(&self, cx: &'a gpui::App) -> &'a [DocumentTypeRow] {
-        self.documents_store.read(cx).types()
+        self.documents_store.read(cx).types(cx)
     }
 
     /// Applies `change` to the shared Documents and Types, notifying every reader.
     pub(super) fn mutate_documents<R>(
         &self,
         cx: &mut gpui::App,
-        change: impl FnOnce(&mut DocumentsData) -> R,
+        change: impl FnOnce(&mut DocumentsData<'_>) -> R,
     ) -> R {
         self.documents_store
             .update(cx, |store, cx| store.mutate(cx, change))
@@ -161,7 +161,7 @@ impl Shell {
 
     pub(super) fn documents_lookups<'a>(&'a self, cx: &'a gpui::App) -> Lookups<'a> {
         Lookups {
-            accounts: self.accounts.read(cx).accounts(),
+            accounts: self.accounts.read(cx).accounts(cx),
             payees: self.payees_list(cx),
             plans: self.bill_plans(cx),
             types: self.document_types(cx),
@@ -871,9 +871,9 @@ impl Shell {
                 let Some(link) = row.link else {
                     return;
                 };
-                let Some(added) = self.mutate_documents(cx, |data| {
-                    documents::toggle_link(&mut data.documents, id, link)
-                }) else {
+                let Some(added) = self
+                    .mutate_documents(cx, |data| documents::toggle_link(data.documents, id, link))
+                else {
                     return;
                 };
                 self.close_documents_dialog();
@@ -975,9 +975,8 @@ impl Shell {
             .map(|document| document.id)
         {
             let name = self.documents_link_name(link, cx);
-            if self.mutate_documents(cx, |data| {
-                documents::toggle_link(&mut data.documents, id, link)
-            }) == Some(false)
+            if self.mutate_documents(cx, |data| documents::toggle_link(data.documents, id, link))
+                == Some(false)
             {
                 self.raise_toast(
                     ToastKind::Info,
@@ -1039,8 +1038,8 @@ impl Shell {
         let transactions = self.transactions(cx).to_vec();
         let Ok(entry) = self.mutate_documents(cx, |data| {
             documents::accept(
-                &data.types,
-                &mut data.documents,
+                data.types,
+                data.documents,
                 &transactions,
                 id,
                 transaction_id,
@@ -1061,7 +1060,7 @@ impl Shell {
     ) {
         let before = self.documents_before_filing(id, cx);
         let Ok(entry) = self.mutate_documents(cx, |data| {
-            documents::file_by_hand(&mut data.documents, id, doc_type, link)
+            documents::file_by_hand(data.documents, id, doc_type, link)
         }) else {
             return;
         };
@@ -1116,7 +1115,7 @@ impl Shell {
             return;
         };
         if self
-            .mutate_documents(cx, |data| documents::skip(&mut data.documents, id))
+            .mutate_documents(cx, |data| documents::skip(data.documents, id))
             .is_ok()
         {
             let len = self.documents_inbox_rows(cx).len();
@@ -1133,7 +1132,7 @@ impl Shell {
             return;
         };
         let count = record.entries.len();
-        let focus = self.mutate_documents(cx, |data| documents::undo(&mut data.documents, record));
+        let focus = self.mutate_documents(cx, |data| documents::undo(data.documents, record));
         self.set_documents_mode(DocumentsMode::Inbox, cx);
         if let Some(id) = focus
             && let Some(at) = self
@@ -1439,9 +1438,9 @@ impl Shell {
     pub fn drop_documents(&mut self, paths: &[std::path::PathBuf], cx: &mut gpui::App) {
         let outcomes = self.mutate_documents(cx, |data| {
             documents::form::import_dropped(
-                &data.types,
+                data.types,
                 paths,
-                &mut data.documents,
+                data.documents,
                 self.today,
                 exists_on_disk,
             )

@@ -11,7 +11,7 @@ use lib_accounts::Account;
 use lib_categories::{self as categories, Category};
 use lib_transactions as transactions;
 
-use super::figures::{Ledger, expense_leaves};
+use super::figures::{BudgetSources, expense_leaves};
 use super::plan::{FillSource, fill_preview, three_month_averages};
 use super::{Budget, Limit, LimitRecord, Method, Rollover, applied, inherited_rollover, put, zero};
 
@@ -133,7 +133,7 @@ impl Budgets {
     pub fn create(
         &mut self,
         new: &NewBudget,
-        ledger: &Ledger<'_>,
+        ledger: &BudgetSources<'_>,
         today: NaiveDate,
     ) -> Result<u32, BudgetError> {
         let name = new.name.trim();
@@ -439,7 +439,7 @@ impl Budgets {
     pub fn fill(
         &mut self,
         id: u32,
-        ledger: &Ledger<'_>,
+        ledger: &BudgetSources<'_>,
         target: Period,
         source: FillSource,
         today: NaiveDate,

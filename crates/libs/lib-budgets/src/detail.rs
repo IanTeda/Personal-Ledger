@@ -9,8 +9,8 @@ use lib_core::{CategoryTypes, Money, Period};
 use lib_categories as categories;
 
 use super::figures::{
-    CategoryFigures, Elapsed, LeafFigures, Ledger, SpentIndex, effective, elapsed, known_costs,
-    leaf_row, parent_row,
+    BudgetSources, CategoryFigures, Elapsed, LeafFigures, SpentIndex, effective, elapsed,
+    known_costs, leaf_row, parent_row,
 };
 use super::{Budget, Rollover, zero};
 
@@ -60,7 +60,7 @@ pub struct CategoryDetail {
 fn detail_leaves(
     budget: &Budget,
     index: &SpentIndex,
-    ledger: &Ledger<'_>,
+    ledger: &BudgetSources<'_>,
     category_id: u32,
     month: Period,
     today: NaiveDate,
@@ -87,7 +87,7 @@ fn detail_leaves(
 /// Expense Category.
 pub fn category_detail(
     budget: &Budget,
-    ledger: &Ledger<'_>,
+    ledger: &BudgetSources<'_>,
     category_id: u32,
     month: Period,
     today: NaiveDate,

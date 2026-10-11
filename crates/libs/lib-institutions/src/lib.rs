@@ -67,12 +67,16 @@ impl InstitutionService {
         &self.institutions
     }
 
-    /// Appends an institution from the Add institution dialog. `account_type` is the joined
-    /// label the dialog built, so this service stores it as given.
+    /// Appends an institution from the Add institution dialog; see [`add_institution`].
     pub fn add(&mut self, name: String, account_type: String) {
-        self.institutions
-            .push(InstitutionRow { name, account_type });
+        add_institution(&mut self.institutions, name, account_type);
     }
+}
+
+/// Appends an institution from the Add institution dialog. `account_type` is the joined label the
+/// dialog built, so it is stored as given.
+pub fn add_institution(institutions: &mut Vec<InstitutionRow>, name: String, account_type: String) {
+    institutions.push(InstitutionRow { name, account_type });
 }
 
 #[cfg(test)]

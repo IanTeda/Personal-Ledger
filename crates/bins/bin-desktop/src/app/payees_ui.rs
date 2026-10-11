@@ -25,7 +25,7 @@ use lib_toast::ToastKind;
 impl Shell {
     /// The Payees rows, read through their store (ADR-0032).
     pub(super) fn payees_list<'a>(&self, cx: &'a App) -> &'a [Payee] {
-        self.payees_store.read(cx).payees()
+        self.payees_store.read(cx).payees(cx)
     }
 
     /// Whether Settings' Payees list owns the keyboard: the page, not the index, has focus.

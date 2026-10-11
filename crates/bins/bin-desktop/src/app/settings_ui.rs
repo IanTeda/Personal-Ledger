@@ -833,7 +833,7 @@ impl Shell {
     /// somehow out of bounds (defensive only -- every caller is a row's own click handler, so
     /// this should never actually happen).
     pub(super) fn handle_unit_edit_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        let Some(row) = self.units_store.read(cx).unit(index) else {
+        let Some(row) = self.units_store.read(cx).unit(cx, index) else {
             return;
         };
         let form = UnitForm::from_row(row);
@@ -979,7 +979,7 @@ impl Shell {
     /// message. A no-op if `index` is somehow out of bounds (defensive only, same reasoning as
     /// [`Self::handle_unit_edit_click`]).
     pub(super) fn handle_unit_delete_click(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        let Some(row) = self.units_store.read(cx).unit(index) else {
+        let Some(row) = self.units_store.read(cx).unit(cx, index) else {
             return;
         };
         let form = DeleteUnitForm::new(row.code.as_str());
@@ -1022,7 +1022,7 @@ impl Shell {
     /// first entry, so this dialog reads Units' live state even though the two sections are
     /// otherwise independent.
     pub(super) fn handle_add_institution_click(&mut self, cx: &mut Context<'_, Self>) {
-        let form = AddInstitutionForm::new(self.units_store.read(cx).units());
+        let form = AddInstitutionForm::new(self.units_store.read(cx).units(cx));
         self.open_dialog(OpenDialog::Settings(SettingsDialog::AddInstitution(form)));
         cx.notify();
     }

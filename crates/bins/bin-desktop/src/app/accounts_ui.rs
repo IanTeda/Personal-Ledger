@@ -136,13 +136,13 @@ impl Shell {
         AccountOptions::new(
             self.institutions_store
                 .read(cx)
-                .institutions()
+                .institutions(cx)
                 .iter()
                 .map(|institution| institution.name.clone())
                 .collect(),
             self.units_store
                 .read(cx)
-                .units()
+                .units(cx)
                 .iter()
                 .map(|unit| unit.code.clone())
                 .collect(),
@@ -157,7 +157,7 @@ impl Shell {
         let default_unit = self
             .units_store
             .read(cx)
-            .units()
+            .units(cx)
             .iter()
             .find(|unit| unit.is_default)
             .map(|unit| unit.code.as_str());
@@ -241,7 +241,7 @@ impl Shell {
         let Some(account) = self
             .accounts
             .read(cx)
-            .accounts()
+            .accounts(cx)
             .iter()
             .find(|account| account.id == id)
         else {
@@ -257,7 +257,7 @@ impl Shell {
         let Some(account) = self
             .accounts
             .read(cx)
-            .accounts()
+            .accounts(cx)
             .iter()
             .find(|account| account.id == id)
         else {
@@ -308,7 +308,7 @@ impl Shell {
                 }
             }
         } else {
-            match accounts::find_by_name(self.accounts.read(cx).accounts(), argument) {
+            match accounts::find_by_name(self.accounts.read(cx).accounts(cx), argument) {
                 NameLookup::Found(index) => index,
                 NameLookup::NotFound => {
                     self.chrome.status_message = Some(crate::msg::desktop_status_no_account_named(
@@ -328,7 +328,7 @@ impl Shell {
                 }
             }
         };
-        let id = self.accounts.read(cx).accounts()[index].id;
+        let id = self.accounts.read(cx).accounts(cx)[index].id;
         self.select_account(id, cx);
         match verb {
             AccountsVerb::Edit => self.open_edit_account_dialog(id, cx),

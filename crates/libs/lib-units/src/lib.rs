@@ -119,46 +119,67 @@ impl UnitService {
         &self.price_sources
     }
 
-    /// Appends a unit from the Add unit dialog. It has no price-source integration yet, so its
-    /// source is "Manual entry", and it can't be the base or default unit: nothing lets a user
-    /// change which one that is.
+    /// Appends a unit from the Add unit dialog; see [`add_unit`].
     pub fn add_unit(&mut self, code: String, name: String, kind: String) {
-        self.units.push(UnitRow {
-            code,
-            name,
-            kind,
-            source: MANUAL_SOURCE.to_string(),
-            is_base: false,
-            is_default: false,
-        });
+        add_unit(&mut self.units, code, name, kind);
     }
 
-    /// Rewrites the row at `index` from the Edit unit dialog. The dialog has no field for the
-    /// source or the base and default flags, so those are kept from the row being edited.
-    /// Returns `false` when `index` is out of bounds.
+    /// Rewrites the row at `index` from the Edit unit dialog; see [`edit_unit`].
     pub fn edit_unit(&mut self, index: usize, code: String, name: String, kind: String) -> bool {
-        let Some(existing) = self.units.get_mut(index) else {
-            return false;
-        };
-        *existing = UnitRow {
-            code,
-            name,
-            kind,
-            source: existing.source.clone(),
-            is_base: existing.is_base,
-            is_default: existing.is_default,
-        };
-        true
+        edit_unit(&mut self.units, index, code, name, kind)
     }
 
-    /// Removes the row at `index` if it still holds `code`, the code the confirm dialog opened
-    /// on. The dialog is modal, so this is a defensive check, not a normal path.
+    /// Removes the row at `index` if it still holds `code`; see [`remove_unit`].
     pub fn remove_unit(&mut self, index: usize, code: &str) -> Option<UnitRow> {
-        if self.units.get(index).is_some_and(|row| row.code == code) {
-            Some(self.units.remove(index))
-        } else {
-            None
-        }
+        remove_unit(&mut self.units, index, code)
+    }
+}
+
+/// Appends a unit from the Add unit dialog. It has no price-source integration yet, so its source
+/// is "Manual entry", and it can't be the base or default unit: nothing lets a user change which
+/// one that is.
+pub fn add_unit(units: &mut Vec<UnitRow>, code: String, name: String, kind: String) {
+    units.push(UnitRow {
+        code,
+        name,
+        kind,
+        source: MANUAL_SOURCE.to_string(),
+        is_base: false,
+        is_default: false,
+    });
+}
+
+/// Rewrites the row at `index` from the Edit unit dialog. The dialog has no field for the source
+/// or the base and default flags, so those are kept from the row being edited. Returns `false` when
+/// `index` is out of bounds.
+pub fn edit_unit(
+    units: &mut [UnitRow],
+    index: usize,
+    code: String,
+    name: String,
+    kind: String,
+) -> bool {
+    let Some(existing) = units.get_mut(index) else {
+        return false;
+    };
+    *existing = UnitRow {
+        code,
+        name,
+        kind,
+        source: existing.source.clone(),
+        is_base: existing.is_base,
+        is_default: existing.is_default,
+    };
+    true
+}
+
+/// Removes the row at `index` if it still holds `code`, the code the confirm dialog opened on. The
+/// dialog is modal, so this is a defensive check, not a normal path.
+pub fn remove_unit(units: &mut Vec<UnitRow>, index: usize, code: &str) -> Option<UnitRow> {
+    if units.get(index).is_some_and(|row| row.code == code) {
+        Some(units.remove(index))
+    } else {
+        None
     }
 }
 

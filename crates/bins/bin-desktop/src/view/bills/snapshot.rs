@@ -50,7 +50,7 @@ impl BillsView {
     #[doc(hidden)]
     pub fn snapshot(&self, cx: &App) -> BillsSnapshot {
         let state = &self.state;
-        let plans = self.sources.bills.read(cx).plans();
+        let plans = self.sources.bills.read(cx).plans(cx);
         let rows = self.schedule_rows(cx);
         let len = match state.tab {
             BillsTab::Schedule => rows.len(),

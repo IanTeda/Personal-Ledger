@@ -42,7 +42,7 @@ impl Shell {
     pub fn transactions_snapshot(&self, cx: &gpui::App) -> TransactionsSnapshot {
         // The rows and the page state come from their Entities, the way the render reads them;
         // only the reference data and the Display preferences are still `Shell` fields.
-        let transactions = self.transactions_store.read(cx).transactions();
+        let transactions = self.transactions_store.read(cx).transactions(cx);
         let state = self.transactions_view.read(cx).state();
         let ledger = self.transactions_ledger(cx);
         let visible =

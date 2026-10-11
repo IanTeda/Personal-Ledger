@@ -116,10 +116,10 @@ impl Shell {
     #[doc(hidden)]
     pub fn dashboard_bills_snapshot(&self, cx: &gpui::App) -> Vec<DashboardBillSnapshot> {
         let store = self.bills_store.read(cx);
-        bills::attention_entries(store.plans(), store.entries(), self.today)
+        bills::attention_entries(store.plans(cx), store.entries(cx), self.today)
             .into_iter()
             .filter_map(|id| {
-                let plan = bills::get(store.plans(), id.plan_id)?;
+                let plan = bills::get(store.plans(cx), id.plan_id)?;
                 Some(DashboardBillSnapshot {
                     plan: plan.name.clone(),
                     selector: format!("dashboard-bill-{}-{}", id.plan_id, id.due),

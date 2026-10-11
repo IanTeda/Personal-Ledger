@@ -345,16 +345,16 @@ impl Shell {
     /// The Settings Accounts page for a test.
     #[doc(hidden)]
     pub fn settings_accounts_snapshot(&self, cx: &gpui::App) -> SettingsAccountsSnapshot {
-        let account_names = accounts::display_order(self.accounts.read(cx).accounts())
+        let account_names = accounts::display_order(self.accounts.read(cx).accounts(cx))
             .into_iter()
-            .filter_map(|index| self.accounts.read(cx).accounts().get(index))
+            .filter_map(|index| self.accounts.read(cx).accounts(cx).get(index))
             .map(|account| account.name.clone())
             .collect::<Vec<_>>();
         let selected_account = self
             .accounts_view
             .read(cx)
             .selected_index(cx)
-            .and_then(|index| self.accounts.read(cx).accounts().get(index))
+            .and_then(|index| self.accounts.read(cx).accounts(cx).get(index))
             .map(|account| account.name.clone());
         SettingsAccountsSnapshot {
             account_names,
@@ -522,14 +522,14 @@ impl Shell {
             unit_codes: self
                 .units_store
                 .read(cx)
-                .units()
+                .units(cx)
                 .iter()
                 .map(|unit| unit.code.clone())
                 .collect(),
             unit_rows: self
                 .units_store
                 .read(cx)
-                .units()
+                .units(cx)
                 .iter()
                 .map(|unit| (unit.code.clone(), unit.name.clone(), unit.kind.clone()))
                 .collect(),
@@ -547,7 +547,7 @@ impl Shell {
             institutions: self
                 .institutions_store
                 .read(cx)
-                .institutions()
+                .institutions(cx)
                 .iter()
                 .map(|row| (row.name.clone(), row.account_type.clone()))
                 .collect(),

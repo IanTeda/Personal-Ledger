@@ -69,6 +69,7 @@ use std::time::{Duration, Instant};
 use crate::institutions::InstitutionsStore;
 use crate::inventory::InventoryStore;
 use crate::ledger_data::LedgerDataEvent;
+use crate::ledger_store::LedgerStore;
 use crate::units::UnitsStore;
 use crate::view::settings::state::SettingsView;
 use crate::view::transactions::state::{TransactionsState, TransactionsView};
@@ -79,6 +80,7 @@ use gpui::{
 };
 
 use lib_core::DateStyle;
+use lib_ledger::Ledger;
 use lib_toast::Toasts;
 
 use crate::payees::{PayeesEvent, PayeesStore};
@@ -93,28 +95,23 @@ use crate::view::documents::state::{
 use crate::view::payees::state::PayeesView;
 use crate::view::tags::state::{TagsEvent, TagsStore, TagsView};
 use crate::{
-    bills::{self, BillsStore},
+    bills::BillsStore,
     budgets,
-    categories::{self, Category},
+    categories::Category,
     chrome::dialog_host::OpenDialog,
     chrome::state::ChromeState,
     documents::{self, DocumentsMode, LibraryScope, LibrarySort},
-    institutions::{self},
-    inventory,
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
     navigation::key_router::{self, Movement},
     navigation::nav::NavState,
-    payees::{self},
     settings::tracing_log::LogView,
     settings::{
         SettingsSection,
         display::{RowDensity, StatusGlyphs},
         tracing_log::TracingLevel,
     },
-    tags::{self},
-    transactions::{self, TransactionsStore, chips::FilterField, query::TransactionFilters},
-    units::{self},
+    transactions::{TransactionsStore, chips::FilterField, query::TransactionFilters},
     view::format,
     view::{
         budgets::{self as budgets_view},
@@ -172,14 +169,16 @@ pub struct Shell {
     /// The `:open` explorer's footer checkboxes, kept here so they outlive each dialog and reach
     /// `persistence::PersistedState` at quit.
     explorer_filters: ExplorerFilters,
-    /// The Units table and Price Sources, owned by their store Entity and read through it
-    /// (ADR-0032). Shared: Settings edits them, and Accounts and the Institutions dialog read the
-    /// same rows.
+    /// The only copy of the Ledger (ADR-0038). Every per-domain store below reads through it and
+    /// holds no rows of its own.
+    ledger: Entity<LedgerStore>,
+    /// The Units table and Price Sources, read through their store Entity (ADR-0032). Shared:
+    /// Settings edits them, and Accounts and the Institutions dialog read the same rows.
     units_store: Entity<UnitsStore>,
-    /// The Institutions table, owned by its store Entity and read through it (ADR-0032). Shared:
+    /// The Institutions table, read through its store Entity (ADR-0032). Shared:
     /// Settings edits it, and the Accounts form reads it.
     institutions_store: Entity<InstitutionsStore>,
-    /// The Accounts rows, owned by their store Entity and read through it (ADR-0032). Shared:
+    /// The Accounts rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions, Budgets, Bills and Documents read the same rows.
     accounts: Entity<AccountsStore>,
     /// The Accounts page's state: its selected row. Its events are handled in
@@ -188,7 +187,7 @@ pub struct Shell {
     /// "Today" for the seed data and, later, the `this year` filter -- read once at construction so
     /// everything derived from it (the seeded dates, the default range) agrees for the whole run.
     today: chrono::NaiveDate,
-    /// The Categories tree, owned by its store Entity and read through it (ADR-0032). Shared:
+    /// The Categories tree, read through its store Entity (ADR-0032). Shared:
     /// Budgets, Bills, Transactions, Documents, Payees and Settings read the same tree.
     categories_store: Entity<CategoriesStore>,
     /// The Settings Categories tree's cursor, selected id and expanded nodes, owned by their view
@@ -197,31 +196,28 @@ pub struct Shell {
     /// The Settings View's own state (the page, focus, Display control and Documents and
     /// Inventory selections), owned by its view Entity (ADR-0032).
     settings_view: Entity<SettingsView>,
-    /// The shared stub Budgets, seeded from `budgets::default_budgets()`, owned by their store
-    /// Entity and read through it (ADR-0032). Shared so the Budgets surface and Categories 5c
-    /// read and write the same Category Limits, and so they survive leaving and re-entering
-    /// either view.
+    /// The Budgets, read through their store Entity (ADR-0032). Shared so the Budgets surface and
+    /// Categories 5c read and write the same Category Limits, and so they survive leaving and
+    /// re-entering either view.
     budgets_store: Entity<BudgetsStore>,
     /// The Budgets page's state (Budget, tab, month, cursors). Its events are handled in
     /// `handle_budgets_event`.
     budgets_view: Entity<BudgetsView>,
-    /// The Payees rows, owned by their store Entity and read through it (ADR-0032). Shared:
+    /// The Payees rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions, Bills, Documents and Budgets read the same rows.
     payees_store: Entity<PayeesStore>,
     /// The Payees page's and Settings Payees list's selections, owned by their view Entity.
     payees_view: Entity<PayeesView>,
-    /// The Tags rows, owned by their store Entity and read through it (ADR-0032). Shared:
+    /// The Tags rows, read through their store Entity (ADR-0032). Shared:
     /// Transactions reads the same rows for its chips, filter form and Split tag picker.
     tags_store: Entity<TagsStore>,
     /// The Tags page's and Settings Tags list's selections, owned by their view Entity.
     tags_view: Entity<TagsView>,
-    /// The Transactions, owned by their store Entity and read through it (ADR-0032). Seeded from
-    /// `transactions::default_transactions`; saved-in-memory state that survives leaving and
-    /// re-entering the page. Deleting an account deletes its transactions with it.
+    /// The Transactions, read through their store Entity (ADR-0032): saved-in-memory state that
+    /// survives leaving and re-entering the page. Deleting an account deletes its transactions
+    /// with it.
     transactions_store: Entity<TransactionsStore>,
-    /// The Bill Plans and Bill Schedule, owned by their store Entity and read through it
-    /// (ADR-0032). Seeded by `bills::default_bills`, which also writes their settling
-    /// Transactions into the Transactions store.
+    /// The Bill Plans and Bill Schedule, read through their store Entity (ADR-0032).
     bills_store: Entity<BillsStore>,
     /// The Bills page: its state (tab, selection, period, All, filters and filter focus), its
     /// rendering and its input, owned by its Entity (ADR-0037). It reaches `Shell` only through
@@ -230,15 +226,14 @@ pub struct Shell {
     /// The Transactions page's state (selection, scroll, filters, search and the popover draft),
     /// owned by its Entity (ADR-0032).
     transactions_view: Entity<TransactionsView>,
-    /// The Documents and Document Types, owned by their store Entity and read through it
-    /// (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
+    /// The Documents and Document Types, read through their store Entity (ADR-0032). Shared: Settings › Documents edits the Types, and the Documents page, the rail
     /// badge and the Inventory removal read the Documents.
     documents_store: Entity<DocumentsStore>,
     /// The Documents page's state (mode, scope, sort, search, selection). Its events are handled
     /// in `handle_documents_event`.
     documents_view: Entity<DocumentsView>,
-    /// The Inventory, owned by its store Entity and read through it (ADR-0032). Shared: Settings'
-    /// Inventory page edits it, and Documents resolve their Links against it.
+    /// The Inventory, read through its store Entity (ADR-0032). Shared: Settings' Inventory page
+    /// edits it, and Documents resolve their Links against it.
     inventory: Entity<InventoryStore>,
     /// Keeps each View's event subscription alive: dropping one silently stops its events.
     view_subscriptions: Vec<Subscription>,
@@ -253,20 +248,17 @@ impl Shell {
         today: chrono::NaiveDate,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let accounts = cx.new(|_| AccountsStore::seeded());
+        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today)));
+        let accounts = cx.new(|cx| AccountsStore::new(ledger.clone(), cx));
         let accounts_view = cx.new(|_| AccountsView::new(accounts.clone()));
         let accounts_subscription =
             cx.subscribe(&accounts_view, |shell, _view, event: &AccountsEvent, cx| {
                 shell.handle_accounts_event(*event, cx);
             });
-        let seeded_accounts = accounts.read(cx).accounts().to_vec();
-        let categories = categories::default_categories();
-        let categories_store = cx.new(|_| CategoriesStore::new(categories.clone()));
+        let categories_store = cx.new(|cx| CategoriesStore::new(ledger.clone(), cx));
         let categories_view = cx.new(|_| CategoriesView::new());
-        let units_store =
-            cx.new(|_| UnitsStore::new(units::default_units(), units::default_price_sources()));
-        let institutions_store =
-            cx.new(|_| InstitutionsStore::new(institutions::default_institutions()));
+        let units_store = cx.new(|cx| UnitsStore::new(ledger.clone(), cx));
+        let institutions_store = cx.new(|cx| InstitutionsStore::new(ledger.clone(), cx));
         let units_subscription = cx
             .subscribe(&units_store, |_, _store, _event: &LedgerDataEvent, cx| {
                 cx.notify()
@@ -291,8 +283,7 @@ impl Shell {
             )
         });
         let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
-        let payees = payees::default_payees();
-        let payees_store = cx.new(|_| PayeesStore::new(payees.clone()));
+        let payees_store = cx.new(|cx| PayeesStore::new(ledger.clone(), cx));
         let payees_view = cx.new(|_| PayeesView::new());
         let payees_subscription = cx
             .subscribe(&payees_store, |_, _store, _event: &PayeesEvent, cx| {
@@ -301,40 +292,16 @@ impl Shell {
         // The Payees View's selections live in their own Entity, so a selection change repaints
         // Shell too, not just the View that moved.
         let payees_view_observer = cx.observe(&payees_view, |_, _, cx| cx.notify());
-        let tags = tags::default_tags();
-        let tags_store = cx.new(|_| TagsStore::new(tags.clone()));
+        let tags_store = cx.new(|cx| TagsStore::new(ledger.clone(), cx));
         let tags_view = cx.new(|_| TagsView::new(tags_store.clone()));
         let tags_subscription =
             cx.subscribe(&tags_store, |_, _store, _event: &TagsEvent, cx| cx.notify());
-        let mut transactions = transactions::default_transactions(
-            &seeded_accounts,
-            &categories,
-            &payees,
-            &tags,
-            today,
-        );
-        let bills_seed = bills::default_bills(
-            &seeded_accounts,
-            &categories,
-            &payees,
-            &mut transactions,
-            today,
-        );
-        let inventory = cx.new(|_| InventoryStore::new(inventory::default_inventory(today)));
+        let inventory = cx.new(|cx| InventoryStore::new(ledger.clone(), cx));
         let inventory_subscription = cx
             .subscribe(&inventory, |_, _store, _event: &LedgerDataEvent, cx| {
                 cx.notify()
             });
-        let documents_seed = documents::default_documents(
-            &seeded_accounts,
-            &categories,
-            &payees,
-            &bills_seed.plans,
-            &inventory.read(cx).inventory().clone(),
-            &mut transactions,
-            today,
-        );
-        let transactions_store = cx.new(|_| TransactionsStore::new(transactions));
+        let transactions_store = cx.new(|cx| TransactionsStore::new(ledger.clone(), cx));
         let transactions_view = cx.new(|_| {
             TransactionsView::new(TransactionsState {
                 selected: 0,
@@ -347,17 +314,19 @@ impl Shell {
                 import: None,
             })
         });
-        let seeded_budgets = budgets::default_budgets(&seeded_accounts, &categories, today);
-        let budgets_current = seeded_budgets
+        let budgets_current = ledger
+            .read(cx)
+            .ledger()
+            .budgets()
             .default_budget()
             .map_or(budgets::PERSONAL_SPENDING_ID, |budget| budget.id);
-        let budgets_store = cx.new(|_| BudgetsStore::new(seeded_budgets));
+        let budgets_store = cx.new(|cx| BudgetsStore::new(ledger.clone(), cx));
         let budgets_view = cx.new(|_| BudgetsView::new(BudgetsState::new(budgets_current, today)));
         let budgets_subscription =
             cx.subscribe(&budgets_view, |shell, _view, event: &BudgetsEvent, cx| {
                 shell.handle_budgets_event(*event, cx);
             });
-        let bills_store = cx.new(|_| BillsStore::new(bills_seed.plans, bills_seed.entries));
+        let bills_store = cx.new(|cx| BillsStore::new(ledger.clone(), cx));
         let bills_view = cx.new(|_| {
             BillsView::new(
                 BillsSources {
@@ -374,9 +343,7 @@ impl Shell {
         let bills_subscription = Self::view_event_subscription(&bills_view, cx);
         // The status line reads the page's state, so a change in it repaints `Shell` too.
         let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
-        let documents_store = cx.new(|_| {
-            DocumentsStore::new(documents_seed.documents, documents::types::default_types())
-        });
+        let documents_store = cx.new(|cx| DocumentsStore::new(ledger.clone(), cx));
         let documents_view = cx.new(|_| DocumentsView::new(DocumentsState::default()));
         let documents_subscription = cx.subscribe(
             &documents_view,
@@ -410,6 +377,7 @@ impl Shell {
             settings_status_glyphs: StatusGlyphs::default(),
             settings_start_sidebar_minimised: false,
             explorer_filters: ExplorerFilters::default(),
+            ledger,
             units_store,
             institutions_store,
             accounts,
@@ -452,7 +420,7 @@ impl Shell {
 
     /// The Categories tree, read through its store Entity (ADR-0032).
     fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
-        self.categories_store.read(cx).categories()
+        self.categories_store.read(cx).categories(cx)
     }
 
     /// Restores the Documents mode, Library scope and sort from the last run.
@@ -514,7 +482,7 @@ impl Shell {
         let ids: Vec<u32> = self
             .inventory
             .read(cx)
-            .inventory()
+            .inventory(cx)
             .properties
             .iter()
             .map(|property| property.id)
@@ -594,9 +562,7 @@ impl Shell {
 
     fn move_selected_document_type(&mut self, delta: isize, cx: &mut App) {
         if let Some(id) = self.settings_documents_selected_id(cx) {
-            self.mutate_documents(cx, |data| {
-                documents::types::move_by(&mut data.types, id, delta)
-            });
+            self.mutate_documents(cx, |data| documents::types::move_by(data.types, id, delta));
             self.settings_view
                 .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
         }
@@ -677,7 +643,6 @@ impl Focusable for Shell {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::accounts;
     use crate::categories::apply::move_category_splits;
     use crate::transactions::Transaction;
     use crate::view::accounts::hints::accounts_hints;
@@ -686,6 +651,7 @@ mod tests {
         settings_plain_page_hints,
     };
     use crate::view::transactions::hints::{filter_hints, transactions_hints};
+    use crate::{accounts, categories, payees, tags, transactions};
     use categories_ui::category_refused;
     use chrono::Local;
     use lib_accounts::{Account, AccountService};

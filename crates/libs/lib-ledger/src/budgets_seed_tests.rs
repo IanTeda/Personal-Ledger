@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use chrono::NaiveDate;
 use lib_accounts::{Account, default_accounts};
 use lib_budgets::{
-    Budget, Budgets, CategoryFigures, Ledger, LimitRecord, Method, PERSONAL_SPENDING_ID,
+    Budget, BudgetSources, Budgets, CategoryFigures, LimitRecord, Method, PERSONAL_SPENDING_ID,
     PeriodFigures, applied, check_accounts, check_leaf, default_budgets, period_figures, zero,
 };
 use lib_categories::{self as categories, Category, default_categories};
@@ -50,8 +50,8 @@ impl World {
         }
     }
 
-    fn ledger(&self) -> Ledger<'_> {
-        Ledger {
+    fn ledger(&self) -> BudgetSources<'_> {
+        BudgetSources {
             categories: &self.categories,
             accounts: &self.accounts,
             transactions: &self.transactions,

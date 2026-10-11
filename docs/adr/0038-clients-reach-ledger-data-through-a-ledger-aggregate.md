@@ -31,3 +31,11 @@ We're adding a `Ledger` aggregate in a new `lib-ledger` crate, and every read an
 - **Move the entity structs into `lib-core`.** Rejected: the domain crates would be left with rules over someone else's types, which is shallow in a new way, and `lib-core` would become the model crate.
 - **Keep cross-domain rules in the owning domain crate, taking other domains' data as arguments.** Rejected: this is today's `&mut` slices of six collections, and no single place could emit one change event for a cross-domain write.
 - **Keep per-domain stores.** Rejected: a cross-domain command changes several domains at once, and per-domain stores cannot announce that together.
+
+## Amendment: commands are values, and a Bill Plan is a reference
+
+The Ledger prototype ([#593](https://github.com/IanTeda/Personal-Ledger/issues/593)) kept the shape below, with two changes.
+
+- **Commands are values as well as methods.** ADR-0037's `DialogForm::command()` returns a command, so each command is also a value type (`DeletePayee(id)`, `DeleteCategory(id)`) implementing `LedgerCommand { type Outcome; type Refusal; fn run(self, &mut Ledger) }`, and each value runs through its `Ledger` method. `LedgerStore::apply<C: LedgerCommand>` runs any of them, so there are no per-command store methods. `LedgerChanged { what }` is derived from the `LedgerChange`s a command records (ADR-0039), never declared by the command.
+- **A Bill Plan is a reference.** A Payee that a Split or a Bill Plan names can only be deactivated, not deleted. Deleting a Category moves its Splits and Bill Plans to the Uncategorised Category of its type, clears it as any Payee's default and drops its Category Limits from every Budget, so no row is left naming a deleted id.
+- **The migration runs through a temporary hatch.** Two copies of the data can't coexist, so `LedgerStore` takes the only copy first, the per-domain stores become read views over it, and their old writes go through a deprecated `Ledger::hatch()` that records no changes. Each domain's writes then move onto commands, and the hatch and the per-domain stores go last ([#637](https://github.com/IanTeda/Personal-Ledger/issues/637) to [#648](https://github.com/IanTeda/Personal-Ledger/issues/648)).

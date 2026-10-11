@@ -1,40 +1,53 @@
-//! The Budgets destination's Entities (ADR-0032). [`BudgetsStore`] owns the Budgets, which
-//! Categories 5c and the Dashboard read too; [`BudgetsView`] owns the page's own state: which
+//! The Budgets destination's Entities (ADR-0032). [`BudgetsStore`] reads the Budgets through
+//! [`LedgerStore`], which holds the only copy. Categories 5c and the Dashboard read them too, and
+//! [`BudgetsView`] owns the page's own state: which
 //! Budget, tab, month and cell it is showing. The view reports what needs `Shell` (the
 //! dialog host, navigation and the save dialog are `Shell`'s) as [`BudgetsEvent`]s.
 
 use chrono::NaiveDate;
-use gpui::{Context, EventEmitter};
+use gpui::{App, Context, Entity, EventEmitter, Subscription};
 use lib_budgets::Budgets;
+use lib_ledger::Domain;
 
 use crate::budgets::{BudgetsTab, PlanEdit, default_plan_start};
+use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::period::Period;
 
 /// The shared Budgets. Every reader (the Budgets page, Categories 5c and the Dashboard) reads
 /// them from here, so a change is seen everywhere on the next render.
 pub struct BudgetsStore {
-    budgets: Budgets,
+    ledger: Entity<LedgerStore>,
+    _ledger_changed: Subscription,
 }
 
 impl BudgetsStore {
-    pub fn new(budgets: Budgets) -> Self {
-        Self { budgets }
+    /// A store over `ledger`'s Budgets.
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
+            if event.what.contains(&Domain::Budgets) {
+                cx.notify();
+            }
+        });
+        Self {
+            ledger,
+            _ledger_changed,
+        }
     }
 
-    pub fn budgets(&self) -> &Budgets {
-        &self.budgets
+    pub fn budgets<'a>(&self, cx: &'a App) -> &'a Budgets {
+        self.ledger.read(cx).ledger().budgets()
     }
 
     /// Applies `change` to the Budgets, then tells every subscriber they changed. Mutations go
     /// through here so no write can skip the notification.
-    pub fn mutate<R>(
-        &mut self,
-        cx: &mut Context<'_, Self>,
-        change: impl FnOnce(&mut Budgets) -> R,
-    ) -> R {
-        let result = change(&mut self.budgets);
-        cx.notify();
-        result
+    #[expect(
+        deprecated,
+        reason = "Budgets writes move onto Ledger commands in #644"
+    )]
+    pub fn mutate<R>(&mut self, cx: &mut App, change: impl FnOnce(&mut Budgets) -> R) -> R {
+        self.ledger.update(cx, |ledger, cx| {
+            ledger.write(cx, &[Domain::Budgets], |ledger| change(ledger.budgets))
+        })
     }
 }
 

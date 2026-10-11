@@ -1,11 +1,17 @@
-//! The Categories destination's Entities (ADR-0032). [`CategoriesStore`] owns the tree, read
-//! through `lib_categories`' service; [`CategoriesView`] owns the Settings tree's cursor, its
+//! The Categories destination's Entities (ADR-0032). [`CategoriesStore`] reads the tree through
+//! [`LedgerStore`], which holds the only copy; [`CategoriesView`] owns the Settings tree's cursor, its
 //! selected id and which nodes are expanded. `Shell` opens the dialogs and moves the Budgets and
 //! Transactions with a delete, since those stores are `Shell`'s to coordinate.
 
-use gpui::{Context, EventEmitter};
-use lib_categories::{Category, CategoryError, CategoryService};
+use gpui::{App, Context, Entity, EventEmitter, Subscription};
+use lib_categories::{
+    Category, CategoryError, change_category_type, delete_category, edit_category, insert_category,
+    move_category, prepare_delete,
+};
 use lib_core::CategoryTypes;
+use lib_ledger::{Domain, LedgerHatch};
+
+use crate::ledger_store::{LedgerChanged, LedgerStore};
 
 /// Emitted by [`CategoriesStore`] after a write lands, so `Shell` can refresh the Views that read
 /// the tree (ADR-0032's View events).
@@ -17,88 +23,92 @@ pub enum CategoriesEvent {
 /// The shared Categories tree. Budgets, Bills, Transactions, Documents, Payees and Settings all
 /// read it from here, so a change is seen everywhere on the next render.
 pub struct CategoriesStore {
-    service: CategoryService,
+    ledger: Entity<LedgerStore>,
+    _ledger_changed: Subscription,
 }
 
 impl EventEmitter<CategoriesEvent> for CategoriesStore {}
 
 impl CategoriesStore {
-    /// A store over `categories`, which the Desktop seeds from `lib_categories::default_categories`.
-    pub fn new(categories: Vec<Category>) -> Self {
+    /// A store over `ledger`'s Categories.
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
+            if event.what.contains(&Domain::Categories) {
+                cx.emit(CategoriesEvent::Changed);
+            }
+        });
         Self {
-            service: CategoryService::new(categories),
+            ledger,
+            _ledger_changed,
         }
     }
 
-    pub fn categories(&self) -> &[Category] {
-        self.service.categories()
+    pub fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
+        self.ledger.read(cx).ledger().categories()
     }
 
     /// Adds a Category and returns its id; the caller decides what to select.
     pub fn insert(
         &mut self,
-        cx: &mut Context<'_, Self>,
+        cx: &mut App,
         name: String,
         parent_id: Option<u32>,
         category_type: CategoryTypes,
     ) -> Result<u32, CategoryError> {
-        let id = self.service.insert(name, parent_id, category_type)?;
-        cx.emit(CategoriesEvent::Changed);
-        Ok(id)
+        self.try_write(cx, |ledger| {
+            insert_category(ledger.categories, name, parent_id, category_type)
+        })
     }
 
-    pub fn edit(
-        &mut self,
-        cx: &mut Context<'_, Self>,
-        id: u32,
-        name: String,
-    ) -> Result<(), CategoryError> {
-        self.service.edit(id, name)?;
-        cx.emit(CategoriesEvent::Changed);
-        Ok(())
+    pub fn edit(&mut self, cx: &mut App, id: u32, name: String) -> Result<(), CategoryError> {
+        self.try_write(cx, |ledger| edit_category(ledger.categories, id, name))
     }
 
     pub fn move_to(
         &mut self,
-        cx: &mut Context<'_, Self>,
+        cx: &mut App,
         id: u32,
         parent_id: Option<u32>,
     ) -> Result<(), CategoryError> {
-        self.service.move_to(id, parent_id)?;
-        cx.emit(CategoriesEvent::Changed);
-        Ok(())
+        self.try_write(cx, |ledger| move_category(ledger.categories, id, parent_id))
     }
 
     /// Changes `id`'s type and its descendants'.
     pub fn change_type(
         &mut self,
-        cx: &mut Context<'_, Self>,
+        cx: &mut App,
         id: u32,
         category_type: CategoryTypes,
     ) -> Result<(), CategoryError> {
-        self.service.change_type(id, category_type)?;
-        cx.emit(CategoriesEvent::Changed);
-        Ok(())
+        self.try_write(cx, |ledger| {
+            change_category_type(ledger.categories, id, category_type)
+        })
     }
 
     /// The first half of a delete: checks leaf `id` and returns the Uncategorised Category its
-    /// Splits move to, creating it if needed. See [`CategoryService::prepare_delete`].
-    pub fn prepare_delete(
-        &mut self,
-        cx: &mut Context<'_, Self>,
-        id: u32,
-    ) -> Result<u32, CategoryError> {
-        let uncategorised = self.service.prepare_delete(id)?;
-        cx.emit(CategoriesEvent::Changed);
-        Ok(uncategorised)
+    /// Splits move to, creating it if needed. See [`prepare_delete`].
+    pub fn prepare_delete(&mut self, cx: &mut App, id: u32) -> Result<u32, CategoryError> {
+        self.try_write(cx, |ledger| prepare_delete(ledger.categories, id))
     }
 
     /// Drops leaf Category `id`. The caller has already re-pointed its Splits and dropped its
     /// budget, so this only removes the row.
-    pub fn delete(&mut self, cx: &mut Context<'_, Self>, id: u32) -> Result<(), CategoryError> {
-        self.service.delete(id)?;
-        cx.emit(CategoriesEvent::Changed);
-        Ok(())
+    pub fn delete(&mut self, cx: &mut App, id: u32) -> Result<(), CategoryError> {
+        self.try_write(cx, |ledger| delete_category(ledger.categories, id))
+    }
+
+    #[expect(
+        deprecated,
+        reason = "Categories writes move onto Ledger commands in #639"
+    )]
+    fn try_write<T>(
+        &self,
+        cx: &mut App,
+        change: impl FnOnce(LedgerHatch<'_>) -> Result<T, CategoryError>,
+    ) -> Result<T, CategoryError> {
+        self.ledger.update(cx, |ledger, cx| {
+            ledger.try_write(cx, &[Domain::Categories], change)
+        })
     }
 }
 
@@ -174,7 +184,14 @@ mod tests {
     fn seeded_store(
         cx: &mut TestAppContext,
     ) -> (Entity<CategoriesStore>, Rc<RefCell<Vec<CategoriesEvent>>>) {
-        let store = cx.new(|_| CategoriesStore::new(lib_categories::default_categories()));
+        let ledger = crate::ledger_store::test_ledger(
+            cx,
+            lib_ledger::LedgerParts {
+                categories: lib_categories::default_categories(),
+                ..lib_ledger::LedgerParts::default()
+            },
+        );
+        let store = cx.new(|cx| CategoriesStore::new(ledger, cx));
         let events = Rc::new(RefCell::new(Vec::new()));
         let sink = events.clone();
         cx.update(|cx| {

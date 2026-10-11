@@ -4,7 +4,9 @@
 pub(crate) mod form;
 pub(crate) mod store;
 
-pub use lib_units::{PriceSourceRow, UnitRow, default_price_sources, default_units};
+pub use lib_units::{PriceSourceRow, UnitRow};
+#[cfg(test)]
+pub use lib_units::{default_price_sources, default_units};
 pub use store::UnitsStore;
 
 /// The Add/Edit unit dialogs' own "Type" selector (`docs/ux/desktop-mockups/16-settings/README.md`'s "2b —

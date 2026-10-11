@@ -268,14 +268,14 @@ impl Render for BillsView {
 
         let cx: &App = cx;
         let store = self.sources.bills.read(cx);
-        let (plans, entries) = (store.plans(), store.entries());
-        let transactions = self.sources.transactions.read(cx).transactions();
-        let accounts = self.sources.accounts.read(cx).accounts();
+        let (plans, entries) = (store.plans(cx), store.entries(cx));
+        let transactions = self.sources.transactions.read(cx).transactions(cx);
+        let accounts = self.sources.accounts.read(cx).accounts(cx);
         let base_unit = self
             .sources
             .units
             .read(cx)
-            .units()
+            .units(cx)
             .iter()
             .find(|unit| unit.is_base)
             .map(|unit| unit.code.as_str());
@@ -344,7 +344,7 @@ impl Render for BillsView {
             planner: planner::PlannerProps {
                 plans: &planner_plans,
                 inactive: bills::inactive_count(plans),
-                categories: self.sources.categories.read(cx).categories(),
+                categories: self.sources.categories.read(cx).categories(cx),
                 accounts,
                 base_unit,
                 selected: (!planner_plans.is_empty())

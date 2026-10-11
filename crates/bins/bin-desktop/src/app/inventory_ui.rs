@@ -45,7 +45,7 @@ impl Shell {
     fn property_unit_choices(&self, cx: &App) -> Vec<(String, String)> {
         self.units_store
             .read(cx)
-            .units()
+            .units(cx)
             .iter()
             .filter(|unit| unit.kind == "currency")
             .map(|unit| {
@@ -62,7 +62,7 @@ impl Shell {
 
     /// The Inventory, read through its store Entity (ADR-0032).
     pub(super) fn inventory<'a>(&self, cx: &'a App) -> &'a inventory::Inventory {
-        self.inventory.read(cx).inventory()
+        self.inventory.read(cx).inventory(cx)
     }
 
     /// What the Property form checks against, copied in when it opens.

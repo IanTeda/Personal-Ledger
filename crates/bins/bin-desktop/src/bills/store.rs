@@ -1,43 +1,63 @@
-//! The shared Bills store (ADR-0032). [`BillsStore`] owns the Bill Plans and the Bill Schedule,
-//! read through `lib_bills`' service. The Bills page, the Dashboard, Budgets and Documents read
-//! them from here. `Shell` does not observe the store, so a write reaches the screen on the next
-//! render only when its caller also notifies `Shell`, as the call sites do.
+//! The shared Bills store (ADR-0032). [`BillsStore`] reads the Bill Plans and the Bill Schedule
+//! through [`LedgerStore`], which holds the only copy. The Bills page, the Dashboard, Budgets and
+//! Documents read them from here. `Shell` does not observe the store, so a write reaches the screen
+//! on the next render only when its caller also notifies `Shell`, as the call sites do.
 
-use gpui::{App, Context, Entity};
-use lib_bills::{BillPlan, BillScheduleEntry, BillService};
+use gpui::{App, Context, Entity, Subscription};
+use lib_bills::{BillPlan, BillScheduleEntry};
+use lib_ledger::{Domain, LedgerHatch};
 use lib_transactions::Transaction;
 
-use crate::transactions::TransactionsStore;
+use crate::ledger_store::{LedgerChanged, LedgerStore};
 
 pub struct BillsStore {
-    service: BillService,
+    ledger: Entity<LedgerStore>,
+    _ledger_changed: Subscription,
 }
 
 impl BillsStore {
-    pub fn new(plans: Vec<BillPlan>, entries: Vec<BillScheduleEntry>) -> Self {
+    /// A store over `ledger`'s Bill Plans and Bill Schedule.
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
+            if event.what.contains(&Domain::Bills) {
+                cx.notify();
+            }
+        });
         Self {
-            service: BillService::from_rows(plans, entries),
+            ledger,
+            _ledger_changed,
         }
     }
 
-    pub fn plans(&self) -> &[BillPlan] {
-        self.service.plans()
+    pub fn plans<'a>(&self, cx: &'a App) -> &'a [BillPlan] {
+        self.ledger.read(cx).ledger().bill_plans()
     }
 
-    pub fn entries(&self) -> &[BillScheduleEntry] {
-        self.service.entries()
+    pub fn entries<'a>(&self, cx: &'a App) -> &'a [BillScheduleEntry] {
+        self.ledger.read(cx).ledger().bill_entries()
     }
 
     /// Applies `change` to the Plans and entries, then tells every subscriber they changed.
     /// Mutations go through here so no write can skip the notification.
     pub fn mutate<R>(
         &mut self,
-        cx: &mut Context<'_, Self>,
+        cx: &mut App,
         change: impl FnOnce(&mut Vec<BillPlan>, &mut Vec<BillScheduleEntry>) -> R,
     ) -> R {
-        let result = self.service.edit(change);
-        cx.notify();
-        result
+        self.write(cx, &[Domain::Bills], |ledger| {
+            change(ledger.bill_plans, ledger.bill_entries)
+        })
+    }
+
+    #[expect(deprecated, reason = "Bills writes move onto Ledger commands in #643")]
+    fn write<R>(
+        &self,
+        cx: &mut App,
+        what: &[Domain],
+        change: impl FnOnce(LedgerHatch<'_>) -> R,
+    ) -> R {
+        self.ledger
+            .update(cx, |ledger, cx| ledger.write(cx, what, change))
     }
 }
 
@@ -53,22 +73,15 @@ pub fn edit_bills<R>(
 }
 
 /// Edits the Bills and the Transactions together, for a settle that writes or reads a Split while
-/// it resolves an entry. Both stores notify.
+/// it resolves an entry. One write to the Ledger, announcing both.
 pub fn edit_bills_and_transactions<R>(
     bills: &Entity<BillsStore>,
-    transactions: &Entity<TransactionsStore>,
     cx: &mut App,
     change: impl FnOnce(&mut Vec<BillPlan>, &mut Vec<BillScheduleEntry>, &mut Vec<Transaction>) -> R,
 ) -> R {
     bills.update(cx, |store, cx| {
-        let result = transactions.update(cx, |rows, cx| {
-            rows.mutate(cx, |rows| {
-                store
-                    .service
-                    .edit(|plans, entries| change(plans, entries, rows))
-            })
-        });
-        cx.notify();
-        result
+        store.write(cx, &[Domain::Bills, Domain::Transactions], |ledger| {
+            change(ledger.bill_plans, ledger.bill_entries, ledger.transactions)
+        })
     })
 }

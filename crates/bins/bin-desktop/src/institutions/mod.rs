@@ -4,7 +4,9 @@
 pub(crate) mod form;
 pub(crate) mod store;
 
-pub use lib_institutions::{InstitutionRow, default_institutions};
+pub use lib_institutions::InstitutionRow;
+#[cfg(test)]
+pub use lib_institutions::default_institutions;
 pub use store::InstitutionsStore;
 
 /// The Add institution dialog's own product multi-select chips (not `lib_core::AccountType`, which classes an Account)

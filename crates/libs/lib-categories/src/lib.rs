@@ -353,6 +353,18 @@ pub fn change_category_type(
     Ok(())
 }
 
+/// Checks that Category `id` is a leaf, then returns the Uncategorised Category its Splits move to
+/// before the delete, creating it if needed. Refuses a missing or non-leaf Category before anything
+/// is created.
+pub fn prepare_delete(categories: &mut Vec<Category>, id: u32) -> Result<u32, CategoryError> {
+    let category = get(categories, id).ok_or(CategoryError::NotFound)?;
+    if !is_leaf(categories, id) {
+        return Err(CategoryError::NonLeafDeletion);
+    }
+    let category_type = category.category_type.clone();
+    Ok(get_or_create_uncategorised(categories, category_type))
+}
+
 /// Delete a category (leaf only). Re-points its splits to Uncategorised.
 pub fn delete_category(categories: &mut Vec<Category>, id: u32) -> Result<(), CategoryError> {
     let category = get(categories, id).ok_or(CategoryError::NotFound)?;
@@ -497,19 +509,9 @@ impl CategoryService {
         change_category_type(&mut self.categories, id, new_type)
     }
 
-    /// Checks that Category `id` is a leaf, then returns the Uncategorised Category its Splits move
-    /// to before the delete, creating it if needed. Refuses a missing or non-leaf Category before
-    /// anything is created.
+    /// Returns the Uncategorised Category leaf `id`'s Splits move to; see [`prepare_delete`].
     pub fn prepare_delete(&mut self, id: u32) -> Result<u32, CategoryError> {
-        let category = get(&self.categories, id).ok_or(CategoryError::NotFound)?;
-        if !is_leaf(&self.categories, id) {
-            return Err(CategoryError::NonLeafDeletion);
-        }
-        let category_type = category.category_type.clone();
-        Ok(get_or_create_uncategorised(
-            &mut self.categories,
-            category_type,
-        ))
+        prepare_delete(&mut self.categories, id)
     }
 
     /// Deletes leaf Category `id`; see [`delete_category`].

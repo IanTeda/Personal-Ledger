@@ -133,7 +133,7 @@ impl Apply<DocumentCommand> for DocumentsApply {
     ) -> Result<DocumentOutcome, DocumentRefusal> {
         match command {
             DocumentCommand::Save { editing, form } => {
-                let problems = form.problems(self.documents.read(cx).documents(), exists_on_disk);
+                let problems = form.problems(self.documents.read(cx).documents(cx), exists_on_disk);
                 let new = form
                     .can_save(&problems)
                     .then(|| form.build())
@@ -145,9 +145,7 @@ impl Apply<DocumentCommand> for DocumentsApply {
                         let id = self
                             .documents
                             .update(cx, |store, cx| {
-                                store.mutate(cx, |data| {
-                                    documents::add_filed(&mut data.documents, new)
-                                })
+                                store.mutate(cx, |data| documents::add_filed(data.documents, new))
                             })
                             .map_err(DocumentRefusal::Add)?;
                         Ok(DocumentOutcome::Added { id, title })
@@ -157,7 +155,7 @@ impl Apply<DocumentCommand> for DocumentsApply {
                             .update(cx, |store, cx| {
                                 store.mutate(cx, |data| {
                                     documents::edit_metadata(
-                                        &mut data.documents,
+                                        data.documents,
                                         id,
                                         &new.title,
                                         new.doc_type,
@@ -175,13 +173,7 @@ impl Apply<DocumentCommand> for DocumentsApply {
                 let today = self.today;
                 let outcomes = self.documents.update(cx, |store, cx| {
                     store.mutate(cx, |data| {
-                        form::import_all(
-                            &data.types,
-                            &form,
-                            &mut data.documents,
-                            today,
-                            exists_on_disk,
-                        )
+                        form::import_all(data.types, &form, data.documents, today, exists_on_disk)
                     })
                 });
                 let imported = outcomes
@@ -213,28 +205,26 @@ impl Apply<DocumentCommand> for DocumentsApply {
                 })
             }
             DocumentCommand::SetFacts { id, facts } => {
-                let title = documents::get(self.documents.read(cx).documents(), id)
+                let title = documents::get(self.documents.read(cx).documents(cx), id)
                     .map(|document| document.title.clone())
                     .unwrap_or_default();
                 self.documents
                     .update(cx, |store, cx| {
-                        store.mutate(cx, |data| {
-                            documents::edit_facts(&mut data.documents, id, facts)
-                        })
+                        store.mutate(cx, |data| documents::edit_facts(data.documents, id, facts))
                     })
                     .map_err(DocumentRefusal::Facts)?;
                 Ok(DocumentOutcome::FactsSaved { id, title })
             }
             DocumentCommand::AcceptAll => {
                 // Copied out so the Documents can be written while the others are read.
-                let transactions = self.transactions.read(cx).transactions().to_vec();
-                let payees = self.payees.read(cx).payees().to_vec();
+                let transactions = self.transactions.read(cx).transactions(cx).to_vec();
+                let payees = self.payees.read(cx).payees(cx).to_vec();
                 let focus = self.focus;
                 let batch = self.documents.update(cx, |store, cx| {
                     store.mutate(cx, |data| {
                         documents::accept_all_strong(
-                            &data.types,
-                            &mut data.documents,
+                            data.types,
+                            data.documents,
                             &transactions,
                             &payees,
                             focus,
@@ -250,16 +240,24 @@ impl Apply<DocumentCommand> for DocumentsApply {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext, TestAppContext};
+    use lib_ledger::LedgerParts;
 
     use super::*;
     use crate::chrome::dialog_apply::confirm;
+    use crate::ledger_store::test_ledger;
 
     fn apply(cx: &mut TestAppContext) -> DocumentsApply {
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                document_types: documents::types::default_types(),
+                ..LedgerParts::default()
+            },
+        );
         DocumentsApply {
-            documents: cx
-                .new(|_| DocumentsStore::new(Vec::new(), documents::types::default_types())),
-            transactions: cx.new(|_| TransactionsStore::new(Vec::new())),
-            payees: cx.new(|_| PayeesStore::new(Vec::new())),
+            documents: cx.new(|cx| DocumentsStore::new(ledger.clone(), cx)),
+            transactions: cx.new(|cx| TransactionsStore::new(ledger.clone(), cx)),
+            payees: cx.new(|cx| PayeesStore::new(ledger, cx)),
             today: NaiveDate::from_ymd_opt(2026, 9, 19).unwrap(),
             focus: None,
         }

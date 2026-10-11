@@ -154,19 +154,24 @@ impl Apply<SettingsCommand> for SettingsApply {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext, TestAppContext};
+    use lib_ledger::LedgerParts;
 
     use super::*;
+    use crate::ledger_store::test_ledger;
     use crate::{chrome::dialog_apply::confirm, units::form::DeleteUnitForm};
 
     fn apply(cx: &mut TestAppContext) -> SettingsApply {
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                units: crate::units::default_units(),
+                price_sources: crate::units::default_price_sources(),
+                ..LedgerParts::default()
+            },
+        );
         SettingsApply {
-            units: cx.new(|_| {
-                UnitsStore::new(
-                    crate::units::default_units(),
-                    crate::units::default_price_sources(),
-                )
-            }),
-            institutions: cx.new(|_| InstitutionsStore::new(Vec::new())),
+            units: cx.new(|cx| UnitsStore::new(ledger.clone(), cx)),
+            institutions: cx.new(|cx| InstitutionsStore::new(ledger, cx)),
         }
     }
 
@@ -177,7 +182,7 @@ mod tests {
             apply
                 .units
                 .read(cx)
-                .unit(0)
+                .unit(cx, 0)
                 .expect("a seeded Unit")
                 .code
                 .clone()

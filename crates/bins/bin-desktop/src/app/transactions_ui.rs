@@ -26,7 +26,7 @@ use lib_toast::ToastKind;
 impl Shell {
     /// The Transactions, read through their store (ADR-0032).
     pub(super) fn transactions<'a>(&self, cx: &'a App) -> &'a [Transaction] {
-        self.transactions_store.read(cx).transactions()
+        self.transactions_store.read(cx).transactions(cx)
     }
 
     /// The Transactions page's state, read through its Entity (ADR-0032).
@@ -71,7 +71,7 @@ impl Shell {
     /// The reference data the Transactions engine reads, borrowed from the shared stubs.
     pub(super) fn transactions_ledger<'a>(&'a self, cx: &'a App) -> Ledger<'a> {
         Ledger {
-            accounts: self.accounts.read(cx).accounts(),
+            accounts: self.accounts.read(cx).accounts(cx),
             categories: self.categories(cx),
             payees: self.payees_list(cx),
             tags: self.tags_list(cx),
@@ -240,7 +240,7 @@ impl Shell {
     /// The Account and Category selects' options, read live from the stub data.
     pub(super) fn filter_form_options(&self, cx: &App) -> FormOptions {
         FormOptions::new(
-            self.accounts.read(cx).accounts(),
+            self.accounts.read(cx).accounts(cx),
             self.categories(cx),
             self.payees_list(cx),
             self.tags_list(cx),
@@ -586,8 +586,11 @@ impl Shell {
             Ok(committed) => {
                 let imported = u32::try_from(committed.transactions).unwrap_or(u32::MAX);
                 self.accounts.update(cx, |store, cx| {
-                    store.mutate(cx, |service| {
-                        if let Some(account) = service.get_mut(import::EVERYDAY_ACCOUNT_ID) {
+                    store.mutate(cx, |accounts| {
+                        if let Some(account) = accounts
+                            .iter_mut()
+                            .find(|account| account.id == import::EVERYDAY_ACCOUNT_ID)
+                        {
                             account.transaction_count =
                                 account.transaction_count.saturating_add(imported);
                         }

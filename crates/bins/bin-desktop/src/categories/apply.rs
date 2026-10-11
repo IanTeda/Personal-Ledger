@@ -118,7 +118,7 @@ impl CategoriesApply {
                 Err(_) => return Ok(()),
             }
         };
-        let categories = self.categories.read(cx).categories().to_vec();
+        let categories = self.categories.read(cx).categories(cx).to_vec();
         let today = self.today;
         self.budgets
             .update(cx, |store, cx| {
@@ -179,7 +179,7 @@ impl Apply<CategoryCommand> for CategoriesApply {
                 let name = self
                     .categories
                     .read(cx)
-                    .categories()
+                    .categories(cx)
                     .iter()
                     .find(|category| category.id == id)
                     .map(|category| category.name.clone())
@@ -214,23 +214,31 @@ pub fn move_category_splits(transactions: &mut [Transaction], from: u32, to: u32
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext, TestAppContext};
+    use lib_ledger::LedgerParts;
 
     use super::*;
+    use crate::ledger_store::test_ledger;
     use crate::{
         categories::form::DeleteCategoryForm, chrome::dialog_apply::confirm, form::field::TextField,
     };
 
     fn apply(cx: &mut TestAppContext) -> CategoriesApply {
-        let categories = cx.new(|_| CategoriesStore::new(lib_categories::default_categories()));
-        let transactions = cx.new(|_| TransactionsStore::new(Vec::new()));
         let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
-        let budgets = cx.new(|_| {
-            BudgetsStore::new(budgets::default_budgets(
-                &crate::accounts::default_accounts(),
-                &lib_categories::default_categories(),
-                today,
-            ))
-        });
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                categories: lib_categories::default_categories(),
+                budgets: budgets::default_budgets(
+                    &crate::accounts::default_accounts(),
+                    &lib_categories::default_categories(),
+                    today,
+                ),
+                ..LedgerParts::default()
+            },
+        );
+        let categories = cx.new(|cx| CategoriesStore::new(ledger.clone(), cx));
+        let transactions = cx.new(|cx| TransactionsStore::new(ledger.clone(), cx));
+        let budgets = cx.new(|cx| BudgetsStore::new(ledger, cx));
         CategoriesApply {
             categories,
             transactions,

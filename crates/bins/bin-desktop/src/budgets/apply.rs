@@ -118,18 +118,18 @@ impl Apply<BudgetCommand> for BudgetsApply {
         cx: &mut App,
     ) -> Result<BudgetOutcome, BudgetRefusal> {
         // Copied out so the store can be written while the others are read.
-        let accounts = self.accounts.read(cx).accounts().to_vec();
-        let categories = self.categories.read(cx).categories().to_vec();
+        let accounts = self.accounts.read(cx).accounts(cx).to_vec();
+        let categories = self.categories.read(cx).categories(cx).to_vec();
         let today = self.today;
         let current = self.current;
         match command {
             BudgetCommand::SaveBudget(BudgetDraft::Create(new)) => {
-                let transactions = self.transactions.read(cx).transactions().to_vec();
+                let transactions = self.transactions.read(cx).transactions(cx).to_vec();
                 let (plans, entries) = {
                     let bills = self.bills.read(cx);
-                    (bills.plans().to_vec(), bills.entries().to_vec())
+                    (bills.plans(cx).to_vec(), bills.entries(cx).to_vec())
                 };
-                let ledger = budgets::Ledger {
+                let ledger = budgets::BudgetSources {
                     categories: &categories,
                     accounts: &accounts,
                     transactions: &transactions,
@@ -162,12 +162,12 @@ impl Apply<BudgetCommand> for BudgetsApply {
                 Ok(BudgetOutcome::Saved)
             }
             BudgetCommand::Fill { month, source } => {
-                let transactions = self.transactions.read(cx).transactions().to_vec();
+                let transactions = self.transactions.read(cx).transactions(cx).to_vec();
                 let (plans, entries) = {
                     let bills = self.bills.read(cx);
-                    (bills.plans().to_vec(), bills.entries().to_vec())
+                    (bills.plans(cx).to_vec(), bills.entries(cx).to_vec())
                 };
-                let ledger = budgets::Ledger {
+                let ledger = budgets::BudgetSources {
                     categories: &categories,
                     accounts: &accounts,
                     transactions: &transactions,
@@ -200,8 +200,10 @@ impl BudgetsApply {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext, TestAppContext};
+    use lib_ledger::LedgerParts;
 
     use super::*;
+    use crate::ledger_store::test_ledger;
 
     fn apply(cx: &mut TestAppContext) -> BudgetsApply {
         let today = NaiveDate::from_ymd_opt(2026, 9, 19).unwrap();
@@ -209,12 +211,21 @@ mod tests {
         let categories = lib_categories::default_categories();
         let seeded = budgets::default_budgets(&accounts, &categories, today);
         let current = budgets::PERSONAL_SPENDING_ID;
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                accounts,
+                categories,
+                budgets: seeded,
+                ..LedgerParts::default()
+            },
+        );
         BudgetsApply {
-            budgets: cx.new(|_| BudgetsStore::new(seeded)),
-            accounts: cx.new(|_| AccountsStore::seeded()),
-            categories: cx.new(|_| CategoriesStore::new(categories)),
-            transactions: cx.new(|_| TransactionsStore::new(Vec::new())),
-            bills: cx.new(|_| BillsStore::new(Vec::new(), Vec::new())),
+            budgets: cx.new(|cx| BudgetsStore::new(ledger.clone(), cx)),
+            accounts: cx.new(|cx| AccountsStore::new(ledger.clone(), cx)),
+            categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
+            transactions: cx.new(|cx| TransactionsStore::new(ledger.clone(), cx)),
+            bills: cx.new(|cx| BillsStore::new(ledger, cx)),
             current,
             today,
         }

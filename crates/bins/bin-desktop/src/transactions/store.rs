@@ -1,36 +1,53 @@
-//! The shared Transactions store (ADR-0032). [`TransactionsStore`] owns the Transactions, read
-//! through `lib_transactions`' service. The Transactions page, Tags, Payees, Accounts, Bills and
-//! Documents read the rows from here. `Shell` does not observe the store, so a write reaches the
+//! The shared Transactions store (ADR-0032). [`TransactionsStore`] reads the Transactions through
+//! [`LedgerStore`], which holds the only copy. The Transactions page, Tags, Payees, Accounts, Bills
+//! and Documents read the rows from here. `Shell` does not observe the store, so a write reaches the
 //! screen on the next render only when its caller also notifies `Shell`, as the call sites do.
 
-use gpui::{App, Context, Entity};
-use lib_transactions::{Transaction, TransactionService};
+use gpui::{App, Context, Entity, Subscription};
+use lib_ledger::Domain;
+use lib_transactions::Transaction;
+
+use crate::ledger_store::{LedgerChanged, LedgerStore};
 
 pub struct TransactionsStore {
-    service: TransactionService,
+    ledger: Entity<LedgerStore>,
+    _ledger_changed: Subscription,
 }
 
 impl TransactionsStore {
-    pub fn new(transactions: Vec<Transaction>) -> Self {
+    /// A store over `ledger`'s Transactions.
+    pub fn new(ledger: Entity<LedgerStore>, cx: &mut Context<'_, Self>) -> Self {
+        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
+            if event.what.contains(&Domain::Transactions) {
+                cx.notify();
+            }
+        });
         Self {
-            service: TransactionService::from_rows(transactions),
+            ledger,
+            _ledger_changed,
         }
     }
 
-    pub fn transactions(&self) -> &[Transaction] {
-        self.service.transactions()
+    pub fn transactions<'a>(&self, cx: &'a App) -> &'a [Transaction] {
+        self.ledger.read(cx).ledger().transactions()
     }
 
     /// Applies `change` to the rows, then tells every subscriber they changed. Mutations go through
     /// here so no write can skip the notification.
+    #[expect(
+        deprecated,
+        reason = "Transactions writes move onto Ledger commands in #642"
+    )]
     pub fn mutate<R>(
         &mut self,
-        cx: &mut Context<'_, Self>,
+        cx: &mut App,
         change: impl FnOnce(&mut Vec<Transaction>) -> R,
     ) -> R {
-        let result = self.service.edit(change);
-        cx.notify();
-        result
+        self.ledger.update(cx, |ledger, cx| {
+            ledger.write(cx, &[Domain::Transactions], |ledger| {
+                change(ledger.transactions)
+            })
+        })
     }
 }
 

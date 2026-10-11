@@ -4,6 +4,7 @@
 
 use chrono::Local;
 use gpui::{App, Entity};
+use lib_accounts::next_account_id;
 
 use super::form::{AccountForm, AccountsDialog};
 use crate::{
@@ -82,7 +83,7 @@ impl Apply<AccountCommand> for AccountsApply {
                     .and_then(|code| {
                         self.units
                             .read(cx)
-                            .units()
+                            .units(cx)
                             .iter()
                             .find(|unit| unit.code == code)
                     })
@@ -90,10 +91,10 @@ impl Apply<AccountCommand> for AccountsApply {
                 let opened_at = Local::now().date_naive();
                 self.accounts
                     .update(cx, |store, cx| {
-                        store.mutate(cx, |service| {
-                            let id = service.next_id();
+                        store.mutate(cx, |accounts| {
+                            let id = next_account_id(accounts);
                             let account = form.into_account(id, opened_at, is_currency)?;
-                            service.insert(account);
+                            accounts.push(account);
                             Some(id)
                         })
                     })
@@ -101,8 +102,11 @@ impl Apply<AccountCommand> for AccountsApply {
                     .ok_or(AccountRefusal::Invalid)
             }
             AccountCommand::Edit(id, form) => self.accounts.update(cx, |store, cx| {
-                store.mutate(cx, |service| {
-                    let account = service.get_mut(id).ok_or(AccountRefusal::NotFound)?;
+                store.mutate(cx, |accounts| {
+                    let account = accounts
+                        .iter_mut()
+                        .find(|account| account.id == id)
+                        .ok_or(AccountRefusal::NotFound)?;
                     form.apply_to(account)
                         .then_some(AccountOutcome::Saved(id))
                         .ok_or(AccountRefusal::Invalid)
@@ -112,7 +116,7 @@ impl Apply<AccountCommand> for AccountsApply {
                 let name = self
                     .accounts
                     .read(cx)
-                    .accounts()
+                    .accounts(cx)
                     .iter()
                     .find(|account| account.id == id)
                     .map(|account| account.name.clone())
@@ -123,7 +127,7 @@ impl Apply<AccountCommand> for AccountsApply {
                     before - transactions.len()
                 });
                 self.accounts.update(cx, |store, cx| {
-                    store.mutate(cx, |service| service.remove(id))
+                    store.mutate(cx, |accounts| accounts.retain(|account| account.id != id))
                 });
                 Ok(AccountOutcome::Deleted { name, transactions })
             }
@@ -134,27 +138,33 @@ impl Apply<AccountCommand> for AccountsApply {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext, TestAppContext};
+    use lib_ledger::LedgerParts;
 
     use super::*;
+    use crate::ledger_store::test_ledger;
     use crate::{accounts::form::DeleteAccountForm, chrome::dialog_apply::confirm};
 
     #[gpui::test]
     fn a_confirmed_delete_removes_the_account_and_reports_its_name(cx: &mut TestAppContext) {
-        let accounts = cx.new(|_| AccountsStore::seeded());
-        let units = cx.new(|_| {
-            UnitsStore::new(
-                crate::units::default_units(),
-                crate::units::default_price_sources(),
-            )
-        });
-        let transactions = cx.new(|_| TransactionsStore::new(Vec::new()));
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                accounts: crate::accounts::default_accounts(),
+                units: crate::units::default_units(),
+                price_sources: crate::units::default_price_sources(),
+                ..LedgerParts::default()
+            },
+        );
+        let accounts = cx.new(|cx| AccountsStore::new(ledger.clone(), cx));
+        let units = cx.new(|cx| UnitsStore::new(ledger.clone(), cx));
+        let transactions = cx.new(|cx| TransactionsStore::new(ledger, cx));
         let mut apply = AccountsApply {
             accounts: accounts.clone(),
             units,
             transactions,
         };
         let (id, name) = cx.read(|cx| {
-            let account = &accounts.read(cx).accounts()[0];
+            let account = &accounts.read(cx).accounts(cx)[0];
             (account.id, account.name.clone())
         });
 
@@ -176,6 +186,6 @@ mod tests {
                 transactions: 0
             })
         );
-        cx.read(|cx| assert!(accounts.read(cx).accounts().iter().all(|a| a.id != id)));
+        cx.read(|cx| assert!(accounts.read(cx).accounts(cx).iter().all(|a| a.id != id)));
     }
 }

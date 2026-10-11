@@ -16,7 +16,7 @@ use super::{Budget, LimitRecord, Rollover, applied, cents_money, zero};
 
 /// The stubs a Budget's figures read: the shared Categories, Accounts, Transactions and Bills.
 #[derive(Debug, Clone, Copy)]
-pub struct Ledger<'a> {
+pub struct BudgetSources<'a> {
     pub categories: &'a [Category],
     pub accounts: &'a [Account],
     pub transactions: &'a [Transaction],
@@ -29,7 +29,7 @@ pub struct Ledger<'a> {
 pub(super) struct SpentIndex(BTreeMap<(u32, Period), BigDecimal>);
 
 impl SpentIndex {
-    pub(super) fn build(budget: &Budget, ledger: &Ledger<'_>) -> Self {
+    pub(super) fn build(budget: &Budget, ledger: &BudgetSources<'_>) -> Self {
         let mut spent: BTreeMap<(u32, Period), BigDecimal> = BTreeMap::new();
         for transaction in ledger
             .transactions
@@ -122,7 +122,7 @@ pub(super) fn effective(
 /// A leaf's effective budget for a month, `None` when Unbudgeted.
 pub fn effective_budget(
     budget: &Budget,
-    ledger: &Ledger<'_>,
+    ledger: &BudgetSources<'_>,
     category_id: u32,
     month: Period,
     today: NaiveDate,
@@ -140,7 +140,7 @@ pub fn effective_budget(
 /// many entries make them up.
 pub(super) fn known_costs(
     budget: &Budget,
-    ledger: &Ledger<'_>,
+    ledger: &BudgetSources<'_>,
     category_id: u32,
     month: Period,
     today: NaiveDate,
@@ -293,7 +293,7 @@ pub fn unbudgeted_leaves(budget: &Budget, categories: &[Category], month: Period
 /// The one shared period query: every figure a Budget shows for `month`, as of `today`.
 pub fn period_figures(
     budget: &Budget,
-    ledger: &Ledger<'_>,
+    ledger: &BudgetSources<'_>,
     month: Period,
     today: NaiveDate,
 ) -> PeriodFigures {
@@ -443,7 +443,7 @@ pub struct Health {
     pub at_risk: usize,
 }
 
-pub fn health(budget: &Budget, ledger: &Ledger<'_>, today: NaiveDate) -> Health {
+pub fn health(budget: &Budget, ledger: &BudgetSources<'_>, today: NaiveDate) -> Health {
     let figures = period_figures(budget, ledger, Period::of(today), today);
     Health {
         over: figures.over_count,

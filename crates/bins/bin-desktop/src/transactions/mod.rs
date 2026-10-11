@@ -24,6 +24,7 @@ pub(crate) mod filter_form;
 pub(crate) mod query;
 pub(crate) mod rows;
 
+#[cfg(test)]
 pub use lib_ledger::default_transactions;
 pub use lib_transactions::{Split, Transaction, takes_transactions};
 pub use store::{TransactionsStore, edit_transactions};

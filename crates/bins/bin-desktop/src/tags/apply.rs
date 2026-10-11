@@ -97,7 +97,7 @@ impl Apply<TagCommand> for TagsApply {
                 .tags
                 .update(cx, |store, cx| {
                     // The rules work on a copy, so a refused change never reaches the store.
-                    let mut rows = store.tags().to_vec();
+                    let mut rows = store.tags(cx).to_vec();
                     edit_tag(&mut rows, id, &draft)
                         .and_then(|()| set_active(&mut rows, id, is_active))?;
                     store.mutate(cx, |tags| *tags = rows);
@@ -105,10 +105,10 @@ impl Apply<TagCommand> for TagsApply {
                 })
                 .map(|()| TagOutcome::Saved(id)),
             TagCommand::Remove(id) => {
-                let name = get(self.tags.read(cx).tags(), id)
+                let name = get(self.tags.read(cx).tags(cx), id)
                     .map(|tag| tag.name.clone())
                     .ok_or(TagError::NotFound)?;
-                let mut rows = self.tags.read(cx).tags().to_vec();
+                let mut rows = self.tags.read(cx).tags(cx).to_vec();
                 edit_transactions(&self.transactions, cx, |transactions| {
                     remove_tag(&mut rows, transactions, id)
                 })?;
@@ -118,15 +118,16 @@ impl Apply<TagCommand> for TagsApply {
                 Ok(TagOutcome::Removed { name })
             }
             TagCommand::Merge { source, target } => {
-                let rows = self.tags.read(cx).tags();
+                let rows = self.tags.read(cx).tags(cx);
                 let (Some(source_name), Some(target_name)) = (
                     get(rows, source).map(|tag| tag.name.clone()),
                     get(rows, target).map(|tag| tag.name.clone()),
                 ) else {
                     return Err(TagError::NotFound);
                 };
-                let retagged = transaction_count(self.transactions.read(cx).transactions(), source);
-                let mut rows = self.tags.read(cx).tags().to_vec();
+                let retagged =
+                    transaction_count(self.transactions.read(cx).transactions(cx), source);
+                let mut rows = self.tags.read(cx).tags(cx).to_vec();
                 edit_transactions(&self.transactions, cx, |transactions| {
                     merge_tags(&mut rows, transactions, source, target)
                 })?;
@@ -148,15 +149,25 @@ impl Apply<TagCommand> for TagsApply {
 mod tests {
     use gpui::{AppContext, TestAppContext};
 
+    use lib_ledger::LedgerParts;
+
     use super::*;
+    use crate::ledger_store::test_ledger;
     use crate::{
         chrome::dialog_apply::confirm,
         tags::form::{MergeTagsForm, RemoveTagForm, TagForm},
     };
 
     fn apply(cx: &mut TestAppContext) -> TagsApply {
-        let tags = cx.new(|_| TagsStore::new(lib_tags::default_tags()));
-        let transactions = cx.new(|_| TransactionsStore::new(Vec::new()));
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                tags: lib_tags::default_tags(),
+                ..LedgerParts::default()
+            },
+        );
+        let tags = cx.new(|cx| TagsStore::new(ledger.clone(), cx));
+        let transactions = cx.new(|cx| TransactionsStore::new(ledger, cx));
         TagsApply { tags, transactions }
     }
 

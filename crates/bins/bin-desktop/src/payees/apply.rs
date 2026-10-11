@@ -75,10 +75,10 @@ impl Apply<PayeeCommand> for PayeesApply {
                 .update(cx, |store, cx| store.edit(cx, id, &draft))
                 .map(|()| PayeeOutcome::Saved(id)),
             PayeeCommand::Remove(id, action) => {
-                let name = super::get(self.payees.read(cx).payees(), id)
+                let name = super::get(self.payees.read(cx).payees(cx), id)
                     .map(|payee: &Payee| payee.name.clone())
                     .ok_or(PayeeError::NotFound)?;
-                let transactions = self.transactions.read(cx).transactions().to_vec();
+                let transactions = self.transactions.read(cx).transactions(cx).to_vec();
                 self.payees
                     .update(cx, |store, cx| {
                         store.apply_delete(cx, id, action, &transactions)
@@ -93,7 +93,10 @@ impl Apply<PayeeCommand> for PayeesApply {
 mod tests {
     use gpui::{AppContext, TestAppContext};
 
+    use lib_ledger::LedgerParts;
+
     use super::*;
+    use crate::ledger_store::test_ledger;
     use crate::{
         chrome::dialog_apply::confirm,
         payees::form::{PayeeForm, PayeeOptions},
@@ -103,8 +106,15 @@ mod tests {
     fn a_taken_name_stays_open_with_the_refusal_and_a_free_one_lands(cx: &mut TestAppContext) {
         let rows = lib_payees::default_payees();
         let taken = rows[0].name.clone();
-        let payees = cx.new(|_| PayeesStore::new(rows.clone()));
-        let transactions = cx.new(|_| TransactionsStore::new(Vec::new()));
+        let ledger = test_ledger(
+            cx,
+            LedgerParts {
+                payees: rows.clone(),
+                ..LedgerParts::default()
+            },
+        );
+        let payees = cx.new(|cx| PayeesStore::new(ledger.clone(), cx));
+        let transactions = cx.new(|cx| TransactionsStore::new(ledger, cx));
         let mut apply = PayeesApply {
             payees,
             transactions,

@@ -110,7 +110,7 @@ impl Shell {
             ShellView::Settings(_) if self.accounts_page_has_focus(cx) => Some(PageStatus {
                 hints: accounts_hints(),
                 right: crate::msg::desktop_accounts_count(
-                    i64::try_from(self.accounts.read(cx).accounts().len()).unwrap_or(i64::MAX),
+                    i64::try_from(self.accounts.read(cx).accounts(cx).len()).unwrap_or(i64::MAX),
                 ),
             }),
             ShellView::Settings(_) if self.settings_tags_page_has_focus(cx) => Some(PageStatus {
