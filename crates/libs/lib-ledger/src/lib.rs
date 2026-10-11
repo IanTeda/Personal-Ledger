@@ -2,6 +2,7 @@
 
 #[cfg(test)]
 mod budgets_seed_tests;
+pub mod prototype_commands;
 pub mod query;
 pub mod seed;
 
@@ -41,6 +42,8 @@ pub struct Ledger {
     institutions: Vec<InstitutionRow>,
     units: Vec<UnitRow>,
     price_sources: Vec<PriceSourceRow>,
+    /// PROTOTYPE (#593): changes recorded by commands since the last drain.
+    pending: Vec<prototype_commands::LedgerChange>,
 }
 
 impl Ledger {
@@ -85,6 +88,7 @@ impl Ledger {
             institutions: default_institutions(),
             units: default_units(),
             price_sources: default_price_sources(),
+            pending: Vec::new(),
         }
     }
 

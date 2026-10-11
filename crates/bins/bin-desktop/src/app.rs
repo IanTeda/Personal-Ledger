@@ -234,6 +234,9 @@ pub struct Shell {
     /// The Inventory, owned by its store Entity and read through it (ADR-0032). Shared: Settings'
     /// Inventory page edits it, and Documents resolve their Links against it.
     inventory: Entity<InventoryStore>,
+    /// PROTOTYPE (#593): the one Ledger store, beside the per-domain stores. Only Payee delete
+    /// writes through it; `LedgerChanged` mirrors its Payees back into `payees_store`.
+    ledger_store: Entity<crate::prototype_ledger_store::LedgerStore>,
     /// Keeps each View's event subscription alive: dropping one silently stops its events.
     view_subscriptions: Vec<Subscription>,
 }
@@ -357,6 +360,26 @@ impl Shell {
             cx.subscribe(&bills_view, |shell, _view, event: &BillsEvent, cx| {
                 shell.handle_bills_event(*event, cx);
             });
+        let ledger_store = cx.new(|_| {
+            crate::prototype_ledger_store::LedgerStore::new(lib_ledger::Ledger::stub_on(today))
+        });
+        let ledger_subscription = cx.subscribe(
+            &ledger_store,
+            |shell: &mut Self, store, event: &crate::prototype_ledger_store::LedgerChanged, cx| {
+                // The bridge: until every Payees write goes through the Ledger, copy its rows
+                // into the old store so the Views that still read it see the change.
+                if event
+                    .what
+                    .contains(&lib_ledger::prototype_commands::Domain::Payees)
+                {
+                    let rows = store.read(cx).ledger().payees().to_vec();
+                    shell
+                        .payees_store
+                        .update(cx, |payees, cx| payees.replace(cx, rows));
+                }
+                cx.notify();
+            },
+        );
         let documents_store = cx.new(|_| {
             DocumentsStore::new(documents_seed.documents, documents::types::default_types())
         });
@@ -414,7 +437,9 @@ impl Shell {
             documents_store,
             documents_view,
             inventory,
+            ledger_store,
             view_subscriptions: vec![
+                ledger_subscription,
                 accounts_subscription,
                 budgets_subscription,
                 bills_subscription,

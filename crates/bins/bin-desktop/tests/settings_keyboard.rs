@@ -262,3 +262,67 @@ fn a_parent_category_cannot_be_deleted_but_a_leaf_can(app: &mut TestAppContext) 
     ui.press("escape");
     assert_eq!(ui.settings().dialog, None);
 }
+
+/// Types `text` into the open Dialog, a key per character.
+fn type_text(ui: &mut Harness<'_>, text: &str) {
+    for ch in text.chars() {
+        ui.press(&if ch == ' ' {
+            "space".to_string()
+        } else {
+            ch.to_string()
+        });
+    }
+}
+
+/// PROTOTYPE (#593): the Ledger counts Bill Plans, so Ray White Rentals (named only by a Bill
+/// Plan) is deactivated rather than hard-deleted out from under its Plan.
+#[gpui::test]
+fn prototype_a_payee_only_a_bill_plan_names_is_deactivated_not_deleted(app: &mut TestAppContext) {
+    let mut ui = in_page(app, 7, "Payees");
+    let name = "Ray White Rentals";
+    let index = ui
+        .settings()
+        .payee_names
+        .iter()
+        .position(|n| n == name)
+        .expect("seeded");
+    ui.press(&vec!["j"; index].join(" "));
+    assert_eq!(ui.settings().selected_payee.as_deref(), Some(name));
+
+    ui.press("d");
+    type_text(&mut ui, name);
+    ui.press("enter");
+
+    let page = ui.settings();
+    assert_eq!(page.dialog, None);
+    assert!(
+        page.payee_names.iter().any(|n| n == name),
+        "still there, deactivated"
+    );
+}
+
+/// PROTOTYPE (#593): the bridge's weak point. A Payee added through the old store never reaches
+/// the Ledger, so deleting it through the Ledger is refused as not found and the row stays.
+#[gpui::test]
+fn prototype_a_payee_added_outside_the_ledger_cannot_be_deleted_through_it(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_page(app, 7, "Payees");
+    ui.press("n");
+    ui.press("z o o");
+    ui.press("enter");
+    let index = ui
+        .settings()
+        .payee_names
+        .iter()
+        .position(|n| n == "zoo")
+        .expect("just added");
+    ui.press("g g");
+    ui.press(&vec!["j"; index].join(" "));
+
+    ui.press("d");
+    type_text(&mut ui, "zoo");
+    ui.press("enter");
+
+    assert!(ui.settings().payee_names.iter().any(|n| n == "zoo"));
+}

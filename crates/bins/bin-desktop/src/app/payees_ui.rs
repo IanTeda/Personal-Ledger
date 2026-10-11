@@ -160,9 +160,22 @@ impl Shell {
                     return;
                 };
                 let action = form.action();
-                let transactions = self.transactions_store.read(cx).transactions().to_vec();
-                let result = self.payees_store.update(cx, |store, cx| {
-                    store.apply_delete(cx, id, action, &transactions)
+                // PROTOTYPE (#593): the Delete Dialog writes through the Ledger's commands.
+                use lib_ledger::prototype_commands::{DeletePayee, SetPayeeActive};
+                let result = self.ledger_store.update(cx, |store, cx| match action {
+                    payees::form::DeleteAction::Delete => store
+                        .apply(cx, DeletePayee(id))
+                        .map_err(|r| format!("{r:?}")),
+                    payees::form::DeleteAction::Deactivate
+                    | payees::form::DeleteAction::Reactivate => store
+                        .apply(
+                            cx,
+                            SetPayeeActive {
+                                id,
+                                is_active: action == payees::form::DeleteAction::Reactivate,
+                            },
+                        )
+                        .map_err(|r| format!("{r:?}")),
                 });
                 let (kind, text) = match result {
                     Ok(()) => (
@@ -183,7 +196,7 @@ impl Shell {
                         ToastKind::Error,
                         lib_locale::msg::toast_save_failed(
                             &lib_locale::msg::toast_entity_payee(),
-                            &error.to_string(),
+                            &error,
                         ),
                     ),
                 };
@@ -303,7 +316,13 @@ impl Shell {
         let Some(payee) = payees::get(self.payees_list(cx), id) else {
             return;
         };
-        let action = payees::form::DeleteAction::for_payee(payee, self.transactions(cx));
+        // PROTOTYPE (#593): the Ledger's use counts Bill Plans as well as Splits.
+        let used = self.ledger_store.read(cx).ledger().payee_use(id).is_used();
+        let action = match (used, payee.is_active) {
+            (false, _) => payees::form::DeleteAction::Delete,
+            (true, true) => payees::form::DeleteAction::Deactivate,
+            (true, false) => payees::form::DeleteAction::Reactivate,
+        };
         let form = payees::form::DeletePayeeForm::new(payee, action);
         self.open_dialog(OpenDialog::Payees(payees::form::PayeesDialog::Delete(
             id, form,

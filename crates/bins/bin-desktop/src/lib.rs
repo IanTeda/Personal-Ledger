@@ -24,6 +24,7 @@ pub mod navigation;
 mod payees;
 mod period;
 pub mod persistence;
+mod prototype_ledger_store;
 mod settings;
 mod tags;
 pub mod theme;
