@@ -279,6 +279,8 @@ pub struct RemoveProps<'a> {
     pub row: &'a DocumentTypeRow,
     pub destinations: &'a [String],
     pub destination: &'a SelectState,
+    /// What the domain refused the confirm with.
+    pub error: Option<documents::types::RemoveError>,
     pub handlers: RemoveHandlers,
 }
 
@@ -289,11 +291,12 @@ pub fn render_remove(props: RemoveProps<'_>, cx: &App) -> AnyElement {
         row,
         destinations,
         destination,
+        error,
         handlers,
     } = props;
     let has_files = row.files > 0;
     let files = i64::from(row.files);
-    let body: Vec<AnyElement> = if has_files {
+    let mut body: Vec<AnyElement> = if has_files {
         vec![
             div()
                 .text_size(px(13.0))
@@ -328,6 +331,16 @@ pub fn render_remove(props: RemoveProps<'_>, cx: &App) -> AnyElement {
                 .into_any_element(),
         ]
     };
+    if error.is_some() {
+        body.push(
+            div()
+                .text_size(px(11.5))
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_color(color::accent_text(cx))
+                .child(crate::msg::desktop_document_types_remove_refused())
+                .into_any_element(),
+        );
+    }
     let confirm = if has_files {
         crate::msg::desktop_document_types_remove_confirm_move(files)
     } else {

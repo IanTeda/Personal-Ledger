@@ -100,6 +100,7 @@ desktop-document-types-remove-confirm-move = { $files ->
    *[other] Move { $files } files and remove
 }
 desktop-document-types-remove-no-files = No Filed files use { $name }, so nothing moves.
+desktop-document-types-remove-refused = That type can't be removed now. Check its destination and try again.
 desktop-document-types-remove-confirm = Remove type
 
 desktop-document-types-default-notice = Other is the default type: the fallback for documents with no type and the pre-selected destination when another type is removed. You can still rename and reorder it.

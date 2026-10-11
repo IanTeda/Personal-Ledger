@@ -8,8 +8,9 @@ use gpui::{AnyElement, Context};
 
 use super::Shell;
 use crate::{
-    chrome::dialog_host::OpenDialog,
+    chrome::{dialog_apply, dialog_host::OpenDialog},
     documents,
+    documents::type_apply::{DocumentTypeOutcome, DocumentTypesApply},
     documents::types::{
         DocumentTypeForm, DocumentTypesDialog, FormField, RemindLead, RemoveForm, TracksDate,
     },
@@ -60,56 +61,27 @@ impl Shell {
         self.open_dialog(OpenDialog::DocumentTypes(dialog));
     }
 
-    /// Applies a confirmed Document types dialog (reached through [`Self::confirm_open_dialog`]
-    /// from **Add type** / **Save** / **Remove** or `Enter`): applies the change and selects the
-    /// type. The Default notice only closes.
-    pub(super) fn apply_document_types_dialog(
-        &mut self,
-        dialog: DocumentTypesDialog,
-        cx: &mut gpui::App,
-    ) {
-        match dialog {
-            DocumentTypesDialog::Add(form) => {
-                let id = self.mutate_documents(cx, |data| {
-                    documents::types::add_type(&mut data.types, &mut data.types_next_id, &form)
-                });
+    /// Confirms the open Document types dialog through the host's cycle: the form's command runs
+    /// against the Documents store, a refusal stays on the form, and a landed one closes the
+    /// dialog. Add and Edit select the type; Remove keeps the cursor on the neighbour that takes
+    /// the removed row's place and drops a scope that was on the type back to All.
+    pub(super) fn confirm_document_types_dialog(&mut self, cx: &mut gpui::App) {
+        let mut apply = DocumentTypesApply {
+            documents: self.documents_store.clone(),
+        };
+        let Some(dialog) = self.dialog_mut::<DocumentTypesDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
+        self.close_dialog();
+        match outcome {
+            DocumentTypeOutcome::Saved(id) => {
                 self.settings_view
                     .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
             }
-            DocumentTypesDialog::Edit(id, form) => {
-                self.mutate_documents(cx, |data| {
-                    documents::types::edit_type(&mut data.types, id, &form);
-                });
-                self.settings_view
-                    .update(cx, |v, cx| v.set_documents_selected(cx, Some(id)));
-            }
-            DocumentTypesDialog::Remove(id, form) => {
-                // Keep the cursor on the neighbour that takes the removed row's place.
-                let position = documents::types::position(self.document_types(cx), id).unwrap_or(0);
-                let destination = form
-                    .select
-                    .value()
-                    .and_then(|name| documents::types::id_by_name(self.document_types(cx), name))
-                    .filter(|destination| *destination != id);
-                let removed = self.mutate_documents(cx, |data| {
-                    documents::types::remove_type(&mut data.types, id, form.select.value())
-                });
-                if removed.is_err() {
-                    return;
-                }
-                // The Documents surface follows the list: Filed files move with their type, to the
-                // chosen destination or else the Default, and a scope on the type falls back to All.
-                let moved_to = documents::DocumentType(
-                    destination
-                        .unwrap_or_else(|| documents::types::fallback_id(self.document_types(cx))),
-                );
-                self.mutate_documents(cx, |data| {
-                    for document in &mut data.documents {
-                        if document.doc_type == documents::DocumentType(id) {
-                            document.doc_type = moved_to;
-                        }
-                    }
-                });
+            DocumentTypeOutcome::Removed { id, selected } => {
                 if self.documents_state(cx).scope
                     == documents::LibraryScope::Type(documents::DocumentType(id))
                 {
@@ -117,16 +89,10 @@ impl Shell {
                         state.scope = documents::LibraryScope::All;
                     });
                 }
-                self.settings_view.update(cx, |v, cx| {
-                    v.set_documents_selected(
-                        cx,
-                        self.document_types(cx)
-                            .get(position.min(self.document_types(cx).len().saturating_sub(1)))
-                            .map(|row| row.id),
-                    )
-                });
+                self.settings_view
+                    .update(cx, |v, cx| v.set_documents_selected(cx, selected));
             }
-            DocumentTypesDialog::DefaultNotice => {}
+            DocumentTypeOutcome::Dismissed => {}
         }
     }
 
@@ -141,16 +107,6 @@ impl Shell {
         {
             change(form);
         }
-        cx.notify();
-    }
-
-    fn handle_document_types_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
-    }
-
-    fn handle_document_types_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
@@ -237,20 +193,21 @@ impl Shell {
                         row,
                         destinations: &form.destinations,
                         destination: &form.select,
+                        error: form.error,
                         handlers: view::RemoveHandlers {
                             on_field_click: plain(
                                 Shell::handle_document_types_destination_field_click,
                             ),
                             on_option_click,
-                            on_cancel: plain(Shell::handle_document_types_dialog_cancel),
-                            on_confirm: plain(Shell::handle_document_types_dialog_confirm),
+                            on_cancel: plain(Shell::handle_dialog_cancel),
+                            on_confirm: plain(Shell::handle_dialog_confirm),
                         },
                     },
                     cx,
                 ))
             }
             DocumentTypesDialog::DefaultNotice => Some(view::render_default_notice(
-                plain(Shell::handle_document_types_dialog_cancel),
+                plain(Shell::handle_dialog_cancel),
                 cx,
             )),
         }
@@ -297,8 +254,8 @@ impl Shell {
             on_field_click,
             on_tracks_click,
             on_remind_click,
-            on_cancel: plain(Shell::handle_document_types_dialog_cancel),
-            on_confirm: plain(Shell::handle_document_types_dialog_confirm),
+            on_cancel: plain(Shell::handle_dialog_cancel),
+            on_confirm: plain(Shell::handle_dialog_confirm),
         }
     }
 }

@@ -235,6 +235,8 @@ pub struct RemoveForm {
     /// Where the removed type's Filed files can move: every other type, in order.
     pub destinations: Vec<String>,
     pub select: SelectState,
+    /// What the domain refused the confirm with, shown in the dialog.
+    pub error: Option<RemoveError>,
     needs_destination: bool,
 }
 
@@ -244,6 +246,7 @@ impl RemoveForm {
         Self {
             destinations: destination_names(types, id),
             select: destination_select(types, id),
+            error: None,
             needs_destination: get(types, id).is_some_and(|row| row.files > 0),
         }
     }
