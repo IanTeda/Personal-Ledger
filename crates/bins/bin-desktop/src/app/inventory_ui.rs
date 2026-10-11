@@ -11,13 +11,13 @@ use lib_toast::ToastKind;
 
 use super::Shell;
 use crate::{
-    chrome::dialog_host::OpenDialog,
-    documents,
+    chrome::{dialog_apply, dialog_host::OpenDialog},
+    documents, inventory,
+    inventory::apply::{InventoryApply, InventoryOutcome},
     inventory::form::{
         InventoryDialog, Problem, PropertyContext, PropertyField, PropertyForm, RemovePropertyForm,
         RemoveRoomForm, RoomForm,
     },
-    inventory::{self, PropertyError},
     view::{inventory::dialogs as view, settings::inventory::InventoryRow},
 };
 
@@ -201,19 +201,51 @@ impl Shell {
         holdings.rooms > 0 || holdings.items > 0
     }
 
-    /// Applies a confirmed Inventory dialog (reached through [`Self::confirm_open_dialog`] from
-    /// **Add property** / **Save** / **Remove property** and `enter`): applies the change and
-    /// selects the Property or Room. The Room-blocked notice only closes.
-    pub(super) fn apply_inventory_dialog(&mut self, dialog: InventoryDialog, cx: &mut App) {
-        match dialog {
-            InventoryDialog::AddRoom(property, form) => {
-                let name = form.name.text().trim().to_string();
-                let Ok(id) = self
-                    .inventory
-                    .update(cx, |store, cx| store.add_room(cx, property, &name))
-                else {
-                    return;
-                };
+    /// Confirms the open Inventory dialog through the host's cycle: the form's command runs
+    /// against the Inventory store, and a landed one closes the dialog, selects the Property or
+    /// Room it left the cursor on and toasts it. The Room-blocked notice only closes.
+    pub(super) fn confirm_inventory_dialog(&mut self, cx: &mut App) {
+        let mut apply = InventoryApply {
+            inventory: self.inventory.clone(),
+            documents: self.documents_store.clone(),
+        };
+        let Some(dialog) = self.dialog_mut::<InventoryDialog>() else {
+            return;
+        };
+        let Some(outcome) = dialog_apply::confirm(dialog, &mut apply, cx) else {
+            return;
+        };
+        self.close_dialog();
+        match outcome {
+            InventoryOutcome::PropertyAdded { id, name } => {
+                self.settings_view.update(cx, |v, cx| v.expand(cx, id));
+                self.settings_view.update(cx, |v, cx| {
+                    v.set_inventory_selected(cx, Some(InventoryRow::Property(id)))
+                });
+                self.raise_toast(
+                    ToastKind::Success,
+                    crate::msg::desktop_inventory_toast_property_added(&name),
+                );
+            }
+            InventoryOutcome::PropertySaved { id, name } => {
+                self.settings_view.update(cx, |v, cx| {
+                    v.set_inventory_selected(cx, Some(InventoryRow::Property(id)))
+                });
+                self.raise_toast(
+                    ToastKind::Success,
+                    crate::msg::desktop_inventory_toast_property_saved(&name),
+                );
+            }
+            InventoryOutcome::PropertyRemoved { id, name, selected } => {
+                self.settings_view.update(cx, |v, cx| v.collapse(cx, id));
+                self.settings_view
+                    .update(cx, |v, cx| v.set_inventory_selected(cx, selected));
+                self.raise_toast(
+                    ToastKind::Success,
+                    crate::msg::desktop_inventory_toast_property_removed(&name),
+                );
+            }
+            InventoryOutcome::RoomAdded { property, id, name } => {
                 self.settings_view
                     .update(cx, |v, cx| v.expand(cx, property));
                 self.settings_view.update(cx, |v, cx| {
@@ -224,15 +256,7 @@ impl Shell {
                     crate::msg::desktop_inventory_toast_room_added(&name),
                 );
             }
-            InventoryDialog::EditRoom(id, form) => {
-                let name = form.name.text().trim().to_string();
-                if self
-                    .inventory
-                    .update(cx, |store, cx| store.edit_room(cx, id, &name))
-                    .is_err()
-                {
-                    return;
-                }
+            InventoryOutcome::RoomSaved { id, name } => {
                 self.settings_view.update(cx, |v, cx| {
                     v.set_inventory_selected(cx, Some(InventoryRow::Room(id)))
                 });
@@ -241,42 +265,15 @@ impl Shell {
                     crate::msg::desktop_inventory_toast_room_saved(&name),
                 );
             }
-            InventoryDialog::RemoveRoom(id, form) => {
-                let Some((property, room)) = self.inventory(cx).room(id) else {
-                    return;
-                };
-                let (property_id, name) = (property.id, room.name.clone());
-                let position = property.rooms.iter().position(|r| r.id == id).unwrap_or(0);
-                let items = self.inventory(cx).room_items(id);
-                let destination = form.select.value().and_then(|chosen| {
-                    property
-                        .rooms
-                        .iter()
-                        .find(|r| r.id != id && r.name == chosen)
-                });
-                let destination_name = destination.map(|r| r.name.clone());
-                let destination_id = destination.map(|r| r.id);
-                if self
-                    .inventory
-                    .update(cx, |store, cx| store.remove_room(cx, id, destination_id))
-                    .is_err()
-                {
-                    return;
-                }
-                // The cursor lands on the Room that takes the removed row's place, else the Property.
-                let rooms = self
-                    .inventory(cx)
-                    .property(property_id)
-                    .map(|p| p.rooms.as_slice())
-                    .unwrap_or_default();
-                let selected = rooms
-                    .get(position.min(rooms.len().saturating_sub(1)))
-                    .map_or(InventoryRow::Property(property_id), |r| {
-                        InventoryRow::Room(r.id)
-                    });
+            InventoryOutcome::RoomRemoved {
+                name,
+                items,
+                destination,
+                selected,
+            } => {
                 self.settings_view
                     .update(cx, |v, cx| v.set_inventory_selected(cx, Some(selected)));
-                let toast = match destination_name {
+                let toast = match destination {
                     Some(to) if items > 0 => {
                         crate::msg::desktop_inventory_toast_room_removed_moved(
                             &name,
@@ -290,84 +287,7 @@ impl Shell {
                 };
                 self.raise_toast(ToastKind::Success, toast);
             }
-            InventoryDialog::RoomBlocked(_) => {}
-            InventoryDialog::Add(form) => {
-                let Some(unit) = form.unit_code() else {
-                    return;
-                };
-                let Ok(draft) = form.draft() else {
-                    return;
-                };
-                let Ok(id) = self
-                    .inventory
-                    .update(cx, |store, cx| store.add_property(cx, &draft, unit))
-                else {
-                    return;
-                };
-                self.settings_view.update(cx, |v, cx| v.expand(cx, id));
-                self.settings_view.update(cx, |v, cx| {
-                    v.set_inventory_selected(cx, Some(InventoryRow::Property(id)))
-                });
-                self.raise_toast(
-                    ToastKind::Success,
-                    crate::msg::desktop_inventory_toast_property_added(form.name.text().trim()),
-                );
-            }
-            InventoryDialog::Edit(id, form) => {
-                let Ok(draft) = form.draft() else {
-                    return;
-                };
-                if self
-                    .inventory
-                    .update(cx, |store, cx| store.edit_property(cx, id, &draft))
-                    .is_err()
-                {
-                    return;
-                }
-                self.settings_view.update(cx, |v, cx| {
-                    v.set_inventory_selected(cx, Some(InventoryRow::Property(id)))
-                });
-                self.raise_toast(
-                    ToastKind::Success,
-                    crate::msg::desktop_inventory_toast_property_saved(form.name.text().trim()),
-                );
-            }
-            InventoryDialog::Remove(id, _) => {
-                let Some(property) = self.inventory(cx).property(id) else {
-                    return;
-                };
-                let name = property.name.clone();
-                // The cursor lands on the neighbour that takes the removed row's place.
-                let position = self
-                    .inventory(cx)
-                    .properties
-                    .iter()
-                    .position(|p| p.id == id)
-                    .unwrap_or(0);
-                let removed = match self
-                    .inventory
-                    .update(cx, |store, cx| store.remove_property(cx, id))
-                {
-                    Ok(removed) => removed,
-                    Err(PropertyError::Unknown) => return,
-                    Err(_) => return,
-                };
-                self.mutate_documents(cx, |data| {
-                    documents::drop_inventory_links(&mut data.documents, &removed.items)
-                });
-                self.settings_view.update(cx, |v, cx| v.collapse(cx, id));
-                let selected = self
-                    .inventory(cx)
-                    .properties
-                    .get(position.min(self.inventory(cx).properties.len().saturating_sub(1)))
-                    .map(|p| InventoryRow::Property(p.id));
-                self.settings_view
-                    .update(cx, |v, cx| v.set_inventory_selected(cx, selected));
-                self.raise_toast(
-                    ToastKind::Success,
-                    crate::msg::desktop_inventory_toast_property_removed(&name),
-                );
-            }
+            InventoryOutcome::Dismissed => {}
         }
     }
 
@@ -381,16 +301,6 @@ impl Shell {
         {
             change(form);
         }
-        cx.notify();
-    }
-
-    fn handle_inventory_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.close_dialog();
-        cx.notify();
-    }
-
-    fn handle_inventory_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.confirm_open_dialog(cx);
         cx.notify();
     }
 
@@ -462,8 +372,8 @@ impl Shell {
                         handlers: view::RoomRemoveHandlers {
                             on_field_click: plain(Shell::handle_room_destination_field_click),
                             on_option_click,
-                            on_cancel: plain(Shell::handle_inventory_dialog_cancel),
-                            on_confirm: plain(Shell::handle_inventory_dialog_confirm),
+                            on_cancel: plain(Shell::handle_dialog_cancel),
+                            on_confirm: plain(Shell::handle_dialog_confirm),
                         },
                     },
                     cx,
@@ -475,7 +385,7 @@ impl Shell {
                     &room.name,
                     &property.name,
                     self.inventory(cx).room_items(*id),
-                    plain(Shell::handle_inventory_dialog_cancel),
+                    plain(Shell::handle_dialog_cancel),
                     cx,
                 ))
             }
@@ -501,8 +411,8 @@ impl Shell {
                         documents: holdings.documents,
                         typed: form.typed.text(),
                         handlers: view::RemoveHandlers {
-                            on_cancel: plain(Shell::handle_inventory_dialog_cancel),
-                            on_confirm: plain(Shell::handle_inventory_dialog_confirm),
+                            on_cancel: plain(Shell::handle_dialog_cancel),
+                            on_confirm: plain(Shell::handle_dialog_confirm),
                         },
                     },
                     cx,
@@ -528,8 +438,8 @@ impl Shell {
                 problem,
                 handlers: view::RoomFormHandlers {
                     on_name_click: plain(Shell::handle_room_name_click),
-                    on_cancel: plain(Shell::handle_inventory_dialog_cancel),
-                    on_confirm: plain(Shell::handle_inventory_dialog_confirm),
+                    on_cancel: plain(Shell::handle_dialog_cancel),
+                    on_confirm: plain(Shell::handle_dialog_confirm),
                 },
             },
             cx,
@@ -586,8 +496,8 @@ impl Shell {
                     on_unit_click: plain(Shell::handle_property_unit_field_click),
                     on_unit_option_click,
                     on_suggestion_click,
-                    on_cancel: plain(Shell::handle_inventory_dialog_cancel),
-                    on_confirm: plain(Shell::handle_inventory_dialog_confirm),
+                    on_cancel: plain(Shell::handle_dialog_cancel),
+                    on_confirm: plain(Shell::handle_dialog_confirm),
                 },
             },
             cx,
