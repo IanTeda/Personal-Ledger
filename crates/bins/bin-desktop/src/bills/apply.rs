@@ -1,18 +1,15 @@
 //! The Bills Dialogs' confirm cycle (ADR-0037): the command each form describes and the [`Apply`]
-//! that runs it against the Bills, Accounts, Categories and Transactions stores. When
-//! `LedgerStore` replaces the per-domain stores only [`BillsApply`] changes.
+//! that runs it against the Ledger as Ledger commands.
 
 use chrono::NaiveDate;
 use gpui::{App, Entity};
 
-use super::{
-    self as bills, BillError, BillPlanDraft, BillsDialog, BillsStore, EntryId, edit_bills,
-    edit_bills_and_transactions, pay_form::PayAction,
-};
+use lib_ledger::{AddBillPlan, EditBillPlan, MatchBill, PayBill, SkipBill};
+
+use super::{BillError, BillPlanDraft, BillsDialog, EntryId, pay_form::PayAction};
 use crate::{
     chrome::dialog_apply::{Apply, DialogForm, FormError},
-    transactions::TransactionsStore,
-    view::{accounts::state::AccountsStore, categories::state::CategoriesStore},
+    ledger_store::LedgerStore,
 };
 
 /// What confirming a Bills Dialog asks for.
@@ -87,13 +84,10 @@ impl DialogForm for BillsDialog {
     }
 }
 
-/// Runs [`BillCommand`]s against the Bills store, reading the Accounts and Categories a Plan or a
-/// Match is checked against and writing the Transaction a Pay creates.
+/// Runs [`BillCommand`]s against the Ledger as Ledger commands. A Pay writes the Transaction and
+/// resolves the entry in the same command.
 pub struct BillsApply {
-    pub bills: Entity<BillsStore>,
-    pub accounts: Entity<AccountsStore>,
-    pub categories: Entity<CategoriesStore>,
-    pub transactions: Entity<TransactionsStore>,
+    pub ledger: Entity<LedgerStore>,
     pub today: NaiveDate,
 }
 
@@ -102,53 +96,63 @@ impl Apply<BillCommand> for BillsApply {
     type Refusal = BillError;
 
     fn apply(&mut self, command: BillCommand, cx: &mut App) -> Result<BillOutcome, BillError> {
+        let today = self.today;
         match command {
             BillCommand::SavePlan {
-                editing,
+                editing: None,
+                draft,
+                ..
+            } => self
+                .ledger
+                .update(cx, |store, cx| {
+                    store.apply(cx, AddBillPlan { draft, today })
+                })
+                .map(BillOutcome::PlanSaved),
+            BillCommand::SavePlan {
+                editing: Some(id),
                 draft,
                 is_active,
-            } => {
-                let today = self.today;
-                let accounts = self.accounts.read(cx).accounts(cx).to_vec();
-                let categories = self.categories.read(cx).categories(cx).to_vec();
-                edit_bills(&self.bills, cx, |plans, entries| match editing {
-                    None => {
-                        bills::insert_plan(plans, entries, &draft, &categories, &accounts, today)
-                    }
-                    Some(id) => {
-                        bills::edit_plan(plans, entries, id, &draft, &categories, &accounts, today)
-                            .and_then(|()| bills::set_active(plans, entries, id, is_active, today))
-                            .map(|()| id)
-                    }
+            } => self
+                .ledger
+                .update(cx, |store, cx| {
+                    store.apply(
+                        cx,
+                        EditBillPlan {
+                            id,
+                            draft,
+                            is_active,
+                            today,
+                        },
+                    )
                 })
-                .map(BillOutcome::PlanSaved)
-            }
-            BillCommand::Pay { entry, action } => {
-                let accounts = self.accounts.read(cx).accounts(cx).to_vec();
-                let categories = self.categories.read(cx).categories(cx).to_vec();
-                edit_bills_and_transactions(&self.bills, cx, |plans, entries, transactions| {
-                    match action {
-                        PayAction::Pay { amount, date } => {
-                            bills::pay(plans, entries, transactions, entry, &amount, date)
-                                .map(|_| ())
-                        }
-                        PayAction::Match(split) => bills::match_split(
-                            plans,
-                            entries,
-                            transactions,
-                            &accounts,
-                            &categories,
+                .map(|()| BillOutcome::PlanSaved(id)),
+            BillCommand::Pay {
+                entry,
+                action: PayAction::Pay { amount, date },
+            } => self
+                .ledger
+                .update(cx, |store, cx| {
+                    store.apply(
+                        cx,
+                        PayBill {
                             entry,
-                            split,
-                        ),
-                    }
+                            amount,
+                            date,
+                        },
+                    )
                 })
-                .map(|()| BillOutcome::Paid)
-            }
+                .map(|_| BillOutcome::Paid),
+            BillCommand::Pay {
+                entry,
+                action: PayAction::Match(split),
+            } => self
+                .ledger
+                .update(cx, |store, cx| store.apply(cx, MatchBill { entry, split }))
+                .map(|()| BillOutcome::Paid),
             BillCommand::Skip(entry) => {
-                let skipped = edit_bills(&self.bills, cx, |plans, entries| {
-                    bills::skip(plans, entries, entry)
-                });
+                let skipped = self
+                    .ledger
+                    .update(cx, |store, cx| store.apply(cx, SkipBill(entry)));
                 Ok(if skipped.is_ok() {
                     BillOutcome::Skipped
                 } else {
@@ -161,7 +165,7 @@ impl Apply<BillCommand> for BillsApply {
 
 #[cfg(test)]
 mod tests {
-    use gpui::{AppContext, TestAppContext};
+    use gpui::TestAppContext;
     use lib_ledger::LedgerParts;
 
     use super::*;
@@ -178,10 +182,7 @@ mod tests {
             },
         );
         BillsApply {
-            bills: cx.new(|cx| BillsStore::new(ledger.clone(), cx)),
-            accounts: cx.new(|cx| AccountsStore::new(ledger.clone(), cx)),
-            categories: cx.new(|cx| CategoriesStore::new(ledger.clone(), cx)),
-            transactions: cx.new(|cx| TransactionsStore::new(ledger, cx)),
+            ledger,
             today: NaiveDate::from_ymd_opt(2026, 9, 19).unwrap(),
         }
     }

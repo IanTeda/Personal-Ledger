@@ -40,15 +40,12 @@ impl Shell {
     }
 
     /// Confirms the open Bills dialog through the host's cycle (`Enter` and the confirm button):
-    /// the form's command runs against the Bills store, a refusal stays on the form, and a landed
+    /// the form's command runs against the Ledger, a refusal stays on the form, and a landed
     /// one closes the dialog. **Add bill plan** / **Save** select the Plan on the Planner tab; a
     /// refused Skip closes with the reason in the status line.
     pub(super) fn confirm_bills_dialog(&mut self, cx: &mut Context<'_, Self>) {
         let mut apply = BillsApply {
-            bills: self.bills_store.clone(),
-            accounts: self.accounts.clone(),
-            categories: self.categories_store.clone(),
-            transactions: self.transactions_store.clone(),
+            ledger: self.ledger.clone(),
             today: self.today,
         };
         let Some(dialog) = self.dialog_mut::<BillsDialog>() else {

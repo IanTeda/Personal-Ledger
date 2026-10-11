@@ -9,7 +9,7 @@
 use std::collections::BTreeSet;
 
 use lib_accounts::Account;
-use lib_bills::BillPlan;
+use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_payees::Payee;
@@ -51,6 +51,7 @@ pub enum LedgerChange {
     UpsertTransaction(Transaction),
     DeleteTransaction(u32),
     UpsertBillPlan(BillPlan),
+    UpsertBillEntry(BillScheduleEntry),
     UpsertBudget(Budget),
 }
 
@@ -62,7 +63,7 @@ impl LedgerChange {
             Self::UpsertCategory(_) | Self::DeleteCategory(_) => Domain::Categories,
             Self::UpsertTag(_) | Self::DeleteTag(_) => Domain::Tags,
             Self::UpsertTransaction(_) | Self::DeleteTransaction(_) => Domain::Transactions,
-            Self::UpsertBillPlan(_) => Domain::Bills,
+            Self::UpsertBillPlan(_) | Self::UpsertBillEntry(_) => Domain::Bills,
             Self::UpsertBudget(_) => Domain::Budgets,
         }
     }
