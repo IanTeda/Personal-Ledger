@@ -11,10 +11,6 @@ use crate::{
     view::documents::DocumentsFocus,
 };
 
-/// The primary rail has a fixed 10-row list, not a real "page" of variable-height content --
-/// half of that is a reasonable stand-in for `Ctrl-d`/`Ctrl-u` there.
-const PRIMARY_RAIL_HALF_PAGE: usize = 5;
-
 impl Shell {
     pub(super) fn apply_movement(&mut self, movement: Movement, cx: &mut gpui::Context<'_, Self>) {
         let noun_before = self.nav.noun();
@@ -49,13 +45,15 @@ impl Shell {
             Movement::Prev => self.nav.move_primary_highlight_prev(),
             Movement::First => self.nav.move_primary_highlight_first(),
             Movement::Last => self.nav.move_primary_highlight_last(),
+            // The rail's fixed 10 rows are not a real page; the List Cursor's half page is a
+            // reasonable stand-in for `Ctrl-d`/`Ctrl-u` there.
             Movement::HalfPageDown => {
-                for _ in 0..PRIMARY_RAIL_HALF_PAGE {
+                for _ in 0..lib_list_cursor::HALF_PAGE {
                     self.nav.move_primary_highlight_next();
                 }
             }
             Movement::HalfPageUp => {
-                for _ in 0..PRIMARY_RAIL_HALF_PAGE {
+                for _ in 0..lib_list_cursor::HALF_PAGE {
                     self.nav.move_primary_highlight_prev();
                 }
             }
@@ -73,19 +71,14 @@ impl Shell {
         }
         let half_page = (count / 2).max(1);
         let current = self.nav.context().unwrap_or(0);
-        let next = match movement {
-            Movement::Next => (current + 1).min(count - 1),
-            Movement::Prev => current.saturating_sub(1),
-            Movement::First => 0,
-            Movement::Last => count - 1,
-            Movement::HalfPageDown => (current + half_page).min(count - 1),
-            Movement::HalfPageUp => current.saturating_sub(half_page),
+        let next = match movement.step() {
+            Some(step) => lib_list_cursor::step_by(current, count, step, half_page),
             // The handoff's own "Movement" bullet: `Enter` "selects the entity and leaves
             // focus where it is" -- but movement here already updates `context` directly
             // (rule 2 guarantees that's side-effect-free), so there's nothing left for
             // `Enter` to additionally commit until a real per-entity detail view exists
             // (out of scope for this map, per issue #144).
-            Movement::Enter => current,
+            None => current,
         };
         self.nav.set_context(Some(next));
     }

@@ -18,9 +18,6 @@ use gpui::{App, Context, Keystroke};
 use lib_core::CategoryTypes;
 use lib_toast::ToastKind;
 
-/// `Ctrl-d`/`Ctrl-u` on the Settings Categories tree: rows per half page.
-const CATEGORIES_HALF_PAGE: usize = 5;
-
 impl Shell {
     /// Whether Settings' Categories tree owns the keyboard: the page, not the index, has focus.
     pub(super) fn settings_categories_page_has_focus(&self, cx: &App) -> bool {
@@ -49,32 +46,21 @@ impl Shell {
     /// Income. With no row selected (or the selected one folded away) the first press lands on
     /// the first row.
     pub(super) fn apply_settings_categories_movement(&mut self, movement: Movement, cx: &mut App) {
-        let rows = categories::settings_rows(
-            self.categories(cx),
-            self.categories_view.read(cx).expanded(),
-        );
-        let Some(last) = rows.len().checked_sub(1) else {
+        let Some(step) = movement.step() else {
             return;
         };
-        let current = self
-            .categories_view
-            .read(cx)
-            .selected_id()
-            .and_then(|id| rows.iter().position(|row| row.id == id));
-        let next = match movement {
-            Movement::Next => current.map_or(0, |index| (index + 1).min(last)),
-            Movement::Prev => current.map_or(0, |index| index.saturating_sub(1)),
-            Movement::First => 0,
-            Movement::Last => last,
-            Movement::HalfPageDown => {
-                current.map_or(0, |index| (index + CATEGORIES_HALF_PAGE).min(last))
-            }
-            Movement::HalfPageUp => {
-                current.map_or(0, |index| index.saturating_sub(CATEGORIES_HALF_PAGE))
-            }
-            Movement::Enter => return,
-        };
-        self.select_category(rows.get(next).map(|row| row.id), cx);
+        let ids: Vec<u32> = categories::settings_rows(
+            self.categories(cx),
+            self.categories_view.read(cx).expanded(),
+        )
+        .iter()
+        .map(|row| row.id)
+        .collect();
+        if ids.is_empty() {
+            return;
+        }
+        let current = self.categories_view.read(cx).selected_id();
+        self.select_category(lib_list_cursor::step_id(&ids, current, step), cx);
     }
 
     /// Moves the Settings Categories cursor to `id`, held in the view Entity.

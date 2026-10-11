@@ -6,9 +6,7 @@
 use super::Shell;
 use super::key_dispatch::PENDING_G_TIMEOUT;
 use super::log_feed::LOG_LINE_STEP;
-use crate::accounts::{self};
 use crate::chrome::dialog_host::OpenDialog;
-use crate::documents::{self};
 use crate::institutions::AccountType;
 use crate::institutions::form::AddInstitutionForm;
 use crate::navigation::key_router::Movement;
@@ -34,12 +32,6 @@ use crate::view::settings::inventory::{self as inventory_view, InventoryRow};
 use gpui::{App, Context, Keystroke, ScrollStrategy};
 use lib_core::DateStyle;
 use lib_toast::ToastKind;
-
-/// Settings' Documents page: rows per half page for `Ctrl-d`/`Ctrl-u`.
-const SETTINGS_DOCUMENTS_HALF_PAGE: isize = 5;
-
-/// Settings' Inventory page: rows per half page for `Ctrl-d`/`Ctrl-u`.
-const SETTINGS_INVENTORY_HALF_PAGE: usize = 5;
 
 impl Shell {
     /// Settings' Colour Theme grid (`docs/colour-themes-design.md` "Settings"): Focus arrives from
@@ -458,36 +450,22 @@ impl Shell {
     /// The Documents page's selected type: the stored id while it still exists, else the first
     /// row, so the cursor is never lost.
     pub(super) fn settings_documents_selected_id(&self, cx: &App) -> Option<u32> {
-        self.settings_view
-            .read(cx)
-            .documents_selected()
-            .filter(|id| documents::types::position(self.document_types(cx), *id).is_some())
-            .or_else(|| self.document_types(cx).first().map(|row| row.id))
+        lib_list_cursor::resolve(
+            self.document_types(cx).iter().map(|row| row.id),
+            self.settings_view.read(cx).documents_selected(),
+        )
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the types in the user's order.
     pub(super) fn apply_settings_documents_movement(&mut self, movement: Movement, cx: &mut App) {
-        let len = self.document_types(cx).len();
-        let current = self
-            .settings_documents_selected_id(cx)
-            .and_then(|id| documents::types::position(self.document_types(cx), id))
-            .unwrap_or(0);
-        let next = match movement {
-            Movement::Next => accounts::step_selection(current, len, 1),
-            Movement::Prev => accounts::step_selection(current, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => {
-                accounts::step_selection(current, len, SETTINGS_DOCUMENTS_HALF_PAGE)
-            }
-            Movement::HalfPageUp => {
-                accounts::step_selection(current, len, -SETTINGS_DOCUMENTS_HALF_PAGE)
-            }
-            Movement::Enter => return,
+        let Some(step) = movement.step() else {
+            return;
         };
-        self.settings_view.update(cx, |v, cx| {
-            v.set_documents_selected(cx, self.document_types(cx).get(next).map(|row| row.id))
-        });
+        let current = self.settings_documents_selected_id(cx);
+        let ids: Vec<u32> = self.document_types(cx).iter().map(|row| row.id).collect();
+        let next = lib_list_cursor::step_id(&ids, current, step);
+        self.settings_view
+            .update(cx, |v, cx| v.set_documents_selected(cx, next));
     }
 
     /// `J`/`K` on the Documents page move the selected type a place, which is also its place in
@@ -553,11 +531,7 @@ impl Shell {
             self.inventory(cx),
             self.settings_view.read(cx).inventory_expanded(),
         );
-        self.settings_view
-            .read(cx)
-            .inventory_selected()
-            .filter(|row| rows.contains(row))
-            .or_else(|| rows.first().copied())
+        lib_list_cursor::resolve(rows, self.settings_view.read(cx).inventory_selected())
     }
 
     /// Whether `left` has something to do on the Inventory page: close an open Property, or
@@ -580,25 +554,16 @@ impl Shell {
             self.inventory(cx),
             self.settings_view.read(cx).inventory_expanded(),
         );
-        let Some(last) = rows.len().checked_sub(1) else {
+        let Some(step) = movement.step() else {
             return;
         };
-        let current = self
-            .settings_inventory_selected_row(cx)
-            .and_then(|row| rows.iter().position(|r| *r == row))
-            .unwrap_or(0);
-        let next = match movement {
-            Movement::Next => (current + 1).min(last),
-            Movement::Prev => current.saturating_sub(1),
-            Movement::First => 0,
-            Movement::Last => last,
-            Movement::HalfPageDown => (current + SETTINGS_INVENTORY_HALF_PAGE).min(last),
-            Movement::HalfPageUp => current.saturating_sub(SETTINGS_INVENTORY_HALF_PAGE),
-            Movement::Enter => return,
-        };
-        self.settings_view.update(cx, |v, cx| {
-            v.set_inventory_selected(cx, rows.get(next).copied())
-        });
+        if rows.is_empty() {
+            return;
+        }
+        let current = self.settings_inventory_selected_row(cx);
+        let next = lib_list_cursor::step_id(&rows, current, step);
+        self.settings_view
+            .update(cx, |v, cx| v.set_inventory_selected(cx, next));
     }
 
     /// `J`/`K` on a Room move it a place within its Property; inert on a Property row.

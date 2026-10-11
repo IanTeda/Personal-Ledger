@@ -728,6 +728,7 @@ dependencies = [
  "lib_institutions",
  "lib_inventory",
  "lib_ledger",
+ "lib_list_cursor",
  "lib_locale",
  "lib_locale_build",
  "lib_payees",
@@ -4827,6 +4828,10 @@ dependencies = [
  "lib_transactions",
  "lib_units",
 ]
+
+[[package]]
+name = "lib_list_cursor"
+version = "0.1.0"
 
 [[package]]
 name = "lib_locale"

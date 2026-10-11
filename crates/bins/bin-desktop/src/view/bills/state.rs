@@ -6,7 +6,6 @@
 
 use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter};
-use lib_accounts::step_selection;
 
 use super::filters::FilterField;
 use crate::{
@@ -14,7 +13,6 @@ use crate::{
     form::select::SelectState,
     navigation::key_router::Movement,
     period::Period,
-    view::accounts::state::ACCOUNTS_HALF_PAGE,
 };
 
 /// What the Bills page asks `Shell` to do. The page never opens a dialog or navigates itself.
@@ -179,14 +177,9 @@ impl BillsView {
             BillsTab::Planner => self.store.read(cx).plans().len(),
         };
         let selected = self.state.selected.min(len.saturating_sub(1));
-        self.state.selected = match movement {
-            Movement::Next => step_selection(selected, len, 1),
-            Movement::Prev => step_selection(selected, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => step_selection(selected, len, ACCOUNTS_HALF_PAGE),
-            Movement::HalfPageUp => step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
-            Movement::Enter => {
+        self.state.selected = match movement.step() {
+            Some(step) => lib_list_cursor::step(selected, len, step),
+            None => {
                 match self.state.tab {
                     BillsTab::Planner => {
                         if let Some(id) = self.selected_plan(cx) {

@@ -2,7 +2,6 @@
 //! the open dialog.
 
 use crate::{
-    accounts,
     chrome::dialog_host::{Dialog, DialogKey, DialogOutcome},
     form::field::TextField,
     period::Period,
@@ -12,6 +11,7 @@ use super::form::BudgetForm;
 use super::limit_form::{LimitForm, StopForm};
 use lib_budgets::FillSource;
 use lib_budgets::{BudgetError, Budgets};
+use lib_list_cursor::Step;
 
 /// Which tab of the Budgets surface shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -299,10 +299,10 @@ impl Dialog for Detail {
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
         match key {
             DialogKey::Down | DialogKey::Char('j') => {
-                self.selected = accounts::step_selection(self.selected, self.listed, 1);
+                self.selected = lib_list_cursor::step(self.selected, self.listed, Step::Next);
             }
             DialogKey::Up | DialogKey::Char('k') => {
-                self.selected = accounts::step_selection(self.selected, self.listed, -1);
+                self.selected = lib_list_cursor::step(self.selected, self.listed, Step::Prev);
             }
             DialogKey::Enter | DialogKey::Char('t') => {
                 self.request = Some(DetailRequest::Transactions);

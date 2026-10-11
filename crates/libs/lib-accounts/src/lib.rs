@@ -186,15 +186,6 @@ pub fn net_worth(accounts: &[Account], base_unit: Option<&str>) -> NetWorth {
     }
 }
 
-/// Moves a selection (a position in [`display_order`]) by `delta` rows, clamped to `0..len`. An
-/// empty list always selects `0`.
-pub fn step_selection(selected: usize, len: usize, delta: isize) -> usize {
-    if len == 0 {
-        return 0;
-    }
-    selected.saturating_add_signed(delta).min(len - 1)
-}
-
 /// The zero-based group position of the account at `accounts[index]` -- which group block on the
 /// page holds it, for scrolling that block into view.
 pub fn group_position(accounts: &[Account], index: usize) -> Option<usize> {
@@ -481,16 +472,6 @@ mod tests {
         assert_eq!(net.base_net, money("0"));
         assert_eq!(net.base_unit, None);
         assert_eq!(net.held_separately.len(), 3);
-    }
-
-    #[test]
-    fn step_selection_clamps_at_both_ends_and_tolerates_an_empty_list() {
-        assert_eq!(step_selection(0, 7, -1), 0);
-        assert_eq!(step_selection(3, 7, 1), 4);
-        assert_eq!(step_selection(6, 7, 1), 6);
-        assert_eq!(step_selection(2, 7, -5), 0);
-        assert_eq!(step_selection(2, 7, 100), 6);
-        assert_eq!(step_selection(0, 0, 1), 0);
     }
 
     #[test]

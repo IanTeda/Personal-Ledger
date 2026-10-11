@@ -3,7 +3,6 @@
 use super::Shell;
 
 use crate::{
-    accounts::{self},
     import::{self, ImportState, RowSelect},
     navigation::key_router::Movement,
     navigation::nav::{FocusZone, InputMode, Noun},
@@ -21,6 +20,7 @@ use crate::{
 
 use gpui::{App, Context, Keystroke, ScrollStrategy};
 use lib_core::DateStyle;
+use lib_list_cursor::Step;
 use lib_toast::ToastKind;
 
 impl Shell {
@@ -115,7 +115,6 @@ impl Shell {
         }
         let selected =
             transactions::rows::clamp_selection(self.transactions_state(cx).selected, len);
-        let last = len - 1;
         let viewport = f32::from(
             self.transactions_state(cx)
                 .scroll
@@ -130,19 +129,17 @@ impl Shell {
             viewport,
             format::row_height_px(self.settings_row_density),
         );
-        let (next, strategy) = match movement {
-            Movement::Next => ((selected + 1).min(last), ScrollStrategy::Bottom),
-            Movement::Prev => (selected.saturating_sub(1), ScrollStrategy::Top),
-            Movement::First => (0, ScrollStrategy::Top),
-            Movement::Last => (last, ScrollStrategy::Bottom),
-            Movement::HalfPageDown => ((selected + half).min(last), ScrollStrategy::Center),
-            Movement::HalfPageUp => (selected.saturating_sub(half), ScrollStrategy::Center),
-            Movement::Enter => {
-                self.chrome.status_message =
-                    Some(crate::msg::desktop_status_open_transaction_not_yet_built());
-                return;
-            }
+        let Some(step) = movement.step() else {
+            self.chrome.status_message =
+                Some(crate::msg::desktop_status_open_transaction_not_yet_built());
+            return;
         };
+        let strategy = match step {
+            Step::Next | Step::Last => ScrollStrategy::Bottom,
+            Step::Prev | Step::First => ScrollStrategy::Top,
+            Step::HalfPageDown | Step::HalfPageUp => ScrollStrategy::Center,
+        };
+        let next = lib_list_cursor::step_by(selected, len, step, half);
         self.edit_transactions_state(cx, |s| s.selected = next);
         self.transactions_state(cx)
             .scroll
@@ -548,8 +545,8 @@ impl Shell {
                 return false;
             };
             match key {
-                "j" | "down" => state.selected = accounts::step_selection(selected, len, 1),
-                "k" | "up" => state.selected = accounts::step_selection(selected, len, -1),
+                "j" | "down" => state.selected = lib_list_cursor::step(selected, len, Step::Next),
+                "k" | "up" => state.selected = lib_list_cursor::step(selected, len, Step::Prev),
                 "p" => state.open(selected, RowSelect::Payee, &choices, &categories),
                 "c" => state.open(selected, RowSelect::Category, &choices, &categories),
                 "n" => state.create_new_payee(&payees),

@@ -42,6 +42,7 @@ lib_database = { path = "../../libs/lib-database" }
 lib_core = { path = "../../libs/lib-core" }
 lib_locale = { path = "../../libs/lib-locale" }
 lib_toast = { path = "../../libs/lib-toast" }
+lib_list_cursor = { path = "../../libs/lib-list-cursor" }
 lib_tracing = { path = "../../libs/lib-tracing" }
 
 ## -- Workspace Dependencies --

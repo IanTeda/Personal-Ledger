@@ -3,11 +3,10 @@
 use lib_core::CategoryTypes;
 use lib_toast::ToastKind;
 
-use super::{ACCOUNTS_HALF_PAGE, Shell, key_dispatch::PENDING_G_TIMEOUT};
+use super::{Shell, key_dispatch::PENDING_G_TIMEOUT};
 use std::rc::Rc;
 
 use crate::{
-    accounts::{self},
     bills::{self},
     budgets,
     categories::{self},
@@ -521,18 +520,9 @@ impl Shell {
             };
             let len = plan.row_count();
             let selected = self.budgets_plan_cursor_in(&plan, cx).0;
-            let moved = match movement {
-                Movement::Next => accounts::step_selection(selected, len, 1),
-                Movement::Prev => accounts::step_selection(selected, len, -1),
-                Movement::First => 0,
-                Movement::Last => len.saturating_sub(1),
-                Movement::HalfPageDown => {
-                    accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE)
-                }
-                Movement::HalfPageUp => {
-                    accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE)
-                }
-                Movement::Enter => {
+            let moved = match movement.step() {
+                Some(step) => lib_list_cursor::step(selected, len, step),
+                None => {
                     self.edit_budgets_state(cx, |state| state.plan_cursor.0 = selected);
                     self.start_budgets_plan_edit(cx);
                     selected
@@ -547,18 +537,9 @@ impl Shell {
             };
             let len = history.rows.len();
             let selected = self.budgets_history_cursor_in(&history, cx).0;
-            let moved = match movement {
-                Movement::Next => accounts::step_selection(selected, len, 1),
-                Movement::Prev => accounts::step_selection(selected, len, -1),
-                Movement::First => 0,
-                Movement::Last => len.saturating_sub(1),
-                Movement::HalfPageDown => {
-                    accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE)
-                }
-                Movement::HalfPageUp => {
-                    accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE)
-                }
-                Movement::Enter => {
+            let moved = match movement.step() {
+                Some(step) => lib_list_cursor::step(selected, len, step),
+                None => {
                     self.open_budgets_history_detail(cx);
                     selected
                 }
@@ -570,14 +551,9 @@ impl Shell {
             .budgets_figures(cx)
             .map_or(0, |(_, figures)| figures.rows.len());
         let selected = self.budgets_state(cx).selected.min(len.saturating_sub(1));
-        let moved = match movement {
-            Movement::Next => accounts::step_selection(selected, len, 1),
-            Movement::Prev => accounts::step_selection(selected, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => accounts::step_selection(selected, len, ACCOUNTS_HALF_PAGE),
-            Movement::HalfPageUp => accounts::step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
-            Movement::Enter => {
+        let moved = match movement.step() {
+            Some(step) => lib_list_cursor::step(selected, len, step),
+            None => {
                 self.open_budgets_detail_at(selected, cx);
                 selected
             }

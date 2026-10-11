@@ -15,6 +15,7 @@
 //! share this risk, so it stays where it is.
 
 use crate::navigation::nav::{InputMode, Noun};
+use lib_list_cursor::Step;
 
 /// A single semantic movement, parsed once from a keystroke and then dispatched against
 /// whichever zone is focused -- the same physical keys mean different things per zone, but
@@ -28,6 +29,22 @@ pub enum Movement {
     HalfPageDown,
     HalfPageUp,
     Enter,
+}
+
+impl Movement {
+    /// The List Cursor step this movement makes, or `None` for `Enter`, which each list handles
+    /// itself.
+    pub fn step(self) -> Option<Step> {
+        Some(match self {
+            Self::Next => Step::Next,
+            Self::Prev => Step::Prev,
+            Self::First => Step::First,
+            Self::Last => Step::Last,
+            Self::HalfPageDown => Step::HalfPageDown,
+            Self::HalfPageUp => Step::HalfPageUp,
+            Self::Enter => return None,
+        })
+    }
 }
 
 /// Every outcome [`route_key`] can produce -- one closed enum, one exhaustive match at

@@ -3,7 +3,6 @@
 use super::Shell;
 
 use crate::{
-    accounts,
     chrome::dialog_host::OpenDialog,
     navigation::{
         key_router::Movement,
@@ -16,9 +15,6 @@ use crate::{
 
 use gpui::{App, Context, Keystroke};
 use lib_toast::ToastKind;
-
-/// `Ctrl-d`/`Ctrl-u` on the Settings Tags page: rows per half page.
-const SETTINGS_TAGS_HALF_PAGE: isize = 5;
 
 impl Shell {
     /// The Tags rows, read through their store (ADR-0032).
@@ -65,33 +61,23 @@ impl Shell {
     /// row, so a removed or merged-away Tag never leaves the page with nothing under the cursor.
     pub(super) fn settings_tags_selected_id(&self, cx: &App) -> Option<u32> {
         let sorted = tags::sorted_by_name(self.tags_list(cx));
-        self.settings_tags_selected(cx)
-            .filter(|id| sorted.iter().any(|tag| tag.id == *id))
-            .or_else(|| sorted.first().map(|tag| tag.id))
+        lib_list_cursor::resolve(
+            sorted.iter().map(|tag| tag.id),
+            self.settings_tags_selected(cx),
+        )
     }
 
     /// `j`/`k`/`g`/`G`/`Ctrl-d`/`Ctrl-u` walk the Tags list A–Z. `enter` has no hand-off here.
     pub(super) fn apply_settings_tags_movement(&mut self, movement: Movement, cx: &mut App) {
-        let current_id = self.settings_tags_selected_id(cx);
-        let sorted = tags::sorted_by_name(self.tags_list(cx));
-        let len = sorted.len();
-        let current = current_id
-            .and_then(|id| sorted.iter().position(|tag| tag.id == id))
-            .unwrap_or(0);
-        let next = match movement {
-            Movement::Next => accounts::step_selection(current, len, 1),
-            Movement::Prev => accounts::step_selection(current, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => {
-                accounts::step_selection(current, len, SETTINGS_TAGS_HALF_PAGE)
-            }
-            Movement::HalfPageUp => {
-                accounts::step_selection(current, len, -SETTINGS_TAGS_HALF_PAGE)
-            }
-            Movement::Enter => return,
+        let Some(step) = movement.step() else {
+            return;
         };
-        let next_id = sorted.get(next).map(|tag| tag.id);
+        let current_id = self.settings_tags_selected_id(cx);
+        let ids: Vec<u32> = tags::sorted_by_name(self.tags_list(cx))
+            .iter()
+            .map(|tag| tag.id)
+            .collect();
+        let next_id = lib_list_cursor::step_id(&ids, current_id, step);
         self.set_settings_tags_selected(next_id, cx);
     }
 

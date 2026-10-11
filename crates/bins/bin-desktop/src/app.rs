@@ -76,9 +76,7 @@ use gpui::{
 use lib_core::DateStyle;
 use lib_toast::Toasts;
 
-use crate::view::accounts::state::{
-    ACCOUNTS_HALF_PAGE, AccountsEvent, AccountsStore, AccountsView,
-};
+use crate::view::accounts::state::{AccountsEvent, AccountsStore, AccountsView};
 use crate::view::bills::state::{BillsEvent, BillsView};
 use crate::view::budgets::state::{BudgetsEvent, BudgetsState, BudgetsStore, BudgetsView};
 use crate::view::categories::state::{CategoriesEvent, CategoriesStore, CategoriesView};

@@ -6,7 +6,7 @@
 use gpui::{App, Context, Entity, EventEmitter};
 use lib_accounts::{Account, AccountService, display_order};
 
-use crate::{accounts::step_selection, navigation::key_router::Movement};
+use crate::navigation::key_router::Movement;
 
 /// The shared Accounts rows. Every reader (the Accounts page, Transactions, Budgets, Bills and
 /// Documents) reads them from here, so a change is seen everywhere on the next render.
@@ -42,9 +42,6 @@ impl AccountsStore {
         result
     }
 }
-
-/// `Ctrl-d`/`Ctrl-u` on the Accounts page: half of a typical screenful of rows.
-pub const ACCOUNTS_HALF_PAGE: isize = 5;
 
 /// What the Accounts page asks `Shell` to do. The page never opens a dialog itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -122,21 +119,14 @@ impl AccountsView {
     /// account's ledger.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
         let len = self.store.read(cx).accounts().len();
-        let selected = self.selected;
-        self.selected = match movement {
-            Movement::Next => step_selection(selected, len, 1),
-            Movement::Prev => step_selection(selected, len, -1),
-            Movement::First => 0,
-            Movement::Last => len.saturating_sub(1),
-            Movement::HalfPageDown => step_selection(selected, len, ACCOUNTS_HALF_PAGE),
-            Movement::HalfPageUp => step_selection(selected, len, -ACCOUNTS_HALF_PAGE),
-            Movement::Enter => {
+        match movement.step() {
+            Some(step) => self.selected = lib_list_cursor::step(self.selected, len, step),
+            None => {
                 if let Some(id) = self.selected_id(cx) {
                     cx.emit(AccountsEvent::OpenLedger(id));
                 }
-                selected
             }
-        };
+        }
         cx.notify();
     }
 

@@ -34,9 +34,6 @@ use crate::{
     },
 };
 
-/// `ctrl-d` / `ctrl-u` on the Library list: rows per half page.
-const DOCUMENTS_HALF_PAGE: usize = 5;
-
 fn key_label_for_options(kind: Option<KeyDateKind>) -> String {
     match kind {
         None => crate::msg::desktop_documents_key_none(),
@@ -599,29 +596,21 @@ impl Shell {
             .iter()
             .position(|entry| *entry == self.documents_rail_selected(cx))
             .unwrap_or(0);
-        let last = entries.len().saturating_sub(1);
-        let next = match movement {
-            Movement::Next => (current + 1).min(last),
-            Movement::Prev => current.saturating_sub(1),
-            Movement::First => 0,
-            Movement::Last => last,
-            Movement::HalfPageDown => (current + DOCUMENTS_HALF_PAGE).min(last),
-            Movement::HalfPageUp => current.saturating_sub(DOCUMENTS_HALF_PAGE),
-            Movement::Enter => {
-                self.edit_documents_state(cx, |state| state.focus = DocumentsFocus::List);
-                return;
-            }
+        let Some(step) = movement.step() else {
+            self.edit_documents_state(cx, |state| state.focus = DocumentsFocus::List);
+            return;
         };
+        let next = lib_list_cursor::step(current, entries.len(), step);
         if let Some(entry) = entries.get(next) {
             self.select_documents_entry(*entry, cx);
         }
     }
 
     fn apply_documents_list_movement(&mut self, movement: Movement, cx: &mut gpui::App) {
-        if movement == Movement::Enter {
+        let Some(step) = movement.step() else {
             self.documents_open_selected(false, cx);
             return;
-        }
+        };
         let inbox = self.documents_state(cx).mode == DocumentsMode::Inbox;
         let len = if inbox {
             self.documents_inbox_rows(cx).len()
@@ -636,16 +625,7 @@ impl Shell {
         } else {
             self.documents_state(cx).selected.min(len - 1)
         };
-        let last = len - 1;
-        let next = match movement {
-            Movement::Next => (current + 1).min(last),
-            Movement::Prev => current.saturating_sub(1),
-            Movement::First => 0,
-            Movement::Last => last,
-            Movement::HalfPageDown => (current + DOCUMENTS_HALF_PAGE).min(last),
-            Movement::HalfPageUp => current.saturating_sub(DOCUMENTS_HALF_PAGE),
-            Movement::Enter => current,
-        };
+        let next = lib_list_cursor::step(current, len, step);
         if inbox {
             self.edit_documents_state(cx, |state| state.inbox_selected = next);
         } else {
